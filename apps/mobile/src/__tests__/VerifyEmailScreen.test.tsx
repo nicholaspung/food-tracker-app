@@ -5,6 +5,7 @@ import {
   requestUserEmailVerification,
 } from '../features';
 import { useAuth } from '../providers/AuthProvider';
+import { useSync } from '../providers/SyncProvider';
 import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 
 const mockReact = React;
@@ -19,6 +20,10 @@ jest.mock('../observability', () => ({
 
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/SyncProvider', () => ({
+  useSync: jest.fn(),
 }));
 
 jest.mock('../theme', () => ({
@@ -38,6 +43,7 @@ jest.mock('../ui', () => ({
 jest.mock('../components/shared', () => ({
   AuthIntroCard: (props: Record<string, unknown>) => mockReact.createElement('AuthIntroCard', props),
   AuthTopBar: (props: Record<string, unknown>) => mockReact.createElement('AuthTopBar', props),
+  ConfirmDestructiveModal: (props: Record<string, unknown>) => mockReact.createElement('ConfirmDestructiveModal', props),
   FormResultBanner: (props: Record<string, unknown>) => mockReact.createElement('FormResultBanner', props),
   FormScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('FormScaffold', props, children),
@@ -51,6 +57,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 const mockedRequestUserEmailVerification =
   requestUserEmailVerification as jest.MockedFunction<typeof requestUserEmailVerification>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseSync = useSync as jest.MockedFunction<typeof useSync>;
 
 function pressButtonByLabel(renderer: any, label: string) {
   const button = renderer.root.findAllByType('Button').find((node: any) => node.props.label === label);
@@ -80,6 +87,10 @@ describe('VerifyEmailScreen', () => {
     navigation.reset.mockReset();
     mockedRequestUserEmailVerification.mockReset();
     mockedUseAuth.mockReset();
+    mockedUseSync.mockReset();
+    mockedUseSync.mockReturnValue({
+      queueDepth: 0,
+    } as unknown as ReturnType<typeof useSync>);
   });
 
   afterEach(() => {
@@ -219,5 +230,99 @@ describe('VerifyEmailScreen', () => {
     });
 
     expect(mockedRequestUserEmailVerification).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens a discard-warning modal before logging out when queued writes exist', async () => {
+    const signOut = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'queued-user@example.com',
+      },
+      refreshAuthSession: jest.fn(),
+      signOut,
+      status: 'verification_required',
+      verificationStatus: 'grace_expired',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedUseSync.mockReturnValue({
+      queueDepth: 2,
+    } as unknown as ReturnType<typeof useSync>);
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-queued-logout',
+            name: 'VerifyEmail',
+            params: {
+              source: 'expired_entry',
+            },
+          }}
+        />,
+      );
+    });
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Sign Out');
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('ConfirmDestructiveModal').props.visible).toBe(true);
+    expect(signOut).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.root.findByType('ConfirmDestructiveModal').props.onConfirm();
+      await Promise.resolve();
+    });
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Onboarding' }],
+    });
+  });
+
+  it('logs out immediately without a discard-warning modal when no queued writes exist', async () => {
+    const signOut = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'clean-user@example.com',
+      },
+      refreshAuthSession: jest.fn(),
+      signOut,
+      status: 'verification_required',
+      verificationStatus: 'grace_expired',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-no-queue-logout',
+            name: 'VerifyEmail',
+            params: {
+              source: 'expired_entry',
+            },
+          }}
+        />,
+      );
+    });
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Sign Out');
+      await Promise.resolve();
+    });
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('ConfirmDestructiveModal').props.visible).toBe(false);
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Onboarding' }],
+    });
   });
 });

@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
 import { MiscScreen } from '../screens/MiscScreen';
@@ -99,6 +100,10 @@ jest.mock('../lib/emailVerificationAccess', () => ({
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../hooks/useQueuedLogoutConfirmation', () => ({
+  useQueuedLogoutConfirmation: jest.fn(),
 }));
 
 jest.mock('../providers/AuthProvider', () => ({
@@ -225,6 +230,9 @@ const mockedUseMutation = useMutation as jest.MockedFunction<typeof useMutation>
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseQueuedLogoutConfirmation = useQueuedLogoutConfirmation as jest.MockedFunction<
+  typeof useQueuedLogoutConfirmation
+>;
 
 function renderWithNavigation(element: React.ReactElement) {
   return create(element);
@@ -251,6 +259,7 @@ describe('tab root content sections', () => {
     mockedUseMutation.mockReset();
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
+    mockedUseQueuedLogoutConfirmation.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries: jest.fn(),
@@ -274,6 +283,20 @@ describe('tab root content sections', () => {
       verificationGraceEndsAt: null,
       verificationStatus: 'verified',
     } as never);
+    mockedUseQueuedLogoutConfirmation.mockReturnValue({
+      cancelLabel: 'Stay Logged In',
+      cancelLogout: jest.fn(),
+      confirmLabel: 'Log Out & Discard',
+      confirmLoadingLabel: 'Logging out...',
+      confirmLogout: jest.fn(),
+      description:
+        'You have unsynced offline changes queued on this device. Logging out will discard those changes and clear cached data for this account.',
+      hasQueuedWrites: false,
+      isConfirmVisible: false,
+      isLoggingOut: false,
+      requestLogout: jest.fn(),
+      title: 'Discard offline changes and log out?',
+    });
   });
 
   it('keeps the Add tab header fixed and scrolls the orange body section underneath it', async () => {
@@ -386,5 +409,73 @@ describe('tab root content sections', () => {
       }),
     );
     expect(renderer.root.findByProps({ testID: 'profile-screen-content-section' })).toBeTruthy();
+  });
+
+  it('routes the Profile logout button through the queued logout confirmation hook', async () => {
+    const requestLogout = jest.fn();
+    mockedUseQueuedLogoutConfirmation.mockReturnValue({
+      cancelLabel: 'Stay Logged In',
+      cancelLogout: jest.fn(),
+      confirmLabel: 'Log Out & Discard',
+      confirmLoadingLabel: 'Logging out...',
+      confirmLogout: jest.fn(),
+      description:
+        'You have unsynced offline changes queued on this device. Logging out will discard those changes and clear cached data for this account.',
+      hasQueuedWrites: false,
+      isConfirmVisible: false,
+      isLoggingOut: false,
+      requestLogout,
+      title: 'Discard offline changes and log out?',
+    });
+    mockedUseQuery.mockImplementation((options) => {
+      const queryKey = JSON.stringify(options.queryKey);
+
+      if (queryKey === JSON.stringify(['feature', 'profile'])) {
+        return {
+          data: {
+            createdAt: '2026-04-01T00:00:00.000Z',
+            displayName: 'Nick',
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      if (queryKey === JSON.stringify(['feature', 'feedback', 'summary'])) {
+        return {
+          data: {
+            activeCount: 2,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <ProfileScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'profile', name: 'Profile' } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'profile-logout-button' }).props.onPress();
+    });
+
+    expect(requestLogout).toHaveBeenCalledTimes(1);
   });
 });

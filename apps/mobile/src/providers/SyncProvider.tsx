@@ -4,11 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { getAuthRecord } from '../features';
 import { resolveEmailVerificationAccess } from '../lib/emailVerificationAccess';
 import { logger } from '../lib/logger';
+import { pb } from '../lib/pocketbase';
 import { syncEngine } from '../offline';
 import type { EnqueueMutationInput, QueuedMutation, SyncSnapshot } from '../offline';
 import { useConnectivity } from './ConnectivityProvider';
 
 interface SyncContextValue extends SyncSnapshot {
+  discardQueuedMutations: (trigger?: 'auth_change' | 'logout') => Promise<number>;
   enqueueMutation: (input: EnqueueMutationInput) => Promise<QueuedMutation>;
   getQueuedMutations: (limit?: number) => Promise<QueuedMutation[]>;
   retryAllFailed: () => Promise<number>;
@@ -42,6 +44,10 @@ function shouldBlockReplayForEmailVerification(): boolean {
   );
 }
 
+function hasAuthenticatedSession(): boolean {
+  return Boolean(pb.authStore.token && pb.authStore.record?.id);
+}
+
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [snapshot, setSnapshot] = useState<SyncSnapshot>(syncEngine.getSnapshot());
   const { isOnline } = useConnectivity();
@@ -64,7 +70,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     void syncEngine
       .start()
       .then(() => {
-        if (isMounted && isOnlineRef.current && !shouldBlockReplayForEmailVerification()) {
+        if (
+          isMounted &&
+          isOnlineRef.current &&
+          hasAuthenticatedSession() &&
+          !shouldBlockReplayForEmailVerification()
+        ) {
           return syncEngine.replay('foreground');
         }
         return undefined;
@@ -87,7 +98,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     wasOnlineRef.current = isOnline;
 
     if (!wasOnline && isOnline) {
-      if (!shouldBlockReplayForEmailVerification()) {
+      if (hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
         void syncEngine.replay('reconnect');
       }
     }
@@ -95,7 +106,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active' && isOnline && !shouldBlockReplayForEmailVerification()) {
+      if (
+        nextState === 'active' &&
+        isOnline &&
+        hasAuthenticatedSession() &&
+        !shouldBlockReplayForEmailVerification()
+      ) {
         void syncEngine.replay('foreground');
       }
     });
@@ -108,7 +124,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const enqueueMutation = useCallback(
     async (input: EnqueueMutationInput): Promise<QueuedMutation> => {
       const mutation = await syncEngine.enqueue(input);
-      if (isOnline && !shouldBlockReplayForEmailVerification()) {
+      if (isOnline && hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
         void syncEngine.replay('enqueue');
       }
 
@@ -119,11 +135,16 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const retryAllFailed = useCallback(async (): Promise<number> => {
     const resetCount = await syncEngine.retryAllFailed();
-    if (isOnline && !shouldBlockReplayForEmailVerification()) {
+    if (isOnline && hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
       void syncEngine.replay('manual');
     }
     return resetCount;
   }, [isOnline]);
+
+  const discardQueuedMutations = useCallback(
+    async (trigger: 'auth_change' | 'logout' = 'logout'): Promise<number> => syncEngine.clearAll(trigger),
+    [],
+  );
 
   const getQueuedMutations = useCallback(async (limit?: number): Promise<QueuedMutation[]> => {
     const safeLimit = typeof limit === 'number' && Number.isInteger(limit) && limit > 0 ? limit : 25;
@@ -131,7 +152,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replayNow = useCallback(async (): Promise<void> => {
-    if (!isOnline || shouldBlockReplayForEmailVerification()) {
+    if (!isOnline || !hasAuthenticatedSession() || shouldBlockReplayForEmailVerification()) {
       return;
     }
 
@@ -141,12 +162,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SyncContextValue>(
     () => ({
       ...snapshot,
+      discardQueuedMutations,
       enqueueMutation,
       getQueuedMutations,
       retryAllFailed,
       replayNow,
     }),
-    [enqueueMutation, getQueuedMutations, replayNow, retryAllFailed, snapshot],
+    [discardQueuedMutations, enqueueMutation, getQueuedMutations, replayNow, retryAllFailed, snapshot],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

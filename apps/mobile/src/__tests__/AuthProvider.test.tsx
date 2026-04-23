@@ -1,11 +1,16 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
+import { useSync } from '../providers/SyncProvider';
 
 const mockAuthRefresh = jest.fn();
 const mockOnChange = jest.fn();
 const mockClear = jest.fn();
+const mockClearPersistedQueryCache = jest.fn();
+const mockDiscardQueuedMutations = jest.fn();
+const mockQueryClientClear = jest.fn();
 const mockSave = jest.fn();
 const mockWaitUntilReady = jest.fn();
 const mockLoadRolePreviewSettings = jest.fn();
@@ -27,6 +32,10 @@ jest.mock('../config/env', () => ({
     environment: 'local',
     isScreenshotReviewMode: false,
   },
+}));
+
+jest.mock('@tanstack/react-query', () => ({
+  useQueryClient: jest.fn(),
 }));
 
 jest.mock('react-native', () => ({
@@ -66,6 +75,14 @@ jest.mock('../lib/pocketbaseAuthStore', () => ({
   },
 }));
 
+jest.mock('../providers/queryPersistence', () => ({
+  clearPersistedQueryCache: (...args: unknown[]) => mockClearPersistedQueryCache(...args),
+}));
+
+jest.mock('../providers/SyncProvider', () => ({
+  useSync: jest.fn(),
+}));
+
 jest.mock('../lib/logger', () => ({
   logger: {
     warn: jest.fn(),
@@ -96,13 +113,17 @@ jest.mock('../providers/authErrorMessages', () => ({
 }));
 
 function AuthConsumer() {
-  const { status, verificationStatus } = useAuth();
+  const { signOut, status, verificationStatus } = useAuth();
 
   return React.createElement('AuthState', {
+    signOut,
     status,
     verificationStatus,
   });
 }
+
+const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseSync = useSync as jest.MockedFunction<typeof useSync>;
 
 describe('AuthProvider', () => {
   beforeEach(() => {
@@ -122,10 +143,19 @@ describe('AuthProvider', () => {
     mockAuthRefresh.mockReset();
     mockOnChange.mockReset();
     mockClear.mockReset();
+    mockClearPersistedQueryCache.mockReset();
+    mockDiscardQueuedMutations.mockReset();
+    mockQueryClientClear.mockReset();
     mockSave.mockReset();
     mockWaitUntilReady.mockReset();
     mockLoadRolePreviewSettings.mockReset();
 
+    mockedUseQueryClient.mockReturnValue({
+      clear: mockQueryClientClear,
+    } as unknown as ReturnType<typeof useQueryClient>);
+    mockedUseSync.mockReturnValue({
+      discardQueuedMutations: mockDiscardQueuedMutations,
+    } as unknown as ReturnType<typeof useSync>);
     mockAuthRefresh.mockResolvedValue(undefined);
     mockOnChange.mockImplementation((listener: () => void) => {
       authChangeListener = listener;
@@ -145,6 +175,8 @@ describe('AuthProvider', () => {
       mockAuthStoreState.isValid = true;
       authChangeListener?.();
     });
+    mockClearPersistedQueryCache.mockResolvedValue(undefined);
+    mockDiscardQueuedMutations.mockResolvedValue(0);
     mockWaitUntilReady.mockResolvedValue(undefined);
     mockLoadRolePreviewSettings.mockResolvedValue({
       viewAsNonAdmin: false,
@@ -213,5 +245,108 @@ describe('AuthProvider', () => {
 
     expect(renderer.root.findByType('AuthState').props.verificationStatus).toBe('grace_period');
     expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears auth, query cache, persisted cache, and queued mutations on explicit sign-out', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('AuthState').props.signOut();
+    });
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
+    expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('logout');
+    expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
+  });
+
+  it('clears authenticated local state when the active auth session disappears', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockQueryClientClear.mockClear();
+    mockClearPersistedQueryCache.mockClear();
+    mockDiscardQueuedMutations.mockClear();
+
+    await act(async () => {
+      mockAuthStoreState.token = '';
+      mockAuthStoreState.record = null;
+      mockAuthStoreState.isValid = false;
+      authChangeListener?.();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
+    expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('auth_change');
+    expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
+  });
+
+  it('does not clear authenticated local state on the initial unauthenticated-to-authenticated bootstrap transition', async () => {
+    mockAuthStoreState.token = '';
+    mockAuthStoreState.record = null;
+    mockAuthStoreState.isValid = false;
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockQueryClientClear.mockClear();
+    mockClearPersistedQueryCache.mockClear();
+    mockDiscardQueuedMutations.mockClear();
+
+    await act(async () => {
+      mockSave('token_2', {
+        id: 'user_2',
+        email: 'next@example.com',
+        verified: true,
+        created: '2026-04-21T12:00:00.000Z',
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockQueryClientClear).not.toHaveBeenCalled();
+    expect(mockClearPersistedQueryCache).not.toHaveBeenCalled();
+    expect(mockDiscardQueuedMutations).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('AuthState').props.status).toBe('authenticated');
   });
 });

@@ -45,6 +45,7 @@ export interface MutationQueueStore {
   markRetryableFailure(id: string, error: string, nextRetryAt: number, at: number): Promise<void>;
   markTerminalFailure(id: string, error: string, at: number): Promise<void>;
   retryFailedMutations(at: number): Promise<number>;
+  clearAll(): Promise<number>;
   getStats(): Promise<MutationQueueStats>;
 }
 

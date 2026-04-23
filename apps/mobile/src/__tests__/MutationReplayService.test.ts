@@ -126,6 +126,12 @@ class InMemoryQueueStore implements MutationQueueStore {
     return updated;
   }
 
+  async clearAll(): Promise<number> {
+    const clearedCount = this.sharedState.rows.size;
+    this.sharedState.rows.clear();
+    return clearedCount;
+  }
+
   async getStats(): Promise<MutationQueueStats> {
     const rows = [...this.sharedState.rows.values()];
     const queueDepth = rows.length;
@@ -290,6 +296,34 @@ describe('MutationReplayService', () => {
     await restartedService.start();
 
     expect(restartedService.getSnapshot().queueDepth).toBe(1);
+  });
+
+  it('clears queued writes and keeps the queue empty after restart', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map(),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    const service = new MutationReplayService(store, createTransport([]), () => 9000);
+
+    await service.start();
+    await service.enqueue({
+      method: 'DELETE',
+      url: 'https://api.example.com/visits/2',
+    });
+
+    const clearedCount = await service.clearAll('logout');
+    expect(clearedCount).toBe(1);
+    expect(service.getSnapshot().queueDepth).toBe(0);
+    expect(service.getSnapshot().failedCount).toBe(0);
+
+    await service.replay('manual');
+    expect(service.getSnapshot().queueDepth).toBe(0);
+
+    const restartedStore = new InMemoryQueueStore(sharedState);
+    const restartedService = new MutationReplayService(restartedStore, createTransport([]), () => 9000);
+    await restartedService.start();
+
+    expect(restartedService.getSnapshot().queueDepth).toBe(0);
   });
 
   it('replays already-normalized food product local operations', async () => {

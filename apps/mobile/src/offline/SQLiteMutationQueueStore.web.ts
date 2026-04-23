@@ -123,6 +123,12 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     return resetCount;
   }
 
+  async clearAll(): Promise<number> {
+    const existingMutations = this.readMutations();
+    this.writeMutations([]);
+    return existingMutations.length;
+  }
+
   async getStats(): Promise<MutationQueueStats> {
     const mutations = this.readMutations();
     const failedMutations = mutations.filter((mutation) => mutation.status === 'failed');

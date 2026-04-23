@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AuthIntroCard,
+  ConfirmDestructiveModal,
   AuthTopBar,
   FormResultBanner,
   FormScaffold,
@@ -11,6 +12,7 @@ import {
 import {
   requestUserEmailVerification,
 } from '../features';
+import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -82,7 +84,6 @@ function resolveVerificationEmailErrorMessage(error: unknown): string {
 export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps) {
   const {
     actualUser,
-    signOut,
     status,
     verificationStatus,
   } = useAuth();
@@ -110,6 +111,26 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     resendRemainingSeconds > 0
       ? formatResendCooldownLabel(resendRemainingSeconds)
       : 'Resend Verification Email';
+  const resetToOnboarding = useCallback(() => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Onboarding' }],
+    });
+  }, [navigation]);
+  const {
+    cancelLabel: logoutCancelLabel,
+    cancelLogout,
+    confirmLabel: logoutConfirmLabel,
+    confirmLoadingLabel: logoutConfirmLoadingLabel,
+    confirmLogout,
+    description: logoutDescription,
+    isConfirmVisible: isLogoutConfirmVisible,
+    isLoggingOut,
+    requestLogout,
+    title: logoutTitle,
+  } = useQueuedLogoutConfirmation({
+    onLoggedOut: resetToOnboarding,
+  });
 
   const subtitle = pendingEmail
     ? hasRetainedSession
@@ -265,16 +286,12 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
       return;
     }
 
-    try {
-        if (hasRetainedSession) {
-          await signOut();
-        }
-    } finally {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Onboarding' }],
-      });
+    if (hasRetainedSession) {
+      await requestLogout();
+      return;
     }
+
+    resetToOnboarding();
   };
 
   return (
@@ -351,6 +368,20 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
           />
         </Card>
       </FormScaffold>
+      <ConfirmDestructiveModal
+        cancelLabel={logoutCancelLabel}
+        confirmLabel={logoutConfirmLabel}
+        confirmLoadingLabel={logoutConfirmLoadingLabel}
+        description={logoutDescription}
+        loading={isLoggingOut}
+        onCancel={cancelLogout}
+        onConfirm={() => {
+          void confirmLogout();
+        }}
+        testID="verify-email-logout-confirmation-modal"
+        title={logoutTitle}
+        visible={isLogoutConfirmVisible}
+      />
       <LoadingOverlay label="Sending verification email..." visible={isResending} />
     </Screen>
   );

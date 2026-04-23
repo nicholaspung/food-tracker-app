@@ -244,6 +244,12 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     return result.changes;
   }
 
+  async clearAll(): Promise<number> {
+    const database = await this.getDatabase();
+    const result = await database.runAsync(`DELETE FROM ${TABLE_NAME};`);
+    return result.changes;
+  }
+
   async getStats(): Promise<MutationQueueStats> {
     const database = await this.getDatabase();
     const statsRow = await database.getFirstAsync<QueueStatsRow>(

@@ -9,6 +9,7 @@ import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
 import {
+  clearPersistedQueryCache,
   queryPersister,
   removeLegacyQueryCache,
   sanitizePersistedClient,
@@ -303,6 +304,27 @@ describe('React Query persistence', () => {
     expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
 
+    queryClient.clear();
+  });
+
+  it('clears the active persisted query cache key on demand', async () => {
+    const activeCacheKeyV4 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
+
+    await persistQueryClientSave({
+      queryClient,
+      persister: queryPersister,
+      dehydrateOptions: {
+        shouldDehydrateQuery: shouldPersistQuery,
+      },
+    });
+
+    expect(await AsyncStorage.getItem(activeCacheKeyV4)).not.toBeNull();
+
+    await clearPersistedQueryCache();
+
+    expect(await AsyncStorage.getItem(activeCacheKeyV4)).toBeNull();
     queryClient.clear();
   });
 

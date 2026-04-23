@@ -35,6 +35,7 @@ import {
   profileQueryKeys,
   updateProfile,
 } from '../features';
+import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { formatEmailVerificationRemainingTime } from '../lib/emailVerificationAccess';
 import { getErrorMessage } from '../lib/errorUtils';
@@ -227,6 +228,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const isSubscriber = actualUser?.isSubscriber === true;
   const isBetaUser = actualUser?.isBetaUser === true;
   const isInitialUser = authRecord?.isInitialUser === true;
+  const {
+    cancelLabel: logoutCancelLabel,
+    cancelLogout,
+    confirmLabel: logoutConfirmLabel,
+    confirmLoadingLabel: logoutConfirmLoadingLabel,
+    confirmLogout,
+    description: logoutDescription,
+    isConfirmVisible: isLogoutConfirmVisible,
+    isLoggingOut,
+    requestLogout,
+    title: logoutTitle,
+  } = useQueuedLogoutConfirmation();
 
   const profileQuery = useQuery({
     queryKey: profileQueryKeys.profile,
@@ -985,7 +998,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           <Button
             label="Log out"
             onPress={() => {
-              void signOut();
+              void requestLogout();
             }}
             style={styles.logoutButton}
             testID="profile-logout-button"
@@ -993,6 +1006,21 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           />
         </KeyboardAwareScrollView>
       </ScreenContentSection>
+
+      <ConfirmDestructiveModal
+        cancelLabel={logoutCancelLabel}
+        confirmLabel={logoutConfirmLabel}
+        confirmLoadingLabel={logoutConfirmLoadingLabel}
+        description={logoutDescription}
+        loading={isLoggingOut}
+        onCancel={cancelLogout}
+        onConfirm={() => {
+          void confirmLogout();
+        }}
+        testID="profile-logout-confirmation-modal"
+        title={logoutTitle}
+        visible={isLogoutConfirmVisible}
+      />
 
       <ConfirmDestructiveModal
         cancelLabel="Keep Account"

@@ -10,6 +10,7 @@ import type {
 } from './types';
 
 type SyncListener = (snapshot: SyncSnapshot) => void;
+type QueueClearTrigger = 'auth_change' | 'logout';
 
 const DEFAULT_SNAPSHOT: SyncSnapshot = {
   isInitialized: false,
@@ -99,6 +100,18 @@ export class MutationReplayService {
       resetCount,
     });
     return resetCount;
+  }
+
+  async clearAll(trigger: QueueClearTrigger): Promise<number> {
+    const clearedCount = await this.queueStore.clearAll();
+    await this.refreshSnapshot();
+    trackObservabilityEvent('SYNC_QUEUE_CLEARED', {
+      trigger,
+      clearedCount,
+      queueDepth: this.snapshot.queueDepth,
+      failedCount: this.snapshot.failedCount,
+    });
+    return clearedCount;
   }
 
   async getQueuedMutations(limit = 25): Promise<QueuedMutation[]> {

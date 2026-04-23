@@ -1,6 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ClientResponseError, type RecordModel } from 'pocketbase';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { env } from '../config/env';
 import { resolveDateValue } from '../lib/dateFormatting';
@@ -29,6 +30,8 @@ import {
   buildAuthErrorObservabilityProperties,
   formatAuthErrorMessage,
 } from './authErrorMessages';
+import { clearPersistedQueryCache } from './queryPersistence';
+import { useSync } from './SyncProvider';
 import { normalizeAuthUser, type AuthUser } from '../types/auth';
 
 type AuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
@@ -153,6 +156,8 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProviderProps) {
+  const queryClient = useQueryClient();
+  const { discardQueuedMutations } = useSync();
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
   const [actualUser, setActualUser] = useState<AuthUser | null>(null);
   const [rolePreviewSettings, setRolePreviewSettings] = useState<RolePreviewSettings>(
@@ -164,6 +169,9 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   const [authError, setAuthError] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const previousAuthenticatedUserIdRef = useRef<string | null | undefined>(undefined);
+  const isResettingSessionRef = useRef(false);
+  const suppressNextAuthBoundaryResetRef = useRef(false);
 
   const canUseRolePreview = actualUser?.isAdmin === true;
   const effectiveRolePreviewSettings = useMemo<RolePreviewSettings>(
@@ -184,6 +192,52 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
     setVerificationStatus(nextState.verificationStatus);
     setVerificationGraceEndsAt(nextState.verificationGraceEndsAt);
   }, []);
+
+  const resetAuthenticatedLocalState = useCallback(
+    async (reason: 'auth_change' | 'logout') => {
+      if (isResettingSessionRef.current) {
+        return;
+      }
+
+      isResettingSessionRef.current = true;
+      try {
+        const cleanupErrors: unknown[] = [];
+
+        try {
+          queryClient.clear();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+
+        try {
+          await clearPersistedQueryCache();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+
+        try {
+          await discardQueuedMutations(reason);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+
+        if (cleanupErrors.length > 0) {
+          const [firstError] = cleanupErrors;
+          logger.warn('[AuthProvider] Failed to reset authenticated local state:', firstError);
+          trackObservabilityEvent('AUTH_LOCAL_STATE_RESET_FAILED', {
+            cleanupErrorCount: cleanupErrors.length,
+            errorMessage: firstError instanceof Error ? firstError.message : String(firstError),
+            errorType: firstError instanceof Error ? firstError.name : 'unknown_error',
+            reason,
+            source: 'AuthProvider',
+          });
+        }
+      } finally {
+        isResettingSessionRef.current = false;
+      }
+    },
+    [discardQueuedMutations, queryClient],
+  );
 
   const refreshAuthSession = useCallback(async () => {
     if (!pb.authStore.token || (!env.isScreenshotReviewMode && !pb.authStore.isValid)) {
@@ -314,6 +368,30 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       unsubscribe();
     };
   }, [screenshotReviewBootstrap, syncAuthSnapshot]);
+
+  useEffect(() => {
+    if (status === 'bootstrapping') {
+      return;
+    }
+
+    const nextAuthenticatedUserId = actualUser?.id ?? null;
+    const previousAuthenticatedUserId = previousAuthenticatedUserIdRef.current;
+
+    if (previousAuthenticatedUserId === undefined) {
+      previousAuthenticatedUserIdRef.current = nextAuthenticatedUserId;
+      return;
+    }
+
+    if (previousAuthenticatedUserId && previousAuthenticatedUserId !== nextAuthenticatedUserId) {
+      if (suppressNextAuthBoundaryResetRef.current) {
+        suppressNextAuthBoundaryResetRef.current = false;
+      } else {
+        void resetAuthenticatedLocalState('auth_change');
+      }
+    }
+
+    previousAuthenticatedUserIdRef.current = nextAuthenticatedUserId;
+  }, [actualUser?.id, resetAuthenticatedLocalState, status]);
 
   useEffect(() => {
     if (status === 'bootstrapping' || verificationStatus !== 'grace_period' || !verificationGraceEndsAt) {
@@ -517,6 +595,8 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   );
 
   const signOut = useCallback(async () => {
+    suppressNextAuthBoundaryResetRef.current = Boolean(actualUser?.id);
+    await resetAuthenticatedLocalState('logout');
     pb.authStore.clear();
     setActualUser(null);
     setRolePreviewSettings(DEFAULT_ROLE_PREVIEW_SETTINGS);
@@ -531,7 +611,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       source: 'mobile_auth_shell',
     });
     resetObservabilityIdentity();
-  }, []);
+  }, [actualUser?.id, resetAuthenticatedLocalState]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

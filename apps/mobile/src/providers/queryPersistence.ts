@@ -195,6 +195,10 @@ export async function removeLegacyQueryCache(): Promise<string[]> {
   return [...LEGACY_QUERY_CACHE_STORAGE_KEYS];
 }
 
+export async function clearPersistedQueryCache(): Promise<void> {
+  await queryPersister.removeClient();
+}
+
 export const queryPersister = createAsyncStoragePersister({
   storage: AsyncStorage,
   key: QUERY_CACHE_STORAGE_KEY,
