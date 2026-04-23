@@ -2,6 +2,8 @@ import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type { FriendsCountSummary } from './featureStore';
 import type { FriendsPageResult, ListFriendsPageInput } from './friendsStore';
+import { invalidateHomeFeedQueries } from './homeFeedQuery';
+import { restaurantListQueryKeys } from './restaurantListQuery';
 
 export type FriendsSection = NonNullable<ListFriendsPageInput['section']>;
 
@@ -137,4 +139,13 @@ export function hydrateFriendsSummaryFromPaginatedData(
   }
 
   queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
+}
+
+export async function invalidateFriendshipDependentQueries(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root }),
+    invalidateHomeFeedQueries(queryClient),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
+  ]);
 }

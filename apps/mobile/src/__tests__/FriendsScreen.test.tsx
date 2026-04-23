@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
+import { invalidateFriendshipDependentQueries, removeFriend } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -136,7 +137,12 @@ jest.mock('react-native-qrcode-svg', () => (
 ) => mockReact.createElement('QRCode', props));
 
 jest.mock('../components/friends', () => ({
-  FriendListItemCard: (props: Record<string, unknown>) => mockReact.createElement('FriendListItemCard', props),
+  FriendListItemCard: ({ rightContent, ...props }: Record<string, unknown>) =>
+    mockReact.createElement(
+      'FriendListItemCard',
+      props,
+      mockReact.isValidElement(rightContent) ? rightContent : null,
+    ),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -165,6 +171,7 @@ jest.mock('../features', () => ({
     root: ['feature', 'friends'],
   },
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),
+  invalidateFriendshipDependentQueries: jest.fn(),
   listFriendsPage: jest.fn(),
   markFriendInviteAccepted: jest.fn(),
   removeFriend: jest.fn(),
@@ -225,6 +232,9 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
 const mockedUsePaginatedQueryState = usePaginatedQueryState as jest.MockedFunction<typeof usePaginatedQueryState>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
+const mockedInvalidateFriendshipDependentQueries =
+  invalidateFriendshipDependentQueries as jest.MockedFunction<typeof invalidateFriendshipDependentQueries>;
+const mockedRemoveFriend = removeFriend as jest.MockedFunction<typeof removeFriend>;
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   return StyleSheet.flatten(style) as Record<string, unknown>;
@@ -251,6 +261,10 @@ function renderFriendsScreen(
 }
 
 describe('FriendsScreen', () => {
+  let queryClient: {
+    invalidateQueries: jest.Mock;
+  };
+
   beforeEach(() => {
     mockedUseInfiniteQuery.mockReset();
     mockedUseInfiniteQuery.mockReturnValue({
@@ -275,9 +289,10 @@ describe('FriendsScreen', () => {
       refetch: jest.fn(),
     } as never);
     mockedUseQueryClient.mockReset();
-    mockedUseQueryClient.mockReturnValue({
+    queryClient = {
       invalidateQueries: jest.fn(),
-    } as never);
+    };
+    mockedUseQueryClient.mockReturnValue(queryClient as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
     mockedUsePaginatedQueryState.mockReset();
@@ -297,6 +312,10 @@ describe('FriendsScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as never);
+    mockedInvalidateFriendshipDependentQueries.mockReset();
+    mockedInvalidateFriendshipDependentQueries.mockResolvedValue(undefined);
+    mockedRemoveFriend.mockReset();
+    mockedRemoveFriend.mockResolvedValue(undefined);
   });
 
   it('keeps the root content orange while measuring a white top backdrop for pull-down refresh', async () => {
@@ -364,5 +383,50 @@ describe('FriendsScreen', () => {
 
     expect(list.props.onRefresh).toBeUndefined();
     expect(list.props.refreshing).toBe(false);
+  });
+
+  it('invalidates friend-gated caches after confirming friend removal', async () => {
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          createdAt: '2026-04-18T08:00:00.000Z',
+          id: 'friendship-1',
+          name: 'Sam',
+          status: 'friend',
+          userId: 'user-2',
+        },
+      ],
+    } as never);
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      jest.fn(async (options: { execute: () => Promise<void> }) => {
+        await options.execute();
+        return { status: 'completed' };
+      }) as never,
+    );
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderFriendsScreen();
+    });
+
+    const removeButton = renderer.root.findByProps({ testID: 'friend-remove-button-friendship-1' });
+
+    await act(async () => {
+      removeButton.props.onPress();
+    });
+
+    const confirmModal = renderer.root.findByProps({ testID: 'friend-remove-confirm-modal' });
+
+    await act(async () => {
+      confirmModal.props.onConfirm();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-1');
+    expect(mockedInvalidateFriendshipDependentQueries).toHaveBeenCalledTimes(1);
+    expect(mockedInvalidateFriendshipDependentQueries).toHaveBeenCalledWith(queryClient);
   });
 });

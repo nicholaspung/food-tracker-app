@@ -4,10 +4,13 @@ import {
   friendsQueryKeys,
   getCachedFriendsSummary,
   hydrateFriendsSummaryFromPaginatedData,
+  invalidateFriendshipDependentQueries,
   isFriendsSummaryQueryKey,
   isPaginatedFriendsQueryKey,
   selectFriendsSummary,
 } from '../features/store/friendsQuery';
+import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
+import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 
 describe('friendsQuery', () => {
   it('uses the canonical paginated friends browse key', () => {
@@ -118,5 +121,25 @@ describe('friendsQuery', () => {
       },
       updatedAt: expect.any(Number),
     });
+  });
+
+  it('invalidates friendship-dependent home and list caches together', async () => {
+    const queryClient = new QueryClient();
+    const friendsKey = friendsQueryKeys.paginated('friends');
+    const homeFeedKey = homeFeedQueryKeys.paginated('friends', 'all', 'created', '');
+    const friendsListsKey = restaurantListQueryKeys.paginated('friends', '');
+    const friendListDetailKey = restaurantListQueryKeys.detail('list_1');
+
+    queryClient.setQueryData(friendsKey, { pageParams: [1], pages: [] });
+    queryClient.setQueryData(homeFeedKey, { pageParams: [undefined], pages: [] });
+    queryClient.setQueryData(friendsListsKey, { pageParams: [1], pages: [] });
+    queryClient.setQueryData(friendListDetailKey, { list: { id: 'list_1' }, items: [] });
+
+    await invalidateFriendshipDependentQueries(queryClient);
+
+    expect(queryClient.getQueryState(friendsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(homeFeedKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(friendsListsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(friendListDetailKey)?.isInvalidated).toBe(true);
   });
 });

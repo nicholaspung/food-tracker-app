@@ -22,6 +22,7 @@ import {
 import {
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
+  invalidateFriendshipDependentQueries,
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
@@ -346,6 +347,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
   };
 
+  const invalidateFriendRemovalQueries = async (operationName: FriendRemoveOperationName) => {
+    if (operationName === 'friend.remove') {
+      await invalidateFriendshipDependentQueries(queryClient);
+      return;
+    }
+
+    await invalidateFriends();
+  };
+
   const handleAccept = async (friendId: string) => {
     trackObservabilityEvent('FRIEND_ACTION_STARTED', {
       source: 'FriendsScreen',
@@ -426,7 +436,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       });
 
       if (removeResult.status === 'queued') {
-        await invalidateFriends();
+        await invalidateFriendRemovalQueries(operationName);
         trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
           source: 'FriendsScreen',
           action,
@@ -440,7 +450,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         return true;
       }
 
-      await invalidateFriends();
+      await invalidateFriendRemovalQueries(operationName);
       trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
         source: 'FriendsScreen',
         action,
