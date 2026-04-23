@@ -15,9 +15,19 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
   private memoryStore: QueuedMutation[] = [];
 
   async initialize(): Promise<void> {
-    const filteredMutations = this.readMutations().filter(
-      (mutation) => !mutation.url.includes('/api/mobile/offline-probe'),
-    );
+    const recoveredAt = Date.now();
+    const filteredMutations = this.readMutations()
+      .filter((mutation) => !mutation.url.includes('/api/mobile/offline-probe'))
+      .map((mutation) =>
+        mutation.status === 'in_flight'
+          ? {
+              ...mutation,
+              status: 'pending' as MutationStatus,
+              nextRetryAt: 0,
+              updatedAt: recoveredAt,
+            }
+          : mutation,
+      );
     this.writeMutations(filteredMutations);
   }
 

@@ -19,6 +19,15 @@ class InMemoryQueueStore implements MutationQueueStore {
   ) {}
 
   async initialize(): Promise<void> {
+    const recoveredAt = Date.now();
+    for (const mutation of this.sharedState.rows.values()) {
+      if (mutation.status === 'in_flight') {
+        mutation.status = 'pending';
+        mutation.nextRetryAt = 0;
+        mutation.updatedAt = recoveredAt;
+      }
+    }
+
     await this.onInitialize?.(this.sharedState);
   }
 
@@ -296,6 +305,42 @@ describe('MutationReplayService', () => {
     await restartedService.start();
 
     expect(restartedService.getSnapshot().queueDepth).toBe(1);
+  });
+
+  it('recovers abandoned in-flight writes on restart and replays them', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_seeded_1',
+          buildQueuedMutation({
+            status: 'in_flight',
+            attemptCount: 1,
+            lastAttemptAt: 8500,
+            updatedAt: 8500,
+          }),
+        ],
+      ]),
+    };
+    const transport = createTransport([
+      {
+        ok: true,
+        retryable: false,
+        statusCode: 200,
+        errorMessage: null,
+      },
+    ]);
+    const restartedStore = new InMemoryQueueStore(sharedState);
+    const restartedService = new MutationReplayService(restartedStore, transport, () => 9000);
+
+    await restartedService.start();
+
+    expect(sharedState.rows.get('mut_seeded_1')?.status).toBe('pending');
+    expect(sharedState.rows.get('mut_seeded_1')?.nextRetryAt).toBe(0);
+
+    await restartedService.replay('foreground');
+
+    expect(restartedService.getSnapshot().queueDepth).toBe(0);
+    expect(transport.send).toHaveBeenCalledTimes(1);
   });
 
   it('clears queued writes and keeps the queue empty after restart', async () => {

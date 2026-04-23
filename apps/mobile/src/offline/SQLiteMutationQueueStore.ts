@@ -46,6 +46,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
 
   async initialize(): Promise<void> {
     const database = await this.getDatabase();
+    const recoveredAt = Date.now();
     await database.execAsync(`
       CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
         id TEXT PRIMARY KEY NOT NULL,
@@ -78,6 +79,19 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       WHERE url LIKE ?;
       `,
       '%/api/mobile/offline-probe',
+    );
+
+    // A previous app process may have crashed after marking a row in-flight.
+    // Those writes are safe to replay because the queue stores idempotency keys.
+    await database.runAsync(
+      `
+      UPDATE ${TABLE_NAME}
+      SET status = 'pending',
+          next_retry_at = 0,
+          updated_at = ?
+      WHERE status = 'in_flight';
+      `,
+      recoveredAt,
     );
   }
 
