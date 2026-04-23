@@ -20,9 +20,9 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import {
+  evictFriendshipDependentQueries,
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
-  invalidateFriendshipDependentQueries,
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
@@ -347,9 +347,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
   };
 
-  const invalidateFriendRemovalQueries = async (operationName: FriendRemoveOperationName) => {
+  const invalidateFriendRemovalQueries = async (
+    operationName: FriendRemoveOperationName,
+    removedUserId?: string,
+  ) => {
     if (operationName === 'friend.remove') {
-      await invalidateFriendshipDependentQueries(queryClient);
+      await evictFriendshipDependentQueries(queryClient, { removedUserId });
       return;
     }
 
@@ -414,7 +417,11 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     }
   };
 
-  const handleRemove = async (friendId: string, operationName: FriendRemoveOperationName) => {
+  const handleRemove = async (
+    friendId: string,
+    operationName: FriendRemoveOperationName,
+    removedUserId?: string,
+  ) => {
     const action = FRIEND_ACTION_BY_OPERATION[operationName];
     trackObservabilityEvent('FRIEND_ACTION_STARTED', {
       source: 'FriendsScreen',
@@ -436,7 +443,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       });
 
       if (removeResult.status === 'queued') {
-        await invalidateFriendRemovalQueries(operationName);
+        await invalidateFriendRemovalQueries(operationName, removedUserId);
         trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
           source: 'FriendsScreen',
           action,
@@ -450,7 +457,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         return true;
       }
 
-      await invalidateFriendRemovalQueries(operationName);
+      await invalidateFriendRemovalQueries(operationName, removedUserId);
       trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
         source: 'FriendsScreen',
         action,
@@ -524,7 +531,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     trackObservabilityEvent('FRIEND_REMOVE_CONFIRMED', {
       source: 'FriendsScreen',
     });
-    const removed = await handleRemove(pendingRemoveFriend.id, 'friend.remove');
+    const removed = await handleRemove(pendingRemoveFriend.id, 'friend.remove', pendingRemoveFriend.userId);
     if (removed) {
       setPendingRemoveFriend(null);
     }

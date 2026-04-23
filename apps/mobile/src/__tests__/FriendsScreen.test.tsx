@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { invalidateFriendshipDependentQueries, removeFriend } from '../features';
+import { evictFriendshipDependentQueries, removeFriend } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -166,12 +166,12 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 }));
 
 jest.mock('../features', () => ({
+  evictFriendshipDependentQueries: jest.fn(),
   friendsQueryKeys: {
     paginated: jest.fn(() => ['feature', 'friends', 'paginated', 'friends']),
     root: ['feature', 'friends'],
   },
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),
-  invalidateFriendshipDependentQueries: jest.fn(),
   listFriendsPage: jest.fn(),
   markFriendInviteAccepted: jest.fn(),
   removeFriend: jest.fn(),
@@ -232,8 +232,8 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
 const mockedUsePaginatedQueryState = usePaginatedQueryState as jest.MockedFunction<typeof usePaginatedQueryState>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-const mockedInvalidateFriendshipDependentQueries =
-  invalidateFriendshipDependentQueries as jest.MockedFunction<typeof invalidateFriendshipDependentQueries>;
+const mockedEvictFriendshipDependentQueries =
+  evictFriendshipDependentQueries as jest.MockedFunction<typeof evictFriendshipDependentQueries>;
 const mockedRemoveFriend = removeFriend as jest.MockedFunction<typeof removeFriend>;
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -312,8 +312,8 @@ describe('FriendsScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as never);
-    mockedInvalidateFriendshipDependentQueries.mockReset();
-    mockedInvalidateFriendshipDependentQueries.mockResolvedValue(undefined);
+    mockedEvictFriendshipDependentQueries.mockReset();
+    mockedEvictFriendshipDependentQueries.mockResolvedValue(undefined);
     mockedRemoveFriend.mockReset();
     mockedRemoveFriend.mockResolvedValue(undefined);
   });
@@ -385,7 +385,7 @@ describe('FriendsScreen', () => {
     expect(list.props.refreshing).toBe(false);
   });
 
-  it('invalidates friend-gated caches after confirming friend removal', async () => {
+  it('evicts friend-gated caches after confirming friend removal', async () => {
     mockedUsePaginatedQueryState.mockReturnValue({
       hasBlockingError: false,
       hasRefreshError: false,
@@ -426,7 +426,7 @@ describe('FriendsScreen', () => {
     });
 
     expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-1');
-    expect(mockedInvalidateFriendshipDependentQueries).toHaveBeenCalledTimes(1);
-    expect(mockedInvalidateFriendshipDependentQueries).toHaveBeenCalledWith(queryClient);
+    expect(mockedEvictFriendshipDependentQueries).toHaveBeenCalledTimes(1);
+    expect(mockedEvictFriendshipDependentQueries).toHaveBeenCalledWith(queryClient, { removedUserId: 'user-2' });
   });
 });

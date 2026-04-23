@@ -1,8 +1,8 @@
-import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
+import type { InfiniteData, Query, QueryClient, QueryKey } from '@tanstack/react-query';
 
-import type { FriendsCountSummary } from './featureStore';
+import type { FriendsCountSummary, RestaurantListDetailRecord } from './featureStore';
 import type { FriendsPageResult, ListFriendsPageInput } from './friendsStore';
-import { invalidateHomeFeedQueries } from './homeFeedQuery';
+import { isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
 import { restaurantListQueryKeys } from './restaurantListQuery';
 
 export type FriendsSection = NonNullable<ListFriendsPageInput['section']>;
@@ -141,11 +141,68 @@ export function hydrateFriendsSummaryFromPaginatedData(
   queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
 }
 
-export async function invalidateFriendshipDependentQueries(queryClient: QueryClient): Promise<void> {
+function isFriendsHomeFeedQuery(query: Query): boolean {
+  return isPaginatedHomeFeedQueryKey(query.queryKey) && query.queryKey[3] === 'friends';
+}
+
+function isRestaurantListDetailQueryForRemovedFriend(query: Query, removedUserId: string): boolean {
+  if (
+    !Array.isArray(query.queryKey) ||
+    query.queryKey.length !== restaurantListQueryKeys.detailRoot.length + 1 ||
+    restaurantListQueryKeys.detailRoot.some((segment, index) => query.queryKey[index] !== segment)
+  ) {
+    return false;
+  }
+
+  const detail = query.state.data as RestaurantListDetailRecord | undefined;
+  if (!detail) {
+    return false;
+  }
+
+  if (detail.list?.userId === removedUserId) {
+    return true;
+  }
+
+  return detail.items.some(
+    (item) =>
+      item.sourceUserId === removedUserId ||
+      item.bookmarkedItems.some((bookmark) => bookmark.sourceUserId === removedUserId),
+  );
+}
+
+interface EvictFriendshipDependentQueriesOptions {
+  removedUserId?: string;
+}
+
+export async function evictFriendshipDependentQueries(
+  queryClient: QueryClient,
+  options: EvictFriendshipDependentQueriesOptions = {},
+): Promise<void> {
+  const removedUserId = options.removedUserId;
+  const detailQueryFilters = removedUserId
+    ? {
+        predicate: (query: Query) => isRestaurantListDetailQueryForRemovedFriend(query, removedUserId),
+      }
+    : { queryKey: restaurantListQueryKeys.detailRoot };
+
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root }),
-    invalidateHomeFeedQueries(queryClient),
-    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
-    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
+    queryClient.cancelQueries({ queryKey: friendsQueryKeys.root }),
+    queryClient.cancelQueries({ predicate: isFriendsHomeFeedQuery }),
+    queryClient.cancelQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
+    queryClient.cancelQueries(detailQueryFilters),
   ]);
+
+  await Promise.all([
+    queryClient.resetQueries({ queryKey: friendsQueryKeys.root }),
+    queryClient.resetQueries({ predicate: isFriendsHomeFeedQuery }),
+    queryClient.resetQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
+    queryClient.resetQueries(detailQueryFilters),
+  ]);
+}
+
+export async function invalidateFriendshipDependentQueries(
+  queryClient: QueryClient,
+  options: EvictFriendshipDependentQueriesOptions = {},
+): Promise<void> {
+  await evictFriendshipDependentQueries(queryClient, options);
 }

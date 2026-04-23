@@ -1,10 +1,10 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import {
+  evictFriendshipDependentQueries,
   friendsQueryKeys,
   getCachedFriendsSummary,
   hydrateFriendsSummaryFromPaginatedData,
-  invalidateFriendshipDependentQueries,
   isFriendsSummaryQueryKey,
   isPaginatedFriendsQueryKey,
   selectFriendsSummary,
@@ -123,23 +123,66 @@ describe('friendsQuery', () => {
     });
   });
 
-  it('invalidates friendship-dependent home and list caches together', async () => {
+  it('evicts friendship-dependent home and list caches together', async () => {
     const queryClient = new QueryClient();
+    const removedUserId = 'user-2';
+    const friendsSummaryKey = friendsQueryKeys.summary;
     const friendsKey = friendsQueryKeys.paginated('friends');
     const homeFeedKey = homeFeedQueryKeys.paginated('friends', 'all', 'created', '');
+    const mineHomeFeedKey = homeFeedQueryKeys.paginated('mine', 'all', 'created', '');
     const friendsListsKey = restaurantListQueryKeys.paginated('friends', '');
+    const myListsKey = restaurantListQueryKeys.paginated('my', '');
     const friendListDetailKey = restaurantListQueryKeys.detail('list_1');
+    const savedFriendItemListDetailKey = restaurantListQueryKeys.detail('list_2');
+    const unaffectedMyListDetailKey = restaurantListQueryKeys.detail('list_3');
 
+    queryClient.setQueryData(friendsSummaryKey, {
+      friendsCount: 4,
+      requestsCount: 1,
+      sentCount: 0,
+    });
     queryClient.setQueryData(friendsKey, { pageParams: [1], pages: [] });
     queryClient.setQueryData(homeFeedKey, { pageParams: [undefined], pages: [] });
+    queryClient.setQueryData(mineHomeFeedKey, { pageParams: [undefined], pages: [] });
     queryClient.setQueryData(friendsListsKey, { pageParams: [1], pages: [] });
-    queryClient.setQueryData(friendListDetailKey, { list: { id: 'list_1' }, items: [] });
+    queryClient.setQueryData(myListsKey, { pageParams: [1], pages: [] });
+    queryClient.setQueryData(friendListDetailKey, {
+      items: [],
+      list: { id: 'list_1', userId: removedUserId },
+    });
+    queryClient.setQueryData(savedFriendItemListDetailKey, {
+      items: [
+        {
+          bookmarkedItems: [{ id: 'bookmark-1', sourceUserId: removedUserId }],
+          createdAt: '2026-04-18T08:00:00.000Z',
+          id: 'item-1',
+          listId: 'list_2',
+          position: 0,
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Saved spot',
+        },
+      ],
+      list: { id: 'list_2', userId: 'user-1' },
+    });
+    queryClient.setQueryData(unaffectedMyListDetailKey, {
+      items: [],
+      list: { id: 'list_3', userId: 'user-1' },
+    });
 
-    await invalidateFriendshipDependentQueries(queryClient);
+    await evictFriendshipDependentQueries(queryClient, { removedUserId });
 
-    expect(queryClient.getQueryState(friendsKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(homeFeedKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(friendsListsKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(friendListDetailKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(friendsSummaryKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(friendsKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(homeFeedKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(friendsListsKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(friendListDetailKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(savedFriendItemListDetailKey)?.data).toBeUndefined();
+
+    expect(queryClient.getQueryData(mineHomeFeedKey)).toEqual({ pageParams: [undefined], pages: [] });
+    expect(queryClient.getQueryData(myListsKey)).toEqual({ pageParams: [1], pages: [] });
+    expect(queryClient.getQueryData(unaffectedMyListDetailKey)).toEqual({
+      items: [],
+      list: { id: 'list_3', userId: 'user-1' },
+    });
   });
 });
