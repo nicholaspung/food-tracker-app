@@ -8,7 +8,7 @@ PODS:
   - EXJSONUtils (55.0.2)
   - EXManifests (55.0.16):
     - ExpoModulesCore
-  - Expo (55.0.16):
+  - Expo (55.0.17):
     - ExpoModulesCore
     - hermes-engine
     - RCTRequired
@@ -322,7 +322,7 @@ PODS:
     - React-utils
     - ReactNativeDependencies
     - Yoga
-  - React-Core-prebuilt (0.83.4):
+  - React-Core-prebuilt (0.83.6):
     - ReactNativeDependencies
   - React-Core/CoreModulesHeaders (0.83.6):
     - hermes-engine
@@ -2882,7 +2882,7 @@ SPEC CHECKSUMS:
   EXConstants: 5caf448ff399f60be9d1053e77aed32e39411900
   EXJSONUtils: 04bc3807d351331a5fe154ce1da596ec15d99169
   EXManifests: f4e50a54115948e206f4c2391bdea755a1aa74ec
-  Expo: 4fcf3c9e8e9469abb7f9318ea56b6d6b4541bdb3
+  Expo: bfedba58da14bf45546ae57e6a5bd5152a1546b4
   expo-dev-client: 6802a357b6ee3b36669c4c9e9622be55b3cd4494
   expo-dev-launcher: e7b80352aa5e11e696c1f939c9eafa8ad33a5779
   expo-dev-menu: 8d6cf955ad15b1f33b73aec853a9ec02afc39c04
@@ -2919,7 +2919,7 @@ SPEC CHECKSUMS:
   React: 9b033c7a99e1c8eec40960b6b2e6844e011e8bd1
   React-callinvoker: f64c8d57f45173835b6b9891cda27f1625551972
   React-Core: 341863a2597c4a2320f916b4232d280cb8a28e4b
-  React-Core-prebuilt: c55800f933d88e4ced2527cec90bfc9b6a5be435
+  React-Core-prebuilt: 7b9ce8c58f18bc41ba55fd0a9a41b0f226e4b557
   React-CoreModules: 9370769c9b2b1732c58960687f4d50d9d3510efc
   React-cxxreact: 41ae74bd9eab80af9c5da6a9b4934eb97e2c7569
   React-debug: eb0f19ff879ad3870dc760b6c21ad56cbb3e4b98

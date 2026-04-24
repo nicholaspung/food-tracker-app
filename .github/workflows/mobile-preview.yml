@@ -135,15 +135,14 @@ jobs:
         id: release_type
         shell: bash
         run: |
-          if [ "${{ github.event.inputs.force_preview_build }}" = "true" ]; then
-            echo "publish_mode=build" >> "$GITHUB_OUTPUT"
-            echo "publish_reason=manual_forced_build" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
-            echo "publish_reason=manual_default_ota" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event.inputs.force_preview_build }}" = "true" ]; then
+              echo "publish_mode=build" >> "$GITHUB_OUTPUT"
+              echo "publish_reason=manual_forced_build" >> "$GITHUB_OUTPUT"
+            else
+              echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
+              echo "publish_reason=manual_default_ota" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
@@ -159,10 +158,15 @@ jobs:
           printf '%s\n' "$CHANGED_FILES"
 
           # apps/mobile/app.config.js only validates environment safety and passes through app.json.
-          # Reserve native preview builds for actual native project/config changes.
+          # Push events must never start EAS builds. Native-affecting changes require a manual build.
           if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
-            echo "publish_mode=build" >> "$GITHUB_OUTPUT"
-            echo "publish_reason=push_native_changes" >> "$GITHUB_OUTPUT"
+            echo "publish_mode=blocked_native_change" >> "$GITHUB_OUTPUT"
+            echo "publish_reason=push_native_changes_blocked" >> "$GITHUB_OUTPUT"
+            {
+              echo "Native-affecting mobile files changed, so this push will not publish an OTA update."
+              echo "No EAS build was started. Run this workflow manually with force_preview_build=true when a new binary is intended."
+            } >&2
+            exit 1
           else
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
             echo "publish_reason=push_default_ota" >> "$GITHUB_OUTPUT"
@@ -192,12 +196,12 @@ jobs:
         run: |
           case "${{ steps.release_type.outputs.publish_reason }}" in
             manual_forced_build)
-              echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because the manual dispatch explicitly requested a preview build." >> "$GITHUB_STEP_SUMMARY"
+              echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because manual dispatch requested a preview build." >> "$GITHUB_STEP_SUMMARY"
               echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
               ;;
-            push_native_changes)
-              echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
-              echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
+            push_native_changes_blocked)
+              echo "Native-affecting files changed, so no OTA was published and no EAS build was started." >> "$GITHUB_STEP_SUMMARY"
+              echo "Run the workflow manually with force_preview_build=true when a new binary is intended." >> "$GITHUB_STEP_SUMMARY"
               ;;
             manual_default_ota)
               echo "Published a manual OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel." >> "$GITHUB_STEP_SUMMARY"

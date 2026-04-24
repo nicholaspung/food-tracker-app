@@ -295,8 +295,8 @@ The checked-in app code does not read `POSTHOG_CLI_*` directly. This section is 
 Today, the checked-in GitHub automation covers:
 
 - preview OTA update: `.github/workflows/mobile-preview.yml`
-- preview build fallback when native files change: `.github/workflows/mobile-preview.yml`
-- manual preview dispatch that defaults to OTA and only builds when `force_preview_build=true`: `.github/workflows/mobile-preview.yml`
+- commits never trigger preview builds from `.github/workflows/mobile-preview.yml`; native-affecting push changes fail clearly without starting EAS build usage
+- manual preview dispatch defaults to OTA and only builds when the `force_preview_build=true` checkbox is selected in `.github/workflows/mobile-preview.yml`
 - manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`, which still maps to the `production-preview` OTA channel and build profile rather than the App Store `production` channel/profile
 
 For Expo-hosted OTA runs, use the checked-in EAS Workflows update jobs:
