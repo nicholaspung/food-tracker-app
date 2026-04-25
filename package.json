@@ -32,6 +32,7 @@
     "mobile:web:build": "pnpm --filter @food-tracker/mobile web:build",
     "mobile:update:preview": "pnpm --filter @food-tracker/mobile update:preview",
     "mobile:update:production-preview": "pnpm --filter @food-tracker/mobile update:production-preview",
+    "mobile:update:production": "pnpm --filter @food-tracker/mobile update:production",
     "mobile:build:ios:preview:local": "bash scripts/mobile-eas-build-ios-preview-local.sh",
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
     "mobile:doctor": "cd apps/mobile && npx expo-doctor --verbose",

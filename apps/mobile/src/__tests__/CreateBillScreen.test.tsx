@@ -147,6 +147,7 @@ jest.mock('../features', () => ({
         : ['feature', 'friends', 'paginated', section],
   },
   getBillById: jest.fn(),
+  hydrateFriendsSummaryFromPaginatedData: jest.fn(),
   listFriendsPage: jest.fn(),
   updateBill: jest.fn(),
 }));

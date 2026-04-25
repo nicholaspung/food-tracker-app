@@ -1,0 +1,128 @@
+name: Mobile Production OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_message:
+        description: "Release note/message for this production OTA"
+        required: true
+        type: string
+      platform:
+        description: "Platform to publish"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - ios
+          - android
+
+concurrency:
+  group: mobile-production-ota
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-production-ota:
+    name: Publish Mobile Production OTA
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.yummyrecs.com
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Verify Expo token
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "EXPO_TOKEN is not available to this job."
+            echo "Attach EXPO_TOKEN to the production GitHub environment before publishing production OTA updates."
+            exit 1
+          fi
+
+      - name: Verify toolchain
+        run: |
+          node --version
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repo-pinned EAS CLI
+        run: pnpm --dir apps/mobile exec eas --version
+
+      - name: Lint mobile app
+        run: pnpm mobile:lint
+
+      - name: Typecheck mobile app
+        run: pnpm mobile:typecheck
+
+      - name: Test mobile app
+        run: pnpm mobile:test
+
+      - name: Check mobile unused exports
+        run: pnpm mobile:unused-exports
+
+      - name: Run Expo Doctor
+        run: pnpm mobile:doctor
+
+      - name: Publish production OTA update
+        env:
+          RELEASE_MESSAGE: ${{ github.event.inputs.release_message }}
+          RELEASE_PLATFORM: ${{ github.event.inputs.platform }}
+        run: |
+          pnpm --dir apps/mobile exec eas update \
+            --channel production \
+            --environment production \
+            --platform "$RELEASE_PLATFORM" \
+            --message "$RELEASE_MESSAGE (${GITHUB_REF_NAME} ${GITHUB_SHA::7})" \
+            --non-interactive
+
+      - name: Write job summary
+        if: always()
+        shell: bash
+        env:
+          RELEASE_MESSAGE: ${{ github.event.inputs.release_message }}
+          RELEASE_PLATFORM: ${{ github.event.inputs.platform }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            {
+              echo "Published a production OTA update."
+              echo ""
+              echo "- Channel: production"
+              echo "- EAS environment: production"
+              echo "- Platform: $RELEASE_PLATFORM"
+              echo "- Branch: ${GITHUB_REF_NAME}"
+              echo "- Commit: ${GITHUB_SHA::7}"
+              echo "- Release message: $RELEASE_MESSAGE"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "Production OTA publish did not complete."
+              echo ""
+              echo "- Channel: production"
+              echo "- EAS environment: production"
+              echo "- Platform: $RELEASE_PLATFORM"
+              echo "- Branch: ${GITHUB_REF_NAME}"
+              echo "- Commit: ${GITHUB_SHA::7}"
+              echo "- Release message: $RELEASE_MESSAGE"
+              echo "- Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

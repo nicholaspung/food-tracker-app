@@ -295,9 +295,11 @@ The checked-in app code does not read `POSTHOG_CLI_*` directly. This section is 
 Today, the checked-in GitHub automation covers:
 
 - preview OTA update: `.github/workflows/mobile-preview.yml`
+- production OTA update: `.github/workflows/mobile-production-ota.yml`
 - commits never trigger preview builds from `.github/workflows/mobile-preview.yml`; native-affecting push changes fail clearly without starting EAS build usage
 - manual preview dispatch defaults to OTA and only builds when the `force_preview_build=true` checkbox is selected in `.github/workflows/mobile-preview.yml`
 - manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`, which still maps to the `production-preview` OTA channel and build profile rather than the App Store `production` channel/profile
+- manual production OTA dispatch via `.github/workflows/mobile-production-ota.yml`, protected by the GitHub `production` environment approval, which publishes to the App Store/TestFlight `production` channel with the Expo `production` environment
 
 For Expo-hosted OTA runs, use the checked-in EAS Workflows update jobs:
 
@@ -306,16 +308,16 @@ For Expo-hosted OTA runs, use the checked-in EAS Workflows update jobs:
 
 These are explicit `type: update` workflows and are intended to avoid routing OTA publishes through any iOS build/prebuild path.
 
-There is still no checked-in production App Store/TestFlight mobile workflow. A future production workflow should mirror preview with:
+For App Store/TestFlight production OTA updates, use the GitHub Actions `Mobile Production OTA` workflow. It runs the full mobile validation suite, then publishes with:
 
 ```bash
 eas update --channel production --environment production
 ```
 
-and/or:
+The local fallback command for authenticated Expo operators is:
 
 ```bash
-eas build --profile production
+pnpm mobile:update:production
 ```
 
 For internal device testing against production today, use:
