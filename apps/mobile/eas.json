@@ -12,6 +12,7 @@
         "image": "latest"
       },
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_APP_ENV": "local"
       },
       "channel": "development"
@@ -23,6 +24,7 @@
         "image": "latest"
       },
       "env": {
+        "APP_VARIANT": "preview",
         "EXPO_PUBLIC_APP_ENV": "beta",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
@@ -37,6 +39,7 @@
         "image": "latest"
       },
       "env": {
+        "APP_VARIANT": "preview",
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
@@ -51,6 +54,7 @@
         "image": "latest"
       },
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
@@ -65,6 +69,7 @@
       },
       "environment": "development",
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_APP_ENV": "local"
       },
       "channel": "ios-simulator"

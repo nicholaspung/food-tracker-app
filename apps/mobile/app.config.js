@@ -64,6 +64,49 @@ function resolveConfiguredAppEnvironment(source) {
   return normalizeAppEnvironment(readOptionalEnvValue(source?.EXPO_PUBLIC_APP_ENV)) ?? 'local';
 }
 
+function normalizeAppVariant(value) {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  switch (normalizedValue) {
+    case 'preview':
+    case 'production-preview':
+      return 'preview';
+    case 'prod':
+    case 'production':
+      return 'production';
+    default:
+      return null;
+  }
+}
+
+function resolveConfiguredAppVariant(source) {
+  return (
+    normalizeAppVariant(readOptionalEnvValue(source?.APP_VARIANT)) ??
+    normalizeAppVariant(readOptionalEnvValue(source?.EAS_BUILD_PROFILE)) ??
+    'production'
+  );
+}
+
+function resolveMobileAppIdentity(source) {
+  const variant = resolveConfiguredAppVariant(source);
+
+  if (variant === 'preview') {
+    return {
+      androidPackage: 'com.yummyrecs.mobile.preview',
+      bundleIdentifier: 'com.yummyrecs.mobile.preview',
+      name: 'Yummy Recs Preview',
+      scheme: 'yummyrecs-preview',
+    };
+  }
+
+  return {
+    androidPackage: 'com.yummyrecs.mobile',
+    bundleIdentifier: 'com.yummyrecs.mobile',
+    name: 'Yummy Recs',
+    scheme: 'yummyrecs',
+  };
+}
+
 function isLocalDevelopmentHostname(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
 }
@@ -171,5 +214,24 @@ function assertSafeMobileReleaseBuildBackendConfiguration(source, options) {
 
 module.exports = ({ config }) => {
   assertSafeMobileReleaseBuildBackendConfiguration(process.env);
-  return config;
+  const appIdentity = resolveMobileAppIdentity(process.env);
+
+  return {
+    ...config,
+    name: appIdentity.name,
+    scheme: appIdentity.scheme,
+    ios: {
+      ...config.ios,
+      bundleIdentifier: appIdentity.bundleIdentifier,
+      infoPlist: {
+        ...config.ios?.infoPlist,
+        CFBundleDisplayName: appIdentity.name,
+        CFBundleName: appIdentity.name,
+      },
+    },
+    android: {
+      ...config.android,
+      package: appIdentity.androidPackage,
+    },
+  };
 };

@@ -92,7 +92,7 @@ describe('SignUpScreen', () => {
     mockedSavePendingFriendSuggestion.mockResolvedValue();
   });
 
-  it('renders signup credential fields with generated-password autofill support', async () => {
+  it('renders signup password creation on the password field only', async () => {
     mockedUseAuth.mockReturnValue({
       signInWithPassword: jest.fn(),
     } as unknown as ReturnType<typeof useAuth>);
@@ -107,15 +107,20 @@ describe('SignUpScreen', () => {
     expect(emailInput.props.autoComplete).toBe('username');
     expect(emailInput.props.textContentType).toBe('username');
 
-    for (const testID of ['signup-password-input', 'signup-confirm-password-input']) {
-      const input = renderer.root.findByProps({ testID });
+    const passwordInput = renderer.root.findByProps({ testID: 'signup-password-input' });
+    const confirmPasswordInput = renderer.root.findByProps({ testID: 'signup-confirm-password-input' });
 
-      expect(input.props.secureTextEntry).toBe(true);
-      expect(input.props.autoComplete).toBe('new-password');
-      expect(input.props.importantForAutofill).not.toBe('no');
-      expect(input.props.textContentType).toBe('newPassword');
-      expect(input.props.passwordRules).toBe('minlength: 8;');
-    }
+    expect(passwordInput.props.secureTextEntry).toBe(true);
+    expect(passwordInput.props.autoComplete).toBe('new-password');
+    expect(passwordInput.props.importantForAutofill).not.toBe('no');
+    expect(passwordInput.props.textContentType).toBe('newPassword');
+    expect(passwordInput.props.passwordRules).toBe('minlength: 8;');
+
+    expect(confirmPasswordInput.props.secureTextEntry).toBe(true);
+    expect(confirmPasswordInput.props.autoComplete).toBe('off');
+    expect(confirmPasswordInput.props.importantForAutofill).toBe('no');
+    expect(confirmPasswordInput.props.textContentType).toBe('none');
+    expect(confirmPasswordInput.props.passwordRules).toBeUndefined();
   });
 
   it('auto signs in immediately after successful signup', async () => {
