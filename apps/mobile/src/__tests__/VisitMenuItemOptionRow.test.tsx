@@ -129,7 +129,7 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Friends: 3' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Ate 3 times' })).toBeDefined();
 
     await act(async () => {
       renderer.update(
@@ -142,7 +142,7 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Friends: 1' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Ate 1 time' })).toBeDefined();
 
     await act(async () => {
       renderer.update(
@@ -158,7 +158,7 @@ describe('VisitMenuItemOptionRow', () => {
     expect(
       renderer.root.findAll(
         (node: { props: { children?: React.ReactNode } }) =>
-          node.props.children === 'Friends: 1' || node.props.children === 'Friends: 3',
+          node.props.children === 'Ate 1 time' || node.props.children === 'Ate 3 times',
       ),
     ).toHaveLength(0);
   });

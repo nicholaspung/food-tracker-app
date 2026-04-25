@@ -84,8 +84,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
   friendEatenBadge: {
     alignItems: 'center',
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.status.infoBorder,
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     flexDirection: 'row',
@@ -199,12 +199,12 @@ export function VisitMenuItemOptionRow({
             {normalizedFriendEatenCount > 0 ? (
               <View style={styles.friendEatenBadge}>
                 <Ionicons
-                  color={theme.colors.text.info}
+                  color={theme.colors.text.success}
                   name="people-outline"
                   size={12}
                 />
-                <Text tone="info" variant="bodySm">
-                  {`Friends: ${normalizedFriendEatenCount}`}
+                <Text tone="success" variant="bodySm">
+                  {`Ate ${normalizedFriendEatenCount} ${normalizedFriendEatenCount === 1 ? 'time' : 'times'}`}
                 </Text>
               </View>
             ) : null}
