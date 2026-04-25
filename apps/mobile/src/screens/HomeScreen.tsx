@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   FlatList,
   Pressable,
@@ -23,7 +23,6 @@ import {
 import {
   createFriendSuggestionAcceptance,
   friendsQueryKeys,
-  getAuthenticatedUserIdOrNull,
   homeFeedQueryKeys,
   invalidateHomeFeedQueries,
   HOME_FEED_DEFAULT_SORTS,
@@ -280,6 +279,8 @@ const entryDateFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 const HOME_FEED_PAGE_SIZE = 20;
+const VISIT_FOCUS_HIGHLIGHT_DURATION_MS = 2400;
+const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
 const REDACTED_MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 
 function formatCount(count: number, singular: string, plural: string): string {
@@ -389,6 +390,8 @@ function applyInitialViewParams(
 
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
+  const mineFeedListRef = useRef<FlatList<FeedItem> | null>(null);
+  const highlightedVisitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -408,6 +411,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
   const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [pendingFocusVisitId, setPendingFocusVisitId] = useState<string | null>(null);
+  const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
     queryClient,
@@ -417,7 +422,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const feedScope = feedMode;
   const sortFilter = sortByMode[feedMode];
   const trimmedSearchQuery = searchQuery.trim();
-  const currentUserId = getAuthenticatedUserIdOrNull();
+  const authenticatedUserId = user?.id ?? null;
+  const currentUserId = authenticatedUserId;
   const inviterDisplayName = friendSuggestion?.inviterDisplayName?.trim() || 'your inviter';
   const homeFeedQuery = useInfiniteQuery<
     HomeFeedPageResult,
@@ -426,7 +432,14 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     ReturnType<typeof homeFeedQueryKeys.paginated>,
     HomeFeedCursor | undefined
   >({
-    queryKey: homeFeedQueryKeys.paginated(feedScope, typeFilter, sortFilter, trimmedSearchQuery),
+    queryKey: homeFeedQueryKeys.paginated(
+      authenticatedUserId,
+      feedScope,
+      typeFilter,
+      sortFilter,
+      trimmedSearchQuery,
+    ),
+    enabled: Boolean(authenticatedUserId),
     initialPageParam: undefined as HomeFeedCursor | undefined,
     queryFn: ({ pageParam, signal }) =>
       listHomeFeedPage({
@@ -447,6 +460,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     isLoading: homeFeedQuery.isLoading,
     isSuccess: homeFeedQuery.isSuccess,
   });
+  const {
+    fetchNextPage: fetchNextHomeFeedPage,
+    hasNextPage: hasNextHomeFeedPage,
+    isFetchingNextPage: isFetchingNextHomeFeedPage,
+  } = homeFeedQuery;
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(homeFeedQuery.isRefetching);
 
   const loadedFeed = useMemo(
@@ -484,6 +502,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       return;
     }
 
+    const { initialView } = route.params;
     applyInitialViewParams(route.params.initialView, {
       setFeedMode,
       setFiltersExpanded,
@@ -491,11 +510,80 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       setSortByMode,
       setTypeFilter,
     });
+    setPendingFocusVisitId(initialView.focusVisitId?.trim() || null);
 
     navigation.setParams({
       initialView: undefined,
     });
   }, [navigation, route.params]);
+
+  useEffect(
+    () => () => {
+      if (highlightedVisitTimeoutRef.current) {
+        clearTimeout(highlightedVisitTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!pendingFocusVisitId) {
+      return;
+    }
+
+    if (feedMode !== 'mine' || (typeFilter !== 'visits' && typeFilter !== 'all')) {
+      return;
+    }
+
+    if (isLoading) {
+      return;
+    }
+
+    const focusedIndex = loadedFeed.findIndex(
+      (entry) => entry.source === 'visit' && entry.visit.id === pendingFocusVisitId,
+    );
+
+    if (focusedIndex >= 0) {
+      mineFeedListRef.current?.scrollToIndex({
+        animated: true,
+        index: focusedIndex,
+        viewPosition: 0.15,
+      });
+      setHighlightedVisitId(pendingFocusVisitId);
+      setPendingFocusVisitId(null);
+
+      if (highlightedVisitTimeoutRef.current) {
+        clearTimeout(highlightedVisitTimeoutRef.current);
+      }
+      highlightedVisitTimeoutRef.current = setTimeout(() => {
+        setHighlightedVisitId(null);
+        highlightedVisitTimeoutRef.current = null;
+      }, VISIT_FOCUS_HIGHLIGHT_DURATION_MS);
+      return;
+    }
+
+    if (!hasNextHomeFeedPage) {
+      setPendingFocusVisitId(null);
+      return;
+    }
+
+    if (isFetchingNextHomeFeedPage) {
+      return;
+    }
+
+    void fetchNextHomeFeedPage().catch(() => {
+      setPendingFocusVisitId(null);
+    });
+  }, [
+    fetchNextHomeFeedPage,
+    feedMode,
+    hasNextHomeFeedPage,
+    isFetchingNextHomeFeedPage,
+    isLoading,
+    loadedFeed,
+    pendingFocusVisitId,
+    typeFilter,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     return runPullRefresh(async () => {
@@ -944,6 +1032,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             footerLabel={footerLabel}
             friendName={feedItem.isFriend ? feedItem.friendName : undefined}
             getPhotosForItem={(itemId) => photosByFoodItem.get(itemId) ?? []}
+            highlighted={visit.id === highlightedVisitId}
             key={feedItem.id}
             onDelete={
               !feedItem.isFriend
@@ -985,7 +1074,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                   }
                 : undefined
             }
-            onSharePhoto={handleSharePhoto}
+            onSharePhoto={!feedItem.isFriend ? handleSharePhoto : undefined}
             onShareVisit={
               !feedItem.isFriend && showVisitShare
                 ? () => {
@@ -1040,7 +1129,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                 : undefined
           }
           onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
-          onSharePhoto={handleSharePhoto}
+          onSharePhoto={!feedItem.isFriend ? handleSharePhoto : undefined}
           photos={foodProductPhotos}
           foodProduct={foodProduct}
           showUnderReviewBadge={
@@ -1053,6 +1142,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       buildVisitShareItems,
       handleSharePhoto,
       handleShareVisit,
+      highlightedVisitId,
       homeFeedActions,
       navigation,
       photosByFoodItem,
@@ -1393,6 +1483,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       >
         {feedMode === 'mine' ? (
           <FlatList
+            ref={mineFeedListRef}
             contentContainerStyle={styles.listContent}
             data={!isLoading && !hasBlockingFeedError ? loadedFeed : []}
             ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
@@ -1402,6 +1493,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             ListFooterComponent={homeListFooter}
             ListHeaderComponent={homeListHeader}
             onRefresh={handleRefresh}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                mineFeedListRef.current?.scrollToIndex({
+                  animated: true,
+                  index: info.index,
+                  viewPosition: 0.15,
+                });
+              }, SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS);
+            }}
             refreshing={isPullRefreshing}
             removeClippedSubviews
             renderItem={renderMineFeedItem}

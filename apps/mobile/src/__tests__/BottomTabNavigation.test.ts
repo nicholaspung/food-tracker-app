@@ -16,10 +16,18 @@ jest.mock('@expo/vector-icons', () => ({
 
 jest.mock('../features', () => ({
   friendsQueryKeys: {
-    summary: ['friends', 'summary'],
+    summary: jest.fn((userId?: string | null) => ['friends', userId ?? 'anonymous', 'summary']),
   },
   getCachedFriendsSummary: jest.fn(() => undefined),
   getFriendsCountSummary: jest.fn(),
+}));
+
+jest.mock('../providers/AuthProvider', () => ({
+  useAuth: jest.fn(() => ({
+    user: {
+      id: 'user-1',
+    },
+  })),
 }));
 
 jest.mock('../theme', () => ({

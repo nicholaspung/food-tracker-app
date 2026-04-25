@@ -21,6 +21,7 @@ import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAw
 import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
+import { buildVisitCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
 import {
   FREE_MONTHLY_PHOTO_LIMIT,
@@ -416,7 +417,7 @@ export function useCreateVisitSubmission({
         sourceNoteId,
       });
       onSubmitSucceeded?.();
-      navigation.navigate('Home');
+      navigation.navigate('Home', buildVisitCreatedHomeParams(createdVisit.id));
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {

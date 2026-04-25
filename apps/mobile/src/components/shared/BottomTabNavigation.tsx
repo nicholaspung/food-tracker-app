@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { friendsQueryKeys, getCachedFriendsSummary, getFriendsCountSummary } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
+import { useAuth } from '../../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
@@ -154,11 +155,14 @@ export function BottomTabNavigation({
 }: BottomTabNavigationProps) {
   const theme = useTheme();
   const styles = useStyles(bottomPadding);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const queryClient = useQueryClient();
-  const cachedFriendsSummary = getCachedFriendsSummary(queryClient);
+  const cachedFriendsSummary = getCachedFriendsSummary(queryClient, userId);
   const { data: friendsSummary } = useQuery({
-    queryKey: friendsQueryKeys.summary,
+    queryKey: friendsQueryKeys.summary(userId),
     queryFn: ({ signal }) => getFriendsCountSummary({ signal }),
+    enabled: Boolean(userId),
     initialData: cachedFriendsSummary?.summary,
     initialDataUpdatedAt: cachedFriendsSummary?.updatedAt,
     refetchOnReconnect: 'always',

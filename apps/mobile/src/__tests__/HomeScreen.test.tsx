@@ -5,7 +5,10 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
+import {
+  buildFoodProductCreatedHomeParams,
+  buildVisitCreatedHomeParams,
+} from '../navigation/homeRouteParams';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
@@ -16,14 +19,16 @@ import {
 import { useHomeFeedActionController } from '../screens/home/useHomeFeedActionController';
 
 const mockReact = React;
+const mockFlatListScrollToIndex = jest.fn();
 
 jest.mock('react-native', () => {
+  const react = jest.requireActual<typeof import('react')>('react');
   const renderListElement = (element: unknown, props: Record<string, unknown> = {}) => {
     if (!element) {
       return null;
     }
 
-    if (mockReact.isValidElement(element)) {
+    if (react.isValidElement(element)) {
       return element;
     }
 
@@ -35,31 +40,39 @@ jest.mock('react-native', () => {
   };
 
   return {
-    FlatList: ({
-      ListEmptyComponent,
-      ListFooterComponent,
-      ListHeaderComponent,
-      data = [],
-      renderItem,
-      ...props
-    }: Record<string, unknown>) =>
-      mockReact.createElement(
-        'FlatList',
-        { ...props, ListEmptyComponent, ListFooterComponent, ListHeaderComponent, data, renderItem },
-        renderListElement(ListHeaderComponent),
-        Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
-          ? data.map((item, index) =>
-              mockReact.createElement(
-                mockReact.Fragment,
-                { key: `flat-item-${index}` },
-                renderItem({ index, item }),
-              ),
-            )
-          : renderListElement(ListEmptyComponent),
-        renderListElement(ListFooterComponent),
-      ),
+    FlatList: react.forwardRef(function MockFlatList(
+      {
+        ListEmptyComponent,
+        ListFooterComponent,
+        ListHeaderComponent,
+        data = [],
+        renderItem,
+        ...props
+      }: Record<string, unknown>,
+      ref: React.ForwardedRef<{ scrollToIndex: () => void }>,
+    ) {
+      react.useImperativeHandle(ref, () => ({
+        scrollToIndex: mockFlatListScrollToIndex,
+      }));
+
+      return react.createElement(
+          'FlatList',
+          { ...props, ListEmptyComponent, ListFooterComponent, ListHeaderComponent, data, renderItem },
+          renderListElement(ListHeaderComponent),
+          Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
+            ? data.map((item, index) =>
+                react.createElement(
+                  react.Fragment,
+                  { key: `flat-item-${index}` },
+                  renderItem({ index, item }),
+                ),
+              )
+            : renderListElement(ListEmptyComponent),
+          renderListElement(ListFooterComponent),
+        );
+    }),
     Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
-      mockReact.createElement('Pressable', props, children),
+      react.createElement('Pressable', props, children),
     SectionList: ({
       ListEmptyComponent,
       ListFooterComponent,
@@ -73,7 +86,7 @@ jest.mock('react-native', () => {
         ? (sections as { data?: unknown[] }[])
         : [];
 
-      return mockReact.createElement(
+      return react.createElement(
         'SectionList',
         {
           ...props,
@@ -87,15 +100,15 @@ jest.mock('react-native', () => {
         renderListElement(ListHeaderComponent),
         typedSections.length > 0
           ? typedSections.flatMap((section, sectionIndex) => [
-              mockReact.createElement(
-                mockReact.Fragment,
+              react.createElement(
+                react.Fragment,
                 { key: `section-header-${sectionIndex}` },
                 renderListElement(renderSectionHeader, { section }),
               ),
               ...(Array.isArray(section.data) && typeof renderItem === 'function'
                 ? section.data.map((item: unknown, index: number) =>
-                    mockReact.createElement(
-                      mockReact.Fragment,
+                    react.createElement(
+                      react.Fragment,
                       { key: `section-item-${sectionIndex}-${index}` },
                       renderItem({ index, item, section }),
                     ),
@@ -107,7 +120,7 @@ jest.mock('react-native', () => {
       );
     },
     View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
-      mockReact.createElement('View', props, children),
+      react.createElement('View', props, children),
   };
 });
 
@@ -141,9 +154,24 @@ jest.mock('../features', () => ({
   friendsQueryKeys: {
     root: ['feature', 'friends'],
   },
-  getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
   homeFeedQueryKeys: {
-    paginated: jest.fn(() => ['feature', 'homeFeed', 'paginated', 'mine', 'visits', 'created', '']),
+    paginated: jest.fn((
+      userId: string | null | undefined,
+      scope: string,
+      typeFilter: string,
+      sort: string,
+      search: string,
+    ) => [
+      'feature',
+      'homeFeed',
+      'user',
+      userId ?? 'anonymous',
+      'paginated',
+      scope,
+      typeFilter,
+      sort,
+      search,
+    ]),
     root: ['feature', 'homeFeed'],
   },
   HOME_FEED_DEFAULT_SORTS: {
@@ -201,6 +229,7 @@ jest.mock('../theme', () => ({
         surface: 'surface-background',
       },
       border: {
+        brand: 'brand-border',
         danger: 'danger-border',
         default: 'default-border',
         subtle: 'subtle-border',
@@ -250,6 +279,9 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 const mockedUseHomeFeedActionController = useHomeFeedActionController as jest.MockedFunction<
   typeof useHomeFeedActionController
 >;
+const mockedHomeFeedQueryKeys = jest.requireMock('../features').homeFeedQueryKeys as {
+  paginated: jest.Mock;
+};
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   if (!style || typeof style !== 'object') {
@@ -283,6 +315,8 @@ function createDeferred<T>() {
 
 describe('HomeScreen', () => {
   beforeEach(() => {
+    mockFlatListScrollToIndex.mockClear();
+    mockedHomeFeedQueryKeys.paginated.mockClear();
     mockedUseInfiniteQuery.mockReset();
     mockedUseInfiniteQuery.mockReturnValue({
       data: {
@@ -327,6 +361,7 @@ describe('HomeScreen', () => {
     mockedUseAuth.mockReturnValue({
       user: {
         email: 'user@example.com',
+        id: 'user-1',
       },
     } as never);
     mockedUseConnectivity.mockReset();
@@ -370,6 +405,108 @@ describe('HomeScreen', () => {
     } as never);
   });
 
+  it('scopes the home feed query key to the authenticated user', async () => {
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockedHomeFeedQueryKeys.paginated).toHaveBeenCalledWith(
+      'user-1',
+      'mine',
+      'visits',
+      'created',
+      '',
+    );
+    expect(mockedUseInfiniteQuery.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        queryKey: ['feature', 'homeFeed', 'user', 'user-1', 'paginated', 'mine', 'visits', 'created', ''],
+      }),
+    );
+  });
+
+  it('uses a different home feed cache key when the authenticated user changes', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    mockedUseAuth.mockReturnValue({
+      user: {
+        email: 'next@example.com',
+        id: 'user-2',
+      },
+    } as never);
+
+    await act(async () => {
+      renderer.update(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const queryKeys = mockedUseInfiniteQuery.mock.calls.map((call) => call[0].queryKey);
+    expect(queryKeys).toContainEqual([
+      'feature',
+      'homeFeed',
+      'user',
+      'user-1',
+      'paginated',
+      'mine',
+      'visits',
+      'created',
+      '',
+    ]);
+    expect(queryKeys).toContainEqual([
+      'feature',
+      'homeFeed',
+      'user',
+      'user-2',
+      'paginated',
+      'mine',
+      'visits',
+      'created',
+      '',
+    ]);
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -404,6 +541,158 @@ describe('HomeScreen', () => {
     expect(setParams).toHaveBeenCalledWith({
       initialView: undefined,
     });
+  });
+
+  it('applies visit-created view params, scrolls to the visit, and highlights it', async () => {
+    const setParams = jest.fn();
+    let renderer: any = null;
+
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          eventAt: '2026-04-20T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-newer',
+            restaurantName: 'Newer Place',
+            visitedAt: '2026-04-20T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:05:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-18T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-old',
+            restaurantName: 'Merged Bistro',
+            visitedAt: '2026-04-18T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-18T08:00:00.000Z',
+            updatedAt: '2026-04-18T08:05:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams,
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+            params: buildVisitCreatedHomeParams('visit-old'),
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('FeedHeaderControls').props.feedMode).toBe('mine');
+    expect(renderer.root.findByType('FeedHeaderControls').props.typeFilter).toBe('visits');
+    expect(renderer.root.findByType('FeedHeaderControls').props.sortFilter).toBe('created');
+    expect(renderer.root.findByType('FeedHeaderControls').props.searchQuery).toBe('');
+    expect(renderer.root.findByType('FeedHeaderControls').props.filtersExpanded).toBe(true);
+    expect(setParams).toHaveBeenCalledWith({
+      initialView: undefined,
+    });
+    expect(mockFlatListScrollToIndex).toHaveBeenCalledWith({
+      animated: true,
+      index: 1,
+      viewPosition: 0.15,
+    });
+
+    const visitCards = renderer.root.findAllByType('HomeFeedVisitEntryCard');
+    expect(visitCards[0].props.highlighted).toBe(false);
+    expect(visitCards[1].props.highlighted).toBe(true);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('fetches another page when a focused visit has not loaded yet', async () => {
+    const fetchNextPage = jest.fn().mockResolvedValue({
+      data: {
+        pages: [],
+      },
+    });
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [undefined],
+        pages: [
+          {
+            cursor: { page: 2 },
+            hasNextPage: true,
+            items: [],
+            totalFoodProducts: 0,
+            totalVisits: 2,
+          },
+        ],
+      },
+      fetchNextPage,
+      hasNextPage: true,
+      isError: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: true,
+      refetch: jest.fn(),
+    } as never);
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          eventAt: '2026-04-20T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-newer',
+            restaurantName: 'Newer Place',
+            visitedAt: '2026-04-20T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:05:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+            params: buildVisitCreatedHomeParams('visit-old'),
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    expect(mockFlatListScrollToIndex).not.toHaveBeenCalled();
   });
 
   it('only enables visit-item move affordances for owned visits and passes owned fallbacks', async () => {
@@ -481,6 +770,186 @@ describe('HomeScreen', () => {
         updatedAt: '2026-04-18T08:05:00.000Z',
       },
     ]);
+  });
+
+  it('only passes share callbacks to owned home records', async () => {
+    let renderer: any = null;
+
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [undefined],
+        pages: [
+          {
+            cursor: undefined,
+            hasNextPage: false,
+            items: [],
+            photoPreviews: [
+              {
+                id: 'photo-own-item-one',
+                collectionId: 'visit_photos',
+                collectionName: 'visit_photos',
+                created: '2026-04-18T08:01:00.000Z',
+                food_item: 'own-item-one',
+                photo: 'own-item-one.jpg',
+              },
+              {
+                id: 'photo-own-item-two',
+                collectionId: 'visit_photos',
+                collectionName: 'visit_photos',
+                created: '2026-04-18T08:02:00.000Z',
+                food_item: 'own-item-two',
+                photo: 'own-item-two.jpg',
+              },
+              {
+                id: 'photo-friend-item-one',
+                collectionId: 'visit_photos',
+                collectionName: 'visit_photos',
+                created: '2026-04-18T09:01:00.000Z',
+                food_item: 'friend-item-one',
+                photo: 'friend-item-one.jpg',
+              },
+              {
+                id: 'photo-own-product',
+                collectionId: 'visit_photos',
+                collectionName: 'visit_photos',
+                created: '2026-04-18T10:01:00.000Z',
+                food_item: 'product-own',
+                photo: 'own-product.jpg',
+              },
+              {
+                id: 'photo-friend-product',
+                collectionId: 'visit_photos',
+                collectionName: 'visit_photos',
+                created: '2026-04-18T11:01:00.000Z',
+                food_item: 'product-friend',
+                photo: 'friend-product.jpg',
+              },
+            ],
+            totalFoodProducts: 2,
+            totalVisits: 2,
+          },
+        ],
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isError: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: true,
+      refetch: jest.fn(),
+    } as never);
+
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          eventAt: '2026-04-18T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-own',
+            restaurantName: 'Own Bistro',
+            visitedAt: '2026-04-18T08:00:00.000Z',
+            items: [
+              {
+                id: 'own-item-one',
+                name: 'Own Item One',
+                rating: 8,
+              },
+              {
+                id: 'own-item-two',
+                name: 'Own Item Two',
+                rating: 9,
+              },
+            ],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-18T08:00:00.000Z',
+            updatedAt: '2026-04-18T08:05:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-18T09:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-friend',
+            restaurantName: 'Friend Bistro',
+            visitedAt: '2026-04-18T09:00:00.000Z',
+            items: [
+              {
+                id: 'friend-item-one',
+                name: 'Friend Item One',
+                rating: 7,
+              },
+            ],
+            source: 'visit',
+            userId: 'user-2',
+            userName: 'Friend',
+            createdAt: '2026-04-18T09:00:00.000Z',
+            updatedAt: '2026-04-18T09:05:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-18T10:00:00.000Z',
+          foodProduct: {
+            id: 'product-own',
+            itemName: 'Own Product',
+            rating: 8,
+            source: 'food_product',
+            userId: 'user-1',
+            createdAt: '2026-04-18T10:00:00.000Z',
+            updatedAt: '2026-04-18T10:05:00.000Z',
+          },
+          source: 'food_product',
+        },
+        {
+          eventAt: '2026-04-18T11:00:00.000Z',
+          foodProduct: {
+            id: 'product-friend',
+            itemName: 'Friend Product',
+            rating: 7,
+            source: 'food_product',
+            userId: 'user-2',
+            userName: 'Friend',
+            createdAt: '2026-04-18T11:00:00.000Z',
+            updatedAt: '2026-04-18T11:05:00.000Z',
+          },
+          source: 'food_product',
+        },
+      ],
+    } as never);
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const visitCards = renderer.root.findAllByType('HomeFeedVisitEntryCard');
+    const productCards = renderer.root.findAllByType('HomeFoodProductEntryCard');
+
+    expect(visitCards).toHaveLength(2);
+    expect(typeof visitCards[0].props.onSharePhoto).toBe('function');
+    expect(typeof visitCards[0].props.onShareVisit).toBe('function');
+    expect(visitCards[1].props.onSharePhoto).toBeUndefined();
+    expect(visitCards[1].props.onShareVisit).toBeUndefined();
+
+    expect(productCards).toHaveLength(2);
+    expect(typeof productCards[0].props.onSharePhoto).toBe('function');
+    expect(productCards[1].props.onSharePhoto).toBeUndefined();
   });
 
   it('renders the measured home header backdrop above the orange content area', async () => {

@@ -70,7 +70,6 @@ const useStyles = createThemedStyles((theme) => ({
     height: theme.spacing.md,
   },
   screenBody: {
-    flex: 1,
     gap: 0,
     paddingBottom: 0,
     paddingHorizontal: 0,

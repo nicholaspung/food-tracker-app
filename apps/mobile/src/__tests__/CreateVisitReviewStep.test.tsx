@@ -5,7 +5,19 @@ import { CreateVisitReviewStep } from '../screens/createVisit/CreateVisitReviewS
 
 const mockReact = React;
 
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) =>
+    mockReact.createElement('Ionicons', props),
+}));
+
 jest.mock('../components/shared', () => ({
+  ConfirmDestructiveModal: ({
+    children,
+    ...props
+  }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('ConfirmDestructiveModal', props, children),
+  EmptyState: (props: Record<string, unknown>) =>
+    mockReact.createElement('EmptyState', props),
   PhotoInputField: (props: Record<string, unknown>) =>
     mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) =>
@@ -22,6 +34,13 @@ jest.mock('../components/shared', () => ({
 
 jest.mock('../theme', () => ({
   createThemedStyles: () => () => ({}),
+  useTheme: () => ({
+    colors: {
+      text: {
+        danger: '#danger',
+      },
+    },
+  }),
 }));
 
 jest.mock('../ui', () => ({
@@ -33,22 +52,43 @@ jest.mock('../ui', () => ({
 }));
 
 describe('CreateVisitReviewStep', () => {
+  const baseProps = {
+    detectedVisitDateValue: null,
+    displayMaxPhotosPerItem: 1,
+    estimatedFreeMonthlyPhotosRemaining: 3,
+    onAttachPhoto: jest.fn(),
+    onRemoveDraftItemPhoto: jest.fn(),
+    onUpdateDraftItem: jest.fn(),
+    onVisitDateChange: jest.fn(),
+    onVisitVisibilityChange: jest.fn(),
+    photoLoadWarningMessage: null,
+    shouldShowPhotoUpgradePrompt: false,
+    showOfflineUsageWarning: false,
+    showUsageEstimate: false,
+    visitDate: '2026-04-20',
+    visitVisibility: 'friends' as const,
+  };
+
+  const draftItem = {
+    id: 'visit-item-1',
+    name: 'Spicy Wontons',
+    rating: 4,
+    description: '',
+    notes: '',
+    deletedPhotoIds: [],
+    photos: [],
+  };
+
   it('renders hydrated visit item photos and opens the photo viewer with preview and full-size urls', async () => {
     let renderer: any = null;
 
     await act(async () => {
       renderer = create(
         <CreateVisitReviewStep
-          detectedVisitDateValue={null}
-          displayMaxPhotosPerItem={1}
+          {...baseProps}
           draftItems={[
             {
-              id: 'visit-item-1',
-              name: 'Spicy Wontons',
-              rating: 4,
-              description: '',
-              notes: '',
-              deletedPhotoIds: [],
+              ...draftItem,
               photos: [
                 {
                   kind: 'existing',
@@ -61,18 +101,6 @@ describe('CreateVisitReviewStep', () => {
               ],
             },
           ]}
-          estimatedFreeMonthlyPhotosRemaining={3}
-          onAttachPhoto={jest.fn()}
-          onRemoveDraftItemPhoto={jest.fn()}
-          onUpdateDraftItem={jest.fn()}
-          onVisitDateChange={jest.fn()}
-          onVisitVisibilityChange={jest.fn()}
-          photoLoadWarningMessage={null}
-          shouldShowPhotoUpgradePrompt={false}
-          showOfflineUsageWarning={false}
-          showUsageEstimate={false}
-          visitDate="2026-04-20"
-          visitVisibility="friends"
         />,
       );
     });
@@ -94,6 +122,113 @@ describe('CreateVisitReviewStep', () => {
       previewUrls: ['pb://photo-1/wontons.jpg?thumb=100x100'],
       urls: ['pb://photo-1/wontons.jpg'],
       visible: true,
+    });
+  });
+
+  it('opens a remove confirmation and confirms draft item removal', async () => {
+    const onRemoveDraftItem = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          allowItemRemoval
+          draftItems={[draftItem]}
+          onRemoveDraftItem={onRemoveDraftItem}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({
+        testID: 'create-visit-remove-item-button-0',
+      }).props.onPress();
+    });
+
+    const modal = renderer.root.findByType('ConfirmDestructiveModal');
+    expect(modal.props).toMatchObject({
+      confirmLabel: 'Remove Item',
+      description:
+        'Remove "Spicy Wontons" from this visit? This item will be removed when you save changes.',
+      title: 'Remove Item?',
+      visible: true,
+    });
+
+    await act(async () => {
+      modal.props.onConfirm();
+    });
+
+    expect(onRemoveDraftItem).toHaveBeenCalledWith('visit-item-1');
+    expect(renderer.root.findByType('ConfirmDestructiveModal').props.visible).toBe(false);
+  });
+
+  it('closes the remove confirmation without removing the item on cancel', async () => {
+    const onRemoveDraftItem = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          allowItemRemoval
+          draftItems={[draftItem]}
+          onRemoveDraftItem={onRemoveDraftItem}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({
+        testID: 'create-visit-remove-item-button-0',
+      }).props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('ConfirmDestructiveModal').props.onCancel();
+    });
+
+    expect(onRemoveDraftItem).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('ConfirmDestructiveModal').props.visible).toBe(false);
+  });
+
+  it('does not render remove controls when item removal is disabled', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          draftItems={[draftItem]}
+          onRemoveDraftItem={jest.fn()}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAllByProps({
+        testID: 'create-visit-remove-item-button-0',
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('renders an empty state when no draft items remain', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          allowItemRemoval
+          draftItems={[]}
+          onRemoveDraftItem={jest.fn()}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('EmptyState').props).toMatchObject({
+      description: 'Add at least one item before saving this visit.',
+      title: 'No items selected',
     });
   });
 });

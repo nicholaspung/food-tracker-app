@@ -592,6 +592,7 @@ export function CreateVisitScreen({
     draftItems,
     draftPhotoCount,
     isMenuItemSelected,
+    removeDraftItem,
     removeDraftItemPhoto,
     selectedMenuItemCount,
     setDraftItems,
@@ -2077,6 +2078,7 @@ export function CreateVisitScreen({
 
       {step === 2 ? (
         <CreateVisitReviewStep
+          allowItemRemoval={isEditMode}
           detectedVisitDateValue={detectedVisitDateValue}
           draftItems={draftItems}
           displayMaxPhotosPerItem={displayMaxPhotosPerItem}
@@ -2087,6 +2089,10 @@ export function CreateVisitScreen({
             void attachPhotoToDraftItem(itemId, source);
           }}
           photoLoadWarningMessage={editVisitPhotoLoadWarningMessage}
+          onRemoveDraftItem={(itemId) => {
+            removeDraftItem(itemId);
+            setErrorMessage(null);
+          }}
           onRemoveDraftItemPhoto={removeDraftItemPhoto}
           onUpdateDraftItem={updateDraftItem}
           onVisitDateChange={handleVisitDateChange}

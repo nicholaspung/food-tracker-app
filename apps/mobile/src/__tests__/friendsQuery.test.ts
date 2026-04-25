@@ -49,25 +49,48 @@ function buildFriendsPage(
 
 describe('friendsQuery', () => {
   it('uses the canonical paginated friends browse key', () => {
-    expect(friendsQueryKeys.paginated('friends')).toEqual(['feature', 'friends', 'paginated', 'friends']);
-    expect(isPaginatedFriendsQueryKey(friendsQueryKeys.paginated('friends'))).toBe(true);
+    expect(friendsQueryKeys.paginated('user-1', 'friends')).toEqual([
+      'feature',
+      'friends',
+      'user',
+      'user-1',
+      'paginated',
+      'friends',
+    ]);
+    expect(isPaginatedFriendsQueryKey(friendsQueryKeys.paginated('user-1', 'friends'))).toBe(true);
   });
 
   it('reuses the browse key when search is empty and normalizes search keys when present', () => {
-    expect(friendsQueryKeys.paginated('friends', '')).toEqual(['feature', 'friends', 'paginated', 'friends']);
-    expect(friendsQueryKeys.paginated('friends', '  sam  ')).toEqual([
+    expect(friendsQueryKeys.paginated('user-1', 'friends', '')).toEqual([
       'feature',
       'friends',
+      'user',
+      'user-1',
+      'paginated',
+      'friends',
+    ]);
+    expect(friendsQueryKeys.paginated('user-1', 'friends', '  sam  ')).toEqual([
+      'feature',
+      'friends',
+      'user',
+      'user-1',
       'paginated',
       'friends',
       'sam',
     ]);
-    expect(isPaginatedFriendsQueryKey(friendsQueryKeys.paginated('friends', 'sam'))).toBe(true);
+    expect(isPaginatedFriendsQueryKey(friendsQueryKeys.paginated('user-1', 'friends', 'sam'))).toBe(true);
   });
 
   it('uses the canonical friends summary key', () => {
-    expect(friendsQueryKeys.summary).toEqual(['feature', 'friends', 'summary']);
-    expect(isFriendsSummaryQueryKey(friendsQueryKeys.summary)).toBe(true);
+    expect(friendsQueryKeys.summary('user-1')).toEqual(['feature', 'friends', 'user', 'user-1', 'summary']);
+    expect(isFriendsSummaryQueryKey(friendsQueryKeys.summary('user-1'))).toBe(true);
+  });
+
+  it('does not share friends query keys across users', () => {
+    expect(friendsQueryKeys.summary('user-1')).not.toEqual(friendsQueryKeys.summary('user-2'));
+    expect(friendsQueryKeys.paginated('user-1', 'friends')).not.toEqual(
+      friendsQueryKeys.paginated('user-2', 'friends'),
+    );
   });
 
   it('selects summary metadata from loaded friends pages', () => {
@@ -118,9 +141,9 @@ describe('friendsQuery', () => {
       ],
     };
 
-    hydrateFriendsSummaryFromPaginatedData(queryClient, paginatedData);
+    hydrateFriendsSummaryFromPaginatedData(queryClient, 'user-1', paginatedData);
 
-    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+    expect(queryClient.getQueryData(friendsQueryKeys.summary('user-1'))).toEqual({
       friendsCount: 6,
       requestsCount: 3,
       sentCount: 2,
@@ -129,7 +152,7 @@ describe('friendsQuery', () => {
 
   it('reads cached friends summary metadata from base paginated queries', () => {
     const queryClient = new QueryClient();
-    queryClient.setQueryData(friendsQueryKeys.paginated('requests'), {
+    queryClient.setQueryData(friendsQueryKeys.paginated('user-1', 'requests'), {
       pageParams: [1],
       pages: [
         {
@@ -148,7 +171,7 @@ describe('friendsQuery', () => {
       ],
     });
 
-    expect(getCachedFriendsSummary(queryClient)).toEqual({
+    expect(getCachedFriendsSummary(queryClient, 'user-1')).toEqual({
       summary: {
         friendsCount: 4,
         requestsCount: 2,
@@ -163,7 +186,7 @@ describe('friendsQuery', () => {
     const pendingRequest = buildFriend();
 
     queryClient.setQueryData(
-      friendsQueryKeys.paginated('requests'),
+      friendsQueryKeys.paginated('user-1', 'requests'),
       buildFriendsPage([pendingRequest], {
         friendsCount: 2,
         requestsCount: 1,
@@ -171,16 +194,16 @@ describe('friendsQuery', () => {
       }),
     );
 
-    acceptCachedFriendRequest(queryClient, pendingRequest);
+    acceptCachedFriendRequest(queryClient, 'user-1', pendingRequest);
 
     expect(
       queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
-        friendsQueryKeys.paginated('requests'),
+        friendsQueryKeys.paginated('user-1', 'requests'),
       )?.pages[0]?.items,
     ).toEqual([]);
     expect(
       queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
-        friendsQueryKeys.paginated('friends'),
+        friendsQueryKeys.paginated('user-1', 'friends'),
       )?.pages[0]?.items,
     ).toEqual([
       {
@@ -188,7 +211,7 @@ describe('friendsQuery', () => {
         status: 'friend',
       },
     ]);
-    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+    expect(queryClient.getQueryData(friendsQueryKeys.summary('user-1'))).toEqual({
       friendsCount: 3,
       requestsCount: 0,
       sentCount: 0,
@@ -204,23 +227,23 @@ describe('friendsQuery', () => {
       sentCount: 0,
     };
 
-    queryClient.setQueryData(friendsQueryKeys.summary, summary);
-    queryClient.setQueryData(friendsQueryKeys.paginated('friends'), buildFriendsPage([existingFriend], summary));
-    queryClient.setQueryData(friendsQueryKeys.paginated('friends', 'sam'), buildFriendsPage([existingFriend], summary));
+    queryClient.setQueryData(friendsQueryKeys.summary('user-1'), summary);
+    queryClient.setQueryData(friendsQueryKeys.paginated('user-1', 'friends'), buildFriendsPage([existingFriend], summary));
+    queryClient.setQueryData(friendsQueryKeys.paginated('user-1', 'friends', 'sam'), buildFriendsPage([existingFriend], summary));
 
-    removeCachedFriend(queryClient, existingFriend);
+    removeCachedFriend(queryClient, 'user-1', existingFriend);
 
     expect(
       queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
-        friendsQueryKeys.paginated('friends'),
+        friendsQueryKeys.paginated('user-1', 'friends'),
       )?.pages[0]?.items,
     ).toEqual([]);
     expect(
       queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
-        friendsQueryKeys.paginated('friends', 'sam'),
+        friendsQueryKeys.paginated('user-1', 'friends', 'sam'),
       )?.pages[0]?.items,
     ).toEqual([]);
-    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+    expect(queryClient.getQueryData(friendsQueryKeys.summary('user-1'))).toEqual({
       friendsCount: 1,
       requestsCount: 1,
       sentCount: 0,
@@ -230,10 +253,10 @@ describe('friendsQuery', () => {
   it('evicts friendship-dependent home and list caches together', async () => {
     const queryClient = new QueryClient();
     const removedUserId = 'user-2';
-    const friendsSummaryKey = friendsQueryKeys.summary;
-    const friendsKey = friendsQueryKeys.paginated('friends');
-    const homeFeedKey = homeFeedQueryKeys.paginated('friends', 'all', 'created', '');
-    const mineHomeFeedKey = homeFeedQueryKeys.paginated('mine', 'all', 'created', '');
+    const friendsSummaryKey = friendsQueryKeys.summary('user-1');
+    const friendsKey = friendsQueryKeys.paginated('user-1', 'friends');
+    const homeFeedKey = homeFeedQueryKeys.paginated('user-1', 'friends', 'all', 'created', '');
+    const mineHomeFeedKey = homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', '');
     const friendsListsKey = restaurantListQueryKeys.paginated('friends', '');
     const myListsKey = restaurantListQueryKeys.paginated('my', '');
     const friendListDetailKey = restaurantListQueryKeys.detail('list_1');
@@ -293,9 +316,9 @@ describe('friendsQuery', () => {
   it('can evict friend-gated caches while preserving the patched friends queries', async () => {
     const queryClient = new QueryClient();
     const removedUserId = 'user-2';
-    const friendsSummaryKey = friendsQueryKeys.summary;
-    const friendsKey = friendsQueryKeys.paginated('friends');
-    const homeFeedKey = homeFeedQueryKeys.paginated('friends', 'all', 'created', '');
+    const friendsSummaryKey = friendsQueryKeys.summary('user-1');
+    const friendsKey = friendsQueryKeys.paginated('user-1', 'friends');
+    const homeFeedKey = homeFeedQueryKeys.paginated('user-1', 'friends', 'all', 'created', '');
     const friendsListsKey = restaurantListQueryKeys.paginated('friends', '');
     const friendListDetailKey = restaurantListQueryKeys.detail('list_1');
     const currentFriend = buildFriend({ status: 'friend' });

@@ -288,6 +288,33 @@ describe('NotesScreen', () => {
     jest.useRealTimers();
   });
 
+  it('keeps fixed-header scaffold content unconstrained so long note lists can scroll fully', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const scaffold = renderer?.root.findByType('FeatureDetailScreenScaffold');
+    const bodyStyle = scaffold.props.bodyStyle;
+
+    expect(scaffold.props.headerScrollMode).toBe('fixed');
+    expect(styleIncludes(bodyStyle, { flex: 1 })).toBe(false);
+    expect(styleIncludes(bodyStyle, {
+      gap: 0,
+      paddingBottom: 0,
+      paddingHorizontal: 0,
+      paddingTop: 0,
+    })).toBe(true);
+  });
+
   it('shows the auto-delete banner only on the Used tab', async () => {
     let renderer: any = null;
 

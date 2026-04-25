@@ -82,7 +82,7 @@ export function useCreateBillParticipantsController({
     : '';
 
   const friendsQuery = useInfiniteQuery({
-    queryKey: friendsQueryKeys.paginated('friends', activeFriendSearchQuery),
+    queryKey: friendsQueryKeys.paginated(currentUserId, 'friends', activeFriendSearchQuery),
     queryFn: ({ pageParam, signal }) =>
       listFriendsPage({
         section: 'friends',
@@ -92,6 +92,7 @@ export function useCreateBillParticipantsController({
         signal,
       }),
     initialPageParam: 1,
+    enabled: Boolean(currentUserId),
     getNextPageParam: (lastPage) =>
       lastPage.hasNextPage ? lastPage.page + 1 : undefined,
     refetchOnReconnect: 'always',
@@ -158,8 +159,8 @@ export function useCreateBillParticipantsController({
       return;
     }
 
-    hydrateFriendsSummaryFromPaginatedData(queryClient, friendsQuery.data);
-  }, [activeFriendSearchQuery, friendsQuery.data, queryClient]);
+    hydrateFriendsSummaryFromPaginatedData(queryClient, currentUserId, friendsQuery.data);
+  }, [activeFriendSearchQuery, currentUserId, friendsQuery.data, queryClient]);
 
   const participants = useMemo<DraftParticipant[]>(() => {
     const mappedParticipants: DraftParticipant[] = [

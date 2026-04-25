@@ -141,10 +141,10 @@ jest.mock('../features', () => ({
   createBill: jest.fn(),
   createEntityId: jest.fn(),
   friendsQueryKeys: {
-    paginated: (section: string, search?: string) =>
+    paginated: (userId: string | null | undefined, section: string, search?: string) =>
       search?.trim()
-        ? ['feature', 'friends', 'paginated', section, search.trim()]
-        : ['feature', 'friends', 'paginated', section],
+        ? ['feature', 'friends', 'user', userId ?? 'anonymous', 'paginated', section, search.trim()]
+        : ['feature', 'friends', 'user', userId ?? 'anonymous', 'paginated', section],
   },
   getBillById: jest.fn(),
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),

@@ -21,28 +21,50 @@ export type HomeFeedInfiniteData = InfiniteData<HomeFeedPageResult, HomeFeedCurs
 export const homeFeedQueryKeys = {
   root: ['feature', 'homeFeed'] as const,
   paginated: (
+    userId: string | null | undefined,
     scope: HomeFeedScope,
     typeFilter: HomeFeedTypeFilter,
     sort: HomeFeedSort,
     searchQuery: string,
-  ) => ['feature', 'homeFeed', 'paginated', scope, typeFilter, sort, searchQuery.trim()] as const,
+  ) =>
+    [
+      'feature',
+      'homeFeed',
+      'user',
+      userId ?? 'anonymous',
+      'paginated',
+      scope,
+      typeFilter,
+      sort,
+      searchQuery.trim(),
+    ] as const,
 };
 
 export function isPaginatedHomeFeedQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    queryKey.length === 7 &&
+    queryKey.length === 9 &&
     queryKey[0] === homeFeedQueryKeys.root[0] &&
     queryKey[1] === homeFeedQueryKeys.root[1] &&
-    queryKey[2] === 'paginated' &&
+    queryKey[2] === 'user' &&
     typeof queryKey[3] === 'string' &&
-    HOME_FEED_SCOPES.includes(queryKey[3] as HomeFeedScope) &&
-    typeof queryKey[4] === 'string' &&
-    HOME_FEED_TYPE_FILTERS.includes(queryKey[4] as HomeFeedTypeFilter) &&
+    queryKey[4] === 'paginated' &&
     typeof queryKey[5] === 'string' &&
-    HOME_FEED_SORTS.includes(queryKey[5] as HomeFeedSort) &&
-    typeof queryKey[6] === 'string'
+    HOME_FEED_SCOPES.includes(queryKey[5] as HomeFeedScope) &&
+    typeof queryKey[6] === 'string' &&
+    HOME_FEED_TYPE_FILTERS.includes(queryKey[6] as HomeFeedTypeFilter) &&
+    typeof queryKey[7] === 'string' &&
+    HOME_FEED_SORTS.includes(queryKey[7] as HomeFeedSort) &&
+    typeof queryKey[8] === 'string'
   );
+}
+
+export function getHomeFeedScopeFromQueryKey(queryKey: QueryKey): HomeFeedScope | null {
+  if (!isPaginatedHomeFeedQueryKey(queryKey)) {
+    return null;
+  }
+
+  return queryKey[5] as HomeFeedScope;
 }
 
 export async function invalidateHomeFeedQueries(queryClient: QueryClient): Promise<void> {

@@ -165,24 +165,36 @@ jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
 }));
 
-jest.mock('../features', () => ({
-  acceptCachedFriendRequest: jest.fn(),
-  evictFriendshipDependentQueries: jest.fn(),
-  friendsQueryKeys: {
-    paginated: jest.fn(() => ['feature', 'friends', 'paginated', 'friends']),
-    root: ['feature', 'friends'],
-  },
-  hydrateFriendsSummaryFromPaginatedData: jest.fn(),
-  listFriendsPage: jest.fn(),
-  markFriendInviteAccepted: jest.fn(),
-  removeCachedFriend: jest.fn(),
-  removeFriend: jest.fn(),
-  selectFriendsSummary: jest.fn(() => ({
-    friendsCount: 0,
-    requestsCount: 0,
-    sentCount: 0,
-  })),
-}));
+jest.mock('../features', () => {
+  const friendCodeUtils = jest.requireActual('../features/store/friendCodeUtils');
+
+  return {
+    ...friendCodeUtils,
+    acceptCachedFriendRequest: jest.fn(),
+    evictFriendshipDependentQueries: jest.fn(),
+    friendsQueryKeys: {
+      paginated: jest.fn((userId?: string | null, section = 'friends') => [
+        'feature',
+        'friends',
+        'user',
+        userId ?? 'anonymous',
+        'paginated',
+        section,
+      ]),
+      root: ['feature', 'friends'],
+    },
+    hydrateFriendsSummaryFromPaginatedData: jest.fn(),
+    listFriendsPage: jest.fn(),
+    markFriendInviteAccepted: jest.fn(),
+    removeCachedFriend: jest.fn(),
+    removeFriend: jest.fn(),
+    selectFriendsSummary: jest.fn(() => ({
+      friendsCount: 0,
+      requestsCount: 0,
+      sentCount: 0,
+    })),
+  };
+});
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),

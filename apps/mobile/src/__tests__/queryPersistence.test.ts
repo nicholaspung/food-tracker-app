@@ -23,7 +23,7 @@ describe('React Query persistence', () => {
 
   it('restores only allowlisted browse-surface queries after a cold restart', async () => {
     const sourceClient = new QueryClient();
-    sourceClient.setQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', ''), {
+    sourceClient.setQueryData(homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', ''), {
       pages: [
         {
           items: [
@@ -114,12 +114,12 @@ describe('React Query persistence', () => {
         },
       ],
     });
-    sourceClient.setQueryData(friendsQueryKeys.summary, {
+    sourceClient.setQueryData(friendsQueryKeys.summary('user-1'), {
       friendsCount: 1,
       requestsCount: 0,
       sentCount: 0,
     });
-    sourceClient.setQueryData(friendsQueryKeys.paginated('friends'), {
+    sourceClient.setQueryData(friendsQueryKeys.paginated('user-1', 'friends'), {
       pages: [
         {
           items: [
@@ -192,7 +192,16 @@ describe('React Query persistence', () => {
         itemName: 'Legacy Food Product',
       },
     ]);
-    sourceClient.setQueryData(friendsQueryKeys.paginated('friends', 'tay'), {
+    sourceClient.setQueryData(['feature', 'homeFeed', 'paginated', 'friends', 'all', 'created', ''], {
+      pages: [{ items: [], hasNextPage: false }],
+      pageParams: [undefined],
+    });
+    sourceClient.setQueryData(['feature', 'friends', 'summary'], {
+      friendsCount: 99,
+      requestsCount: 0,
+      sentCount: 0,
+    });
+    sourceClient.setQueryData(friendsQueryKeys.paginated('user-1', 'friends', 'tay'), {
       pages: [
         {
           items: [
@@ -230,8 +239,8 @@ describe('React Query persistence', () => {
       maxAge: 1000 * 60 * 60 * 24,
     });
 
-    expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', ''))).toEqual(
-      sourceClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', '')),
+    expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', ''))).toEqual(
+      sourceClient.getQueryData(homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', '')),
     );
     expect(restoredClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine'])).toEqual(
       sourceClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine']),
@@ -248,11 +257,11 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(['feature', 'notePhotos', 'notes'])).toEqual(
       sourceClient.getQueryData(['feature', 'notePhotos', 'notes']),
     );
-    expect(restoredClient.getQueryData(friendsQueryKeys.summary)).toEqual(
-      sourceClient.getQueryData(friendsQueryKeys.summary),
+    expect(restoredClient.getQueryData(friendsQueryKeys.summary('user-1'))).toEqual(
+      sourceClient.getQueryData(friendsQueryKeys.summary('user-1')),
     );
-    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends'))).toEqual(
-      sourceClient.getQueryData(friendsQueryKeys.paginated('friends')),
+    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('user-1', 'friends'))).toEqual(
+      sourceClient.getQueryData(friendsQueryKeys.paginated('user-1', 'friends')),
     );
     expect(restoredClient.getQueryData(feedbackQueryKeys.list)).toEqual(
       sourceClient.getQueryData(feedbackQueryKeys.list),
@@ -265,29 +274,34 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(['feature', 'quickTracks'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
-    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends', 'tay'))).toBeUndefined();
+    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('user-1', 'friends', 'tay'))).toBeUndefined();
+    expect(restoredClient.getQueryData(['feature', 'homeFeed', 'paginated', 'friends', 'all', 'created', ''])).toBeUndefined();
+    expect(restoredClient.getQueryData(['feature', 'friends', 'summary'])).toBeUndefined();
 
     sourceClient.clear();
     restoredClient.clear();
   });
 
-  it('stores persisted queries under the v4 cache key and removes legacy cache keys', async () => {
+  it('stores persisted queries under the v5 cache key and removes legacy cache keys', async () => {
     const legacyCacheKeyV1 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1');
     const legacyCacheKeyV2 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
     const legacyCacheKeyV3 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
-    const activeCacheKeyV4 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
+    const legacyCacheKeyV4 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
+    const activeCacheKeyV5 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5');
 
     await AsyncStorage.setItem(legacyCacheKeyV1, 'legacy-v1');
     await AsyncStorage.setItem(legacyCacheKeyV2, 'legacy-v2');
     await AsyncStorage.setItem(legacyCacheKeyV3, 'legacy-v3');
+    await AsyncStorage.setItem(legacyCacheKeyV4, 'legacy-v4');
 
     const removedLegacyKeys = await removeLegacyQueryCache();
 
-    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2, legacyCacheKeyV3]);
+    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2, legacyCacheKeyV3, legacyCacheKeyV4]);
     expect(await AsyncStorage.getItem(legacyCacheKeyV1)).toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
-    expect(await AsyncStorage.getItem(activeCacheKeyV4)).toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV4)).toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV5)).toBeNull();
 
     const queryClient = new QueryClient();
     queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
@@ -300,15 +314,16 @@ describe('React Query persistence', () => {
       },
     });
 
-    expect(await AsyncStorage.getItem(activeCacheKeyV4)).not.toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV5)).not.toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV4)).toBeNull();
 
     queryClient.clear();
   });
 
   it('clears the active persisted query cache key on demand', async () => {
-    const activeCacheKeyV4 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
+    const activeCacheKeyV5 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5');
     const queryClient = new QueryClient();
     queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
 
@@ -320,11 +335,11 @@ describe('React Query persistence', () => {
       },
     });
 
-    expect(await AsyncStorage.getItem(activeCacheKeyV4)).not.toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV5)).not.toBeNull();
 
     await clearPersistedQueryCache();
 
-    expect(await AsyncStorage.getItem(activeCacheKeyV4)).toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV5)).toBeNull();
     queryClient.clear();
   });
 

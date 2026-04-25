@@ -3,14 +3,14 @@ import type { InfiniteData, Query, QueryClient, QueryKey } from '@tanstack/react
 import type { FriendRecord } from '../models';
 import type { FriendsCountSummary, RestaurantListDetailRecord } from './featureStore';
 import type { FriendsPageResult, ListFriendsPageInput } from './friendsStore';
-import { isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
+import { getHomeFeedScopeFromQueryKey, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
 import { restaurantListQueryKeys } from './restaurantListQuery';
 
 export type FriendsSection = NonNullable<ListFriendsPageInput['section']>;
 
 export type FriendsPaginatedQueryKey =
-  | readonly ['feature', 'friends', 'paginated', FriendsSection]
-  | readonly ['feature', 'friends', 'paginated', FriendsSection, string];
+  | readonly ['feature', 'friends', 'user', string, 'paginated', FriendsSection]
+  | readonly ['feature', 'friends', 'user', string, 'paginated', FriendsSection, string];
 
 const FRIENDS_SECTIONS = ['friends', 'requests', 'sent'] as const;
 
@@ -23,14 +23,21 @@ type FriendsInfiniteData = InfiniteData<FriendsPageResult, unknown>;
 
 export const friendsQueryKeys = {
   root: ['feature', 'friends'] as const,
-  summary: ['feature', 'friends', 'summary'] as const,
-  paginated: (section: FriendsSection, search?: string): FriendsPaginatedQueryKey => {
+  scope: (userId: string | null | undefined) =>
+    ['feature', 'friends', 'user', userId ?? 'anonymous'] as const,
+  summary: (userId: string | null | undefined) =>
+    ['feature', 'friends', 'user', userId ?? 'anonymous', 'summary'] as const,
+  paginated: (
+    userId: string | null | undefined,
+    section: FriendsSection,
+    search?: string,
+  ): FriendsPaginatedQueryKey => {
     const normalizedSearch = search?.trim() ?? '';
     if (!normalizedSearch) {
-      return ['feature', 'friends', 'paginated', section];
+      return ['feature', 'friends', 'user', userId ?? 'anonymous', 'paginated', section];
     }
 
-    return ['feature', 'friends', 'paginated', section, normalizedSearch];
+    return ['feature', 'friends', 'user', userId ?? 'anonymous', 'paginated', section, normalizedSearch];
   },
 };
 
@@ -161,17 +168,18 @@ function patchFriendsDataAfterUpsert(
 }
 
 function resolveFriendsSearchQuery(queryKey: QueryKey): string {
-  return Array.isArray(queryKey) && queryKey.length === 5 && typeof queryKey[4] === 'string'
-    ? queryKey[4]
+  return Array.isArray(queryKey) && queryKey.length === 7 && typeof queryKey[6] === 'string'
+    ? queryKey[6]
     : '';
 }
 
 function applySummaryToPaginatedFriendsQueries(
   queryClient: QueryClient,
+  userId: string | null | undefined,
   summary: FriendsCountSummary,
 ): void {
   const paginatedFriendQueries = queryClient.getQueriesData<FriendsInfiniteData>({
-    queryKey: friendsQueryKeys.root,
+    queryKey: friendsQueryKeys.scope(userId),
   });
 
   for (const [queryKey, currentData] of paginatedFriendQueries) {
@@ -204,10 +212,10 @@ function adjustFriendsSummary(
   };
 }
 
-function getMutableFriendsSummary(queryClient: QueryClient): FriendsCountSummary {
+function getMutableFriendsSummary(queryClient: QueryClient, userId: string | null | undefined): FriendsCountSummary {
   return (
-    getCachedFriendsSummary(queryClient)?.summary ??
-    queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary) ?? {
+    getCachedFriendsSummary(queryClient, userId)?.summary ??
+    queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary(userId)) ?? {
       friendsCount: 0,
       requestsCount: 0,
       sentCount: 0,
@@ -230,21 +238,27 @@ function getFriendsSectionForStatus(status: FriendRecord['status']): FriendsSect
 export function isPaginatedFriendsQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    (queryKey.length === 4 || queryKey.length === 5) &&
+    (queryKey.length === 6 || queryKey.length === 7) &&
     queryKey[0] === friendsQueryKeys.root[0] &&
     queryKey[1] === friendsQueryKeys.root[1] &&
-    queryKey[2] === 'paginated' &&
+    queryKey[2] === 'user' &&
     typeof queryKey[3] === 'string' &&
-    FRIENDS_SECTIONS.includes(queryKey[3] as FriendsSection) &&
-    (queryKey.length === 4 || typeof queryKey[4] === 'string')
+    queryKey[4] === 'paginated' &&
+    typeof queryKey[5] === 'string' &&
+    FRIENDS_SECTIONS.includes(queryKey[5] as FriendsSection) &&
+    (queryKey.length === 6 || typeof queryKey[6] === 'string')
   );
 }
 
 export function isFriendsSummaryQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    queryKey.length === friendsQueryKeys.summary.length &&
-    friendsQueryKeys.summary.every((segment, index) => queryKey[index] === segment)
+    queryKey.length === 5 &&
+    queryKey[0] === friendsQueryKeys.root[0] &&
+    queryKey[1] === friendsQueryKeys.root[1] &&
+    queryKey[2] === 'user' &&
+    typeof queryKey[3] === 'string' &&
+    queryKey[4] === 'summary'
   );
 }
 
@@ -293,14 +307,18 @@ function getCachedFriendsSummaryCandidate(
   };
 }
 
-export function getCachedFriendsSummary(queryClient: QueryClient): CachedFriendsSummary | undefined {
+export function getCachedFriendsSummary(
+  queryClient: QueryClient,
+  userId: string | null | undefined,
+): CachedFriendsSummary | undefined {
+  const summaryQueryKey = friendsQueryKeys.summary(userId);
   const cachedSummaryQuery = getCachedFriendsSummaryCandidate(
-    queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary),
-    queryClient.getQueryState(friendsQueryKeys.summary)?.dataUpdatedAt,
+    queryClient.getQueryData<FriendsCountSummary>(summaryQueryKey),
+    queryClient.getQueryState(summaryQueryKey)?.dataUpdatedAt,
   );
 
   return FRIENDS_SECTIONS.reduce<CachedFriendsSummary | undefined>((latestSummary, section) => {
-    const paginatedQueryKey = friendsQueryKeys.paginated(section);
+    const paginatedQueryKey = friendsQueryKeys.paginated(userId, section);
     const paginatedSummary = getCachedFriendsSummaryCandidate(
       selectFriendsSummary(
         queryClient.getQueryData<InfiniteData<FriendsPageResult, unknown>>(paginatedQueryKey),
@@ -322,6 +340,7 @@ export function getCachedFriendsSummary(queryClient: QueryClient): CachedFriends
 
 export function hydrateFriendsSummaryFromPaginatedData(
   queryClient: QueryClient,
+  userId: string | null | undefined,
   data: InfiniteData<FriendsPageResult, unknown> | FriendsPageResult | undefined,
 ): void {
   const nextSummary = selectFriendsSummary(data);
@@ -329,16 +348,18 @@ export function hydrateFriendsSummaryFromPaginatedData(
     return;
   }
 
-  const currentSummary = queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary);
+  const summaryQueryKey = friendsQueryKeys.summary(userId);
+  const currentSummary = queryClient.getQueryData<FriendsCountSummary>(summaryQueryKey);
   if (areFriendsSummariesEqual(currentSummary, nextSummary)) {
     return;
   }
 
-  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
+  queryClient.setQueryData<FriendsCountSummary>(summaryQueryKey, nextSummary);
 }
 
 export function acceptCachedFriendRequest(
   queryClient: QueryClient,
+  userId: string | null | undefined,
   friend: FriendRecord,
   acceptedFriend?: FriendRecord,
 ): void {
@@ -347,13 +368,13 @@ export function acceptCachedFriendRequest(
     ...acceptedFriend,
     status: 'friend',
   };
-  const nextSummary = adjustFriendsSummary(getMutableFriendsSummary(queryClient), {
+  const nextSummary = adjustFriendsSummary(getMutableFriendsSummary(queryClient, userId), {
     friendsCount: 1,
     requestsCount: -1,
   });
 
   const requestQueries = queryClient.getQueriesData<FriendsInfiniteData>({
-    queryKey: friendsQueryKeys.paginated('requests'),
+    queryKey: friendsQueryKeys.paginated(userId, 'requests'),
   });
   for (const [queryKey, currentData] of requestQueries) {
     if (!isPaginatedFriendsQueryKey(queryKey)) {
@@ -365,7 +386,7 @@ export function acceptCachedFriendRequest(
   }
 
   const friendsQueries = queryClient.getQueriesData<FriendsInfiniteData>({
-    queryKey: friendsQueryKeys.paginated('friends'),
+    queryKey: friendsQueryKeys.paginated(userId, 'friends'),
   });
   for (const [queryKey, currentData] of friendsQueries) {
     if (!isPaginatedFriendsQueryKey(queryKey)) {
@@ -376,19 +397,23 @@ export function acceptCachedFriendRequest(
     queryClient.setQueryData(queryKey, patchFriendsDataAfterUpsert(currentData, nextFriend, shouldIncludeFriend));
   }
 
-  const baseFriendsQueryKey = friendsQueryKeys.paginated('friends');
+  const baseFriendsQueryKey = friendsQueryKeys.paginated(userId, 'friends');
   if (queryClient.getQueryData(baseFriendsQueryKey) === undefined) {
     queryClient.setQueryData(baseFriendsQueryKey, createFriendsInfiniteData([nextFriend], nextSummary));
   }
 
-  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
-  applySummaryToPaginatedFriendsQueries(queryClient, nextSummary);
+  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary(userId), nextSummary);
+  applySummaryToPaginatedFriendsQueries(queryClient, userId, nextSummary);
 }
 
-export function removeCachedFriend(queryClient: QueryClient, friend: FriendRecord): void {
+export function removeCachedFriend(
+  queryClient: QueryClient,
+  userId: string | null | undefined,
+  friend: FriendRecord,
+): void {
   const currentSection = getFriendsSectionForStatus(friend.status);
   const nextSummary = adjustFriendsSummary(
-    getMutableFriendsSummary(queryClient),
+    getMutableFriendsSummary(queryClient, userId),
     friend.status === 'pending_received'
       ? { requestsCount: -1 }
       : friend.status === 'pending_sent'
@@ -396,7 +421,7 @@ export function removeCachedFriend(queryClient: QueryClient, friend: FriendRecor
         : { friendsCount: -1 },
   );
   const paginatedFriendQueries = queryClient.getQueriesData<FriendsInfiniteData>({
-    queryKey: friendsQueryKeys.root,
+    queryKey: friendsQueryKeys.scope(userId),
   });
 
   for (const [queryKey, currentData] of paginatedFriendQueries) {
@@ -405,17 +430,17 @@ export function removeCachedFriend(queryClient: QueryClient, friend: FriendRecor
     }
 
     const shouldAdjustCount =
-      queryKey[3] === currentSection &&
+      queryKey[5] === currentSection &&
       matchesFriendSearchQuery(friend, resolveFriendsSearchQuery(queryKey));
     queryClient.setQueryData(queryKey, patchFriendsDataAfterRemoval(currentData, friend.id, shouldAdjustCount));
   }
 
-  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
-  applySummaryToPaginatedFriendsQueries(queryClient, nextSummary);
+  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary(userId), nextSummary);
+  applySummaryToPaginatedFriendsQueries(queryClient, userId, nextSummary);
 }
 
 function isFriendsHomeFeedQuery(query: Query): boolean {
-  return isPaginatedHomeFeedQueryKey(query.queryKey) && query.queryKey[3] === 'friends';
+  return isPaginatedHomeFeedQueryKey(query.queryKey) && getHomeFeedScopeFromQueryKey(query.queryKey) === 'friends';
 }
 
 function isRestaurantListDetailQueryForRemovedFriend(query: Query, removedUserId: string): boolean {

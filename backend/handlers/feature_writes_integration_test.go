@@ -766,6 +766,55 @@ func TestVisitUpdateEndpointSynchronizesVisitLocalDate(t *testing.T) {
 	}
 }
 
+func TestVisitUpdateEndpointDeletesOmittedVisitItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Owner Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	retainedItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Soup", 4)
+	removedItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Noodles", 5)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/visits/"+visit.Id,
+		token,
+		`{
+			"items":[
+				{"id":"`+retainedItem.Id+`","name":"Soup","rating":4}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload visitResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse visit payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 item in response, got %d: %#v", len(payload.Items), payload.Items)
+	}
+	if payload.Items[0].ID != retainedItem.Id {
+		t.Fatalf("expected retained item %q in response, got %#v", retainedItem.Id, payload.Items)
+	}
+
+	reloadedRetainedItem, err := server.app.FindRecordById("food_items", retainedItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload retained item: %v", err)
+	}
+	if reloadedRetainedItem.GetString("visit") != visit.Id {
+		t.Fatalf("expected retained item to remain attached to visit %q, got %q", visit.Id, reloadedRetainedItem.GetString("visit"))
+	}
+
+	if _, err := server.app.FindRecordById("food_items", removedItem.Id); err == nil {
+		t.Fatalf("expected omitted item %q to be deleted", removedItem.Id)
+	}
+}
+
 func TestMoveVisitItemEndpointMovesItemAndPhotos(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

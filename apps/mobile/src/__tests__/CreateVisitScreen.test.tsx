@@ -366,6 +366,7 @@ describe('CreateVisitScreen', () => {
       draftItems: [],
       draftPhotoCount: 0,
       isMenuItemSelected: jest.fn(() => false),
+      removeDraftItem: jest.fn(),
       removeDraftItemPhoto: jest.fn(),
       selectedMenuItemCount: 0,
       setDraftItems: jest.fn(),

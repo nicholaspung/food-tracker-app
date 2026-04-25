@@ -21,6 +21,7 @@ import {
 } from '../components/shared';
 import {
   acceptCachedFriendRequest,
+  createFriendQrPayload,
   evictFriendshipDependentQueries,
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
@@ -28,6 +29,7 @@ import {
   markFriendInviteAccepted,
   removeCachedFriend,
   removeFriend,
+  resolveOwnFriendCode,
   selectFriendsSummary,
   type FriendRecord,
 } from '../features';
@@ -211,20 +213,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function generateFriendCode(userId: string | undefined, persistedFriendCode?: string): string {
-  const normalizedPersistedCode = persistedFriendCode?.trim().toUpperCase();
-  if (normalizedPersistedCode && normalizedPersistedCode.length === 8) {
-    return normalizedPersistedCode;
-  }
-
-  if (!userId) {
-    return 'LOCAL000';
-  }
-
-  const cleanId = userId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return cleanId.slice(0, 8).padEnd(8, 'X');
-}
-
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -238,6 +226,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
   const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -249,7 +238,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
   const [topChromeHeight, setTopChromeHeight] = useState(0);
   const friendsQuery = useInfiniteQuery({
-    queryKey: friendsQueryKeys.paginated(friendsSubTab),
+    queryKey: friendsQueryKeys.paginated(userId, friendsSubTab),
     queryFn: ({ pageParam, signal }) =>
       listFriendsPage({
         section: friendsSubTab,
@@ -257,7 +246,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         pageSize: 20,
         signal,
       }),
-    enabled: mainTab === 'friends-list',
+    enabled: mainTab === 'friends-list' && Boolean(userId),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     refetchOnReconnect: 'always',
@@ -281,15 +270,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     friendsSummary?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
 
   useEffect(() => {
-    hydrateFriendsSummaryFromPaginatedData(queryClient, friendsQuery.data);
-  }, [friendsQuery.data, queryClient]);
+    hydrateFriendsSummaryFromPaginatedData(queryClient, userId, friendsQuery.data);
+  }, [friendsQuery.data, queryClient, userId]);
 
   const myFriendCode = useMemo(
-    () => generateFriendCode(user?.id, user?.friendCode),
+    () => resolveOwnFriendCode(user?.id, user?.friendCode),
     [user?.friendCode, user?.id],
   );
   const myFriendQrPayload = useMemo(
-    () => `yummyrecs://friends/add?friendCode=${encodeURIComponent(myFriendCode)}`,
+    () => createFriendQrPayload(myFriendCode),
     [myFriendCode],
   );
 
@@ -389,6 +378,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
       acceptCachedFriendRequest(
         queryClient,
+        userId,
         friend,
         acceptResult.status === 'queued' ? undefined : acceptResult.result,
       );
@@ -456,7 +446,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         execute: () => removeFriend(friend.id),
       });
 
-      removeCachedFriend(queryClient, friend);
+      removeCachedFriend(queryClient, userId, friend);
 
       if (removeResult.status === 'queued') {
         await invalidateFriendRemovalQueries(operationName, removedUserId, {

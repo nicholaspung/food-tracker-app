@@ -1,4 +1,5 @@
 import {
+  getHomeFeedScopeFromQueryKey,
   homeFeedQueryKeys,
   isPaginatedHomeFeedQueryKey,
 } from '../features/store/homeFeedQuery';
@@ -14,11 +15,27 @@ describe('home feed query helpers', () => {
   });
 
   it('recognizes the current paginated home feed query keys', () => {
+    const mineKey = homeFeedQueryKeys.paginated('user-1', 'mine', 'food-products', 'created', 'ramen');
+    const friendsKey = homeFeedQueryKeys.paginated('user-1', 'friends', 'visits', 'tracked', 'soup');
+
+    expect(mineKey).toEqual([
+      'feature',
+      'homeFeed',
+      'user',
+      'user-1',
+      'paginated',
+      'mine',
+      'food-products',
+      'created',
+      'ramen',
+    ]);
     expect(
-      isPaginatedHomeFeedQueryKey(homeFeedQueryKeys.paginated('mine', 'food-products', 'created', 'ramen')),
+      isPaginatedHomeFeedQueryKey(mineKey),
     ).toBe(true);
-    expect(isPaginatedHomeFeedQueryKey(homeFeedQueryKeys.paginated('friends', 'visits', 'tracked', 'soup'))).toBe(
-      true,
+    expect(isPaginatedHomeFeedQueryKey(friendsKey)).toBe(true);
+    expect(getHomeFeedScopeFromQueryKey(friendsKey)).toBe('friends');
+    expect(homeFeedQueryKeys.paginated('user-1', 'friends', 'visits', 'tracked', 'soup')).not.toEqual(
+      homeFeedQueryKeys.paginated('user-2', 'friends', 'visits', 'tracked', 'soup'),
     );
     expect(
       isPaginatedHomeFeedQueryKey(['feature', 'homeFeed', 'paginated', 'mine', 'visits', 'invalid-sort', 'ramen']),

@@ -10,6 +10,8 @@ export interface HomeInitialViewParams {
   sortFilter: HomeFeedSortValue;
   searchQuery: string;
   filtersExpanded: boolean;
+  focusVisitId?: string;
+  focusReason?: 'visit-created';
 }
 
 export function buildFoodProductCreatedHomeParams(): {
@@ -22,6 +24,22 @@ export function buildFoodProductCreatedHomeParams(): {
       sortFilter: 'created',
       searchQuery: '',
       filtersExpanded: true,
+    },
+  };
+}
+
+export function buildVisitCreatedHomeParams(visitId: string): {
+  initialView: HomeInitialViewParams;
+} {
+  return {
+    initialView: {
+      feedMode: 'mine',
+      typeFilter: 'visits',
+      sortFilter: 'created',
+      searchQuery: '',
+      filtersExpanded: true,
+      focusVisitId: visitId,
+      focusReason: 'visit-created',
     },
   };
 }

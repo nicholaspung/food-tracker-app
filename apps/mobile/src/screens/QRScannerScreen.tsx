@@ -1,11 +1,18 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { FeatureDetailScreenScaffold } from '../components/shared';
-import { friendsQueryKeys, inviteFriend } from '../features';
+import {
+  extractFriendCodeFromQrPayload,
+  friendsQueryKeys,
+  inviteFriend,
+  resolveOwnFriendCode,
+  sanitizeFriendCode,
+} from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -17,6 +24,9 @@ import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type QRScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'QRScanner'>;
+
+const INVALID_SCAN_RETRY_DELAY_MS = 1200;
+const QR_SCAN_ZOOM = 0.08;
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -52,6 +62,12 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
     padding: theme.spacing.md,
   },
+  overlayTopHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
   overlayBottomCard: {
     alignSelf: 'stretch',
     backgroundColor: theme.colors.background.surface,
@@ -66,6 +82,20 @@ const useStyles = createThemedStyles((theme) => ({
   },
   overlayText: {
     color: theme.colors.text.secondary,
+  },
+  torchButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  torchButtonActive: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
   },
   scanWindowWrap: {
     alignItems: 'center',
@@ -98,42 +128,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function sanitizeFriendCode(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8);
-}
-
-function extractFriendCodeFromPayload(payload: string): string | null {
-  const trimmedPayload = payload.trim();
-  if (!trimmedPayload) {
-    return null;
-  }
-
-  let candidate = trimmedPayload;
-
-  try {
-    const parsed = new URL(trimmedPayload);
-    candidate =
-      parsed.searchParams.get('friendCode') ??
-      parsed.searchParams.get('code') ??
-      parsed.pathname.split('/').pop() ??
-      trimmedPayload;
-  } catch {
-    // Payload might not be a URL; in that case we treat it as a raw friend code.
-  }
-
-  const normalized = sanitizeFriendCode(candidate);
-  return normalized.length === 8 ? normalized : null;
-}
-
-function generateFriendCode(userId: string | undefined): string {
-  if (!userId) {
-    return 'LOCAL000';
-  }
-
-  const cleanId = userId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return cleanId.slice(0, 8).padEnd(8, 'X');
-}
-
 export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -143,11 +137,19 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const { user } = useAuth();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanLockRef = useRef(false);
+  const invalidScanRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [scannedCode, setScannedCode] = useState('');
   const [hasScanned, setHasScanned] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTorchEnabled, setIsTorchEnabled] = useState(false);
+
+  useEffect(() => () => {
+    if (invalidScanRetryTimerRef.current) {
+      clearTimeout(invalidScanRetryTimerRef.current);
+    }
+  }, []);
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
@@ -159,7 +161,30 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   };
 
   const isCameraGranted = cameraPermission?.granted === true;
-  const myFriendCode = generateFriendCode(user?.id);
+  const myFriendCode = resolveOwnFriendCode(user?.id, user?.friendCode);
+
+  const resetScanner = () => {
+    if (invalidScanRetryTimerRef.current) {
+      clearTimeout(invalidScanRetryTimerRef.current);
+      invalidScanRetryTimerRef.current = null;
+    }
+    scanLockRef.current = false;
+    setHasScanned(false);
+    setScannedCode('');
+    setErrorMessage(null);
+    setIsSubmitting(false);
+  };
+
+  const queueInvalidScanRetry = () => {
+    if (invalidScanRetryTimerRef.current) {
+      clearTimeout(invalidScanRetryTimerRef.current);
+    }
+
+    invalidScanRetryTimerRef.current = setTimeout(() => {
+      scanLockRef.current = false;
+      invalidScanRetryTimerRef.current = null;
+    }, INVALID_SCAN_RETRY_DELAY_MS);
+  };
 
   const handleScanResult = async (inviteCode: string) => {
     const normalizedCode = sanitizeFriendCode(inviteCode);
@@ -270,19 +295,19 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     }
   };
 
-  const handleBarcodeScanned = ({ data }: { data: string }) => {
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (scanLockRef.current) {
       return;
     }
 
     scanLockRef.current = true;
-    const normalizedCode = extractFriendCodeFromPayload(data);
+    const normalizedCode = extractFriendCodeFromQrPayload(data);
     if (!normalizedCode) {
       trackObservabilityEvent('QR_SCAN_INVALID_CODE', {
         source: 'QRScannerScreen',
       });
-      setErrorMessage('QR code did not contain a valid 8-character friend code.');
-      setHasScanned(true);
+      setErrorMessage('That QR code is not a Yummy Recs friend invite.');
+      queueInvalidScanRetry();
       return;
     }
 
@@ -292,7 +317,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     setScannedCode(normalizedCode);
     setErrorMessage(null);
     setHasScanned(true);
-    void handleScanResult(normalizedCode);
+    await handleScanResult(normalizedCode);
   };
 
   return (
@@ -310,18 +335,39 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
           <View style={styles.camera}>
             <CameraView
+              autofocus="on"
               barcodeScannerSettings={{
                 barcodeTypes: ['qr'],
               }}
+              enableTorch={isTorchEnabled}
               facing="back"
               onBarcodeScanned={!hasScanned && !isSubmitting ? handleBarcodeScanned : undefined}
               style={styles.camera}
+              zoom={QR_SCAN_ZOOM}
             />
             <View pointerEvents="box-none" style={styles.overlay}>
               <View style={styles.overlayTopCard}>
-                <Text style={styles.overlayTitle} variant="sectionTitleTight">Scan friend QR code</Text>
+                <View style={styles.overlayTopHeader}>
+                  <Text style={styles.overlayTitle} variant="sectionTitleTight">Scan friend QR code</Text>
+                  <Pressable
+                    accessibilityLabel={isTorchEnabled ? 'Turn scanner light off' : 'Turn scanner light on'}
+                    accessibilityRole="button"
+                    onPress={() => setIsTorchEnabled((currentValue) => !currentValue)}
+                    style={({ pressed }) => [
+                      styles.torchButton,
+                      isTorchEnabled && styles.torchButtonActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Ionicons
+                      color={isTorchEnabled ? theme.colors.text.info : theme.colors.text.secondary}
+                      name={isTorchEnabled ? 'flashlight' : 'flashlight-outline'}
+                      size={18}
+                    />
+                  </Pressable>
+                </View>
                 <Text style={styles.overlayText}>
-                  Point your camera at the invite QR. A valid code will be detected and sent automatically.
+                  Hold the QR inside the square and move closer if it stays blurry. A valid invite sends automatically.
                 </Text>
               </View>
 
@@ -344,12 +390,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
                   {hasScanned && !isSubmitting ? (
                     <Button
                       label="Scan Again"
-                      onPress={() => {
-                        scanLockRef.current = false;
-                        setHasScanned(false);
-                        setScannedCode('');
-                        setErrorMessage(null);
-                      }}
+                      onPress={resetScanner}
                       variant="secondary"
                     />
                   ) : null}

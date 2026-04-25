@@ -15,8 +15,9 @@ const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3'),
+  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4'),
 ];
-const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
+const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5');
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';
@@ -70,8 +71,7 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return isBrowseNotePhotosQuery(queryKey);
     case 'friends':
       return (
-        queryKey.length === 2 ||
-        (queryKey.length === 4 && isPaginatedFriendsQueryKey(queryKey)) ||
+        (queryKey.length === 6 && isPaginatedFriendsQueryKey(queryKey)) ||
         isFriendsSummaryQueryKey(queryKey)
       );
     case 'restaurantLists':

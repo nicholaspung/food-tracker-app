@@ -51,6 +51,12 @@ export function useCreateVisitDraftItems({
     );
   }, []);
 
+  const removeDraftItem = useCallback((itemId: string) => {
+    setDraftItems((currentItems) =>
+      currentItems.filter((item) => item.id !== itemId),
+    );
+  }, []);
+
   const isMenuItemSelected = useCallback(
     (menuItem: MenuItemRecord) => {
       const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
@@ -128,6 +134,7 @@ export function useCreateVisitDraftItems({
     draftItems,
     draftPhotoCount,
     isMenuItemSelected,
+    removeDraftItem,
     removeDraftItemPhoto,
     selectedMenuItemCount: draftItems.length,
     setDraftItems,

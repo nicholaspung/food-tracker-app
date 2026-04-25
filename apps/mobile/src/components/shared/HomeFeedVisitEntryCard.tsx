@@ -46,6 +46,7 @@ interface HomeFeedVisitEntryCardProps {
   editTestID?: string;
   deleteTestID?: string;
   moreActionsTestID?: string;
+  highlighted?: boolean;
 }
 
 function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
@@ -72,6 +73,10 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
+  },
+  entryCardHighlighted: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.brand,
   },
   entryTopRow: {
     alignItems: 'flex-start',
@@ -238,6 +243,7 @@ export function HomeFeedVisitEntryCard({
   editTestID,
   deleteTestID,
   moreActionsTestID,
+  highlighted = false,
 }: HomeFeedVisitEntryCardProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -246,7 +252,7 @@ export function HomeFeedVisitEntryCard({
   const showUnderReviewBadge = !friendName?.trim() && visit.moderationStatus === 'under_review';
 
   return (
-    <View style={styles.entryCard}>
+    <View style={[styles.entryCard, highlighted ? styles.entryCardHighlighted : null]}>
       <View style={styles.entryTopRow}>
         <Text numberOfLines={2} style={styles.entryTitle} variant="titleSm">
           {visit.restaurantName}

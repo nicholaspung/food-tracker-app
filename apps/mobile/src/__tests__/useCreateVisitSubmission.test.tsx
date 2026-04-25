@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 import { createVisitApiMutationInput } from '../features/store/featureOutboxOperations';
+import { buildVisitCreatedHomeParams } from '../navigation/homeRouteParams';
 import { useCreateVisitSubmission } from '../screens/createVisit/useCreateVisitSubmission';
 
 jest.mock('../features', () => ({
@@ -189,6 +190,80 @@ describe('useCreateVisitSubmission', () => {
             },
             method: 'POST',
             url: 'https://example.test/api/visits',
+          },
+        },
+      }),
+    );
+    expect(navigation.navigate).toHaveBeenCalledWith(
+      'Home',
+      buildVisitCreatedHomeParams('visit-123'),
+    );
+
+    await hook.unmount();
+  });
+
+  it('keeps queued visit creates on the current home navigation path', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'queued',
+    });
+    const hook = renderSubmissionHook({
+      writeFeature: writeFeature as never,
+    });
+
+    await hook.mount();
+
+    await act(async () => {
+      await hook.getResult()?.submitVisit();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Home');
+
+    await hook.unmount();
+  });
+
+  it('submits only remaining draft items in the edit update payload', async () => {
+    const hook = renderSubmissionHook({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: 'Crispy wrapper',
+          id: 'visit-item-kept',
+          name: 'Spicy Wontons',
+          notes: 'Split with table',
+          photos: [],
+          rating: 4,
+        },
+      ],
+      editVisitId: 'visit-123',
+      isEditMode: true,
+    });
+
+    await hook.mount();
+
+    await act(async () => {
+      await hook.getResult()?.submitVisit();
+    });
+
+    expect(hook.writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'visit.update',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            visitId: 'visit-123',
+            updates: expect.objectContaining({
+              items: [
+                {
+                  deletePhotoIds: [],
+                  description: 'Crispy wrapper',
+                  id: 'visit-item-kept',
+                  name: 'Spicy Wontons',
+                  newPhotos: [],
+                  notes: 'Split with table',
+                  rating: 4,
+                },
+              ],
+            }),
           },
         },
       }),
