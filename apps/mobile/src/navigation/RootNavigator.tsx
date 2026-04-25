@@ -265,7 +265,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   Login: 'Login',
   SignUp: 'Sign Up',
   ForgotPassword: 'Forgot Password',
-  ResetPassword: 'Reset Password',
+  ResetPassword: 'Check Email',
   VerifyEmail: 'Verify Email',
   CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',

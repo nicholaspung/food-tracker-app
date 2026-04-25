@@ -79,7 +79,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
         contentStyle={styles.formContent}
       >
         <AuthIntroCard
-          description="Request a reset token by email."
+          description="Enter your email and we'll send you a secure reset link."
           iconName="mail-open-outline"
           title="Forgot Password"
         />
