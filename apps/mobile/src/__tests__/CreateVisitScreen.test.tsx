@@ -70,6 +70,7 @@ const mockTheme = {
 const editableMenuItem = {
   createdBy: 'user-1',
   description: 'Editable item description',
+  friendEatenCount: 2,
   id: 'menu-item-1',
   name: 'Editable Item',
   restaurant: 'restaurant-1',
@@ -419,6 +420,7 @@ describe('CreateVisitScreen', () => {
 
     expect(editableRow.props.compactActions).toBe(true);
     expect(typeof editableRow.props.onEditPress).toBe('function');
+    expect(editableRow.props.friendEatenCount).toBe(2);
     expect(editableRow.props.userEatenCount).toBe(3);
     expect(nonEditableRow.props.compactActions).toBe(false);
     expect(nonEditableRow.props.onEditPress).toBeUndefined();

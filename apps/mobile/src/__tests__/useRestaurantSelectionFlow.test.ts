@@ -75,6 +75,7 @@ describe('useRestaurantSelectionFlow', () => {
   it('uses a stable restaurant-scoped menu items query key and cached offline fallback', async () => {
     const cachedMenuItems = [
       {
+        friendEatenCount: 1,
         id: 'menu-item-1',
         name: 'Ramen',
         restaurant: 'restaurant-1',

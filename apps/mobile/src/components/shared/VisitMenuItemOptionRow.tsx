@@ -13,6 +13,7 @@ interface VisitMenuItemOptionRowProps {
   description?: string;
   visibility?: MenuItemVisibility;
   userEatenCount?: number;
+  friendEatenCount?: number;
   selected: boolean;
   compactActions?: boolean;
   onPress: () => void;
@@ -81,6 +82,17 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: 2,
   },
+  friendEatenBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
   actionsColumn: {
     alignItems: 'flex-end',
     gap: theme.spacing.xs,
@@ -120,6 +132,7 @@ export function VisitMenuItemOptionRow({
   description,
   visibility,
   userEatenCount,
+  friendEatenCount,
   selected,
   compactActions = false,
   onPress,
@@ -134,6 +147,10 @@ export function VisitMenuItemOptionRow({
   const normalizedEatenCount =
     typeof userEatenCount === 'number' && Number.isFinite(userEatenCount)
       ? Math.max(0, Math.floor(userEatenCount))
+      : 0;
+  const normalizedFriendEatenCount =
+    typeof friendEatenCount === 'number' && Number.isFinite(friendEatenCount)
+      ? Math.max(0, Math.floor(friendEatenCount))
       : 0;
   const styles = useStyles();
 
@@ -176,6 +193,18 @@ export function VisitMenuItemOptionRow({
                 />
                 <Text tone="success" variant="bodySm">
                   {`Ate ${normalizedEatenCount} ${normalizedEatenCount === 1 ? 'time' : 'times'}`}
+                </Text>
+              </View>
+            ) : null}
+            {normalizedFriendEatenCount > 0 ? (
+              <View style={styles.friendEatenBadge}>
+                <Ionicons
+                  color={theme.colors.text.info}
+                  name="people-outline"
+                  size={12}
+                />
+                <Text tone="info" variant="bodySm">
+                  {`Friends: ${normalizedFriendEatenCount}`}
                 </Text>
               </View>
             ) : null}

@@ -1696,9 +1696,14 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
 	friend, _ := createAuthUser(t, server.app, false, false)
+	friendTwo, _ := createAuthUser(t, server.app, false, false)
+	pendingFriend, _ := createAuthUser(t, server.app, false, false)
+	nonFriend, _ := createAuthUser(t, server.app, false, false)
 	otherOwner, _ := createAuthUser(t, server.app, false, false)
 
 	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+	createFriendshipRecord(t, server.app, friendTwo.Id, user.Id, "accepted")
+	createFriendshipRecord(t, server.app, user.Id, pendingFriend.Id, "pending")
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":       "Noodle House",
@@ -1756,6 +1761,43 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 		"visitDate":  "2026-04-04 18:30:00.000Z",
 		"visibility": "friends",
 	})
+	friendRepeatVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendTwoVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friendTwo.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "public",
+	})
+	friendPrivateVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friendTwo.Id,
+		"visitDate":  "2026-04-07 18:30:00.000Z",
+		"visibility": "private",
+	})
+	friendHiddenVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurant.Id,
+		"user":             friendTwo.Id,
+		"visitDate":        "2026-04-08 18:30:00.000Z",
+		"visibility":       "friends",
+		"moderationStatus": "hidden",
+	})
+	pendingFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       pendingFriend.Id,
+		"visitDate":  "2026-04-09 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	nonFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       nonFriend.Id,
+		"visitDate":  "2026-04-10 18:30:00.000Z",
+		"visibility": "public",
+	})
 
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  visitA.Id,
@@ -1782,6 +1824,42 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 		"rating": 4,
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendRepeatVisit.Id,
+		"user":   friend.Id,
+		"name":   "Spicy Ramen",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendTwoVisit.Id,
+		"user":   friendTwo.Id,
+		"name":   " spicy ramen ",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendPrivateVisit.Id,
+		"user":   friendTwo.Id,
+		"name":   "Spicy Ramen",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendHiddenVisit.Id,
+		"user":   friendTwo.Id,
+		"name":   "Spicy Ramen",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  pendingFriendVisit.Id,
+		"user":   pendingFriend.Id,
+		"name":   "Spicy Ramen",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  nonFriendVisit.Id,
+		"user":   nonFriend.Id,
+		"name":   "Spicy Ramen",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  visitA.Id,
 		"user":   user.Id,
 		"name":   "Gyoza",
@@ -1801,23 +1879,26 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 
 	var payload []struct {
-		ID             string `json:"id"`
-		Name           string `json:"name"`
-		UserEatenCount int    `json:"userEatenCount"`
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		UserEatenCount   int    `json:"userEatenCount"`
+		FriendEatenCount int    `json:"friendEatenCount"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse menu item response JSON: %v; body=%s", err, response.Body.String())
 	}
 
 	itemsByID := map[string]struct {
-		Name           string
-		UserEatenCount int
+		Name             string
+		UserEatenCount   int
+		FriendEatenCount int
 	}{}
 	for _, item := range payload {
 		itemsByID[item.ID] = struct {
-			Name           string
-			UserEatenCount int
-		}{Name: item.Name, UserEatenCount: item.UserEatenCount}
+			Name             string
+			UserEatenCount   int
+			FriendEatenCount int
+		}{Name: item.Name, UserEatenCount: item.UserEatenCount, FriendEatenCount: item.FriendEatenCount}
 	}
 
 	if len(itemsByID) != 2 {
@@ -1826,8 +1907,14 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	if itemsByID[ramen.Id].UserEatenCount != 2 {
 		t.Fatalf("expected ramen to count user's matching restaurant items only, got %#v", itemsByID[ramen.Id])
 	}
+	if itemsByID[ramen.Id].FriendEatenCount != 2 {
+		t.Fatalf("expected ramen to count distinct accepted friends with visible matching items only, got %#v", itemsByID[ramen.Id])
+	}
 	if itemsByID[friendsItem.Id].UserEatenCount != 1 {
 		t.Fatalf("expected friend-created gyoza to remain visible with user count, got %#v", itemsByID[friendsItem.Id])
+	}
+	if itemsByID[friendsItem.Id].FriendEatenCount != 0 {
+		t.Fatalf("expected gyoza to have no friend eaten count, got %#v", itemsByID[friendsItem.Id])
 	}
 }
 

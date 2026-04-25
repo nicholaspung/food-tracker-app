@@ -343,6 +343,7 @@ export interface MenuItemRecord {
   visibility?: 'private' | 'friends' | 'public';
   isFromOCR?: boolean;
   userEatenCount?: number;
+  friendEatenCount?: number;
   created?: string;
   updated?: string;
 }

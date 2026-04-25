@@ -10,11 +10,14 @@ const theme = {
       subtle: 'subtle-border',
     },
     status: {
+      infoBg: 'info-background',
+      infoBorder: 'info-border',
       successBg: 'success-background',
       successBorder: 'success-border',
     },
     text: {
       brand: 'brand',
+      info: 'info',
       muted: 'muted',
       secondary: 'secondary',
       success: 'success',
@@ -108,6 +111,54 @@ describe('VisitMenuItemOptionRow', () => {
       renderer.root.findAll(
         (node: { props: { children?: React.ReactNode } }) =>
           node.props.children === 'Ate 1 time' || node.props.children === 'Ate 2 times',
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('renders friend eaten count badges only when friends have history', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitMenuItemOptionRow
+          friendEatenCount={3}
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'Friends: 3' })).toBeDefined();
+
+    await act(async () => {
+      renderer.update(
+        <VisitMenuItemOptionRow
+          friendEatenCount={1}
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'Friends: 1' })).toBeDefined();
+
+    await act(async () => {
+      renderer.update(
+        <VisitMenuItemOptionRow
+          friendEatenCount={0}
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { props: { children?: React.ReactNode } }) =>
+          node.props.children === 'Friends: 1' || node.props.children === 'Friends: 3',
       ),
     ).toHaveLength(0);
   });

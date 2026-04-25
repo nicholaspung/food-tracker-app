@@ -1807,6 +1807,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                                     handleSelectMenuItem(menuItem);
                                   }}
                                   selected={isSelected}
+                                  friendEatenCount={menuItem.friendEatenCount}
                                   userEatenCount={menuItem.userEatenCount}
                                   visibility={menuItem.visibility}
                                 />

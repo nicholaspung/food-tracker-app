@@ -587,6 +587,7 @@ describe('PhotoProcessingScreen', () => {
         data: [
           {
             createdBy: 'user-1',
+            friendEatenCount: 2,
             id: 'menu-item-1',
             name: 'Spicy Ramen',
             restaurant: 'restaurant-1',
@@ -670,6 +671,7 @@ describe('PhotoProcessingScreen', () => {
     const menuItemRow = renderer.root.findByType('VisitMenuItemOptionRow');
 
     expect(menuItemRow.props.userEatenCount).toBe(5);
+    expect(menuItemRow.props.friendEatenCount).toBe(2);
     expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('You: 4 visits');
     expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('Friends: 2 friends');
   });

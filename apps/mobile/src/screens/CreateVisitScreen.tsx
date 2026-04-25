@@ -1019,6 +1019,7 @@ export function CreateVisitScreen({
         optionTestID={`create-visit-menu-item-option-${index}`}
         selectButtonTestID={`create-visit-menu-item-select-button-${index}`}
         selected={isSelected}
+        friendEatenCount={menuItem.friendEatenCount}
         userEatenCount={menuItem.userEatenCount}
         visibility={menuItem.visibility}
       />

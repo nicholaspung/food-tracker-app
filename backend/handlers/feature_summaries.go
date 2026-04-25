@@ -145,16 +145,17 @@ type restaurantSearchPageResponse struct {
 }
 
 type menuItemSelectionSummary struct {
-	ID             string `db:"id" json:"id"`
-	RestaurantID   string `db:"restaurant" json:"restaurant"`
-	Name           string `db:"name" json:"name"`
-	Description    string `db:"description" json:"description,omitempty"`
-	CreatedBy      string `db:"createdBy" json:"createdBy,omitempty"`
-	Visibility     string `db:"visibility" json:"visibility,omitempty"`
-	IsFromOCR      bool   `db:"isFromOCR" json:"isFromOCR,omitempty"`
-	Created        string `db:"created" json:"created,omitempty"`
-	Updated        string `db:"updated" json:"updated,omitempty"`
-	UserEatenCount int    `db:"userEatenCount" json:"userEatenCount,omitempty"`
+	ID               string `db:"id" json:"id"`
+	RestaurantID     string `db:"restaurant" json:"restaurant"`
+	Name             string `db:"name" json:"name"`
+	Description      string `db:"description" json:"description,omitempty"`
+	CreatedBy        string `db:"createdBy" json:"createdBy,omitempty"`
+	Visibility       string `db:"visibility" json:"visibility,omitempty"`
+	IsFromOCR        bool   `db:"isFromOCR" json:"isFromOCR,omitempty"`
+	Created          string `db:"created" json:"created,omitempty"`
+	Updated          string `db:"updated" json:"updated,omitempty"`
+	UserEatenCount   int    `db:"userEatenCount" json:"userEatenCount,omitempty"`
+	FriendEatenCount int    `db:"friendEatenCount" json:"friendEatenCount,omitempty"`
 }
 
 type recentRestaurantIDRow struct {
@@ -2417,6 +2418,15 @@ func listRestaurantMenuItemSummaries(
 
 	rows := []menuItemSelectionSummary{}
 	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		)
 		SELECT
 			menu_items.id AS [[id]],
 			menu_items.restaurant AS [[restaurant]],
@@ -2427,7 +2437,8 @@ func listRestaurantMenuItemSummaries(
 			COALESCE(menu_items.isFromOCR, 0) AS [[isFromOCR]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
-			COALESCE(history.userEatenCount, 0) AS [[userEatenCount]]
+			COALESCE(user_history.userEatenCount, 0) AS [[userEatenCount]],
+			COALESCE(friend_history.friendEatenCount, 0) AS [[friendEatenCount]]
 		FROM menu_items
 		LEFT JOIN (
 			SELECT
@@ -2439,7 +2450,21 @@ func listRestaurantMenuItemSummaries(
 				AND COALESCE(food_items.itemType, '') = {:visitItemType}
 				AND visits.restaurant = {:restaurantId}
 			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
-		) history ON history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
+		) user_history ON user_history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
+		LEFT JOIN (
+			SELECT
+				LOWER(TRIM(COALESCE(food_items.name, ''))) AS normalizedName,
+				COUNT(DISTINCT food_items.user) AS friendEatenCount
+			FROM food_items
+			INNER JOIN visits ON visits.id = food_items.visit
+			WHERE food_items.user != {:userId}
+				AND food_items.user IN (SELECT friendId FROM accepted_friends)
+				AND COALESCE(food_items.itemType, '') = {:visitItemType}
+				AND visits.restaurant = {:restaurantId}
+				AND ` + visibleVisitModerationCondition + `
+				AND (visits.visibility = 'public' OR visits.visibility = 'friends')
+			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
+		) friend_history ON friend_history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
 		WHERE menu_items.restaurant = {:restaurantId}
 		ORDER BY menu_items.created DESC, menu_items.id DESC
 	`
