@@ -12,6 +12,7 @@ interface VisitMenuItemOptionRowProps {
   name: string;
   description?: string;
   visibility?: MenuItemVisibility;
+  userEatenCount?: number;
   selected: boolean;
   compactActions?: boolean;
   onPress: () => void;
@@ -69,6 +70,17 @@ const useStyles = createThemedStyles((theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
   },
+  eatenBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
   actionsColumn: {
     alignItems: 'flex-end',
     gap: theme.spacing.xs,
@@ -107,6 +119,7 @@ export function VisitMenuItemOptionRow({
   name,
   description,
   visibility,
+  userEatenCount,
   selected,
   compactActions = false,
   onPress,
@@ -118,6 +131,10 @@ export function VisitMenuItemOptionRow({
   const theme = useTheme();
   const resolvedVisibility = normalizeMenuItemVisibility(visibility);
   const trimmedDescription = description?.trim() || '';
+  const normalizedEatenCount =
+    typeof userEatenCount === 'number' && Number.isFinite(userEatenCount)
+      ? Math.max(0, Math.floor(userEatenCount))
+      : 0;
   const styles = useStyles();
 
   return (
@@ -150,6 +167,18 @@ export function VisitMenuItemOptionRow({
         <View style={styles.metaRow}>
           <View style={styles.badgeRow}>
             <VisibilityBadge value={resolvedVisibility} />
+            {normalizedEatenCount > 0 ? (
+              <View style={styles.eatenBadge}>
+                <Ionicons
+                  color={theme.colors.text.success}
+                  name="restaurant-outline"
+                  size={12}
+                />
+                <Text tone="success" variant="bodySm">
+                  {`Ate ${normalizedEatenCount} ${normalizedEatenCount === 1 ? 'time' : 'times'}`}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </Pressable>

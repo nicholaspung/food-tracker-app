@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, Switch, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
+  CachedRemoteImage,
   EmptyState,
   FeatureFormScreenScaffold,
   PhotoViewerModal,
@@ -1027,8 +1028,8 @@ export function AddRestaurantToListScreen({
                                         : null,
                                     ]}
                                   >
-                                    <Image
-                                      source={{ uri: photoThumbnailUrl }}
+                                    <CachedRemoteImage
+                                      uri={photoThumbnailUrl}
                                       style={styles.foodItemPhotoThumb}
                                     />
                                     {extraPhotoCount > 0 ? (

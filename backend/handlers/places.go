@@ -167,7 +167,7 @@ func syncGooglePlaceRestaurants(
 	}
 
 	now := time.Now().UTC()
-	results := make([]restaurantSearchResult, 0, len(dedupedPlaces))
+	resultIDs := make([]string, 0, len(dedupedPlaces))
 
 	for _, place := range dedupedPlaces {
 		existing := existingByPlaceID[place.PlaceID]
@@ -179,7 +179,7 @@ func syncGooglePlaceRestaurants(
 				}
 			}
 
-			results = append(results, mapRestaurantSearchResult(existing))
+			resultIDs = append(resultIDs, existing.Id)
 			continue
 		}
 
@@ -193,7 +193,7 @@ func syncGooglePlaceRestaurants(
 			if isUniqueConstraintError(err) {
 				refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
 				if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
-					results = append(results, mapRestaurantSearchResult(refetchedByPlaceID[place.PlaceID]))
+					resultIDs = append(resultIDs, refetchedByPlaceID[place.PlaceID].Id)
 					continue
 				}
 			}
@@ -203,10 +203,10 @@ func syncGooglePlaceRestaurants(
 		}
 
 		existingByPlaceID[place.PlaceID] = record
-		results = append(results, mapRestaurantSearchResult(record))
+		resultIDs = append(resultIDs, record.Id)
 	}
 
-	return results, nil
+	return buildRestaurantSelectionSummaries(app, authRecord.Id, authRecord.GetBool("isAdmin"), resultIDs)
 }
 
 func dedupePlacesByID(places []placeResult) []placeResult {

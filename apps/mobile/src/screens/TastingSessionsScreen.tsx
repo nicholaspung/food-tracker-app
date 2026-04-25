@@ -34,6 +34,18 @@ type SessionFilter = 'active' | 'completed';
 const EMPTY_TASTING_SESSIONS: TastingSessionRecord[] = [];
 const RESTAURANT_SUGGESTION_LIMIT = 3;
 
+function formatRestaurantSuggestionLabel(name: string, userVisitCount?: number): string {
+  const normalizedCount =
+    typeof userVisitCount === 'number' && Number.isFinite(userVisitCount)
+      ? Math.max(0, Math.floor(userVisitCount))
+      : 0;
+  if (normalizedCount <= 0) {
+    return `Use ${name}`;
+  }
+
+  return `Use ${name} · ${normalizedCount} ${normalizedCount === 1 ? 'visit' : 'visits'}`;
+}
+
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
@@ -347,7 +359,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           {filteredRestaurants.slice(0, RESTAURANT_SUGGESTION_LIMIT).map((restaurant) => (
             <Button
               key={restaurant.id}
-              label={`Use ${restaurant.name}`}
+              label={formatRestaurantSuggestionLabel(restaurant.name, restaurant.userVisitCount)}
               onPress={() => {
                 setSelectedRestaurant(restaurant.name);
               }}

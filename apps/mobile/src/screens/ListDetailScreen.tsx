@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
+  CachedRemoteImage,
   EmptyState,
   ErrorState,
   ExpandableText,
@@ -818,44 +819,58 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const getUserPhotoFoodItemId = (userRating: OwnerUserRating): string =>
     userRating.kind === 'linked' ? userRating.userFoodItemId : userRating.foodItemId;
 
+  const appendPhotoEntries = (
+    entriesById: Map<string, OwnerItemPhotoEntry>,
+    foodItemId: string | undefined,
+    fallbackOwnerLabel: string,
+  ) => {
+    if (!foodItemId) {
+      return;
+    }
+
+    const photos = photosByFoodItemId.get(foodItemId) ?? [];
+    for (const photo of photos) {
+      const ownerLabel = photo.ownerName?.trim() || fallbackOwnerLabel;
+      entriesById.set(photo.id, {
+        id: photo.id,
+        previewUrl: buildPocketBaseFileUrl({
+          collectionId: photo.collectionId,
+          collectionName: photo.collectionName ?? 'visit_photos',
+          recordId: photo.id,
+          filename: photo.photo,
+          thumb: '100x100',
+        }),
+        url: buildPocketBaseFileUrl({
+          collectionId: photo.collectionId,
+          collectionName: photo.collectionName ?? 'visit_photos',
+          recordId: photo.id,
+          filename: photo.photo,
+        }),
+        ownerLabel,
+      });
+    }
+  };
+
   const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] => {
     const entriesById = new Map<string, OwnerItemPhotoEntry>();
 
-    const appendPhotos = (foodItemId: string | undefined, fallbackOwnerLabel: string) => {
-      if (!foodItemId) {
-        return;
-      }
-
-      const photos = photosByFoodItemId.get(foodItemId) ?? [];
-      for (const photo of photos) {
-        const ownerLabel = photo.ownerName?.trim() || fallbackOwnerLabel;
-        entriesById.set(photo.id, {
-          id: photo.id,
-          previewUrl: buildPocketBaseFileUrl({
-            collectionId: photo.collectionId,
-            collectionName: photo.collectionName ?? 'visit_photos',
-            recordId: photo.id,
-            filename: photo.photo,
-            thumb: '100x100',
-          }),
-          url: buildPocketBaseFileUrl({
-            collectionId: photo.collectionId,
-            collectionName: photo.collectionName ?? 'visit_photos',
-            recordId: photo.id,
-            filename: photo.photo,
-          }),
-          ownerLabel,
-        });
-      }
-    };
-
     if (item.source) {
-      appendPhotos(item.source.foodItemId, item.source.sourceUserName);
+      appendPhotoEntries(entriesById, item.source.foodItemId, item.source.sourceUserName);
     }
 
     if (item.user) {
-      appendPhotos(getUserPhotoFoodItemId(item.user), 'You');
+      appendPhotoEntries(entriesById, getUserPhotoFoodItemId(item.user), 'You');
     }
+
+    return Array.from(entriesById.values());
+  };
+
+  const buildBookmarkedItemPhotoEntries = (item: GroupedBookmarkedItem): OwnerItemPhotoEntry[] => {
+    const entriesById = new Map<string, OwnerItemPhotoEntry>();
+    const fallbackOwnerLabel = item.sourceUserName?.trim() || 'Friend';
+
+    appendPhotoEntries(entriesById, item.foodItemId, fallbackOwnerLabel);
+    appendPhotoEntries(entriesById, item.userFoodItemId, fallbackOwnerLabel);
 
     return Array.from(entriesById.values());
   };
@@ -1234,6 +1249,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       preselectedRestaurantName: group.restaurantName,
       preselectedMenuItemId: `bookmark-${item.listItemId}`,
       preselectedMenuItemName: item.name,
+      sourceListId: route.params.listId,
       sourceListItemId: item.listItemId,
       returnToStep: 2,
     });
@@ -1706,7 +1722,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                 style={styles.itemPhotoWrap}
                                 testID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
                               >
-                                <Image source={{ uri: itemPrimaryPhotoUrl }} style={styles.itemPhotoThumb} />
+                                <CachedRemoteImage uri={itemPrimaryPhotoUrl} style={styles.itemPhotoThumb} />
                                 {itemPhotoEntries.length > 1 ? (
                                   <View style={styles.itemPhotoCountBadge}>
                                     <Text style={styles.itemPhotoCountText}>+{itemPhotoEntries.length - 1}</Text>
@@ -1810,13 +1826,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                       );
                     })
                   ) : (
-                    group.items.map((item) => {
+                    group.items.map((item, itemIndex) => {
                       const monthYearLabel = formatMonthYearLabel(item.visitedAt);
                       const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
                       const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
                         savedBookmarkLookupIds.has(bookmarkLookupId),
                       );
                       const sourceUserDisplayName = item.sourceUserName?.trim() || 'Friend';
+                      const itemPhotoEntries = buildBookmarkedItemPhotoEntries(item);
+                      const itemPrimaryPhotoUrl = itemPhotoEntries[0]?.url;
 
                       return (
                         <View key={item.key} style={styles.bookmarkedItemBlock}>
@@ -1844,6 +1862,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                 </>
                               ) : null}
                             </View>
+                            {itemPrimaryPhotoUrl ? (
+                              <Pressable
+                                accessibilityLabel={`View photos for ${item.name}`}
+                                accessibilityRole="button"
+                                onPress={() => {
+                                  openPhotoViewer(itemPhotoEntries);
+                                }}
+                                style={styles.itemPhotoWrap}
+                                testID={`list-detail-friend-photo-button-${groupIndex}-${itemIndex}`}
+                              >
+                                <CachedRemoteImage uri={itemPrimaryPhotoUrl} style={styles.itemPhotoThumb} />
+                                {itemPhotoEntries.length > 1 ? (
+                                  <View style={styles.itemPhotoCountBadge}>
+                                    <Text style={styles.itemPhotoCountText}>+{itemPhotoEntries.length - 1}</Text>
+                                  </View>
+                                ) : null}
+                              </Pressable>
+                            ) : null}
                             <Pressable
                               accessibilityLabel={`Save ${item.name} to my lists`}
                               accessibilityRole="button"

@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getRestaurantListDetail } from '../features';
+import { buildPocketBaseFileUrl, getRestaurantListDetail } from '../features';
 import type { RestaurantListDetailRecord } from '../features/store/featureStore';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
@@ -141,6 +141,7 @@ jest.mock('../ui', () => ({
 }));
 
 jest.mock('../components/shared', () => ({
+  CachedRemoteImage: (props: Record<string, unknown>) => mockReact.createElement('CachedRemoteImage', props),
   ConfirmDestructiveModal: () => null,
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
@@ -160,6 +161,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<typeof getRestaurantListDetail>;
 const mockedUseFeatureOutboxQueue = useFeatureOutboxQueue as jest.MockedFunction<typeof useFeatureOutboxQueue>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
@@ -277,6 +279,7 @@ describe('ListDetailScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedBuildPocketBaseFileUrl.mockReturnValue('photo-url');
     mockedUseQuery.mockReturnValue(buildQueryResult());
     mockedUseQueryClient.mockReturnValue({} as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
@@ -368,6 +371,84 @@ describe('ListDetailScreen', () => {
     expect(findExactTextNodes(renderer.root, 'Location not set')).toHaveLength(1);
   });
 
+  it('renders friend bookmark photos from matching photo previews', async () => {
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'owner_1',
+                  sourceUserName: 'Owner',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+          photoPreviews: [
+            {
+              id: 'photo_1',
+              food_item: 'food_item_1',
+              user: 'owner_1',
+              photo: 'ramen.jpg',
+              collectionId: 'visit_photos_collection',
+              collectionName: 'visit_photos',
+              created: '2026-01-03T00:00:00.000Z',
+              ownerName: 'Owner',
+            },
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findByProps({ testID: 'list-detail-friend-photo-button-0-0' })).toBeTruthy();
+    expect(renderer.root.findByType('CachedRemoteImage').props.uri).toBe('photo-url');
+  });
+
+  it('keeps friend bookmark rows without photos on the existing save-only path', async () => {
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'owner_1',
+                  sourceUserName: 'Owner',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'list-detail-friend-photo-button-0-0' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'save-list-item-item_1' })).toBeTruthy();
+  });
+
   it('keeps the detail scaffold refreshing prop active until the refetch lifecycle settles', async () => {
     const refetchDeferred = createDeferred<{ data: RestaurantListDetailRecord }>();
     const queryResult = buildQueryResult();
@@ -414,5 +495,58 @@ describe('ListDetailScreen', () => {
     });
 
     expect(findScaffold().props.refreshing).toBe(false);
+  });
+
+  it('opens the I went visit flow with the source list id and bookmark item id', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'bookmark_1',
+                  listItemId: 'source_list_item_1',
+                  name: 'Noodles',
+                  rating: 4,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+              id: 'list_item_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Test Restaurant',
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const iWentButton = renderer.root.findByProps({ testID: 'i-went-list-item-list_item_1' });
+
+    await act(async () => {
+      iWentButton.props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('CreateVisit', {
+      preselectedRestaurantId: 'restaurant_1',
+      preselectedRestaurantName: 'Test Restaurant',
+      preselectedMenuItemId: 'bookmark-list_item_1',
+      preselectedMenuItemName: 'Noodles',
+      sourceListId: 'list_1',
+      sourceListItemId: 'list_item_1',
+      returnToStep: 2,
+    });
   });
 });

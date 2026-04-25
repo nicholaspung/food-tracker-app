@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
-  Image,
   Modal as RNModal,
   Pressable,
   StyleSheet,
@@ -12,8 +11,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  buildCachedImageSource,
+  hasPhotoImageLoaded,
+  markPhotoImageLoaded,
+  prefetchPhotoImages,
+} from '../../lib/photoImageCache';
 import { createThemedStyles, getPhotoViewerPalette, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { CachedRemoteImage } from './CachedRemoteImage';
 
 export interface PhotoViewerModalProps {
   visible: boolean;
@@ -115,19 +121,25 @@ function PhotoViewerSlide({
   width,
 }: PhotoViewerSlideProps) {
   const shouldShowPreview = Boolean(previewUri && previewUri !== uri);
-  const [isFullImageLoaded, setIsFullImageLoaded] = useState(!shouldShowPreview);
+  const isCachedFullImageLoaded = hasPhotoImageLoaded(uri);
+  const [isFullImageLoaded, setIsFullImageLoaded] = useState(
+    !shouldShowPreview || isCachedFullImageLoaded,
+  );
   const fullImageOpacity = useRef(
-    new Animated.Value(shouldShowPreview ? 0 : 1),
+    new Animated.Value(shouldShowPreview && !isCachedFullImageLoaded ? 0 : 1),
   ).current;
 
   useEffect(() => {
-    const initialOpacity = shouldShowPreview ? 0 : 1;
-    setIsFullImageLoaded(!shouldShowPreview);
+    const hasLoadedFullImage = hasPhotoImageLoaded(uri);
+    const initialOpacity = shouldShowPreview && !hasLoadedFullImage ? 0 : 1;
+    setIsFullImageLoaded(!shouldShowPreview || hasLoadedFullImage);
     fullImageOpacity.stopAnimation();
     fullImageOpacity.setValue(initialOpacity);
   }, [fullImageOpacity, shouldShowPreview, uri, previewUri, visible]);
 
   const handleFullImageLoad = useCallback(() => {
+    markPhotoImageLoaded(uri);
+
     if (!shouldShowPreview) {
       setIsFullImageLoaded(true);
       fullImageOpacity.stopAnimation();
@@ -142,7 +154,7 @@ function PhotoViewerSlide({
       toValue: 1,
       useNativeDriver: true,
     }).start();
-  }, [fullImageOpacity, shouldShowPreview]);
+  }, [fullImageOpacity, shouldShowPreview, uri]);
 
   const handleFullImageError = useCallback(() => {
     if (!shouldShowPreview) {
@@ -156,9 +168,9 @@ function PhotoViewerSlide({
   return (
     <View style={[slideStyles.slide, { width }]}>
       <View style={slideStyles.slideContent}>
-        {shouldShowPreview && !isFullImageLoaded ? (
-          <Image
-            source={{ uri: previewUri }}
+        {shouldShowPreview && previewUri && !isFullImageLoaded ? (
+          <CachedRemoteImage
+            uri={previewUri}
             style={slideStyles.image}
             testID="photo-viewer-preview-image"
           />
@@ -166,7 +178,7 @@ function PhotoViewerSlide({
         <Animated.Image
           onError={handleFullImageError}
           onLoad={handleFullImageLoad}
-          source={{ uri }}
+          source={buildCachedImageSource(uri)}
           style={[slideStyles.image, { opacity: fullImageOpacity }]}
           testID="photo-viewer-full-image"
         />
@@ -219,6 +231,18 @@ export function PhotoViewerModal({
       });
     }, 0);
   }, [boundedInitialIndex, urls, visible]);
+
+  useEffect(() => {
+    if (!visible || urls.length === 0) {
+      return;
+    }
+
+    prefetchPhotoImages([
+      urls[currentIndex - 1],
+      urls[currentIndex],
+      urls[currentIndex + 1],
+    ].filter((url): url is string => Boolean(url)));
+  }, [currentIndex, urls, visible]);
 
   const goToPhotoIndex = (targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= urls.length) {

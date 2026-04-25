@@ -63,6 +63,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { MenuScanPhotoProcessingScreen } from './MenuScanPhotoProcessingScreen';
+import { formatFriendCount, formatVisitCount } from './createVisit/shared';
 import { PhotoProcessingReviewStep } from './photoProcessing/PhotoProcessingReviewStep';
 import {
   buildDefaultRestaurantForm,
@@ -208,6 +209,31 @@ const useStyles = createThemedStyles((theme) => ({
   },
   listSection: {
     gap: theme.spacing.xs,
+  },
+  descriptionContainer: {
+    gap: theme.spacing.xxs,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  statPill: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  userStatPill: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+  friendStatPill: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
   },
   selectedHint: {
     alignItems: 'center',
@@ -966,9 +992,44 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     source: 'search' | 'saved',
   ): VisitRestaurantSearchOption => {
     const isSelected = currentRestaurantForm?.restaurantId === restaurant.id;
+    const userVisitCount = restaurant.userVisitCount ?? 0;
+    const friendCount = restaurant.friendCount ?? 0;
+    const description = (
+      <View style={styles.descriptionContainer}>
+        <Text tone="secondary">{buildVisitRestaurantDescription(restaurant, distance)}</Text>
+        {userVisitCount > 0 || friendCount > 0 ? (
+          <View style={styles.statsRow}>
+            {userVisitCount > 0 ? (
+              <View style={[styles.statPill, styles.userStatPill]}>
+                <Ionicons
+                  color={theme.colors.text.success}
+                  name="calendar-outline"
+                  size={12}
+                />
+                <Text tone="success" variant="bodySm">
+                  {`You: ${formatVisitCount(userVisitCount)}`}
+                </Text>
+              </View>
+            ) : null}
+            {friendCount > 0 ? (
+              <View style={[styles.statPill, styles.friendStatPill]}>
+                <Ionicons
+                  color={theme.colors.text.info}
+                  name="people-outline"
+                  size={12}
+                />
+                <Text tone="info" variant="bodySm">
+                  {`Friends: ${formatFriendCount(friendCount)}`}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    );
 
     return {
-      description: buildVisitRestaurantDescription(restaurant, distance),
+      description,
       key: `${source}-${restaurant.id}`,
       onPress: () => {
         handleSelectRestaurant(restaurant);
@@ -1746,6 +1807,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                                     handleSelectMenuItem(menuItem);
                                   }}
                                   selected={isSelected}
+                                  userEatenCount={menuItem.userEatenCount}
                                   visibility={menuItem.visibility}
                                 />
                                 {isSelectedUserCreated && isEditingMenuItemInline ? (

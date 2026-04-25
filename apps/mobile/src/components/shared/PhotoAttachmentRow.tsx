@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import type { GestureResponderEvent, StyleProp, ViewStyle } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { CachedRemoteImage } from './CachedRemoteImage';
 
 interface PhotoAttachmentRowProps {
   uri: string;
@@ -80,7 +81,7 @@ export function PhotoAttachmentRow({
         pressed && isPressable ? styles.containerPressed : null,
       ]}
     >
-      <Image source={{ uri }} style={styles.thumbnail} />
+      <CachedRemoteImage uri={uri} style={styles.thumbnail} />
       <Text ellipsizeMode="tail" numberOfLines={1} style={styles.name} variant="bodySm">
         {label}
       </Text>

@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
+  CachedRemoteImage,
   EmptyState,
   ErrorState,
   HeaderAccessoryButton,
@@ -651,7 +652,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       <Card style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
         {coverImage ? (
           <View style={styles.coverImageWrap}>
-            <Image source={{ uri: coverImage }} style={styles.coverImage} />
+            <CachedRemoteImage uri={coverImage} style={styles.coverImage} />
           </View>
         ) : null}
         <ListItem

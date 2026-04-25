@@ -1,5 +1,8 @@
-import { searchRestaurantsPage } from '../features';
-import { buildRestaurantSearchQueryOptions } from '../hooks/useRestaurantSelectionFlow';
+import { listMenuItemsForRestaurant, searchRestaurantsPage } from '../features';
+import {
+  buildRestaurantMenuItemsQueryOptions,
+  buildRestaurantSearchQueryOptions,
+} from '../hooks/useRestaurantSelectionFlow';
 
 jest.mock('../features', () => ({
   formatLimitExceededMessage: jest.fn(),
@@ -27,9 +30,13 @@ describe('useRestaurantSelectionFlow', () => {
   const mockedSearchRestaurantsPage = searchRestaurantsPage as jest.MockedFunction<
     typeof searchRestaurantsPage
   >;
+  const mockedListMenuItemsForRestaurant = listMenuItemsForRestaurant as jest.MockedFunction<
+    typeof listMenuItemsForRestaurant
+  >;
 
   beforeEach(() => {
     mockedSearchRestaurantsPage.mockReset();
+    mockedListMenuItemsForRestaurant.mockReset();
   });
 
   it('passes the React Query AbortSignal through restaurant search requests', async () => {
@@ -63,5 +70,35 @@ describe('useRestaurantSelectionFlow', () => {
         signal: abortController.signal,
       },
     );
+  });
+
+  it('uses a stable restaurant-scoped menu items query key and cached offline fallback', async () => {
+    const cachedMenuItems = [
+      {
+        id: 'menu-item-1',
+        name: 'Ramen',
+        restaurant: 'restaurant-1',
+        userEatenCount: 2,
+      },
+    ];
+    const queryClient = {
+      getQueryData: jest.fn(() => cachedMenuItems),
+    };
+
+    const options = buildRestaurantMenuItemsQueryOptions({
+      enabled: true,
+      isOnline: false,
+      queryClient: queryClient as never,
+      selectedRestaurantId: 'restaurant-1',
+    });
+
+    const result = await options.queryFn({
+      signal: new AbortController().signal,
+    } as never);
+
+    expect(options.queryKey).toEqual(['feature', 'menuItems', 'restaurant-1']);
+    expect(result).toBe(cachedMenuItems);
+    expect(queryClient.getQueryData).toHaveBeenCalledWith(['feature', 'menuItems', 'restaurant-1']);
+    expect(mockedListMenuItemsForRestaurant).not.toHaveBeenCalled();
   });
 });

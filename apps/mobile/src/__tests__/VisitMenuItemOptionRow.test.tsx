@@ -64,6 +64,54 @@ jest.mock('../components/shared/VisibilityBadge', () => ({
 }));
 
 describe('VisitMenuItemOptionRow', () => {
+  it('renders eaten count badges only when a menu item has history', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          userEatenCount={2}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'Ate 2 times' })).toBeDefined();
+
+    await act(async () => {
+      renderer.update(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          userEatenCount={1}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'Ate 1 time' })).toBeDefined();
+
+    await act(async () => {
+      renderer.update(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          userEatenCount={0}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { props: { children?: React.ReactNode } }) =>
+          node.props.children === 'Ate 1 time' || node.props.children === 'Ate 2 times',
+      ),
+    ).toHaveLength(0);
+  });
+
   it('expands and collapses long descriptions without triggering the row selection handler', async () => {
     const onPress = jest.fn();
     let renderer: any = null;

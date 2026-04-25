@@ -527,6 +527,7 @@ export function CreateVisitScreen({
     resolveDefaultVisitVisibility,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sourceListReturnListId, setSourceListReturnListId] = useState<string | null>(null);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
@@ -649,12 +650,14 @@ export function CreateVisitScreen({
     const preselectedRestaurantName = route.params?.preselectedRestaurantName;
     const preselectedMenuItemId = route.params?.preselectedMenuItemId;
     const preselectedMenuItemName = route.params?.preselectedMenuItemName;
+    const sourceListIdParam = route.params?.sourceListId;
     const sourceListItemIdParam = route.params?.sourceListItemId;
     const returnToStep = route.params?.returnToStep;
 
     if (
       !preselectedRestaurantId &&
       !preselectedMenuItemId &&
+      !sourceListIdParam &&
       !sourceListItemIdParam &&
       returnToStep === undefined
     ) {
@@ -691,12 +694,14 @@ export function CreateVisitScreen({
 
     if (sourceListItemIdParam) {
       setSourceListItemId(sourceListItemIdParam);
+      setSourceListReturnListId(sourceListIdParam ?? null);
     } else if (
       preselectedRestaurantId ||
       preselectedMenuItemId ||
       returnToStep !== undefined
     ) {
       setSourceListItemId(null);
+      setSourceListReturnListId(null);
     }
 
     setErrorMessage(null);
@@ -712,6 +717,7 @@ export function CreateVisitScreen({
       preselectedRestaurantName: undefined,
       preselectedMenuItemId: undefined,
       preselectedMenuItemName: undefined,
+      sourceListId: undefined,
       sourceListItemId: undefined,
       returnToStep: undefined,
     });
@@ -722,6 +728,7 @@ export function CreateVisitScreen({
     route.params?.preselectedRestaurantName,
     route.params?.preselectedMenuItemId,
     route.params?.preselectedMenuItemName,
+    route.params?.sourceListId,
     route.params?.sourceListItemId,
     route.params?.returnToStep,
     selectedRestaurantId,
@@ -783,6 +790,7 @@ export function CreateVisitScreen({
     setErrorMessage(null);
     clearSearchErrorMessage();
     setSourceListItemId(null);
+    setSourceListReturnListId(null);
     setHydratedEditVisitId(editVisitId);
   }, [
     clearSearchErrorMessage,
@@ -1011,6 +1019,7 @@ export function CreateVisitScreen({
         optionTestID={`create-visit-menu-item-option-${index}`}
         selectButtonTestID={`create-visit-menu-item-select-button-${index}`}
         selected={isSelected}
+        userEatenCount={menuItem.userEatenCount}
         visibility={menuItem.visibility}
       />
     );
@@ -1314,7 +1323,33 @@ export function CreateVisitScreen({
     writeFeature,
   });
 
+  const isSourceListFlow = sourceListItemId !== null || sourceListReturnListId !== null;
+  const returnToSourceList = (exitMethod: CreateVisitExitMethod) => {
+    exitMethodRef.current = exitMethod;
+    const returnListId = sourceListReturnListId;
+    setSourceListItemId(null);
+    setSourceListReturnListId(null);
+    setErrorMessage(null);
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    if (returnListId) {
+      navigation.navigate('ListDetail', { listId: returnListId });
+      return;
+    }
+
+    navigation.navigate('Lists');
+  };
+
   const handleBackPress = () => {
+    if (isSourceListFlow) {
+      returnToSourceList('header_back');
+      return;
+    }
+
     if (step > 0) {
       setStep((currentStep) => (currentStep - 1) as VisitWizardStep);
       setErrorMessage(null);
@@ -1364,6 +1399,11 @@ export function CreateVisitScreen({
       ? {
           label: "Cancel",
           onPress: () => {
+            if (isSourceListFlow) {
+              returnToSourceList('secondary_cancel');
+              return;
+            }
+
             exitMethodRef.current = 'secondary_cancel';
             setSourceListItemId(null);
             if (navigation.canGoBack()) {
@@ -1378,6 +1418,11 @@ export function CreateVisitScreen({
         ? {
             label: "Cancel",
             onPress: () => {
+              if (isSourceListFlow) {
+                returnToSourceList('secondary_cancel');
+                return;
+              }
+
               setSourceListItemId(null);
               setStep(0);
               setErrorMessage(null);
@@ -1386,6 +1431,11 @@ export function CreateVisitScreen({
         : {
             label: "Back",
             onPress: () => {
+              if (isSourceListFlow) {
+                returnToSourceList('secondary_cancel');
+                return;
+              }
+
               setStep((currentStep) => (currentStep - 1) as VisitWizardStep);
               setErrorMessage(null);
             },
@@ -1486,6 +1536,7 @@ export function CreateVisitScreen({
       Boolean(selectedRestaurantId) ||
       draftItems.length > 0 ||
       sourceListItemId !== null ||
+      sourceListReturnListId !== null ||
       visitVisibility !== resolveDefaultVisitVisibility() ||
       visitDate !== getTodayLocalDateString()
     );
@@ -1499,6 +1550,7 @@ export function CreateVisitScreen({
     restaurantName,
     selectedRestaurantId,
     sourceListItemId,
+    sourceListReturnListId,
     visitDate,
     visitVisibility,
   ]);

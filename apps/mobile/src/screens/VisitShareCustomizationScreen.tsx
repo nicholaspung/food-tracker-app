@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { buildPocketBaseFileUrl } from '../features';
-import { LoadingState, SectionHeader } from '../components/shared';
+import { CachedRemoteImage, LoadingState, SectionHeader } from '../components/shared';
 import { APP_NAME, BRAND_LOGO } from '../lib/branding';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -610,7 +610,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                   shareTheme === 'modern' ? { borderWidth: 1, borderRadius: 0 } : null,
                 ]}
               >
-                <Image
+                <CachedRemoteImage
                   onError={() => {
                     markPhotoReady(item.photoId);
                   }}
@@ -618,8 +618,8 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                     markPhotoReady(item.photoId);
                   }}
                   resizeMode="cover"
-                  source={{ uri: item.photoUrl }}
                   style={styles.shareImage}
+                  uri={item.photoUrl}
                 />
                 {hasVisibleItemOverlay ? (
                   <View

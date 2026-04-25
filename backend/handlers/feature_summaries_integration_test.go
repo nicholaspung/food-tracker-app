@@ -1692,6 +1692,145 @@ func TestRestaurantSearchEndpointReturnsInlineSelectionMetadata(t *testing.T) {
 	}
 }
 
+func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	otherOwner, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Noodle House",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Noodle House",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+
+	ramen := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Spicy Ramen",
+		"createdBy":  user.Id,
+		"visibility": "friends",
+	})
+	friendsItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Gyoza",
+		"createdBy":  friend.Id,
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Hidden Roll",
+		"createdBy":  otherOwner.Id,
+		"visibility": "private",
+	})
+
+	visitA := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	visitB := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-02 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	otherVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitA.Id,
+		"user":   user.Id,
+		"name":   "Spicy Ramen",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitB.Id,
+		"user":   user.Id,
+		"name":   " spicy ramen ",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  otherVisit.Id,
+		"user":   user.Id,
+		"name":   "Spicy Ramen",
+		"rating": 3,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Spicy Ramen",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitA.Id,
+		"user":   user.Id,
+		"name":   "Gyoza",
+		"rating": 4,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/menu-items", restaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID             string `json:"id"`
+		Name           string `json:"name"`
+		UserEatenCount int    `json:"userEatenCount"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse menu item response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	itemsByID := map[string]struct {
+		Name           string
+		UserEatenCount int
+	}{}
+	for _, item := range payload {
+		itemsByID[item.ID] = struct {
+			Name           string
+			UserEatenCount int
+		}{Name: item.Name, UserEatenCount: item.UserEatenCount}
+	}
+
+	if len(itemsByID) != 2 {
+		t.Fatalf("expected only accessible menu items, got %#v", payload)
+	}
+	if itemsByID[ramen.Id].UserEatenCount != 2 {
+		t.Fatalf("expected ramen to count user's matching restaurant items only, got %#v", itemsByID[ramen.Id])
+	}
+	if itemsByID[friendsItem.Id].UserEatenCount != 1 {
+		t.Fatalf("expected friend-created gyoza to remain visible with user count, got %#v", itemsByID[friendsItem.Id])
+	}
+}
+
 func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

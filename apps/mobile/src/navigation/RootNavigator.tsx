@@ -119,6 +119,7 @@ export type RootStackParamList = {
         preselectedRestaurantName?: string;
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
+        sourceListId?: string;
         sourceListItemId?: string;
         sourceNoteId?: string;
         editVisitId?: string;

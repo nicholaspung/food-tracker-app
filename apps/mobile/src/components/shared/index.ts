@@ -2,6 +2,7 @@ export * from './AuthBrandMark';
 export * from './AuthIntroCard';
 export * from './AuthTopBar';
 export * from './BackHeaderScreenScaffold';
+export * from './CachedRemoteImage';
 export * from './ConfirmDestructiveModal';
 export * from './CurrentLocationButton';
 export * from './EmptyState';

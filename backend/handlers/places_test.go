@@ -39,6 +39,7 @@ func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.
 	if err := app.Save(existing); err != nil {
 		t.Fatalf("failed to persist legacy owner-bound google place: %v", err)
 	}
+	createPlacesTestVisit(t, app, existing.Id, searcher.Id)
 
 	results, err := syncGooglePlaceRestaurants(app, searcher, []placeResult{
 		{
@@ -78,6 +79,9 @@ func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.
 	if results[0].IsGooglePlace != true {
 		t.Fatalf("expected existing record to remain a google place")
 	}
+	if results[0].UserVisitCount != 1 {
+		t.Fatalf("expected existing google place to include user visit stats, got %#v", results[0])
+	}
 
 	if results[1].Name != "New Place" {
 		t.Fatalf("expected second result to be the new place, got %q", results[1].Name)
@@ -103,6 +107,26 @@ func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.
 	if reloadedExisting.GetString("createdBy") != "" {
 		t.Fatalf("expected canonical google place to be unowned, got createdBy=%q", reloadedExisting.GetString("createdBy"))
 	}
+}
+
+func createPlacesTestVisit(t *testing.T, app core.App, restaurantID string, userID string) *core.Record {
+	t.Helper()
+
+	visitsCollection, err := app.FindCollectionByNameOrId("visits")
+	if err != nil {
+		t.Fatalf("failed to resolve visits collection: %v", err)
+	}
+
+	record := core.NewRecord(visitsCollection)
+	record.Set("restaurant", restaurantID)
+	record.Set("user", userID)
+	record.Set("visitDate", "2026-04-01 18:30:00.000Z")
+	record.Set("visibility", "friends")
+	if err := app.Save(record); err != nil {
+		t.Fatalf("failed to save test visit: %v", err)
+	}
+
+	return record
 }
 
 func createPlacesTestUser(t *testing.T, app core.App, email string) *core.Record {

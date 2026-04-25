@@ -204,7 +204,7 @@ export function buildRestaurantSearchQueryOptions({
   };
 }
 
-function buildRestaurantMenuItemsQueryOptions({
+export function buildRestaurantMenuItemsQueryOptions({
   enabled,
   isOnline,
   queryClient,

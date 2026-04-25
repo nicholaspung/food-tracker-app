@@ -73,6 +73,7 @@ const editableMenuItem = {
   id: 'menu-item-1',
   name: 'Editable Item',
   restaurant: 'restaurant-1',
+  userEatenCount: 3,
   visibility: 'friends',
 };
 
@@ -418,6 +419,7 @@ describe('CreateVisitScreen', () => {
 
     expect(editableRow.props.compactActions).toBe(true);
     expect(typeof editableRow.props.onEditPress).toBe('function');
+    expect(editableRow.props.userEatenCount).toBe(3);
     expect(nonEditableRow.props.compactActions).toBe(false);
     expect(nonEditableRow.props.onEditPress).toBeUndefined();
 
@@ -426,5 +428,140 @@ describe('CreateVisitScreen', () => {
     });
 
     expect(toggleMenuItemSelection).toHaveBeenCalledWith(editableMenuItem);
+  });
+
+  it('exits directly to the source list when the header back is pressed from an I went review flow', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              preselectedMenuItemId: 'bookmark-list-item-1',
+              preselectedMenuItemName: 'Noodles',
+              sourceListId: 'list-1',
+              sourceListItemId: 'list-item-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+
+    expect(scaffold.props.primaryAction.label).toBe('Save Visit');
+
+    await act(async () => {
+      scaffold.props.onBackPress();
+    });
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.label).toBe('Save Visit');
+  });
+
+  it('falls back to the source list detail when an I went flow cannot go back', async () => {
+    navigation.canGoBack.mockReturnValue(false);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              preselectedMenuItemId: 'bookmark-list-item-1',
+              preselectedMenuItemName: 'Noodles',
+              sourceListId: 'list-1',
+              sourceListItemId: 'list-item-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+
+    await act(async () => {
+      scaffold.props.onBackPress();
+    });
+
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('ListDetail', { listId: 'list-1' });
+  });
+
+  it('keeps normal add visit header back behavior as wizard step navigation', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              preselectedMenuItemId: 'menu-item-1',
+              preselectedMenuItemName: 'Noodles',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const findScaffold = () => renderer.root.findByType('FeatureFormScreenScaffold');
+
+    expect(findScaffold().props.primaryAction.label).toBe('Save Visit');
+
+    await act(async () => {
+      findScaffold().props.onBackPress();
+    });
+
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(findScaffold().props.primaryAction.label).toBe('Select Items');
+  });
+
+  it('exits directly to the source list when footer back is pressed from an I went review flow', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              preselectedMenuItemId: 'bookmark-list-item-1',
+              preselectedMenuItemName: 'Noodles',
+              sourceListId: 'list-1',
+              sourceListItemId: 'list-item-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+
+    expect(scaffold.props.secondaryAction.label).toBe('Back');
+
+    await act(async () => {
+      scaffold.props.secondaryAction.onPress();
+    });
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.label).toBe('Save Visit');
   });
 });

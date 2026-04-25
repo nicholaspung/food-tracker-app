@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   buildPocketBaseFileUrl,
@@ -8,6 +8,7 @@ import {
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { CachedRemoteImage } from './CachedRemoteImage';
 import { ExpandableText } from './ExpandableText';
 import { StatusPill } from './StatusPill';
 
@@ -347,7 +348,7 @@ export function HomeFeedVisitEntryCard({
                       }}
                       style={styles.photoWrap}
                     >
-                      <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
+                      <CachedRemoteImage uri={thumbnailUrl} style={styles.photoThumb} />
                       {itemPhotos.length > 1 ? (
                         <View style={styles.photoCountBadge}>
                           <Text style={styles.photoCountText}>+{itemPhotos.length - 1}</Text>
@@ -356,7 +357,7 @@ export function HomeFeedVisitEntryCard({
                     </Pressable>
                   ) : (
                     <View style={styles.photoWrap}>
-                      <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
+                      <CachedRemoteImage uri={thumbnailUrl} style={styles.photoThumb} />
                       {itemPhotos.length > 1 ? (
                         <View style={styles.photoCountBadge}>
                           <Text style={styles.photoCountText}>+{itemPhotos.length - 1}</Text>

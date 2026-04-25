@@ -1,4 +1,5 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -31,6 +32,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function LoadingOverlay({ visible, label }: LoadingOverlayProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useStyles();
 
   if (!visible) {
@@ -38,7 +40,18 @@ export function LoadingOverlay({ visible, label }: LoadingOverlayProps) {
   }
 
   return (
-    <View pointerEvents="auto" style={styles.overlay}>
+    <View
+      pointerEvents="auto"
+      style={[
+        styles.overlay,
+        {
+          top: -insets.top,
+          bottom: -insets.bottom,
+          left: -insets.left,
+          right: -insets.right,
+        },
+      ]}
+    >
       <View style={styles.card}>
         <ActivityIndicator color={theme.colors.button.primaryBg} />
         {label ? <Text>{label}</Text> : null}

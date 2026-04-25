@@ -29,13 +29,17 @@ const theme = {
       success: 'success-fill',
     },
     status: {
+      infoBg: 'info-background',
+      infoBorder: 'info-border',
       successBg: 'success-background',
       successBorder: 'success-border',
     },
     text: {
+      info: 'info-text',
       inverse: 'inverse-text',
       muted: 'muted-text',
       secondary: 'secondary-text',
+      success: 'success-text',
     },
   },
   radii: {
@@ -226,10 +230,18 @@ jest.mock('../screens/photoProcessing/shared', () => ({
   buildDefaultRestaurantForm: jest.fn(() => ({
     date: '2026-04-18',
   })),
-  collapseRestaurantOptionsToSelection: jest.fn(() => ({
-    savedRestaurants: [],
-    searchRestaurants: [],
-  })),
+  collapseRestaurantOptionsToSelection: jest.fn(
+    ({
+      savedRestaurants,
+      searchRestaurants,
+    }: {
+      savedRestaurants: unknown[];
+      searchRestaurants: unknown[];
+    }) => ({
+      savedRestaurants,
+      searchRestaurants,
+    }),
+  ),
   formatCoordinatesForDisplay: jest.fn(() => '37.7749, -122.4194'),
   formatDraftPhotoMetadataLabel: jest.fn((photo: { name: string }) => photo.name),
   FREE_MONTHLY_PHOTO_LIMIT: 100,
@@ -262,14 +274,19 @@ const mockedUsePhotoProcessingSubmission = usePhotoProcessingSubmission as jest.
   typeof usePhotoProcessingSubmission
 >;
 
-function collectText(node: { children?: unknown[] } | string): string {
+function collectText(node: { children?: unknown[]; props?: { children?: unknown } } | string): string {
   if (typeof node === 'string') {
     return node;
   }
 
-  return (node.children ?? [])
+  const children = node.children ?? node.props?.children;
+  const normalizedChildren = Array.isArray(children) ? children : children ? [children] : [];
+
+  return normalizedChildren
     .map((child) =>
-      typeof child === 'string' ? child : collectText(child as { children?: unknown[] }),
+      typeof child === 'string'
+        ? child
+        : collectText(child as { children?: unknown[]; props?: { children?: unknown } }),
     )
     .join('')
     .replace(/\s+/g, ' ')
@@ -531,5 +548,129 @@ describe('PhotoProcessingScreen', () => {
 
     photoViewerModal = renderer.root.findByType('PhotoViewerModal');
     expect(photoViewerModal.props.visible).toBe(false);
+  });
+
+  it('passes history counts into restaurant and menu item selection rows', async () => {
+    mockedUseRestaurantSelectionFlow.mockReturnValue({
+      clearPlacesSearchState: jest.fn(),
+      clearSearchErrorMessage: jest.fn(),
+      compactSearchLabel: 'Search',
+      displayedNearbyRestaurants: [],
+      displayedSavedRestaurants: [
+        {
+          distance: null,
+          restaurant: {
+            friendCount: 2,
+            id: 'restaurant-1',
+            name: 'Noodle House',
+            userVisitCount: 4,
+          },
+        },
+      ],
+      expandedSearchLabel: 'Search nearby',
+      isGettingLocation: false,
+      isPlacesQuotaReached: false,
+      isSearchExpanded: false,
+      isSearchingNearbyRestaurants: false,
+      isSearchingRestaurants: false,
+      loadedRestaurantRecords: [
+        {
+          friendCount: 2,
+          id: 'restaurant-1',
+          name: 'Noodle House',
+          userVisitCount: 4,
+        },
+      ],
+      locationPermissionNeedsSettings: false,
+      manualLocation: '',
+      menuItemsQuery: {
+        data: [
+          {
+            createdBy: 'user-1',
+            id: 'menu-item-1',
+            name: 'Spicy Ramen',
+            restaurant: 'restaurant-1',
+            userEatenCount: 5,
+            visibility: 'friends',
+          },
+        ],
+        isError: false,
+        isLoading: false,
+      },
+      resetRestaurantSelectionFlow: jest.fn(),
+      savedEmptyDescription: 'No saved restaurants',
+      savedEmptyTitle: 'No saved restaurants',
+      savedRestaurantsErrorMessage: null,
+      savedRestaurantsLoading: false,
+      savedRestaurantsTitle: 'Saved restaurants',
+      searchButtonDisabled: false,
+      searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+      searchErrorMessage: null,
+      searchNearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+      searchQuery: '',
+      setIsSearchExpanded: jest.fn(),
+      setManualLocation: jest.fn(),
+      setSearchQuery: jest.fn(),
+      shouldShowPlacesUpgradePrompt: false,
+      showNearbyPlaces: false,
+      triggerSavedRestaurantsRefetch: jest.fn(),
+    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+    mockedUsePhotoProcessingDraftState.mockReturnValue({
+      appendAssets: jest.fn(),
+      currentPhoto: {
+        id: 'photo-1',
+        name: 'first.jpg',
+        uri: 'file:///first.jpg',
+      },
+      currentPhotoIndex: 0,
+      currentFoodProductForm: null,
+      currentRestaurantForm: {
+        date: '2026-04-18',
+        description: '',
+        menuItemId: '',
+        menuItemName: '',
+        notes: '',
+        rating: 3,
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Noodle House',
+      },
+      dismissCurrentPhotoLocationHint: jest.fn(),
+      locationMetadataHintDismissedByPhotoId: {},
+      photos: [
+        {
+          id: 'photo-1',
+          name: 'first.jpg',
+          uri: 'file:///first.jpg',
+        },
+      ],
+      foodProductForms: {},
+      removePhoto: jest.fn(),
+      replacePhotos: jest.fn(),
+      resetDraftState: jest.fn(),
+      resetProcessingForms: jest.fn(),
+      restaurantForms: {},
+      setCurrentPhotoIndex: jest.fn(),
+      setFoodProductForms: jest.fn(),
+      setRestaurantForms: jest.fn(),
+      updateCurrentFoodProductForm: jest.fn(),
+      updateCurrentRestaurantForm: jest.fn(),
+    } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
+
+    const renderer = await renderPhotoProcessingScreen();
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[0].props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    const restaurantSection = renderer.root.findByType('VisitRestaurantSearchSection');
+    const menuItemRow = renderer.root.findByType('VisitMenuItemOptionRow');
+
+    expect(menuItemRow.props.userEatenCount).toBe(5);
+    expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('You: 4 visits');
+    expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('Friends: 2 friends');
   });
 });

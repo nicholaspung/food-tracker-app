@@ -84,6 +84,10 @@ export function formatFriendCount(count: number): string {
   return `${count} ${count === 1 ? 'friend' : 'friends'}`;
 }
 
+export function formatEatenCount(count: number): string {
+  return `Ate ${count} ${count === 1 ? 'time' : 'times'}`;
+}
+
 export function buildDraftVisitItem(
   menuItem: Pick<MenuItemRecord, 'id' | 'name'>,
 ): DraftVisitItem {

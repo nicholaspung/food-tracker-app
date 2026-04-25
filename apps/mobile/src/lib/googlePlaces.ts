@@ -45,6 +45,13 @@ function normalizeRestaurantRecord(record: RestaurantRecord): RestaurantRecord {
     longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
     placeId: record.placeId?.trim() || undefined,
     isGooglePlace: record.isGooglePlace === true,
+    userVisitCount:
+      typeof record.userVisitCount === 'number' ? record.userVisitCount : undefined,
+    friendCount: typeof record.friendCount === 'number' ? record.friendCount : undefined,
+    hasPendingMenuReview:
+      typeof record.hasPendingMenuReview === 'boolean'
+        ? record.hasPendingMenuReview
+        : undefined,
   };
 }
 

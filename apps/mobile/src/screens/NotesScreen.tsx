@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
+  CachedRemoteImage,
   EmptyState,
   ErrorState,
   ExpandableText,
@@ -763,7 +764,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                   loadingPhotoNoteId === note.id ? styles.photoWrapLoading : null,
                 ]}
               >
-                <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
+                <CachedRemoteImage uri={thumbnailUrl} style={styles.photoThumb} />
                 {extraPhotoCount > 0 ? (
                   <View style={styles.photoCountBadge}>
                     <Text style={styles.photoCountText} variant="captionStrong">

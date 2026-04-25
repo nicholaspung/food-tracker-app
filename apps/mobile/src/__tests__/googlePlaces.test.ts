@@ -38,12 +38,15 @@ describe('googlePlaces', () => {
           city: 'San Francisco, CA',
           cuisineType: 'Pizza',
           id: 'rest_1',
+          friendCount: 2,
+          hasPendingMenuReview: true,
           isGooglePlace: true,
           latitude: 37.78,
           location: 'San Francisco, CA',
           longitude: -122.42,
           name: 'Tony Pizza',
           placeId: 'google-place-1',
+          userVisitCount: 3,
           visibility: 'public',
         },
       ],
@@ -100,7 +103,10 @@ describe('googlePlaces', () => {
       expect.objectContaining({
         city: 'San Francisco, CA',
         id: 'rest_1',
+        friendCount: 2,
+        hasPendingMenuReview: true,
         name: 'Tony Pizza',
+        userVisitCount: 3,
       }),
     ]);
   });

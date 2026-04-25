@@ -144,6 +144,19 @@ type restaurantSearchPageResponse struct {
 	HasNextPage bool                     `json:"hasNextPage"`
 }
 
+type menuItemSelectionSummary struct {
+	ID             string `db:"id" json:"id"`
+	RestaurantID   string `db:"restaurant" json:"restaurant"`
+	Name           string `db:"name" json:"name"`
+	Description    string `db:"description" json:"description,omitempty"`
+	CreatedBy      string `db:"createdBy" json:"createdBy,omitempty"`
+	Visibility     string `db:"visibility" json:"visibility,omitempty"`
+	IsFromOCR      bool   `db:"isFromOCR" json:"isFromOCR,omitempty"`
+	Created        string `db:"created" json:"created,omitempty"`
+	Updated        string `db:"updated" json:"updated,omitempty"`
+	UserEatenCount int    `db:"userEatenCount" json:"userEatenCount,omitempty"`
+}
+
 type recentRestaurantIDRow struct {
 	RestaurantID string `db:"restaurantId"`
 }
@@ -520,6 +533,25 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/restaurants/{restaurantId}/menu-items", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if restaurantID == "" {
+			return apis.NewBadRequestError("restaurantId is required", nil)
+		}
+
+		items, err := listRestaurantMenuItemSummaries(app, e.Auth, restaurantID)
+		if err != nil {
+			log.Printf("Failed to load menu items for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
+			return err
+		}
+
+		return e.JSON(200, items)
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/restaurants/visit-stats", func(e *core.RequestEvent) error {
@@ -2350,6 +2382,95 @@ func buildRestaurantSelectionSummaries(
 		}
 
 		result = append(result, entry)
+	}
+
+	return result, nil
+}
+
+func listRestaurantMenuItemSummaries(
+	app core.App,
+	authRecord *core.Record,
+	restaurantID string,
+) ([]menuItemSelectionSummary, error) {
+	if authRecord == nil {
+		return []menuItemSelectionSummary{}, apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return nil, apis.NewApiError(500, "failed to resolve menu item visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("restaurant not found", nil)
+		}
+		return nil, apis.NewApiError(500, "failed to resolve restaurant", err)
+	}
+
+	rows := []menuItemSelectionSummary{}
+	query := `
+		SELECT
+			menu_items.id AS [[id]],
+			menu_items.restaurant AS [[restaurant]],
+			COALESCE(menu_items.name, '') AS [[name]],
+			'' AS [[description]],
+			COALESCE(menu_items.createdBy, '') AS [[createdBy]],
+			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.isFromOCR, 0) AS [[isFromOCR]],
+			COALESCE(menu_items.created, '') AS [[created]],
+			COALESCE(menu_items.updated, '') AS [[updated]],
+			COALESCE(history.userEatenCount, 0) AS [[userEatenCount]]
+		FROM menu_items
+		LEFT JOIN (
+			SELECT
+				LOWER(TRIM(COALESCE(food_items.name, ''))) AS normalizedName,
+				COUNT(food_items.id) AS userEatenCount
+			FROM food_items
+			INNER JOIN visits ON visits.id = food_items.visit
+			WHERE food_items.user = {:userId}
+				AND COALESCE(food_items.itemType, '') = {:visitItemType}
+				AND visits.restaurant = {:restaurantId}
+			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
+		) history ON history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
+		WHERE menu_items.restaurant = {:restaurantId}
+		ORDER BY menu_items.created DESC, menu_items.id DESC
+	`
+	if err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"restaurantId":  restaurantRecord.Id,
+			"userId":        viewerUserID,
+			"visitItemType": foodItemTypeVisitItem,
+		}).
+		All(&rows); err != nil {
+		return nil, apis.NewApiError(500, "failed to load menu items", err)
+	}
+
+	result := make([]menuItemSelectionSummary, 0, len(rows))
+	for _, row := range rows {
+		record, err := app.FindRecordById("menu_items", row.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, apis.NewApiError(500, "failed to resolve menu item", err)
+		}
+		if !canAccessMenuItemRecord(record, viewerUserID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
+
+		row.Name = strings.TrimSpace(row.Name)
+		row.Description = strings.TrimSpace(row.Description)
+		row.CreatedBy = strings.TrimSpace(row.CreatedBy)
+		row.Visibility = strings.TrimSpace(row.Visibility)
+		result = append(result, row)
 	}
 
 	return result, nil

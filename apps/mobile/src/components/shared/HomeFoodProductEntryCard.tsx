@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { buildPocketBaseFileUrl, type FoodProductRecord } from '../../features';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { CachedRemoteImage } from './CachedRemoteImage';
 import { ExpandableText } from './ExpandableText';
 import type { HomeFeedPhotoRecord } from './HomeFeedVisitEntryCard';
 import { StatusPill } from './StatusPill';
@@ -325,7 +326,7 @@ export function HomeFoodProductEntryCard({
             }}
             style={styles.photoWrap}
           >
-            <Image source={{ uri: photoThumb }} style={styles.photoThumb} />
+            <CachedRemoteImage uri={photoThumb} style={styles.photoThumb} />
             {photos.length > 1 ? (
               <View style={styles.photoCountBadge}>
                 <Text style={styles.photoCountText}>+{photos.length - 1}</Text>

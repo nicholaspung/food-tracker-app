@@ -8,16 +8,12 @@ import type {
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
-  escapeFilterValue,
   getAuthenticatedUserId,
   nowIso,
   resolvePaginationInput,
 } from './featureStoreShared';
 import type { RestaurantCollectionRecord } from './pocketbaseRecordTypes';
-import {
-  listCollectionRecords,
-  sendApiRequest,
-} from './pocketbaseGateway';
+import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
   ListRecentRestaurantsInput,
@@ -230,9 +226,11 @@ export async function listMenuItemsForRestaurant(
     return [];
   }
 
-  return listCollectionRecords<MenuItemRecord>('menu_items', {
-    filter: `restaurant = "${escapeFilterValue(trimmedRestaurantId)}"`,
-    signal: options?.signal,
-    sort: '-created',
-  });
+  return sendApiRequest<MenuItemRecord[]>(
+    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
 }
