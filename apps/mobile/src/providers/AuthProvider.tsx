@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ClientResponseError, type RecordModel } from 'pocketbase';
+import { ClientResponseError } from 'pocketbase';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { env } from '../config/env';
@@ -48,14 +48,6 @@ type RolePreviewSettingKey = keyof RolePreviewSettings;
 
 export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
 const AUTH_VERIFICATION_STATUS_REFRESH_INTERVAL_MS = 15_000;
-
-export interface AuthBootstrapResult {
-  authRecord: RecordModel;
-  authToken: string;
-  user: AuthUser;
-}
-
-export type AuthBootstrap = () => AuthBootstrapResult | null;
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -121,7 +113,7 @@ function resolveAuthenticationState(nextUser: AuthUser | null): {
   verificationStatus: EmailVerificationStatus;
   verificationGraceEndsAt: string | null;
 } {
-  if (!nextUser || (!env.isScreenshotReviewMode && !pb.authStore.isValid)) {
+  if (!nextUser || !pb.authStore.isValid) {
     return {
       actualUser: null,
       status: 'unauthenticated',
@@ -161,10 +153,9 @@ function resolveAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'f
 
 interface AuthProviderProps {
   children: React.ReactNode;
-  screenshotReviewBootstrap?: AuthBootstrap;
 }
 
-export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProviderProps) {
+export function AuthProvider({ children }: AuthProviderProps) {
   const queryClient = useQueryClient();
   const { discardQueuedMutations } = useSync();
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
@@ -249,7 +240,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   );
 
   const refreshAuthSession = useCallback(async () => {
-    if (!pb.authStore.token || (!env.isScreenshotReviewMode && !pb.authStore.isValid)) {
+    if (!pb.authStore.token || !pb.authStore.isValid) {
       syncAuthSnapshot();
       throw new Error('No active session available for auth refresh.');
     }
@@ -285,33 +276,6 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       });
 
       try {
-        if (env.isScreenshotReviewMode) {
-          const screenshotReviewAuth = screenshotReviewBootstrap?.();
-
-          if (!screenshotReviewAuth) {
-            logger.warn('[AuthProvider] Screenshot review mode is only available in development bundles.');
-          } else {
-            pb.authStore.save(
-              screenshotReviewAuth.authToken,
-              screenshotReviewAuth.authRecord,
-            );
-
-            if (isMounted) {
-              syncAuthSnapshot();
-              setAuthError(null);
-            }
-
-            trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
-              durationMs: Date.now() - restoreStartedAt,
-              hadPersistedToken,
-              hasValidSession: true,
-              refreshFailed: false,
-              source: 'AuthProvider',
-            });
-            return;
-          }
-        }
-
         await authStore.waitUntilReady();
         hadRestoredSession = Boolean(pb.authStore.token);
         const loadedRolePreviewSettings = await loadRolePreviewSettings();
@@ -386,7 +350,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       isMounted = false;
       unsubscribe();
     };
-  }, [resetAuthenticatedLocalState, screenshotReviewBootstrap, syncAuthSnapshot]);
+  }, [resetAuthenticatedLocalState, syncAuthSnapshot]);
 
   useLayoutEffect(() => {
     if (status === 'bootstrapping') {

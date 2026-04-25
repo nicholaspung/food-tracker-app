@@ -9,12 +9,6 @@ import { SignUpScreen } from '../screens/SignUpScreen';
 
 const mockReact = React;
 
-jest.mock('../config/env', () => ({
-  env: {
-    isScreenshotReviewMode: false,
-  },
-}));
-
 jest.mock('../features', () => ({
   createCollectionRecord: jest.fn(),
   sendApiRequest: jest.fn(),
@@ -96,6 +90,32 @@ describe('SignUpScreen', () => {
     mockedSendApiRequest.mockResolvedValue({});
     mockedCreateCollectionRecord.mockResolvedValue({ id: 'user_1' } as never);
     mockedSavePendingFriendSuggestion.mockResolvedValue();
+  });
+
+  it('renders signup credential fields with generated-password autofill support', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    const emailInput = renderer.root.findByProps({ testID: 'signup-email-input' });
+
+    expect(emailInput.props.autoComplete).toBe('username');
+    expect(emailInput.props.textContentType).toBe('username');
+
+    for (const testID of ['signup-password-input', 'signup-confirm-password-input']) {
+      const input = renderer.root.findByProps({ testID });
+
+      expect(input.props.secureTextEntry).toBe(true);
+      expect(input.props.autoComplete).toBe('new-password');
+      expect(input.props.importantForAutofill).not.toBe('no');
+      expect(input.props.textContentType).toBe('newPassword');
+      expect(input.props.passwordRules).toBe('minlength: 8;');
+    }
   });
 
   it('auto signs in immediately after successful signup', async () => {

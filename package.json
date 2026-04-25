@@ -36,8 +36,6 @@
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
     "mobile:doctor": "cd apps/mobile && npx expo-doctor --verbose",
     "mobile:unused-exports": "node scripts/check-mobile-unused-exports.mjs",
-    "mobile:screenshots": "bash scripts/mobile-screenshot-suite.sh",
-    "mobile:screenshots:review": "node scripts/mobile-screenshot-review-server.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
     "mobile:test": "pnpm --filter @food-tracker/mobile test",
     "mobile:verify-native-entrypoint": "node scripts/verify-mobile-native-entrypoint.mjs",

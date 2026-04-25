@@ -11,14 +11,6 @@ interface MobileEnvironmentDefaults {
   posthogHost: string;
 }
 
-interface ScreenshotReviewModeOptions {
-  isDevBuild?: boolean;
-}
-
-interface ScreenshotReviewBuildGuardOptions {
-  enforce?: boolean;
-}
-
 interface MobileBackendConfiguration {
   apiBaseUrl: string;
   environment: AppEnvironment;
@@ -154,13 +146,18 @@ export function assertSafeMobileBackendConfiguration(
 }
 
 export function shouldEnforceReleaseBuildBackendGuard(source?: EnvSource): boolean {
-  if (!shouldEnforceScreenshotReviewBuildGuard(source)) {
-    return false;
-  }
+  const nodeEnv = readOptionalEnvValue(source?.NODE_ENV)?.toLowerCase();
+  const isReleaseBuildContext =
+    readBooleanEnvValue(source?.CI) ||
+    readBooleanEnvValue(source?.EAS_BUILD) ||
+    Boolean(readOptionalEnvValue(source?.EAS_BUILD_PROFILE)) ||
+    readBooleanEnvValue(source?.EXPO_EXPORT) ||
+    nodeEnv === 'production';
 
   return (
-    Boolean(readOptionalEnvValue(source?.EAS_BUILD_PROFILE)) ||
-    resolveConfiguredAppEnvironment(source) !== 'local'
+    isReleaseBuildContext &&
+    (Boolean(readOptionalEnvValue(source?.EAS_BUILD_PROFILE)) ||
+      resolveConfiguredAppEnvironment(source) !== 'local')
   );
 }
 
@@ -184,52 +181,4 @@ export function assertSafeMobileReleaseBuildBackendConfiguration(
   }
 
   assertSafeMobileBackendConfiguration(backendConfiguration);
-}
-
-function isScreenshotReviewModeRequested(source?: EnvSource): boolean {
-  return readBooleanEnvValue(source?.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE);
-}
-
-export function resolveScreenshotReviewMode(
-  source?: EnvSource,
-  options?: ScreenshotReviewModeOptions,
-): boolean {
-  const isDevBuild =
-    options?.isDevBuild ?? (typeof __DEV__ !== 'undefined' ? __DEV__ : false);
-
-  return isScreenshotReviewModeRequested(source) && isDevBuild;
-}
-
-export function shouldEnforceScreenshotReviewBuildGuard(source?: EnvSource): boolean {
-  const nodeEnv = readOptionalEnvValue(source?.NODE_ENV)?.toLowerCase();
-
-  return (
-    readBooleanEnvValue(source?.CI) ||
-    readBooleanEnvValue(source?.EAS_BUILD) ||
-    Boolean(readOptionalEnvValue(source?.EAS_BUILD_PROFILE)) ||
-    readBooleanEnvValue(source?.EXPO_EXPORT) ||
-    nodeEnv === 'production'
-  );
-}
-
-export function assertSafeScreenshotReviewBuild(
-  source?: EnvSource,
-  options?: ScreenshotReviewBuildGuardOptions,
-): void {
-  const shouldEnforce =
-    options?.enforce ?? shouldEnforceScreenshotReviewBuildGuard(source);
-
-  if (!shouldEnforce || !isScreenshotReviewModeRequested(source)) {
-    return;
-  }
-
-  const environment = resolveConfiguredAppEnvironment(source);
-  if (environment === 'local') {
-    return;
-  }
-
-  throw new Error(
-    `EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE must stay disabled for ${environment} builds. ` +
-      'Use screenshot review mode only from development bundles.',
-  );
 }

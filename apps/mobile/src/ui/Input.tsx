@@ -3,7 +3,6 @@ import { useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 
-import { env } from '../config/env';
 import { createThemedStyles, useTheme } from '../theme';
 import { Text } from './Text';
 
@@ -85,9 +84,8 @@ export function Input({
   const inputRef = useRef<TextInput>(null);
   const [isFocused, setIsFocused] = useState(false);
   const isMultiline = props.multiline === true;
-  const isScreenshotReviewMode = env.isScreenshotReviewMode;
   const isNumericInput = INLINE_DISMISS_KEYBOARD_TYPES.has(props.keyboardType ?? 'default');
-  const shouldDisableAutofill = isScreenshotReviewMode || isNumericInput;
+  const shouldDisableAutofill = isNumericInput;
   const resolvedAutoComplete = props.autoComplete ?? (shouldDisableAutofill ? 'off' : undefined);
   const resolvedImportantForAutofill = props.importantForAutofill ?? (shouldDisableAutofill ? 'no' : undefined);
   const resolvedTextContentType =

@@ -2,10 +2,7 @@ import { loadMobileEnv, resolveAppEnvironment } from '../config/env';
 import {
   assertSafeMobileBackendConfiguration,
   assertSafeMobileReleaseBuildBackendConfiguration,
-  assertSafeScreenshotReviewBuild,
-  resolveScreenshotReviewMode,
   shouldEnforceReleaseBuildBackendGuard,
-  shouldEnforceScreenshotReviewBuildGuard,
 } from '../config/envUtils';
 
 describe('loadMobileEnv', () => {
@@ -16,7 +13,6 @@ describe('loadMobileEnv', () => {
     expect(env.adminUrl).toBe('http://localhost:5173');
     expect(env.apiBaseUrl).toBe('http://127.0.0.1:8090');
     expect(env.appWebUrl).toBe('http://localhost:8081');
-    expect(env.isScreenshotReviewMode).toBe(false);
     expect(env.marketingUrl).toBe('http://localhost:4173');
     expect(env.pocketbaseUrl).toBe('http://127.0.0.1:8090');
     expect(env.posthogHost).toBe('http://127.0.0.1:8090/api/analytics');
@@ -33,17 +29,13 @@ describe('loadMobileEnv', () => {
         EXPO_PUBLIC_POCKETBASE_URL: 'https://beta.app.yummyrecs.com',
         EXPO_PUBLIC_POSTHOG_API_KEY: 'test_key',
         EXPO_PUBLIC_POSTHOG_HOST: 'https://analytics.yummyrecs.com',
-        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
       },
-      undefined,
-      { isDevBuild: true },
     );
 
     expect(env.environment).toBe('beta');
     expect(env.adminUrl).toBe('https://admin.yummyrecs.com');
     expect(env.apiBaseUrl).toBe('https://beta.app.yummyrecs.com');
     expect(env.appWebUrl).toBe('https://app.yummyrecs.com');
-    expect(env.isScreenshotReviewMode).toBe(true);
     expect(env.marketingUrl).toBe('https://yummyrecs.com');
     expect(env.pocketbaseUrl).toBe('https://beta.app.yummyrecs.com');
     expect(env.posthogApiKey).toBe('test_key');
@@ -74,19 +66,6 @@ describe('loadMobileEnv', () => {
     );
   });
 
-  it('disables screenshot review mode outside development bundles', () => {
-    const env = loadMobileEnv(
-      {
-        EXPO_PUBLIC_APP_ENV: 'beta',
-        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
-      },
-      undefined,
-      { isDevBuild: false },
-    );
-
-    expect(env.isScreenshotReviewMode).toBe(false);
-  });
-
   it('uses beta defaults when the app environment is beta', () => {
     const env = loadMobileEnv({ EXPO_PUBLIC_APP_ENV: 'beta' });
 
@@ -110,56 +89,16 @@ describe('resolveAppEnvironment', () => {
   });
 });
 
-describe('resolveScreenshotReviewMode', () => {
-  it('only enables screenshot review mode in development bundles', () => {
-    expect(
-      resolveScreenshotReviewMode(
-        { EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true' },
-        { isDevBuild: true },
-      ),
-    ).toBe(true);
-
-    expect(
-      resolveScreenshotReviewMode(
-        { EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true' },
-        { isDevBuild: false },
-      ),
-    ).toBe(false);
-  });
-});
-
-describe('assertSafeScreenshotReviewBuild', () => {
-  it('rejects screenshot review mode for beta CI builds', () => {
-    expect(() =>
-      assertSafeScreenshotReviewBuild({
-        CI: 'true',
-        EXPO_PUBLIC_APP_ENV: 'beta',
-        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
-      }),
-    ).toThrow(
-      'EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE must stay disabled for beta builds. Use screenshot review mode only from development bundles.',
-    );
-  });
-
-  it('allows screenshot review mode for local development starts', () => {
-    expect(() =>
-      assertSafeScreenshotReviewBuild({
-        EXPO_PUBLIC_APP_ENV: 'beta',
-        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
-        NODE_ENV: 'development',
-      }),
-    ).not.toThrow();
-  });
-
+describe('release build backend guard', () => {
   it('detects release-oriented build contexts', () => {
     expect(
-      shouldEnforceScreenshotReviewBuildGuard({
+      shouldEnforceReleaseBuildBackendGuard({
         EAS_BUILD_PROFILE: 'preview',
       }),
     ).toBe(true);
 
     expect(
-      shouldEnforceScreenshotReviewBuildGuard({
+      shouldEnforceReleaseBuildBackendGuard({
         NODE_ENV: 'development',
       }),
     ).toBe(false);
@@ -202,7 +141,7 @@ describe('assertSafeMobileReleaseBuildBackendConfiguration', () => {
     );
   });
 
-  it('detects release-oriented backend build contexts', () => {
+  it('does not enforce production NODE_ENV alone when app environment resolves to local', () => {
     expect(
       shouldEnforceReleaseBuildBackendGuard({
         EAS_BUILD_PROFILE: 'production',

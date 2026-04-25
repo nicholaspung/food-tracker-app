@@ -83,23 +83,27 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
         <Card style={styles.formCard}>
           <Input
             autoCapitalize="none"
+            autoComplete="username"
             autoCorrect={false}
             keyboardType="email-address"
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
             testID="login-email-input"
+            textContentType="username"
             value={email}
           />
 
           <Input
             autoCapitalize="none"
+            autoComplete="current-password"
             autoCorrect={false}
             label="Password"
             onChangeText={setPassword}
             placeholder="Password"
             secureTextEntry
             testID="login-password-input"
+            textContentType="password"
             value={password}
           />
 

@@ -20,12 +20,6 @@ function escapeForRegExp(value) {
 
 const reactPackageDir = resolvePackageDir('react');
 const reactNativePackageDir = resolvePackageDir('react-native');
-const appEntryPath = path.resolve(__dirname, 'App.tsx');
-const screenshotReviewBootstrapModule = './src/dev/screenshotReviewAuthBootstrap';
-const screenshotReviewBootstrapStubPath = path.resolve(
-  __dirname,
-  'src/dev/screenshotReviewAuthBootstrap.stub.ts',
-);
 const duplicateReactDirs = [path.join(mobileNodeModules, 'react'), path.join(workspaceNodeModules, 'react')].filter(
   (dir, index, dirs) => dir !== reactPackageDir && dirs.indexOf(dir) === index,
 );
@@ -53,48 +47,5 @@ config.resolver.blockList = [
 if (!config.resolver.assetExt.includes('wasm')) {
   config.resolver.assetExt.push('wasm');
 }
-
-function readOptionalEnvValue(value) {
-  const trimmedValue = value?.trim();
-  return trimmedValue ? trimmedValue : undefined;
-}
-
-function readBooleanEnvValue(value) {
-  const normalizedValue = value?.trim().toLowerCase();
-  return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes';
-}
-
-function shouldExcludeDevOnlyModules(env) {
-  const nodeEnv = readOptionalEnvValue(env.NODE_ENV)?.toLowerCase();
-
-  return (
-    readBooleanEnvValue(env.CI) ||
-    readBooleanEnvValue(env.EAS_BUILD) ||
-    Boolean(readOptionalEnvValue(env.EAS_BUILD_PROFILE)) ||
-    readBooleanEnvValue(env.EXPO_EXPORT) ||
-    nodeEnv === 'production'
-  );
-}
-
-const defaultResolveRequest = config.resolver.resolveRequest;
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (
-    shouldExcludeDevOnlyModules(process.env) &&
-    moduleName === screenshotReviewBootstrapModule &&
-    context.originModulePath === appEntryPath
-  ) {
-    // Keep screenshot-review auth data out of release bundles by resolving to a stub at build time.
-    return {
-      filePath: screenshotReviewBootstrapStubPath,
-      type: 'sourceFile',
-    };
-  }
-
-  if (defaultResolveRequest) {
-    return defaultResolveRequest(context, moduleName, platform);
-  }
-
-  return context.resolveRequest(context, moduleName, platform);
-};
 
 module.exports = config;

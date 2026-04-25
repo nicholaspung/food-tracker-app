@@ -31,7 +31,6 @@ const mockAuthStoreState = {
 jest.mock('../config/env', () => ({
   env: {
     environment: 'local',
-    isScreenshotReviewMode: false,
   },
 }));
 

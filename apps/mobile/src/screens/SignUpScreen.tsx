@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
-import { env } from '../config/env';
 import { createCollectionRecord, sendApiRequest } from '../features';
 import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
@@ -38,7 +37,6 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
-  const isScreenshotReviewMode = env.isScreenshotReviewMode;
   const { signInWithPassword } = useAuth();
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
@@ -227,12 +225,14 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           />
           <Input
             autoCapitalize="none"
+            autoComplete="username"
             autoCorrect={false}
             keyboardType="email-address"
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
             testID="signup-email-input"
+            textContentType="username"
             value={email}
           />
           <Input
@@ -246,26 +246,28 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           />
           <Input
             autoCapitalize="none"
-            autoComplete={isScreenshotReviewMode ? 'off' : 'new-password'}
+            autoComplete="new-password"
             autoCorrect={false}
             label="Password"
             onChangeText={setPassword}
+            passwordRules="minlength: 8;"
             placeholder="Create password"
-            secureTextEntry={!isScreenshotReviewMode}
+            secureTextEntry
             testID="signup-password-input"
-            textContentType={isScreenshotReviewMode ? 'none' : 'newPassword'}
+            textContentType="newPassword"
             value={password}
           />
           <Input
             autoCapitalize="none"
-            autoComplete={isScreenshotReviewMode ? 'off' : 'new-password'}
+            autoComplete="new-password"
             autoCorrect={false}
             label="Confirm Password"
             onChangeText={setPasswordConfirm}
+            passwordRules="minlength: 8;"
             placeholder="Repeat password"
-            secureTextEntry={!isScreenshotReviewMode}
+            secureTextEntry
             testID="signup-confirm-password-input"
-            textContentType={isScreenshotReviewMode ? 'none' : 'newPassword'}
+            textContentType="newPassword"
             value={passwordConfirm}
           />
 

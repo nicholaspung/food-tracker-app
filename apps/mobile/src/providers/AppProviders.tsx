@@ -7,7 +7,7 @@ import { logger } from '../lib/logger';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
 import { SplashScreen } from '../screens/SplashScreen';
 import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './queryPersistence';
-import { AuthProvider, type AuthBootstrap } from './AuthProvider';
+import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
 import { OtaUpdatesProvider } from './OtaUpdatesProvider';
@@ -24,10 +24,9 @@ const queryClient = new QueryClient({
 
 interface AppProvidersProps {
   children: React.ReactNode;
-  screenshotReviewBootstrap?: AuthBootstrap;
 }
 
-export function AppProviders({ children, screenshotReviewBootstrap }: AppProvidersProps) {
+export function AppProviders({ children }: AppProvidersProps) {
   const [isQueryPersistenceReady, setIsQueryPersistenceReady] = useState(false);
   const appStartedAtRef = useRef(Date.now());
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -159,7 +158,7 @@ export function AppProviders({ children, screenshotReviewBootstrap }: AppProvide
         <SyncProvider>
           {isQueryPersistenceReady ? (
             <OtaUpdatesProvider>
-              <AuthProvider screenshotReviewBootstrap={screenshotReviewBootstrap}>
+              <AuthProvider>
                 <ErrorToastProvider>{children}</ErrorToastProvider>
               </AuthProvider>
             </OtaUpdatesProvider>

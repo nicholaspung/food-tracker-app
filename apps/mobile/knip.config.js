@@ -1,15 +1,5 @@
 /** @type {import('knip').KnipConfig} */
 const config = {
-  entry: [
-    // Served directly by the screenshot review HTML shell.
-    'e2e/review-ui/app.js',
-    // Required dynamically from App.tsx and swapped by Metro in production bundles.
-    'src/dev/screenshotReviewAuthBootstrap.ts',
-  ],
-  ignoreFiles: [
-    // Metro resolves this stub only for production/dev-only module replacement.
-    'src/dev/screenshotReviewAuthBootstrap.stub.ts',
-  ],
   ignoreBinaries: [
     // These commands are provided by declared packages, but knip does not map all binary names back reliably.
     'eas',

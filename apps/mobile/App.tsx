@@ -9,19 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SyncStatusBanner } from './src/components/SyncStatusBanner';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AppProviders } from './src/providers/AppProviders';
-import type { AuthBootstrap } from './src/providers/AuthProvider';
 import { ThemeProvider, useTheme } from './src/theme';
-
-function resolveScreenshotReviewBootstrap(): AuthBootstrap | undefined {
-  if (!__DEV__) {
-    return undefined;
-  }
-
-  return require('./src/dev/screenshotReviewAuthBootstrap')
-    .createScreenshotReviewAuthBootstrap as AuthBootstrap;
-}
-
-const screenshotReviewBootstrap = resolveScreenshotReviewBootstrap();
 
 function AppShell() {
   const theme = useTheme();
@@ -53,7 +41,7 @@ export default function App() {
       <SafeAreaProvider>
         <KeyboardProvider>
           <ThemeProvider>
-            <AppProviders screenshotReviewBootstrap={screenshotReviewBootstrap}>
+            <AppProviders>
               <AppShell />
             </AppProviders>
           </ThemeProvider>

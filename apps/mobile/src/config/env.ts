@@ -8,7 +8,6 @@ import {
   type AppEnvironment,
   normalizeAppEnvironment,
   resolveMobileBackendConfiguration,
-  resolveScreenshotReviewMode,
 } from './envUtils';
 
 export interface MobileEnv {
@@ -16,7 +15,6 @@ export interface MobileEnv {
   apiBaseUrl: string;
   appWebUrl: string;
   environment: AppEnvironment;
-  isScreenshotReviewMode: boolean;
   marketingUrl: string;
   pocketbaseUrl: string;
   posthogApiKey: string;
@@ -32,7 +30,6 @@ const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_POCKETBASE_URL: process.env.EXPO_PUBLIC_POCKETBASE_URL,
   EXPO_PUBLIC_POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
   EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
-  EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: process.env.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE,
 };
 
 function resolveCurrentOrigin(): string | undefined {
@@ -80,14 +77,9 @@ export function resolveAppEnvironment(source?: EnvSource, currentOrigin?: string
   return explicitEnvironment ?? 'local';
 }
 
-interface LoadMobileEnvOptions {
-  isDevBuild?: boolean;
-}
-
 export function loadMobileEnv(
   source?: EnvSource,
   currentOrigin?: string,
-  options?: LoadMobileEnvOptions,
 ): MobileEnv {
   const resolvedSource = source ?? expoPublicEnv;
   const backendConfiguration = resolveMobileBackendConfiguration(resolvedSource);
@@ -115,9 +107,6 @@ export function loadMobileEnv(
     apiBaseUrl,
     appWebUrl,
     environment,
-    isScreenshotReviewMode: resolveScreenshotReviewMode(resolvedSource, {
-      isDevBuild: options?.isDevBuild,
-    }),
     marketingUrl,
     pocketbaseUrl,
     posthogApiKey: readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY) ?? '',
