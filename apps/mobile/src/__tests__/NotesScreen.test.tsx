@@ -85,6 +85,7 @@ jest.mock('../ui', () => {
 
 jest.mock('../components/shared', () => {
   return {
+    CachedRemoteImage: (props: Record<string, unknown>) => mockReact.createElement('CachedRemoteImage', props),
     ConfirmDestructiveModal: () => null,
     EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
     ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),

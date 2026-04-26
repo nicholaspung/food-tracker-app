@@ -32,6 +32,10 @@ export function prefetchPhotoImages(uris: string[]): void {
 
   for (const uri of uniqueUris) {
     prefetchedPhotoUris.add(uri);
+    if (typeof Image.prefetch !== 'function') {
+      continue;
+    }
+
     Image.prefetch(uri).catch(() => {
       prefetchedPhotoUris.delete(uri);
     });

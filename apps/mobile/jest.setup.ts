@@ -1,4 +1,36 @@
 import mockAsyncStorage from '@react-native-async-storage/async-storage/jest/async-storage-mock';
+import { timeoutManager } from '@tanstack/query-core';
+
+type TimerId = ReturnType<typeof setTimeout>;
+
+function unrefTimer(timerId: TimerId): void {
+  const maybeTimer = timerId as unknown;
+  if (typeof maybeTimer === 'object' && maybeTimer !== null) {
+    const unref = (maybeTimer as { unref?: unknown }).unref;
+    if (typeof unref === 'function') {
+      unref.call(maybeTimer);
+    }
+  }
+}
+
+timeoutManager.setTimeoutProvider({
+  clearInterval: (intervalId) => {
+    clearInterval(intervalId as TimerId | undefined);
+  },
+  clearTimeout: (timeoutId) => {
+    clearTimeout(timeoutId as TimerId | undefined);
+  },
+  setInterval: (callback, delay) => {
+    const intervalId = setInterval(callback, delay);
+    unrefTimer(intervalId);
+    return intervalId;
+  },
+  setTimeout: (callback, delay) => {
+    const timeoutId = setTimeout(callback, delay);
+    unrefTimer(timeoutId);
+    return timeoutId;
+  },
+});
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 

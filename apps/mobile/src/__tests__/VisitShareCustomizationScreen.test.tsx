@@ -25,6 +25,7 @@ jest.mock('react-native-view-shot', () => ({
 }));
 
 jest.mock('../components/shared', () => ({
+  CachedRemoteImage: (props: Record<string, unknown>) => mockReact.createElement('CachedRemoteImage', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   SectionHeader: (props: Record<string, unknown>) => mockReact.createElement('SectionHeader', props),
 }));
