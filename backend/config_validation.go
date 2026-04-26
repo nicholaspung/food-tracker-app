@@ -43,6 +43,10 @@ func validateStartupConfiguration() (lib.RuntimeResources, error) {
 		}
 	}
 
+	if err := validateURLScheme(runtimeResources.MobileAppScheme); err != nil {
+		problems = append(problems, fmt.Sprintf("FOOD_TRACKER_APP_SCHEME %v", err))
+	}
+
 	if len(problems) > 0 {
 		return runtimeResources, fmt.Errorf("invalid startup configuration: %s", strings.Join(problems, "; "))
 	}
@@ -71,6 +75,33 @@ func validateAbsoluteHTTPURL(raw string) error {
 
 	if parsed.Host == "" {
 		return fmt.Errorf("must include a host")
+	}
+
+	return nil
+}
+
+func validateURLScheme(raw string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return fmt.Errorf("must not be empty")
+	}
+
+	for index, char := range value {
+		isLowerAlpha := char >= 'a' && char <= 'z'
+		isUpperAlpha := char >= 'A' && char <= 'Z'
+		isDigit := char >= '0' && char <= '9'
+		isAllowedSymbol := char == '+' || char == '-' || char == '.'
+
+		if index == 0 {
+			if !isLowerAlpha && !isUpperAlpha {
+				return fmt.Errorf("must start with a letter")
+			}
+			continue
+		}
+
+		if !isLowerAlpha && !isUpperAlpha && !isDigit && !isAllowedSymbol {
+			return fmt.Errorf("contains invalid character %q", char)
+		}
 	}
 
 	return nil

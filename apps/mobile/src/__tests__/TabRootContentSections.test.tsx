@@ -1,7 +1,9 @@
 import React from 'react';
+import { Share } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { lockInviteCode } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
@@ -19,6 +21,7 @@ jest.mock('react-native', () => ({
   Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Pressable', props, children),
   Share: {
+    sharedAction: 'sharedAction',
     share: jest.fn(),
   },
   ScrollView: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -230,6 +233,8 @@ const mockedUseMutation = useMutation as jest.MockedFunction<typeof useMutation>
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedLockInviteCode = lockInviteCode as jest.MockedFunction<typeof lockInviteCode>;
+const mockedShare = Share.share as jest.MockedFunction<typeof Share.share>;
 const mockedUseQueuedLogoutConfirmation = useQueuedLogoutConfirmation as jest.MockedFunction<
   typeof useQueuedLogoutConfirmation
 >;
@@ -253,12 +258,23 @@ function flattenStyle(style: unknown): Record<string, unknown> {
   return style as Record<string, unknown>;
 }
 
+function buildExecutingMutationMock(options: unknown) {
+  const mutationFn = (options as { mutationFn?: (input: unknown) => unknown }).mutationFn;
+
+  return {
+    isPending: false,
+    mutateAsync: jest.fn((input: unknown) => mutationFn?.(input)),
+  } as never;
+}
+
 describe('tab root content sections', () => {
   beforeEach(() => {
     mockedUseQuery.mockReset();
     mockedUseMutation.mockReset();
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
+    mockedLockInviteCode.mockReset();
+    mockedShare.mockReset();
     mockedUseQueuedLogoutConfirmation.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
@@ -268,6 +284,10 @@ describe('tab root content sections', () => {
       isPending: false,
       mutateAsync: jest.fn(),
     } as never);
+    mockedLockInviteCode.mockResolvedValue(undefined);
+    mockedShare.mockResolvedValue({
+      action: Share.sharedAction,
+    } as Awaited<ReturnType<typeof Share.share>>);
     mockedUseAuth.mockReturnValue({
       actualUser: {
         isAdmin: false,
@@ -477,5 +497,154 @@ describe('tab root content sections', () => {
     });
 
     expect(requestLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares signup invite codes with the iOS App Store link and locks after sharing', async () => {
+    mockedUseMutation.mockImplementation(buildExecutingMutationMock);
+    mockedUseQuery.mockImplementation((options) => {
+      const queryKey = JSON.stringify(options.queryKey);
+
+      if (queryKey === JSON.stringify(['feature', 'profile'])) {
+        return {
+          data: {
+            createdAt: '2026-04-01T00:00:00.000Z',
+            displayName: 'Nick',
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      if (queryKey === JSON.stringify(['feature', 'feedback', 'summary'])) {
+        return {
+          data: {
+            activeCount: 2,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [
+          {
+            code: 'INVITE123',
+            id: 'invite-code-1',
+            locked: false,
+          },
+        ],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <ProfileScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'profile', name: 'Profile' } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'profile-invite-codes-toggle' }).props.onPress();
+    });
+
+    const shareButton = renderer.root
+      .findAllByType('Button')
+      .find((button: any) => button.props.label === 'Share Invite');
+
+    await act(async () => {
+      await shareButton?.props.onPress();
+    });
+
+    expect(mockedShare).toHaveBeenCalledWith({
+      message: expect.stringContaining('https://apps.apple.com/us/app/yummy-recs/id6761597807'),
+    });
+    expect(mockedShare).toHaveBeenCalledWith({
+      message: expect.stringContaining('yummyrecs://signup?code=INVITE123'),
+    });
+    expect(mockedShare).toHaveBeenCalledWith({
+      message: expect.stringContaining('Your invite code: INVITE123'),
+    });
+    expect(mockedLockInviteCode).toHaveBeenCalledWith('invite-code-1');
+  });
+
+  it('does not lock signup invite codes when sharing is canceled', async () => {
+    mockedShare.mockResolvedValue({
+      action: 'dismissedAction',
+    } as Awaited<ReturnType<typeof Share.share>>);
+    mockedUseMutation.mockImplementation(buildExecutingMutationMock);
+    mockedUseQuery.mockImplementation((options) => {
+      const queryKey = JSON.stringify(options.queryKey);
+
+      if (queryKey === JSON.stringify(['feature', 'profile'])) {
+        return {
+          data: {
+            createdAt: '2026-04-01T00:00:00.000Z',
+            displayName: 'Nick',
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      if (queryKey === JSON.stringify(['feature', 'feedback', 'summary'])) {
+        return {
+          data: {
+            activeCount: 2,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [
+          {
+            code: 'INVITE123',
+            id: 'invite-code-1',
+            locked: false,
+          },
+        ],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <ProfileScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'profile', name: 'Profile' } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'profile-invite-codes-toggle' }).props.onPress();
+    });
+
+    const shareButton = renderer.root
+      .findAllByType('Button')
+      .find((button: any) => button.props.label === 'Share Invite');
+
+    await act(async () => {
+      await shareButton?.props.onPress();
+    });
+
+    expect(mockedShare).toHaveBeenCalledTimes(1);
+    expect(mockedLockInviteCode).not.toHaveBeenCalled();
   });
 });

@@ -51,6 +51,7 @@ func main() {
 
 	app := pocketbase.New()
 	hooks.RegisterEmailVerificationHooks(app)
+	hooks.RegisterAuthActionEmailHooks(app, runtimeResources)
 
 	// Register migrations with automigrate enabled when running with `go run`
 	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())

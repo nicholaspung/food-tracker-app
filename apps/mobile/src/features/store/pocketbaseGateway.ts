@@ -284,6 +284,25 @@ export async function requestUserPasswordReset(email: string): Promise<void> {
   }
 }
 
+export async function confirmUserPasswordReset(
+  token: string,
+  password: string,
+  passwordConfirm: string,
+): Promise<void> {
+  try {
+    await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
+}
+
 export async function requestUserEmailVerification(email: string): Promise<void> {
   try {
     await pb.collection('users').requestVerification(email);
@@ -292,6 +311,21 @@ export async function requestUserEmailVerification(email: string): Promise<void>
     });
   } catch (error) {
     trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_REQUEST_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
+}
+
+export async function confirmUserEmailVerification(token: string): Promise<void> {
+  try {
+    await pb.collection('users').confirmVerification(token);
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_FAILED', {
       source: 'pocketbaseGateway',
       ...resolveErrorProperties(error),
     });

@@ -63,6 +63,7 @@ FOOD_TRACKER_ADMIN_URL=http://localhost:5173
 FOOD_TRACKER_API_BASE_URL=http://127.0.0.1:8090
 FOOD_TRACKER_POCKETBASE_URL=http://127.0.0.1:8090
 FOOD_TRACKER_POSTHOG_HOST=http://127.0.0.1:8090/api/analytics
+FOOD_TRACKER_APP_SCHEME=yummyrecs
 GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
@@ -98,6 +99,7 @@ Shared runtime URLs exported by the scripts:
 - `FOOD_TRACKER_API_BASE_URL`
 - `FOOD_TRACKER_POCKETBASE_URL`
 - `FOOD_TRACKER_POSTHOG_HOST`
+- `FOOD_TRACKER_APP_SCHEME`
 
 ## Public Marketing Site
 
@@ -142,6 +144,8 @@ GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
 SUDO_PASSWORD=
+FOOD_TRACKER_IOS_TEAM_ID=
+FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 ```
 
 Required for [.github/workflows/mobile-preview.yml](/Users/developer/programming/food-tracker-app/.github/workflows/mobile-preview.yml):
@@ -164,6 +168,8 @@ GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
 SUDO_PASSWORD=
+FOOD_TRACKER_IOS_TEAM_ID=
+FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 ```
 
 Notes:
@@ -171,6 +177,31 @@ Notes:
 - Beta and production can point at the same VPS connection values if both environments deploy to the same server.
 - `GEMINI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `POSTHOG_API_KEY`, and `POSTHOG_HOST` should usually be scoped separately per GitHub environment so beta and production can diverge safely.
 - Attach `EXPO_TOKEN` to the `production` GitHub environment as well if you want to use the manual production-targeted mobile preview dispatch in `.github/workflows/mobile-preview.yml`.
+
+### App Link Association Secrets
+
+The deploy workflow uses these secrets to write `/.well-known` association files into the app web build. Those files let password reset and email verification HTTPS links open the installed app when the device supports Universal Links/App Links.
+
+`FOOD_TRACKER_IOS_TEAM_ID` is the Apple Developer Team ID. Find it in Apple Developer:
+
+- Apple Developer website: Account > Membership details > Team ID.
+- App Store Connect: Users and Access > Integrations > Team ID.
+
+Use the same Team ID for beta and production unless the preview app is signed under a different Apple Developer team.
+
+`FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS` is one or more SHA-256 signing certificate fingerprints for the Android app. Use comma-separated values when more than one signing cert should be trusted:
+
+```bash
+FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=AA:BB:CC:...,DD:EE:FF:...
+```
+
+Find Android fingerprints from the signing credentials used for the build:
+
+- EAS-managed credentials: `cd apps/mobile && eas credentials -p android`, select the app/profile, then inspect the Android keystore certificate fingerprints.
+- Google Play App Signing: Play Console > the app > Setup > App integrity > App signing key certificate > SHA-256 certificate fingerprint. Also copy the Upload key certificate fingerprint if links should work for builds signed with the upload key outside Play distribution.
+- Local keystore: run `keytool -list -v -keystore path/to/keystore.jks -alias your_alias` and copy the `SHA256` value.
+
+Use the preview package fingerprint for the `beta` environment if the preview app uses `com.yummyrecs.mobile.preview`; use the production package fingerprint for the `production` environment if it uses `com.yummyrecs.mobile`.
 
 ## Expo Environments
 

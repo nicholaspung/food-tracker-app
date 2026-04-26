@@ -51,6 +51,7 @@ type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type ExpandablePanel = 'account' | 'invite' | 'danger';
 
 const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
+const IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
@@ -201,10 +202,13 @@ function buildInviteShareMessage(code: string): string {
   const signupUrl = `${INVITE_SIGNUP_DEEP_LINK_PREFIX}${encodeURIComponent(code)}`;
 
   return [
-    "Hey! You're invited to join our app!",
+    "Hey! You're invited to join Yummy Recs!",
     '',
-    'Use this link to sign up:',
+    'Use this link to sign up if you already have the app:',
     signupUrl,
+    '',
+    'Download Yummy Recs for iPhone:',
+    IOS_APP_STORE_URL,
     '',
     `Your invite code: ${code}`,
     '',

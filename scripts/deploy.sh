@@ -698,6 +698,10 @@ deploy_static_sites() {
             cp -r "$source_dir" "${build_dir}_new"
         fi
 
+        if [ "$site_key" = "app" ]; then
+            node "$APP_DIR/scripts/write-app-link-associations.mjs" "${build_dir}_new" "$ENVIRONMENT"
+        fi
+
         if [ ! -d "${build_dir}_new" ] || [ ! -f "${build_dir}_new/index.html" ]; then
             error "Failed to copy the ${site_name} build to ${build_dir}_new"
             exit 1
@@ -779,6 +783,7 @@ FOOD_TRACKER_ADMIN_URL=${FOOD_TRACKER_ADMIN_URL}
 FOOD_TRACKER_API_BASE_URL=${FOOD_TRACKER_API_BASE_URL}
 FOOD_TRACKER_POCKETBASE_URL=${FOOD_TRACKER_POCKETBASE_URL}
 FOOD_TRACKER_POSTHOG_HOST=${FOOD_TRACKER_POSTHOG_HOST}
+FOOD_TRACKER_APP_SCHEME=${FOOD_TRACKER_APP_SCHEME}
 GEMINI_API_KEY=${gemini_key}
 GOOGLE_PLACES_API_KEY=${places_key}
 POSTHOG_API_KEY=${posthog_api_key}
@@ -795,6 +800,7 @@ EOF
     export FOOD_TRACKER_API_BASE_URL="$FOOD_TRACKER_API_BASE_URL"
     export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
     export FOOD_TRACKER_POSTHOG_HOST="$FOOD_TRACKER_POSTHOG_HOST"
+    export FOOD_TRACKER_APP_SCHEME="$FOOD_TRACKER_APP_SCHEME"
     export GEMINI_API_KEY="$gemini_key"
     export GOOGLE_PLACES_API_KEY="$places_key"
     export POSTHOG_API_KEY="$posthog_api_key"

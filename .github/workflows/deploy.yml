@@ -33,13 +33,15 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           command_timeout: 30m
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,SUDO_PASSWORD
+          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,SUDO_PASSWORD,FOOD_TRACKER_IOS_TEAM_ID,FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS
           script: |
             export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
             export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
             export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
             export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
             export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
+            export FOOD_TRACKER_IOS_TEAM_ID="${{ secrets.FOOD_TRACKER_IOS_TEAM_ID }}"
+            export FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS="${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}"
             cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh beta
@@ -88,13 +90,15 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           command_timeout: 30m
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,SUDO_PASSWORD
+          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,SUDO_PASSWORD,FOOD_TRACKER_IOS_TEAM_ID,FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS
           script: |
             export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
             export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
             export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
             export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
             export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
+            export FOOD_TRACKER_IOS_TEAM_ID="${{ secrets.FOOD_TRACKER_IOS_TEAM_ID }}"
+            export FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS="${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}"
             cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh production

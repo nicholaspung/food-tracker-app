@@ -10,11 +10,14 @@ import {
   LoadingOverlay,
 } from '../components/shared';
 import {
+  confirmUserEmailVerification,
   requestUserEmailVerification,
 } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
+import { decodeAuthActionTokenPayload } from '../lib/authActionToken';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Screen, Text } from '../ui';
@@ -84,29 +87,41 @@ function resolveVerificationEmailErrorMessage(error: unknown): string {
 export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps) {
   const {
     actualUser,
+    refreshAuthSession,
     status,
     verificationStatus,
   } = useAuth();
+  const verificationToken = route.params?.token?.trim() ?? '';
+  const tokenPayload = useMemo(() => decodeAuthActionTokenPayload(verificationToken), [verificationToken]);
+  const { isOnline } = useConnectivity();
   const [isResending, setIsResending] = useState(false);
+  const [tokenConfirmationStatus, setTokenConfirmationStatus] = useState<
+    'idle' | 'confirming' | 'succeeded' | 'failed'
+  >('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [cooldownTick, setCooldownTick] = useState(() => Date.now());
   const [resendCooldownUntil, setResendCooldownUntil] = useState<number>(() =>
-    pendingEmailFromRouteOrUser(route.params?.email, actualUser?.email),
+    pendingEmailFromRouteOrUser(route.params?.email ?? tokenPayload?.email, actualUser?.email),
   );
   const pendingEmail =
-    route.params?.email?.trim().toLowerCase() ?? actualUser?.email?.trim().toLowerCase() ?? '';
+    route.params?.email?.trim().toLowerCase() ??
+    actualUser?.email?.trim().toLowerCase() ??
+    tokenPayload?.email ??
+    '';
   const hasRetainedSession = Boolean(actualUser);
   const source = route.params?.source;
+  const isTokenVerification = Boolean(verificationToken);
   const isExpiredEntry = status === 'verification_required' || source === 'expired_entry';
   const styles = useStyles();
   const hasTriggeredInitialSendRef = useRef(false);
+  const hasTriggeredTokenConfirmationRef = useRef(false);
   const resendRemainingSeconds = Math.max(
     0,
     Math.ceil((resendCooldownUntil - cooldownTick) / 1000),
   );
   const canResendVerificationEmail =
-    Boolean(pendingEmail) && resendRemainingSeconds === 0 && !isResending;
+    isOnline && Boolean(pendingEmail) && resendRemainingSeconds === 0 && !isResending;
   const resendButtonLabel =
     resendRemainingSeconds > 0
       ? formatResendCooldownLabel(resendRemainingSeconds)
@@ -163,6 +178,11 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const sendVerificationEmail = useCallback(async (trigger: 'screen_open' | 'manual') => {
     if (!pendingEmail) {
       setErrorMessage('Email address is required to resend verification.');
+      return false;
+    }
+
+    if (!isOnline) {
+      setErrorMessage('You need an internet connection to request a verification email.');
       return false;
     }
 
@@ -224,7 +244,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     } finally {
       setIsResending(false);
     }
-  }, [hasRetainedSession, pendingEmail]);
+  }, [hasRetainedSession, isOnline, pendingEmail]);
 
   useEffect(() => {
     setResendCooldownUntil(pendingEmail ? getVerificationEmailCooldownUntil(pendingEmail) : 0);
@@ -246,13 +266,57 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   }, [resendCooldownUntil]);
 
   useEffect(() => {
-    if (!pendingEmail || hasTriggeredInitialSendRef.current || verificationStatus === 'verified') {
+    if (
+      isTokenVerification ||
+      !pendingEmail ||
+      hasTriggeredInitialSendRef.current ||
+      verificationStatus === 'verified'
+    ) {
       return;
     }
 
     hasTriggeredInitialSendRef.current = true;
     void sendVerificationEmail('screen_open');
-  }, [pendingEmail, sendVerificationEmail, verificationStatus]);
+  }, [isTokenVerification, pendingEmail, sendVerificationEmail, verificationStatus]);
+
+  useEffect(() => {
+    if (!verificationToken || !isOnline || hasTriggeredTokenConfirmationRef.current) {
+      return;
+    }
+
+    hasTriggeredTokenConfirmationRef.current = true;
+    setTokenConfirmationStatus('confirming');
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_STARTED', {
+      source: 'VerifyEmailScreen',
+    });
+
+    void confirmUserEmailVerification(verificationToken)
+      .then(async () => {
+        setTokenConfirmationStatus('succeeded');
+        setSuccessMessage(
+          hasRetainedSession
+            ? 'Your email has been verified. The app will refresh your account status automatically.'
+            : 'Your email has been verified. You can sign in now.',
+        );
+        trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_SUCCEEDED', {
+          source: 'VerifyEmailScreen',
+        });
+
+        if (hasRetainedSession) {
+          await refreshAuthSession();
+        }
+      })
+      .catch((error) => {
+        setTokenConfirmationStatus('failed');
+        setErrorMessage('This verification link is invalid or expired. Request a new verification email.');
+        trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_FAILED', {
+          source: 'VerifyEmailScreen',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, [hasRetainedSession, isOnline, refreshAuthSession, verificationToken]);
 
   useEffect(() => {
     if (!hasRetainedSession || verificationStatus !== 'verified') {
@@ -294,6 +358,101 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     resetToOnboarding();
   };
 
+  if (isTokenVerification) {
+    const isConfirmingToken = tokenConfirmationStatus === 'confirming';
+    const canRequestNewVerification =
+      tokenConfirmationStatus === 'failed' && Boolean(pendingEmail) && canResendVerificationEmail && isOnline;
+
+    return (
+      <Screen background="app" keyboardAware scroll testID="verify-email-token-screen">
+        <FormScaffold
+          lead={
+            <AuthTopBar
+              onBackPress={() => {
+                if (hasRetainedSession && navigation.canGoBack()) {
+                  navigation.goBack();
+                  return;
+                }
+
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: hasRetainedSession ? 'Home' : 'Login' }],
+                });
+              }}
+            />
+          }
+          showHeader={false}
+          title=""
+          contentStyle={styles.formContent}
+        >
+          <AuthIntroCard
+            description={
+              isConfirmingToken
+                ? 'We are verifying your email address.'
+                : tokenConfirmationStatus === 'succeeded'
+                  ? 'Your email address has been verified.'
+                  : 'This verification link could not be completed.'
+            }
+            iconName="mail-unread-outline"
+            title="Verify Email"
+          />
+
+          <Card style={styles.formCard}>
+            {isConfirmingToken ? <Text style={styles.helperText}>Verifying your email...</Text> : null}
+
+            {!isOnline ? (
+              <FormResultBanner message="Email verification requires an internet connection." tone="warning" />
+            ) : null}
+
+            <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
+
+            {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
+
+            {tokenConfirmationStatus === 'failed' && pendingEmail ? (
+              <Button
+                disabled={!canRequestNewVerification}
+                label={resendButtonLabel}
+                loading={isResending}
+                onPress={() => {
+                  void sendVerificationEmail('manual');
+                }}
+              />
+            ) : null}
+
+            {tokenConfirmationStatus === 'failed' && !pendingEmail ? (
+              <Button
+                label="Request New Link"
+                onPress={() => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                  });
+                }}
+              />
+            ) : null}
+
+            {!isConfirmingToken ? (
+              <Button
+                label={hasRetainedSession ? 'Back to App' : 'Back to Sign In'}
+                onPress={() => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: hasRetainedSession ? 'Home' : 'Login' }],
+                  });
+                }}
+                variant="secondary"
+              />
+            ) : null}
+          </Card>
+        </FormScaffold>
+        <LoadingOverlay
+          label={isResending ? 'Sending verification email...' : 'Verifying your email...'}
+          visible={isConfirmingToken || isResending}
+        />
+      </Screen>
+    );
+  }
+
   return (
     <Screen background="app" keyboardAware scroll>
       <FormScaffold
@@ -334,6 +493,10 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
           </Text>
 
           <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
+
+          {!isOnline ? (
+            <FormResultBanner message="Verification emails require an internet connection." tone="warning" />
+          ) : null}
 
           {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 

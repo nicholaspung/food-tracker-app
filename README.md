@@ -78,9 +78,19 @@ Production serves:
 - the marketing site from `apps/marketing/dist`, copied to `marketing_build` on the VPS
 - the app web build from `apps/mobile/web-dist`, copied to `app_build` on the VPS
 - the admin web build from `apps/admin/dist`, copied to `admin_build` on the VPS
+- app-link association files under `app_build/.well-known` for customer-facing auth email links
 - Caddy on the host machine, routing `yummyrecs.com`, `app.yummyrecs.com`, and `admin.yummyrecs.com`
 
 Deployment docs live in [docs/setup/README.md](docs/setup/README.md).
+
+GitHub deploy environments must include app-link association secrets in addition to the backend API keys:
+
+```bash
+FOOD_TRACKER_IOS_TEAM_ID=
+FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
+```
+
+See [docs/setup/ENV_GUIDE.md](docs/setup/ENV_GUIDE.md) for where to find those values.
 
 Useful scripts:
 

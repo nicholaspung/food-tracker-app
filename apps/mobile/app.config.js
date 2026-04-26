@@ -215,6 +215,11 @@ function assertSafeMobileReleaseBuildBackendConfiguration(source, options) {
 module.exports = ({ config }) => {
   assertSafeMobileReleaseBuildBackendConfiguration(process.env);
   const appIdentity = resolveMobileAppIdentity(process.env);
+  const authLinkHosts =
+    appIdentity.scheme === 'yummyrecs-preview'
+      ? ['beta.app.yummyrecs.com']
+      : ['app.yummyrecs.com'];
+  const authLinkPathPrefixes = ['/reset-password', '/verify-email'];
 
   return {
     ...config,
@@ -223,6 +228,7 @@ module.exports = ({ config }) => {
     ios: {
       ...config.ios,
       bundleIdentifier: appIdentity.bundleIdentifier,
+      associatedDomains: authLinkHosts.map((host) => `applinks:${host}`),
       infoPlist: {
         ...config.ios?.infoPlist,
         CFBundleDisplayName: appIdentity.name,
@@ -232,6 +238,21 @@ module.exports = ({ config }) => {
     android: {
       ...config.android,
       package: appIdentity.androidPackage,
+      intentFilters: [
+        ...(config.android?.intentFilters ?? []),
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: authLinkHosts.flatMap((host) =>
+            authLinkPathPrefixes.map((pathPrefix) => ({
+              scheme: 'https',
+              host,
+              pathPrefix,
+            })),
+          ),
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
+      ],
     },
   };
 };

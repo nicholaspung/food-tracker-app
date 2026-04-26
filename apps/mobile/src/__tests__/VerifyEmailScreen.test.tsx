@@ -2,15 +2,18 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import {
+  confirmUserEmailVerification,
   requestUserEmailVerification,
 } from '../features';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 
 const mockReact = React;
 
 jest.mock('../features', () => ({
+  confirmUserEmailVerification: jest.fn(),
   requestUserEmailVerification: jest.fn(),
 }));
 
@@ -20,6 +23,10 @@ jest.mock('../observability', () => ({
 
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
 }));
 
 jest.mock('../providers/SyncProvider', () => ({
@@ -56,7 +63,10 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 const mockedRequestUserEmailVerification =
   requestUserEmailVerification as jest.MockedFunction<typeof requestUserEmailVerification>;
+const mockedConfirmUserEmailVerification =
+  confirmUserEmailVerification as jest.MockedFunction<typeof confirmUserEmailVerification>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseSync = useSync as jest.MockedFunction<typeof useSync>;
 
 function pressButtonByLabel(renderer: any, label: string) {
@@ -68,6 +78,15 @@ function pressButtonByLabel(renderer: any, label: string) {
   act(() => {
     button.props.onPress();
   });
+}
+
+function createToken(payload: Record<string, unknown>) {
+  const encodedPayload = globalThis
+    .btoa(JSON.stringify(payload))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/u, '');
+  return `header.${encodedPayload}.signature`;
 }
 
 describe('VerifyEmailScreen', () => {
@@ -86,8 +105,13 @@ describe('VerifyEmailScreen', () => {
     navigation.navigate.mockReset();
     navigation.reset.mockReset();
     mockedRequestUserEmailVerification.mockReset();
+    mockedConfirmUserEmailVerification.mockReset();
     mockedUseAuth.mockReset();
+    mockedUseConnectivity.mockReset();
     mockedUseSync.mockReset();
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
+    } as unknown as ReturnType<typeof useConnectivity>);
     mockedUseSync.mockReturnValue({
       queueDepth: 0,
     } as unknown as ReturnType<typeof useSync>);
@@ -324,5 +348,121 @@ describe('VerifyEmailScreen', () => {
       index: 0,
       routes: [{ name: 'Onboarding' }],
     });
+  });
+
+  it('auto-confirms a verification token from an email link', async () => {
+    const refreshAuthSession = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'token-user@example.com',
+      },
+      refreshAuthSession,
+      signOut: jest.fn(),
+      status: 'authenticated',
+      verificationStatus: 'grace_period',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedConfirmUserEmailVerification.mockResolvedValue(undefined);
+    const token = createToken({ email: 'token-user@example.com', type: 'verification' });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-token',
+            name: 'VerifyEmail',
+            params: {
+              source: 'email_link',
+              token,
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockedConfirmUserEmailVerification).toHaveBeenCalledWith(token);
+    expect(refreshAuthSession).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Your email has been verified. The app will refresh your account status automatically.',
+    );
+    expect(mockedRequestUserEmailVerification).not.toHaveBeenCalled();
+  });
+
+  it('shows token verification success for signed-out users', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: null,
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'unauthenticated',
+      verificationStatus: 'verified',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedConfirmUserEmailVerification.mockResolvedValue(undefined);
+    const token = createToken({ email: 'signed-out@example.com', type: 'verification' });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-token-signed-out',
+            name: 'VerifyEmail',
+            params: {
+              source: 'email_link',
+              token,
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Your email has been verified. You can sign in now.',
+    );
+  });
+
+  it('shows an expired token error and allows resend when token email is available', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: null,
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'unauthenticated',
+      verificationStatus: 'grace_expired',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedConfirmUserEmailVerification.mockRejectedValue(new Error('expired'));
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
+    const token = createToken({ email: 'expired@example.com', type: 'verification' });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-token-expired',
+            name: 'VerifyEmail',
+            params: {
+              source: 'email_link',
+              token,
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'This verification link is invalid or expired. Request a new verification email.',
+    );
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Resend Verification Email');
+      await Promise.resolve();
+    });
+
+    expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('expired@example.com');
   });
 });

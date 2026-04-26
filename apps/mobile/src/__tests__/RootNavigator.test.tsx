@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { useAuth } from '../providers/AuthProvider';
-import { RootNavigator } from '../navigation/RootNavigator';
+import { AUTH_LINKING, RootNavigator } from '../navigation/RootNavigator';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
@@ -18,6 +18,7 @@ jest.mock('react-native', () => {
     },
     Platform: {
       OS: 'ios',
+      select: (options: Record<string, unknown>) => options.ios ?? options.default,
     },
     StyleSheet: {
       create: (styles: Record<string, unknown>) => styles,
@@ -353,5 +354,29 @@ describe('RootNavigator', () => {
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
     expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(1);
     jest.useRealTimers();
+  });
+
+  it('parses reset password token links', () => {
+    const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
+    const state = getStateFromPath('/reset-password?token=abc', AUTH_LINKING.config);
+
+    expect(state?.routes[0]).toMatchObject({
+      name: 'ResetPassword',
+      params: {
+        token: 'abc',
+      },
+    });
+  });
+
+  it('parses verify email token links', () => {
+    const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
+    const state = getStateFromPath('/verify-email?token=abc', AUTH_LINKING.config);
+
+    expect(state?.routes[0]).toMatchObject({
+      name: 'VerifyEmail',
+      params: {
+        token: 'abc',
+      },
+    });
   });
 });

@@ -85,13 +85,16 @@ export type RootStackParamList = {
   ResetPassword:
     | {
         email?: string;
+        token?: string;
+        source?: 'request' | 'email_link';
       }
     | undefined;
   VerifyEmail:
     | {
         email?: string;
         password?: string;
-        source?: 'sign_up' | 'login' | 'banner' | 'profile' | 'expired_entry';
+        token?: string;
+        source?: 'sign_up' | 'login' | 'banner' | 'profile' | 'expired_entry' | 'email_link';
       }
     | undefined;
   Home:
@@ -192,7 +195,7 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
+export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
   prefixes: [
     'yummyrecs://',
     'https://yummyrecs.com',

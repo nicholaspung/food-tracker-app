@@ -14,13 +14,14 @@ const (
 )
 
 type RuntimeResources struct {
-	AdminURL      string
-	APIBaseURL    string
-	AppURL        string
-	Environment   RuntimeEnvironment
-	MarketingURL  string
-	PocketBaseURL string
-	PostHogHost   string
+	AdminURL        string
+	APIBaseURL      string
+	AppURL          string
+	Environment     RuntimeEnvironment
+	MarketingURL    string
+	MobileAppScheme string
+	PocketBaseURL   string
+	PostHogHost     string
 }
 
 func normalizeRuntimeEnvironment(value string) RuntimeEnvironment {
@@ -42,13 +43,14 @@ func LoadRuntimeResourcesFromEnv() RuntimeResources {
 	defaults := runtimeDefaultsForEnvironment(environment)
 
 	return RuntimeResources{
-		AdminURL:      readRuntimeValue("FOOD_TRACKER_ADMIN_URL", defaults.AdminURL),
-		APIBaseURL:    readRuntimeValue("FOOD_TRACKER_API_BASE_URL", defaults.APIBaseURL),
-		AppURL:        readRuntimeValue("FOOD_TRACKER_APP_URL", defaults.AppURL),
-		Environment:   environment,
-		MarketingURL:  readRuntimeValue("FOOD_TRACKER_MARKETING_URL", defaults.MarketingURL),
-		PocketBaseURL: readRuntimeValue("FOOD_TRACKER_POCKETBASE_URL", defaults.PocketBaseURL),
-		PostHogHost:   readRuntimeValue("FOOD_TRACKER_POSTHOG_HOST", defaults.PostHogHost),
+		AdminURL:        readRuntimeValue("FOOD_TRACKER_ADMIN_URL", defaults.AdminURL),
+		APIBaseURL:      readRuntimeValue("FOOD_TRACKER_API_BASE_URL", defaults.APIBaseURL),
+		AppURL:          readRuntimeValue("FOOD_TRACKER_APP_URL", defaults.AppURL),
+		Environment:     environment,
+		MarketingURL:    readRuntimeValue("FOOD_TRACKER_MARKETING_URL", defaults.MarketingURL),
+		MobileAppScheme: readRuntimeValue("FOOD_TRACKER_APP_SCHEME", defaults.MobileAppScheme),
+		PocketBaseURL:   readRuntimeValue("FOOD_TRACKER_POCKETBASE_URL", defaults.PocketBaseURL),
+		PostHogHost:     readRuntimeValue("FOOD_TRACKER_POSTHOG_HOST", defaults.PostHogHost),
 	}
 }
 
@@ -56,33 +58,36 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 	switch environment {
 	case RuntimeEnvironmentBeta:
 		return RuntimeResources{
-			AdminURL:      "https://beta.admin.yummyrecs.com",
-			APIBaseURL:    "https://beta.app.yummyrecs.com",
-			AppURL:        "https://beta.app.yummyrecs.com",
-			Environment:   RuntimeEnvironmentBeta,
-			MarketingURL:  "https://beta.yummyrecs.com",
-			PocketBaseURL: "https://beta.app.yummyrecs.com",
-			PostHogHost:   "https://beta.app.yummyrecs.com/api/analytics",
+			AdminURL:        "https://beta.admin.yummyrecs.com",
+			APIBaseURL:      "https://beta.app.yummyrecs.com",
+			AppURL:          "https://beta.app.yummyrecs.com",
+			Environment:     RuntimeEnvironmentBeta,
+			MarketingURL:    "https://beta.yummyrecs.com",
+			MobileAppScheme: "yummyrecs-preview",
+			PocketBaseURL:   "https://beta.app.yummyrecs.com",
+			PostHogHost:     "https://beta.app.yummyrecs.com/api/analytics",
 		}
 	case RuntimeEnvironmentProduction:
 		return RuntimeResources{
-			AdminURL:      "https://admin.yummyrecs.com",
-			APIBaseURL:    "https://app.yummyrecs.com",
-			AppURL:        "https://app.yummyrecs.com",
-			Environment:   RuntimeEnvironmentProduction,
-			MarketingURL:  "https://yummyrecs.com",
-			PocketBaseURL: "https://app.yummyrecs.com",
-			PostHogHost:   "https://app.yummyrecs.com/api/analytics",
+			AdminURL:        "https://admin.yummyrecs.com",
+			APIBaseURL:      "https://app.yummyrecs.com",
+			AppURL:          "https://app.yummyrecs.com",
+			Environment:     RuntimeEnvironmentProduction,
+			MarketingURL:    "https://yummyrecs.com",
+			MobileAppScheme: "yummyrecs",
+			PocketBaseURL:   "https://app.yummyrecs.com",
+			PostHogHost:     "https://app.yummyrecs.com/api/analytics",
 		}
 	default:
 		return RuntimeResources{
-			AdminURL:      "http://localhost:5173",
-			APIBaseURL:    "http://127.0.0.1:8090",
-			AppURL:        "http://localhost:8081",
-			Environment:   RuntimeEnvironmentLocal,
-			MarketingURL:  "http://localhost:4173",
-			PocketBaseURL: "http://127.0.0.1:8090",
-			PostHogHost:   "http://127.0.0.1:8090/api/analytics",
+			AdminURL:        "http://localhost:5173",
+			APIBaseURL:      "http://127.0.0.1:8090",
+			AppURL:          "http://localhost:8081",
+			Environment:     RuntimeEnvironmentLocal,
+			MarketingURL:    "http://localhost:4173",
+			MobileAppScheme: "yummyrecs",
+			PocketBaseURL:   "http://127.0.0.1:8090",
+			PostHogHost:     "http://127.0.0.1:8090/api/analytics",
 		}
 	}
 }

@@ -1,17 +1,23 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { requestUserPasswordReset } from '../features';
+import { confirmUserPasswordReset, requestUserPasswordReset } from '../features';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 
 const mockReact = React;
 
 jest.mock('../features', () => ({
+  confirmUserPasswordReset: jest.fn(),
   requestUserPasswordReset: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
 }));
 
 jest.mock('../theme', () => ({
@@ -44,6 +50,9 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 const mockedRequestUserPasswordReset =
   requestUserPasswordReset as jest.MockedFunction<typeof requestUserPasswordReset>;
+const mockedConfirmUserPasswordReset =
+  confirmUserPasswordReset as jest.MockedFunction<typeof confirmUserPasswordReset>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
 function pressButtonByLabel(renderer: any, label: string) {
   const button = renderer.root.findAllByType('Button').find((node: any) => node.props.label === label);
@@ -54,12 +63,19 @@ function pressButtonByLabel(renderer: any, label: string) {
   return button.props.onPress();
 }
 
-function createRoute(email?: string) {
+function createRoute(params?: { email?: string; token?: string }) {
   return {
     key: 'ResetPassword-test',
     name: 'ResetPassword' as const,
-    params: email ? { email } : undefined,
+    params,
   };
+}
+
+function setInputValue(renderer: any, testID: string, value: string) {
+  const input = renderer.root.findByProps({ testID });
+  act(() => {
+    input.props.onChangeText(value);
+  });
 }
 
 function getTextContent(children: unknown): string {
@@ -84,13 +100,17 @@ describe('ResetPasswordScreen', () => {
     navigation.navigate.mockReset();
     navigation.reset.mockReset();
     mockedRequestUserPasswordReset.mockReset();
+    mockedConfirmUserPasswordReset.mockReset();
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
+    } as unknown as ReturnType<typeof useConnectivity>);
   });
 
   it('renders email confirmation content without token or password inputs', async () => {
     let renderer: any;
     await act(async () => {
       renderer = create(
-        <ResetPasswordScreen navigation={navigation as never} route={createRoute('USER@example.com')} />,
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ email: 'USER@example.com' })} />,
       );
     });
 
@@ -107,7 +127,7 @@ describe('ResetPasswordScreen', () => {
     let renderer: any;
     await act(async () => {
       renderer = create(
-        <ResetPasswordScreen navigation={navigation as never} route={createRoute('user@example.com')} />,
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ email: 'user@example.com' })} />,
       );
     });
 
@@ -134,7 +154,7 @@ describe('ResetPasswordScreen', () => {
     let renderer: any;
     await act(async () => {
       renderer = create(
-        <ResetPasswordScreen navigation={navigation as never} route={createRoute('user@example.com')} />,
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ email: 'user@example.com' })} />,
       );
     });
 
@@ -152,7 +172,7 @@ describe('ResetPasswordScreen', () => {
     let renderer: any;
     await act(async () => {
       renderer = create(
-        <ResetPasswordScreen navigation={navigation as never} route={createRoute('user@example.com')} />,
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ email: 'user@example.com' })} />,
       );
     });
 
@@ -171,5 +191,116 @@ describe('ResetPasswordScreen', () => {
 
     const resendButton = renderer.root.findAllByType('Button').find((node: any) => node.props.label === 'Resend Email');
     expect(resendButton?.props.disabled).toBe(true);
+  });
+
+  it('renders a password reset form when opened from an email token', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <ResetPasswordScreen
+          navigation={navigation as never}
+          route={createRoute({ email: 'USER@example.com', token: 'reset-token' })}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('AuthIntroCard').props.title).toBe('Reset Password');
+    expect(renderer.root.findByProps({ testID: 'reset-password-new-password-input' })).toBeDefined();
+    expect(renderer.root.findByProps({ testID: 'reset-password-confirm-password-input' })).toBeDefined();
+  });
+
+  it('validates token reset password length and mismatch before submitting', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ token: 'reset-token' })} />,
+      );
+    });
+
+    setInputValue(renderer, 'reset-password-new-password-input', 'short');
+    setInputValue(renderer, 'reset-password-confirm-password-input', 'short');
+
+    await act(async () => {
+      await pressButtonByLabel(renderer, 'Reset Password');
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Password must be at least 8 characters.',
+    );
+    expect(mockedConfirmUserPasswordReset).not.toHaveBeenCalled();
+
+    setInputValue(renderer, 'reset-password-new-password-input', 'password123');
+    setInputValue(renderer, 'reset-password-confirm-password-input', 'password456');
+
+    await act(async () => {
+      await pressButtonByLabel(renderer, 'Reset Password');
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Passwords do not match.');
+    expect(mockedConfirmUserPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('confirms the reset token and returns to sign in after success', async () => {
+    mockedConfirmUserPasswordReset.mockResolvedValue(undefined);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <ResetPasswordScreen
+          navigation={navigation as never}
+          route={createRoute({ email: 'user@example.com', token: 'reset-token' })}
+        />,
+      );
+    });
+
+    setInputValue(renderer, 'reset-password-new-password-input', 'password123');
+    setInputValue(renderer, 'reset-password-confirm-password-input', 'password123');
+
+    await act(async () => {
+      await pressButtonByLabel(renderer, 'Reset Password');
+    });
+
+    expect(mockedConfirmUserPasswordReset).toHaveBeenCalledWith('reset-token', 'password123', 'password123');
+    expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Your password has been reset. Sign in with your new password.',
+    );
+
+    act(() => {
+      pressButtonByLabel(renderer, 'Back to Sign In');
+    });
+
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [
+        {
+          name: 'Login',
+          params: {
+            email: 'user@example.com',
+          },
+        },
+      ],
+    });
+  });
+
+  it('shows a friendly error when token reset fails', async () => {
+    mockedConfirmUserPasswordReset.mockRejectedValue(new Error('invalid token'));
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <ResetPasswordScreen navigation={navigation as never} route={createRoute({ token: 'reset-token' })} />,
+      );
+    });
+
+    setInputValue(renderer, 'reset-password-new-password-input', 'password123');
+    setInputValue(renderer, 'reset-password-confirm-password-input', 'password123');
+
+    await act(async () => {
+      await pressButtonByLabel(renderer, 'Reset Password');
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'This reset link is invalid or expired. Request a new reset email.',
+    );
   });
 });

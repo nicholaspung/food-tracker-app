@@ -80,6 +80,20 @@ bash scripts/deploy.sh beta
 
 The deploy workflow SSHes into the VPS and runs `scripts/deploy.sh`. The server-side script is the source of truth for deployment behavior.
 
+The deploy workflow also generates Universal Link/App Link association files for customer-facing auth emails:
+
+- `app_build/.well-known/apple-app-site-association`
+- `app_build/.well-known/assetlinks.json`
+
+Add these GitHub environment secrets to both `beta` and `production` so those files can be generated during deploy:
+
+```bash
+FOOD_TRACKER_IOS_TEAM_ID=
+FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
+```
+
+If either value is missing, deploy still succeeds, but the corresponding association file is skipped and HTTPS auth links may open in the browser instead of the installed app.
+
 ## Troubleshooting
 
 ### Site not updating
