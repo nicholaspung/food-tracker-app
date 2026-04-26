@@ -1826,7 +1826,7 @@ func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
 		case "mine":
 			return `visits.user = {:userId}`
 		case "friends":
-			return `visits.user != {:userId}`
+			return `visits.user IN (SELECT friendId FROM accepted_friends)`
 		default:
 			return `1 = 1`
 		}
@@ -1851,7 +1851,7 @@ func buildVisitsPageAccessCondition(scope string, isAdmin bool) string {
 		case "mine":
 			return `visits.user = {:userId}`
 		case "friends":
-			return `visits.user != {:userId}`
+			return `visits.user IN (SELECT friendId FROM accepted_friends)`
 		default:
 			return `1 = 1`
 		}
@@ -1882,7 +1882,7 @@ func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
 		case "mine":
 			return foodProductSQL("food_items") + ` AND food_items.user = {:userId}`
 		case "friends":
-			return foodProductSQL("food_items") + ` AND food_items.user != {:userId}`
+			return foodProductSQL("food_items") + ` AND food_items.user IN (SELECT friendId FROM accepted_friends)`
 		default:
 			return foodProductSQL("food_items")
 		}

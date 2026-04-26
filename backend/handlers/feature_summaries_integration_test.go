@@ -1449,6 +1449,67 @@ func TestVisitsPageEndpointAppliesScopeVisibilityAndModeration(t *testing.T) {
 	}
 }
 
+func TestAdminVisitsFriendsScopeExcludesNonFriends(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	admin, token := createAuthUser(t, server.app, true, false)
+	acceptedFriend, _ := createAuthUser(t, server.app, false, false)
+	demoUser1, _ := createAuthUser(t, server.app, false, false)
+	demoUser2, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, admin.Id, acceptedFriend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Admin Friend Scope Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+	})
+
+	acceptedFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       acceptedFriend.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       demoUser1.Id,
+		"visitDate":  "2026-04-02 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       demoUser2.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=friends",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected friends response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse admin friends visits payload: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.TotalItems != 1 || len(payload.Items) != 1 || payload.Items[0].ID != acceptedFriendVisit.Id {
+		t.Fatalf("expected admin friends visits scope to include only accepted friends, got %#v", payload)
+	}
+}
+
 func TestRecentRestaurantsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
@@ -2600,6 +2661,102 @@ func TestHomeFeedDefaultsToCreatedOrderingForMineAndFriends(t *testing.T) {
 	}
 	if friendsPayload.Items[1].FoodProduct.CreatedAt != "2026-04" {
 		t.Fatalf("expected friends food product createdAt to be redacted to month precision, got %#v", friendsPayload.Items[1].FoodProduct)
+	}
+}
+
+func TestAdminHomeFeedFriendsScopeExcludesNonFriends(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	admin, token := createAuthUser(t, server.app, true, false)
+	acceptedFriend, _ := createAuthUser(t, server.app, false, false)
+	demoUser1, _ := createAuthUser(t, server.app, false, false)
+	demoUser2, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, admin.Id, acceptedFriend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Admin Home Feed Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+	})
+
+	acceptedFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       acceptedFriend.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", acceptedFriendVisit.Id, "2026-04-01 18:30:00.000Z")
+
+	acceptedFriendFoodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":       acceptedFriend.Id,
+		"name":       "Accepted Friend Food Product",
+		"rating":     4,
+		"itemType":   "food-product",
+		"visibility": "friends",
+		"itemDate":   "2026-04-01 19:30:00.000Z",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", acceptedFriendFoodProduct.Id, "2026-04-01 19:30:00.000Z")
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       demoUser1.Id,
+		"visitDate":  "2026-04-02 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":       demoUser2.Id,
+		"name":       "Demo User Food Product",
+		"rating":     5,
+		"itemType":   "food-product",
+		"visibility": "friends",
+		"itemDate":   "2026-04-03 19:30:00.000Z",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected friends response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+			FoodProduct *struct {
+				ID string `json:"id"`
+			} `json:"foodProduct"`
+		} `json:"items"`
+		TotalVisits       int `json:"totalVisits"`
+		TotalFoodProducts int `json:"totalFoodProducts"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse admin friends home feed payload: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.TotalVisits != 1 || payload.TotalFoodProducts != 1 || len(payload.Items) != 2 {
+		t.Fatalf("expected admin friends home feed to include only accepted friend records, got %#v", payload)
+	}
+
+	seenVisit := false
+	seenFoodProduct := false
+	for _, item := range payload.Items {
+		if item.Source == "visit" && item.Visit != nil && item.Visit.ID == acceptedFriendVisit.Id {
+			seenVisit = true
+		}
+		if item.Source == "food-product" && item.FoodProduct != nil && item.FoodProduct.ID == acceptedFriendFoodProduct.Id {
+			seenFoodProduct = true
+		}
+	}
+	if !seenVisit || !seenFoodProduct {
+		t.Fatalf("expected admin friends home feed to include accepted friend visit and food product, got %#v", payload.Items)
 	}
 }
 
