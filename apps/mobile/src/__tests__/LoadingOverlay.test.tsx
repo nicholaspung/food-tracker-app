@@ -4,17 +4,6 @@ import { act, create } from 'react-test-renderer';
 import { LoadingOverlay } from '../components/shared/LoadingOverlay';
 
 const mockReact = React;
-const mockInsets = {
-  top: 10,
-  right: 2,
-  bottom: 34,
-  left: 4,
-};
-
-jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => mockInsets,
-}));
-
 jest.mock('../theme', () => ({
   createThemedStyles:
     (factory: (theme: Record<string, any>) => Record<string, unknown>) =>
@@ -66,26 +55,27 @@ describe('LoadingOverlay', () => {
     expect(renderer.toJSON()).toBeNull();
   });
 
-  it('extends beyond safe-area insets when visible', async () => {
+  it('renders a full-window transparent modal when visible', async () => {
     let renderer: any;
     await act(async () => {
       renderer = create(<LoadingOverlay label="Signing in..." visible />);
     });
 
+    const modal = renderer.root.findByType('Modal');
     const overlay = renderer.root.findByProps({ pointerEvents: 'auto' });
 
+    expect(modal.props).toEqual(
+      expect.objectContaining({
+        transparent: true,
+        visible: true,
+        statusBarTranslucent: true,
+      }),
+    );
     expect(overlay.props.style).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          backgroundColor: 'overlay-color',
-        }),
-        {
-          top: -10,
-          bottom: -34,
-          left: -4,
-          right: -2,
-        },
-      ]),
+      expect.objectContaining({
+        backgroundColor: 'overlay-color',
+        flex: 1,
+      }),
     );
   });
 });

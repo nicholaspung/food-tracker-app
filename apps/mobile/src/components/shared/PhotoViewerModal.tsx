@@ -3,9 +3,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
+  type ImageErrorEventData,
+  type ImageLoadEventData,
+  type ImageStyle,
   Modal as RNModal,
+  type NativeSyntheticEvent,
   Pressable,
   StyleSheet,
+  type StyleProp,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -13,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   buildCachedImageSource,
-  hasPhotoImageLoaded,
+  getPhotoImageCacheStatus,
   markPhotoImageLoaded,
   prefetchPhotoImages,
 } from '../../lib/photoImageCache';
@@ -114,6 +119,32 @@ interface PhotoViewerSlideProps {
   width: number;
 }
 
+interface ViewerImageProps {
+  onError: (event: NativeSyntheticEvent<ImageErrorEventData>) => void;
+  onLoad: (event: NativeSyntheticEvent<ImageLoadEventData>) => void;
+  style: StyleProp<Animated.WithAnimatedValue<ImageStyle>>;
+  testID: string;
+  uri: string;
+}
+
+function ViewerImage({
+  onError,
+  onLoad,
+  style,
+  testID,
+  uri,
+}: ViewerImageProps) {
+  return (
+    <Animated.Image
+      onError={onError}
+      onLoad={onLoad}
+      source={buildCachedImageSource(uri)}
+      style={style}
+      testID={testID}
+    />
+  );
+}
+
 function PhotoViewerSlide({
   previewUri,
   uri,
@@ -121,17 +152,18 @@ function PhotoViewerSlide({
   width,
 }: PhotoViewerSlideProps) {
   const shouldShowPreview = Boolean(previewUri && previewUri !== uri);
-  const isCachedFullImageLoaded = hasPhotoImageLoaded(uri);
+  const cachedFullImageStatus = getPhotoImageCacheStatus(uri);
   const [isFullImageLoaded, setIsFullImageLoaded] = useState(
-    !shouldShowPreview || isCachedFullImageLoaded,
+    !shouldShowPreview || cachedFullImageStatus === 'loaded',
   );
   const fullImageOpacity = useRef(
-    new Animated.Value(shouldShowPreview && !isCachedFullImageLoaded ? 0 : 1),
+    new Animated.Value(shouldShowPreview && cachedFullImageStatus === 'unknown' ? 0 : 1),
   ).current;
 
   useEffect(() => {
-    const hasLoadedFullImage = hasPhotoImageLoaded(uri);
-    const initialOpacity = shouldShowPreview && !hasLoadedFullImage ? 0 : 1;
+    const nextCachedFullImageStatus = getPhotoImageCacheStatus(uri);
+    const hasLoadedFullImage = nextCachedFullImageStatus === 'loaded';
+    const initialOpacity = shouldShowPreview && nextCachedFullImageStatus === 'unknown' ? 0 : 1;
     setIsFullImageLoaded(!shouldShowPreview || hasLoadedFullImage);
     fullImageOpacity.stopAnimation();
     fullImageOpacity.setValue(initialOpacity);
@@ -175,12 +207,12 @@ function PhotoViewerSlide({
             testID="photo-viewer-preview-image"
           />
         ) : null}
-        <Animated.Image
+        <ViewerImage
           onError={handleFullImageError}
           onLoad={handleFullImageLoad}
-          source={buildCachedImageSource(uri)}
           style={[slideStyles.image, { opacity: fullImageOpacity }]}
           testID="photo-viewer-full-image"
+          uri={uri}
         />
       </View>
     </View>

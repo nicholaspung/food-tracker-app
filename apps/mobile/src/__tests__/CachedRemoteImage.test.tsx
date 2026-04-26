@@ -2,7 +2,11 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { CachedRemoteImage } from '../components/shared/CachedRemoteImage';
-import { hasPhotoImageLoaded } from '../lib/photoImageCache';
+import {
+  __resetPhotoImageCacheForTests,
+  getPhotoImageCacheStatus,
+  hasPhotoImageLoaded,
+} from '../lib/photoImageCache';
 
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -22,6 +26,7 @@ describe('CachedRemoteImage', () => {
     const { Image } = jest.requireMock('react-native') as {
       Image: { prefetch: jest.Mock };
     };
+    __resetPhotoImageCacheForTests();
     Image.prefetch.mockClear();
   });
 
@@ -51,7 +56,7 @@ describe('CachedRemoteImage', () => {
     });
   });
 
-  it('prefetches and marks the uri loaded on load', async () => {
+  it('prefetches the uri and only marks it loaded on load', async () => {
     const { Image } = jest.requireMock('react-native') as {
       Image: { prefetch: jest.Mock };
     };
@@ -72,11 +77,19 @@ describe('CachedRemoteImage', () => {
     expect(hasPhotoImageLoaded('photo://loaded-from-component')).toBe(false);
 
     await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getPhotoImageCacheStatus('photo://loaded-from-component')).toBe('prefetched');
+    expect(hasPhotoImageLoaded('photo://loaded-from-component')).toBe(false);
+
+    await act(async () => {
       renderer.root
         .find((node: any) => node.type === 'Image' && node.props.testID === 'cached-image')
         .props.onLoad({ nativeEvent: {} });
     });
 
+    expect(getPhotoImageCacheStatus('photo://loaded-from-component')).toBe('loaded');
     expect(hasPhotoImageLoaded('photo://loaded-from-component')).toBe(true);
     expect(onLoad).toHaveBeenCalledWith({ nativeEvent: {} });
   });

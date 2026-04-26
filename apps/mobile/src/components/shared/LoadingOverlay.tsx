@@ -1,5 +1,4 @@
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Modal, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -11,7 +10,7 @@ export interface LoadingOverlayProps {
 
 const useStyles = createThemedStyles((theme) => ({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: theme.colors.background.overlay,
     alignItems: 'center',
     justifyContent: 'center',
@@ -32,30 +31,22 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function LoadingOverlay({ visible, label }: LoadingOverlayProps) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useStyles();
 
-  if (!visible) {
-    return null;
-  }
-
   return (
-    <View
-      pointerEvents="auto"
-      style={[
-        styles.overlay,
-        {
-          top: -insets.top,
-          bottom: -insets.bottom,
-          left: -insets.left,
-          right: -insets.right,
-        },
-      ]}
+    <Modal
+      animationType="fade"
+      onRequestClose={() => undefined}
+      statusBarTranslucent
+      transparent
+      visible={visible}
     >
-      <View style={styles.card}>
-        <ActivityIndicator color={theme.colors.button.primaryBg} />
-        {label ? <Text>{label}</Text> : null}
+      <View pointerEvents="auto" style={styles.overlay}>
+        <View style={styles.card}>
+          <ActivityIndicator color={theme.colors.button.primaryBg} />
+          {label ? <Text>{label}</Text> : null}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }

@@ -2,7 +2,11 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { PhotoViewerModal } from '../components/shared/PhotoViewerModal';
-import { markPhotoImageLoaded } from '../lib/photoImageCache';
+import {
+  __resetPhotoImageCacheForTests,
+  markPhotoImageLoaded,
+  markPhotoImagePrefetched,
+} from '../lib/photoImageCache';
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => {
@@ -182,6 +186,7 @@ describe('PhotoViewerModal', () => {
     const { Image } = jest.requireMock('react-native') as {
       Image: { prefetch: jest.Mock };
     };
+    __resetPhotoImageCacheForTests();
     Image.prefetch.mockClear();
   });
 
@@ -248,6 +253,82 @@ describe('PhotoViewerModal', () => {
 
     expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
     expect(extractOpacity(renderer.root.findByProps({ testID: 'photo-viewer-full-image' }))).toBe(1);
+  });
+
+  it('shows a full image immediately after closing and reopening once it has loaded', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://reopened-photo']}
+          urls={['full://reopened-photo']}
+          visible
+        />,
+      );
+    });
+
+    let fullImage = renderer.root.findByProps({ testID: 'photo-viewer-full-image' });
+
+    await act(async () => {
+      fullImage.props.onLoad();
+    });
+
+    await act(async () => {
+      renderer.update(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://reopened-photo']}
+          urls={['full://reopened-photo']}
+          visible={false}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.update(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://reopened-photo']}
+          urls={['full://reopened-photo']}
+          visible
+        />,
+      );
+    });
+
+    fullImage = renderer.root.findByProps({ testID: 'photo-viewer-full-image' });
+
+    expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
+    expect(extractOpacity(fullImage)).toBe(1);
+  });
+
+  it('keeps the preview under a prefetched full image until that image loads in the slide', async () => {
+    markPhotoImagePrefetched('full://prefetched-photo');
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://prefetched-photo']}
+          urls={['full://prefetched-photo']}
+          visible
+        />,
+      );
+    });
+
+    const fullImage = renderer.root.findByProps({ testID: 'photo-viewer-full-image' });
+
+    expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' }).length).toBeGreaterThan(0);
+    expect(extractOpacity(fullImage)).toBe(1);
+
+    await act(async () => {
+      fullImage.props.onLoad();
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
+    expect(extractOpacity(fullImage)).toBe(1);
   });
 
   it('keeps the preview visible when the full image fails to load', async () => {
