@@ -63,6 +63,15 @@
           "microphonePermission": false
         }
       ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/brand-logo.png",
+          "imageWidth": 160,
+          "resizeMode": "contain"
+        }
+      ],
       "expo-secure-store",
       "expo-localization",
       "@react-native-community/datetimepicker",

@@ -1,5 +1,7 @@
 import 'react-native-gesture-handler';
 
+import { useCallback } from 'react';
+import * as NativeSplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,6 +12,12 @@ import { SyncStatusBanner } from './src/components/SyncStatusBanner';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AppProviders } from './src/providers/AppProviders';
 import { ThemeProvider, useTheme } from './src/theme';
+
+void NativeSplashScreen.preventAutoHideAsync();
+NativeSplashScreen.setOptions({
+  duration: 250,
+  fade: true,
+});
 
 function AppShell() {
   const theme = useTheme();
@@ -36,8 +44,12 @@ function AppShell() {
 }
 
 export default function App() {
+  const handleRootLayout = useCallback(() => {
+    void NativeSplashScreen.hideAsync();
+  }, []);
+
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView onLayout={handleRootLayout} style={styles.root}>
       <SafeAreaProvider>
         <KeyboardProvider>
           <ThemeProvider>

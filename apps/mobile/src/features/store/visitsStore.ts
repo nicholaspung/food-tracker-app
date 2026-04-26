@@ -15,6 +15,8 @@ import {
 } from './featureStoreShared';
 import type {
   CreateVisitInput,
+  ConvertVisitItemToFoodProductInput,
+  ConvertVisitItemToFoodProductResult,
   ListVisitsPageInput,
   MoveVisitItemInput,
   MoveVisitItemResult,
@@ -28,6 +30,8 @@ import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
   CreateVisitInput,
+  ConvertVisitItemToFoodProductInput,
+  ConvertVisitItemToFoodProductResult,
   ListVisitsPageInput,
   MoveVisitItemInput,
   MoveVisitItemResult,
@@ -458,6 +462,33 @@ export async function moveVisitItem(
     },
     {
       destinationVisitId: input.destinationVisitId.trim(),
+      itemId: input.itemId.trim(),
+    },
+  );
+}
+
+export async function convertVisitItemToFoodProduct(
+  input: ConvertVisitItemToFoodProductInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<ConvertVisitItemToFoodProductResult> {
+  return trackFeatureMutation(
+    'visit.item.convert-to-food-product',
+    async () => {
+      const trimmedItemId = input.itemId.trim();
+      if (!trimmedItemId) {
+        throw new Error('Visit item is required.');
+      }
+
+      return sendApiRequest<ConvertVisitItemToFoodProductResult>(
+        `/api/visit-items/${encodeURIComponent(trimmedItemId)}/convert-to-food-product`,
+        {
+          method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          body: {},
+        },
+      );
+    },
+    {
       itemId: input.itemId.trim(),
     },
   );

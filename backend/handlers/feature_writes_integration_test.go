@@ -998,6 +998,200 @@ func TestMoveVisitItemEndpointRejectsNonVisitItems(t *testing.T) {
 	}
 }
 
+func TestConvertVisitItemToFoodProductDeletesSingleItemSourceVisitAndCarriesFields(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Corner Market")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "private")
+	item := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Bottled Tea", 4)
+	item.Set("description", "Peach flavor")
+	item.Set("notes", "Would buy again")
+	if err := server.app.Save(item); err != nil {
+		t.Fatalf("failed to update seeded item: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/convert-to-food-product",
+		token,
+		`{}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected convert to return 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		FoodProductID      string `json:"foodProductId"`
+		SourceVisitID      string `json:"sourceVisitId"`
+		DeletedSourceVisit bool   `json:"deletedSourceVisit"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse conversion payload: %v", err)
+	}
+	if payload.FoodProductID != item.Id {
+		t.Fatalf("expected converted food product id %q, got %q", item.Id, payload.FoodProductID)
+	}
+	if payload.SourceVisitID != visit.Id {
+		t.Fatalf("expected source visit id %q, got %q", visit.Id, payload.SourceVisitID)
+	}
+	if !payload.DeletedSourceVisit {
+		t.Fatal("expected single-item source visit to be deleted")
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload converted item: %v", err)
+	}
+	if reloadedItem.GetString("itemType") != "food-product" {
+		t.Fatalf("expected itemType food-product, got %q", reloadedItem.GetString("itemType"))
+	}
+	if reloadedItem.GetString("visit") != "" {
+		t.Fatalf("expected visit relation to be cleared, got %q", reloadedItem.GetString("visit"))
+	}
+	if reloadedItem.GetString("location_text") != "Corner Market" {
+		t.Fatalf("expected location_text to use restaurant name, got %q", reloadedItem.GetString("location_text"))
+	}
+	if reloadedItem.GetString("itemDate") != visit.GetString("visitDate") {
+		t.Fatalf("expected itemDate %q, got %q", visit.GetString("visitDate"), reloadedItem.GetString("itemDate"))
+	}
+	if reloadedItem.GetString("visibility") != "private" {
+		t.Fatalf("expected visibility private, got %q", reloadedItem.GetString("visibility"))
+	}
+	if reloadedItem.GetString("notes") != "Peach flavor\n\nWould buy again" {
+		t.Fatalf("expected description and notes to be preserved, got %q", reloadedItem.GetString("notes"))
+	}
+	if _, err := server.app.FindRecordById("visits", visit.Id); err == nil {
+		t.Fatal("expected source visit to be deleted")
+	}
+}
+
+func TestConvertVisitItemToFoodProductKeepsMultiItemSourceVisitAndCarriesPhotos(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Shared Cafe")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	convertedItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Packaged Cookie", 5)
+	retainedItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Latte", 3)
+	photoID := insertVisitPhotoRowRaw(t, server.app, user.Id, visit.Id, convertedItem.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+convertedItem.Id+"/convert-to-food-product",
+		token,
+		`{}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected convert to return 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		DeletedSourceVisit bool `json:"deletedSourceVisit"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse conversion payload: %v", err)
+	}
+	if payload.DeletedSourceVisit {
+		t.Fatal("expected multi-item source visit to remain")
+	}
+
+	reloadedConvertedItem, err := server.app.FindRecordById("food_items", convertedItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload converted item: %v", err)
+	}
+	if reloadedConvertedItem.GetString("itemType") != "food-product" {
+		t.Fatalf("expected converted itemType food-product, got %q", reloadedConvertedItem.GetString("itemType"))
+	}
+	if reloadedConvertedItem.GetString("visit") != "" {
+		t.Fatalf("expected converted item visit to be cleared, got %q", reloadedConvertedItem.GetString("visit"))
+	}
+
+	reloadedRetainedItem, err := server.app.FindRecordById("food_items", retainedItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload retained item: %v", err)
+	}
+	if reloadedRetainedItem.GetString("itemType") != "visit-item" {
+		t.Fatalf("expected retained itemType visit-item, got %q", reloadedRetainedItem.GetString("itemType"))
+	}
+	if reloadedRetainedItem.GetString("visit") != visit.Id {
+		t.Fatalf("expected retained item to stay on visit %q, got %q", visit.Id, reloadedRetainedItem.GetString("visit"))
+	}
+	if _, err := server.app.FindRecordById("visits", visit.Id); err != nil {
+		t.Fatalf("expected source visit to remain: %v", err)
+	}
+
+	reloadedPhoto, err := server.app.FindRecordById("visit_photos", photoID)
+	if err != nil {
+		t.Fatalf("failed to reload carried photo: %v", err)
+	}
+	if reloadedPhoto.GetString("food_item") != convertedItem.Id {
+		t.Fatalf("expected photo food_item to stay %q, got %q", convertedItem.Id, reloadedPhoto.GetString("food_item"))
+	}
+	if reloadedPhoto.GetString("visit") != "" {
+		t.Fatalf("expected photo visit to be cleared, got %q", reloadedPhoto.GetString("visit"))
+	}
+	if count := countRecordsByFilter(t, server.app, "visit_photos", "food_item = {:itemId}", map[string]any{"itemId": convertedItem.Id}); count != 1 {
+		t.Fatalf("expected exactly 1 photo for converted item, got %d", count)
+	}
+}
+
+func TestConvertVisitItemToFoodProductRejectsInvalidRequests(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, true)
+	_, intruderToken := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Owner Cafe")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Soup", 4)
+	foodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":     owner.Id,
+		"name":     "Bagged Chips",
+		"rating":   4,
+		"itemType": "food-product",
+	})
+
+	forbiddenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/convert-to-food-product",
+		intruderToken,
+		`{}`,
+	)
+	if forbiddenResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected foreign item conversion to return 403, got %d: %s", forbiddenResponse.Code, forbiddenResponse.Body.String())
+	}
+
+	nonVisitItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+foodProduct.Id+"/convert-to-food-product",
+		ownerToken,
+		`{}`,
+	)
+	if nonVisitItemResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected food product conversion to return 400, got %d: %s", nonVisitItemResponse.Code, nonVisitItemResponse.Body.String())
+	}
+
+	missingResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/missing123/convert-to-food-product",
+		ownerToken,
+		`{}`,
+	)
+	if missingResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected missing item conversion to return 404, got %d: %s", missingResponse.Code, missingResponse.Body.String())
+	}
+}
+
 func TestHomeFeedEndpointShowsMergedVisitAsSingleEntry(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureWriteHandlers(se, app)

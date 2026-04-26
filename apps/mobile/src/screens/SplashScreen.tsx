@@ -1,18 +1,28 @@
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Image, View } from 'react-native';
 
+import { APP_NAME, BRAND_LOGO } from '../lib/branding';
 import { createThemedStyles, useTheme } from '../theme';
 import { Screen, Text } from '../ui';
-import { Skeleton } from '../components/shared';
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
     alignItems: 'center',
     flex: 1,
-    gap: theme.spacing.sm,
+    gap: theme.spacing.md,
     justifyContent: 'center',
   },
-  skeleton: {
-    marginTop: theme.spacing.xxs,
+  logo: {
+    height: 96,
+    width: 112,
+  },
+  copy: {
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  loadingRow: {
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
   },
 }));
 
@@ -21,11 +31,25 @@ export function SplashScreen() {
   const styles = useStyles();
 
   return (
-    <Screen background="surface" padded={false}>
+    <Screen background="surface" padded={false} testID="splash-screen">
       <View style={styles.container}>
-        <ActivityIndicator color={theme.colors.button.primaryBg} size="large" />
-        <Text>Restoring session...</Text>
-        <Skeleton height={theme.spacing.xxs} style={styles.skeleton} width={160} />
+        <Image
+          accessibilityIgnoresInvertColors
+          accessibilityLabel={`${APP_NAME} logo`}
+          resizeMode="contain"
+          source={BRAND_LOGO}
+          style={styles.logo}
+          testID="splash-logo"
+        />
+        <View style={styles.copy}>
+          <Text testID="splash-title" variant="titleMd">
+            {APP_NAME}
+          </Text>
+          <Text tone="secondary">Getting things ready...</Text>
+        </View>
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={theme.colors.button.primaryBg} size="large" />
+        </View>
       </View>
     </Screen>
   );

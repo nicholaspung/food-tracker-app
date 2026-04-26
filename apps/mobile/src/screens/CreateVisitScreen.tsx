@@ -11,11 +11,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
   LinkedNoteCard,
   LoadingState,
+  OptionList,
+  OptionListRow,
   PageErrorToast,
   StepProgressBar,
   VisitMenuItemOptionRow,
@@ -25,11 +28,14 @@ import {
 } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
+  convertVisitItemToFoodProduct,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getNoteDetail,
   getVisitById,
   listVisitItemPhotos,
+  syncFoodProductMutationCaches,
+  syncVisitMutationCaches,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
@@ -47,6 +53,7 @@ import {
   getTodayLocalDateString,
   isValidLocalDate,
 } from '../lib/dateFormatting';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
@@ -78,7 +85,7 @@ import {
 import { useCreateVisitDraftItems } from './createVisit/useCreateVisitDraftItems';
 import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission';
 import { createThemedStyles, useTheme } from '../theme';
-import { Card, Input, Text } from '../ui';
+import { Card, Input, Modal, Text } from '../ui';
 
 type CreateVisitEntrySource = 'add_visit' | 'source_note' | 'source_list' | 'edit';
 type CreateVisitExitMethod =
@@ -161,6 +168,19 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xxs,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: theme.spacing.xxs,
+  },
+  headerActionButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  headerActionButtonDisabled: {
+    opacity: 0.55,
   },
   compactSearchRow: {
     alignItems: "center",
@@ -1323,6 +1343,179 @@ export function CreateVisitScreen({
     visitVisibility,
     writeFeature,
   });
+  const [isConvertingVisitItem, setIsConvertingVisitItem] = useState(false);
+  const [isVisitActionsModalVisible, setIsVisitActionsModalVisible] = useState(false);
+  const [isConversionPickerVisible, setIsConversionPickerVisible] = useState(false);
+  const [isConversionConfirmVisible, setIsConversionConfirmVisible] = useState(false);
+  const [selectedConversionItemId, setSelectedConversionItemId] = useState<string | null>(
+    draftItems.length === 1 ? draftItems[0]?.id ?? null : null,
+  );
+  const persistedEditVisitItemIds = useMemo(
+    () => new Set(editVisitQuery.data?.items.map((item) => item.id) ?? []),
+    [editVisitQuery.data?.items],
+  );
+  const convertibleDraftItems = useMemo(
+    () => draftItems.filter((item) => persistedEditVisitItemIds.has(item.id)),
+    [draftItems, persistedEditVisitItemIds],
+  );
+  const selectedConversionItem = useMemo(
+    () => convertibleDraftItems.find((item) => item.id === selectedConversionItemId) ?? null,
+    [convertibleDraftItems, selectedConversionItemId],
+  );
+  const canOpenVisitActions =
+    isEditMode &&
+    step === 2 &&
+    hydratedEditVisitId === editVisitId &&
+    !isSubmitting &&
+    !isConvertingVisitItem;
+  useEffect(() => {
+    if (!isEditMode || step !== 2) {
+      setIsVisitActionsModalVisible(false);
+      setIsConversionPickerVisible(false);
+      setIsConversionConfirmVisible(false);
+      return;
+    }
+
+    if (convertibleDraftItems.length === 1) {
+      setSelectedConversionItemId(convertibleDraftItems[0]?.id ?? null);
+      return;
+    }
+
+    if (
+      selectedConversionItemId &&
+      !convertibleDraftItems.some((item) => item.id === selectedConversionItemId)
+    ) {
+      setSelectedConversionItemId(null);
+    }
+  }, [convertibleDraftItems, isEditMode, selectedConversionItemId, step]);
+
+  const navigateAfterEditMutation = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('Home');
+  }, [navigation]);
+
+  const handleConvertVisitItemToFoodProduct = useCallback(
+    async (itemId: string) => {
+      const normalizedItemId = itemId.trim();
+      if (!normalizedItemId || !editVisitId) {
+        setErrorMessage('Choose an item to convert.');
+        throw new Error('Choose an item to convert.');
+      }
+
+      setErrorMessage(null);
+      trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_STARTED', {
+        source: 'CreateVisitScreen',
+        itemId: normalizedItemId,
+        visitId: editVisitId,
+        isOnline,
+      });
+      setIsConvertingVisitItem(true);
+
+      try {
+        const conversionResult = await writeFeature({
+          operationName: 'visit.item.convert-to-food-product',
+          offline: {
+            strategy: 'outbox',
+            payload: {
+              itemId: normalizedItemId,
+            },
+          },
+          execute: () => convertVisitItemToFoodProduct({ itemId: normalizedItemId }),
+        });
+
+        if (conversionResult.status === 'queued') {
+          await Promise.all([
+            syncVisitMutationCaches(queryClient, {
+              visitId: editVisitId,
+              includeVisitPhotos: true,
+            }),
+            syncFoodProductMutationCaches(queryClient),
+          ]);
+          hasCompletedFlowRef.current = true;
+          trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_SUCCEEDED', {
+            source: 'CreateVisitScreen',
+            itemId: normalizedItemId,
+            visitId: editVisitId,
+            queued: true,
+          });
+          showQueuedOfflineAlert({
+            analyticsSource: 'CreateVisitScreen',
+            subject: 'Food product conversion',
+          });
+          navigateAfterEditMutation();
+          return;
+        }
+
+        await Promise.all([
+          syncVisitMutationCaches(queryClient, {
+            visitId: conversionResult.result.sourceVisitId,
+            includeVisitPhotos: true,
+          }),
+          syncFoodProductMutationCaches(queryClient, {
+            foodProductId: conversionResult.result.foodProductId,
+            includeFoodProductPhotos: true,
+          }),
+        ]);
+        hasCompletedFlowRef.current = true;
+        trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_SUCCEEDED', {
+          source: 'CreateVisitScreen',
+          itemId: normalizedItemId,
+          visitId: conversionResult.result.sourceVisitId,
+          foodProductId: conversionResult.result.foodProductId,
+          deletedSourceVisit: conversionResult.result.deletedSourceVisit,
+          queued: false,
+        });
+        navigation.navigate('EditFoodProduct', {
+          foodProductId: conversionResult.result.foodProductId,
+          exitToHomeOnClose: true,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Could not convert item to food product.';
+        setErrorMessage(message);
+        trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_FAILED', {
+          source: 'CreateVisitScreen',
+          itemId: normalizedItemId,
+          visitId: editVisitId,
+          errorMessage: message,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        });
+        throw error;
+      } finally {
+        setIsConvertingVisitItem(false);
+      }
+    },
+    [
+      editVisitId,
+      isOnline,
+      navigateAfterEditMutation,
+      navigation,
+      queryClient,
+      writeFeature,
+    ],
+  );
+
+  const handleConfirmSelectedConversion = useCallback(async () => {
+    if (!selectedConversionItem) {
+      setErrorMessage('Choose an item to convert.');
+      return;
+    }
+
+    try {
+      await handleConvertVisitItemToFoodProduct(selectedConversionItem.id);
+      setIsConversionConfirmVisible(false);
+      setIsConversionPickerVisible(false);
+      setIsVisitActionsModalVisible(false);
+    } catch {
+      // Error text is surfaced through the page error toast by the conversion handler.
+    }
+  }, [handleConvertVisitItemToFoodProduct, selectedConversionItem]);
 
   const isSourceListFlow = sourceListItemId !== null || sourceListReturnListId !== null;
   const returnToSourceList = (exitMethod: CreateVisitExitMethod) => {
@@ -1388,7 +1581,7 @@ export function CreateVisitScreen({
           }
       : {
             label: isEditMode ? "Save Changes" : "Save Visit",
-            disabled: isSubmitting || draftItems.length === 0,
+            disabled: isSubmitting || isConvertingVisitItem || draftItems.length === 0,
             loading: isSubmitting,
             onPress: () => {
               void submitVisit();
@@ -1744,6 +1937,30 @@ export function CreateVisitScreen({
     );
   }
 
+  const shouldShowEditVisitActions =
+    isEditMode && step === 2 && hydratedEditVisitId === editVisitId;
+  const editVisitHeaderAccessory = shouldShowEditVisitActions ? (
+    <Pressable
+      accessibilityLabel="Visit actions"
+      accessibilityRole="button"
+      disabled={!canOpenVisitActions}
+      onPress={() => {
+        setIsVisitActionsModalVisible(true);
+      }}
+      style={[
+        styles.headerActionButton,
+        !canOpenVisitActions ? styles.headerActionButtonDisabled : null,
+      ]}
+      testID="edit-visit-actions-button"
+    >
+      <Ionicons
+        color={theme.colors.text.secondary}
+        name="ellipsis-horizontal"
+        size={18}
+      />
+    </Pressable>
+  ) : null;
+
   return (
     <FeatureFormScreenScaffold
       headerBottomCompact
@@ -1751,6 +1968,7 @@ export function CreateVisitScreen({
       keyboardAware
       onBackPress={handleBackPress}
       primaryAction={primaryAction}
+      rightAccessory={editVisitHeaderAccessory}
       scrollViewRef={scrollViewRef}
       secondaryAction={secondaryAction}
       subtitle={headerSubtitle}
@@ -1770,6 +1988,106 @@ export function CreateVisitScreen({
             : undefined
         }
         title="Visit draft issue"
+      />
+      <Modal
+        description="Choose an action for this visit."
+        onRequestClose={() => {
+          setIsVisitActionsModalVisible(false);
+        }}
+        secondaryAction={{
+          accessibilityLabel: 'Cancel',
+          label: 'Cancel',
+          onPress: () => {
+            setIsVisitActionsModalVisible(false);
+          },
+          testID: 'edit-visit-actions-modal-cancel-button',
+        }}
+        testID="edit-visit-actions-modal"
+        title="Visit Actions"
+        visible={isVisitActionsModalVisible}
+      >
+        <OptionList>
+          <OptionListRow
+            accessibilityLabel="Convert item to food product"
+            iconName="swap-horizontal-outline"
+            isLast
+            onPress={() => {
+              if (convertibleDraftItems.length === 0) {
+                setIsVisitActionsModalVisible(false);
+                setErrorMessage('Save changes before converting newly added items.');
+                return;
+              }
+
+              setIsVisitActionsModalVisible(false);
+              setIsConversionPickerVisible(true);
+            }}
+            subtitle="Move one item and its photos out of this restaurant visit."
+            testID="edit-visit-actions-convert-button"
+            title="Convert Item to Food Product"
+          />
+        </OptionList>
+      </Modal>
+      <Modal
+        description="Choose the item to convert. Attached photos will carry over."
+        onRequestClose={() => {
+          if (!isConvertingVisitItem) {
+            setIsConversionPickerVisible(false);
+          }
+        }}
+        secondaryAction={{
+          accessibilityLabel: 'Cancel',
+          disabled: isConvertingVisitItem,
+          label: 'Cancel',
+          onPress: () => {
+            setIsConversionPickerVisible(false);
+          },
+          testID: 'edit-visit-conversion-picker-cancel-button',
+        }}
+        testID="edit-visit-conversion-picker-modal"
+        title="Convert to Food Product"
+        visible={isConversionPickerVisible}
+      >
+        <OptionList>
+          {convertibleDraftItems.map((item, index) => (
+            <OptionListRow
+              accessibilityLabel={`Convert ${item.name} to food product`}
+              iconName="cube-outline"
+              isLast={index === convertibleDraftItems.length - 1}
+              key={item.id}
+              onPress={() => {
+                setSelectedConversionItemId(item.id);
+                setIsConversionPickerVisible(false);
+                setIsConversionConfirmVisible(true);
+              }}
+              subtitle={`Rating ${item.rating}/5`}
+              testID={`edit-visit-convert-item-option-${index}`}
+              title={item.name}
+            />
+          ))}
+        </OptionList>
+      </Modal>
+      <ConfirmDestructiveModal
+        cancelLabel="Cancel"
+        confirmLabel="Convert Item"
+        confirmLoadingLabel="Converting"
+        description={
+          selectedConversionItem
+            ? `This will remove "${selectedConversionItem.name}" from this restaurant visit and save it as a food product. Attached photos will carry over.`
+            : 'This will remove the selected item from this restaurant visit and save it as a food product. Attached photos will carry over.'
+        }
+        disabled={isSubmitting}
+        loading={isConvertingVisitItem}
+        onCancel={() => {
+          if (!isConvertingVisitItem) {
+            setIsConversionConfirmVisible(false);
+          }
+        }}
+        onConfirm={() => {
+          void handleConfirmSelectedConversion();
+        }}
+        testID="edit-visit-convert-item-confirmation-modal"
+        title="Convert to Food Product"
+        visible={isConversionConfirmVisible}
       />
       {sourceNoteId ? (
         <LinkedNoteCard

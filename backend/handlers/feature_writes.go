@@ -50,6 +50,12 @@ type moveVisitItemRequest struct {
 	DestinationVisitID string `json:"destinationVisitId"`
 }
 
+type convertVisitItemToFoodProductResponse struct {
+	FoodProductID      string `json:"foodProductId"`
+	SourceVisitID      string `json:"sourceVisitId"`
+	DeletedSourceVisit bool   `json:"deletedSourceVisit"`
+}
+
 type visitItemResponse struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -307,6 +313,32 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			}
 
 			responsePayload = moveResult
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/visit-items/{itemId}/convert-to-food-product", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		itemID := strings.TrimSpace(e.Request.PathValue("itemId"))
+		if itemID == "" {
+			return apis.NewBadRequestError("itemId is required", nil)
+		}
+
+		var responsePayload convertVisitItemToFoodProductResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			convertResult, err := convertVisitItemToFoodProductTransaction(txApp, e.Auth, itemID)
+			if err != nil {
+				return err
+			}
+
+			responsePayload = convertResult
 			return nil
 		}); err != nil {
 			return err
@@ -762,6 +794,117 @@ func moveVisitItemTransaction(
 		ItemID:             itemRecord.Id,
 		DestinationVisitID: destinationVisitID,
 	}, nil
+}
+
+func convertVisitItemToFoodProductTransaction(
+	app core.App,
+	authRecord *core.Record,
+	itemID string,
+) (convertVisitItemToFoodProductResponse, error) {
+	response := convertVisitItemToFoodProductResponse{}
+
+	itemRecord, err := app.FindRecordById("food_items", itemID)
+	if err != nil {
+		return response, apis.NewNotFoundError("visit item not found", err)
+	}
+
+	if itemRecord.GetString("user") != authRecord.Id {
+		return response, apis.NewForbiddenError("you can only convert your own visit items", nil)
+	}
+
+	sourceVisitID := strings.TrimSpace(itemRecord.GetString("visit"))
+	if !isVisitItemRecord(itemRecord) || sourceVisitID == "" {
+		return response, apis.NewBadRequestError("only visit items can be converted to food products", nil)
+	}
+
+	visitRecord, err := app.FindRecordById("visits", sourceVisitID)
+	if err != nil {
+		return response, apis.NewNotFoundError("source visit not found", err)
+	}
+
+	if visitRecord.GetString("user") != authRecord.Id {
+		return response, apis.NewForbiddenError("you can only convert items from your own visits", nil)
+	}
+
+	locationText := ""
+	restaurantID := strings.TrimSpace(visitRecord.GetString("restaurant"))
+	if restaurantID != "" {
+		if restaurantRecord, restaurantErr := app.FindRecordById("restaurants", restaurantID); restaurantErr == nil {
+			locationText = strings.TrimSpace(restaurantRecord.GetString("name"))
+		}
+	}
+
+	itemRecord.Set("itemType", foodItemTypeFoodProduct)
+	itemRecord.Set("visit", "")
+	itemRecord.Set("location_text", locationText)
+	itemRecord.Set("itemDate", firstNonEmpty(
+		visitRecord.GetString("visitDate"),
+		visitRecord.GetString("created"),
+	))
+	itemRecord.Set("visibility", normalizeVisitVisibility(visitRecord.GetString("visibility")))
+	itemRecord.Set("itemCategory", "")
+	itemRecord.Set("notes", combineVisitItemDescriptionAndNotes(
+		itemRecord.GetString("description"),
+		itemRecord.GetString("notes"),
+	))
+	itemRecord.Set("description", "")
+
+	if err := app.Save(itemRecord); err != nil {
+		return response, apis.NewApiError(500, "failed to convert visit item", err)
+	}
+
+	photoRecords, err := findRecordsByRelationValues(app, "visit_photos", "food_item", []string{itemRecord.Id}, "")
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load visit item photos", err)
+	}
+
+	for _, photoRecord := range photoRecords {
+		photoRecord.Set("visit", "")
+		if err := app.Save(photoRecord); err != nil {
+			return response, apis.NewApiError(500, "failed to convert visit item photos", err)
+		}
+	}
+
+	remainingVisitItems, err := app.FindRecordsByFilter(
+		"food_items",
+		"visit = {:visitId} && itemType = {:itemType}",
+		"created",
+		1,
+		0,
+		dbx.Params{
+			"itemType": foodItemTypeVisitItem,
+			"visitId":  sourceVisitID,
+		},
+	)
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load remaining visit items", err)
+	}
+
+	deletedSourceVisit := false
+	if len(remainingVisitItems) == 0 {
+		if err := app.Delete(visitRecord); err != nil {
+			return response, apis.NewApiError(500, "failed to delete empty source visit", err)
+		}
+		deletedSourceVisit = true
+	}
+
+	return convertVisitItemToFoodProductResponse{
+		FoodProductID:      itemRecord.Id,
+		SourceVisitID:      sourceVisitID,
+		DeletedSourceVisit: deletedSourceVisit,
+	}, nil
+}
+
+func combineVisitItemDescriptionAndNotes(description string, notes string) string {
+	trimmedDescription := strings.TrimSpace(description)
+	trimmedNotes := strings.TrimSpace(notes)
+	if trimmedDescription == "" {
+		return trimmedNotes
+	}
+	if trimmedNotes == "" {
+		return trimmedDescription
+	}
+	return trimmedDescription + "\n\n" + trimmedNotes
 }
 
 func createBillTransaction(app core.App, authRecord *core.Record, requestBody billCreateRequest) (*core.Record, error) {

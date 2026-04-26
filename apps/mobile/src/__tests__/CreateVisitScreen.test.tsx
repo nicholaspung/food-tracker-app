@@ -3,8 +3,11 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  convertVisitItemToFoodProduct,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
+  syncFoodProductMutationCaches,
+  syncVisitMutationCaches,
   useMonthlyUsage,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -21,15 +24,19 @@ const mockTheme = {
   colors: {
     background: {
       inverse: 'inverse-background',
+      muted: 'muted-background',
       overlay: 'overlay-background',
       surface: 'surface-background',
     },
     border: {
+      brand: 'brand-border',
       default: 'default-border',
       strong: 'strong-border',
       subtle: 'subtle-border',
     },
     button: {
+      primaryBg: 'primary-button-background',
+      primaryText: 'primary-button-text',
       secondaryBg: 'secondary-button-background',
       secondaryBorder: 'secondary-button-border',
     },
@@ -47,6 +54,7 @@ const mockTheme = {
       secondary: 'secondary-text',
       success: 'success-text',
       warning: 'warning-text',
+      danger: 'danger-text',
     },
   },
   radii: {
@@ -128,6 +136,8 @@ jest.mock('react-native', () => {
 });
 
 jest.mock('../components/shared', () => ({
+  ConfirmDestructiveModal: (props: Record<string, unknown>) =>
+    mockReact.createElement('ConfirmDestructiveModal', props),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   FeatureFormScreenScaffold: (
@@ -135,6 +145,9 @@ jest.mock('../components/shared', () => ({
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
   LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
+  OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('OptionList', props, children),
+  OptionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   StepProgressBar: (props: Record<string, unknown>) => mockReact.createElement('StepProgressBar', props),
   VisitMenuItemOptionRow: (props: Record<string, unknown>) => mockReact.createElement('VisitMenuItemOptionRow', props),
@@ -145,11 +158,14 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
+  convertVisitItemToFoodProduct: jest.fn(),
   createMenuReviewRequest: jest.fn(),
   getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
   getNoteDetail: jest.fn(),
   getVisitById: jest.fn(),
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
+  syncFoodProductMutationCaches: jest.fn(() => Promise.resolve()),
+  syncVisitMutationCaches: jest.fn(() => Promise.resolve()),
   useMonthlyUsage: jest.fn(),
 }));
 
@@ -225,6 +241,8 @@ jest.mock('../ui', () => ({
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
   Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
+  Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Modal', props, children),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -233,6 +251,15 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedCreateMenuReviewRequest = createMenuReviewRequest as jest.MockedFunction<
   typeof createMenuReviewRequest
+>;
+const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jest.MockedFunction<
+  typeof convertVisitItemToFoodProduct
+>;
+const mockedSyncFoodProductMutationCaches = syncFoodProductMutationCaches as jest.MockedFunction<
+  typeof syncFoodProductMutationCaches
+>;
+const mockedSyncVisitMutationCaches = syncVisitMutationCaches as jest.MockedFunction<
+  typeof syncVisitMutationCaches
 >;
 const mockedGetAuthenticatedUserIdOrNull =
   getAuthenticatedUserIdOrNull as jest.MockedFunction<typeof getAuthenticatedUserIdOrNull>;
@@ -290,6 +317,14 @@ describe('CreateVisitScreen', () => {
       setQueryData: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedCreateMenuReviewRequest.mockReset();
+    mockedConvertVisitItemToFoodProduct.mockReset();
+    mockedConvertVisitItemToFoodProduct.mockResolvedValue({
+      deletedSourceVisit: false,
+      foodProductId: 'food-product-1',
+      sourceVisitId: 'visit-1',
+    });
+    mockedSyncFoodProductMutationCaches.mockClear();
+    mockedSyncVisitMutationCaches.mockClear();
     mockedGetAuthenticatedUserIdOrNull.mockReset();
     mockedGetAuthenticatedUserIdOrNull.mockReturnValue('user-1');
     mockedUseMonthlyUsage.mockReset();
@@ -565,5 +600,224 @@ describe('CreateVisitScreen', () => {
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.label).toBe('Save Visit');
+  });
+
+  it('opens the edit visit conversion picker from the header actions menu', async () => {
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'visit') {
+        return buildQueryResult({
+          id: 'visit-1',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Corner Market',
+          visitedAt: '2026-04-05T18:00:00Z',
+          visibility: 'friends',
+          items: [
+            {
+              id: 'item-1',
+              name: 'Bottled Tea',
+              rating: 4,
+            },
+            {
+              id: 'item-2',
+              name: 'Cookie',
+              rating: 5,
+            },
+          ],
+        });
+      }
+
+      return buildQueryResult({});
+    });
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-1',
+          name: 'Bottled Tea',
+          notes: '',
+          photos: [],
+          rating: 4,
+        },
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-2',
+          name: 'Cookie',
+          notes: '',
+          photos: [],
+          rating: 5,
+        },
+      ],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn(() => false),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 2,
+      setDraftItems: jest.fn(),
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              editVisitId: 'visit-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const reviewStep = renderer.root.findByType('CreateVisitReviewStep');
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    const actionsButton = scaffold.props.rightAccessory;
+    expect(actionsButton.props.testID).toBe('edit-visit-actions-button');
+    expect(reviewStep.props.showAdvancedConversion).toBeUndefined();
+
+    await act(async () => {
+      actionsButton.props.onPress();
+    });
+
+    const actionsModal = renderer.root.findByProps({ testID: 'edit-visit-actions-modal' });
+    expect(actionsModal.props.visible).toBe(true);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'edit-visit-actions-convert-button' }).props.onPress();
+    });
+
+    const pickerModal = renderer.root.findByProps({ testID: 'edit-visit-conversion-picker-modal' });
+    expect(renderer.root.findByProps({ testID: 'edit-visit-actions-modal' }).props.visible).toBe(false);
+    expect(pickerModal.props.visible).toBe(true);
+    expect(pickerModal.props.primaryAction).toBeUndefined();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'edit-visit-convert-item-option-0' }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'edit-visit-conversion-picker-modal' }).props.visible).toBe(false);
+    expect(renderer.root.findByProps({ testID: 'edit-visit-convert-item-confirmation-modal' }).props.visible).toBe(true);
+  });
+
+  it('converts an edit visit item through the header overflow conversion flow', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        deletedSourceVisit: false,
+        foodProductId: 'food-product-1',
+        sourceVisitId: 'visit-1',
+      },
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'visit') {
+        return buildQueryResult({
+          id: 'visit-1',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Corner Market',
+          visitedAt: '2026-04-05T18:00:00Z',
+          visibility: 'friends',
+          items: [
+            {
+              id: 'item-1',
+              name: 'Bottled Tea',
+              rating: 4,
+            },
+          ],
+        });
+      }
+
+      return buildQueryResult({});
+    });
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-1',
+          name: 'Bottled Tea',
+          notes: '',
+          photos: [],
+          rating: 4,
+        },
+      ],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn(() => false),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems: jest.fn(),
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              editVisitId: 'visit-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const actionsButton = renderer.root.findByType('FeatureFormScreenScaffold').props.rightAccessory;
+    await act(async () => {
+      actionsButton.props.onPress();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'edit-visit-actions-convert-button' }).props.onPress();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'edit-visit-convert-item-option-0' }).props.onPress();
+    });
+    const confirmModal = renderer.root.findByProps({ testID: 'edit-visit-convert-item-confirmation-modal' });
+    expect(confirmModal.props.visible).toBe(true);
+
+    await act(async () => {
+      await confirmModal.props.onConfirm();
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'visit.item.convert-to-food-product',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            itemId: 'item-1',
+          },
+        },
+      }),
+    );
+    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        visitId: 'visit-1',
+        includeVisitPhotos: true,
+      }),
+    );
+    expect(mockedSyncFoodProductMutationCaches).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        foodProductId: 'food-product-1',
+        includeFoodProductPhotos: true,
+      }),
+    );
+    expect(navigation.navigate).toHaveBeenCalledWith('EditFoodProduct', {
+      exitToHomeOnClose: true,
+      foodProductId: 'food-product-1',
+    });
   });
 });

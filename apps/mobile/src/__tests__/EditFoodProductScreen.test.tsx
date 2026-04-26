@@ -421,4 +421,41 @@ describe('EditFoodProductScreen', () => {
       }),
     );
   });
+
+  it('returns to the food products home feed after editing a converted food product', async () => {
+    const navigate = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate,
+          } as never}
+          route={{
+            params: {
+              exitToHomeOnClose: true,
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.secondaryAction.onPress();
+    });
+
+    expect(navigate).toHaveBeenCalledWith('Home', {
+      initialView: {
+        feedMode: 'mine',
+        filtersExpanded: true,
+        searchQuery: '',
+        sortFilter: 'created',
+        typeFilter: 'food-products',
+      },
+    });
+  });
 });

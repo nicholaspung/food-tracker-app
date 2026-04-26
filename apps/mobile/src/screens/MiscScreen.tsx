@@ -44,9 +44,9 @@ const TIPS: TipItem[] = [
       'Use Food Product when you want to save a grocery, convenience-store, or market item without creating a full restaurant visit. Add notes or a photo if you want extra context.',
   },
   {
-    title: 'Photo Processing Magic',
+    title: 'Process Multiple Photos',
     description:
-      'Take photos of your food and use the Process Photos feature to automatically create entries. You can combine multiple photos of the same dish into one entry.',
+      'Use Process Photos to step through several saved food photos more easily. You still review each photo, add details, and decide how each entry should be tracked.',
   },
   {
     title: 'Save Notes for Later',

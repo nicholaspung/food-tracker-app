@@ -12,6 +12,7 @@ import {
   createFeedback,
   createNote,
   createFoodProduct,
+  convertVisitItemToFoodProduct,
   createRestaurantList,
   createVisit,
   deleteBill,
@@ -39,6 +40,7 @@ import {
   type CreateFeedbackInput,
   type CreateNoteInput,
   type CreateFoodProductInput,
+  type ConvertVisitItemToFoodProductInput,
   type CreateRestaurantListInput,
   type CreateVisitInput,
   type InviteFriendInput,
@@ -66,6 +68,8 @@ interface VisitUpdateOperationPayload {
 interface VisitDeleteOperationPayload {
   visitId: string;
 }
+
+type ConvertVisitItemToFoodProductOperationPayload = ConvertVisitItemToFoodProductInput;
 
 interface FoodProductUpdateOperationPayload {
   foodProductId: string;
@@ -148,6 +152,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
+  'visit.item.convert-to-food-product': ConvertVisitItemToFoodProductOperationPayload;
   'food-product.create': CreateFoodProductInput;
   'food-product.update': FoodProductUpdateOperationPayload;
   'food-product.delete': FoodProductDeleteOperationPayload;
@@ -188,6 +193,7 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'visit.create',
   'visit.update',
   'visit.delete',
+  'visit.item.convert-to-food-product',
   'food-product.create',
   'food-product.update',
   'food-product.delete',
@@ -377,6 +383,12 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
       await deleteVisit(visitDeletePayload.visitId, requestOptions);
       return true;
     }
+    case 'visit.item.convert-to-food-product':
+      await convertVisitItemToFoodProduct(
+        payload as ConvertVisitItemToFoodProductOperationPayload,
+        requestOptions,
+      );
+      return true;
     case 'food-product.create':
       await createFoodProduct(payload as CreateFoodProductInput, requestOptions);
       return true;

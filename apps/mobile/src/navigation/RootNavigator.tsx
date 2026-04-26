@@ -149,7 +149,7 @@ export type RootStackParamList = {
         returnToPrevious?: boolean;
       }
     | undefined;
-  EditFoodProduct: { foodProductId: string };
+  EditFoodProduct: { foodProductId: string; exitToHomeOnClose?: boolean };
   ProcessPhotos:
     | {
         mode?: 'menu_scan' | 'general';

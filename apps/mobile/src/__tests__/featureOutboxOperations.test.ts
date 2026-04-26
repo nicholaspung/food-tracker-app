@@ -2,6 +2,7 @@ import {
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
 import {
+  convertVisitItemToFoodProduct,
   createVisit,
 } from '../features/store/featureStore';
 import type { QueuedMutation } from '../offline/types';
@@ -12,6 +13,7 @@ jest.mock('../features/store/featureStore', () => ({
   createDefaultRestaurantList: jest.fn(),
   createFeedback: jest.fn(),
   createFoodProduct: jest.fn(),
+  convertVisitItemToFoodProduct: jest.fn(),
   createNote: jest.fn(),
   createRestaurantList: jest.fn(),
   createVisit: jest.fn(),
@@ -43,6 +45,9 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
 }));
 
 const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>;
+const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jest.MockedFunction<
+  typeof convertVisitItemToFoodProduct
+>;
 
 function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMutation {
   return {
@@ -77,6 +82,7 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
 describe('featureOutboxOperations', () => {
   beforeEach(() => {
     mockedCreateVisit.mockReset();
+    mockedConvertVisitItemToFoodProduct.mockReset();
   });
 
   it('passes queued idempotency headers into replayed local feature writes', async () => {
@@ -114,6 +120,40 @@ describe('featureOutboxOperations', () => {
         headers: {
           'X-Custom-Header': 'custom-value',
           'X-Mobile-Write-Operation': 'visit.create',
+          'Idempotency-Key': 'idem_123',
+          'X-Idempotency-Key': 'idem_123',
+        },
+      },
+    );
+  });
+
+  it('replays visit item conversion through local feature writes', async () => {
+    mockedConvertVisitItemToFoodProduct.mockResolvedValue({
+      deletedSourceVisit: false,
+      foodProductId: 'food-product-1',
+      sourceVisitId: 'visit-1',
+    });
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/visit.item.convert-to-food-product',
+        body: JSON.stringify({
+          itemId: 'item-1',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'visit.item.convert-to-food-product',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedConvertVisitItemToFoodProduct).toHaveBeenCalledWith(
+      {
+        itemId: 'item-1',
+      },
+      {
+        headers: {
+          'X-Mobile-Write-Operation': 'visit.item.convert-to-food-product',
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
         },

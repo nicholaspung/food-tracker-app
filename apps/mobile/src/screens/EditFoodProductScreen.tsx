@@ -44,6 +44,7 @@ import {
   validateFoodProductForm,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
+import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -105,7 +106,7 @@ function buildExistingPhotoAttachment(photo: VisitPhotoRecord) {
 }
 
 export function EditFoodProductScreen({ navigation, route }: EditFoodProductScreenProps) {
-  const { foodProductId } = route.params;
+  const { exitToHomeOnClose, foodProductId } = route.params;
   const legacyFoodProductId = foodProductId;
   const styles = useStyles();
   const queryClient = useQueryClient();
@@ -417,6 +418,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   };
 
   const handleBackPress = () => {
+    if (exitToHomeOnClose) {
+      navigation.navigate('Home', buildFoodProductCreatedHomeParams());
+      return;
+    }
+
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;

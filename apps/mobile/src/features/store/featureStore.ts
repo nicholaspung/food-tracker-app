@@ -54,6 +54,16 @@ export interface MoveVisitItemResult {
   destinationVisitId: string;
 }
 
+export interface ConvertVisitItemToFoodProductInput {
+  itemId: string;
+}
+
+export interface ConvertVisitItemToFoodProductResult {
+  foodProductId: string;
+  sourceVisitId: string;
+  deletedSourceVisit: boolean;
+}
+
 export interface CreateFoodProductInput {
   itemName: string;
   locationText?: string;
@@ -514,6 +524,7 @@ export {
 // eslint-disable-next-line import/no-unresolved
 export {
   createVisit,
+  convertVisitItemToFoodProduct,
   deleteVisit,
   getVisitById,
   listVisitsPage,
