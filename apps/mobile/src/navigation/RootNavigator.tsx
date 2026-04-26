@@ -260,6 +260,7 @@ const WEB_TAB_TITLE_BY_ROUTE: Record<BottomTabRoute, string> = {
   Misc: 'More',
   Profile: 'Profile',
 };
+const AUTH_CHROME_SETTLE_DELAY_MS = 500;
 
 const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string>> = {
   Onboarding: 'Welcome',
@@ -297,7 +298,7 @@ function AdminOnlyRouteGuard() {
 }
 
 export function RootNavigator() {
-  const { status, user, verificationGraceEndsAt, verificationStatus } = useAuth();
+  const { status, user, verificationGraceEndsAt, verificationStatus, isSubmitting } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -307,6 +308,8 @@ export function RootNavigator() {
   const activeRouteNameRef = useRef<keyof RootStackParamList | null>(null);
   const routeStartedAtRef = useRef<number | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const authSubmissionWasActiveRef = useRef(false);
+  const [isAuthenticatedChromeReady, setIsAuthenticatedChromeReady] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -391,9 +394,16 @@ export function RootNavigator() {
     ROUTES_WITH_TABS.includes(currentRouteName);
   const shouldShowVerificationBanner =
     status === 'authenticated' &&
+    isAuthenticatedChromeReady &&
     verificationStatus === 'grace_period' &&
     Boolean(verificationGraceEndsAt) &&
     currentRouteName !== 'VerifyEmail';
+  const navigatorKey =
+    status === 'authenticated'
+      ? 'authenticated'
+      : status === 'verification_required'
+        ? 'verification-required'
+        : 'unauthenticated';
 
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
 
@@ -417,6 +427,33 @@ export function RootNavigator() {
     });
     navigationRef.navigate(route);
   };
+
+  useEffect(() => {
+    if (isSubmitting) {
+      authSubmissionWasActiveRef.current = true;
+      setIsAuthenticatedChromeReady(false);
+      return undefined;
+    }
+
+    if (status !== 'authenticated') {
+      setIsAuthenticatedChromeReady(false);
+      return undefined;
+    }
+
+    if (!authSubmissionWasActiveRef.current) {
+      setIsAuthenticatedChromeReady(true);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      authSubmissionWasActiveRef.current = false;
+      setIsAuthenticatedChromeReady(true);
+    }, AUTH_CHROME_SETTLE_DELAY_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isSubmitting, status]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -474,6 +511,7 @@ export function RootNavigator() {
           ) : null}
           <View style={styles.navigatorBody}>
             <Stack.Navigator
+              key={navigatorKey}
               screenOptions={{
                 animation: 'none',
                 headerStyle: {

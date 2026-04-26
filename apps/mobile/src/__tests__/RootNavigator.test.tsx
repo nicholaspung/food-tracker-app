@@ -209,6 +209,7 @@ describe('RootNavigator', () => {
         id: 'user_1',
         isAdmin: false,
       },
+      isSubmitting: false,
       verificationStatus: 'grace_period',
       verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
     } as unknown as ReturnType<typeof useAuth>);
@@ -229,6 +230,7 @@ describe('RootNavigator', () => {
         id: 'user_1',
         isAdmin: false,
       },
+      isSubmitting: false,
       verificationStatus: 'grace_period',
       verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
     } as unknown as ReturnType<typeof useAuth>);
@@ -248,6 +250,7 @@ describe('RootNavigator', () => {
         id: 'user_1',
         isAdmin: false,
       },
+      isSubmitting: false,
       verificationStatus: 'grace_expired',
       verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
     } as unknown as ReturnType<typeof useAuth>);
@@ -260,5 +263,95 @@ describe('RootNavigator', () => {
 
     expect(renderedScreens).toContain('VerifyEmailScreen');
     expect(renderedScreens).not.toContain('HomeScreen');
+  });
+
+  it('renders bottom tabs on authenticated tab routes even while auth submission is completing', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      isSubmitting: true,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+  });
+
+  it('renders bottom tabs after authenticated auth submission completes', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+  });
+
+  it('waits for the auth screen transition before showing the verification banner after submission', async () => {
+    jest.useFakeTimers();
+    let authValue = {
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      isSubmitting: true,
+      verificationStatus: 'grace_period',
+      verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
+    } as unknown as ReturnType<typeof useAuth>;
+    mockedUseAuth.mockImplementation(() => authValue);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
+
+    authValue = {
+      ...authValue,
+      isSubmitting: false,
+    };
+
+    await act(async () => {
+      renderer.update(<RootNavigator />);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
+
+    await act(async () => {
+      jest.advanceTimersByTime(499);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(1);
+    jest.useRealTimers();
   });
 });
