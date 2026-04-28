@@ -64,6 +64,7 @@ import {
   TastingSessionsScreen,
   VisitShareCustomizationScreen,
   VerifyEmailScreen,
+  WaitlistConfirmationScreen,
 } from '../screens';
 import { useTheme } from '../theme';
 import { Screen } from '../ui';
@@ -77,10 +78,14 @@ export type RootStackParamList = {
     | undefined;
   SignUp:
     | {
+        email?: string;
         inviteCode?: string;
         code?: string;
       }
     | undefined;
+  WaitlistConfirmation: {
+    email: string;
+  };
   ForgotPassword: undefined;
   ResetPassword:
     | {
@@ -209,6 +214,7 @@ export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
       Onboarding: '',
       Login: 'login',
       SignUp: 'signup',
+      WaitlistConfirmation: 'waitlist',
       ForgotPassword: 'forgot-password',
       ResetPassword: 'reset-password',
       VerifyEmail: 'verify-email',
@@ -269,6 +275,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   Onboarding: 'Welcome',
   Login: 'Login',
   SignUp: 'Sign Up',
+  WaitlistConfirmation: 'Waitlist',
   ForgotPassword: 'Forgot Password',
   ResetPassword: 'Check Email',
   VerifyEmail: 'Verify Email',
@@ -651,6 +658,11 @@ export function RootNavigator() {
                   <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ headerShown: false }} />
                   <Stack.Screen component={LoginScreen} name="Login" options={{ headerShown: false }} />
                   <Stack.Screen component={SignUpScreen} name="SignUp" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={WaitlistConfirmationScreen}
+                    name="WaitlistConfirmation"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen
                     component={ForgotPasswordScreen}
                     name="ForgotPassword"

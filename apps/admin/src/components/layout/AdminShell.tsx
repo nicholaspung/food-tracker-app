@@ -9,6 +9,7 @@ const navItems = [
   { to: '/menu-reviews', label: 'Menu Reviews', icon: '☰' },
   { to: '/feedback', label: 'Feedback', icon: '✉' },
   { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
+  { to: '/waitlist', label: 'Waitlist', icon: '@' },
   { to: '/moderation', label: 'Moderation', icon: '⚑' },
   { to: '/users', label: 'Users', icon: '◎' },
   { to: '/record-counts', label: 'Record Counts', icon: '#' },

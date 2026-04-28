@@ -1,0 +1,88 @@
+# Loops Email Integration
+
+Yummy Recs uses Loops for waitlist contacts, marketing segmentation, lifecycle events, and transactional waitlist approval emails. The app backend remains the source of truth for signup access.
+
+## Backend Environment
+
+Set these values on the API server:
+
+- `LOOPS_API_KEY`
+- `LOOPS_WAITLIST_MAILING_LIST_ID`
+- `LOOPS_MARKETING_MAILING_LIST_ID`
+- `LOOPS_PRODUCT_UPDATES_MAILING_LIST_ID`
+- `LOOPS_WAITLIST_APPROVED_TRANSACTIONAL_ID`
+
+When `LOOPS_API_KEY` is absent, backend waitlist and signup state still work, but Loops sync and sends are skipped.
+
+## Loops Contact Properties
+
+Create these custom contact properties in Loops:
+
+- `waitlistStatus`
+- `signupSource`
+- `appEnvironment`
+- `productUpdatesConsent`
+- `marketingConsent`
+- `onboardingEmailsAcknowledged`
+- `emailConsentVersion`
+- `waitlistJoinedAt`
+- `approvedAt`
+- `accountCreatedAt`
+
+## Mailing Lists
+
+Create these Loops mailing lists and copy their IDs into the matching env vars:
+
+- Waitlist: `LOOPS_WAITLIST_MAILING_LIST_ID`
+- Product Updates: `LOOPS_PRODUCT_UPDATES_MAILING_LIST_ID`
+- Marketing: `LOOPS_MARKETING_MAILING_LIST_ID`
+
+The backend always adds waitlist signups to the Waitlist list when configured. Product Updates and Marketing are controlled by the user's optional consent choices.
+
+## Events
+
+Create these Loops events:
+
+- `waitlist_joined`
+- `waitlist_approved`
+- `waitlist_rejected`
+- `account_created`
+
+Future lifecycle events can include:
+
+- `first_visit_created`
+- `first_note_created`
+- `inactive_7_days`
+- `feedback_submitted`
+
+## Transactional Email
+
+Create and publish a transactional email for waitlist approval. Store the published transactional ID in:
+
+- `LOOPS_WAITLIST_APPROVED_TRANSACTIONAL_ID`
+
+Required data variables:
+
+```json
+{
+  "signupUrl": "https://yummyrecs.com/signup?email=person%40example.com",
+  "email": "person@example.com"
+}
+```
+
+The approval email should send the user to the signup page. The backend will allow account creation only for the approved email.
+
+## Local Testing
+
+- Leave `LOOPS_API_KEY` unset to test waitlist and signup logic without external sends.
+- Use `@example.com` or `@test.com` addresses when testing Loops transactional sends against a real Loops API key.
+- Approve waitlist records from the admin app at `/waitlist`.
+
+## Data Flow
+
+1. Mobile calls `POST /api/waitlist`.
+2. Backend upserts `waitlist_entries` and syncs the contact to Loops.
+3. Admin approves the entry from `/waitlist`.
+4. Backend marks the entry `approved`, sends the Loops approval email, and emits `waitlist_approved`.
+5. Mobile signup without an invite code succeeds only if the email has an approved waitlist entry.
+6. Backend marks the waitlist entry `signed_up`, updates the Loops contact with the user ID, and emits `account_created`.

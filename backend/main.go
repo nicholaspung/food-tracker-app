@@ -65,6 +65,7 @@ func main() {
 
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
+		handlers.RegisterWaitlistHandlers(se, app, runtimeResources)
 		handlers.RegisterContentReportHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
 		handlers.RegisterModerationHandlers(se, app)
@@ -158,11 +159,17 @@ func main() {
 
 		inviteCode, ok := requestInfo.Body["inviteCode"].(string)
 		inviteCode = strings.TrimSpace(inviteCode)
-		if !ok || inviteCode == "" {
-			return apis.NewBadRequestError("invite code is required", nil)
+
+		var inviteCodeReservation *inviteCodeReservation
+		var waitlistEntry *core.Record
+
+		if ok && inviteCode != "" {
+			inviteCodeReservation, err = reserveInviteCode(e.App, inviteCode)
+		} else {
+			email, _ := requestInfo.Body["email"].(string)
+			waitlistEntry, err = handlers.FindApprovedWaitlistEntryByEmail(e.App, email)
 		}
 
-		inviteCodeReservation, err := reserveInviteCode(e.App, inviteCode)
 		if err != nil {
 			lockoutMinutes, locked, rateErr := incrementSignupFailure(e.App, rateLimitRecord, now)
 			if rateErr != nil {
@@ -188,6 +195,11 @@ func main() {
 				return apis.NewBadRequestError("invalid or already used invite code", nil)
 			}
 
+			if waitlistEntry == nil && inviteCode == "" {
+				log.Printf("Rate limit: IP %s failed waitlist approval attempt %d/%d", clientIP, rateLimitRecord.GetInt("attempts"), signupRateLimitMaxAttempts)
+				return apis.NewBadRequestError("email is not approved for signup", nil)
+			}
+
 			log.Printf("Failed to reserve invite code for IP %s: %v", clientIP, err)
 			return apis.NewApiError(500, "failed to validate invite code", err)
 		}
@@ -208,7 +220,9 @@ func main() {
 			return err
 		}
 
-		if inviteCodeReservation.CreatedBy == "" {
+		applySignupEmailPreferences(e.App, e.Record, requestInfo.Body)
+
+		if inviteCodeReservation != nil && inviteCodeReservation.CreatedBy == "" {
 			e.Record.Set("isInitialUser", true)
 			if err := e.App.Save(e.Record); err != nil {
 				log.Printf("Error setting isInitialUser flag: %v", err)
@@ -221,7 +235,15 @@ func main() {
 			log.Printf("Error finalizing invite code reservation: %v", err)
 		}
 
-		if err := handlers.GenerateInviteCodesForUser(e.App, e.Record.Id, inviteCodeReservation.Code); err != nil {
+		if err := handlers.MarkWaitlistEntrySignedUp(e.App, runtimeResources, waitlistEntry, e.Record); err != nil {
+			log.Printf("Error marking waitlist signup for user %s: %v", e.Record.Id, err)
+		}
+
+		parentInviteCode := ""
+		if inviteCodeReservation != nil {
+			parentInviteCode = inviteCodeReservation.Code
+		}
+		if err := handlers.GenerateInviteCodesForUser(e.App, e.Record.Id, parentInviteCode); err != nil {
 			log.Printf("Error generating invite codes for user %s: %v", e.Record.Id, err)
 		}
 
@@ -275,5 +297,52 @@ func main() {
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func applySignupEmailPreferences(app core.App, user *core.Record, body map[string]any) {
+	if app == nil || user == nil {
+		return
+	}
+
+	usersCollection, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		return
+	}
+
+	changed := false
+	setBoolField := func(fieldName string) {
+		if usersCollection.Fields.GetByName(fieldName) == nil {
+			return
+		}
+		if value, ok := body[fieldName].(bool); ok {
+			user.Set(fieldName, value)
+			changed = true
+		}
+	}
+	setStringField := func(fieldName string) {
+		if usersCollection.Fields.GetByName(fieldName) == nil {
+			return
+		}
+		if value, ok := body[fieldName].(string); ok {
+			user.Set(fieldName, strings.TrimSpace(value))
+			changed = true
+		}
+	}
+
+	setBoolField("productUpdatesConsent")
+	setBoolField("marketingConsent")
+	setBoolField("onboardingEmailsAcknowledged")
+	setStringField("emailConsentVersion")
+
+	if usersCollection.Fields.GetByName("emailConsentCapturedAt") != nil {
+		user.Set("emailConsentCapturedAt", time.Now().UTC())
+		changed = true
+	}
+
+	if changed {
+		if err := app.Save(user); err != nil {
+			log.Printf("Failed to save signup email preferences for user %s: %v", user.Id, err)
+		}
 	}
 }

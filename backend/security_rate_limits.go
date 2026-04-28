@@ -6,6 +6,7 @@ const (
 	loginRouteLabel          = "POST /api/collections/users/auth-with-password"
 	signupRouteLabel         = "POST /api/collections/users/records"
 	publicInviteLookupLabel  = "GET /api/invite-codes/inviter/"
+	waitlistJoinLabel        = "POST /api/waitlist"
 	friendCodeLookupLabel    = "GET /api/users/by-friend-code/"
 	convertHeicRouteLabel    = "POST /api/convert-heic"
 	findRestaurantRouteLabel = "POST /api/find-restaurant-name"
@@ -29,6 +30,7 @@ func configureSecurityRateLimitRules(app core.App) {
 		{Label: loginRouteLabel, Audience: guestAudience, Duration: 15 * 60, MaxRequests: 10},
 		{Label: signupRouteLabel, Audience: guestAudience, Duration: 15 * 60, MaxRequests: 10},
 		{Label: publicInviteLookupLabel, Audience: guestAudience, Duration: 60, MaxRequests: 12},
+		{Label: waitlistJoinLabel, Audience: guestAudience, Duration: 15 * 60, MaxRequests: 10},
 		{Label: friendCodeLookupLabel, Audience: authAudience, Duration: 60, MaxRequests: 20},
 		{Label: postHogStaticRouteLabel, Audience: allAudience, Duration: 60, MaxRequests: 120},
 		{Label: postHogRoutePrefixLabel, Audience: allAudience, Duration: 60, MaxRequests: 60},

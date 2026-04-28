@@ -18,6 +18,7 @@ import { RequireAdminRoute } from '@/features/auth/RequireAdminRoute';
 import { AccessControlsPage } from '@/features/users/AccessControlsPage';
 import { UserDetailPage } from '@/features/users/UserDetailPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { WaitlistPage } from '@/features/waitlist/WaitlistPage';
 
 const shellRoutes = {
   element: <RequireAdminRoute />,
@@ -52,6 +53,10 @@ const shellRoutes = {
         {
           path: '/access-controls',
           element: <AccessControlsPage />,
+        },
+        {
+          path: '/waitlist',
+          element: <WaitlistPage />,
         },
         {
           path: '/moderation',

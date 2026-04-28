@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { createCollectionRecord, sendApiRequest } from '../features';
@@ -9,6 +9,7 @@ import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../li
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -23,30 +24,78 @@ interface InviteCodeInviterResponse {
   };
 }
 
+const EMAIL_CONSENT_VERSION = '2026-04-27';
+
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
     paddingTop: theme.spacing.sm,
   },
+  screenContent: {
+    flexGrow: 0,
+  },
   formCard: {
     gap: theme.spacing.sm,
+  },
+  helperText: {
+    marginTop: -theme.spacing.xs,
+  },
+  consentGroup: {
+    gap: theme.spacing.xs,
+  },
+  consentRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  checkbox: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: 'center',
+    marginTop: 1,
+    width: 22,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.button.primaryBg,
+    borderColor: theme.colors.button.primaryBg,
+  },
+  checkboxDisabled: {
+    opacity: 0.7,
+  },
+  consentText: {
+    flex: 1,
+    gap: theme.spacing.xxs,
   },
   supportActions: {
     gap: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
+  waitlistCard: {
+    gap: theme.spacing.sm,
+  },
 }));
 
 export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const { signInWithPassword } = useAuth();
+  const { isOnline } = useConnectivity();
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
+  const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [productUpdatesConsent, setProductUpdatesConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [onboardingEmailsAcknowledged] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isJoiningWaitlist, setIsJoiningWaitlist] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [waitlistErrorMessage, setWaitlistErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!prefilledInviteCode) {
@@ -55,6 +104,14 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
     setInviteCode(prefilledInviteCode);
   }, [prefilledInviteCode]);
+
+  useEffect(() => {
+    if (!prefilledEmail) {
+      return;
+    }
+
+    setEmail(prefilledEmail);
+  }, [prefilledEmail]);
   const styles = useStyles();
 
   const handleSignUp = async () => {
@@ -62,12 +119,30 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     const trimmedName = name.trim();
     const trimmedInviteCode = inviteCode.trim();
 
-    if (!trimmedName || !trimmedEmail || !trimmedInviteCode || !password) {
+    if (!trimmedName || !trimmedEmail || !password) {
       trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
         source: 'SignUpScreen',
         reason: 'missing_required_fields',
       });
-      setErrorMessage('Name, email, invite code, and password are required.');
+      setErrorMessage('Name, email, and password are required.');
+      return;
+    }
+
+    if (!trimmedInviteCode) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'missing_invite_code',
+      });
+      setErrorMessage('Invite code is required to create an account.');
+      return;
+    }
+
+    if (!onboardingEmailsAcknowledged) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'missing_email_acknowledgement',
+      });
+      setErrorMessage('Required onboarding and account emails must be acknowledged.');
       return;
     }
 
@@ -102,41 +177,47 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     try {
       let pendingFriendSuggestion: PendingFriendSuggestion | null = null;
 
-      try {
-        const inviteLookup = await sendApiRequest<InviteCodeInviterResponse>(
-          `/api/invite-codes/inviter/${encodeURIComponent(trimmedInviteCode)}`,
-          { method: 'GET' },
-        );
+      if (trimmedInviteCode) {
+        try {
+          const inviteLookup = await sendApiRequest<InviteCodeInviterResponse>(
+            `/api/invite-codes/inviter/${encodeURIComponent(trimmedInviteCode)}`,
+            { method: 'GET' },
+          );
 
-        if (
-          inviteLookup?.hasInviter &&
-          typeof inviteLookup.inviter?.id === 'string' &&
-          inviteLookup.inviter.id.trim().length > 0
-        ) {
-          pendingFriendSuggestion = {
-            inviterId: inviteLookup.inviter.id,
-            inviterDisplayName:
-              typeof inviteLookup.inviter.displayName === 'string'
-                ? inviteLookup.inviter.displayName
-                : undefined,
-            newUserEmail: trimmedEmail,
-          };
+          if (
+            inviteLookup?.hasInviter &&
+            typeof inviteLookup.inviter?.id === 'string' &&
+            inviteLookup.inviter.id.trim().length > 0
+          ) {
+            pendingFriendSuggestion = {
+              inviterId: inviteLookup.inviter.id,
+              inviterDisplayName:
+                typeof inviteLookup.inviter.displayName === 'string'
+                  ? inviteLookup.inviter.displayName
+                  : undefined,
+              newUserEmail: trimmedEmail,
+            };
+          }
+        } catch (inviteLookupError) {
+          trackObservabilityEvent('AUTH_SIGNUP_INVITER_LOOKUP_FAILED', {
+            source: 'SignUpScreen',
+            errorMessage:
+              inviteLookupError instanceof Error ? inviteLookupError.message : String(inviteLookupError),
+          });
         }
-      } catch (inviteLookupError) {
-        trackObservabilityEvent('AUTH_SIGNUP_INVITER_LOOKUP_FAILED', {
-          source: 'SignUpScreen',
-          errorMessage:
-            inviteLookupError instanceof Error ? inviteLookupError.message : String(inviteLookupError),
-        });
       }
 
       await createCollectionRecord('users', {
         name: trimmedName,
         email: trimmedEmail,
-        inviteCode: trimmedInviteCode,
+        ...(trimmedInviteCode ? { inviteCode: trimmedInviteCode } : {}),
         defaultListVisibility: 'friends',
         defaultVisitVisibility: 'friends',
         defaultRestaurantVisibility: 'friends',
+        productUpdatesConsent,
+        marketingConsent,
+        onboardingEmailsAcknowledged,
+        emailConsentVersion: EMAIL_CONSENT_VERSION,
         password,
         passwordConfirm,
         username: `${trimmedEmail.split('@')[0]}_${Date.now().toString(36)}`,
@@ -176,16 +257,76 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
+  const handleJoinWaitlist = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      setWaitlistErrorMessage('Email is required to join the waitlist.');
+      return;
+    }
+
+    if (!onboardingEmailsAcknowledged) {
+      setWaitlistErrorMessage('Required onboarding and account emails must be acknowledged.');
+      return;
+    }
+
+    if (!isOnline) {
+      setWaitlistErrorMessage('Joining the waitlist requires an internet connection.');
+      return;
+    }
+
+    if (inviteCode.trim()) {
+      setWaitlistErrorMessage('Remove the invite code to join the waitlist.');
+      return;
+    }
+
+    setWaitlistErrorMessage(null);
+    setIsJoiningWaitlist(true);
+
+    try {
+      await sendApiRequest('/api/waitlist', {
+        method: 'POST',
+        body: {
+          email: trimmedEmail,
+          source: 'mobile_signup',
+          productUpdatesConsent,
+          marketingConsent,
+          onboardingEmailsAcknowledged,
+          consentVersion: EMAIL_CONSENT_VERSION,
+        },
+      });
+      trackObservabilityEvent('AUTH_WAITLIST_JOIN_SUCCEEDED', {
+        source: 'SignUpScreen',
+      });
+      navigation.navigate('WaitlistConfirmation', {
+        email: trimmedEmail,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error, 'Could not join the waitlist.');
+      setWaitlistErrorMessage(message);
+      trackObservabilityEvent('AUTH_WAITLIST_JOIN_FAILED', {
+        source: 'SignUpScreen',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsJoiningWaitlist(false);
+    }
+  };
+
   const resolveSignUpErrorMessage = (error: unknown): string => {
     const message = getErrorMessage(error, 'Sign up failed.');
     const normalizedMessage = message.toLowerCase();
 
     if (normalizedMessage.includes('invite code is required')) {
-      return 'Invite code is required.';
+      return 'Invite code is required, or this email must be approved from the waitlist.';
     }
 
     if (normalizedMessage.includes('invalid or already used invite code')) {
       return 'Invite code is invalid or already used.';
+    }
+
+    if (normalizedMessage.includes('email is not approved for signup')) {
+      return 'This email is not approved yet. Join the waitlist and we will email you when your account is ready.';
     }
 
     if (normalizedMessage.includes('too many failed attempts')) {
@@ -196,7 +337,13 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   };
 
   return (
-    <Screen background="app" keyboardAware scroll testID="signup-screen">
+    <Screen
+      background="app"
+      contentStyle={styles.screenContent}
+      keyboardAware
+      scroll
+      testID="signup-screen"
+    >
       <FormScaffold
         lead={
           <AuthTopBar
@@ -244,6 +391,9 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             testID="signup-invite-code-input"
             value={inviteCode}
           />
+          <Text style={styles.helperText} tone="muted" variant="bodySm">
+            Have an invite code? Enter it here. If not, join the waitlist below.
+          </Text>
           <Input
             autoCapitalize="none"
             autoComplete="new-password"
@@ -271,6 +421,31 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             value={passwordConfirm}
           />
 
+          <View style={styles.consentGroup}>
+            <ConsentRow
+              checked={onboardingEmailsAcknowledged}
+              disabled
+              label="Required onboarding and account emails"
+              onPress={() => {}}
+              testID="signup-onboarding-emails-checkbox"
+              helperText="These include account, security, onboarding, and service messages needed to use Yummy Recs."
+            />
+            <ConsentRow
+              checked={productUpdatesConsent}
+              label="Occasional product update emails"
+              onPress={() => setProductUpdatesConsent((value) => !value)}
+              testID="signup-product-updates-checkbox"
+              helperText="You can unsubscribe later."
+            />
+            <ConsentRow
+              checked={marketingConsent}
+              label="Marketing emails"
+              onPress={() => setMarketingConsent((value) => !value)}
+              testID="signup-marketing-checkbox"
+              helperText="Promotions and launch updates are optional."
+            />
+          </View>
+
           <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
 
           <Button
@@ -281,7 +456,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               !password ||
               !passwordConfirm ||
               password.length < 8 ||
-              passwordConfirm.length < 8
+              passwordConfirm.length < 8 ||
+              !onboardingEmailsAcknowledged
             }
             label="Create Account"
             loading={isSubmitting}
@@ -289,6 +465,24 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               void handleSignUp();
             }}
             testID="signup-submit-button"
+          />
+        </Card>
+
+        <Card style={styles.waitlistCard}>
+          <Text variant="label">No invite code?</Text>
+          <Text tone="secondary" variant="bodySm">
+            Join the waitlist with the email above. When approved, you can create an account with that email.
+          </Text>
+          <PageErrorToast errorMessage={waitlistErrorMessage} title="Could not join waitlist" />
+          <Button
+            disabled={!email.trim() || Boolean(inviteCode.trim()) || !isOnline || !onboardingEmailsAcknowledged}
+            label={isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet'}
+            loading={isJoiningWaitlist}
+            onPress={() => {
+              void handleJoinWaitlist();
+            }}
+            testID="signup-waitlist-submit-button"
+            variant="secondary"
           />
         </Card>
 
@@ -312,5 +506,42 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       </FormScaffold>
       <LoadingOverlay label="Creating account..." visible={isSubmitting} />
     </Screen>
+  );
+}
+
+function ConsentRow({
+  checked,
+  disabled = false,
+  helperText,
+  label,
+  onPress,
+  testID,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  helperText: string;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  const styles = useStyles();
+
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={styles.consentRow}
+      testID={testID}
+    >
+      <View style={[styles.checkbox, checked ? styles.checkboxChecked : null, disabled ? styles.checkboxDisabled : null]} />
+      <View style={styles.consentText}>
+        <Text variant="label">{label}</Text>
+        <Text tone="muted" variant="bodySm">
+          {helperText}
+        </Text>
+      </View>
+    </Pressable>
   );
 }

@@ -1,5 +1,29 @@
 import type { AdminUser } from '@/features/auth/types';
 
+export type WaitlistStatus = 'pending' | 'approved' | 'rejected' | 'signed_up';
+
+export interface WaitlistEntry {
+  id: string;
+  email: string;
+  status: WaitlistStatus;
+  source?: string;
+  productUpdatesConsent: boolean;
+  marketingConsent: boolean;
+  onboardingEmailsAcknowledged: boolean;
+  consentVersion?: string;
+  consentCapturedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  signedUpAt?: string;
+  signedUpUser?: string;
+  loopsContactId?: string;
+  lastLoopsSyncError?: string;
+  created: string;
+  updated: string;
+}
+
 export interface RestaurantSummary {
   id: string;
   name?: string;

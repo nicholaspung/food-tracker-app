@@ -5,6 +5,7 @@ import { createCollectionRecord, sendApiRequest } from '../features';
 import { savePendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { SignUpScreen } from '../screens/SignUpScreen';
 
 const mockReact = React;
@@ -24,6 +25,10 @@ jest.mock('../observability', () => ({
 
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
 }));
 
 jest.mock('../theme', () => ({
@@ -60,6 +65,7 @@ const mockedSavePendingFriendSuggestion =
 const mockedTrackObservabilityEvent =
   trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
 function setInputValue(renderer: any, testID: string, value: string) {
   const input = renderer.root.findByProps({ testID });
@@ -86,10 +92,12 @@ describe('SignUpScreen', () => {
     mockedSavePendingFriendSuggestion.mockReset();
     mockedTrackObservabilityEvent.mockReset();
     mockedUseAuth.mockReset();
+    mockedUseConnectivity.mockReset();
 
     mockedSendApiRequest.mockResolvedValue({});
     mockedCreateCollectionRecord.mockResolvedValue({ id: 'user_1' } as never);
     mockedSavePendingFriendSuggestion.mockResolvedValue();
+    mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 
   it('renders signup password creation on the password field only', async () => {
@@ -144,7 +152,13 @@ describe('SignUpScreen', () => {
       renderer.root.findByProps({ testID: 'signup-submit-button' }).props.onPress();
     });
 
-    expect(mockedCreateCollectionRecord).toHaveBeenCalled();
+    expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('users', expect.objectContaining({
+      email: 'user@example.com',
+      inviteCode: 'invite123',
+      marketingConsent: false,
+      onboardingEmailsAcknowledged: true,
+      productUpdatesConsent: false,
+    }));
     expect(signInWithPassword).toHaveBeenCalledWith('user@example.com', 'password123');
     expect(navigation.navigate).not.toHaveBeenCalledWith(
       'VerifyEmail',
@@ -178,6 +192,78 @@ describe('SignUpScreen', () => {
       email: 'user@example.com',
       password: 'password123',
       source: 'sign_up',
+    });
+  });
+
+  it('keeps create account disabled without an invite code', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-email-input', 'waitlist@example.com');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    expect(renderer.root.findByProps({ testID: 'signup-submit-button' }).props.disabled).toBe(true);
+  });
+
+  it('disables waitlist joining when an invite code is present', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-email-input', 'user@example.com');
+    expect(renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.disabled).toBe(false);
+
+    setInputValue(renderer, 'signup-invite-code-input', 'invite123');
+
+    expect(renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.disabled).toBe(true);
+  });
+
+  it('submits the waitlist form with consent fields', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-email-input', ' USER@example.com ');
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'signup-product-updates-checkbox' }).props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.onPress();
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/waitlist', {
+      method: 'POST',
+      body: expect.objectContaining({
+        email: 'user@example.com',
+        marketingConsent: false,
+        onboardingEmailsAcknowledged: true,
+        productUpdatesConsent: true,
+        source: 'mobile_signup',
+      }),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('WaitlistConfirmation', {
+      email: 'user@example.com',
     });
   });
 });
