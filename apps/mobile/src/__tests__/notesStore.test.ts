@@ -1,6 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { markNoteUsed } from '../features/store/notesStore';
+import { createNote, markNoteUsed, updateNote } from '../features/store/notesStore';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../observability', () => ({
@@ -30,6 +30,16 @@ const mockedPocketBase = pb as typeof pb & {
   };
   collection: jest.Mock;
 };
+
+const OriginalFormData = globalThis.FormData;
+
+class MockFormData {
+  _parts: [string, unknown][] = [];
+
+  append(key: string, value: unknown) {
+    this._parts.push([key, value]);
+  }
+}
 
 function buildClientResponseError(status: number): ClientResponseError {
   return new ClientResponseError({
@@ -114,5 +124,115 @@ describe('notesStore.markNoteUsed', () => {
     }, {
       headers: undefined,
     });
+  });
+});
+
+describe('notesStore note photo uploads', () => {
+  beforeEach(() => {
+    mockedPocketBase.collection.mockReset();
+    globalThis.FormData = MockFormData as unknown as typeof FormData;
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  afterEach(() => {
+    globalThis.FormData = OriginalFormData;
+  });
+
+  function getFormDataParts(formData: unknown): [string, unknown][] {
+    return ((formData as { _parts?: [string, unknown][] })._parts ?? []) as [string, unknown][];
+  }
+
+  it('appends capturedAt when creating note photo uploads', async () => {
+    const notesCollection = {
+      create: jest.fn().mockResolvedValue({
+        id: 'note-1',
+        user: 'user-1',
+        content: 'Test note',
+        status: 'draft',
+        created: '2026-04-28T12:00:00.000Z',
+        updated: '2026-04-28T12:00:00.000Z',
+      }),
+    };
+    const notePhotosCollection = {
+      create: jest.fn().mockResolvedValue({}),
+    };
+
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'notes') {
+        return notesCollection;
+      }
+      if (collectionName === 'note_photos') {
+        return notePhotosCollection;
+      }
+
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await createNote({
+      title: '',
+      content: 'Test note',
+      photos: [
+        {
+          uri: 'file:///photo.jpg',
+          name: 'photo.jpg',
+          mimeType: 'image/jpeg',
+          capturedAt: '2024-09-15T12:34:56.000Z',
+        },
+      ],
+    });
+
+    const formData = notePhotosCollection.create.mock.calls[0][0];
+    expect(getFormDataParts(formData)).toEqual(
+      expect.arrayContaining([
+        ['note', 'note-1'],
+        ['user', 'user-1'],
+        ['capturedAt', '2024-09-15T12:34:56.000Z'],
+      ]),
+    );
+  });
+
+  it('omits capturedAt when updating note photo uploads without a capture date', async () => {
+    const notesCollection = {
+      update: jest.fn().mockResolvedValue({
+        id: 'note-1',
+        user: 'user-1',
+        content: 'Updated note',
+        status: 'draft',
+        created: '2026-04-28T12:00:00.000Z',
+        updated: '2026-04-28T12:05:00.000Z',
+      }),
+    };
+    const notePhotosCollection = {
+      create: jest.fn().mockResolvedValue({}),
+    };
+
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'notes') {
+        return notesCollection;
+      }
+      if (collectionName === 'note_photos') {
+        return notePhotosCollection;
+      }
+
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await updateNote('note-1', {
+      content: 'Updated note',
+      newPhotos: [
+        {
+          uri: 'file:///photo.jpg',
+          name: 'photo.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    const formData = notePhotosCollection.create.mock.calls[0][0];
+    expect(getFormDataParts(formData).some(([key]) => key === 'capturedAt')).toBe(false);
   });
 });

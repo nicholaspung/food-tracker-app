@@ -204,6 +204,10 @@ function buildNotePhotoFormData(
     name: photo.name,
     type: photo.mimeType,
   } as unknown as Blob);
+  const trimmedCapturedAt = photo.capturedAt?.trim();
+  if (trimmedCapturedAt) {
+    formData.append('capturedAt', trimmedCapturedAt);
+  }
   return formData;
 }
 
@@ -452,7 +456,7 @@ async function listNotePhotosForNoteIds(
     const chunkRecords = await listCollectionRecords<NotePhotoRecord>('note_photos', {
       filter: buildOrFilter('note', chunk),
       sort: 'created',
-      fields: 'id,note,photo,created',
+      fields: 'id,note,photo,created,capturedAt',
       signal: options?.signal,
     });
     records.push(...chunkRecords);

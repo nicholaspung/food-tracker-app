@@ -13,6 +13,7 @@ require (
 	github.com/pocketbase/dbx v1.11.0
 	github.com/pocketbase/pocketbase v0.30.4
 	github.com/posthog/posthog-go v1.6.13
+	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	google.golang.org/api v0.254.0
 	google.golang.org/genproto v0.0.0-20251029180050-ab9386a59fda
 	google.golang.org/grpc v1.76.0

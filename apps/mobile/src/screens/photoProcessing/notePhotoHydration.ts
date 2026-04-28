@@ -62,7 +62,7 @@ export async function hydrateDraftPhotosFromNote(
         ...localPhoto,
         captureDate: null,
         captureCoordinates: null,
-        metadataDate: notePhoto.created,
+        metadataDate: notePhoto.capturedAt ?? notePhoto.created,
       };
     }),
   );

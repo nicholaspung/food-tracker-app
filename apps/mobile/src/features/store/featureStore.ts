@@ -342,6 +342,7 @@ export interface NotePhotoRecord {
   note: string;
   photo: string;
   created: string;
+  capturedAt?: string;
 }
 
 export interface MenuItemRecord {
@@ -384,6 +385,7 @@ export interface NotePhotoUploadInput {
   uri: string;
   name: string;
   mimeType: string;
+  capturedAt?: string;
 }
 
 export interface VisitPhotoUploadInput {

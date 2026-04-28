@@ -73,10 +73,11 @@ type noteRecordIDRow struct {
 }
 
 type noteDetailPhotoResponse struct {
-	ID      string `json:"id"`
-	Note    string `json:"note"`
-	Photo   string `json:"photo"`
-	Created string `json:"created"`
+	ID         string `json:"id"`
+	Note       string `json:"note"`
+	Photo      string `json:"photo"`
+	Created    string `json:"created"`
+	CapturedAt string `json:"capturedAt,omitempty"`
 }
 
 type noteDetailResponse struct {
@@ -1300,10 +1301,11 @@ func getNoteDetailResponse(app core.App, userID string, noteID string) (*noteDet
 
 	for _, photoRecord := range photoRecords {
 		response.Photos = append(response.Photos, noteDetailPhotoResponse{
-			ID:      photoRecord.Id,
-			Note:    strings.TrimSpace(photoRecord.GetString("note")),
-			Photo:   strings.TrimSpace(photoRecord.GetString("photo")),
-			Created: strings.TrimSpace(photoRecord.GetString("created")),
+			ID:         photoRecord.Id,
+			Note:       strings.TrimSpace(photoRecord.GetString("note")),
+			Photo:      strings.TrimSpace(photoRecord.GetString("photo")),
+			Created:    strings.TrimSpace(photoRecord.GetString("created")),
+			CapturedAt: strings.TrimSpace(photoRecord.GetString("capturedAt")),
 		})
 	}
 

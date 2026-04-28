@@ -627,6 +627,18 @@ func TestNoteDetailEndpointReturnsNoteAndPhotos(t *testing.T) {
 		"detail-photo-a.jpg",
 		"2026-01-01T08:00:00Z",
 	)
+	if _, err := server.app.DB().NewQuery(`
+		UPDATE note_photos
+		SET capturedAt = {:capturedAt}
+		WHERE id = {:id}
+	`).
+		Bind(dbx.Params{
+			"capturedAt": "2025-12-31T18:30:00Z",
+			"id":         firstPhotoID,
+		}).
+		Execute(); err != nil {
+		t.Fatalf("failed to update note photo capturedAt: %v", err)
+	}
 	secondPhotoID := insertNotePhotoRowRaw(
 		t,
 		server.app,
@@ -653,10 +665,11 @@ func TestNoteDetailEndpointReturnsNoteAndPhotos(t *testing.T) {
 			UpdatedAt      string `json:"updatedAt"`
 		} `json:"note"`
 		Photos []struct {
-			ID      string `json:"id"`
-			Note    string `json:"note"`
-			Photo   string `json:"photo"`
-			Created string `json:"created"`
+			ID         string `json:"id"`
+			Note       string `json:"note"`
+			Photo      string `json:"photo"`
+			Created    string `json:"created"`
+			CapturedAt string `json:"capturedAt"`
 		} `json:"photos"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -682,12 +695,16 @@ func TestNoteDetailEndpointReturnsNoteAndPhotos(t *testing.T) {
 	}
 	if payload.Photos[0].ID != firstPhotoID ||
 		payload.Photos[0].Note != note.Id ||
-		payload.Photos[0].Photo != "detail-photo-a.jpg" {
+		payload.Photos[0].Photo != "detail-photo-a.jpg" ||
+		payload.Photos[0].Created != "2026-01-01 08:00:00.000Z" ||
+		payload.Photos[0].CapturedAt != "2025-12-31 18:30:00.000Z" {
 		t.Fatalf("unexpected first note photo payload: %#v", payload.Photos[0])
 	}
 	if payload.Photos[1].ID != secondPhotoID ||
 		payload.Photos[1].Note != note.Id ||
-		payload.Photos[1].Photo != "detail-photo-b.jpg" {
+		payload.Photos[1].Photo != "detail-photo-b.jpg" ||
+		payload.Photos[1].Created != "2026-01-01 09:00:00.000Z" ||
+		payload.Photos[1].CapturedAt != "" {
 		t.Fatalf("unexpected second note photo payload: %#v", payload.Photos[1])
 	}
 }

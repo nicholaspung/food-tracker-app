@@ -3,7 +3,7 @@ import { CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Modal, Pressable, View } from 'react-native';
+import { Linking, Modal, Platform, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -31,6 +31,7 @@ import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -52,6 +53,7 @@ interface DraftNotePhoto {
   name: string;
   mimeType: string;
   label: string;
+  capturedAt?: string;
 }
 
 interface NotePhotoAttachment {
@@ -61,6 +63,12 @@ interface NotePhotoAttachment {
   viewerUri: string;
   kind: 'existing' | 'new';
 }
+
+type NoteDraftPhotoAsset = {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+} & Partial<ImagePicker.ImagePickerAsset>;
 
 const CONTENT_MAX_LENGTH = 2000;
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
@@ -220,7 +228,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       ...existingPhotos.map((photo) => ({
         id: photo.id,
         kind: 'existing' as const,
-        label: formatPhotoAttachmentDateLabel(photo.created),
+        label: formatPhotoAttachmentDateLabel(photo.capturedAt ?? photo.created),
         thumbnailUri: buildPocketBaseFileUrl({
           collectionName: 'note_photos',
           recordId: photo.id,
@@ -416,13 +424,11 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     totalPhotoCount,
   ]);
 
-  const addDraftPhotos = useCallback((assets: {
-    uri: string;
-    fileName?: string | null;
-    mimeType?: string | null;
-  }[]) => {
+  const addDraftPhotos = useCallback(async (
+    assets: NoteDraftPhotoAsset[],
+    options: { captureDate?: Date | null } = {},
+  ) => {
     const batchId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    const selectionLabel = formatPhotoAttachmentDateLabel(new Date());
     const nextPhotos: DraftNotePhoto[] = [];
 
     for (const [index, asset] of assets.entries()) {
@@ -433,9 +439,15 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         continue;
       }
 
+      const captureDate =
+        options.captureDate !== undefined
+          ? options.captureDate
+          : await resolvePhotoCaptureDate(asset as ImagePicker.ImagePickerAsset);
+
       nextPhotos.push({
         id: `draft_photo_${batchId}_${index}`,
-        label: selectionLabel,
+        label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+        capturedAt: captureDate?.toISOString(),
         ...nextPhoto,
       });
     }
@@ -505,6 +517,11 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         allowsMultipleSelection: librarySelectionLimit > 1,
         selectionLimit: librarySelectionLimit,
         mediaTypes: ['images'],
+        exif: true,
+        preferredAssetRepresentationMode:
+          Platform.OS === 'ios'
+            ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
+            : undefined,
       });
 
       if (pickerResult.canceled) {
@@ -520,7 +537,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         return;
       }
 
-      addDraftPhotos(selectedAssets);
+      await addDraftPhotos(selectedAssets);
       trackObservabilityEvent('NOTE_LIBRARY_PICKED', {
         photoCount: selectedAssets.length,
         selectionLimit: librarySelectionLimit,
@@ -554,7 +571,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         throw new Error('Could not capture photo.');
       }
 
-      addDraftPhotos([{ uri: captured.uri }]);
+      await addDraftPhotos([{ uri: captured.uri }], { captureDate: new Date() });
       setIsCameraOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not capture photo.';
@@ -581,6 +598,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       uri: photo.uri,
       name: photo.name,
       mimeType: photo.mimeType,
+      capturedAt: photo.capturedAt,
     }));
     const noteCreateInput = {
       title: '',
