@@ -2,6 +2,12 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { createCollectionRecord, sendApiRequest } from '../features';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
+import {
+  recordAuthRateLimitFailure,
+  recordAuthRateLimitSuccess,
+  recordServerAuthRateLimit,
+} from '../lib/authRateLimiter';
 import { savePendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -17,6 +23,19 @@ jest.mock('../features', () => ({
 
 jest.mock('../lib/pendingFriendSuggestion', () => ({
   savePendingFriendSuggestion: jest.fn(),
+}));
+
+jest.mock('../hooks/useAuthRateLimit', () => ({
+  useAuthRateLimit: jest.fn(),
+}));
+
+jest.mock('../lib/authRateLimiter', () => ({
+  isAuthRateLimitError: jest.fn((error: unknown) =>
+    error instanceof Error ? /rate|too many|try again later|already requested/i.test(error.message) : false,
+  ),
+  recordAuthRateLimitFailure: jest.fn(),
+  recordAuthRateLimitSuccess: jest.fn(),
+  recordServerAuthRateLimit: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
@@ -62,6 +81,16 @@ const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFuncti
 const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
 const mockedSavePendingFriendSuggestion =
   savePendingFriendSuggestion as jest.MockedFunction<typeof savePendingFriendSuggestion>;
+const mockedUseAuthRateLimit = useAuthRateLimit as jest.MockedFunction<typeof useAuthRateLimit>;
+const mockedRecordAuthRateLimitFailure = recordAuthRateLimitFailure as jest.MockedFunction<
+  typeof recordAuthRateLimitFailure
+>;
+const mockedRecordAuthRateLimitSuccess = recordAuthRateLimitSuccess as jest.MockedFunction<
+  typeof recordAuthRateLimitSuccess
+>;
+const mockedRecordServerAuthRateLimit = recordServerAuthRateLimit as jest.MockedFunction<
+  typeof recordServerAuthRateLimit
+>;
 const mockedTrackObservabilityEvent =
   trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
@@ -72,6 +101,24 @@ function setInputValue(renderer: any, testID: string, value: string) {
   act(() => {
     input.props.onChangeText(value);
   });
+}
+
+function allowedRateLimit() {
+  return {
+    decision: {
+      allowed: true,
+      failedAttempts: 0,
+      message: null,
+      remainingMs: 0,
+    },
+    refresh: jest.fn().mockResolvedValue({
+      allowed: true,
+      failedAttempts: 0,
+      message: null,
+      remainingMs: 0,
+    }),
+    setDecision: jest.fn(),
+  };
 }
 
 describe('SignUpScreen', () => {
@@ -90,13 +137,31 @@ describe('SignUpScreen', () => {
     mockedCreateCollectionRecord.mockReset();
     mockedSendApiRequest.mockReset();
     mockedSavePendingFriendSuggestion.mockReset();
+    mockedUseAuthRateLimit.mockReset();
     mockedTrackObservabilityEvent.mockReset();
+    mockedRecordAuthRateLimitFailure.mockReset();
+    mockedRecordAuthRateLimitFailure.mockResolvedValue({
+      allowed: true,
+      failedAttempts: 1,
+      message: null,
+      remainingMs: 0,
+    });
+    mockedRecordAuthRateLimitSuccess.mockReset();
+    mockedRecordAuthRateLimitSuccess.mockResolvedValue(undefined);
+    mockedRecordServerAuthRateLimit.mockReset();
+    mockedRecordServerAuthRateLimit.mockResolvedValue({
+      allowed: false,
+      failedAttempts: 6,
+      message: 'Too many attempts.',
+      remainingMs: 900_000,
+    });
     mockedUseAuth.mockReset();
     mockedUseConnectivity.mockReset();
 
     mockedSendApiRequest.mockResolvedValue({});
     mockedCreateCollectionRecord.mockResolvedValue({ id: 'user_1' } as never);
     mockedSavePendingFriendSuggestion.mockResolvedValue();
+    mockedUseAuthRateLimit.mockImplementation(() => allowedRateLimit());
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 
@@ -159,6 +224,7 @@ describe('SignUpScreen', () => {
       onboardingEmailsAcknowledged: true,
       productUpdatesConsent: false,
     }));
+    expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith('signup', 'user@example.com');
     expect(signInWithPassword).toHaveBeenCalledWith('user@example.com', 'password123');
     expect(navigation.navigate).not.toHaveBeenCalledWith(
       'VerifyEmail',
@@ -265,5 +331,128 @@ describe('SignUpScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('WaitlistConfirmation', {
       email: 'user@example.com',
     });
+    expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith('waitlist', 'user@example.com');
+  });
+
+  it('blocks create account when the signup limiter is active', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedUseAuthRateLimit.mockImplementation((flow) =>
+      flow === 'signup'
+        ? {
+            decision: {
+              allowed: false,
+              failedAttempts: 3,
+              message: 'Too many attempts.',
+              remainingMs: 30_000,
+            },
+            refresh: jest.fn().mockResolvedValue({
+              allowed: false,
+              failedAttempts: 3,
+              message: 'Too many attempts.',
+              remainingMs: 30_000,
+            }),
+            setDecision: jest.fn(),
+          }
+        : allowedRateLimit(),
+    );
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-email-input', 'user@example.com');
+    setInputValue(renderer, 'signup-invite-code-input', 'invite123');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    const submitButton = renderer.root.findByProps({ testID: 'signup-submit-button' });
+    expect(submitButton.props.disabled).toBe(true);
+    expect(submitButton.props.label).toBe('Try Again in 30s');
+
+    await act(async () => {
+      await submitButton.props.onPress();
+    });
+
+    expect(mockedCreateCollectionRecord).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType('PageErrorToast')[0].props.errorMessage).toBe(
+      'Too many attempts to create account. Try again in 30 seconds.',
+    );
+  });
+
+  it('blocks waitlist independently from signup', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedUseAuthRateLimit.mockImplementation((flow) =>
+      flow === 'waitlist'
+        ? {
+            decision: {
+              allowed: false,
+              failedAttempts: 3,
+              message: 'Too many attempts.',
+              remainingMs: 30_000,
+            },
+            refresh: jest.fn().mockResolvedValue({
+              allowed: false,
+              failedAttempts: 3,
+              message: 'Too many attempts.',
+              remainingMs: 30_000,
+            }),
+            setDecision: jest.fn(),
+          }
+        : allowedRateLimit(),
+    );
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-email-input', 'user@example.com');
+
+    const waitlistButton = renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' });
+    expect(waitlistButton.props.disabled).toBe(true);
+    expect(waitlistButton.props.label).toBe('Try Again in 30s');
+    expect(renderer.root.findByProps({ testID: 'signup-submit-button' }).props.label).toBe('Create Account');
+
+    await act(async () => {
+      await waitlistButton.props.onPress();
+    });
+
+    expect(mockedSendApiRequest).not.toHaveBeenCalledWith('/api/waitlist', expect.anything());
+    expect(renderer.root.findAllByType('PageErrorToast')[1].props.errorMessage).toBe(
+      'Too many attempts to join waitlist. Try again in 30 seconds.',
+    );
+  });
+
+  it('records server rate-limit state for too many signup attempts', async () => {
+    mockedCreateCollectionRecord.mockRejectedValue(new Error('Too many failed attempts. Try again later.'));
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-email-input', 'user@example.com');
+    setInputValue(renderer, 'signup-invite-code-input', 'invite123');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'signup-submit-button' }).props.onPress();
+    });
+
+    expect(mockedRecordServerAuthRateLimit).toHaveBeenCalledWith('signup', 'user@example.com');
+    expect(renderer.root.findAllByType('PageErrorToast')[0].props.errorMessage).toBe(
+      'Too many attempts to create account. Try again in 900 seconds.',
+    );
   });
 });

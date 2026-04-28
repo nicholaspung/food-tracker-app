@@ -4,6 +4,13 @@ import { Pressable, View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { createCollectionRecord, sendApiRequest } from '../features';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
+import {
+  isAuthRateLimitError,
+  recordAuthRateLimitFailure,
+  recordAuthRateLimitSuccess,
+  recordServerAuthRateLimit,
+} from '../lib/authRateLimiter';
 import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -96,6 +103,25 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [isJoiningWaitlist, setIsJoiningWaitlist] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [waitlistErrorMessage, setWaitlistErrorMessage] = useState<string | null>(null);
+  const normalizedEmail = email.trim().toLowerCase();
+  const {
+    decision: signupRateLimitDecision,
+    refresh: refreshSignupRateLimit,
+    setDecision: setSignupRateLimitDecision,
+  } = useAuthRateLimit('signup', normalizedEmail);
+  const {
+    decision: waitlistRateLimitDecision,
+    refresh: refreshWaitlistRateLimit,
+    setDecision: setWaitlistRateLimitDecision,
+  } = useAuthRateLimit('waitlist', normalizedEmail);
+  const isSignupRateLimited = !signupRateLimitDecision.allowed;
+  const isWaitlistRateLimited = !waitlistRateLimitDecision.allowed;
+  const signupSubmitLabel = isSignupRateLimited
+    ? `Try Again in ${Math.max(1, Math.ceil(signupRateLimitDecision.remainingMs / 1000))}s`
+    : 'Create Account';
+  const waitlistSubmitLabel = isWaitlistRateLimited
+    ? `Try Again in ${Math.max(1, Math.ceil(waitlistRateLimitDecision.remainingMs / 1000))}s`
+    : isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet';
 
   useEffect(() => {
     if (!prefilledInviteCode) {
@@ -164,6 +190,12 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
+    const rateLimitDecision = await refreshSignupRateLimit();
+    if (!rateLimitDecision.allowed) {
+      setErrorMessage(formatAuthSubmitRateLimitMessage('create account', rateLimitDecision.remainingMs));
+      return;
+    }
+
     setErrorMessage(null);
     setIsSubmitting(true);
     trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_STARTED', {
@@ -222,6 +254,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         passwordConfirm,
         username: `${trimmedEmail.split('@')[0]}_${Date.now().toString(36)}`,
       });
+      await recordAuthRateLimitSuccess('signup', trimmedEmail);
+      await refreshSignupRateLimit();
 
       if (pendingFriendSuggestion) {
         await savePendingFriendSuggestion(pendingFriendSuggestion);
@@ -251,7 +285,13 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         errorMessage: error instanceof Error ? error.message : String(error),
       });
       const message = resolveSignUpErrorMessage(error);
-      setErrorMessage(message);
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('signup', trimmedEmail)
+        : await recordAuthRateLimitFailure('signup', trimmedEmail);
+      setSignupRateLimitDecision(nextDecision);
+      setErrorMessage(
+        nextDecision.allowed ? message : formatAuthSubmitRateLimitMessage('create account', nextDecision.remainingMs),
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -280,6 +320,12 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
+    const rateLimitDecision = await refreshWaitlistRateLimit();
+    if (!rateLimitDecision.allowed) {
+      setWaitlistErrorMessage(formatAuthSubmitRateLimitMessage('join waitlist', rateLimitDecision.remainingMs));
+      return;
+    }
+
     setWaitlistErrorMessage(null);
     setIsJoiningWaitlist(true);
 
@@ -298,12 +344,20 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       trackObservabilityEvent('AUTH_WAITLIST_JOIN_SUCCEEDED', {
         source: 'SignUpScreen',
       });
+      await recordAuthRateLimitSuccess('waitlist', trimmedEmail);
+      await refreshWaitlistRateLimit();
       navigation.navigate('WaitlistConfirmation', {
         email: trimmedEmail,
       });
     } catch (error) {
       const message = getErrorMessage(error, 'Could not join the waitlist.');
-      setWaitlistErrorMessage(message);
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('waitlist', trimmedEmail)
+        : await recordAuthRateLimitFailure('waitlist', trimmedEmail);
+      setWaitlistRateLimitDecision(nextDecision);
+      setWaitlistErrorMessage(
+        nextDecision.allowed ? message : formatAuthSubmitRateLimitMessage('join waitlist', nextDecision.remainingMs),
+      );
       trackObservabilityEvent('AUTH_WAITLIST_JOIN_FAILED', {
         source: 'SignUpScreen',
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -457,9 +511,10 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               !passwordConfirm ||
               password.length < 8 ||
               passwordConfirm.length < 8 ||
-              !onboardingEmailsAcknowledged
+              !onboardingEmailsAcknowledged ||
+              isSignupRateLimited
             }
-            label="Create Account"
+            label={signupSubmitLabel}
             loading={isSubmitting}
             onPress={() => {
               void handleSignUp();
@@ -475,8 +530,14 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           </Text>
           <PageErrorToast errorMessage={waitlistErrorMessage} title="Could not join waitlist" />
           <Button
-            disabled={!email.trim() || Boolean(inviteCode.trim()) || !isOnline || !onboardingEmailsAcknowledged}
-            label={isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet'}
+            disabled={
+              !email.trim() ||
+              Boolean(inviteCode.trim()) ||
+              !isOnline ||
+              !onboardingEmailsAcknowledged ||
+              isWaitlistRateLimited
+            }
+            label={waitlistSubmitLabel}
             loading={isJoiningWaitlist}
             onPress={() => {
               void handleJoinWaitlist();
@@ -507,6 +568,11 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       <LoadingOverlay label="Creating account..." visible={isSubmitting} />
     </Screen>
   );
+}
+
+function formatAuthSubmitRateLimitMessage(action: string, remainingMs: number): string {
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Too many attempts to ${action}. Try again in ${remainingSeconds} seconds.`;
 }
 
 function ConsentRow({

@@ -3,6 +3,18 @@ import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import {
+  clearRememberedLoginEmail,
+  loadRememberedLoginEmail,
+  saveRememberedLoginEmail,
+} from '../lib/rememberedLoginEmail';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
+import {
+  isAuthRateLimitError,
+  recordAuthRateLimitFailure,
+  recordAuthRateLimitSuccess,
+  recordServerAuthRateLimit,
+} from '../lib/authRateLimiter';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE, useAuth } from '../providers/AuthProvider';
@@ -19,6 +31,30 @@ const useStyles = createThemedStyles((theme) => ({
   formCard: {
     gap: theme.spacing.sm,
   },
+  checkbox: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: 'center',
+    marginTop: 1,
+    width: 22,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.button.primaryBg,
+    borderColor: theme.colors.button.primaryBg,
+  },
+  checkboxRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  checkboxText: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
   forgotLink: {
     alignSelf: 'flex-end',
     paddingVertical: theme.spacing.xs,
@@ -32,23 +68,58 @@ const useStyles = createThemedStyles((theme) => ({
 export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberEmail, setRememberEmail] = useState(false);
+  const [localErrorMessage, setLocalErrorMessage] = useState<string | null>(null);
   const { signInWithPassword, isSubmitting, authError } = useAuth();
   const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
   const normalizedEmail = email.trim().toLowerCase();
-  const signInErrorMessage = authError;
+  const {
+    decision: loginRateLimitDecision,
+    refresh: refreshLoginRateLimit,
+    setDecision: setLoginRateLimitDecision,
+  } = useAuthRateLimit('login', normalizedEmail);
+  const signInErrorMessage = localErrorMessage ?? authError;
+  const isLoginRateLimited = !loginRateLimitDecision.allowed;
+  const loginSubmitLabel = isLoginRateLimited
+    ? `Try Again in ${Math.max(1, Math.ceil(loginRateLimitDecision.remainingMs / 1000))}s`
+    : 'Sign In';
   const shouldShowVerifyEmailAction =
     authError === AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE && Boolean(normalizedEmail);
   const styles = useStyles();
 
   const handleSignIn = async () => {
+    const rateLimitDecision = await refreshLoginRateLimit();
+    if (!rateLimitDecision.allowed) {
+      setLocalErrorMessage(formatSignInRateLimitMessage(rateLimitDecision.remainingMs));
+      return;
+    }
+
     trackObservabilityEvent('AUTH_LOGIN_SUBMIT_STARTED', {
       source: 'LoginScreen',
       hasEmail: Boolean(normalizedEmail),
     });
 
     try {
+      setLocalErrorMessage(null);
       await signInWithPassword(normalizedEmail, password);
-    } catch {}
+      await recordAuthRateLimitSuccess('login', normalizedEmail);
+      await refreshLoginRateLimit();
+
+      if (rememberEmail) {
+        await saveRememberedLoginEmail(normalizedEmail);
+      } else {
+        await clearRememberedLoginEmail();
+      }
+    } catch (error) {
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('login', normalizedEmail)
+        : await recordAuthRateLimitFailure('login', normalizedEmail);
+      setLoginRateLimitDecision(nextDecision);
+
+      if (!nextDecision.allowed) {
+        setLocalErrorMessage(formatSignInRateLimitMessage(nextDecision.remainingMs));
+      }
+    }
   };
 
   useEffect(() => {
@@ -58,6 +129,31 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     setEmail(prefilledEmail);
     setPassword('');
+  }, [prefilledEmail]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateRememberedEmail = async () => {
+      const rememberedEmail = await loadRememberedLoginEmail();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setRememberEmail(Boolean(rememberedEmail));
+
+      if (!prefilledEmail && rememberedEmail) {
+        setEmail(rememberedEmail);
+        setPassword('');
+      }
+    };
+
+    void hydrateRememberedEmail();
+
+    return () => {
+      isMounted = false;
+    };
   }, [prefilledEmail]);
 
   return (
@@ -108,6 +204,32 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           />
 
           <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: rememberEmail }}
+            onPress={() => {
+              setRememberEmail((value) => {
+                const nextValue = !value;
+
+                if (!nextValue) {
+                  void clearRememberedLoginEmail();
+                }
+
+                return nextValue;
+              });
+            }}
+            style={styles.checkboxRow}
+            testID="login-remember-email-checkbox"
+          >
+            <View style={[styles.checkbox, rememberEmail ? styles.checkboxChecked : null]} />
+            <View style={styles.checkboxText}>
+              <Text variant="label">Remember email</Text>
+              <Text tone="muted" variant="bodySm">
+                Keep your email filled in on this device.
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
             accessibilityLabel="Forgot Password"
             accessibilityRole="button"
             onPress={() => {
@@ -128,8 +250,8 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           <PageErrorToast errorMessage={signInErrorMessage} title="Cannot log in" />
 
           <Button
-            disabled={!email.trim() || !password}
-            label="Sign In"
+            disabled={!email.trim() || !password || isLoginRateLimited}
+            label={loginSubmitLabel}
             loading={isSubmitting}
             onPress={() => {
               void handleSignIn();
@@ -173,4 +295,9 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
       <LoadingOverlay label="Signing in..." visible={isSubmitting} />
     </Screen>
   );
+}
+
+function formatSignInRateLimitMessage(remainingMs: number): string {
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Too many sign-in attempts. Try again in ${remainingSeconds} seconds.`;
 }

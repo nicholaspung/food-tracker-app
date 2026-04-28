@@ -3,6 +3,13 @@ import { useState } from 'react';
 
 import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserPasswordReset, requestUserPasswordReset } from '../features';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
+import {
+  isAuthRateLimitError,
+  recordAuthRateLimitFailure,
+  recordAuthRateLimitSuccess,
+  recordServerAuthRateLimit,
+} from '../lib/authRateLimiter';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -36,6 +43,24 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
   const resetToken = route.params?.token?.trim() ?? '';
   const isTokenReset = Boolean(resetToken);
   const { isOnline } = useConnectivity();
+  const {
+    decision: resetConfirmRateLimitDecision,
+    refresh: refreshResetConfirmRateLimit,
+    setDecision: setResetConfirmRateLimitDecision,
+  } = useAuthRateLimit('password_reset_confirm', resetEmail);
+  const {
+    decision: resetResendRateLimitDecision,
+    refresh: refreshResetResendRateLimit,
+    setDecision: setResetResendRateLimitDecision,
+  } = useAuthRateLimit('password_reset_resend', resetEmail);
+  const isResetConfirmRateLimited = !resetConfirmRateLimitDecision.allowed;
+  const isResetResendRateLimited = !resetResendRateLimitDecision.allowed;
+  const resetConfirmLabel = isResetConfirmRateLimited
+    ? `Try Again in ${Math.max(1, Math.ceil(resetConfirmRateLimitDecision.remainingMs / 1000))}s`
+    : 'Reset Password';
+  const resetResendLabel = isResetResendRateLimited
+    ? `Try Again in ${Math.max(1, Math.ceil(resetResendRateLimitDecision.remainingMs / 1000))}s`
+    : 'Resend Email';
   const styles = useStyles();
 
   const navigateToLogin = () => {
@@ -79,6 +104,12 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
       return;
     }
 
+    const rateLimitDecision = await refreshResetConfirmRateLimit();
+    if (!rateLimitDecision.allowed) {
+      setErrorMessage(formatResetConfirmRateLimitMessage(rateLimitDecision.remainingMs));
+      return;
+    }
+
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsConfirming(true);
@@ -88,6 +119,8 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
 
     try {
       await confirmUserPasswordReset(resetToken, password, passwordConfirm);
+      await recordAuthRateLimitSuccess('password_reset_confirm', resetEmail);
+      await refreshResetConfirmRateLimit();
       setPassword('');
       setPasswordConfirm('');
       setHasConfirmedReset(true);
@@ -100,7 +133,13 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
         error instanceof Error
           ? 'This reset link is invalid or expired. Request a new reset email.'
           : 'Could not reset your password. Request a new reset email.';
-      setErrorMessage(message);
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('password_reset_confirm', resetEmail)
+        : await recordAuthRateLimitFailure('password_reset_confirm', resetEmail);
+      setResetConfirmRateLimitDecision(nextDecision);
+      setErrorMessage(
+        nextDecision.allowed ? message : formatResetConfirmRateLimitMessage(nextDecision.remainingMs),
+      );
       trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUBMIT_FAILED', {
         source: 'ResetPasswordScreen',
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -165,8 +204,8 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
                 />
 
                 <Button
-                  disabled={!isOnline || !password || !passwordConfirm}
-                  label="Reset Password"
+                  disabled={!isOnline || !password || !passwordConfirm || isResetConfirmRateLimited}
+                  label={resetConfirmLabel}
                   loading={isConfirming}
                   onPress={() => {
                     void handleConfirmReset();
@@ -204,6 +243,12 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
       return;
     }
 
+    const rateLimitDecision = await refreshResetResendRateLimit();
+    if (!rateLimitDecision.allowed) {
+      setErrorMessage(formatResetResendRateLimitMessage(rateLimitDecision.remainingMs));
+      return;
+    }
+
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsResending(true);
@@ -214,13 +259,21 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
 
     try {
       await requestUserPasswordReset(resetEmail);
+      await recordAuthRateLimitSuccess('password_reset_resend', resetEmail);
+      await refreshResetResendRateLimit();
       setSuccessMessage('Reset email sent again.');
       trackObservabilityEvent('AUTH_PASSWORD_RESET_EMAIL_RESEND_SUCCEEDED', {
         source: 'ResetPasswordScreen',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not resend reset email.';
-      setErrorMessage(message);
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('password_reset_resend', resetEmail)
+        : await recordAuthRateLimitFailure('password_reset_resend', resetEmail);
+      setResetResendRateLimitDecision(nextDecision);
+      setErrorMessage(
+        nextDecision.allowed ? message : formatResetResendRateLimitMessage(nextDecision.remainingMs),
+      );
       trackObservabilityEvent('AUTH_PASSWORD_RESET_EMAIL_RESEND_FAILED', {
         source: 'ResetPasswordScreen',
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -275,8 +328,8 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
           />
 
           <Button
-            disabled={!isOnline || !resetEmail}
-            label="Resend Email"
+            disabled={!isOnline || !resetEmail || isResetResendRateLimited}
+            label={resetResendLabel}
             loading={isResending}
             onPress={() => {
               void handleResend();
@@ -288,4 +341,14 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
       <LoadingOverlay label="Sending..." visible={isResending} />
     </Screen>
   );
+}
+
+function formatResetConfirmRateLimitMessage(remainingMs: number): string {
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Too many password reset attempts. Try again in ${remainingSeconds} seconds.`;
+}
+
+function formatResetResendRateLimitMessage(remainingMs: number): string {
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Too many reset email requests. Try again in ${remainingSeconds} seconds.`;
 }

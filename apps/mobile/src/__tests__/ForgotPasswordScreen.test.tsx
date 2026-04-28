@@ -2,12 +2,28 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { requestUserPasswordReset } from '../features';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
+import {
+  recordAuthRateLimitFailure,
+  recordAuthRateLimitSuccess,
+} from '../lib/authRateLimiter';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 
 const mockReact = React;
 
 jest.mock('../features', () => ({
   requestUserPasswordReset: jest.fn(),
+}));
+
+jest.mock('../hooks/useAuthRateLimit', () => ({
+  useAuthRateLimit: jest.fn(),
+}));
+
+jest.mock('../lib/authRateLimiter', () => ({
+  isAuthRateLimitError: jest.fn(() => false),
+  recordAuthRateLimitFailure: jest.fn(),
+  recordAuthRateLimitSuccess: jest.fn(),
+  recordServerAuthRateLimit: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
@@ -41,6 +57,13 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 const mockedRequestUserPasswordReset =
   requestUserPasswordReset as jest.MockedFunction<typeof requestUserPasswordReset>;
+const mockedUseAuthRateLimit = useAuthRateLimit as jest.MockedFunction<typeof useAuthRateLimit>;
+const mockedRecordAuthRateLimitFailure = recordAuthRateLimitFailure as jest.MockedFunction<
+  typeof recordAuthRateLimitFailure
+>;
+const mockedRecordAuthRateLimitSuccess = recordAuthRateLimitSuccess as jest.MockedFunction<
+  typeof recordAuthRateLimitSuccess
+>;
 
 function setInputValue(renderer: any, testID: string, value: string) {
   const input = renderer.root.findByProps({ testID });
@@ -72,6 +95,31 @@ describe('ForgotPasswordScreen', () => {
   beforeEach(() => {
     navigation.navigate.mockReset();
     mockedRequestUserPasswordReset.mockReset();
+    mockedUseAuthRateLimit.mockReset();
+    mockedUseAuthRateLimit.mockReturnValue({
+      decision: {
+        allowed: true,
+        failedAttempts: 0,
+        message: null,
+        remainingMs: 0,
+      },
+      refresh: jest.fn().mockResolvedValue({
+        allowed: true,
+        failedAttempts: 0,
+        message: null,
+        remainingMs: 0,
+      }),
+      setDecision: jest.fn(),
+    });
+    mockedRecordAuthRateLimitFailure.mockReset();
+    mockedRecordAuthRateLimitFailure.mockResolvedValue({
+      allowed: true,
+      failedAttempts: 1,
+      message: null,
+      remainingMs: 0,
+    });
+    mockedRecordAuthRateLimitSuccess.mockReset();
+    mockedRecordAuthRateLimitSuccess.mockResolvedValue(undefined);
   });
 
   it('shows a validation error when email is missing', async () => {
@@ -103,6 +151,10 @@ describe('ForgotPasswordScreen', () => {
     });
 
     expect(mockedRequestUserPasswordReset).toHaveBeenCalledWith('user@example.com');
+    expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith(
+      'password_reset_request',
+      'user@example.com',
+    );
     expect(navigation.navigate).toHaveBeenCalledWith('ResetPassword', {
       email: 'user@example.com',
     });
@@ -123,6 +175,48 @@ describe('ForgotPasswordScreen', () => {
     });
 
     expect(navigation.navigate).not.toHaveBeenCalledWith('ResetPassword', expect.anything());
+    expect(mockedRecordAuthRateLimitFailure).toHaveBeenCalledWith(
+      'password_reset_request',
+      'user@example.com',
+    );
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Could not send email.');
+  });
+
+  it('blocks reset requests when the limiter is active', async () => {
+    mockedUseAuthRateLimit.mockReturnValue({
+      decision: {
+        allowed: false,
+        failedAttempts: 3,
+        message: 'Too many attempts.',
+        remainingMs: 30_000,
+      },
+      refresh: jest.fn().mockResolvedValue({
+        allowed: false,
+        failedAttempts: 3,
+        message: 'Too many attempts.',
+        remainingMs: 30_000,
+      }),
+      setDecision: jest.fn(),
+    });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<ForgotPasswordScreen navigation={navigation as never} route={route} />);
+    });
+
+    setInputValue(renderer, 'forgot-password-email-input', 'user@example.com');
+
+    const submitButton = renderer.root.findByType('Button');
+    expect(submitButton.props.disabled).toBe(true);
+    expect(submitButton.props.label).toBe('Try Again in 30s');
+
+    await act(async () => {
+      await submitButton.props.onPress();
+    });
+
+    expect(mockedRequestUserPasswordReset).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Too many password reset requests. Try again in 30 seconds.',
+    );
   });
 });

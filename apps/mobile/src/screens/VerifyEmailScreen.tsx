@@ -13,7 +13,14 @@ import {
   confirmUserEmailVerification,
   requestUserEmailVerification,
 } from '../features';
+import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
+import {
+  isAuthRateLimitError,
+  recordAuthRateLimitCooldown,
+  recordAuthRateLimitFailure,
+  recordServerAuthRateLimit,
+} from '../lib/authRateLimiter';
 import { decodeAuthActionTokenPayload } from '../lib/authActionToken';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -25,8 +32,6 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60_000;
-
-const verificationEmailCooldownUntilByEmail = new Map<string, number>();
 
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
@@ -42,18 +47,6 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.muted,
   },
 }));
-
-function normalizeEmailAddress(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function getVerificationEmailCooldownUntil(email: string): number {
-  return verificationEmailCooldownUntilByEmail.get(normalizeEmailAddress(email)) ?? 0;
-}
-
-function setVerificationEmailCooldownUntil(email: string, cooldownUntil: number) {
-  verificationEmailCooldownUntilByEmail.set(normalizeEmailAddress(email), cooldownUntil);
-}
 
 function formatResendCooldownLabel(remainingSeconds: number): string {
   return `Resend in ${remainingSeconds}s`;
@@ -100,15 +93,16 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   >('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [cooldownTick, setCooldownTick] = useState(() => Date.now());
-  const [resendCooldownUntil, setResendCooldownUntil] = useState<number>(() =>
-    pendingEmailFromRouteOrUser(route.params?.email ?? tokenPayload?.email, actualUser?.email),
-  );
   const pendingEmail =
     route.params?.email?.trim().toLowerCase() ??
     actualUser?.email?.trim().toLowerCase() ??
     tokenPayload?.email ??
     '';
+  const {
+    decision: resendRateLimitDecision,
+    refresh: refreshResendRateLimit,
+    setDecision: setResendRateLimitDecision,
+  } = useAuthRateLimit('email_verification_resend', pendingEmail);
   const hasRetainedSession = Boolean(actualUser);
   const source = route.params?.source;
   const isTokenVerification = Boolean(verificationToken);
@@ -118,10 +112,10 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const hasTriggeredTokenConfirmationRef = useRef(false);
   const resendRemainingSeconds = Math.max(
     0,
-    Math.ceil((resendCooldownUntil - cooldownTick) / 1000),
+    Math.ceil(resendRateLimitDecision.remainingMs / 1000),
   );
   const canResendVerificationEmail =
-    isOnline && Boolean(pendingEmail) && resendRemainingSeconds === 0 && !isResending;
+    isOnline && Boolean(pendingEmail) && resendRateLimitDecision.allowed && !isResending;
   const resendButtonLabel =
     resendRemainingSeconds > 0
       ? formatResendCooldownLabel(resendRemainingSeconds)
@@ -186,14 +180,12 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
       return false;
     }
 
-    const now = Date.now();
-    const existingCooldownUntil = getVerificationEmailCooldownUntil(pendingEmail);
-    if (existingCooldownUntil > now) {
-      setResendCooldownUntil(existingCooldownUntil);
+    const rateLimitDecision = await refreshResendRateLimit();
+    if (!rateLimitDecision.allowed) {
       setErrorMessage(null);
       setSuccessMessage(
         `Check ${pendingEmail} for the latest verification email. You can request another one in ${Math.ceil(
-          (existingCooldownUntil - now) / 1000,
+          rateLimitDecision.remainingMs / 1000,
         )} seconds.`,
       );
       return false;
@@ -209,10 +201,12 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
 
     try {
       await requestUserEmailVerification(pendingEmail);
-      const nextCooldownUntil = Date.now() + EMAIL_VERIFICATION_RESEND_COOLDOWN_MS;
-      setVerificationEmailCooldownUntil(pendingEmail, nextCooldownUntil);
-      setResendCooldownUntil(nextCooldownUntil);
-      setCooldownTick(Date.now());
+      const nextDecision = await recordAuthRateLimitCooldown(
+        'email_verification_resend',
+        pendingEmail,
+        EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
+      );
+      setResendRateLimitDecision(nextDecision);
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_SUCCEEDED', {
         source: 'VerifyEmailScreen',
         trigger,
@@ -224,16 +218,10 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
       );
       return true;
     } catch (error) {
-      if (
-        (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 429) ||
-        (error instanceof Error &&
-          /already requested|rate|too many|try again later/i.test(error.message))
-      ) {
-        const nextCooldownUntil = Date.now() + EMAIL_VERIFICATION_RESEND_COOLDOWN_MS;
-        setVerificationEmailCooldownUntil(pendingEmail, nextCooldownUntil);
-        setResendCooldownUntil(nextCooldownUntil);
-        setCooldownTick(Date.now());
-      }
+      const nextDecision = isAuthRateLimitError(error)
+        ? await recordServerAuthRateLimit('email_verification_resend', pendingEmail)
+        : await recordAuthRateLimitFailure('email_verification_resend', pendingEmail);
+      setResendRateLimitDecision(nextDecision);
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_FAILED', {
         source: 'VerifyEmailScreen',
         trigger,
@@ -244,26 +232,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     } finally {
       setIsResending(false);
     }
-  }, [hasRetainedSession, isOnline, pendingEmail]);
-
-  useEffect(() => {
-    setResendCooldownUntil(pendingEmail ? getVerificationEmailCooldownUntil(pendingEmail) : 0);
-    setCooldownTick(Date.now());
-  }, [pendingEmail]);
-
-  useEffect(() => {
-    if (resendCooldownUntil <= Date.now()) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      setCooldownTick(Date.now());
-    }, 1_000);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [resendCooldownUntil]);
+  }, [hasRetainedSession, isOnline, pendingEmail, refreshResendRateLimit, setResendRateLimitDecision]);
 
   useEffect(() => {
     if (
@@ -548,9 +517,4 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
       <LoadingOverlay label="Sending verification email..." visible={isResending} />
     </Screen>
   );
-}
-
-function pendingEmailFromRouteOrUser(routeEmail?: string, actualUserEmail?: string): number {
-  const resolvedEmail = routeEmail?.trim().toLowerCase() ?? actualUserEmail?.trim().toLowerCase() ?? '';
-  return resolvedEmail ? getVerificationEmailCooldownUntil(resolvedEmail) : 0;
 }

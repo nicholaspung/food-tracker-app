@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
@@ -97,9 +98,10 @@ describe('VerifyEmailScreen', () => {
     reset: jest.fn(),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
+    await AsyncStorage.clear();
     navigation.canGoBack.mockReturnValue(true);
     navigation.goBack.mockReset();
     navigation.navigate.mockReset();
@@ -247,6 +249,7 @@ describe('VerifyEmailScreen', () => {
 
     await act(async () => {
       jest.advanceTimersByTime(60_000);
+      await Promise.resolve();
     });
 
     await act(async () => {
@@ -464,5 +467,89 @@ describe('VerifyEmailScreen', () => {
     });
 
     expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('expired@example.com');
+  });
+
+  it('keeps the resend cooldown after remounting', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: null,
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'unauthenticated',
+      verificationStatus: 'verified',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
+    const route = {
+      key: 'VerifyEmail-persisted-cooldown',
+      name: 'VerifyEmail' as const,
+      params: {
+        email: 'persist@example.com',
+        source: 'login' as const,
+      },
+    };
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<VerifyEmailScreen navigation={navigation as never} route={route} />);
+    });
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Resend Verification Email');
+      await Promise.resolve();
+    });
+
+    expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('persist@example.com');
+
+    await act(async () => {
+      renderer.unmount();
+    });
+
+    await act(async () => {
+      renderer = create(<VerifyEmailScreen navigation={navigation as never} route={route} />);
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 60s')).toBe(
+      true,
+    );
+  });
+
+  it('persists a server rate-limit cooldown after resend failures', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: null,
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'unauthenticated',
+      verificationStatus: 'verified',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedRequestUserEmailVerification.mockRejectedValue({ status: 429 });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-server-rate-limit',
+            name: 'VerifyEmail',
+            params: {
+              email: 'limited@example.com',
+              source: 'login',
+            },
+          }}
+        />,
+      );
+    });
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Resend Verification Email');
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Please wait about a minute before requesting another verification email.',
+    );
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 900s')).toBe(
+      true,
+    );
   });
 });
