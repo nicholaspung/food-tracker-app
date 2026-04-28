@@ -567,6 +567,11 @@ button {
   color: var(--danger);
 }
 
+.state-panel.success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
 /* ─── Grid layouts ───────────────────────────────────────────────────────── */
 
 .hero-grid,
@@ -1069,6 +1074,28 @@ select.input {
   gap: 6px;
   min-width: 0;
   padding: 12px 14px;
+}
+
+.restaurant-repair-result {
+  border: 1px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.restaurant-repair-result:hover {
+  border-color: var(--border-strong);
+}
+
+.restaurant-repair-result.selected {
+  background: var(--info-bg);
+  border-color: rgba(29, 78, 216, 0.22);
+}
+
+.restaurant-repair-result:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
 }
 
 .tab-bar {

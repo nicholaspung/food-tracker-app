@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -33,6 +35,11 @@ type adminContentModerationInput struct {
 	UserNotice    *string `json:"userNotice"`
 }
 
+type adminVisitRestaurantRepairInput struct {
+	Reason       string `json:"reason"`
+	RestaurantID string `json:"restaurantId"`
+}
+
 // RegisterUserHandlers registers all user management endpoints.
 func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 	registerAccountDeletionHandler(se, app)
@@ -57,6 +64,27 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, map[string]any{
 			"items": response,
+		})
+	})
+
+	se.Router.GET("/api/admin/restaurants", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		searchTerm := strings.TrimSpace(e.Request.URL.Query().Get("search"))
+		if searchTerm == "" {
+			return apis.NewBadRequestError("search is required", nil)
+		}
+
+		restaurants, err := searchAdminRestaurants(app, searchTerm)
+		if err != nil {
+			log.Printf("Admin restaurant search failed for %q: %v", searchTerm, err)
+			return apis.NewApiError(500, "failed to search restaurants", err)
+		}
+
+		return e.JSON(200, map[string]any{
+			"items": serializeRestaurants(restaurants),
 		})
 	})
 
@@ -140,6 +168,51 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, profile)
+	})
+
+	se.Router.PATCH("/api/admin/users/{userId}/visits/{visitId}/restaurant", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		userID := strings.TrimSpace(e.Request.PathValue("userId"))
+		visitID := strings.TrimSpace(e.Request.PathValue("visitId"))
+		if userID == "" || visitID == "" {
+			return apis.NewBadRequestError("userId and visitId are required", nil)
+		}
+
+		data := adminVisitRestaurantRepairInput{}
+		if err := e.BindBody(&data); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload map[string]any
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			visit, err := reassignAdminVisitRestaurant(txApp, e, userID, visitID, data)
+			if err != nil {
+				return err
+			}
+
+			restaurantDetails, detailErr := resolveRestaurantDetails(txApp, []*core.Record{visit})
+			if detailErr != nil {
+				return apis.NewApiError(500, "failed to load repaired visit", detailErr)
+			}
+			serializedVisits := serializeVisits(append([]*core.Record{}, visit), restaurantDetails)
+			serializedVisit := map[string]any{}
+			if len(serializedVisits) > 0 {
+				serializedVisit = serializedVisits[0]
+			}
+
+			responsePayload = map[string]any{
+				"success": true,
+				"visit":   serializedVisit,
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
 	})
 
 	se.Router.PATCH("/api/admin/users/{userId}/moderation", func(e *core.RequestEvent) error {
@@ -540,6 +613,51 @@ func findAdminUserIDs(app core.App, searchTerm string, limit int) ([]string, err
 	return result, nil
 }
 
+func searchAdminRestaurants(app core.App, searchTerm string) ([]*core.Record, error) {
+	type restaurantIDRow struct {
+		ID string `db:"id"`
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(searchTerm))
+	if normalizedSearch == "" {
+		return []*core.Record{}, nil
+	}
+
+	rows := []restaurantIDRow{}
+	if err := app.DB().NewQuery(`
+		SELECT id
+		FROM restaurants
+		WHERE
+			LOWER(TRIM(COALESCE(name, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(location, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(placeId, ''))) LIKE {:search} ESCAPE '\'
+		ORDER BY
+			CASE WHEN LOWER(TRIM(COALESCE(name, ''))) = {:exactSearch} THEN 0 ELSE 1 END,
+			updated DESC,
+			name ASC
+		LIMIT 20
+	`).Bind(dbx.Params{
+		"exactSearch": normalizedSearch,
+		"search":      "%" + escapeFriendsSearchValue(normalizedSearch) + "%",
+	}).All(&rows); err != nil {
+		return nil, err
+	}
+
+	records := make([]*core.Record, 0, len(rows))
+	for _, row := range rows {
+		record, err := app.FindRecordById("restaurants", row.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
 func findUsersByOrderedIDs(app core.App, ids []string) ([]*core.Record, error) {
 	users, err := findRecordsByIDs(app, "users", ids)
 	if err != nil {
@@ -608,6 +726,76 @@ func logAdminUserView(
 		TargetRecordID:   user.Id,
 		UserAgent:        requestEvent.Request.UserAgent(),
 	})
+}
+
+func reassignAdminVisitRestaurant(
+	app core.App,
+	requestEvent *core.RequestEvent,
+	userID string,
+	visitID string,
+	input adminVisitRestaurantRepairInput,
+) (*core.Record, error) {
+	restaurantID := strings.TrimSpace(input.RestaurantID)
+	if restaurantID == "" {
+		return nil, apis.NewBadRequestError("restaurantId is required", nil)
+	}
+
+	visit, err := app.FindRecordById("visits", visitID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("visit not found", nil)
+		}
+		return nil, apis.NewApiError(500, "failed to load visit", err)
+	}
+
+	if strings.TrimSpace(visit.GetString("user")) != strings.TrimSpace(userID) {
+		return nil, apis.NewNotFoundError("visit not found for user", nil)
+	}
+
+	targetRestaurant, err := app.FindRecordById("restaurants", restaurantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("restaurant not found", nil)
+		}
+		return nil, apis.NewApiError(500, "failed to load restaurant", err)
+	}
+
+	previousRestaurantID := strings.TrimSpace(visit.GetString("restaurant"))
+	if previousRestaurantID == restaurantID {
+		return visit, nil
+	}
+
+	beforeSnapshot := lib.RecordAuditSnapshot(visit)
+	visit.Set("restaurant", restaurantID)
+	if err := app.Save(visit); err != nil {
+		return nil, apis.NewApiError(500, "failed to update visit restaurant", err)
+	}
+
+	if err := lib.CreateAuditLog(app, lib.AuditLogInput{
+		Action: core.ModelEventTypeUpdate,
+		Actor:  requestEvent.Auth,
+		Before: beforeSnapshot,
+		After:  lib.RecordAuditSnapshot(visit),
+		Metadata: map[string]any{
+			"nextRestaurantId":     restaurantID,
+			"previousRestaurantId": previousRestaurantID,
+			"reason":               strings.TrimSpace(input.Reason),
+			"source":               "admin_visit_restaurant_repair",
+			"userId":               userID,
+		},
+		RequestIP:        requestEvent.RealIP(),
+		RequestMethod:    requestEvent.Request.Method,
+		RequestPath:      requestEvent.Request.URL.Path,
+		Summary:          fmt.Sprintf("Reassigned visit restaurant to %s", strings.TrimSpace(targetRestaurant.GetString("name"))),
+		TargetCollection: "visits",
+		TargetLabel:      visit.Id,
+		TargetRecordID:   visit.Id,
+		UserAgent:        requestEvent.Request.UserAgent(),
+	}); err != nil {
+		return nil, apis.NewApiError(500, "failed to audit visit restaurant repair", err)
+	}
+
+	return visit, nil
 }
 
 func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[string]any, error) {
@@ -681,9 +869,14 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 		return nil, nil, err
 	}
 
+	restaurantDetails, err := resolveRestaurantDetails(app, visits)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return user, map[string]any{
 		"user":              serializeAdminUser(user),
-		"recentVisits":      serializeVisits(visits, restaurantNames),
+		"recentVisits":      serializeVisits(visits, restaurantDetails),
 		"recentFoodItems":   serializeFoodItems(foodItems),
 		"recentNotes":       serializeNotes(notes),
 		"recentFeedback":    serializeFeedback(feedback),
@@ -695,6 +888,43 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 		"restaurantLists":   restaurantLists,
 		"moderationCases":   moderationCases,
 	}, nil
+}
+
+type adminRestaurantDetail struct {
+	Location string
+	Name     string
+}
+
+func resolveRestaurantDetails(
+	app core.App,
+	visits []*core.Record,
+) (map[string]adminRestaurantDetail, error) {
+	result := map[string]adminRestaurantDetail{}
+
+	for _, visit := range visits {
+		restaurantID := strings.TrimSpace(visit.GetString("restaurant"))
+		if restaurantID == "" {
+			continue
+		}
+		if _, ok := result[restaurantID]; ok {
+			continue
+		}
+
+		restaurant, err := app.FindRecordById("restaurants", restaurantID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+
+		result[restaurantID] = adminRestaurantDetail{
+			Location: strings.TrimSpace(restaurant.GetString("location")),
+			Name:     strings.TrimSpace(restaurant.GetString("name")),
+		}
+	}
+
+	return result, nil
 }
 
 func resolveRestaurantNames(
@@ -1651,7 +1881,7 @@ func resolveRecordRating(record *core.Record) float64 {
 	return record.GetFloat("rating")
 }
 
-func serializeVisits(records []*core.Record, restaurantNames map[string]string) []map[string]any {
+func serializeVisits(records []*core.Record, restaurantDetails map[string]adminRestaurantDetail) []map[string]any {
 	result := make([]map[string]any, 0, len(records))
 	for _, record := range records {
 		entry := map[string]any{
@@ -1662,11 +1892,12 @@ func serializeVisits(records []*core.Record, restaurantNames map[string]string) 
 			"created":    record.GetString("created"),
 		}
 
-		if restaurantName := restaurantNames[record.GetString("restaurant")]; restaurantName != "" {
+		if restaurantDetail := restaurantDetails[record.GetString("restaurant")]; restaurantDetail.Name != "" {
 			entry["expand"] = map[string]any{
 				"restaurant": map[string]any{
-					"id":   record.GetString("restaurant"),
-					"name": restaurantName,
+					"id":       record.GetString("restaurant"),
+					"location": restaurantDetail.Location,
+					"name":     restaurantDetail.Name,
 				},
 			}
 		}
@@ -1745,12 +1976,16 @@ func serializeRestaurants(records []*core.Record) []map[string]any {
 	result := make([]map[string]any, 0, len(records))
 	for _, record := range records {
 		result = append(result, map[string]any{
-			"id":         record.Id,
-			"name":       record.GetString("name"),
-			"location":   record.GetString("location"),
-			"visibility": record.GetString("visibility"),
-			"created":    record.GetString("created"),
-			"updated":    record.GetString("updated"),
+			"id":            record.Id,
+			"isGooglePlace": record.GetBool("isGooglePlace"),
+			"latitude":      optionalRecordFloat(record, "latitude"),
+			"location":      record.GetString("location"),
+			"longitude":     optionalRecordFloat(record, "longitude"),
+			"name":          record.GetString("name"),
+			"placeId":       record.GetString("placeId"),
+			"visibility":    record.GetString("visibility"),
+			"created":       record.GetString("created"),
+			"updated":       record.GetString("updated"),
 		})
 	}
 

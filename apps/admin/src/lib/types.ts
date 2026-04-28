@@ -28,6 +28,10 @@ export interface RestaurantSummary {
   id: string;
   name?: string;
   location?: string;
+  placeId?: string;
+  isGooglePlace?: boolean;
+  latitude?: number;
+  longitude?: number;
   visibility?: 'private' | 'friends' | 'public';
   created?: string;
   updated?: string;
@@ -62,6 +66,10 @@ export interface UserRestaurantRecord {
   id: string;
   name: string;
   location?: string;
+  placeId?: string;
+  isGooglePlace?: boolean;
+  latitude?: number;
+  longitude?: number;
   visibility?: 'private' | 'friends' | 'public';
   created: string;
   updated: string;

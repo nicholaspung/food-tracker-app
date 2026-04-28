@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import type { UserModerationProfile } from '@/features/users/api';
-import { getUserModerationProfile } from '@/features/users/api';
+import {
+  getUserModerationProfile,
+  reassignUserVisitRestaurant,
+  searchAdminRestaurants,
+} from '@/features/users/api';
 import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
+import type { UserRestaurantRecord, VisitSummary } from '@/lib/types';
 
 type UserDetailTab =
   | 'records'
@@ -51,15 +56,209 @@ function getActivitySummary(entry: UserModerationProfile['feedEntries'][number])
   return `${itemLabel} • ${formatDateTime(entry.eventAt)}`;
 }
 
+function getVisitRestaurantName(visit: VisitSummary) {
+  return visit.expand?.restaurant?.name?.trim() || 'Unknown restaurant';
+}
+
+function getVisitRestaurantLocation(visit: VisitSummary) {
+  return visit.expand?.restaurant?.location?.trim() || '';
+}
+
+function ReassignVisitRestaurantModal({
+  onClose,
+  onReassigned,
+  userId,
+  visit,
+}: {
+  onClose: () => void;
+  onReassigned: () => void;
+  userId: string;
+  visit: VisitSummary;
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurantRecord | null>(null);
+  const [reason, setReason] = useState('');
+  const trimmedSearchTerm = searchTerm.trim();
+  const trimmedReason = reason.trim();
+  const currentRestaurantId = visit.restaurant?.trim() || '';
+
+  const restaurantsQuery = useQuery({
+    enabled: trimmedSearchTerm.length > 0,
+    queryKey: ['admin', 'restaurants', 'search', trimmedSearchTerm],
+    queryFn: () => searchAdminRestaurants(trimmedSearchTerm),
+  });
+
+  const reassignMutation = useMutation({
+    mutationFn: () =>
+      reassignUserVisitRestaurant({
+        reason: trimmedReason,
+        restaurantId: selectedRestaurant?.id ?? '',
+        userId,
+        visitId: visit.id,
+      }),
+    onSuccess: () => {
+      onReassigned();
+    },
+  });
+
+  const canSubmit =
+    Boolean(selectedRestaurant) &&
+    selectedRestaurant?.id !== currentRestaurantId &&
+    trimmedReason.length > 0 &&
+    !reassignMutation.isPending;
+
+  return (
+    <div className="moderation-modal-backdrop" role="presentation">
+      <form
+        aria-label="Reassign visit restaurant"
+        className="moderation-action-modal"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) {
+            reassignMutation.mutate();
+          }
+        }}
+      >
+        <div className="summary-row">
+          <div>
+            <p className="eyebrow">Visit repair</p>
+            <h3>Reassign restaurant</h3>
+          </div>
+          <button className="button ghost" onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+
+        <div className="state-panel">
+          <strong>{getVisitRestaurantName(visit)}</strong>
+          <span className="text-muted">Visit id: {visit.id}</span>
+          {getVisitRestaurantLocation(visit) ? (
+            <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
+          ) : null}
+          <span className="text-muted">
+            {formatDateTime(visit.visitDate ?? visit.created)}
+          </span>
+        </div>
+
+        <div className="field">
+          <label htmlFor="restaurant-repair-search">Find existing restaurant</label>
+          <input
+            className="input"
+            id="restaurant-repair-search"
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setSelectedRestaurant(null);
+            }}
+            placeholder="Search by name, location, or place id"
+            type="search"
+            value={searchTerm}
+          />
+        </div>
+
+        {restaurantsQuery.isError ? (
+          <div className="state-panel error">
+            <strong>Could not search restaurants</strong>
+            <span className="text-muted">
+              {restaurantsQuery.error instanceof Error
+                ? restaurantsQuery.error.message
+                : 'Try another search.'}
+            </span>
+          </div>
+        ) : null}
+
+        {trimmedSearchTerm && restaurantsQuery.isLoading ? (
+          <div className="state-panel">
+            <strong>Searching restaurants...</strong>
+          </div>
+        ) : null}
+
+        {trimmedSearchTerm && restaurantsQuery.data?.length === 0 ? (
+          <div className="state-panel">
+            <span className="text-muted">No restaurants matched that search.</span>
+          </div>
+        ) : null}
+
+        {restaurantsQuery.data && restaurantsQuery.data.length > 0 ? (
+          <div className="inline-list">
+            {restaurantsQuery.data.map((restaurant) => {
+              const isCurrent = restaurant.id === currentRestaurantId;
+              const isSelected = selectedRestaurant?.id === restaurant.id;
+
+              return (
+                <button
+                  className={`list-item restaurant-repair-result ${isSelected ? 'selected' : ''}`}
+                  disabled={isCurrent}
+                  key={restaurant.id}
+                  onClick={() => setSelectedRestaurant(restaurant)}
+                  type="button"
+                >
+                  <div className="summary-row">
+                    <strong>{restaurant.name}</strong>
+                    <div className="tag-row">
+                      {isCurrent ? <span className="tag">current</span> : null}
+                      {restaurant.isGooglePlace ? <span className="tag">Google</span> : null}
+                      {restaurant.visibility ? <span className="tag">{restaurant.visibility}</span> : null}
+                    </div>
+                  </div>
+                  <span className="text-muted">{restaurant.location || 'No location provided'}</span>
+                  {restaurant.placeId ? (
+                    <span className="text-muted">Place id: {restaurant.placeId}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div className="field">
+          <label htmlFor="restaurant-repair-reason">Repair reason</label>
+          <textarea
+            className="textarea"
+            id="restaurant-repair-reason"
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Explain why this visit is being reassigned."
+            value={reason}
+          />
+        </div>
+
+        {reassignMutation.isError ? (
+          <div className="state-panel error">
+            <strong>Could not reassign visit</strong>
+            <span className="text-muted">
+              {reassignMutation.error instanceof Error
+                ? reassignMutation.error.message
+                : 'The repair could not be completed.'}
+            </span>
+          </div>
+        ) : null}
+
+        <div className="button-row access-actions">
+          <button className="button ghost" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="button primary" disabled={!canSubmit} type="submit">
+            {reassignMutation.isPending ? 'Reassigning...' : 'Reassign restaurant'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function UserDetailTabPanel({
   activeTab,
   onSelectTab,
   profile,
+  userId,
 }: {
   activeTab: UserDetailTab;
   onSelectTab: (tab: UserDetailTab) => void;
   profile: UserModerationProfile;
+  userId: string;
 }) {
+  const queryClient = useQueryClient();
+  const [visitToRepair, setVisitToRepair] = useState<VisitSummary | null>(null);
+  const [repairSuccessMessage, setRepairSuccessMessage] = useState<string | null>(null);
   const totalRecordCount =
     profile.recentFoodItems.length +
     profile.recentRestaurants.length +
@@ -356,6 +555,12 @@ function UserDetailTabPanel({
           </span>
         </div>
 
+        {repairSuccessMessage ? (
+          <div className="state-panel success">
+            <strong>{repairSuccessMessage}</strong>
+          </div>
+        ) : null}
+
         {profile.recentVisits.length === 0 ? (
           <span className="text-muted">No recent visits found for this user.</span>
         ) : (
@@ -364,16 +569,46 @@ function UserDetailTabPanel({
               <div className="inline-list">
                 {pageVisits.map((visit) => (
                   <div className="list-item" key={visit.id}>
-                    <strong>{visit.expand?.restaurant?.name ?? 'Visit'}</strong>
-                    <span className="text-muted">
-                      {formatDateTime(visit.visitDate ?? visit.created)}
-                    </span>
+                    <div className="summary-row">
+                      <strong>{getVisitRestaurantName(visit)}</strong>
+                      <button
+                        className="button reverse"
+                        onClick={() => {
+                          setRepairSuccessMessage(null);
+                          setVisitToRepair(visit);
+                        }}
+                        type="button"
+                      >
+                        Reassign restaurant
+                      </button>
+                    </div>
+                    <span className="text-muted">Visit id: {visit.id}</span>
+                    {getVisitRestaurantLocation(visit) ? (
+                      <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
+                    ) : null}
+                    <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
                   </div>
                 ))}
               </div>
             )}
           </PaginatedCollection>
         )}
+
+        {visitToRepair ? (
+          <ReassignVisitRestaurantModal
+            onClose={() => setVisitToRepair(null)}
+            onReassigned={() => {
+              const repairedVisit = visitToRepair;
+              setVisitToRepair(null);
+              setRepairSuccessMessage(`Visit ${repairedVisit.id} was reassigned.`);
+              void queryClient.invalidateQueries({
+                queryKey: ['admin', 'user-profile', userId],
+              });
+            }}
+            userId={userId}
+            visit={visitToRepair}
+          />
+        ) : null}
       </div>
     );
   }
@@ -715,6 +950,7 @@ export function UserDetailPage() {
                 activeTab={activeTab}
                 onSelectTab={setActiveTab}
                 profile={profileQuery.data}
+                userId={userId}
               />
             </article>
 

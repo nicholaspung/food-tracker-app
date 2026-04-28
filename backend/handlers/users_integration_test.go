@@ -230,6 +230,269 @@ func TestAdminUserLookupFindsUserBeyondInitialTwoHundredRows(t *testing.T) {
 	}
 }
 
+func TestAdminRestaurantSearchRequiresAdminAndReturnsMatches(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	_, userToken := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":          "Tacos Manuel",
+		"location":      "San Diego, CA",
+		"placeId":       "usa-place-id",
+		"isGooglePlace": true,
+		"visibility":    "public",
+	})
+
+	forbiddenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/restaurants?search=tacos",
+		userToken,
+		"",
+	)
+	if forbiddenResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected non-admin 403, got %d: %s", forbiddenResponse.Code, forbiddenResponse.Body.String())
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/restaurants?search=usa-place-id",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one restaurant search result, got %#v", body["items"])
+	}
+
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected restaurant result map, got %#v", items[0])
+	}
+	if item["id"] != restaurant.Id || item["placeId"] != "usa-place-id" {
+		t.Fatalf("expected matched restaurant payload, got %#v", item)
+	}
+}
+
+func TestAdminCanReassignVisitRestaurantWithAuditLog(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Tacos Manuel",
+		"location":   "Mexico City, Mexico",
+		"visibility": "public",
+	})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Tacos Manuel",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant",
+		adminToken,
+		`{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct same-name collision"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit: %v", err)
+	}
+	if reloadedVisit.GetString("restaurant") != correctRestaurant.Id {
+		t.Fatalf("expected visit restaurant=%s, got %s", correctRestaurant.Id, reloadedVisit.GetString("restaurant"))
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	serializedVisit, ok := body["visit"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected visit response map, got %#v", body["visit"])
+	}
+	if serializedVisit["restaurant"] != correctRestaurant.Id {
+		t.Fatalf("expected repaired visit restaurant id, got %#v", serializedVisit["restaurant"])
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "visits",
+			"targetRecordId": visit.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load audit logs: %v", err)
+	}
+	if len(auditLogs) != 1 {
+		t.Fatalf("expected 1 repair audit log, got %d", len(auditLogs))
+	}
+
+	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_visit_restaurant_repair" {
+		t.Fatalf("expected repair audit source, got %#v", metadataMap["source"])
+	}
+	if metadataMap["previousRestaurantId"] != originalRestaurant.Id || metadataMap["nextRestaurantId"] != correctRestaurant.Id {
+		t.Fatalf("unexpected restaurant ids in audit metadata: %#v", metadataMap)
+	}
+}
+
+func TestAdminVisitRestaurantRepairRejectsWrongUserAndUnknownRestaurant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Tacos Manuel",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	wrongUserResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+otherUser.Id+"/visits/"+visit.Id+"/restaurant",
+		adminToken,
+		`{"restaurantId":"`+restaurant.Id+`","reason":"Wrong user test"}`,
+	)
+	if wrongUserResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected wrong user 404, got %d: %s", wrongUserResponse.Code, wrongUserResponse.Body.String())
+	}
+
+	unknownRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant",
+		adminToken,
+		`{"restaurantId":"missing_restaurant","reason":"Unknown restaurant test"}`,
+	)
+	if unknownRestaurantResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected unknown restaurant 404, got %d: %s", unknownRestaurantResponse.Code, unknownRestaurantResponse.Body.String())
+	}
+}
+
+func TestAdminVisitRestaurantRepairNoOpDoesNotCreateAuditLog(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Tacos Manuel",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant",
+		adminToken,
+		`{"restaurantId":"`+restaurant.Id+`","reason":"No-op"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "visits",
+			"targetRecordId": visit.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load audit logs: %v", err)
+	}
+	if len(auditLogs) != 0 {
+		t.Fatalf("expected no no-op audit logs, got %d", len(auditLogs))
+	}
+}
+
+func TestNonAdminCannotReassignVisitRestaurant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	targetUser, userToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Tacos Manuel",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant",
+		userToken,
+		`{"restaurantId":"`+restaurant.Id+`","reason":"Not allowed"}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected non-admin 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestAdminUserProfileViewCreatesAuditLog(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUserHandlers(se, app)

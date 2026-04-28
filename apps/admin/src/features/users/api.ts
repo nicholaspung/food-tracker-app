@@ -112,6 +112,42 @@ export async function getUserModerationProfile(userId: string): Promise<UserMode
   }
 }
 
+export async function searchAdminRestaurants(searchTerm: string): Promise<UserRestaurantRecord[]> {
+  try {
+    const response = await pb.send<AdminListResponse<UserRestaurantRecord>>('/api/admin/restaurants', {
+      query: {
+        search: searchTerm.trim(),
+      },
+    });
+
+    return response.items;
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not search restaurants.'));
+  }
+}
+
+export async function reassignUserVisitRestaurant(input: {
+  userId: string;
+  visitId: string;
+  restaurantId: string;
+  reason?: string;
+}): Promise<{ success: true; visit: VisitSummary }> {
+  try {
+    return await pb.send<{ success: true; visit: VisitSummary }>(
+      `/api/admin/users/${encodeURIComponent(input.userId)}/visits/${encodeURIComponent(input.visitId)}/restaurant`,
+      {
+        method: 'PATCH',
+        body: {
+          reason: input.reason?.trim() || undefined,
+          restaurantId: input.restaurantId,
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not reassign visit restaurant.'));
+  }
+}
+
 export async function deleteModeratedUserContent(input: {
   userId: string;
   contentType: 'visit' | 'food-item' | 'food-product' | 'list' | 'list-item' | 'note' | 'photo';
