@@ -310,7 +310,7 @@ export function PhotoViewerModal({
             style={styles.closeButton}
             testID="photo-viewer-close-button"
           >
-            <Ionicons color={theme.colors.text.inverse} name="close" size={22} />
+            <Ionicons color={viewerPalette.text} name="close" size={22} />
           </Pressable>
         </View>
 
@@ -357,7 +357,7 @@ export function PhotoViewerModal({
             }}
             style={[styles.navButton, !hasPreviousPhoto && styles.navButtonDisabled]}
           >
-            <Ionicons color={theme.colors.text.inverse} name="chevron-back" size={24} />
+            <Ionicons color={viewerPalette.text} name="chevron-back" size={24} />
           </Pressable>
 
           <View style={styles.centerMeta}>
@@ -379,7 +379,7 @@ export function PhotoViewerModal({
             }}
             style={[styles.navButton, !hasNextPhoto && styles.navButtonDisabled]}
           >
-            <Ionicons color={theme.colors.text.inverse} name="chevron-forward" size={24} />
+            <Ionicons color={viewerPalette.text} name="chevron-forward" size={24} />
           </Pressable>
         </View>
       </View>

@@ -145,10 +145,10 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
   };
 }
 
-export function getPhotoViewerPalette(theme: Theme) {
+export function getPhotoViewerPalette(_theme: Theme) {
   return {
     background: 'rgba(0, 0, 0, 0.96)',
     controlBackground: 'rgba(255, 255, 255, 0.2)',
-    text: theme.colors.text.inverse,
+    text: 'rgba(255, 255, 255, 0.92)',
   } as const;
 }

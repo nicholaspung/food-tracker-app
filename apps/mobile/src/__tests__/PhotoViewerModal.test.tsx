@@ -415,4 +415,36 @@ describe('PhotoViewerModal', () => {
     expect(Image.prefetch).toHaveBeenCalledWith('full://two');
     expect(Image.prefetch).toHaveBeenCalledWith('full://three');
   });
+
+  it('uses photo viewer overlay colors for controls and the photo count', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          urls={['full://one', 'full://two']}
+          visible
+        />,
+      );
+    });
+
+    const count = renderer.root.find(
+      (node: any) => node.type === 'Text' && node.children.includes('1 / 2'),
+    );
+    const closeIcon = renderer.root.find(
+      (node: any) => node.type === 'Ionicons' && node.props.name === 'close',
+    );
+    const previousIcon = renderer.root.find(
+      (node: any) => node.type === 'Ionicons' && node.props.name === 'chevron-back',
+    );
+    const nextIcon = renderer.root.find(
+      (node: any) => node.type === 'Ionicons' && node.props.name === 'chevron-forward',
+    );
+
+    expect(count.props.style).toEqual(expect.objectContaining({ color: 'white' }));
+    expect(closeIcon.props.color).toBe('white');
+    expect(previousIcon.props.color).toBe('white');
+    expect(nextIcon.props.color).toBe('white');
+  });
 });
