@@ -331,6 +331,7 @@ export function RootNavigator() {
 
   const navigationTheme = {
     ...DefaultTheme,
+    dark: theme.colorScheme === 'dark',
     colors: {
       ...DefaultTheme.colors,
       primary: theme.colors.text.brand,

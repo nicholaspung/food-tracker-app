@@ -4,7 +4,14 @@ import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecordModel } from 'pocketbase';
 
-import { BackHeaderScreenScaffold, EmptyState, SectionCard, Skeleton, VisibilityOptionSelector } from '../components/shared';
+import {
+  BackHeaderScreenScaffold,
+  EmptyState,
+  SectionCard,
+  SegmentedControl,
+  Skeleton,
+  VisibilityOptionSelector,
+} from '../components/shared';
 import {
   getCollectionRecord,
   invalidateSettingsQueries,
@@ -18,7 +25,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles } from '../theme';
+import { createThemedStyles, useTheme, type ThemePreference } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -26,6 +33,12 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'
 type VisitVisibility = 'friends' | 'private';
 type RestaurantVisibility = 'private' | 'friends';
 type ListVisibility = 'private' | 'friends';
+
+const appearanceOptions = [
+  { label: 'System', value: 'system' },
+  { label: 'Light', value: 'light' },
+  { label: 'Dark', value: 'dark' },
+] as const satisfies readonly { label: string; value: ThemePreference }[];
 
 interface UserSettingsRecord {
   defaultVisitVisibility?: unknown;
@@ -77,6 +90,7 @@ function mapUserSettings(record: UserSettingsRecord): UserSettings {
 
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const styles = useStyles();
+  const theme = useTheme();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -256,6 +270,29 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setListVisibility(value);
   };
 
+  const handleSelectAppearance = (value: ThemePreference) => {
+    trackObservabilityEvent('SETTINGS_APPEARANCE_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: theme.preference,
+      nextValue: value,
+    });
+    theme.setPreference(value);
+  };
+
+  const appearanceSection = (
+    <SectionCard
+      description="Choose how Yummy Recs looks on this device."
+      title="Appearance"
+    >
+      <SegmentedControl
+        getOptionTestID={(value) => `settings-appearance-${value}`}
+        onChange={handleSelectAppearance}
+        options={appearanceOptions}
+        value={theme.preference}
+      />
+    </SectionCard>
+  );
+
   const visitVisibilityDescriptions = useMemo(
     () =>
       ({
@@ -295,6 +332,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         title="Settings"
       >
         <View style={styles.body}>
+          {appearanceSection}
           <PageErrorToast
             errorMessage="Please sign in again to view settings."
             title="Settings unavailable"
@@ -316,6 +354,8 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       title="Settings"
     >
       <View style={styles.body}>
+        {appearanceSection}
+
         {settingsQuery.isLoading ? (
           <>
             <Skeleton height={20} />

@@ -240,6 +240,8 @@ PODS:
     - ReactCommon
   - ExpoSecureStore (55.0.13):
     - ExpoModulesCore
+  - ExpoSplashScreen (55.0.19):
+    - ExpoModulesCore
   - ExpoSQLite (55.0.15):
     - ExpoModulesCore
   - ExpoSystemUI (55.0.16):
@@ -2548,6 +2550,7 @@ DEPENDENCIES:
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
   - ExpoModulesJSI (from `../../../node_modules/expo-modules-core`)
   - ExpoSecureStore (from `../../../node_modules/expo-secure-store/ios`)
+  - ExpoSplashScreen (from `../../../node_modules/expo-splash-screen/ios`)
   - ExpoSQLite (from `../../../node_modules/expo-sqlite/ios`)
   - ExpoSystemUI (from `../../../node_modules/expo-system-ui/ios`)
   - EXStructuredHeaders (from `../../../node_modules/expo-structured-headers/ios`)
@@ -2696,6 +2699,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-modules-core"
   ExpoSecureStore:
     :path: "../../../node_modules/expo-secure-store/ios"
+  ExpoSplashScreen:
+    :path: "../../../node_modules/expo-splash-screen/ios"
   ExpoSQLite:
     :path: "../../../node_modules/expo-sqlite/ios"
   ExpoSystemUI:
@@ -2903,6 +2908,7 @@ SPEC CHECKSUMS:
   ExpoModulesCore: 121f306333afed9321507d99a9804fe5e795c03a
   ExpoModulesJSI: 24121c9a2f32d5f6b6ca2f7ff54925be716d5841
   ExpoSecureStore: 38954f6bcef1287aa04c06fba3b86e8af3291ccd
+  ExpoSplashScreen: 43517d54a0f90d381c80deda859aa6087e80884b
   ExpoSQLite: f63db535d24c59722971241ea9ade2a878dfabea
   ExpoSystemUI: f0f31e6aea8f76b549a463483bdeeb1dcb8a5593
   EXStructuredHeaders: 93ad4f31a2eec124428675e28aca11de243ee1e4

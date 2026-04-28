@@ -1,8 +1,9 @@
 import 'react-native-gesture-handler';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import * as NativeSplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -22,6 +23,10 @@ NativeSplashScreen.setOptions({
 function AppShell() {
   const theme = useTheme();
 
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(theme.colors.background.app);
+  }, [theme.colors.background.app]);
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -34,7 +39,7 @@ function AppShell() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style={theme.colorScheme === 'dark' ? 'light' : 'dark'} />
       <SyncStatusBanner />
       <View style={styles.navigatorContainer}>
         <RootNavigator />
