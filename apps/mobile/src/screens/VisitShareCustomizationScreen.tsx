@@ -118,7 +118,7 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     paddingRight: theme.spacing.sm,
   },
   headerTitle: {
-    color: theme.colors.text.inverse,
+    color: sharePalette.headerTitle,
   },
   headerSubtitle: {
     color: sharePalette.headerSubtitle,
@@ -364,7 +364,7 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     ...theme.typography.bodySmTightSemiBold,
   },
   chipLabelActive: {
-    color: theme.colors.text.inverse,
+    color: sharePalette.chipLabelActive,
   },
   statusText: {
     color: sharePalette.statusText,
@@ -568,7 +568,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
           }}
           style={styles.closeButton}
         >
-          <Ionicons color={theme.colors.text.inverse} name="close" size={22} />
+          <Ionicons color={sharePalette.closeIcon} name="close" size={22} />
         </Pressable>
       </View>
 

@@ -8,7 +8,7 @@ import { VisitShareCustomizationScreen } from '../screens/VisitShareCustomizatio
 const mockReact = React;
 
 jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
+  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -48,19 +48,51 @@ jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
 }));
 
-jest.mock('../theme', () => ({
-  createThemedStyles: () => () => ({}),
-  getVisitSharePalette: () => ({
+const mockTheme = {
+  colors: {
+    background: {
+      muted: 'whitesmoke',
+      surface: 'white',
+    },
+    text: {
+      danger: 'firebrick',
+      inverse: 'black',
+      primary: 'midnightblue',
+      secondary: 'slategray',
+    },
+  },
+  radii: {
+    pill: 999,
+  },
+  spacing: {
+    lg: 24,
+    md: 16,
+    sm: 12,
+    xs: 8,
+    xxs: 4,
+  },
+  typography: {
+    bodyBase: { lineHeight: 20 },
+    bodyMdTight: { lineHeight: 18 },
+    label: { lineHeight: 18 },
+    metaTight: { lineHeight: 17 },
+  },
+};
+
+const mockSharePalette = {
     brandFooterBackground: 'rgba(15, 23, 40, 0.72)',
     brandFooterBorder: 'transparent',
-    brandFooterText: 'white',
+    brandFooterText: 'overlay-white',
     canvasBackground: 'white',
     canvasBorder: 'transparent',
     chipActiveBackground: 'dimgray',
     chipActiveBorder: 'gray',
     chipBorder: 'slategray',
     chipLabel: 'gainsboro',
+    chipLabelActive: 'overlay-active',
+    closeIcon: 'overlay-close',
     closeButtonBackground: 'darkslategray',
+    headerTitle: 'overlay-title',
     headerSubtitle: 'gainsboro',
     itemBackground: 'white',
     itemBorder: 'silver',
@@ -71,41 +103,19 @@ jest.mock('../theme', () => ({
     overlayBackground: 'rgba(15, 23, 40, 0.72)',
     overlayBottomBorderColor: 'transparent',
     overlayTopBorderColor: 'transparent',
-    primaryText: 'white',
+    primaryText: 'overlay-primary',
     screenBackground: 'black',
-    secondaryText: 'whitesmoke',
+    secondaryText: 'overlay-secondary',
     statusText: 'gainsboro',
-  }),
-  useTheme: () => ({
-    colors: {
-      background: {
-        muted: 'whitesmoke',
-        surface: 'white',
-      },
-      text: {
-        danger: 'firebrick',
-        inverse: 'white',
-        primary: 'midnightblue',
-        secondary: 'slategray',
-      },
-    },
-    radii: {
-      pill: 999,
-    },
-    spacing: {
-      lg: 24,
-      md: 16,
-      sm: 12,
-      xs: 8,
-      xxs: 4,
-    },
-    typography: {
-      bodyBase: { lineHeight: 20 },
-      bodyMdTight: { lineHeight: 18 },
-      label: { lineHeight: 18 },
-      metaTight: { lineHeight: 17 },
-    },
-  }),
+};
+
+jest.mock('../theme', () => ({
+  createThemedStyles:
+    (factory: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      factory(mockTheme, ...args),
+  getVisitSharePalette: () => mockSharePalette,
+  useTheme: () => mockTheme,
 }));
 
 jest.mock('../ui', () => ({
@@ -333,5 +343,40 @@ describe('VisitShareCustomizationScreen', () => {
 
     pixelRatioSpy.mockRestore();
     shareSpy.mockRestore();
+  });
+
+  it('keeps share modal chrome and exported modern overlay text readable in dark mode', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitShareCustomizationScreen
+          navigation={{
+            goBack: jest.fn(),
+          } as never}
+          route={{
+            params: buildRouteParams(),
+          } as never}
+        />,
+      );
+    });
+
+    const shareCanvas = renderer.root.findByProps({ testID: 'visit-share-canvas' });
+    const title = findTextMatches(renderer.root, 'Share Visit')[0];
+    const itemName = findTextMatches(shareCanvas, 'Miso ramen')[0];
+    const ratingLabel = findTextMatches(shareCanvas, 'Loved it')[0];
+    const restaurantLabel = findTextMatches(shareCanvas, 'Noodle House')[0];
+    const activeModernChip = findTextMatches(renderer.root, 'Modern')[0];
+
+    const closeIcon = renderer.root.find(
+      (node: any) => node.type === 'Ionicons' && node.props.name === 'close',
+    );
+
+    expect(flattenStyle(title.props.style).color).toBe('overlay-title');
+    expect(closeIcon.props.color).toBe('overlay-close');
+    expect(flattenStyle(itemName.props.style).color).toBe('overlay-primary');
+    expect(flattenStyle(ratingLabel.props.style).color).toBe('overlay-secondary');
+    expect(flattenStyle(restaurantLabel.props.style).color).toBe('overlay-white');
+    expect(flattenStyle(activeModernChip.props.style).color).toBe('overlay-active');
   });
 });

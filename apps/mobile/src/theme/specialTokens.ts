@@ -4,7 +4,9 @@ export type VisitShareThemeName = 'modern' | 'rustic' | 'minimal' | 'neon';
 
 export interface VisitSharePalette {
   screenBackground: string;
+  headerTitle: string;
   headerSubtitle: string;
+  closeIcon: string;
   closeButtonBackground: string;
   optionPanelBackground: string;
   optionPanelBorder: string;
@@ -12,6 +14,7 @@ export interface VisitSharePalette {
   chipActiveBackground: string;
   chipActiveBorder: string;
   chipLabel: string;
+  chipLabelActive: string;
   statusText: string;
   canvasBackground: string;
   canvasBorder: string;
@@ -33,7 +36,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
   if (shareTheme === 'rustic') {
     return {
       screenBackground: 'rgba(0, 0, 0, 0.97)',
+      headerTitle: 'rgba(255, 255, 255, 0.96)',
       headerSubtitle: 'rgba(255, 255, 255, 0.76)',
+      closeIcon: 'rgba(255, 255, 255, 0.92)',
       closeButtonBackground: 'rgba(255, 255, 255, 0.18)',
       optionPanelBackground: 'rgba(20, 20, 20, 0.98)',
       optionPanelBorder: 'rgba(255, 255, 255, 0.12)',
@@ -41,28 +46,31 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       chipActiveBackground: 'rgba(255, 255, 255, 0.2)',
       chipActiveBorder: 'rgba(255, 255, 255, 0.62)',
       chipLabel: 'rgba(255, 255, 255, 0.72)',
+      chipLabelActive: 'rgba(255, 255, 255, 0.96)',
       statusText: 'rgba(255, 255, 255, 0.72)',
       canvasBackground: theme.colors.background.muted,
       canvasBorder: 'transparent',
       itemBorder: theme.colors.border.warning,
       itemBackground: theme.colors.background.surface,
       overlayBackground: 'rgba(64, 43, 26, 0.74)',
-      primaryText: theme.colors.text.inverse,
-      secondaryText: theme.colors.text.inverse,
+      primaryText: 'rgba(255, 255, 255, 0.96)',
+      secondaryText: 'rgba(255, 255, 255, 0.9)',
       overlayTopBorderColor: 'rgba(255, 238, 214, 0.5)',
       overlayBottomBorderColor: 'rgba(255, 238, 214, 0.28)',
       metaRightBackground: 'rgba(30, 16, 8, 0.45)',
       metaRightBorderColor: 'rgba(255, 235, 210, 0.35)',
       brandFooterBackground: 'rgba(64, 43, 26, 0.74)',
       brandFooterBorder: 'rgba(255, 238, 214, 0.5)',
-      brandFooterText: theme.colors.text.inverse,
+      brandFooterText: 'rgba(255, 255, 255, 0.92)',
     };
   }
 
   if (shareTheme === 'minimal') {
     return {
       screenBackground: 'rgba(0, 0, 0, 0.97)',
+      headerTitle: 'rgba(255, 255, 255, 0.96)',
       headerSubtitle: 'rgba(255, 255, 255, 0.76)',
+      closeIcon: 'rgba(255, 255, 255, 0.92)',
       closeButtonBackground: 'rgba(255, 255, 255, 0.18)',
       optionPanelBackground: 'rgba(20, 20, 20, 0.98)',
       optionPanelBorder: 'rgba(255, 255, 255, 0.12)',
@@ -70,6 +78,7 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       chipActiveBackground: 'rgba(255, 255, 255, 0.2)',
       chipActiveBorder: 'rgba(255, 255, 255, 0.62)',
       chipLabel: 'rgba(255, 255, 255, 0.72)',
+      chipLabelActive: 'rgba(255, 255, 255, 0.96)',
       statusText: 'rgba(255, 255, 255, 0.72)',
       canvasBackground: theme.colors.background.surface,
       canvasBorder: 'transparent',
@@ -91,7 +100,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
   if (shareTheme === 'neon') {
     return {
       screenBackground: 'rgba(0, 0, 0, 0.97)',
+      headerTitle: 'rgba(255, 255, 255, 0.96)',
       headerSubtitle: 'rgba(255, 255, 255, 0.76)',
+      closeIcon: 'rgba(255, 255, 255, 0.92)',
       closeButtonBackground: 'rgba(255, 255, 255, 0.18)',
       optionPanelBackground: 'rgba(20, 20, 20, 0.98)',
       optionPanelBorder: 'rgba(255, 255, 255, 0.12)',
@@ -99,6 +110,7 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       chipActiveBackground: 'rgba(255, 255, 255, 0.2)',
       chipActiveBorder: 'rgba(255, 255, 255, 0.62)',
       chipLabel: 'rgba(255, 255, 255, 0.72)',
+      chipLabelActive: 'rgba(255, 255, 255, 0.96)',
       statusText: 'rgba(255, 255, 255, 0.72)',
       canvasBackground: 'rgba(6, 10, 20, 1)',
       canvasBorder: 'rgba(22, 217, 255, 1)',
@@ -119,7 +131,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
 
   return {
     screenBackground: 'rgba(0, 0, 0, 0.97)',
+    headerTitle: 'rgba(255, 255, 255, 0.96)',
     headerSubtitle: 'rgba(255, 255, 255, 0.76)',
+    closeIcon: 'rgba(255, 255, 255, 0.92)',
     closeButtonBackground: 'rgba(255, 255, 255, 0.18)',
     optionPanelBackground: 'rgba(20, 20, 20, 0.98)',
     optionPanelBorder: 'rgba(255, 255, 255, 0.12)',
@@ -127,21 +141,22 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
     chipActiveBackground: 'rgba(255, 255, 255, 0.2)',
     chipActiveBorder: 'rgba(255, 255, 255, 0.62)',
     chipLabel: 'rgba(255, 255, 255, 0.72)',
+    chipLabelActive: 'rgba(255, 255, 255, 0.96)',
     statusText: 'rgba(255, 255, 255, 0.72)',
     canvasBackground: theme.colors.background.surface,
     canvasBorder: 'transparent',
     itemBorder: 'rgba(255, 255, 255, 0.08)',
     itemBackground: theme.colors.background.surface,
     overlayBackground: 'rgba(15, 23, 40, 0.72)',
-    primaryText: theme.colors.text.inverse,
-    secondaryText: theme.colors.text.inverse,
+    primaryText: 'rgba(255, 255, 255, 0.96)',
+    secondaryText: 'rgba(255, 255, 255, 0.9)',
     overlayTopBorderColor: 'transparent',
     overlayBottomBorderColor: 'transparent',
     metaRightBackground: 'transparent',
     metaRightBorderColor: 'transparent',
     brandFooterBackground: 'rgba(15, 23, 40, 0.72)',
     brandFooterBorder: 'transparent',
-    brandFooterText: theme.colors.text.inverse,
+    brandFooterText: 'rgba(255, 255, 255, 0.92)',
   };
 }
 
