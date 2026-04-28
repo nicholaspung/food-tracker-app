@@ -510,6 +510,19 @@ export {
   reportContent,
 } from './accountStore';
 export {
+  MAIN_ONBOARDING_VERSION,
+  buildMainOnboardingCompletedState,
+  buildMoreOnboardingCardDismissedState,
+  completeMainOnboarding,
+  dismissMoreOnboardingCard,
+  getMobileOnboardingState,
+  isMainOnboardingComplete,
+  isMoreOnboardingCardDismissed,
+  saveOptimisticMobileOnboardingState,
+  type CompleteMainOnboardingInput,
+  type DismissMoreOnboardingCardInput,
+} from './onboardingStore';
+export {
   createFoodProduct,
   deleteFoodProduct,
   getFoodProductById,

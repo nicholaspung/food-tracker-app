@@ -3,6 +3,7 @@ import type { AdminUser } from '@/features/auth/types';
 import type {
   FeedbackThread,
   FoodItemSummary,
+  FoodProductSummary,
   MenuItemRecord,
   ModerationAction,
   ModerationAppealState,
@@ -90,6 +91,7 @@ export interface UserModerationProfile {
   user: AdminUser;
   recentVisits: VisitSummary[];
   recentFoodItems: FoodItemSummary[];
+  recentFoodProducts: FoodProductSummary[];
   recentNotes: NoteSummary[];
   recentFeedback: FeedbackThread[];
   recentPhotos: PhotoUpload[];

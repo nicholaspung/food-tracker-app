@@ -159,6 +159,7 @@ jest.mock('../screens', () => {
     'EditVisitScreen',
     'FeedbackScreen',
     'FeedbackDetailScreen',
+    'FeatureOnboardingScreen',
     'ForgotPasswordScreen',
     'FriendsScreen',
     'HomeScreen',
@@ -195,6 +196,11 @@ jest.mock('../screens', () => {
 });
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const completedMobileOnboardingState = {
+  main: {
+    completedVersion: 1,
+  },
+};
 
 describe('RootNavigator', () => {
   beforeEach(() => {
@@ -209,6 +215,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: false,
       verificationStatus: 'grace_period',
@@ -230,6 +237,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: false,
       verificationStatus: 'grace_period',
@@ -250,6 +258,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: false,
       verificationStatus: 'grace_expired',
@@ -272,6 +281,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: true,
       verificationStatus: 'verified',
@@ -292,6 +302,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: false,
       verificationStatus: 'verified',
@@ -306,6 +317,51 @@ describe('RootNavigator', () => {
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
   });
 
+  it('puts required feature onboarding before Home for incomplete authenticated users', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
+    expect(renderedStackScreens.indexOf('FeatureOnboarding')).toBeLessThan(renderedStackScreens.indexOf('Home'));
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(0);
+  });
+
+  it('keeps completed authenticated users on the normal Home-first stack', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
+    expect(renderedStackScreens.indexOf('Home')).toBeLessThan(renderedStackScreens.indexOf('FeatureOnboarding'));
+    expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+  });
+
   it('waits for the auth screen transition before showing the verification banner after submission', async () => {
     jest.useFakeTimers();
     let authValue = {
@@ -313,6 +369,7 @@ describe('RootNavigator', () => {
       user: {
         id: 'user_1',
         isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
       },
       isSubmitting: true,
       verificationStatus: 'grace_period',

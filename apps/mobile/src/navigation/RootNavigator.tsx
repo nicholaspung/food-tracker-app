@@ -17,6 +17,7 @@ import {
 import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
+import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { trackObservabilityEvent } from '../observability';
@@ -39,6 +40,7 @@ import {
   EditVisitScreen,
   FeedbackScreen,
   FeedbackDetailScreen,
+  FeatureOnboardingScreen,
   ForgotPasswordScreen,
   FriendsScreen,
   HomeScreen,
@@ -100,6 +102,11 @@ export type RootStackParamList = {
         password?: string;
         token?: string;
         source?: 'sign_up' | 'login' | 'banner' | 'profile' | 'expired_entry' | 'email_link';
+      }
+    | undefined;
+  FeatureOnboarding:
+    | {
+        mode?: 'required' | 'replay';
       }
     | undefined;
   Home:
@@ -279,6 +286,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   ForgotPassword: 'Forgot Password',
   ResetPassword: 'Check Email',
   VerifyEmail: 'Verify Email',
+  FeatureOnboarding: 'Onboarding',
   CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',
 };
@@ -399,8 +407,12 @@ export function RootNavigator() {
     previousRouteNameRef.current = typedRouteName;
   }, [navigationRef, trackScreenDwellCompleted]);
 
+  const requiresFeatureOnboarding =
+    status === 'authenticated' &&
+    (user?.mobileOnboardingState?.main?.completedVersion ?? 0) < MAIN_ONBOARDING_VERSION;
   const hasBottomTabsRoute =
     status === 'authenticated' &&
+    !requiresFeatureOnboarding &&
     !!currentRouteName &&
     ROUTES_WITH_TABS.includes(currentRouteName);
   const shouldShowVerificationBanner =
@@ -414,8 +426,7 @@ export function RootNavigator() {
       ? 'authenticated'
       : status === 'verification_required'
         ? 'verification-required'
-        : 'unauthenticated';
-
+      : 'unauthenticated';
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
 
   const styles = StyleSheet.create({
@@ -539,7 +550,22 @@ export function RootNavigator() {
             >
               {status === 'authenticated' ? (
                 <>
+                  {requiresFeatureOnboarding ? (
+                    <Stack.Screen
+                      component={FeatureOnboardingScreen}
+                      initialParams={{ mode: 'required' }}
+                      name="FeatureOnboarding"
+                      options={{ headerShown: false }}
+                    />
+                  ) : null}
                   <Stack.Screen component={HomeScreen} name="Home" options={{ headerShown: false }} />
+                  {!requiresFeatureOnboarding ? (
+                    <Stack.Screen
+                      component={FeatureOnboardingScreen}
+                      name="FeatureOnboarding"
+                      options={{ headerShown: false }}
+                    />
+                  ) : null}
                   <Stack.Screen
                     component={VisitShareCustomizationScreen}
                     name="VisitShareCustomization"

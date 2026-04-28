@@ -1,26 +1,97 @@
-import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
+import { Suspense, lazy, type ReactNode } from 'react';
+import { Navigate, createBrowserRouter } from 'react-router-dom';
 
 import { AdminShell } from '@/components/layout/AdminShell';
-import { AuditTrailPage } from '@/features/audit/AuditTrailPage';
-import { DashboardPage } from '@/features/dashboard/DashboardPage';
-import { Design1Bloomberg } from '@/features/design-previews/Design1Bloomberg';
-import { Design2Linear } from '@/features/design-previews/Design2Linear';
-import { Design3Grafana } from '@/features/design-previews/Design3Grafana';
-import { Design4Apple } from '@/features/design-previews/Design4Apple';
-import { FeedbackDetailPage } from '@/features/feedback/FeedbackDetailPage';
-import { FeedbackInboxPage } from '@/features/feedback/FeedbackInboxPage';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { MenuInventoryPage } from '@/features/menu-inventory/MenuInventoryPage';
-import { RestaurantInventoryDetailPage } from '@/features/menu-inventory/RestaurantInventoryDetailPage';
-import { MenuReviewDetailPage } from '@/features/menu-reviews/MenuReviewDetailPage';
-import { MenuReviewsPage } from '@/features/menu-reviews/MenuReviewsPage';
-import { ModerationPage } from '@/features/moderation/ModerationPage';
-import { RecordTypeCountsPage } from '@/features/records/RecordTypeCountsPage';
 import { RequireAdminRoute } from '@/features/auth/RequireAdminRoute';
-import { AccessControlsPage } from '@/features/users/AccessControlsPage';
-import { UserDetailPage } from '@/features/users/UserDetailPage';
-import { UsersPage } from '@/features/users/UsersPage';
-import { WaitlistPage } from '@/features/waitlist/WaitlistPage';
+
+const AccessControlsPage = lazy(() =>
+  import('@/features/users/AccessControlsPage').then(({ AccessControlsPage }) => ({
+    default: AccessControlsPage,
+  })),
+);
+const AuditTrailPage = lazy(() =>
+  import('@/features/audit/AuditTrailPage').then(({ AuditTrailPage }) => ({
+    default: AuditTrailPage,
+  })),
+);
+const DashboardPage = lazy(() =>
+  import('@/features/dashboard/DashboardPage').then(({ DashboardPage }) => ({
+    default: DashboardPage,
+  })),
+);
+const FeedbackDetailPage = lazy(() =>
+  import('@/features/feedback/FeedbackDetailPage').then(({ FeedbackDetailPage }) => ({
+    default: FeedbackDetailPage,
+  })),
+);
+const FeedbackInboxPage = lazy(() =>
+  import('@/features/feedback/FeedbackInboxPage').then(({ FeedbackInboxPage }) => ({
+    default: FeedbackInboxPage,
+  })),
+);
+const MenuInventoryPage = lazy(() =>
+  import('@/features/menu-inventory/MenuInventoryPage').then(({ MenuInventoryPage }) => ({
+    default: MenuInventoryPage,
+  })),
+);
+const MenuReviewDetailPage = lazy(() =>
+  import('@/features/menu-reviews/MenuReviewDetailPage').then(({ MenuReviewDetailPage }) => ({
+    default: MenuReviewDetailPage,
+  })),
+);
+const MenuReviewsPage = lazy(() =>
+  import('@/features/menu-reviews/MenuReviewsPage').then(({ MenuReviewsPage }) => ({
+    default: MenuReviewsPage,
+  })),
+);
+const ModerationPage = lazy(() =>
+  import('@/features/moderation/ModerationPage').then(({ ModerationPage }) => ({
+    default: ModerationPage,
+  })),
+);
+const RecordTypeCountsPage = lazy(() =>
+  import('@/features/records/RecordTypeCountsPage').then(({ RecordTypeCountsPage }) => ({
+    default: RecordTypeCountsPage,
+  })),
+);
+const RestaurantInventoryDetailPage = lazy(() =>
+  import('@/features/menu-inventory/RestaurantInventoryDetailPage').then(
+    ({ RestaurantInventoryDetailPage }) => ({
+      default: RestaurantInventoryDetailPage,
+    }),
+  ),
+);
+const UserDetailPage = lazy(() =>
+  import('@/features/users/UserDetailPage').then(({ UserDetailPage }) => ({
+    default: UserDetailPage,
+  })),
+);
+const UsersPage = lazy(() =>
+  import('@/features/users/UsersPage').then(({ UsersPage }) => ({
+    default: UsersPage,
+  })),
+);
+const WaitlistPage = lazy(() =>
+  import('@/features/waitlist/WaitlistPage').then(({ WaitlistPage }) => ({
+    default: WaitlistPage,
+  })),
+);
+
+function RouteLoadingPage() {
+  return (
+    <div className="page-shell">
+      <div className="state-panel">
+        <p className="eyebrow">Loading</p>
+        <h1>Loading admin page...</h1>
+      </div>
+    </div>
+  );
+}
+
+function withRouteSuspense(element: ReactNode) {
+  return <Suspense fallback={<RouteLoadingPage />}>{element}</Suspense>;
+}
 
 const shellRoutes = {
   element: <RequireAdminRoute />,
@@ -34,59 +105,59 @@ const shellRoutes = {
         },
         {
           path: '/dashboard',
-          element: <DashboardPage />,
+          element: withRouteSuspense(<DashboardPage />),
         },
         {
           path: '/menu-reviews',
-          element: <MenuReviewsPage />,
+          element: withRouteSuspense(<MenuReviewsPage />),
         },
         {
           path: '/menu-inventory',
-          element: <MenuInventoryPage />,
+          element: withRouteSuspense(<MenuInventoryPage />),
         },
         {
           path: '/menu-inventory/restaurants/:restaurantId',
-          element: <RestaurantInventoryDetailPage />,
+          element: withRouteSuspense(<RestaurantInventoryDetailPage />),
         },
         {
           path: '/menu-reviews/:requestId',
-          element: <MenuReviewDetailPage />,
+          element: withRouteSuspense(<MenuReviewDetailPage />),
         },
         {
           path: '/feedback',
-          element: <FeedbackInboxPage />,
+          element: withRouteSuspense(<FeedbackInboxPage />),
         },
         {
           path: '/feedback/:threadId',
-          element: <FeedbackDetailPage />,
+          element: withRouteSuspense(<FeedbackDetailPage />),
         },
         {
           path: '/access-controls',
-          element: <AccessControlsPage />,
+          element: withRouteSuspense(<AccessControlsPage />),
         },
         {
           path: '/waitlist',
-          element: <WaitlistPage />,
+          element: withRouteSuspense(<WaitlistPage />),
         },
         {
           path: '/moderation',
-          element: <ModerationPage />,
+          element: withRouteSuspense(<ModerationPage />),
         },
         {
           path: '/users',
-          element: <UsersPage />,
+          element: withRouteSuspense(<UsersPage />),
         },
         {
           path: '/record-counts',
-          element: <RecordTypeCountsPage />,
+          element: withRouteSuspense(<RecordTypeCountsPage />),
         },
         {
           path: '/users/:userId',
-          element: <UserDetailPage />,
+          element: withRouteSuspense(<UserDetailPage />),
         },
         {
           path: '/audit-trail',
-          element: <AuditTrailPage />,
+          element: withRouteSuspense(<AuditTrailPage />),
         },
       ],
     },
@@ -112,11 +183,6 @@ export const router = createBrowserRouter([
     path: '/login',
     element: <LoginPage />,
   },
-  // Design previews — no auth required
-  { path: '/1', element: <Design1Bloomberg /> },
-  { path: '/2', element: <Design2Linear /> },
-  { path: '/3', element: <Design3Grafana /> },
-  { path: '/4', element: <Design4Apple /> },
   shellRoutes,
   {
     path: '*',

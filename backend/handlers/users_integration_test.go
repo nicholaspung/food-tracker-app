@@ -690,7 +690,7 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 		"user":   targetUser.Id,
 		"visit":  visit.Id,
 	})
-	createCollectionRecord(t, server.app, "food_items", map[string]any{
+	foodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"name":          "Airport snack",
 		"rating":        3,
 		"user":          targetUser.Id,
@@ -774,6 +774,31 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("expected response to include %q, got %s", expected, body)
 		}
+	}
+
+	payload := parseJSONMap(t, response.Body.Bytes())
+	recentVisits, ok := payload["recentVisits"].([]any)
+	if !ok || len(recentVisits) == 0 {
+		t.Fatalf("expected recentVisits in response, got %#v", payload["recentVisits"])
+	}
+
+	recentFoodProducts, ok := payload["recentFoodProducts"].([]any)
+	if !ok {
+		t.Fatalf("expected recentFoodProducts in response, got %#v", payload["recentFoodProducts"])
+	}
+	if len(recentFoodProducts) != 1 {
+		t.Fatalf("expected 1 recent food product, got %#v", recentFoodProducts)
+	}
+
+	foodProductData, ok := recentFoodProducts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected food product payload map, got %#v", recentFoodProducts[0])
+	}
+	if foodProductData["id"] != foodProduct.Id || foodProductData["name"] != "Airport snack" {
+		t.Fatalf("expected food product in recentFoodProducts, got %#v", foodProductData)
+	}
+	if foodProductData["id"] == visitItem.Id {
+		t.Fatalf("expected visit item to be excluded from recentFoodProducts, got %#v", foodProductData)
 	}
 }
 

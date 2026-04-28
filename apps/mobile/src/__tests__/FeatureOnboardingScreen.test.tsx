@@ -1,0 +1,269 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+
+import { FeatureOnboardingScreen } from '../screens/FeatureOnboardingScreen';
+import { useAuth } from '../providers/AuthProvider';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+
+const mockReact = React;
+const mockReset = jest.fn();
+const mockGoBack = jest.fn();
+const mockNavigate = jest.fn();
+const mockWriteFeature = jest.fn();
+const mockSaveOptimisticMobileOnboardingState = jest.fn();
+
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
+}));
+
+jest.mock('react-native', () => {
+  return {
+    Image: (props: Record<string, unknown>) => mockReact.createElement('Image', props),
+    Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      mockReact.createElement('Pressable', props, children),
+    ScrollView: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      mockReact.createElement('ScrollView', props, children),
+    StyleSheet: {
+      create: (styles: Record<string, unknown>) => styles,
+    },
+    useWindowDimensions: () => ({ width: 390, height: 844 }),
+    View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      mockReact.createElement('View', props, children),
+  };
+});
+
+jest.mock('../components/shared', () => ({
+  BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('BackHeaderScreenScaffold', props, children),
+  Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
+}));
+
+jest.mock('../components/shared/PageErrorToast', () => ({
+  PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+}));
+
+jest.mock('../features', () => ({
+  MAIN_ONBOARDING_VERSION: 1,
+  buildMainOnboardingCompletedState: jest.fn((state, input) => ({
+    ...(state ?? {}),
+    main: {
+      completedAt: input.completedAt,
+      completedVersion: input.version,
+    },
+  })),
+  completeMainOnboarding: jest.fn(),
+  saveOptimisticMobileOnboardingState: (...args: unknown[]) => mockSaveOptimisticMobileOnboardingState(...args),
+}));
+
+jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
+  useOfflineAwareFeatureWrite: jest.fn(),
+}));
+
+jest.mock('../lib/onboardingAssets', () => ({
+  FEATURE_ONBOARDING_ASSETS: {
+    trackRestaurantVisit: { uri: 'asset://track-restaurant-visit' },
+    trackFoodProduct: { uri: 'asset://track-food-product' },
+    logNote: { uri: 'asset://log-note' },
+    processSavedPhotos: { uri: 'asset://process-saved-photos' },
+    manageNotes: { uri: 'asset://manage-notes' },
+  },
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../providers/AuthProvider', () => ({
+  useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: () => ({ isOnline: true }),
+}));
+
+jest.mock('../theme', () => ({
+  createThemedStyles: (factory: (...args: any[]) => Record<string, unknown>) =>
+    (...args: any[]) =>
+      factory(
+        {
+          colors: {
+            background: {
+              app: 'app',
+              muted: 'muted',
+              surface: 'surface',
+            },
+            border: {
+              subtle: 'subtle',
+            },
+            fill: {
+              brand: 'brandFill',
+            },
+            status: {
+              infoBg: 'infoBg',
+              infoBorder: 'infoBorder',
+            },
+            text: {
+              brand: 'brand',
+              info: 'info',
+              secondary: 'secondary',
+            },
+          },
+          radii: {
+            md: 8,
+            pill: 999,
+          },
+          sizes: {
+            modalMaxWidth: 420,
+          },
+          spacing: {
+            xxs: 2,
+            xs: 4,
+            sm: 8,
+            md: 12,
+            lg: 16,
+          },
+        },
+        ...args,
+      ),
+  useTheme: () => ({
+    colors: {
+      text: {
+        brand: 'brand',
+        info: 'info',
+      },
+    },
+    sizes: {
+      modalMaxWidth: 420,
+    },
+    spacing: {
+      lg: 16,
+    },
+  }),
+}));
+
+jest.mock('../ui', () => ({
+  Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
+  Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Card', props, children),
+  Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Screen', props, children),
+  Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Text', props, children),
+}));
+
+const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
+  typeof useOfflineAwareFeatureWrite
+>;
+
+async function renderFeatureOnboardingScreen(): Promise<any> {
+  let renderer: any;
+
+  await act(async () => {
+    renderer = create(
+      <FeatureOnboardingScreen
+        navigation={
+          {
+            goBack: mockGoBack,
+            navigate: mockNavigate,
+            reset: mockReset,
+          } as never
+        }
+        route={
+          {
+            key: 'FeatureOnboarding-route',
+            name: 'FeatureOnboarding',
+            params: { mode: 'required' },
+          } as never
+        }
+      />,
+    );
+  });
+
+  return renderer;
+}
+
+describe('FeatureOnboardingScreen', () => {
+  beforeEach(() => {
+    mockReset.mockReset();
+    mockGoBack.mockReset();
+    mockNavigate.mockReset();
+    mockWriteFeature.mockReset();
+    mockSaveOptimisticMobileOnboardingState.mockReset();
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'user_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(mockWriteFeature);
+    mockWriteFeature.mockResolvedValue({ status: 'completed', result: {} });
+  });
+
+  it('renders all five main onboarding cards', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+    const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
+
+    expect(text).toContain('Track a restaurant visit');
+    expect(text).toContain('Track a food product');
+    expect(text).toContain('Log a note');
+    expect(text).toContain('Process saved photos');
+    expect(text).toContain('Manage notes');
+  });
+
+  it('keeps finish disabled until the final card is selected', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.disabled).toBe(true);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.disabled).toBe(false);
+  });
+
+  it('finishes onboarding and resets to Home', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+    });
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.onPress();
+    });
+
+    expect(mockWriteFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'onboarding.main.complete',
+      }),
+    );
+    expect(mockReset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
+  });
+
+  it('optimistically saves queued completion before resetting to Home', async () => {
+    mockWriteFeature.mockResolvedValue({ status: 'queued' });
+    const renderer = await renderFeatureOnboardingScreen();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+    });
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.onPress();
+    });
+
+    expect(mockSaveOptimisticMobileOnboardingState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        main: expect.objectContaining({
+          completedVersion: 1,
+        }),
+      }),
+    );
+    expect(mockReset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
+  });
+});

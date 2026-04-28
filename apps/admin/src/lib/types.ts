@@ -125,6 +125,20 @@ export interface FoodItemSummary {
   created: string;
 }
 
+export interface FoodProductSummary {
+  id: string;
+  user: string;
+  name: string;
+  rating: number;
+  itemDate?: string;
+  created: string;
+  updated?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  locationText?: string;
+  itemCategory?: string;
+  notes?: string;
+}
+
 export interface NoteSummary {
   id: string;
   content: string;

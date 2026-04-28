@@ -2,8 +2,15 @@ import type { RecordModel } from 'pocketbase';
 
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
-import { saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
+import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
+import {
+  buildMainOnboardingCompletedState,
+  buildMoreOnboardingCardDismissedState,
+  getMobileOnboardingState,
+  type CompleteMainOnboardingInput,
+  type DismissMoreOnboardingCardInput,
+} from './onboardingStore';
 import type { BillParticipantRecord, BillRecord } from '../models';
 import {
   addRestaurantVisitRatingsToList,
@@ -147,8 +154,18 @@ interface SettingsVisibilitySaveOperationPayload {
   defaultListVisibility: 'private' | 'friends';
 }
 
+interface MainOnboardingCompleteOperationPayload extends CompleteMainOnboardingInput {
+  userId: string;
+}
+
+interface MoreOnboardingCardDismissOperationPayload extends DismissMoreOnboardingCardInput {
+  userId: string;
+}
+
 export interface FeatureOutboxOperationPayloadMap {
   'settings.visibility.save': SettingsVisibilitySaveOperationPayload;
+  'onboarding.main.complete': MainOnboardingCompleteOperationPayload;
+  'onboarding.more-card.dismiss': MoreOnboardingCardDismissOperationPayload;
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
@@ -190,6 +207,8 @@ export type FeatureOutboxOperationPayload<TName extends FeatureOutboxOperationNa
 
 const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'settings.visibility.save',
+  'onboarding.main.complete',
+  'onboarding.more-card.dismiss',
   'visit.create',
   'visit.update',
   'visit.delete',
@@ -362,6 +381,56 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
           defaultListVisibility: settingsPayload.defaultListVisibility,
           defaultRestaurantVisibility: settingsPayload.defaultRestaurantVisibility,
           defaultVisitVisibility: settingsPayload.defaultVisitVisibility,
+        },
+        {
+          headers: requestOptions.headers,
+        },
+      );
+      saveAuthRecord(updatedRecord);
+      return true;
+    }
+    case 'onboarding.main.complete': {
+      const onboardingPayload = payload as MainOnboardingCompleteOperationPayload;
+      const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
+        'users',
+        onboardingPayload.userId,
+      );
+      const updatedRecord = await updateCollectionRecord<RecordModel>(
+        'users',
+        onboardingPayload.userId,
+        {
+          mobileOnboardingState: buildMainOnboardingCompletedState(
+            getMobileOnboardingState(currentRecord),
+            {
+              completedAt: onboardingPayload.completedAt,
+              version: onboardingPayload.version,
+            },
+          ),
+        },
+        {
+          headers: requestOptions.headers,
+        },
+      );
+      saveAuthRecord(updatedRecord);
+      return true;
+    }
+    case 'onboarding.more-card.dismiss': {
+      const onboardingPayload = payload as MoreOnboardingCardDismissOperationPayload;
+      const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
+        'users',
+        onboardingPayload.userId,
+      );
+      const updatedRecord = await updateCollectionRecord<RecordModel>(
+        'users',
+        onboardingPayload.userId,
+        {
+          mobileOnboardingState: buildMoreOnboardingCardDismissedState(
+            getMobileOnboardingState(currentRecord),
+            {
+              cardId: onboardingPayload.cardId,
+              dismissedAt: onboardingPayload.dismissedAt,
+            },
+          ),
         },
         {
           headers: requestOptions.headers,

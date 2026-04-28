@@ -804,13 +804,28 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 		return nil, nil, err
 	}
 
-	params := dbx.Params{"userId": userID}
+	params := dbx.Params{
+		"foodProductType": foodItemTypeFoodProduct,
+		"userId":          userID,
+	}
 	visits, err := app.FindRecordsByFilter("visits", "user = {:userId}", "-visitDate,-created", 10, 0, params)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	foodItems, err := app.FindRecordsByFilter("food_items", "user = {:userId}", "-created", 10, 0, params)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	foodProducts, err := app.FindRecordsByFilter(
+		"food_items",
+		"user = {:userId} && itemType = {:foodProductType}",
+		"-itemDate,-created",
+		10,
+		0,
+		params,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -875,18 +890,19 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 	}
 
 	return user, map[string]any{
-		"user":              serializeAdminUser(user),
-		"recentVisits":      serializeVisits(visits, restaurantDetails),
-		"recentFoodItems":   serializeFoodItems(foodItems),
-		"recentNotes":       serializeNotes(notes),
-		"recentFeedback":    serializeFeedback(feedback),
-		"recentPhotos":      serializePhotos(photos),
-		"recentRestaurants": serializeRestaurants(restaurants),
-		"recentMenuItems":   serializeMenuItems(menuItems, restaurantNames),
-		"recentBills":       bills,
-		"feedEntries":       feedEntries,
-		"restaurantLists":   restaurantLists,
-		"moderationCases":   moderationCases,
+		"user":               serializeAdminUser(user),
+		"recentVisits":       serializeVisits(visits, restaurantDetails),
+		"recentFoodItems":    serializeFoodItems(foodItems),
+		"recentFoodProducts": serializeFoodProducts(foodProducts),
+		"recentNotes":        serializeNotes(notes),
+		"recentFeedback":     serializeFeedback(feedback),
+		"recentPhotos":       serializePhotos(photos),
+		"recentRestaurants":  serializeRestaurants(restaurants),
+		"recentMenuItems":    serializeMenuItems(menuItems, restaurantNames),
+		"recentBills":        bills,
+		"feedEntries":        feedEntries,
+		"restaurantLists":    restaurantLists,
+		"moderationCases":    moderationCases,
 	}, nil
 }
 
@@ -1916,6 +1932,27 @@ func serializeFoodItems(records []*core.Record) []map[string]any {
 			"name":    record.GetString("name"),
 			"rating":  record.GetFloat("rating"),
 			"created": record.GetString("created"),
+		})
+	}
+
+	return result
+}
+
+func serializeFoodProducts(records []*core.Record) []map[string]any {
+	result := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		result = append(result, map[string]any{
+			"id":           record.Id,
+			"user":         record.GetString("user"),
+			"name":         record.GetString("name"),
+			"rating":       record.GetFloat("rating"),
+			"itemDate":     record.GetString("itemDate"),
+			"created":      record.GetString("created"),
+			"updated":      record.GetString("updated"),
+			"visibility":   record.GetString("visibility"),
+			"locationText": record.GetString("location_text"),
+			"itemCategory": record.GetString("itemCategory"),
+			"notes":        record.GetString("notes"),
 		})
 	}
 

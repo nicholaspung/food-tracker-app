@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 
 import {
   OptionList,
@@ -14,10 +15,20 @@ import {
   TabSectionCard,
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import {
+  buildMoreOnboardingCardDismissedState,
+  dismissMoreOnboardingCard,
+  isMoreOnboardingCardDismissed,
+  saveOptimisticMobileOnboardingState,
+} from '../features';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Text } from '../ui';
+import type { MoreOnboardingCardId } from '../types/auth';
+import { Button, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type MiscScreenProps = NativeStackScreenProps<RootStackParamList, 'Misc'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -116,6 +127,35 @@ const useStyles = createThemedStyles((theme) => ({
   sectionActions: {
     gap: theme.spacing.sm,
   },
+  onboardingCard: {
+    gap: theme.spacing.sm,
+  },
+  onboardingImageFrame: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 132,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  onboardingImage: {
+    height: '100%',
+    width: '100%',
+  },
+  onboardingTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  onboardingDescription: {
+    color: theme.colors.text.secondary,
+  },
+  onboardingActions: {
+    gap: theme.spacing.xs,
+  },
   featureIconWrap: {
     alignItems: 'center',
     borderRadius: theme.radii.md,
@@ -151,12 +191,66 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+interface MoreOnboardingCardProps {
+  title: string;
+  description: string;
+  imageSource: ImageSourcePropType;
+  iconName: IoniconName;
+  iconColor: string;
+  onPrimaryPress: () => void;
+  onDismissPress: () => void;
+  primaryLabel: string;
+  dismissLabel: string;
+  testID: string;
+}
+
+function resolveMoreOnboardingImageSource(key: 'lists' | 'splitBill') {
+  return FEATURE_ONBOARDING_ASSETS[key];
+}
+
+function MoreOnboardingCard({
+  title,
+  description,
+  imageSource,
+  iconName,
+  iconColor,
+  onPrimaryPress,
+  onDismissPress,
+  primaryLabel,
+  dismissLabel,
+  testID,
+}: MoreOnboardingCardProps) {
+  const styles = useStyles();
+
+  return (
+    <View style={styles.onboardingCard} testID={testID}>
+      <View style={styles.onboardingImageFrame}>
+        <Image resizeMode="cover" source={imageSource} style={styles.onboardingImage} />
+      </View>
+      <View style={styles.onboardingTitleRow}>
+        <Ionicons color={iconColor} name={iconName} size={20} />
+        <Text variant="labelMdBold">{title}</Text>
+      </View>
+      <Text style={styles.onboardingDescription} variant="bodyMd">
+        {description}
+      </Text>
+      <View style={styles.onboardingActions}>
+        <Button label={primaryLabel} onPress={onPrimaryPress} />
+        <Button label={dismissLabel} onPress={onDismissPress} variant="secondary" />
+      </View>
+    </View>
+  );
+}
+
 export function MiscScreen({ navigation }: MiscScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const isAdmin = Boolean(user?.isAdmin);
   const [expandedTips, setExpandedTips] = useState(false);
+  const [dismissedMoreCards, setDismissedMoreCards] = useState<Partial<Record<MoreOnboardingCardId, true>>>({});
+  const [onboardingErrorMessage, setOnboardingErrorMessage] = useState<string | null>(null);
 
   const sectionColors = {
     cardBorder: theme.colors.border.subtle,
@@ -251,6 +345,66 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   ];
 
   const visibleTips = expandedTips ? TIPS : TIPS.slice(0, 3);
+  const showListsOnboarding =
+    !dismissedMoreCards.lists &&
+    !isMoreOnboardingCardDismissed(user?.mobileOnboardingState, 'lists');
+  const showSplitBillOnboarding =
+    !dismissedMoreCards.splitBill &&
+    !isMoreOnboardingCardDismissed(user?.mobileOnboardingState, 'splitBill');
+
+  const handleDismissMoreOnboardingCard = async (cardId: MoreOnboardingCardId): Promise<boolean> => {
+    if (!user?.id) {
+      setOnboardingErrorMessage('Please sign in again to update onboarding.');
+      return false;
+    }
+
+    setOnboardingErrorMessage(null);
+    const dismissedAt = new Date().toISOString();
+
+    try {
+      const saveResult = await writeFeature({
+        operationName: 'onboarding.more-card.dismiss',
+        trackOnlineWrite: false,
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            userId: user.id,
+            cardId,
+            dismissedAt,
+          },
+        },
+        execute: () =>
+          dismissMoreOnboardingCard(user.id, {
+            cardId,
+            dismissedAt,
+          }),
+      });
+
+      if (saveResult.status === 'queued') {
+        saveOptimisticMobileOnboardingState(
+          buildMoreOnboardingCardDismissedState(user.mobileOnboardingState, {
+            cardId,
+            dismissedAt,
+          }),
+        );
+      }
+
+      setDismissedMoreCards((current) => ({
+        ...current,
+        [cardId]: true,
+      }));
+      trackObservabilityEvent('MORE_ONBOARDING_CARD_DISMISSED', {
+        cardId,
+        queued: saveResult.status === 'queued',
+        source: 'MiscScreen',
+      });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update onboarding.';
+      setOnboardingErrorMessage(message);
+      return false;
+    }
+  };
 
   return (
     <TabRootScreenScaffold
@@ -280,6 +434,33 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
             title="Restaurant Lists"
             titleLeading={<Ionicons color={sectionColors.blue} name="list-outline" size={20} />}
           >
+            {showListsOnboarding ? (
+              <MoreOnboardingCard
+                description="See how lists help you save restaurants, organize favorites, and keep ideas ready for later."
+                dismissLabel="Got It"
+                iconColor={sectionColors.blue}
+                iconName="list-outline"
+                imageSource={resolveMoreOnboardingImageSource('lists')}
+                onDismissPress={() => {
+                  void handleDismissMoreOnboardingCard('lists');
+                }}
+                onPrimaryPress={() => {
+                  trackObservabilityEvent('MORE_ONBOARDING_CARD_CTA_TAPPED', {
+                    cardId: 'lists',
+                    destination: 'Lists',
+                    source: 'MiscScreen',
+                  });
+                  void handleDismissMoreOnboardingCard('lists').then((didDismiss) => {
+                    if (didDismiss) {
+                      navigation.navigate('Lists');
+                    }
+                  });
+                }}
+                primaryLabel="View Lists"
+                testID="more-onboarding-lists-card"
+                title="Organize restaurants with lists"
+              />
+            ) : null}
             <OptionList style={styles.optionList}>
               {restaurantListActions.map((action, index) => (
                 <OptionListRow
@@ -337,6 +518,33 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
             title="Bills & Tips"
             titleLeading={<Ionicons color={sectionColors.green} name="cash-outline" size={20} />}
           >
+            {showSplitBillOnboarding ? (
+              <MoreOnboardingCard
+                description="See how to create a bill, assign items to friends, and track who has paid."
+                dismissLabel="Got It"
+                iconColor={sectionColors.green}
+                iconName="cash-outline"
+                imageSource={resolveMoreOnboardingImageSource('splitBill')}
+                onDismissPress={() => {
+                  void handleDismissMoreOnboardingCard('splitBill');
+                }}
+                onPrimaryPress={() => {
+                  trackObservabilityEvent('MORE_ONBOARDING_CARD_CTA_TAPPED', {
+                    cardId: 'splitBill',
+                    destination: 'Bills',
+                    source: 'MiscScreen',
+                  });
+                  void handleDismissMoreOnboardingCard('splitBill').then((didDismiss) => {
+                    if (didDismiss) {
+                      navigation.navigate('Bills');
+                    }
+                  });
+                }}
+                primaryLabel="Open Bills"
+                testID="more-onboarding-split-bill-card"
+                title="Split a bill"
+              />
+            ) : null}
             <OptionList style={styles.optionList}>
               {billsAndTipsActions.map((action, index) => (
                 <OptionListRow
@@ -365,6 +573,7 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
             titleLeading={<Ionicons color={sectionColors.yellow} name="bulb-outline" size={20} />}
           >
             <View style={styles.sectionActions}>
+              <PageErrorToast errorMessage={onboardingErrorMessage} title="Onboarding update failed" />
               {visibleTips.map((tip) => (
                 <View key={tip.title} style={styles.tipCard}>
                   <Text style={styles.tipTitle} variant="label">{tip.title}</Text>

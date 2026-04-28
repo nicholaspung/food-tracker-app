@@ -11,13 +11,14 @@ import {
 } from '@/features/users/api';
 import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
-import type { UserRestaurantRecord, VisitSummary } from '@/lib/types';
+import type { FoodProductSummary, UserRestaurantRecord, VisitSummary } from '@/lib/types';
 
 type UserDetailTab =
   | 'records'
   | 'feedback'
   | 'activity'
   | 'ratings'
+  | 'food-products'
   | 'restaurants'
   | 'menu-items'
   | 'visits'
@@ -62,6 +63,20 @@ function getVisitRestaurantName(visit: VisitSummary) {
 
 function getVisitRestaurantLocation(visit: VisitSummary) {
   return visit.expand?.restaurant?.location?.trim() || '';
+}
+
+function getFoodProductDisplayDate(product: FoodProductSummary) {
+  return product.itemDate?.trim() || product.created;
+}
+
+function getFoodProductSubtitle(product: FoodProductSummary) {
+  const locationText = product.locationText?.trim();
+  const parts = [`Rating ${product.rating}`, formatDateTime(getFoodProductDisplayDate(product))];
+  if (locationText) {
+    parts.push(locationText);
+  }
+
+  return parts.join(' • ');
 }
 
 function ReassignVisitRestaurantModal({
@@ -261,6 +276,7 @@ function UserDetailTabPanel({
   const [repairSuccessMessage, setRepairSuccessMessage] = useState<string | null>(null);
   const totalRecordCount =
     profile.recentFoodItems.length +
+    profile.recentFoodProducts.length +
     profile.recentRestaurants.length +
     profile.recentMenuItems.length +
     profile.recentVisits.length +
@@ -282,6 +298,14 @@ function UserDetailTabPanel({
       hint: profile.recentFoodItems[0]
         ? `Latest: ${profile.recentFoodItems[0].name} on ${formatDateTime(profile.recentFoodItems[0].created)}`
         : 'No ratings recorded yet.',
+    },
+    {
+      tab: 'food-products',
+      label: 'Food products',
+      count: profile.recentFoodProducts.length,
+      hint: profile.recentFoodProducts[0]
+        ? `Latest: ${profile.recentFoodProducts[0].name} on ${formatDateTime(getFoodProductDisplayDate(profile.recentFoodProducts[0]))}`
+        : 'No food products logged yet.',
     },
     {
       tab: 'restaurants',
@@ -347,8 +371,8 @@ function UserDetailTabPanel({
         <div className="tab-panel-heading">
           <h3>User-created records</h3>
           <span className="text-muted">
-            {totalRecordCount} recent records across ratings, restaurants, menu items, visits,
-            notes, photos, lists, and bills.
+            {totalRecordCount} recent records across ratings, food products, restaurants, menu
+            items, visits, notes, photos, lists, and bills.
           </span>
         </div>
 
@@ -466,6 +490,48 @@ function UserDetailTabPanel({
                     <span className="text-muted">
                       Rating {item.rating} • {formatDateTime(item.created)}
                     </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'food-products') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Food products</h3>
+          <span className="text-muted">
+            {profile.recentFoodProducts.length} recent food products logged by this user.
+          </span>
+        </div>
+
+        {profile.recentFoodProducts.length === 0 ? (
+          <span className="text-muted">No recent food products found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentFoodProducts} itemsPerPage={12}>
+            {(pageProducts) => (
+              <div className="inline-list">
+                {pageProducts.map((product) => (
+                  <div className="list-item" key={product.id}>
+                    <div className="summary-row">
+                      <strong>{product.name}</strong>
+                      <div className="tag-row">
+                        {product.visibility ? <span className="tag">{product.visibility}</span> : null}
+                        {product.itemCategory?.trim() ? (
+                          <span className="tag">{product.itemCategory}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <span className="text-muted">{getFoodProductSubtitle(product)}</span>
+                    <span className="text-muted">Food product id: {product.id}</span>
+                    {product.notes?.trim() ? (
+                      <span className="text-muted">{product.notes}</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -833,6 +899,10 @@ export function UserDetailPage() {
               <div className="metric-value">{profileQuery.data.recentFoodItems.length}</div>
             </div>
             <div className="metric-card">
+              <span className="text-muted">Food products</span>
+              <div className="metric-value">{profileQuery.data.recentFoodProducts.length}</div>
+            </div>
+            <div className="metric-card">
               <span className="text-muted">Recent notes</span>
               <div className="metric-value">{profileQuery.data.recentNotes.length}</div>
             </div>
@@ -872,6 +942,7 @@ export function UserDetailPage() {
                     label: 'User-created records',
                     count:
                       profileQuery.data.recentFoodItems.length +
+                      profileQuery.data.recentFoodProducts.length +
                       profileQuery.data.recentRestaurants.length +
                       profileQuery.data.recentMenuItems.length +
                       profileQuery.data.recentVisits.length +
@@ -894,6 +965,11 @@ export function UserDetailPage() {
                     id: 'ratings',
                     label: 'Ratings',
                     count: profileQuery.data.recentFoodItems.length,
+                  },
+                  {
+                    id: 'food-products',
+                    label: 'Food products',
+                    count: profileQuery.data.recentFoodProducts.length,
                   },
                   {
                     id: 'restaurants',
@@ -1002,6 +1078,10 @@ export function UserDetailPage() {
                 <div className="summary-row">
                   <span className="text-muted">Ratings</span>
                   <strong>{profileQuery.data.recentFoodItems.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Food products</span>
+                  <strong>{profileQuery.data.recentFoodProducts.length}</strong>
                 </div>
                 <div className="summary-row">
                   <span className="text-muted">Restaurants created</span>

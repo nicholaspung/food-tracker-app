@@ -938,7 +938,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             />
             <OptionListRow
               iconName="information-circle-outline"
-              isLast
               onPress={() => {
                 navigation.navigate("About");
               }}
@@ -948,6 +947,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               subtitle="Current version, legal information, and app details"
               testID="profile-about-link"
               title="About"
+            />
+            <OptionListRow
+              iconName="sparkles-outline"
+              isLast
+              onPress={() => {
+                navigation.navigate("FeatureOnboarding", { mode: "replay" });
+              }}
+              subtitle="Review how to use Yummy Recs features"
+              testID="profile-onboarding-tutorials-link"
+              title="Onboarding Tutorials"
             />
           </OptionList>
         </Card>

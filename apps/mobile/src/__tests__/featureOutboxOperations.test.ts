@@ -2,6 +2,11 @@ import {
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
 import {
+  getCollectionRecord,
+  saveAuthRecord,
+  updateCollectionRecord,
+} from '../features/store/pocketbaseGateway';
+import {
   convertVisitItemToFoodProduct,
   createVisit,
 } from '../features/store/featureStore';
@@ -40,6 +45,8 @@ jest.mock('../features/store/featureStore', () => ({
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
+  getAuthRecord: jest.fn(),
+  getCollectionRecord: jest.fn(),
   saveAuthRecord: jest.fn(),
   updateCollectionRecord: jest.fn(),
 }));
@@ -48,6 +55,9 @@ const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>
 const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jest.MockedFunction<
   typeof convertVisitItemToFoodProduct
 >;
+const mockedGetCollectionRecord = getCollectionRecord as jest.MockedFunction<typeof getCollectionRecord>;
+const mockedSaveAuthRecord = saveAuthRecord as jest.MockedFunction<typeof saveAuthRecord>;
+const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 
 function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMutation {
   return {
@@ -83,6 +93,9 @@ describe('featureOutboxOperations', () => {
   beforeEach(() => {
     mockedCreateVisit.mockReset();
     mockedConvertVisitItemToFoodProduct.mockReset();
+    mockedGetCollectionRecord.mockReset();
+    mockedSaveAuthRecord.mockReset();
+    mockedUpdateCollectionRecord.mockReset();
   });
 
   it('passes queued idempotency headers into replayed local feature writes', async () => {
@@ -158,6 +171,129 @@ describe('featureOutboxOperations', () => {
           'X-Idempotency-Key': 'idem_123',
         },
       },
+    );
+  });
+
+  it('replays main onboarding completion while preserving existing onboarding state', async () => {
+    mockedGetCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+      mobileOnboardingState: {
+        moreCards: {
+          lists: {
+            dismissedAt: '2026-04-28T12:00:00.000Z',
+          },
+        },
+      },
+    });
+    mockedUpdateCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+      mobileOnboardingState: {
+        main: {
+          completedVersion: 1,
+          completedAt: '2026-04-28T12:05:00.000Z',
+        },
+        moreCards: {
+          lists: {
+            dismissedAt: '2026-04-28T12:00:00.000Z',
+          },
+        },
+      },
+    });
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/onboarding.main.complete',
+        body: JSON.stringify({
+          userId: 'user_1',
+          version: 1,
+          completedAt: '2026-04-28T12:05:00.000Z',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'onboarding.main.complete',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'users',
+      'user_1',
+      {
+        mobileOnboardingState: {
+          main: {
+            completedVersion: 1,
+            completedAt: '2026-04-28T12:05:00.000Z',
+          },
+          moreCards: {
+            lists: {
+              dismissedAt: '2026-04-28T12:00:00.000Z',
+            },
+          },
+        },
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Mobile-Write-Operation': 'onboarding.main.complete',
+        }),
+      }),
+    );
+    expect(mockedSaveAuthRecord).toHaveBeenCalled();
+  });
+
+  it('replays one More onboarding card dismissal without clearing the other card', async () => {
+    mockedGetCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+      mobileOnboardingState: {
+        main: {
+          completedVersion: 1,
+          completedAt: '2026-04-28T12:05:00.000Z',
+        },
+        moreCards: {
+          splitBill: {
+            dismissedAt: '2026-04-28T12:10:00.000Z',
+          },
+        },
+      },
+    });
+    mockedUpdateCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+    });
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/onboarding.more-card.dismiss',
+        body: JSON.stringify({
+          userId: 'user_1',
+          cardId: 'lists',
+          dismissedAt: '2026-04-28T12:15:00.000Z',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'onboarding.more-card.dismiss',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'users',
+      'user_1',
+      {
+        mobileOnboardingState: {
+          main: {
+            completedVersion: 1,
+            completedAt: '2026-04-28T12:05:00.000Z',
+          },
+          moreCards: {
+            lists: {
+              dismissedAt: '2026-04-28T12:15:00.000Z',
+            },
+            splitBill: {
+              dismissedAt: '2026-04-28T12:10:00.000Z',
+            },
+          },
+        },
+      },
+      expect.any(Object),
     );
   });
 });

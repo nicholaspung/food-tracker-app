@@ -16,6 +16,7 @@ export * from './EditRestaurantListScreen';
 export * from './EditVisitScreen';
 export * from './FeedbackScreen';
 export * from './FeedbackDetailScreen';
+export * from './FeatureOnboardingScreen';
 export * from './ForgotPasswordScreen';
 export * from './FriendsScreen';
 export * from './HomeScreen';

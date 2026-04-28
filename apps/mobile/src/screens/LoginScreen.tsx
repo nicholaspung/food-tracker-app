@@ -31,6 +31,18 @@ const useStyles = createThemedStyles((theme) => ({
   formCard: {
     gap: theme.spacing.sm,
   },
+  emailField: {
+    gap: theme.spacing.xs,
+  },
+  emailLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  emailLabel: {
+    flex: 1,
+  },
   checkbox: {
     alignItems: 'center',
     borderColor: theme.colors.border.default,
@@ -38,22 +50,20 @@ const useStyles = createThemedStyles((theme) => ({
     borderWidth: 1,
     height: 22,
     justifyContent: 'center',
-    marginTop: 1,
+    marginRight: theme.spacing.xs,
     width: 22,
   },
   checkboxChecked: {
     backgroundColor: theme.colors.button.primaryBg,
     borderColor: theme.colors.button.primaryBg,
   },
-  checkboxRow: {
-    alignItems: 'flex-start',
+  rememberEmailToggle: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
     flexDirection: 'row',
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  checkboxText: {
-    flex: 1,
-    gap: theme.spacing.xxs,
+    flexShrink: 0,
+    marginLeft: theme.spacing.sm,
+    paddingVertical: theme.spacing.xxs,
   },
   forgotLink: {
     alignSelf: 'flex-end',
@@ -177,18 +187,44 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
         />
 
         <Card style={styles.formCard}>
-          <Input
-            autoCapitalize="none"
-            autoComplete="username"
-            autoCorrect={false}
-            keyboardType="email-address"
-            label="Email"
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            testID="login-email-input"
-            textContentType="username"
-            value={email}
-          />
+          <View style={styles.emailField}>
+            <View style={styles.emailLabelRow}>
+              <Text style={styles.emailLabel} variant="label">
+                Email
+              </Text>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: rememberEmail }}
+                onPress={() => {
+                  setRememberEmail((value) => {
+                    const nextValue = !value;
+
+                    if (!nextValue) {
+                      void clearRememberedLoginEmail();
+                    }
+
+                    return nextValue;
+                  });
+                }}
+                style={styles.rememberEmailToggle}
+                testID="login-remember-email-checkbox"
+              >
+                <View style={[styles.checkbox, rememberEmail ? styles.checkboxChecked : null]} />
+                <Text variant="label">Remember</Text>
+              </Pressable>
+            </View>
+            <Input
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect={false}
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              testID="login-email-input"
+              textContentType="username"
+              value={email}
+            />
+          </View>
 
           <Input
             autoCapitalize="none"
@@ -202,32 +238,6 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             textContentType="password"
             value={password}
           />
-
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: rememberEmail }}
-            onPress={() => {
-              setRememberEmail((value) => {
-                const nextValue = !value;
-
-                if (!nextValue) {
-                  void clearRememberedLoginEmail();
-                }
-
-                return nextValue;
-              });
-            }}
-            style={styles.checkboxRow}
-            testID="login-remember-email-checkbox"
-          >
-            <View style={[styles.checkbox, rememberEmail ? styles.checkboxChecked : null]} />
-            <View style={styles.checkboxText}>
-              <Text variant="label">Remember email</Text>
-              <Text tone="muted" variant="bodySm">
-                Keep your email filled in on this device.
-              </Text>
-            </View>
-          </Pressable>
 
           <Pressable
             accessibilityLabel="Forgot Password"
