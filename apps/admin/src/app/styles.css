@@ -949,6 +949,28 @@ tbody tr:hover {
   background: rgba(0, 113, 227, 0.03);
 }
 
+.inventory-primary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.inventory-secondary-text {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.inventory-thumbnail {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: block;
+  height: 64px;
+  object-fit: cover;
+  width: 64px;
+}
+
 /* ─── Form elements ──────────────────────────────────────────────────────── */
 
 .input,
@@ -993,6 +1015,10 @@ select.input {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.field-compact {
+  flex: 0 0 140px;
 }
 
 .field label {

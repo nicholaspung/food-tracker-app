@@ -10,6 +10,8 @@ import { Design4Apple } from '@/features/design-previews/Design4Apple';
 import { FeedbackDetailPage } from '@/features/feedback/FeedbackDetailPage';
 import { FeedbackInboxPage } from '@/features/feedback/FeedbackInboxPage';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { MenuInventoryPage } from '@/features/menu-inventory/MenuInventoryPage';
+import { RestaurantInventoryDetailPage } from '@/features/menu-inventory/RestaurantInventoryDetailPage';
 import { MenuReviewDetailPage } from '@/features/menu-reviews/MenuReviewDetailPage';
 import { MenuReviewsPage } from '@/features/menu-reviews/MenuReviewsPage';
 import { ModerationPage } from '@/features/moderation/ModerationPage';
@@ -37,6 +39,14 @@ const shellRoutes = {
         {
           path: '/menu-reviews',
           element: <MenuReviewsPage />,
+        },
+        {
+          path: '/menu-inventory',
+          element: <MenuInventoryPage />,
+        },
+        {
+          path: '/menu-inventory/restaurants/:restaurantId',
+          element: <RestaurantInventoryDetailPage />,
         },
         {
           path: '/menu-reviews/:requestId',

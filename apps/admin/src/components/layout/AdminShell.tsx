@@ -7,6 +7,7 @@ import brandLogo from '../../../../mobile/assets/brand-logo.png';
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: '⊞' },
   { to: '/menu-reviews', label: 'Menu Reviews', icon: '☰' },
+  { to: '/menu-inventory', label: 'Menu Inventory', icon: '▤' },
   { to: '/feedback', label: 'Feedback', icon: '✉' },
   { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
   { to: '/waitlist', label: 'Waitlist', icon: '@' },
