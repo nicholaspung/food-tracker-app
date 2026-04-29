@@ -105,6 +105,7 @@ jest.mock('../theme', () => ({
             text: {
               brand: 'brand',
               info: 'info',
+              primary: 'primary',
               secondary: 'secondary',
             },
           },
@@ -130,6 +131,7 @@ jest.mock('../theme', () => ({
       text: {
         brand: 'brand',
         info: 'info',
+        primary: 'primary',
       },
     },
     sizes: {
@@ -183,6 +185,18 @@ async function renderFeatureOnboardingScreen(): Promise<any> {
   return renderer;
 }
 
+function findFinishButtons(renderer: any): any[] {
+  return renderer.root.findAll(
+    (node: any) => node.type === 'Button' && node.props.testID === 'feature-onboarding-finish-button',
+  );
+}
+
+function findActionsSlots(renderer: any): any[] {
+  return renderer.root.findAll(
+    (node: any) => node.type === 'View' && node.props.testID === 'feature-onboarding-actions-slot',
+  );
+}
+
 describe('FeatureOnboardingScreen', () => {
   beforeEach(() => {
     mockReset.mockReset();
@@ -210,16 +224,40 @@ describe('FeatureOnboardingScreen', () => {
     expect(text).toContain('Manage notes');
   });
 
-  it('keeps finish disabled until the final card is selected', async () => {
+  it('hides finish until the final card is selected', async () => {
     const renderer = await renderFeatureOnboardingScreen();
 
-    expect(renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.disabled).toBe(true);
+    expect(findActionsSlots(renderer)).toHaveLength(1);
+    expect(findFinishButtons(renderer)).toHaveLength(0);
 
     await act(async () => {
       renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
     });
 
-    expect(renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.disabled).toBe(false);
+    expect(findActionsSlots(renderer)).toHaveLength(1);
+    expect(findFinishButtons(renderer)).toHaveLength(1);
+  });
+
+  it('moves between cards with previous and next arrow controls', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.disabled).toBe(false);
+    expect(findFinishButtons(renderer)).toHaveLength(0);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.disabled).toBe(false);
+    expect(findFinishButtons(renderer)).toHaveLength(0);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+    });
+
+    expect(findFinishButtons(renderer)).toHaveLength(1);
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.disabled).toBe(true);
   });
 
   it('finishes onboarding and resets to Home', async () => {

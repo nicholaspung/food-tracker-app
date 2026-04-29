@@ -14,6 +14,7 @@ var selfServiceUserEditableFields = map[string]struct{}{
 	"name":                        {},
 	"defaultVisitVisibility":      {},
 	"defaultRestaurantVisibility": {},
+	"mobileOnboardingState":       {},
 }
 
 var adminOnlyUserFields = map[string]struct{}{
@@ -111,7 +112,7 @@ func EnforceUserUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 		sort.Strings(blockedFields)
 		return apis.NewForbiddenError(
 			fmt.Sprintf(
-				"you can only modify name, defaultVisitVisibility, and defaultRestaurantVisibility; blocked fields: %s",
+				"you can only modify name, defaultVisitVisibility, defaultRestaurantVisibility, and mobileOnboardingState; blocked fields: %s",
 				strings.Join(blockedFields, ", "),
 			),
 			nil,

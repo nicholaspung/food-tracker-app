@@ -87,11 +87,13 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
   },
 ];
 
-const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
+type CardViewTrigger = 'initial' | 'swipe' | 'indicator' | 'arrow';
+
+const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHeight: number) => ({
   requiredContent: {
-    gap: theme.spacing.lg,
+    gap: theme.spacing.md,
     justifyContent: 'space-between',
-    paddingBottom: theme.spacing.lg,
+    paddingBottom: theme.spacing.md,
     paddingTop: theme.spacing.lg,
   },
   header: {
@@ -105,9 +107,6 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
   eyebrow: {
     color: theme.colors.text.brand,
   },
-  subtitle: {
-    color: theme.colors.text.secondary,
-  },
   carouselViewport: {
     width: '100%',
   },
@@ -118,7 +117,7 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
     width: carouselCardWidth,
   },
   card: {
-    gap: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
   imageFrame: {
     alignItems: 'center',
@@ -126,7 +125,7 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.md,
     borderWidth: 1,
-    height: 220,
+    height: mediaHeight,
     justifyContent: 'center',
     overflow: 'hidden',
     width: '100%',
@@ -153,7 +152,26 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
   cardCopy: {
     color: theme.colors.text.secondary,
   },
-  indicatorRow: {
+  indicatorControlsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'center',
+  },
+  arrowButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  arrowButtonDisabled: {
+    opacity: 0.35,
+  },
+  dotsRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.xs,
     justifyContent: 'center',
@@ -173,8 +191,10 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
     backgroundColor: theme.colors.fill.brand,
     width: 20,
   },
-  actions: {
+  requiredActionsSlot: {
     gap: theme.spacing.sm,
+    justifyContent: 'flex-end',
+    minHeight: theme.sizes.buttonHeight,
   },
   replayBody: {
     gap: theme.spacing.md,
@@ -227,7 +247,7 @@ function FeatureOnboardingCardView({
 export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboardingScreenProps) {
   const mode = route.params?.mode ?? 'required';
   const theme = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -237,9 +257,10 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const carouselCardWidth = Math.min(viewportWidth - theme.spacing.lg * 2, theme.sizes.modalMaxWidth);
+  const mediaHeight = Math.min(Math.max(320, Math.round(viewportHeight * 0.42)), 430);
   const boundedActiveCardIndex = Math.min(activeCardIndex, MAIN_ONBOARDING_CARDS.length - 1);
   const isFinalCard = boundedActiveCardIndex === MAIN_ONBOARDING_CARDS.length - 1;
-  const styles = useStyles(carouselCardWidth);
+  const styles = useStyles(carouselCardWidth, mediaHeight);
 
   useEffect(() => {
     trackObservabilityEvent('FEATURE_ONBOARDING_STARTED', {
@@ -249,7 +270,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
     });
   }, [mode]);
 
-  const trackCardViewed = useCallback((index: number, trigger: 'initial' | 'swipe' | 'indicator') => {
+  const trackCardViewed = useCallback((index: number, trigger: CardViewTrigger) => {
     const card = MAIN_ONBOARDING_CARDS[index];
     if (!card) {
       return;
@@ -281,12 +302,13 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
     trackCardViewed(boundedActiveCardIndex, 'initial');
   }, [boundedActiveCardIndex, trackCardViewed]);
 
-  const handleCardIndicatorPress = useCallback((index: number) => {
-    setActiveCardIndex(index);
-    trackCardViewed(index, 'indicator');
+  const navigateToCardIndex = useCallback((index: number, trigger: 'indicator' | 'arrow') => {
+    const boundedIndex = Math.max(0, Math.min(index, MAIN_ONBOARDING_CARDS.length - 1));
+    setActiveCardIndex(boundedIndex);
+    trackCardViewed(boundedIndex, trigger);
     carouselRef.current?.scrollTo({
       animated: true,
-      x: index * carouselCardWidth,
+      x: boundedIndex * carouselCardWidth,
       y: 0,
     });
   }, [carouselCardWidth, trackCardViewed]);
@@ -415,35 +437,71 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
             ))}
           </ScrollView>
         </View>
-        <View style={styles.indicatorRow}>
-          {MAIN_ONBOARDING_CARDS.map((card, index) => {
-            const isActive = index === boundedActiveCardIndex;
+        <View style={styles.indicatorControlsRow}>
+          <Pressable
+            accessibilityLabel="Show previous onboarding card"
+            accessibilityRole="button"
+            disabled={boundedActiveCardIndex === 0}
+            onPress={() => {
+              navigateToCardIndex(boundedActiveCardIndex - 1, 'arrow');
+            }}
+            style={[
+              styles.arrowButton,
+              boundedActiveCardIndex === 0 ? styles.arrowButtonDisabled : null,
+            ]}
+            testID="feature-onboarding-previous-button"
+          >
+            <Ionicons color={theme.colors.text.primary} name="chevron-back" size={20} />
+          </Pressable>
 
-            return (
-              <Pressable
-                accessibilityLabel={`Show onboarding card ${index + 1}`}
-                accessibilityRole="button"
-                key={card.id}
-                onPress={() => {
-                  handleCardIndicatorPress(index);
-                }}
-                style={styles.indicatorButton}
-                testID={`feature-onboarding-indicator-${card.id}`}
-              >
-                <View style={[styles.indicatorDot, isActive ? styles.indicatorDotActive : null]} />
-              </Pressable>
-            );
-          })}
+          <View style={styles.dotsRow}>
+            {MAIN_ONBOARDING_CARDS.map((card, index) => {
+              const isActive = index === boundedActiveCardIndex;
+
+              return (
+                <Pressable
+                  accessibilityLabel={`Show onboarding card ${index + 1}`}
+                  accessibilityRole="button"
+                  key={card.id}
+                  onPress={() => {
+                    navigateToCardIndex(index, 'indicator');
+                  }}
+                  style={styles.indicatorButton}
+                  testID={`feature-onboarding-indicator-${card.id}`}
+                >
+                  <View style={[styles.indicatorDot, isActive ? styles.indicatorDotActive : null]} />
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            accessibilityLabel="Show next onboarding card"
+            accessibilityRole="button"
+            disabled={isFinalCard}
+            onPress={() => {
+              navigateToCardIndex(boundedActiveCardIndex + 1, 'arrow');
+            }}
+            style={[
+              styles.arrowButton,
+              isFinalCard ? styles.arrowButtonDisabled : null,
+            ]}
+            testID="feature-onboarding-next-button"
+          >
+            <Ionicons color={theme.colors.text.primary} name="chevron-forward" size={20} />
+          </Pressable>
         </View>
       </>
     ),
     [
       boundedActiveCardIndex,
       carouselCardWidth,
-      handleCardIndicatorPress,
       handleReplayCtaPress,
+      isFinalCard,
       mode,
+      navigateToCardIndex,
       styles,
+      theme.colors.text.primary,
       trackCardViewed,
     ],
   );
@@ -486,24 +544,23 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
           </Text>
         </View>
         <Text variant="displayMd">Learn the main ways to track food</Text>
-        <Text style={styles.subtitle} variant="bodyMd">
-          Swipe through each tutorial, then finish to enter the app.
-        </Text>
       </View>
 
       {cardCarousel}
 
-      <View style={styles.actions}>
+      <View style={styles.requiredActionsSlot} testID="feature-onboarding-actions-slot">
         <PageErrorToast errorMessage={errorMessage} title="Onboarding update failed" />
-        <Button
-          disabled={!isFinalCard || isSaving}
-          label={isFinalCard ? 'Finish' : 'View all cards to finish'}
-          loading={isSaving}
-          onPress={() => {
-            void handleFinish();
-          }}
-          testID="feature-onboarding-finish-button"
-        />
+        {isFinalCard ? (
+          <Button
+            disabled={isSaving}
+            label="Finish"
+            loading={isSaving}
+            onPress={() => {
+              void handleFinish();
+            }}
+            testID="feature-onboarding-finish-button"
+          />
+        ) : null}
       </View>
     </Screen>
   );

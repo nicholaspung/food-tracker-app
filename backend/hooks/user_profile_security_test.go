@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/router"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	_ "myapp/migrations"
 	"myapp/testutil"
@@ -192,6 +194,54 @@ func TestUserUpdateRequestSecurityAllowsProfileFieldsForNonAdmin(t *testing.T) {
 			"expected defaultRestaurantVisibility=friends, got %q",
 			updatedRecord.GetString("defaultRestaurantVisibility"),
 		)
+	}
+}
+
+func TestUserUpdateRequestSecurityAllowsMobileOnboardingStateForNonAdmin(t *testing.T) {
+	app := newUserProfileSecurityTestApp(t)
+	user := createProfileSecurityUser(t, app, false, false)
+
+	err := triggerUserUpdateSecurityHook(
+		t,
+		app,
+		user,
+		user.Id,
+		map[string]any{
+			"mobileOnboardingState": map[string]any{
+				"main": map[string]any{
+					"completedVersion": float64(1),
+					"completedAt":      "2026-04-28T12:00:00.000Z",
+				},
+			},
+		},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("expected update to succeed, got %v", err)
+	}
+
+	updatedRecord, findErr := app.FindRecordById("users", user.Id)
+	if findErr != nil {
+		t.Fatalf("failed to reload updated user: %v", findErr)
+	}
+
+	rawOnboardingState, ok := updatedRecord.Get("mobileOnboardingState").(types.JSONRaw)
+	if !ok {
+		t.Fatalf("expected mobileOnboardingState JSONRaw, got %#v", updatedRecord.Get("mobileOnboardingState"))
+	}
+
+	onboardingState := map[string]any{}
+	if err := json.Unmarshal(rawOnboardingState, &onboardingState); err != nil {
+		t.Fatalf("failed to parse mobileOnboardingState: %v", err)
+	}
+
+	mainState, ok := onboardingState["main"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected main onboarding state map, got %#v", onboardingState["main"])
+	}
+
+	if mainState["completedVersion"] != float64(1) {
+		t.Fatalf("expected completedVersion=1, got %#v", mainState["completedVersion"])
 	}
 }
 
