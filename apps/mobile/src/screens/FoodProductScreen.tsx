@@ -33,8 +33,8 @@ import {
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import {
   buildCreateFoodProductInput,
   buildDefaultFoodProductForm,
@@ -75,8 +75,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
-  return buildLocalPhotoFile(asset, {
+async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promise<VisitPhotoUploadInput | null> {
+  return stageLocalPhotoFile(asset, {
     fallbackPrefix: 'food-product',
   });
 }
@@ -199,7 +199,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         }
 
         const pendingAsset = pendingResult.assets?.[0];
-        const nextUpload = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
+        const nextUpload = pendingAsset ? await buildDraftPhotoInput(pendingAsset) : null;
         if (!nextUpload) {
           return;
         }
@@ -305,7 +305,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       }
 
       const selectedAsset = pickerResult.assets?.[0];
-      const nextUpload = selectedAsset ? buildDraftPhotoInput(selectedAsset) : null;
+      const nextUpload = selectedAsset ? await buildDraftPhotoInput(selectedAsset) : null;
       if (!nextUpload) {
         throw new Error('Could not read the selected image.');
       }
@@ -456,6 +456,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         includeUsage: Boolean(photo),
         sourceNoteId,
       });
+      await cleanupStagedPhotoFiles(photo ? [photo.upload] : []);
       await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
       trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'FoodProductScreen',

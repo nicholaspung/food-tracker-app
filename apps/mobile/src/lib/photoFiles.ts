@@ -1,4 +1,4 @@
-interface LocalPhotoAsset {
+export interface LocalPhotoAsset {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;

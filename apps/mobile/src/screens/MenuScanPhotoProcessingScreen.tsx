@@ -19,7 +19,7 @@ import {
 } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
+import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import { trackObservabilityEvent } from '../observability';
 import {
   parseMenuItemNamesFromCsv,
@@ -282,7 +282,7 @@ export function MenuScanPhotoProcessingScreen({
         }
 
         const selectedAsset = result.assets[0];
-        const imageInput: VisitPhotoUploadInput | null = buildLocalPhotoFile(
+        const imageInput: VisitPhotoUploadInput | null = await stageLocalPhotoFile(
           selectedAsset,
           {
             fallbackPrefix:
@@ -290,7 +290,7 @@ export function MenuScanPhotoProcessingScreen({
           },
         );
         if (!imageInput) {
-          throw new Error('Could not read the selected image.');
+          throw new Error('Could not prepare the selected image for upload.');
         }
 
         setSelectedImageName(imageInput.name);
@@ -299,6 +299,7 @@ export function MenuScanPhotoProcessingScreen({
           source: 'PhotoProcessingScreen',
         });
         await processSelectedImage(imageInput.name, imageInput);
+        await cleanupStagedPhotoFiles([imageInput]);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Could not select an image.';

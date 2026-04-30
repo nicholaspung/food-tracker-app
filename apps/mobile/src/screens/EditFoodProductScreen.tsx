@@ -35,8 +35,8 @@ import {
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import {
   buildDefaultFoodProductForm,
   buildFoodProductFormFromRecord,
@@ -79,8 +79,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
-  return buildLocalPhotoFile(asset, {
+async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promise<VisitPhotoUploadInput | null> {
+  return stageLocalPhotoFile(asset, {
     fallbackPrefix: 'food-product',
   });
 }
@@ -201,9 +201,9 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   }, []);
 
   const applyReplacementPhoto = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
-    const nextUpload = buildDraftPhotoInput(asset);
+    const nextUpload = await buildDraftPhotoInput(asset);
     if (!nextUpload) {
-      throw new Error('Could not read the selected image.');
+      throw new Error('Could not prepare the selected image for upload.');
     }
     const captureDate = await resolvePhotoCaptureDate(asset);
 
@@ -522,6 +522,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         includeFoodProductPhotos: hasPhotoChanges,
         includeUsage: Boolean(replacementPhoto),
       });
+      await cleanupStagedPhotoFiles(replacementPhoto ? [replacementPhoto.upload] : []);
       trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',
         foodProductId: legacyFoodProductId,

@@ -1,8 +1,8 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { useCallback, useState } from 'react';
 
-import { buildLocalPhotoFile } from '../../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../../lib/photoMetadata';
+import { stageLocalPhotoFile } from '../../lib/photoStaging';
 import {
   buildDefaultFoodProductForm,
   type FoodProductFormValues,
@@ -104,36 +104,41 @@ export function usePhotoProcessingDraftState() {
       return;
     }
 
+    const timestamp = Date.now();
     const resolvedAssets = await Promise.all(
-      assets.map(async (asset) => ({
-        asset,
-        captureDate: await resolvePhotoCaptureDate(asset),
-        captureCoordinates: extractCaptureCoordinates(asset),
-      })),
+      assets.map(async (asset, index) => {
+        const nextPhoto = await stageLocalPhotoFile(asset, {
+          fallbackPrefix: 'photo',
+        });
+
+        return {
+          asset,
+          captureDate: await resolvePhotoCaptureDate(asset),
+          captureCoordinates: extractCaptureCoordinates(asset),
+          id: `${timestamp}-${index}-${asset.assetId ?? index}`,
+          photo: nextPhoto,
+        };
+      }),
     );
 
     setPhotos((current) => {
       const existingUris = new Set(current.map((photo) => photo.uri));
       const nextPhotos = [...current];
-      const timestamp = Date.now();
 
       resolvedAssets.forEach(
-        ({ asset, captureDate, captureCoordinates }, index) => {
-          const nextPhoto = buildLocalPhotoFile(asset, {
-            fallbackPrefix: 'photo',
-          });
-          if (!nextPhoto || existingUris.has(nextPhoto.uri)) {
+        ({ captureDate, captureCoordinates, id, photo }) => {
+          if (!photo || existingUris.has(photo.uri)) {
             return;
           }
 
           nextPhotos.push({
-            id: `${timestamp}-${index}-${asset.assetId ?? index}`,
-            ...nextPhoto,
+            id,
+            ...photo,
             captureDate,
             captureCoordinates,
             metadataDate: captureDate,
           });
-          existingUris.add(nextPhoto.uri);
+          existingUris.add(photo.uri);
         },
       );
 

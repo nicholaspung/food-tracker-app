@@ -54,8 +54,8 @@ import {
   isValidLocalDate,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { stageLocalPhotoFile } from '../lib/photoStaging';
 import {
   buildVisitRestaurantDescription,
   type VisitRestaurantWithDistance,
@@ -1260,11 +1260,11 @@ export function CreateVisitScreen({
     }
 
     const asset = result.assets[0];
-    const upload = buildLocalPhotoFile(asset, {
+    const upload = await stageLocalPhotoFile(asset, {
       fallbackPrefix: 'visit-item',
     });
     if (!upload) {
-      setErrorMessage('Could not read the selected image.');
+      setErrorMessage('Could not prepare the selected image for upload.');
       return;
     }
 

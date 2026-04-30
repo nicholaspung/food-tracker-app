@@ -235,4 +235,58 @@ describe('notesStore note photo uploads', () => {
     const formData = notePhotosCollection.create.mock.calls[0][0];
     expect(getFormDataParts(formData).some(([key]) => key === 'capturedAt')).toBe(false);
   });
+
+  it('normalizes note photo upload validation errors with the filename', async () => {
+    const notesCollection = {
+      create: jest.fn().mockResolvedValue({
+        id: 'note-1',
+        user: 'user-1',
+        content: 'Test note',
+        status: 'draft',
+        created: '2026-04-28T12:00:00.000Z',
+        updated: '2026-04-28T12:00:00.000Z',
+      }),
+    };
+    const notePhotosCollection = {
+      create: jest.fn().mockRejectedValue(
+        new ClientResponseError({
+          response: {
+            data: {
+              photo: {
+                message: 'File is too large.',
+              },
+            },
+            message: 'Failed to create record.',
+          },
+          status: 400,
+          url: 'https://app.yummyrecs.com/api/collections/note_photos/records',
+        }),
+      ),
+    };
+
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'notes') {
+        return notesCollection;
+      }
+      if (collectionName === 'note_photos') {
+        return notePhotosCollection;
+      }
+
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await expect(
+      createNote({
+        title: '',
+        content: 'Test note',
+        photos: [
+          {
+            uri: 'file:///large-photo.jpg',
+            name: 'large-photo.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Could not upload large-photo.jpg: File is too large.');
+  });
 });

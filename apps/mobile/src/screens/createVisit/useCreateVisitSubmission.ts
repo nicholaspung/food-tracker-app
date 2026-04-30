@@ -21,6 +21,7 @@ import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAw
 import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
+import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import { buildVisitCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
 import {
@@ -275,6 +276,7 @@ export function useCreateVisitSubmission({
           includeUsage: hasNewPhotoUploads,
           includeVisitPhotos: hasPhotoChanges,
         });
+        await cleanupStagedPhotoFiles(parsedItems.flatMap((item) => item.newPhotos));
         onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
           source: 'CreateVisitScreen',
@@ -416,6 +418,7 @@ export function useCreateVisitSubmission({
         includeUsage: hasPhotoUploads,
         sourceNoteId,
       });
+      await cleanupStagedPhotoFiles(parsedItems.flatMap((item) => item.newPhotos));
       onSubmitSucceeded?.();
       navigation.navigate('Home', buildVisitCreatedHomeParams(createdVisit.id));
     } catch (error) {

@@ -17,8 +17,8 @@ import {
   Skeleton,
   type SegmentedControlOption,
 } from '../components/shared';
-import { env } from '../config/env';
 import {
+  buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   invalidateRestaurantListCollectionQueries,
   listRestaurantListsPage,
@@ -232,10 +232,12 @@ function getListCoverImageUrl(list: RestaurantListRecord): string | null {
     return null;
   }
 
-  const baseUrl = env.pocketbaseUrl.replace(/\/+$/, '');
-  const recordId = encodeURIComponent(list.id);
-  const filename = encodeURIComponent(list.coverImage);
-  return `${baseUrl}/api/files/restaurant_lists/${recordId}/${filename}?thumb=640x360`;
+  return buildPocketBaseFileUrl({
+    collectionName: 'restaurant_lists',
+    recordId: list.id,
+    filename: list.coverImage,
+    thumb: '640x360',
+  });
 }
 
 function getVisibilityIconName(visibility: RestaurantListRecord['visibility']): IoniconName {

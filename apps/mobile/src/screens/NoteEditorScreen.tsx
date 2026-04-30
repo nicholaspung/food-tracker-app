@@ -30,8 +30,8 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -423,7 +423,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     const nextPhotos: DraftNotePhoto[] = [];
 
     for (const [index, asset] of assets.entries()) {
-      const nextPhoto = buildLocalPhotoFile(asset, {
+      const nextPhoto = await stageLocalPhotoFile(asset, {
         fallbackPrefix: 'note-photo',
       });
       if (!nextPhoto) {
@@ -704,6 +704,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       }
 
       await Promise.all(invalidations);
+      await cleanupStagedPhotoFiles(uploadPhotos);
       trackObservabilityEvent('NOTE_SUBMIT_SUCCEEDED', {
         source: 'NoteEditorScreen',
         mode,

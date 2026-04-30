@@ -4,7 +4,8 @@ import {
   buildPocketBaseFileUrl,
   type NotePhotoRecord,
 } from '../../features';
-import { buildLocalPhotoFile, buildLocalPhotoFileName } from '../../lib/photoFiles';
+import { buildLocalPhotoFileName } from '../../lib/photoFiles';
+import { stageLocalPhotoFile } from '../../lib/photoStaging';
 import type { DraftPhotoAsset } from './shared';
 
 function getNotePhotoHydrationDirectory(noteId: string): Directory {
@@ -44,7 +45,7 @@ export async function hydrateDraftPhotosFromNote(
         },
       );
 
-      const localPhoto = buildLocalPhotoFile(
+      const localPhoto = await stageLocalPhotoFile(
         {
           uri: downloadedFile.uri,
           fileName: destinationName,

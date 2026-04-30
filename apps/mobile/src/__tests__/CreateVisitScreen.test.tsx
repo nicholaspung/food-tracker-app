@@ -197,6 +197,14 @@ jest.mock('../lib/photoFiles', () => ({
   buildLocalPhotoFile: jest.fn(),
 }));
 
+jest.mock('../lib/photoStaging', () => ({
+  cleanupStagedPhotoFiles: jest.fn(() => Promise.resolve()),
+  stageLocalPhotoFile: jest.fn((asset, options) => {
+    const { buildLocalPhotoFile } = jest.requireMock('../lib/photoFiles');
+    return Promise.resolve(buildLocalPhotoFile(asset, options));
+  }),
+}));
+
 jest.mock('../lib/photoMetadata', () => ({
   resolvePhotoCaptureDate: jest.fn(),
 }));

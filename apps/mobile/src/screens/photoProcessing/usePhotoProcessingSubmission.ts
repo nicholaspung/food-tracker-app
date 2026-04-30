@@ -14,6 +14,7 @@ import {
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
+import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import {
   buildCreateFoodProductInput,
   buildDefaultFoodProductForm,
@@ -417,6 +418,10 @@ export function usePhotoProcessingSubmission({
         });
       }
 
+      if (!submitResult.queued) {
+        await cleanupStagedPhotoFiles(photos);
+      }
+
       onSubmitSucceeded?.();
       if (processType === 'foodProduct') {
         navigation.navigate('Home', buildFoodProductCreatedHomeParams());
@@ -464,7 +469,7 @@ export function usePhotoProcessingSubmission({
     isOnline,
     monthlyUsageSnapshot,
     navigation,
-    photos.length,
+    photos,
     processType,
     queryClient,
     setErrorMessage,

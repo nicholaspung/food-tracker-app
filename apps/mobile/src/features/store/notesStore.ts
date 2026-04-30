@@ -1,3 +1,5 @@
+import { ClientResponseError } from 'pocketbase';
+
 import { pb } from '../../lib/pocketbase';
 import type { NoteRecord } from '../models';
 import type {
@@ -223,10 +225,60 @@ async function uploadNotePhotos(
 
   for (const photo of photos) {
     const formData = buildNotePhotoFormData(noteId, userId, photo);
-    await pb.collection('note_photos').create(formData, {
-      headers: resolveFeatureWriteHeaders(requestOptions),
-    });
+    try {
+      await pb.collection('note_photos').create(formData, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
+    } catch (error) {
+      if (error instanceof ClientResponseError && error.status !== 429) {
+        throw normalizeNotePhotoUploadError(error, photo);
+      }
+
+      throw error;
+    }
   }
+}
+
+function normalizeNotePhotoUploadError(
+  error: ClientResponseError,
+  photo: NotePhotoUploadInput,
+): Error {
+  const fieldMessage = resolvePocketBasePhotoFieldMessage(error);
+  if (fieldMessage) {
+    return new Error(`Could not upload ${photo.name}: ${fieldMessage}`);
+  }
+
+  const responseMessage = error.response?.message?.trim();
+  if (
+    responseMessage &&
+    responseMessage.toLowerCase() !== 'failed to create record.'
+  ) {
+    return new Error(`Could not upload ${photo.name}: ${responseMessage}`);
+  }
+
+  return new Error(
+    `Could not upload ${photo.name}. The image may be too large or in an unsupported format.`,
+  );
+}
+
+function resolvePocketBasePhotoFieldMessage(error: ClientResponseError): string | null {
+  const responseData = error.response?.data;
+  if (!responseData || typeof responseData !== 'object') {
+    return null;
+  }
+
+  const photoFieldData = (responseData as Record<string, unknown>).photo;
+  if (
+    photoFieldData &&
+    typeof photoFieldData === 'object' &&
+    'message' in photoFieldData &&
+    typeof photoFieldData.message === 'string' &&
+    photoFieldData.message.trim()
+  ) {
+    return photoFieldData.message.trim();
+  }
+
+  return null;
 }
 
 export async function getNoteDetail(
