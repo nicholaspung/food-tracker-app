@@ -22,6 +22,7 @@ import {
   type BillParticipantRecord,
   type FriendRecord,
 } from '../features';
+import { billsQueryKeys } from '../features/store/billsQuery';
 import {
   formatCurrency,
   validateBillTotal,
@@ -1927,7 +1928,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           });
 
       if (writeResult.status === 'queued') {
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
+        await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
         trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
           source: 'CreateBillScreen',
           isEditMode,
@@ -1945,8 +1946,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       const savedBill = writeResult.result;
 
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'bill', savedBill.id] });
+      await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
+      await queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(savedBill.id) });
       trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
         source: 'CreateBillScreen',
         isEditMode,

@@ -31,9 +31,8 @@ import {
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useFeatureWriteSubmit } from '../features/store/useFeatureWriteSubmit';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -282,12 +281,15 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const theme = useTheme();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const {
+    isSubmitting: isDeletingNote,
+    setErrorMessage: setDeleteSubmitErrorMessage,
+    submitFeatureWrite,
+  } = useFeatureWriteSubmit();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
-  const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [loadingPhotoNoteId, setLoadingPhotoNoteId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
@@ -563,42 +565,47 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     });
 
     setActionErrorMessage(null);
-    setIsDeletingNote(true);
+    setDeleteSubmitErrorMessage(null);
 
     try {
-      const deleteResult = await writeFeature({
+      const invalidateDeletedNoteQueries = async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
+        ]);
+      };
+
+      const deleteResult = await submitFeatureWrite({
         operationName: 'note.delete',
         offline: {
           strategy: 'outbox',
           payload: { noteId: pendingDeleteNote.id },
         },
         execute: () => deleteNote(pendingDeleteNote.id),
+        fallbackErrorMessage: 'Could not delete note.',
+        onQueued: () => {
+          removeCachedNote(queryClient, pendingDeleteNote.id);
+        },
+        onSuccess: () => {
+          removeCachedNote(queryClient, pendingDeleteNote.id);
+        },
+        onSettledInvalidate: invalidateDeletedNoteQueries,
+        queuedToast: {
+          analyticsSource: 'NotesScreen',
+          subject: 'Note delete',
+        },
       });
 
-      removeCachedNote(queryClient, pendingDeleteNote.id);
-
       if (deleteResult.status === 'queued') {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
-        ]);
         trackObservabilityEvent('NOTE_DELETE_SUCCEEDED', {
           source: 'NotesScreen',
           queued: true,
           wasUsed,
         });
         setPendingDeleteNote(null);
-        showQueuedOfflineAlert({
-          analyticsSource: 'NotesScreen',
-          subject: 'Note delete',
-        });
         return;
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
-      ]);
       trackObservabilityEvent('NOTE_DELETE_SUCCEEDED', {
         source: 'NotesScreen',
         queued: false,
@@ -615,10 +622,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         wasUsed,
       });
       setActionErrorMessage(message);
-    } finally {
-      setIsDeletingNote(false);
     }
-  }, [isOnline, pendingDeleteNote, queryClient, writeFeature]);
+  }, [isOnline, pendingDeleteNote, queryClient, setDeleteSubmitErrorMessage, submitFeatureWrite]);
 
   const handleRefresh = useCallback(async () => {
     return runPullRefresh(async () => {

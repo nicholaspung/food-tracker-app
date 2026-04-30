@@ -1,45 +1,27 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { ComponentProps } from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import { Image, View } from 'react-native';
-import type { ImageSourcePropType } from 'react-native';
+import { useEffect } from 'react';
 
-import { BackHeaderScreenScaffold } from '../components/shared';
-import { PageErrorToast } from '../components/shared/PageErrorToast';
+import {
+  BackHeaderScreenScaffold,
+  FeatureIntroScreenContent,
+  type FeatureIntroConfig,
+} from '../components/shared';
 import {
   buildMoreOnboardingCardDismissedState,
   dismissMoreOnboardingCard,
   isMoreOnboardingCardDismissed,
-  saveOptimisticMobileOnboardingState,
 } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useDismissibleOnboardingCard } from '../hooks/useDismissibleOnboardingCard';
 import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { createThemedStyles, useTheme } from '../theme';
 import type { MoreOnboardingCardId } from '../types/auth';
-import { Button, Text } from '../ui';
 
 type MoreFeatureOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'MoreFeatureOnboarding'>;
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type MoreFeatureDestination = 'Lists' | 'Bills' | 'TipCalculator';
-type IconTone = 'blue' | 'green';
 
-interface MoreFeatureOnboardingConfig {
-  title: string;
-  subtitle: string;
-  description: string;
-  imageSource: ImageSourcePropType;
-  iconName: IoniconName;
-  iconTone: IconTone;
-  destination: MoreFeatureDestination;
-  primaryLabel: string;
-  analyticsFeature: string;
-}
-
-const MORE_FEATURE_ONBOARDING_CONFIG: Record<MoreOnboardingCardId, MoreFeatureOnboardingConfig> = {
+const MORE_FEATURE_ONBOARDING_CONFIG: Record<MoreOnboardingCardId, FeatureIntroConfig<MoreFeatureDestination>> = {
   lists: {
     title: 'Organize restaurants with lists',
     subtitle: 'Restaurant Lists',
@@ -75,57 +57,24 @@ const MORE_FEATURE_ONBOARDING_CONFIG: Record<MoreOnboardingCardId, MoreFeatureOn
   },
 };
 
-const useStyles = createThemedStyles((theme) => ({
-  body: {
-    gap: theme.spacing.md,
-  },
-  imageFrame: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.muted,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    height: 188,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  image: {
-    height: '100%',
-    width: '100%',
-  },
-  titleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  description: {
-    color: theme.colors.text.secondary,
-  },
-  actions: {
-    gap: theme.spacing.xs,
-  },
-}));
-
 export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOnboardingScreenProps) {
-  const styles = useStyles();
-  const theme = useTheme();
   const { user } = useAuth();
-  const writeFeature = useOfflineAwareFeatureWrite();
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const { cardId } = route.params;
   const mode = route.params.mode ?? 'firstRun';
   const entrySource = route.params.source ?? 'more';
   const config = MORE_FEATURE_ONBOARDING_CONFIG[cardId];
-
-  const iconColor = useMemo(() => {
-    if (config.iconTone === 'blue') {
-      return theme.colors.text.info;
-    }
-
-    return theme.colors.text.success;
-  }, [config.iconTone, theme.colors.text.info, theme.colors.text.success]);
+  const { dismiss, errorMessage, isSubmitting } = useDismissibleOnboardingCard({
+    buildOptimisticState: buildMoreOnboardingCardDismissedState,
+    cardId,
+    createOfflinePayload: (userId, input) => ({
+      userId,
+      cardId: input.cardId,
+      dismissedAt: input.dismissedAt,
+    }),
+    currentOnboardingState: user?.mobileOnboardingState,
+    dismissCard: dismissMoreOnboardingCard,
+    operationName: 'onboarding.more-card.dismiss',
+  });
 
   useEffect(() => {
     if (mode === 'firstRun' && isMoreOnboardingCardDismissed(user?.mobileOnboardingState, cardId)) {
@@ -161,59 +110,21 @@ export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOn
       return;
     }
 
-    if (!user?.id) {
-      setErrorMessage('Please sign in again to update onboarding.');
+    const saveResult = await dismiss(user?.id ?? '');
+    if (!saveResult) {
       return;
     }
 
-    setErrorMessage(null);
-    setIsSubmitting(true);
-    const dismissedAt = new Date().toISOString();
-
-    try {
-      const saveResult = await writeFeature({
-        operationName: 'onboarding.more-card.dismiss',
-        trackOnlineWrite: false,
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            userId: user.id,
-            cardId,
-            dismissedAt,
-          },
-        },
-        execute: () =>
-          dismissMoreOnboardingCard(user.id, {
-            cardId,
-            dismissedAt,
-          }),
-      });
-
-      if (saveResult.status === 'queued') {
-        saveOptimisticMobileOnboardingState(
-          buildMoreOnboardingCardDismissedState(user.mobileOnboardingState, {
-            cardId,
-            dismissedAt,
-          }),
-        );
-      }
-
-      trackObservabilityEvent('MORE_ONBOARDING_CARD_CTA_TAPPED', {
-        cardId,
-        destination: config.destination,
-        entrySource,
-        feature: config.analyticsFeature,
-        mode,
-        queued: saveResult.status === 'queued',
-        source: 'MoreFeatureOnboardingScreen',
-      });
-      navigation.replace(config.destination);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not update onboarding.';
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    trackObservabilityEvent('MORE_ONBOARDING_CARD_CTA_TAPPED', {
+      cardId,
+      destination: config.destination,
+      entrySource,
+      feature: config.analyticsFeature,
+      mode,
+      queued: saveResult.status === 'queued',
+      source: 'MoreFeatureOnboardingScreen',
+    });
+    navigation.replace(config.destination);
   };
 
   return (
@@ -224,37 +135,18 @@ export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOn
       testID="more-feature-onboarding-screen"
       title={mode === 'replay' ? 'Tutorial' : 'Feature Intro'}
     >
-      <View style={styles.body}>
-        <View style={styles.imageFrame}>
-          <Image resizeMode="cover" source={config.imageSource} style={styles.image} />
-        </View>
-        <View style={styles.titleRow}>
-          <Ionicons color={iconColor} name={config.iconName} size={22} />
-          <Text variant="titleMd">{config.title}</Text>
-        </View>
-        <Text style={styles.description} variant="bodyMd">
-          {config.description}
-        </Text>
-        <PageErrorToast errorMessage={errorMessage} title="Onboarding update failed" />
-        <View style={styles.actions}>
-          <Button
-            disabled={isSubmitting}
-            label={config.primaryLabel}
-            loading={isSubmitting}
-            onPress={() => {
-              void handleContinue();
-            }}
-            testID="more-feature-onboarding-primary-button"
-          />
-          <Button
-            disabled={isSubmitting}
-            label={mode === 'replay' && entrySource === 'profile' ? 'Back to Tutorials' : 'Back to More'}
-            onPress={handleBack}
-            testID="more-feature-onboarding-back-button"
-            variant="secondary"
-          />
-        </View>
-      </View>
+      <FeatureIntroScreenContent
+        backLabel={mode === 'replay' && entrySource === 'profile' ? 'Back to Tutorials' : 'Back to More'}
+        backTestID="more-feature-onboarding-back-button"
+        config={config}
+        errorMessage={errorMessage}
+        isSubmitting={isSubmitting}
+        onBackPress={handleBack}
+        onPrimaryPress={() => {
+          void handleContinue();
+        }}
+        primaryTestID="more-feature-onboarding-primary-button"
+      />
     </BackHeaderScreenScaffold>
   );
 }

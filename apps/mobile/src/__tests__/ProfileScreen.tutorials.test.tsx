@@ -113,6 +113,16 @@ jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
 }));
 
+jest.mock('../providers/SyncProvider', () => ({
+  useSync: () => ({
+    failedCount: 0,
+    getQueuedMutations: jest.fn(() => Promise.resolve([])),
+    isSyncing: false,
+    nextRetryAt: null,
+    queueDepth: 0,
+  }),
+}));
+
 jest.mock('../theme', () => ({
   createThemedStyles: (factory: (...args: any[]) => Record<string, unknown>) =>
     (...args: any[]) =>

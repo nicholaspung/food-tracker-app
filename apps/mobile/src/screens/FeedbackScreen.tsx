@@ -4,10 +4,9 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
-  EmptyState,
   FeedbackThreadCard,
   HeaderAccessoryButton,
-  Skeleton,
+  QueryListStateView,
 } from '../components/shared';
 import { feedbackQueryKeys, listFeedbackPage } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
@@ -17,7 +16,6 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles } from '../theme';
 import { Button, Text } from '../ui';
-import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'>;
 
@@ -131,41 +129,24 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       ) : null}
 
       <View style={styles.historySection}>
-        {feedbackQuery.isLoading ? (
-          <>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </>
-        ) : null}
-
-        <PageErrorToast
+        <QueryListStateView
           analyticsProps={buildBrowseAnalyticsPayload()}
           analyticsSource="FeedbackScreen"
-          errorMessage={
-            feedbackState.hasBlockingError
-              ? 'Could not load feedback history.'
-              : feedbackState.hasRefreshError
-                ? 'Could not refresh feedback history. Showing saved data.'
-                : null
-          }
-          title="Feedback unavailable"
-          actionLabel="Retry"
-          onAction={() => {
+          blockingErrorMessage="Could not load feedback history."
+          emptyDescription="Your submitted feedback will appear here. Tap the plus button above to start a new thread."
+          emptyTitle="No feedback yet"
+          hasBlockingError={feedbackState.hasBlockingError}
+          hasRefreshError={feedbackState.hasRefreshError}
+          isLoading={feedbackQuery.isLoading}
+          onRetry={() => {
             void feedbackQuery.refetch();
           }}
-        />
-
-        {feedbackState.hasResolvedData && !feedbackState.hasBlockingError && visibleFeedbackCount === 0 ? (
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FeedbackScreen"
-            description="Your submitted feedback will appear here. Tap the plus button above to start a new thread."
-            title="No feedback yet"
-          />
-        ) : null}
-
-        {feedbackQuery.isSuccess && !feedbackState.hasBlockingError && visibleFeedbackCount > 0
-          ? displayedFeedback.map((feedback, index) => {
+          refreshErrorMessage="Could not refresh feedback history. Showing saved data."
+          showEmpty={feedbackState.hasResolvedData && visibleFeedbackCount === 0}
+          title="Feedback unavailable"
+        >
+          {feedbackQuery.isSuccess && visibleFeedbackCount > 0
+            ? displayedFeedback.map((feedback, index) => {
               const unreadCount = feedback.userUnreadCount;
               const timestampLabel = formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
                 fallback: 'Unknown',
@@ -206,7 +187,8 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
                 </Pressable>
               );
             })
-        : null}
+            : null}
+        </QueryListStateView>
 
         {!feedbackQuery.isLoading && !feedbackState.hasBlockingError && visibleFeedbackCount > 0 && feedbackQuery.hasNextPage ? (
           <Button

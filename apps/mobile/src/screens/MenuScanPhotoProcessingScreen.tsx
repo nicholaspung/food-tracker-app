@@ -17,6 +17,7 @@ import {
   parseLimitExceededError,
   type VisitPhotoUploadInput,
 } from '../features';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { trackObservabilityEvent } from '../observability';
@@ -161,7 +162,7 @@ export function MenuScanPhotoProcessingScreen({
       const returnedRecords = [...result.createdItems, ...result.existingItems];
 
       queryClient.setQueryData(
-        ['feature', 'menuItems', restaurantId],
+        menuItemsQueryKeys.restaurant(restaurantId),
         (currentItems: MenuItemRecord[] | undefined) => {
           const nextItems = [...(currentItems ?? [])];
 
@@ -177,7 +178,7 @@ export function MenuScanPhotoProcessingScreen({
         },
       );
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'menuItems', restaurantId],
+        queryKey: menuItemsQueryKeys.restaurant(restaurantId),
       });
 
       return {

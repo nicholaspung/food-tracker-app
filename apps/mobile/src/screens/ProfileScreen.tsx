@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   Share,
   View,
@@ -43,6 +44,7 @@ import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -227,6 +229,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     verificationGraceEndsAt,
     verificationStatus,
   } = useAuth();
+  const { failedCount, getQueuedMutations, isSyncing, nextRetryAt, queueDepth } = useSync();
   const authRecord = getAuthRecord();
   const isAdmin = actualUser?.isAdmin === true;
   const isSubscriber = actualUser?.isSubscriber === true;
@@ -416,6 +419,52 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       );
     } finally {
       setActiveInviteCodeId(null);
+    }
+  };
+
+  const handleCopySyncDiagnostics = async () => {
+    trackObservabilityEvent('PROFILE_SYNC_DIAGNOSTICS_COPY_STARTED', {
+      failedCount,
+      queueDepth,
+      source: 'ProfileScreen',
+    });
+
+    try {
+      const queuedMutations = await getQueuedMutations(10);
+      const operationNames = queuedMutations.map((mutation) => {
+        const explicitOperation = mutation.headers['X-Mobile-Write-Operation'];
+        if (explicitOperation) {
+          return explicitOperation;
+        }
+
+        return mutation.url.startsWith('local://feature/')
+          ? mutation.url.replace('local://feature/', '')
+          : mutation.method;
+      });
+      const diagnostics = {
+        failedCount,
+        isSyncing,
+        nextRetryAt,
+        operationNames,
+        queueDepth,
+      };
+
+      const Clipboard = await import('expo-clipboard');
+      await Clipboard.setStringAsync(JSON.stringify(diagnostics, null, 2));
+      trackObservabilityEvent('PROFILE_SYNC_DIAGNOSTICS_COPY_COMPLETED', {
+        failedCount,
+        operationCount: operationNames.length,
+        queueDepth,
+        source: 'ProfileScreen',
+      });
+      Alert.alert('Sync diagnostics copied', 'Queue diagnostics are ready to share with support.');
+    } catch (error) {
+      trackObservabilityEvent('PROFILE_SYNC_DIAGNOSTICS_COPY_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'ProfileScreen',
+      });
+      Alert.alert('Could not copy diagnostics', getErrorMessage(error, 'Please try again.'));
     }
   };
 
@@ -947,6 +996,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               subtitle="Current version, legal information, and app details"
               testID="profile-about-link"
               title="About"
+            />
+            <OptionListRow
+              iconName="cloud-done-outline"
+              onPress={() => {
+                void handleCopySyncDiagnostics();
+              }}
+              rightAccessory={
+                queueDepth > 0 || failedCount > 0 ? (
+                  <StatusPill
+                    label={failedCount > 0 ? `${failedCount} failed` : `${queueDepth} queued`}
+                    tone={failedCount > 0 ? 'danger' : 'info'}
+                  />
+                ) : null
+              }
+              subtitle="Copy offline queue status for support"
+              testID="profile-sync-diagnostics-copy"
+              title="Sync Diagnostics"
             />
             <OptionListRow
               iconName="sparkles-outline"

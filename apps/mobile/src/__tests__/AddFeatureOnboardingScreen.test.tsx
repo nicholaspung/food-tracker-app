@@ -28,6 +28,41 @@ jest.mock('react-native', () => ({
 jest.mock('../components/shared', () => ({
   BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('BackHeaderScreenScaffold', props, children),
+  FeatureIntroScreenContent: ({
+    backLabel,
+    backTestID,
+    config,
+    errorMessage,
+    isSubmitting,
+    onBackPress,
+    onPrimaryPress,
+    primaryTestID,
+  }: Record<string, any>) =>
+    mockReact.createElement(
+      'FeatureIntroScreenContent',
+      null,
+      mockReact.createElement('Image', { source: config.imageSource }),
+      mockReact.createElement('Text', null, config.title),
+      mockReact.createElement('Text', null, config.description),
+      mockReact.createElement('PageErrorToast', {
+        errorMessage: errorMessage,
+        title: 'Onboarding update failed',
+      }),
+      mockReact.createElement('Button', {
+        disabled: isSubmitting,
+        label: config.primaryLabel,
+        loading: isSubmitting,
+        onPress: onPrimaryPress,
+        testID: primaryTestID,
+      }),
+      mockReact.createElement('Button', {
+        disabled: isSubmitting,
+        label: backLabel,
+        onPress: onBackPress,
+        testID: backTestID,
+        variant: 'secondary',
+      }),
+    ),
 }));
 
 jest.mock('../components/shared/PageErrorToast', () => ({

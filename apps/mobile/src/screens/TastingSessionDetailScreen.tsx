@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share, View } from 'react-native';
@@ -22,6 +21,10 @@ import {
   type TastingSessionItem,
   type TastingSessionStatus,
 } from '../features';
+import {
+  getCachedTastingSessionDetail,
+  tastingSessionsQueryKeys,
+} from '../features/store/tastingSessionsQuery';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -105,8 +108,9 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const queryClient = useQueryClient();
 
   const sessionQuery = useQuery({
-    queryKey: ['feature', 'tastingSession', sessionId],
+    queryKey: tastingSessionsQueryKeys.detail(sessionId),
     queryFn: ({ signal }) => getTastingSessionById(sessionId, { signal }),
+    initialData: () => getCachedTastingSessionDetail(queryClient, sessionId) ?? undefined,
   });
 
   const [newItemName, setNewItemName] = useState('');
@@ -241,8 +245,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   const refreshSession = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSession', sessionId] }),
+      queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root }),
+      queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) }),
     ]);
   };
   const handleRefresh = async () => {
@@ -258,6 +262,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
 
     try {
+      const Clipboard = await import('expo-clipboard');
       await Clipboard.setStringAsync(session.inviteCode);
       trackObservabilityEvent('TASTING_INVITE_CODE_COPIED', buildAnalyticsPayload());
       setCopyStatus('Invite code copied.');

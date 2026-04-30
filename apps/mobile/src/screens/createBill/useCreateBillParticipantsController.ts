@@ -8,6 +8,7 @@ import {
   listFriendsPage,
   type FriendRecord,
 } from '../../features';
+import { billsQueryKeys } from '../../features/store/billsQuery';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../../hooks/useListQueryState';
 import {
@@ -106,7 +107,7 @@ export function useCreateBillParticipantsController({
   });
 
   const billQuery = useQuery({
-    queryKey: ['feature', 'bill', editBillId],
+    queryKey: billsQueryKeys.detail(editBillId ?? ''),
     queryFn: ({ signal }) => getBillById(editBillId as string, { signal }),
     enabled: isEditMode,
   });

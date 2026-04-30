@@ -19,6 +19,7 @@ apps/mobile/android/
 apps/mobile/e2e/artifacts/
 apps/mobile/e2e/baselines/
 apps/mobile/e2e/.env.local
+apps/mobile/google-service-account.json
 apps/marketing/.dev-dist/
 apps/marketing/.verify-dist/
 backend/myapp

@@ -1,0 +1,17 @@
+name: Submit production mobile apps
+
+jobs:
+  submit_ios_production:
+    name: Submit iOS production
+    type: submit
+    params:
+      platform: ios
+      profile: production
+
+  submit_android_production:
+    name: Submit Android production
+    type: submit
+    params:
+      platform: android
+      profile: production
+

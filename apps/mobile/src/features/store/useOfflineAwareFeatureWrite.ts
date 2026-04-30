@@ -10,7 +10,7 @@ import {
 } from './featureOutboxOperations';
 import { useWriteTelemetry } from './useWriteTelemetry';
 
-interface OfflineApiFeatureWriteOptions<TResult> {
+export interface OfflineApiFeatureWriteOptions<TResult> {
   execute: () => Promise<TResult>;
   offline: {
     input: EnqueueMutationInput;
@@ -20,7 +20,7 @@ interface OfflineApiFeatureWriteOptions<TResult> {
   trackOnlineWrite?: boolean;
 }
 
-interface OfflineOutboxFeatureWriteOptions<
+export interface OfflineOutboxFeatureWriteOptions<
   TName extends FeatureOutboxOperationName,
   TResult,
 > {
@@ -50,6 +50,13 @@ export interface OfflineAwareFeatureWrite {
     options: OfflineOutboxFeatureWriteOptions<TName, TResult>,
   ): Promise<OfflineAwareFeatureWriteResult<TResult>>;
 }
+
+export type OfflineAwareFeatureWriteOptions<
+  TName extends FeatureOutboxOperationName,
+  TResult,
+> =
+  | OfflineApiFeatureWriteOptions<TResult>
+  | OfflineOutboxFeatureWriteOptions<TName, TResult>;
 
 export function useOfflineAwareFeatureWrite(): OfflineAwareFeatureWrite {
   const { isOnline } = useConnectivity();

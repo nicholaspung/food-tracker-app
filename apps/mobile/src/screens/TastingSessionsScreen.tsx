@@ -17,6 +17,7 @@ import {
   type TastingSessionRecord,
   type TastingSessionStatus,
 } from '../features';
+import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -91,7 +92,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const queryClient = useQueryClient();
 
   const sessionsQuery = useQuery({
-    queryKey: ['feature', 'tastingSessions'],
+    queryKey: tastingSessionsQueryKeys.root,
     queryFn: ({ signal }) => listTastingSessions({ signal }),
   });
 
@@ -169,7 +170,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       setRestaurantSearch('');
       setSelectedRestaurant('');
 
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
+      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
       trackObservabilityEvent('TASTING_SESSION_CREATE_SUCCEEDED', {
         sessionId: session.id,
         source: 'TastingSessionsScreen',
@@ -214,7 +215,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       });
 
       setJoinCode('');
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
+      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
       trackObservabilityEvent('TASTING_SESSION_JOIN_SUCCEEDED', {
         sessionId: session.id,
         source: 'TastingSessionsScreen',

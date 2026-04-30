@@ -43,6 +43,7 @@ import {
   useMonthlyUsage,
   type RestaurantRecord,
 } from '../features';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
@@ -1148,11 +1149,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       });
 
       queryClient.setQueryData<MenuItemRecord[]>(
-        ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+        menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
         (currentItems) => [createdItem, ...(currentItems ?? [])],
       );
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+        queryKey: menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
       });
 
       handleSelectMenuItem(createdItem);
@@ -1191,14 +1192,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       });
 
       queryClient.setQueryData<MenuItemRecord[]>(
-        ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+        menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
         (currentItems) =>
           currentItems?.map((item) =>
             item.id === selectedMenuItem.id ? { ...item, name: trimmedName } : item,
           ) ?? currentItems,
       );
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+        queryKey: menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
       });
 
       setRestaurantForms((current) => {

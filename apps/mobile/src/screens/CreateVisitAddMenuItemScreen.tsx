@@ -10,6 +10,7 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import { createCollectionRecord, getAuthenticatedUserIdOrNull } from '../features';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -107,7 +108,7 @@ export function CreateVisitAddMenuItemScreen({
       });
 
       queryClient.setQueryData<MenuItemRecord[]>(
-        ['feature', 'menuItems', restaurantId],
+        menuItemsQueryKeys.restaurant(restaurantId),
         (currentItems) => {
           const nextItems = currentItems ?? [];
           if (nextItems.some((item) => item.id === createdItem.id)) {
@@ -118,7 +119,7 @@ export function CreateVisitAddMenuItemScreen({
         },
       );
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'menuItems', restaurantId],
+        queryKey: menuItemsQueryKeys.restaurant(restaurantId),
       });
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddMenuItemScreen',

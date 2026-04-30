@@ -5,15 +5,15 @@ import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
-  EmptyState,
   HeaderAccessoryButton,
   OptionList,
   OptionListRow,
+  QueryListStateView,
   SegmentedControl,
-  Skeleton,
   StatusPill,
 } from '../components/shared';
 import { listBillSummaries } from '../features';
+import { billsQueryKeys } from '../features/store/billsQuery';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { formatCurrency } from '../features/bills/billCalculations';
@@ -21,7 +21,6 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles } from '../theme';
 import { Card } from '../ui';
-import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
 type BillFilter = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
@@ -43,7 +42,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function BillsScreen({ navigation }: BillsScreenProps) {
   const billsQuery = useQuery({
-    queryKey: ['feature', 'bills'],
+    queryKey: billsQueryKeys.root,
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
   const billsState = useQueryListState({
@@ -163,47 +162,28 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           />
         </Card>
 
-        {billsQuery.isLoading ? (
-          <>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </>
-        ) : null}
-
-        <PageErrorToast
+        <QueryListStateView
           analyticsProps={buildBrowseAnalyticsPayload()}
           analyticsSource="BillsScreen"
-          errorMessage={
-            billsState.hasBlockingError
-              ? 'Could not load bills.'
-              : billsState.hasRefreshError
-                ? 'Could not refresh bills. Showing saved data.'
-                : null
+          blockingErrorMessage="Could not load bills."
+          emptyDescription={
+            activeFilter === 'all'
+              ? 'Create a split bill to get started.'
+              : activeFilter === 'you_owe'
+                ? 'No unpaid bills right now.'
+                : 'No bills found for this filter.'
           }
-          title="Bills unavailable"
-          actionLabel="Retry"
-          onAction={() => {
+          emptyTitle={activeFilter === 'all' ? 'No bills yet' : 'No matching bills'}
+          hasBlockingError={billsState.hasBlockingError}
+          hasRefreshError={billsState.hasRefreshError}
+          isLoading={billsQuery.isLoading}
+          onRetry={() => {
             void billsQuery.refetch();
           }}
-        />
-
-        {!billsQuery.isLoading && !billsState.hasBlockingError && filteredBills.length === 0 ? (
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="BillsScreen"
-            description={
-              activeFilter === 'all'
-                ? 'Create a split bill to get started.'
-                : activeFilter === 'you_owe'
-                  ? 'No unpaid bills right now.'
-                  : 'No bills found for this filter.'
-            }
-            tone="default"
-            title={activeFilter === 'all' ? 'No bills yet' : 'No matching bills'}
-          />
-        ) : null}
-
-        {!billsQuery.isLoading && !billsState.hasBlockingError && filteredBills.length > 0 ? (
+          refreshErrorMessage="Could not refresh bills. Showing saved data."
+          showEmpty={filteredBills.length === 0}
+          title="Bills unavailable"
+        >
           <Card style={styles.listCard}>
             <OptionList style={styles.list}>
               {filteredBills.map((bill, index) => {
@@ -242,7 +222,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
               })}
             </OptionList>
           </Card>
-        ) : null}
+        </QueryListStateView>
       </View>
     </BackHeaderScreenScaffold>
   );

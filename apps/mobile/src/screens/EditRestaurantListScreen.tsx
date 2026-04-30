@@ -19,8 +19,7 @@ import {
   updateRestaurantList,
   type RestaurantListRecord,
 } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useFeatureWriteSubmit } from '../features/store/useFeatureWriteSubmit';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -49,14 +48,17 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
   const { listId } = route.params;
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const {
+    errorMessage,
+    isSubmitting,
+    setErrorMessage,
+    submitFeatureWrite,
+  } = useFeatureWriteSubmit();
   const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] = useState<ListVisibility>('private');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: restaurantListQueryKeys.list(listId),
@@ -111,7 +113,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       isOnline,
       hasDescription: description.trim().length > 0,
     });
-    setIsSubmitting(true);
 
     try {
       const listUpdateInput = {
@@ -120,7 +121,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         visibility,
       };
 
-      const updateResult = await writeFeature({
+      const updateResult = await submitFeatureWrite({
         operationName: 'list.update',
         offline: {
           strategy: 'outbox',
@@ -130,22 +131,22 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           },
         },
         execute: () => updateRestaurantList(listId, listUpdateInput, listQuery.data),
+        fallbackErrorMessage: 'Could not update list.',
+        onSettledInvalidate: () => invalidateRestaurantListMetadataQueries(queryClient, listId),
+        queuedToast: 'List update',
       });
 
       if (updateResult.status === 'queued') {
-        await invalidateRestaurantListMetadataQueries(queryClient, listId);
         trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'EditRestaurantListScreen',
           listId,
           queued: true,
           visibility,
         });
-        showQueuedOfflineAlert('List update');
         handleBack();
         return;
       }
 
-      await invalidateRestaurantListMetadataQueries(queryClient, listId);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'EditRestaurantListScreen',
         listId,
@@ -155,7 +156,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       handleBack();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update list.';
-      setErrorMessage(message);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_FAILED', {
         source: 'EditRestaurantListScreen',
         listId,
@@ -163,8 +163,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         isOnline,
         error: message,
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
