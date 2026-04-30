@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, View } from 'react-native';
 
-import {
-  buildPocketBaseFileUrl,
-  type VisitRecord,
-} from '../../features';
+import type { VisitRecord } from '../../features';
+import { buildPhotoThumbnailUrl } from '../../lib/photoUrls';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -48,21 +46,6 @@ interface HomeFeedVisitEntryCardProps {
   deleteTestID?: string;
   moreActionsTestID?: string;
   highlighted?: boolean;
-}
-
-function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
-  const localUri = photo.uri?.trim();
-  if (localUri) {
-    return localUri;
-  }
-
-  return buildPocketBaseFileUrl({
-    collectionId: photo.collectionId,
-    collectionName: photo.collectionName ?? 'visit_photos',
-    recordId: photo.id,
-    filename: photo.photo,
-    thumb: '100x100',
-  });
 }
 
 const useStyles = createThemedStyles((theme) => ({

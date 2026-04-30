@@ -558,6 +558,7 @@ export {
   createRestaurantList,
   deleteRestaurantList,
   getRestaurantListCandidateRestaurants,
+  listRestaurantListCandidateFoodItemsPhotos,
   listRestaurantListCandidateFoodItemPhotos,
   getRestaurantListDetail,
   getRestaurantListById,

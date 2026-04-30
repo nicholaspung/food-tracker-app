@@ -8,12 +8,14 @@ import {
   HeaderAccessoryButton,
   OptionList,
   OptionListRow,
+  PendingQueuedWriteRow,
   QueryListStateView,
   SegmentedControl,
   StatusPill,
 } from '../components/shared';
 import { listBillSummaries } from '../features';
 import { billsQueryKeys } from '../features/store/billsQuery';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { formatCurrency } from '../features/bills/billCalculations';
@@ -35,6 +37,9 @@ const useStyles = createThemedStyles((theme) => ({
   listCard: {
     borderColor: theme.colors.border.subtle,
   },
+  pendingStack: {
+    gap: theme.spacing.sm,
+  },
   list: {
     borderColor: theme.colors.border.subtle,
   },
@@ -55,6 +60,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billsQuery.isRefetching);
+  const { queuedWrites: pendingBillWrites } = useQueuedFeatureWrites(['bill.create']);
 
   const filteredBills = useMemo(() => {
     const bills = billsState.items;
@@ -161,6 +167,28 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
             value={activeFilter}
           />
         </Card>
+
+        {pendingBillWrites.length > 0 ? (
+          <View style={styles.pendingStack}>
+            {pendingBillWrites.map((write) => {
+              const payload = write.payload as { title?: string; participants?: unknown[] };
+              const participantCount = Array.isArray(payload.participants) ? payload.participants.length : 0;
+              return (
+                <PendingQueuedWriteRow
+                  key={write.id}
+                  description={
+                    participantCount > 0
+                      ? `${participantCount} participant${participantCount === 1 ? '' : 's'}`
+                      : undefined
+                  }
+                  lastError={write.lastError}
+                  status={write.status}
+                  title={payload.title?.trim() || 'New bill'}
+                />
+              );
+            })}
+          </View>
+        ) : null}
 
         <QueryListStateView
           analyticsProps={buildBrowseAnalyticsPayload()}

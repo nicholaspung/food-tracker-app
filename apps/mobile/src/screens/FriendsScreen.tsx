@@ -11,6 +11,7 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   HeaderAccessoryButton,
+  PendingQueuedWriteRow,
   ScreenContentSection,
   SegmentedControl,
   Skeleton,
@@ -36,6 +37,7 @@ import {
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -106,6 +108,9 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.md,
     paddingTop: theme.spacing.sm,
+  },
+  pendingStack: {
+    gap: theme.spacing.sm,
   },
   cardsListSeparator: {
     height: theme.spacing.sm,
@@ -230,6 +235,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const { queuedWrites: pendingFriendRequestWrites } = useQueuedFeatureWrites([
+    'friend.request.send',
+  ]);
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
@@ -745,6 +753,24 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
             void friendsQuery.refetch();
           }}
         />
+
+        {pendingFriendRequestWrites.length > 0 ? (
+          <View style={styles.pendingStack}>
+            <Text variant="label">Pending friend requests</Text>
+            {pendingFriendRequestWrites.map((write) => {
+              const payload = write.payload as { email?: string; friendCode?: string };
+              return (
+                <PendingQueuedWriteRow
+                  key={write.id}
+                  description={payload.email ?? payload.friendCode}
+                  lastError={write.lastError}
+                  status={write.status}
+                  title="Send friend request"
+                />
+              );
+            })}
+          </View>
+        ) : null}
 
         {mainTab === 'friends-list' ? (
           <SegmentedControl

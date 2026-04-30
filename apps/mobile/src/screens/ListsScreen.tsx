@@ -12,6 +12,7 @@ import {
   ErrorState,
   HeaderAccessoryButton,
   PageErrorToast,
+  PendingQueuedWriteRow,
   SegmentedControl,
   Skeleton,
   type SegmentedControlOption,
@@ -27,6 +28,7 @@ import {
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -63,6 +65,9 @@ const useStyles = createThemedStyles((theme) => ({
   listHeader: {
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.md,
+  },
+  headerStack: {
+    gap: theme.spacing.sm,
   },
   listSeparator: {
     height: theme.spacing.sm,
@@ -327,6 +332,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const { queuedWrites: pendingListWrites } = useQueuedFeatureWrites(['list.create']);
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
@@ -711,6 +717,24 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         errorMessage={errorMessage}
         title="List operation failed"
       />
+
+      {activeTab === 'my' && pendingListWrites.length > 0 ? (
+        <View style={styles.headerStack}>
+          <Text variant="label">Pending lists</Text>
+          {pendingListWrites.map((write) => {
+            const payload = write.payload as { name: string; visibility?: string };
+            return (
+              <PendingQueuedWriteRow
+                key={write.id}
+                description={payload.visibility ? `Visibility: ${payload.visibility}` : undefined}
+                lastError={write.lastError}
+                status={write.status}
+                title={payload.name}
+              />
+            );
+          })}
+        </View>
+      ) : null}
 
       <SegmentedControl
         getOptionTestID={(value) => `lists-tab-${value}`}

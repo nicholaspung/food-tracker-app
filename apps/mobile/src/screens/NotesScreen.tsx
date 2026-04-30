@@ -12,6 +12,7 @@ import {
   ExpandableText,
   FeatureDetailScreenScaffold,
   HeaderAccessoryButton,
+  PendingQueuedWriteRow,
   PhotoViewerModal,
   SegmentedControl,
   Skeleton,
@@ -32,6 +33,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useFeatureWriteSubmit } from '../features/store/useFeatureWriteSubmit';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -65,6 +67,9 @@ const useStyles = createThemedStyles((theme) => ({
   listHeader: {
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.md,
+  },
+  headerStack: {
+    gap: theme.spacing.sm,
   },
   noteSeparator: {
     height: theme.spacing.md,
@@ -286,6 +291,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     setErrorMessage: setDeleteSubmitErrorMessage,
     submitFeatureWrite,
   } = useFeatureWriteSubmit();
+  const { queuedWrites: pendingNoteWrites } = useQueuedFeatureWrites(['note.create']);
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
@@ -848,6 +854,28 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
               Used notes auto-delete 30 days after first use. Editing does not reset the timer.
             </Text>
           </Card>
+        </View>
+      ) : null}
+
+      {pendingNoteWrites.length > 0 ? (
+        <View style={styles.headerStack}>
+          <Text variant="label">Pending notes</Text>
+          {pendingNoteWrites.map((write) => {
+            const payload = write.payload as {
+              content: string;
+              locationText?: string;
+              title?: string;
+            };
+            return (
+              <PendingQueuedWriteRow
+                key={write.id}
+                description={payload.locationText}
+                lastError={write.lastError}
+                status={write.status}
+                title={payload.title?.trim() || payload.content.trim().slice(0, 80) || 'New note'}
+              />
+            );
+          })}
         </View>
       ) : null}
 

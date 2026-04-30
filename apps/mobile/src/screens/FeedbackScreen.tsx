@@ -6,9 +6,11 @@ import {
   BackHeaderScreenScaffold,
   FeedbackThreadCard,
   HeaderAccessoryButton,
+  PendingQueuedWriteRow,
   QueryListStateView,
 } from '../components/shared';
 import { feedbackQueryKeys, listFeedbackPage } from '../features';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -28,6 +30,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   historySection: {
     gap: theme.spacing.md,
+  },
+  pendingStack: {
+    gap: theme.spacing.sm,
   },
   feedbackPressable: {
     borderRadius: theme.radii.lg,
@@ -60,6 +65,10 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(feedbackQuery.isRefetching);
   const displayedFeedback = feedbackState.items;
   const visibleFeedbackCount = displayedFeedback.length;
+  const { queuedWrites: pendingFeedbackWrites } = useQueuedFeatureWrites([
+    'feedback.create',
+    'feedback.message.send',
+  ]);
   const styles = useStyles();
   const buildBrowseAnalyticsPayload = (overrides?: Record<string, string | number | boolean | null>) => ({
     source: 'FeedbackScreen',
@@ -126,6 +135,24 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         <Text style={styles.countSummaryText} variant="bodySmTightSemiBold">
           {feedbackState.totalItems} {feedbackState.totalItems === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
+      ) : null}
+
+      {pendingFeedbackWrites.length > 0 ? (
+        <View style={styles.pendingStack}>
+          <Text variant="label">Pending feedback</Text>
+          {pendingFeedbackWrites.map((write) => {
+            const payload = write.payload as { title?: string; message?: string; description?: string };
+            return (
+              <PendingQueuedWriteRow
+                key={write.id}
+                description={payload.description ?? payload.message}
+                lastError={write.lastError}
+                status={write.status}
+                title={payload.title?.trim() || 'Feedback message'}
+              />
+            );
+          })}
+        </View>
       ) : null}
 
       <View style={styles.historySection}>

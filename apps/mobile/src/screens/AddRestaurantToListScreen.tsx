@@ -16,9 +16,9 @@ import {
 } from '../components/shared';
 import {
   addRestaurantVisitRatingsToList,
-  buildPocketBaseFileUrl,
   getRestaurantListCandidateRestaurants,
   invalidateRestaurantListContentQueries,
+  listRestaurantListCandidateFoodItemsPhotos,
   listRestaurantListCandidateFoodItemPhotos,
   restaurantListQueryKeys,
   type RestaurantListVisitedRestaurantCandidate,
@@ -30,6 +30,7 @@ import { useQueryListState } from '../hooks/useListQueryState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -270,12 +271,11 @@ function buildFoodItemPhotoUrl(
     return null;
   }
 
-  return buildPocketBaseFileUrl({
+  return buildPhotoFileUrl({
+    id: photoPreviewId,
     collectionName: 'visit_photos',
-    recordId: photoPreviewId,
-    filename: photoFilename,
-    thumb,
-  });
+    photo: photoFilename,
+  }, thumb);
 }
 
 export function AddRestaurantToListScreen({
@@ -442,6 +442,21 @@ export function AddRestaurantToListScreen({
         }),
       }));
   }, [selectedRestaurant, visibleSelectedRestaurantFoodItems]);
+  const visibleSelectedRestaurantFoodItemIds = useMemo(
+    () => visibleSelectedRestaurantFoodItems.map((item) => item.id),
+    [visibleSelectedRestaurantFoodItems],
+  );
+  const selectedRestaurantPhotosBatchQuery = useQuery({
+    enabled: visibleSelectedRestaurantFoodItemIds.length > 0,
+    queryKey: restaurantListQueryKeys.candidateFoodItemPhotosBatch(
+      visibleSelectedRestaurantFoodItemIds,
+    ),
+    queryFn: ({ signal }) =>
+      listRestaurantListCandidateFoodItemsPhotos(visibleSelectedRestaurantFoodItemIds, {
+        signal,
+      }),
+    staleTime: 60_000,
+  });
 
   const handleBackToListDetail = () => {
     if (navigation.canGoBack()) {
@@ -532,23 +547,8 @@ export function AddRestaurantToListScreen({
       return;
     }
 
-    const urls = photos.map((photo) =>
-      buildPocketBaseFileUrl({
-        collectionId: photo.collectionId,
-        collectionName: photo.collectionName ?? 'visit_photos',
-        recordId: photo.id,
-        filename: photo.photo,
-      }),
-    );
-    const previewUrls = photos.map((photo) =>
-      buildPocketBaseFileUrl({
-        collectionId: photo.collectionId,
-        collectionName: photo.collectionName ?? 'visit_photos',
-        recordId: photo.id,
-        filename: photo.photo,
-        thumb: '100x100',
-      }),
-    );
+    const urls = photos.map((photo) => buildPhotoFileUrl(photo));
+    const previewUrls = photos.map((photo) => buildPhotoThumbnailUrl(photo));
     const previewPhotoId = item.photoPreview?.id?.trim();
     const previewIndex = previewPhotoId
       ? photos.findIndex((photo) => photo.id === previewPhotoId)
@@ -582,12 +582,16 @@ export function AddRestaurantToListScreen({
     setLoadingPhotoFoodItemId(item.id);
 
     try {
-      const photos = await queryClient.fetchQuery({
-        queryKey: restaurantListQueryKeys.candidateFoodItemPhotos(item.id),
-        queryFn: ({ signal }) =>
-          listRestaurantListCandidateFoodItemPhotos(item.id, { signal }),
-        staleTime: 60_000,
-      });
+      const batchPhotos = selectedRestaurantPhotosBatchQuery.data?.[item.id];
+      const photos: VisitPhotoRecord[] =
+        batchPhotos ??
+        (await queryClient.fetchQuery({
+          queryKey: restaurantListQueryKeys.candidateFoodItemPhotos(item.id),
+          queryFn: ({ signal }) =>
+            listRestaurantListCandidateFoodItemPhotos(item.id, { signal }),
+          staleTime: 60_000,
+        })) ??
+        [];
 
       if (photos.length > 0) {
         openPhotoViewer(photos, item);

@@ -34,6 +34,13 @@ timeoutManager.setTimeoutProvider({
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+jest.mock('./src/features/store/useQueuedFeatureWrites', () => ({
+  useQueuedFeatureWrites: () => ({
+    queuedWrites: [],
+    refreshQueuedWrites: jest.fn(),
+  }),
+}));
+
 const mockSecureStoreState = new Map<string, string>();
 
 jest.mock('expo-secure-store', () => ({

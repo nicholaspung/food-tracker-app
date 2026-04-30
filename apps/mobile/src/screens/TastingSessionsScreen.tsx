@@ -7,6 +7,7 @@ import {
   BackHeaderScreenScaffold,
   EmptyState,
   ErrorState,
+  PendingQueuedWriteRow,
   Skeleton,
   StatusPill,
 } from '../components/shared';
@@ -18,8 +19,11 @@ import {
   type TastingSessionStatus,
 } from '../features';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -34,6 +38,10 @@ type SessionFilter = 'active' | 'completed';
 
 const EMPTY_TASTING_SESSIONS: TastingSessionRecord[] = [];
 const RESTAURANT_SUGGESTION_LIMIT = 3;
+const TASTING_SESSION_LIST_QUEUE_OPERATIONS = [
+  'tasting-session.create',
+  'tasting-session.join',
+] as const;
 
 function formatRestaurantSuggestionLabel(name: string, userVisitCount?: number): string {
   const normalizedCount =
@@ -90,6 +98,10 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const { isOnline } = useConnectivity();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const writeFeature = useOfflineAwareFeatureWrite();
+  const { queuedWrites: pendingSessionWrites } = useQueuedFeatureWrites(
+    TASTING_SESSION_LIST_QUEUE_OPERATIONS,
+  );
 
   const sessionsQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.root,
@@ -137,11 +149,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     const name = createName.trim();
     const restaurantName = selectedRestaurant.trim();
 
-    if (!isOnline) {
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     if (!name || !restaurantName || !user) {
       trackObservabilityEvent('TASTING_SESSION_CREATE_VALIDATION_FAILED', {
         hasName: Boolean(name),
@@ -161,21 +168,43 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     });
 
     try {
-      const session = await createTastingSession({
-        name,
-        restaurantName,
+      const writeResult = await writeFeature({
+        execute: () =>
+          createTastingSession({
+            name,
+            restaurantName,
+          }),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            name,
+            restaurantName,
+          },
+        },
+        operationName: 'tasting-session.create',
       });
 
       setCreateName('');
       setRestaurantSearch('');
       setSelectedRestaurant('');
 
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'This tasting session will be created when your connection is restored.',
+          title: 'Session queued',
+        });
+        trackObservabilityEvent('TASTING_SESSION_CREATE_QUEUED', {
+          source: 'TastingSessionsScreen',
+        });
+        return;
+      }
+
       await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
       trackObservabilityEvent('TASTING_SESSION_CREATE_SUCCEEDED', {
-        sessionId: session.id,
+        sessionId: writeResult.result.id,
         source: 'TastingSessionsScreen',
       });
-      navigation.navigate('TastingSessionDetail', { sessionId: session.id });
+      navigation.navigate('TastingSessionDetail', { sessionId: writeResult.result.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not create session.';
       setErrorMessage(message);
@@ -187,11 +216,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   };
 
   const handleJoin = async () => {
-    if (!isOnline) {
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     if (!joinCode.trim() || !user) {
       trackObservabilityEvent('TASTING_SESSION_JOIN_VALIDATION_FAILED', {
         hasInviteCode: Boolean(joinCode.trim()),
@@ -210,17 +234,40 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     });
 
     try {
-      const session = await joinTastingSession({
-        inviteCode: joinCode.trim().toUpperCase(),
+      const inviteCode = joinCode.trim().toUpperCase();
+      const writeResult = await writeFeature({
+        execute: () =>
+          joinTastingSession({
+            inviteCode,
+          }),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            inviteCode,
+          },
+        },
+        operationName: 'tasting-session.join',
       });
 
       setJoinCode('');
+
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'This session join will replay when your connection is restored.',
+          title: 'Join queued',
+        });
+        trackObservabilityEvent('TASTING_SESSION_JOIN_QUEUED', {
+          source: 'TastingSessionsScreen',
+        });
+        return;
+      }
+
       await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
       trackObservabilityEvent('TASTING_SESSION_JOIN_SUCCEEDED', {
-        sessionId: session.id,
+        sessionId: writeResult.result.id,
         source: 'TastingSessionsScreen',
       });
-      navigation.navigate('TastingSessionDetail', { sessionId: session.id });
+      navigation.navigate('TastingSessionDetail', { sessionId: writeResult.result.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not join session.';
       setErrorMessage(message);
@@ -278,8 +325,8 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       <View style={styles.body}>
         {!isOnline ? (
           <Text tone="warning">
-            Tasting sessions require internet connection. You can still open any sessions already
-            loaded on this device.
+            New tasting session actions will be queued and replayed when your connection returns.
+            You can still open sessions already loaded on this device.
           </Text>
         ) : null}
 
@@ -369,7 +416,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           ))}
 
           <Button
-            disabled={!isOnline || !createName.trim() || !selectedRestaurant.trim()}
+            disabled={!createName.trim() || !selectedRestaurant.trim()}
             label="Create Session"
             onPress={() => {
               void handleCreate();
@@ -389,7 +436,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             value={joinCode}
           />
           <Button
-            disabled={!isOnline || joinCode.trim().length !== 6}
+            disabled={joinCode.trim().length !== 6}
             label="Join"
             onPress={() => {
               void handleJoin();
@@ -416,6 +463,37 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           <>
             <Skeleton height={20} />
             <Skeleton height={20} />
+          </>
+        ) : null}
+
+        {pendingSessionWrites.length > 0 ? (
+          <>
+            <Text variant="label">Pending session changes</Text>
+            {pendingSessionWrites.map((write) => {
+              if (write.operationName === 'tasting-session.create') {
+                const payload = write.payload as { name: string; restaurantName: string };
+                return (
+                  <PendingQueuedWriteRow
+                    key={write.id}
+                    description={`Create at ${payload.restaurantName}`}
+                    lastError={write.lastError}
+                    status={write.status}
+                    title={payload.name}
+                  />
+                );
+              }
+
+              const payload = write.payload as { inviteCode: string };
+              return (
+                <PendingQueuedWriteRow
+                  key={write.id}
+                  description={`Join code ${payload.inviteCode}`}
+                  lastError={write.lastError}
+                  status={write.status}
+                  title="Join tasting session"
+                />
+              );
+            })}
           </>
         ) : null}
 

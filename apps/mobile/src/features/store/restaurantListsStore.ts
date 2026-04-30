@@ -436,28 +436,52 @@ function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): Visi
   };
 }
 
-export async function listRestaurantListCandidateFoodItemPhotos(
-  foodItemId: string,
+export async function listRestaurantListCandidateFoodItemsPhotos(
+  foodItemIds: string[],
   options?: ReadRequestOptions,
-): Promise<VisitPhotoRecord[]> {
+): Promise<Record<string, VisitPhotoRecord[]>> {
   if (!pb.authStore.record?.id) {
-    return [];
+    return {};
   }
 
-  const trimmedFoodItemId = foodItemId.trim();
-  if (!trimmedFoodItemId) {
-    return [];
+  const normalizedFoodItemIds = Array.from(
+    new Set(
+      foodItemIds
+        .map((foodItemId) => foodItemId.trim())
+        .filter((foodItemId) => foodItemId.length > 0),
+    ),
+  );
+  if (normalizedFoodItemIds.length === 0) {
+    return {};
   }
 
   const records = await listCollectionRecords<VisitPhotoCollectionRecord>('visit_photos', {
     fields: 'id,food_item,photo,created',
-    filter: buildOrFilter('food_item', [trimmedFoodItemId]),
-    pageSize: 100,
+    filter: buildOrFilter('food_item', normalizedFoodItemIds),
+    pageSize: Math.max(100, normalizedFoodItemIds.length * 10),
     signal: options?.signal,
     sort: '-created',
   });
 
-  return records.map(mapVisitPhotoCollectionRecord);
+  return records.reduce<Record<string, VisitPhotoRecord[]>>((accumulator, record) => {
+    const mappedRecord = mapVisitPhotoCollectionRecord(record);
+    const foodItemId = mappedRecord.food_item?.trim();
+    if (!foodItemId) {
+      return accumulator;
+    }
+
+    const existingRecords = accumulator[foodItemId] ?? [];
+    accumulator[foodItemId] = [...existingRecords, mappedRecord];
+    return accumulator;
+  }, {});
+}
+
+export async function listRestaurantListCandidateFoodItemPhotos(
+  foodItemId: string,
+  options?: ReadRequestOptions,
+): Promise<VisitPhotoRecord[]> {
+  const photosByFoodItemId = await listRestaurantListCandidateFoodItemsPhotos([foodItemId], options);
+  return photosByFoodItemId[foodItemId.trim()] ?? [];
 }
 
 export async function listRestaurantListsPage(

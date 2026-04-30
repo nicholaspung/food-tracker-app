@@ -8,6 +8,7 @@ import {
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
+  PendingQueuedWriteRow,
   Skeleton,
   StatusPill,
 } from '../components/shared';
@@ -25,7 +26,10 @@ import {
   getCachedTastingSessionDetail,
   tastingSessionsQueryKeys,
 } from '../features/store/tastingSessionsQuery';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -40,6 +44,14 @@ interface PendingDeleteItemState {
   id: string;
   name: string;
 }
+
+const TASTING_SESSION_DETAIL_QUEUE_OPERATIONS = [
+  'tasting-session.invite-code.regenerate',
+  'tasting-session.item.add',
+  'tasting-session.item.delete',
+  'tasting-session.rating.submit',
+  'tasting-session.status.update',
+] as const;
 
 function getAverageRating(item: TastingSessionItem): number {
   if (item.ratings.length === 0) {
@@ -106,6 +118,10 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const { isOnline } = useConnectivity();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const writeFeature = useOfflineAwareFeatureWrite();
+  const { queuedWrites: pendingSessionWrites } = useQueuedFeatureWrites(
+    TASTING_SESSION_DETAIL_QUEUE_OPERATIONS,
+  );
 
   const sessionQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.detail(sessionId),
@@ -146,13 +162,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }),
     [isLeader, sessionQuery.data?.items.length, sessionQuery.data?.participants.length, sessionQuery.data?.status],
   );
-  const trackOfflineBlockedAction = useCallback(
-    (action: string) => {
-      trackObservabilityEvent('TASTING_ACTION_BLOCKED_OFFLINE', buildAnalyticsPayload({ action }));
-    },
-    [buildAnalyticsPayload],
-  );
-
   useEffect(() => {
     const session = sessionQuery.data;
     if (!session || !currentParticipant) {
@@ -233,6 +242,17 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       favorites,
     };
   }, [sessionQuery.data]);
+  const pendingWritesForSession = useMemo(
+    () =>
+      pendingSessionWrites.filter((write) => {
+        if ('sessionId' in write.payload) {
+          return write.payload.sessionId === sessionId;
+        }
+
+        return false;
+      }),
+    [pendingSessionWrites, sessionId],
+  );
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
@@ -302,17 +322,25 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   };
 
   const handleRegenerateCode = async () => {
-    if (!isOnline) {
-      trackOfflineBlockedAction('regenerate_invite_code');
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     setErrorMessage(null);
     trackObservabilityEvent('TASTING_INVITE_REGENERATE_STARTED', buildAnalyticsPayload());
 
     try {
-      await regenerateTastingInviteCode(sessionId);
+      const writeResult = await writeFeature({
+        execute: () => regenerateTastingInviteCode(sessionId),
+        offline: {
+          strategy: 'outbox',
+          payload: { sessionId },
+        },
+        operationName: 'tasting-session.invite-code.regenerate',
+      });
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'The invite code will regenerate when your connection is restored.',
+          title: 'Invite update queued',
+        });
+        return;
+      }
       await refreshSession();
       trackObservabilityEvent('TASTING_INVITE_REGENERATE_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
@@ -325,12 +353,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   };
 
   const handleAddItem = async () => {
-    if (!isOnline) {
-      trackOfflineBlockedAction('add_item');
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     if (!newItemName.trim() || !currentParticipant) {
       setErrorMessage('Item name is required.');
       return;
@@ -340,12 +362,30 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     trackObservabilityEvent('TASTING_ITEM_ADD_STARTED', buildAnalyticsPayload());
 
     try {
-      await addTastingItem(sessionId, {
+      const input = {
         description: newItemDescription,
         name: newItemName,
+      };
+      const writeResult = await writeFeature({
+        execute: () => addTastingItem(sessionId, input),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            sessionId,
+            input,
+          },
+        },
+        operationName: 'tasting-session.item.add',
       });
       setNewItemName('');
       setNewItemDescription('');
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'This tasting item will be added when your connection is restored.',
+          title: 'Item queued',
+        });
+        return;
+      }
       await refreshSession();
       trackObservabilityEvent('TASTING_ITEM_ADD_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
@@ -362,19 +402,30 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       return;
     }
 
-    if (!isOnline) {
-      trackOfflineBlockedAction('delete_item');
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     setErrorMessage(null);
     setIsDeletingItem(true);
     trackObservabilityEvent('TASTING_ITEM_DELETE_STARTED', buildAnalyticsPayload());
 
     try {
-      await deleteTastingItem(sessionId, pendingDeleteItem.id);
+      const writeResult = await writeFeature({
+        execute: () => deleteTastingItem(sessionId, pendingDeleteItem.id),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            sessionId,
+            itemId: pendingDeleteItem.id,
+          },
+        },
+        operationName: 'tasting-session.item.delete',
+      });
       setPendingDeleteItem(null);
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'This tasting item will be deleted when your connection is restored.',
+          title: 'Delete queued',
+        });
+        return;
+      }
       await refreshSession();
       trackObservabilityEvent('TASTING_ITEM_DELETE_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
@@ -389,12 +440,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   };
 
   const handleSubmitRating = async (itemId: string) => {
-    if (!isOnline) {
-      trackOfflineBlockedAction('submit_rating');
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     if (!currentParticipant) {
       setErrorMessage('You must be a participant to rate items.');
       return;
@@ -410,10 +455,29 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     trackObservabilityEvent('TASTING_RATING_SUBMIT_STARTED', buildAnalyticsPayload());
 
     try {
-      await submitTastingRating(sessionId, itemId, {
+      const input = {
         note: ratingNoteDrafts[itemId]?.trim() || undefined,
         rating: ratingDraft,
+      };
+      const writeResult = await writeFeature({
+        execute: () => submitTastingRating(sessionId, itemId, input),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            sessionId,
+            itemId,
+            input,
+          },
+        },
+        operationName: 'tasting-session.rating.submit',
       });
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'This rating will be saved when your connection is restored.',
+          title: 'Rating queued',
+        });
+        return;
+      }
       await refreshSession();
       trackObservabilityEvent('TASTING_RATING_SUBMIT_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
@@ -431,12 +495,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       return;
     }
 
-    if (!isOnline) {
-      trackOfflineBlockedAction('advance_status');
-      setErrorMessage('Tasting sessions require an internet connection.');
-      return;
-    }
-
     const nextStatus = session.status === 'adding_items' ? 'rating' : 'completed';
 
     setErrorMessage(null);
@@ -445,7 +503,24 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }));
 
     try {
-      await setTastingSessionStatus(sessionId, nextStatus);
+      const writeResult = await writeFeature({
+        execute: () => setTastingSessionStatus(sessionId, nextStatus),
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            sessionId,
+            status: nextStatus,
+          },
+        },
+        operationName: 'tasting-session.status.update',
+      });
+      if (writeResult.status === 'queued') {
+        showQueuedOfflineAlert({
+          message: 'The session state will update when your connection is restored.',
+          title: 'Session update queued',
+        });
+        return;
+      }
       await refreshSession();
       trackObservabilityEvent('TASTING_STATUS_ADVANCE_SUCCEEDED', buildAnalyticsPayload({
         nextStatus,
@@ -503,10 +578,9 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   const session = sessionQuery.data;
   const canManageInviteCode = isLeader && session.status === 'adding_items' && Boolean(session.inviteCode);
-  const canAdvanceStatus =
-    isLeader && (session.status === 'adding_items' || session.status === 'rating') && isOnline;
-  const canAddItems = session.status === 'adding_items' && Boolean(currentParticipant) && isOnline;
-  const canRateItems = session.status === 'rating' && Boolean(currentParticipant) && isOnline;
+  const canAdvanceStatus = isLeader && (session.status === 'adding_items' || session.status === 'rating');
+  const canAddItems = session.status === 'adding_items' && Boolean(currentParticipant);
+  const canRateItems = session.status === 'rating' && Boolean(currentParticipant);
 
   return (
     <FeatureDetailScreenScaffold
@@ -538,8 +612,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
       {!isOnline ? (
         <Text tone="warning">
-          Tasting session changes require internet connection. Any details already loaded here remain
-          visible while offline.
+          Tasting session changes will be queued and replayed when your connection returns.
+          Any details already loaded here remain visible while offline.
         </Text>
       ) : null}
 
@@ -576,7 +650,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
             </View>
 
             <Button
-              disabled={!isOnline}
               label="Regenerate Code"
               onPress={() => {
                 void handleRegenerateCode();
@@ -613,7 +686,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           <Text tone="secondary">
             {session.status === 'completed'
               ? 'This session is finished.'
-              : 'Reconnect to move the session forward.'}
+              : 'Move the session forward when your group is ready.'}
           </Text>
         ) : (
           <Text tone="secondary">Only the leader can move the session forward.</Text>
@@ -626,14 +699,14 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           <Text tone="secondary">Items are locked once rating begins.</Text>
         ) : null}
         <Input
-          editable={session.status === 'adding_items' && isOnline}
+          editable={session.status === 'adding_items'}
           label="Item name"
           onChangeText={setNewItemName}
           placeholder="Add tasting item"
           value={newItemName}
         />
         <Input
-          editable={session.status === 'adding_items' && isOnline}
+          editable={session.status === 'adding_items'}
           label="Description"
           onChangeText={setNewItemDescription}
           placeholder="Optional notes"
@@ -662,7 +735,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
               : undefined;
             const canDelete =
               session.status === 'adding_items' &&
-              isOnline &&
               (isLeader || currentParticipant?.id === item.createdByParticipantId);
 
             return (
@@ -771,6 +843,58 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           })
         )}
       </Card>
+
+      {pendingWritesForSession.length > 0 ? (
+        <Card>
+          <Text variant="label">Pending session changes</Text>
+          {pendingWritesForSession.map((write) => {
+            let title = 'Pending session change';
+            let description: string | undefined;
+
+            switch (write.operationName) {
+              case 'tasting-session.invite-code.regenerate':
+                title = 'Regenerate invite code';
+                break;
+              case 'tasting-session.item.add': {
+                const payload = write.payload as {
+                  input: { description?: string; name: string };
+                };
+                title = `Add ${payload.input.name}`;
+                description = payload.input.description;
+                break;
+              }
+              case 'tasting-session.item.delete': {
+                const payload = write.payload as { itemId: string };
+                title = 'Delete tasting item';
+                description = payload.itemId;
+                break;
+              }
+              case 'tasting-session.rating.submit': {
+                const payload = write.payload as { input: { rating: number } };
+                title = 'Save rating';
+                description = `Rating ${payload.input.rating}`;
+                break;
+              }
+              case 'tasting-session.status.update': {
+                const payload = write.payload as { status: TastingSessionStatus };
+                title = 'Update session status';
+                description = formatTastingSessionStatusLabel(payload.status);
+                break;
+              }
+            }
+
+            return (
+              <PendingQueuedWriteRow
+                key={write.id}
+                description={description}
+                lastError={write.lastError}
+                status={write.status}
+                title={title}
+              />
+            );
+          })}
+        </Card>
+      ) : null}
 
       <Card>
         <Text variant="label">Results</Text>

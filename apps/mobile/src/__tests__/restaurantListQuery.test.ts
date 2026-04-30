@@ -4,6 +4,7 @@ import {
   getRestaurantListContentInvalidationKeys,
   getRestaurantListRemovalKeys,
   invalidateRestaurantListContentQueries,
+  normalizeRestaurantListFoodItemIdsForQueryKey,
   removeRestaurantListQueries,
   restaurantListQueryKeys,
   upsertRestaurantListInCollectionCaches,
@@ -57,6 +58,18 @@ describe('restaurantListQuery', () => {
       'my',
       'paginated',
       'pizza',
+    ]);
+  });
+
+  it('normalizes batched candidate food item photo keys deterministically', () => {
+    expect(normalizeRestaurantListFoodItemIdsForQueryKey([' item_b ', 'item_a', 'item_b', ''])).toBe(
+      'item_a|item_b',
+    );
+    expect(restaurantListQueryKeys.candidateFoodItemPhotosBatch(['item_b', 'item_a'])).toEqual([
+      'feature',
+      'restaurantListCandidateFoodItemPhotos',
+      'batch',
+      'item_a|item_b',
     ]);
   });
 

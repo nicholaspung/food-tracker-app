@@ -5,7 +5,12 @@ import type {
   JoinTastingSessionInput,
   SubmitTastingRatingInput,
 } from './featureStore';
-import { isNotFoundError, trackFeatureMutation } from './featureStoreShared';
+import {
+  isNotFoundError,
+  resolveFeatureWriteHeaders,
+  trackFeatureMutation,
+  type FeatureWriteRequestOptions,
+} from './featureStoreShared';
 import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
@@ -48,7 +53,10 @@ export async function getTastingSessionById(
   }
 }
 
-export async function createTastingSession(input: CreateTastingSessionInput): Promise<TastingSessionRecord> {
+export async function createTastingSession(
+  input: CreateTastingSessionInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
     'tasting_session.create',
     () =>
@@ -57,6 +65,7 @@ export async function createTastingSession(input: CreateTastingSessionInput): Pr
           name: input.name.trim(),
           restaurantName: input.restaurantName.trim(),
         },
+        headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
       }),
     {
@@ -66,7 +75,10 @@ export async function createTastingSession(input: CreateTastingSessionInput): Pr
   );
 }
 
-export async function joinTastingSession(input: JoinTastingSessionInput): Promise<TastingSessionRecord> {
+export async function joinTastingSession(
+  input: JoinTastingSessionInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
     'tasting_session.join',
     () =>
@@ -74,6 +86,7 @@ export async function joinTastingSession(input: JoinTastingSessionInput): Promis
         body: {
           code: input.inviteCode.trim().toUpperCase(),
         },
+        headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
       }),
     {
@@ -82,11 +95,15 @@ export async function joinTastingSession(input: JoinTastingSessionInput): Promis
   );
 }
 
-export async function regenerateTastingInviteCode(sessionId: string): Promise<TastingSessionRecord> {
+export async function regenerateTastingInviteCode(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
   return trackFeatureMutation('tasting_session.invite_code.regenerate', () =>
     sendApiRequest<TastingSessionRecord>(
       `/api/tasting-sessions/${encodePathSegment(sessionId)}/invite-code`,
       {
+        headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
       },
     ),
@@ -96,6 +113,7 @@ export async function regenerateTastingInviteCode(sessionId: string): Promise<Ta
 export async function addTastingItem(
   sessionId: string,
   input: AddTastingItemInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
     'tasting_session.item.add',
@@ -107,6 +125,7 @@ export async function addTastingItem(
             description: input.description?.trim() || undefined,
             name: input.name.trim(),
           },
+          headers: resolveFeatureWriteHeaders(requestOptions),
           method: 'POST',
         },
       ),
@@ -119,11 +138,13 @@ export async function addTastingItem(
 export async function deleteTastingItem(
   sessionId: string,
   itemId: string,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation('tasting_session.item.delete', () =>
     sendApiRequest<TastingSessionRecord>(
       `/api/tasting-sessions/${encodePathSegment(sessionId)}/items/${encodePathSegment(itemId)}`,
       {
+        headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'DELETE',
       },
     ),
@@ -134,6 +155,7 @@ export async function submitTastingRating(
   sessionId: string,
   itemId: string,
   input: SubmitTastingRatingInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
     'tasting_session.rating.submit',
@@ -145,6 +167,7 @@ export async function submitTastingRating(
             note: input.note?.trim() || undefined,
             rating: input.rating,
           },
+          headers: resolveFeatureWriteHeaders(requestOptions),
           method: 'PUT',
         },
       ),
@@ -158,6 +181,7 @@ export async function submitTastingRating(
 export async function setTastingSessionStatus(
   sessionId: string,
   status: TastingSessionStatus,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
     'tasting_session.status.update',
@@ -166,6 +190,7 @@ export async function setTastingSessionStatus(
         `/api/tasting-sessions/${encodePathSegment(sessionId)}/status`,
         {
           body: { status },
+          headers: resolveFeatureWriteHeaders(requestOptions),
           method: 'PATCH',
         },
       ),

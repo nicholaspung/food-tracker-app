@@ -13,6 +13,7 @@ import {
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
   HomeFoodProductEntryCard,
+  PendingQueuedWriteRow,
   ScreenContentSection,
   Skeleton,
   TabRootScreenScaffold,
@@ -34,6 +35,7 @@ import {
   type VisitRecord,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
@@ -126,6 +128,9 @@ const useStyles = createThemedStyles((theme) => {
     paddingBottom: 0,
     paddingHorizontal: theme.spacing.sm,
     paddingTop: theme.spacing.sm,
+  },
+  pendingStack: {
+    gap: theme.spacing.sm,
   },
   deleteConfirmationModalSentinel: {
     backgroundColor: theme.colors.background.surface,
@@ -399,6 +404,10 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const trackWriteTelemetry = useWriteTelemetry();
+  const { queuedWrites: pendingHomeCreateWrites } = useQueuedFeatureWrites([
+    'visit.create',
+    'food-product.create',
+  ]);
   const { isOnline } = useConnectivity();
   const initialHomeFeedDefaults = useMemo(() => mapHomeFeedDefaultsFromRecord(user), [user]);
   const [feedMode, setFeedMode] = useState<FeedMode>(initialHomeFeedDefaults.homeFeedMode);
@@ -1353,6 +1362,43 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             errorMessage={friendSuggestionErrorMessage}
             title="Friend suggestion unavailable"
           />
+          {feedMode === 'mine' && pendingHomeCreateWrites.length > 0 ? (
+            <View style={styles.pendingStack}>
+              <Text style={styles.infoTitle} variant="bodyLgBold">
+                Pending entries
+              </Text>
+              {pendingHomeCreateWrites.map((write) => {
+                if (write.operationName === 'visit.create') {
+                  const payload = write.payload as { restaurantName: string; items?: unknown[] };
+                  const itemCount = Array.isArray(payload.items) ? payload.items.length : 0;
+                  return (
+                    <PendingQueuedWriteRow
+                      key={write.id}
+                      description={
+                        itemCount > 0
+                          ? `${itemCount} item${itemCount === 1 ? '' : 's'}`
+                          : undefined
+                      }
+                      lastError={write.lastError}
+                      status={write.status}
+                      title={`Visit at ${payload.restaurantName}`}
+                    />
+                  );
+                }
+
+                const payload = write.payload as { itemName: string; locationText?: string };
+                return (
+                  <PendingQueuedWriteRow
+                    key={write.id}
+                    description={payload.locationText}
+                    lastError={write.lastError}
+                    status={write.status}
+                    title={payload.itemName}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
           {friendSuggestion ? (
             <View style={styles.infoCard}>
               <Text style={styles.infoTitle} variant="bodyLgBold">

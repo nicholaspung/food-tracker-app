@@ -19,6 +19,7 @@ import {
   type DismissMoreOnboardingCardInput,
 } from './onboardingStore';
 import type { BillParticipantRecord, BillRecord } from '../models';
+import type { TastingSessionStatus } from '../models';
 import {
   addRestaurantVisitRatingsToList,
   createBill,
@@ -69,6 +70,19 @@ import {
   type UpdateBillInput,
   type UpdateNoteInput,
 } from './featureStore';
+import {
+  addTastingItem,
+  createTastingSession,
+  deleteTastingItem,
+  joinTastingSession,
+  regenerateTastingInviteCode,
+  setTastingSessionStatus,
+  submitTastingRating,
+  type AddTastingItemInput,
+  type CreateTastingSessionInput,
+  type JoinTastingSessionInput,
+  type SubmitTastingRatingInput,
+} from './tastingSessionsApiStore';
 
 const FEATURE_OUTBOX_URL_PREFIX = 'local://feature/';
 
@@ -154,6 +168,34 @@ interface FriendRemoveOperationPayload {
   friendId: string;
 }
 
+type TastingSessionCreateOperationPayload = CreateTastingSessionInput;
+type TastingSessionJoinOperationPayload = JoinTastingSessionInput;
+
+interface TastingSessionInviteCodeRegenerateOperationPayload {
+  sessionId: string;
+}
+
+interface TastingSessionItemAddOperationPayload {
+  sessionId: string;
+  input: AddTastingItemInput;
+}
+
+interface TastingSessionItemDeleteOperationPayload {
+  sessionId: string;
+  itemId: string;
+}
+
+interface TastingSessionRatingSubmitOperationPayload {
+  sessionId: string;
+  itemId: string;
+  input: SubmitTastingRatingInput;
+}
+
+interface TastingSessionStatusUpdateOperationPayload {
+  sessionId: string;
+  status: TastingSessionStatus;
+}
+
 interface SettingsSaveOperationPayload extends HomeFeedDefaultsRecord {
   userId: string;
   defaultVisitVisibility: 'friends' | 'private';
@@ -211,6 +253,13 @@ export interface FeatureOutboxOperationPayloadMap {
   'friend.request.send': InviteFriendInput;
   'friend.request.reject': FriendRemoveOperationPayload;
   'friend.request.cancel': FriendRemoveOperationPayload;
+  'tasting-session.create': TastingSessionCreateOperationPayload;
+  'tasting-session.join': TastingSessionJoinOperationPayload;
+  'tasting-session.invite-code.regenerate': TastingSessionInviteCodeRegenerateOperationPayload;
+  'tasting-session.item.add': TastingSessionItemAddOperationPayload;
+  'tasting-session.item.delete': TastingSessionItemDeleteOperationPayload;
+  'tasting-session.rating.submit': TastingSessionRatingSubmitOperationPayload;
+  'tasting-session.status.update': TastingSessionStatusUpdateOperationPayload;
 }
 
 export type FeatureOutboxOperationName = keyof FeatureOutboxOperationPayloadMap;
@@ -255,13 +304,20 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'friend.request.send',
   'friend.request.reject',
   'friend.request.cancel',
+  'tasting-session.create',
+  'tasting-session.join',
+  'tasting-session.invite-code.regenerate',
+  'tasting-session.item.add',
+  'tasting-session.item.delete',
+  'tasting-session.rating.submit',
+  'tasting-session.status.update',
 ]);
 
 function buildFeatureOutboxUrl(operationName: FeatureOutboxOperationName): string {
   return `${FEATURE_OUTBOX_URL_PREFIX}${operationName}`;
 }
 
-function parseFeatureOutboxOperationName(url: string): FeatureOutboxOperationName | null {
+export function parseFeatureOutboxOperationName(url: string): FeatureOutboxOperationName | null {
   if (!url.startsWith(FEATURE_OUTBOX_URL_PREFIX)) {
     return null;
   }
@@ -650,6 +706,42 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
     case 'friend.request.cancel': {
       const friendCancelPayload = payload as FriendRemoveOperationPayload;
       await removeFriend(friendCancelPayload.friendId, requestOptions);
+      return true;
+    }
+    case 'tasting-session.create':
+      await createTastingSession(payload as TastingSessionCreateOperationPayload, requestOptions);
+      return true;
+    case 'tasting-session.join':
+      await joinTastingSession(payload as TastingSessionJoinOperationPayload, requestOptions);
+      return true;
+    case 'tasting-session.invite-code.regenerate': {
+      const regeneratePayload = payload as TastingSessionInviteCodeRegenerateOperationPayload;
+      await regenerateTastingInviteCode(regeneratePayload.sessionId, requestOptions);
+      return true;
+    }
+    case 'tasting-session.item.add': {
+      const addItemPayload = payload as TastingSessionItemAddOperationPayload;
+      await addTastingItem(addItemPayload.sessionId, addItemPayload.input, requestOptions);
+      return true;
+    }
+    case 'tasting-session.item.delete': {
+      const deleteItemPayload = payload as TastingSessionItemDeleteOperationPayload;
+      await deleteTastingItem(deleteItemPayload.sessionId, deleteItemPayload.itemId, requestOptions);
+      return true;
+    }
+    case 'tasting-session.rating.submit': {
+      const ratingPayload = payload as TastingSessionRatingSubmitOperationPayload;
+      await submitTastingRating(
+        ratingPayload.sessionId,
+        ratingPayload.itemId,
+        ratingPayload.input,
+        requestOptions,
+      );
+      return true;
+    }
+    case 'tasting-session.status.update': {
+      const statusPayload = payload as TastingSessionStatusUpdateOperationPayload;
+      await setTastingSessionStatus(statusPayload.sessionId, statusPayload.status, requestOptions);
       return true;
     }
     default:

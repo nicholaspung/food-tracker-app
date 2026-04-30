@@ -31,7 +31,26 @@ export const restaurantListQueryKeys = {
   candidateFoodItemPhotosRoot: ['feature', 'restaurantListCandidateFoodItemPhotos'] as const,
   candidateFoodItemPhotos: (foodItemId: string) =>
     ['feature', 'restaurantListCandidateFoodItemPhotos', foodItemId] as const,
+  candidateFoodItemPhotosBatch: (foodItemIds: string[]) =>
+    [
+      'feature',
+      'restaurantListCandidateFoodItemPhotos',
+      'batch',
+      normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds),
+    ] as const,
 };
+
+export function normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds: string[]): string {
+  return Array.from(
+    new Set(
+      foodItemIds
+        .map((foodItemId) => foodItemId.trim())
+        .filter((foodItemId) => foodItemId.length > 0),
+    ),
+  )
+    .sort()
+    .join('|');
+}
 
 function normalizeSearchQuery(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
