@@ -19,6 +19,8 @@ jest.mock('../components/shared', () => ({
   OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('OptionList', props, children),
   OptionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),
+  SectionCard: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('SectionCard', props, children),
 }));
 
 jest.mock('../observability', () => ({
@@ -61,6 +63,11 @@ describe('TutorialsScreen', () => {
     const renderer = await renderTutorialsScreen();
 
     expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Tutorials');
+    expect(renderer.root.findAllByType('SectionCard').map((section: any) => section.props.title)).toEqual([
+      'Getting Started',
+      'Add Tutorials',
+      'More Tutorials',
+    ]);
     expect(findRow(renderer, 'tutorial-main-onboarding-link').props.title).toBe('Welcome to Yummy Recs');
     expect(findRow(renderer, 'tutorial-track-restaurant-visit-link').props.title).toBe('Track Restaurant Visit');
     expect(findRow(renderer, 'tutorial-track-food-product-link').props.title).toBe('Track Food Product');
@@ -70,6 +77,9 @@ describe('TutorialsScreen', () => {
     expect(findRow(renderer, 'tutorial-lists-link').props.title).toBe('Restaurant Lists');
     expect(findRow(renderer, 'tutorial-split-bill-link').props.title).toBe('Split a Bill');
     expect(findRow(renderer, 'tutorial-tip-calculator-link').props.title).toBe('Tip Calculator');
+    expect(findRow(renderer, 'tutorial-main-onboarding-link').props.isLast).toBe(true);
+    expect(findRow(renderer, 'tutorial-manage-notes-link').props.isLast).toBe(true);
+    expect(findRow(renderer, 'tutorial-tip-calculator-link').props.isLast).toBe(true);
   });
 
   it.each([

@@ -33,6 +33,7 @@ type MainOnboardingCardId =
   | 'more_tools'
   | 'lists'
   | 'bills_tips'
+  | 'settings'
   | 'support_invites';
 
 interface MainOnboardingCard {
@@ -106,6 +107,14 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
       'Bills help one person organize the split and keep payment details remembered. The tip calculator is there for quick totals.',
     icon: 'cash-outline',
     imageSource: resolveOnboardingImageSource('splitBill'),
+  },
+  {
+    id: 'settings',
+    title: 'Personalize your experience',
+    description:
+      'Settings let you choose appearance, default visibility, and Home feed preferences so Yummy Recs fits how you track and share food.',
+    icon: 'settings-outline',
+    accentIcons: ['color-palette-outline', 'eye-outline', 'options-outline'],
   },
   {
     id: 'support_invites',

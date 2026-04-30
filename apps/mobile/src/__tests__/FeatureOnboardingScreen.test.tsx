@@ -225,6 +225,10 @@ describe('FeatureOnboardingScreen', () => {
     expect(text).toContain('More than tracking');
     expect(text).toContain('Use lists for ideas');
     expect(text).toContain('Split bills and calculate tips');
+    expect(text).toContain('Personalize your experience');
+    expect(text).toContain(
+      'Settings let you choose appearance, default visibility, and Home feed preferences so Yummy Recs fits how you track and share food.',
+    );
     expect(text).toContain('Invite friends and get help');
     expect(text).not.toContain('Track a restaurant visit');
   });

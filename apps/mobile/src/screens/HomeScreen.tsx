@@ -206,6 +206,9 @@ const useStyles = createThemedStyles((theme) => {
     paddingHorizontal: theme.spacing.sm,
     paddingTop: feedGap,
   },
+  monthFirstSectionHeader: {
+    paddingTop: leadInGap,
+  },
   infoCard: {
     backgroundColor: theme.colors.background.surface,
     borderColor: theme.colors.border.default,
@@ -1107,9 +1110,10 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const renderFriendFeedSectionHeader = useCallback(
     ({ section }: { section: FriendFeedSection }) => {
       const isMonthExpanded = expandedMonths.has(section.monthKey);
+      const isFirstMonth = section.monthKey === firstFriendMonthKey;
 
       return (
-        <View style={styles.monthSectionHeader}>
+        <View style={[styles.monthSectionHeader, isFirstMonth ? styles.monthFirstSectionHeader : null]}>
           <Pressable
             onPress={() => {
               toggleMonth(section.monthKey);
@@ -1132,7 +1136,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         </View>
       );
     },
-    [expandedMonths, styles, toggleMonth],
+    [expandedMonths, firstFriendMonthKey, styles, toggleMonth],
   );
 
   const homeListHeader = (
