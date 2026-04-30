@@ -952,11 +952,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               iconName="sparkles-outline"
               isLast
               onPress={() => {
-                navigation.navigate("FeatureOnboarding", { mode: "replay" });
+                navigation.navigate("Tutorials");
               }}
               subtitle="Review how to use Yummy Recs features"
-              testID="profile-onboarding-tutorials-link"
-              title="Onboarding Tutorials"
+              testID="profile-tutorials-toggle"
+              title="Tutorials"
             />
           </OptionList>
         </Card>

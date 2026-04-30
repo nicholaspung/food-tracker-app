@@ -18,6 +18,7 @@ import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
+import type { MoreOnboardingCardId } from '../types/auth';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { trackObservabilityEvent } from '../observability';
@@ -48,6 +49,7 @@ import {
   ListsScreen,
   LoginScreen,
   MiscScreen,
+  MoreFeatureOnboardingScreen,
   NoteEditorScreen,
   NotesScreen,
   OnboardingScreen,
@@ -62,6 +64,7 @@ import {
   SplashScreen,
   TermsOfServiceScreen,
   TipCalculatorScreen,
+  TutorialsScreen,
   TastingSessionDetailScreen,
   TastingSessionsScreen,
   VisitShareCustomizationScreen,
@@ -197,7 +200,13 @@ export type RootStackParamList = {
   Feedback: undefined;
   CreateFeedback: undefined;
   FeedbackDetail: { feedbackId: string };
+  Tutorials: undefined;
   Misc: undefined;
+  MoreFeatureOnboarding: {
+    cardId: MoreOnboardingCardId;
+    mode?: 'firstRun' | 'replay';
+    source?: 'more' | 'profile';
+  };
   TastingSessions: undefined;
   TastingSessionDetail: { sessionId: string };
   Bills: undefined;
@@ -253,7 +262,9 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Feedback',
   'CreateFeedback',
   'FeedbackDetail',
+  'Tutorials',
   'Misc',
+  'MoreFeatureOnboarding',
   'Lists',
   'CreateRestaurantList',
   'ListDetail',
@@ -650,7 +661,13 @@ export function RootNavigator() {
                     name="FeedbackDetail"
                     options={{ headerShown: false }}
                   />
+                  <Stack.Screen component={TutorialsScreen} name="Tutorials" options={{ headerShown: false }} />
                   <Stack.Screen component={MiscScreen} name="Misc" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={MoreFeatureOnboardingScreen}
+                    name="MoreFeatureOnboarding"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen
                     component={user?.isAdmin ? TastingSessionsScreen : AdminOnlyRouteGuard}
                     name="TastingSessions"

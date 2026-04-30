@@ -296,4 +296,59 @@ describe('featureOutboxOperations', () => {
       expect.any(Object),
     );
   });
+
+  it('replays Tip Calculator onboarding dismissal without clearing existing More cards', async () => {
+    mockedGetCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+      mobileOnboardingState: {
+        moreCards: {
+          lists: {
+            dismissedAt: '2026-04-28T12:15:00.000Z',
+          },
+          splitBill: {
+            dismissedAt: '2026-04-28T12:10:00.000Z',
+          },
+        },
+      },
+    });
+    mockedUpdateCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+    });
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/onboarding.more-card.dismiss',
+        body: JSON.stringify({
+          userId: 'user_1',
+          cardId: 'tipCalculator',
+          dismissedAt: '2026-04-28T12:20:00.000Z',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'onboarding.more-card.dismiss',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'users',
+      'user_1',
+      {
+        mobileOnboardingState: {
+          moreCards: {
+            lists: {
+              dismissedAt: '2026-04-28T12:15:00.000Z',
+            },
+            splitBill: {
+              dismissedAt: '2026-04-28T12:10:00.000Z',
+            },
+            tipCalculator: {
+              dismissedAt: '2026-04-28T12:20:00.000Z',
+            },
+          },
+        },
+      },
+      expect.any(Object),
+    );
+  });
 });

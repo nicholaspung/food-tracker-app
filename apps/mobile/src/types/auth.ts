@@ -3,7 +3,7 @@ export interface MainOnboardingState {
   completedAt?: string;
 }
 
-export type MoreOnboardingCardId = 'lists' | 'splitBill';
+export type MoreOnboardingCardId = 'lists' | 'splitBill' | 'tipCalculator';
 
 export interface MoreOnboardingCardState {
   dismissedAt?: string;
@@ -76,12 +76,16 @@ export function normalizeMobileOnboardingState(value: unknown): MobileOnboarding
     const moreCardsRecord = rawMoreCards as Record<string, unknown>;
     const lists = normalizeMoreOnboardingCardState(moreCardsRecord.lists);
     const splitBill = normalizeMoreOnboardingCardState(moreCardsRecord.splitBill);
+    const tipCalculator = normalizeMoreOnboardingCardState(moreCardsRecord.tipCalculator);
 
     if (lists) {
       moreCards.lists = lists;
     }
     if (splitBill) {
       moreCards.splitBill = splitBill;
+    }
+    if (tipCalculator) {
+      moreCards.tipCalculator = tipCalculator;
     }
   }
 

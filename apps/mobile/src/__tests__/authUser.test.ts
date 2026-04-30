@@ -19,6 +19,9 @@ describe('normalizeAuthUser', () => {
             splitBill: {
               dismissedAt: '2026-04-28T12:02:00.000Z',
             },
+            tipCalculator: {
+              dismissedAt: '2026-04-28T12:03:00.000Z',
+            },
           },
         },
       }),
@@ -35,6 +38,9 @@ describe('normalizeAuthUser', () => {
           },
           splitBill: {
             dismissedAt: '2026-04-28T12:02:00.000Z',
+          },
+          tipCalculator: {
+            dismissedAt: '2026-04-28T12:03:00.000Z',
           },
         },
       },
@@ -54,6 +60,9 @@ describe('normalizeAuthUser', () => {
           moreCards: {
             lists: {
               dismissedAt: 123,
+            },
+            tipCalculator: {
+              dismissedAt: false,
             },
           },
         },

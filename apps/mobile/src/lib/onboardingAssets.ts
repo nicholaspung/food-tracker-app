@@ -8,4 +8,5 @@ export const FEATURE_ONBOARDING_ASSETS = {
   manageNotes: require('../../assets/onboarding/manage-notes.gif') as ImageSourcePropType,
   lists: require('../../assets/onboarding/lists.gif') as ImageSourcePropType,
   splitBill: require('../../assets/onboarding/split-bill.gif') as ImageSourcePropType,
+  tipCalculator: require('../../assets/onboarding/tip-calculator.gif') as ImageSourcePropType,
 } as const;

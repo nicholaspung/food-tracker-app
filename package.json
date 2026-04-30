@@ -50,7 +50,7 @@
     "start-server-and-test": "3.0.2"
   },
   "dependencies": {
-    "expo": "~55.0.17",
+    "expo": "~55.0.18",
     "react": "19.2.0",
     "react-native": "0.83.6"
   },
