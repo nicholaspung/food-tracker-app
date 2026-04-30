@@ -12,14 +12,28 @@
             buildForProfiling = "YES"
             buildForArchiving = "YES"
             buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "YummyRecs.app"
-               BlueprintName = "YummyRecs"
-               ReferencedContainer = "container:YummyRecs.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+            BuildableName = "YummyRecs.app"
+            BlueprintName = "YummyRecs"
+            ReferencedContainer = "container:YummyRecs.xcodeproj">
+         </BuildableReference>
+      </BuildActionEntry>
+      <BuildActionEntry
+         buildForTesting = "YES"
+         buildForRunning = "NO"
+         buildForProfiling = "NO"
+         buildForArchiving = "NO"
+         buildForAnalyzing = "NO">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "F9A9A8072F4A100100000001"
+            BuildableName = "YummyRecsTutorialUITests.xctest"
+            BlueprintName = "YummyRecsTutorialUITests"
+            ReferencedContainer = "container:YummyRecs.xcodeproj">
+         </BuildableReference>
+      </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -35,10 +49,20 @@
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
                BuildableName = "YummyRecsTests.xctest"
                BlueprintName = "YummyRecsTests"
-               ReferencedContainer = "container:YummyRecs.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
+            ReferencedContainer = "container:YummyRecs.xcodeproj">
+         </BuildableReference>
+      </TestableReference>
+      <TestableReference
+         skipped = "NO">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "F9A9A8072F4A100100000001"
+            BuildableName = "YummyRecsTutorialUITests.xctest"
+            BlueprintName = "YummyRecsTutorialUITests"
+            ReferencedContainer = "container:YummyRecs.xcodeproj">
+         </BuildableReference>
+      </TestableReference>
+   </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

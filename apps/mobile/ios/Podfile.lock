@@ -8,7 +8,7 @@ PODS:
   - EXJSONUtils (55.0.2)
   - EXManifests (55.0.16):
     - ExpoModulesCore
-  - Expo (55.0.17):
+  - Expo (55.0.18):
     - ExpoModulesCore
     - hermes-engine
     - RCTRequired
@@ -185,6 +185,10 @@ PODS:
     - ExpoModulesCore
   - ExpoCamera (55.0.16):
     - ExpoModulesCore
+  - ExpoCameraBarcodeScanning (55.0.16):
+    - ExpoCamera
+    - ZXingObjC/OneD
+    - ZXingObjC/PDF417
   - ExpoClipboard (55.0.13):
     - ExpoModulesCore
   - ExpoDevice (55.0.15):
@@ -2522,6 +2526,11 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - Yoga (0.0.0)
+  - ZXingObjC/Core (3.6.9)
+  - ZXingObjC/OneD (3.6.9):
+    - ZXingObjC/Core
+  - ZXingObjC/PDF417 (3.6.9):
+    - ZXingObjC/Core
 
 DEPENDENCIES:
   - EASClient (from `../../../node_modules/expo-eas-client/ios`)
@@ -2536,6 +2545,7 @@ DEPENDENCIES:
   - expo-dev-menu-interface (from `../../../node_modules/expo-dev-menu-interface/ios`)
   - ExpoAsset (from `../../../node_modules/expo-asset/ios`)
   - ExpoCamera (from `../../../node_modules/expo-camera/ios`)
+  - ExpoCameraBarcodeScanning (from `../../../node_modules/expo-camera/ios`)
   - ExpoClipboard (from `../../../node_modules/expo-clipboard/ios`)
   - ExpoDevice (from `../../../node_modules/expo-device/ios`)
   - "ExpoDomWebView (from `../../../node_modules/@expo/dom-webview/ios`)"
@@ -2645,6 +2655,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - ReachabilitySwift
+    - ZXingObjC
 
 EXTERNAL SOURCES:
   EASClient:
@@ -2670,6 +2681,8 @@ EXTERNAL SOURCES:
   ExpoAsset:
     :path: "../../../node_modules/expo-asset/ios"
   ExpoCamera:
+    :path: "../../../node_modules/expo-camera/ios"
+  ExpoCameraBarcodeScanning:
     :path: "../../../node_modules/expo-camera/ios"
   ExpoClipboard:
     :path: "../../../node_modules/expo-clipboard/ios"
@@ -2887,13 +2900,14 @@ SPEC CHECKSUMS:
   EXConstants: 5caf448ff399f60be9d1053e77aed32e39411900
   EXJSONUtils: 04bc3807d351331a5fe154ce1da596ec15d99169
   EXManifests: f4e50a54115948e206f4c2391bdea755a1aa74ec
-  Expo: bfedba58da14bf45546ae57e6a5bd5152a1546b4
+  Expo: 78ab86e6cf5d123b23e8e697b5c7112eebd276a8
   expo-dev-client: 6802a357b6ee3b36669c4c9e9622be55b3cd4494
   expo-dev-launcher: e7b80352aa5e11e696c1f939c9eafa8ad33a5779
   expo-dev-menu: 8d6cf955ad15b1f33b73aec853a9ec02afc39c04
   expo-dev-menu-interface: 833795f4c98a674d36cbc12b11b21756c38e01e8
   ExpoAsset: f56ed740b6a127da2bfd90832cf688ae309d4410
   ExpoCamera: 0ed88db61b7dc54712a98b8baaf415a3be88b76b
+  ExpoCameraBarcodeScanning: 1a003bdf373e94e82164b054f440efb2d10f2f38
   ExpoClipboard: 5d1b0cd2686406f21e616f2d9b3431259dee2e6a
   ExpoDevice: 3a4a361d685333e4139da5d56bb2740c86132beb
   ExpoDomWebView: 2b2fbd9a07de8790569257cbf9dfdaa31cf95c70
@@ -2999,7 +3013,8 @@ SPEC CHECKSUMS:
   RNSVG: 0bd149b873018bc6e0e3321e2f6435bdba294460
   RNWorklets: e08e31490fbaaf3d6b409d1e1ec20ec0a53dca05
   Yoga: e41d64347f52d634dd8c2f6bac33f95081959fd3
+  ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: 350b9b74500f0d461b30c08cea045b123b63515a
+PODFILE CHECKSUM: c068cbde9e27ac5a9c150d93d740d2f92d377990
 
 COCOAPODS: 1.16.2

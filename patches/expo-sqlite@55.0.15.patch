@@ -1,0 +1,12 @@
+diff --git a/ios/SQLiteModule.swift b/ios/SQLiteModule.swift
+index 15c784fb31629b1ab4b08a0f975b1f317985c433..80b3a4299ea2e45b1ca6598c1cdfbd79d6893489 100644
+--- a/ios/SQLiteModule.swift
++++ b/ios/SQLiteModule.swift
+@@ -1,6 +1,7 @@
+ // Copyright 2015-present 650 Industries. All rights reserved.
+ 
+ import ExpoModulesCore
++@_implementationOnly import ExpoSQLitePrivate
+ 
+ private typealias SQLiteColumnNames = [String]
+ private typealias SQLiteColumnValues = [Any]

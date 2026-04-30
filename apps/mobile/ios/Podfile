@@ -59,5 +59,47 @@ target 'YummyRecs' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    private_modulemap = File.join(__dir__, 'Pods', 'Headers', 'Public', 'ExpoSQLite', 'ExpoSQLitePrivate.modulemap')
+    File.write(private_modulemap, <<~MODULEMAP)
+      module ExpoSQLitePrivate {
+        header "sqlite3.h"
+        export *
+      }
+    MODULEMAP
+
+    private_modulemap_flags = [
+      '-Xcc',
+      '-fmodule-map-file="${PODS_ROOT}/Headers/Public/ExpoSQLite/ExpoSQLitePrivate.modulemap"',
+    ]
+
+    append_private_modulemap_flags = lambda do |target|
+      target.build_configurations.each do |config|
+        swift_flags = config.build_settings['OTHER_SWIFT_FLAGS']
+        swift_flags = swift_flags.is_a?(Array) ? swift_flags.join(' ') : swift_flags.to_s
+        swift_flags = '$(inherited)' if swift_flags.empty?
+        unless swift_flags.include?(private_modulemap_flags.last)
+          swift_flags = "#{swift_flags} #{private_modulemap_flags.join(' ')}"
+        end
+        config.build_settings['OTHER_SWIFT_FLAGS'] = swift_flags
+      end
+    end
+
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'ExpoSQLite'
+
+      append_private_modulemap_flags.call(target)
+
+      target.build_configurations.each do |config|
+        # ExpoSQLite imports its vendored sqlite3.h as the Swift target's
+        # underlying C module. Xcode 26's explicit Clang module build can miss
+        # those C declarations, which surfaces as "cannot find exsqlite3_* in
+        # scope" while compiling SQLiteModule.swift.
+        config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        config.build_settings['SWIFT_COMPILATION_MODE'] = 'wholemodule'
+        config.build_settings['SWIFT_ENABLE_INCREMENTAL_COMPILATION'] = 'NO'
+      end
+    end
   end
 end
