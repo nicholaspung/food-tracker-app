@@ -10,6 +10,7 @@ import {
   CachedRemoteImage,
   EmptyState,
   ErrorState,
+  FeatureListFooter,
   HeaderAccessoryButton,
   PageErrorToast,
   PendingQueuedWriteRow,
@@ -26,7 +27,8 @@ import {
   type RestaurantListRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -35,7 +37,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Text } from '../ui';
+import { Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
@@ -176,6 +178,7 @@ const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'My Lists', value: 'my' },
   { label: 'Friends', value: 'friends' },
 ];
+const LIST_SEARCH_DEBOUNCE_MS = 300;
 
 function toSafeNonNegativeInteger(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -343,15 +346,16 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const hasTriedCreatingDefault = useRef(false);
   const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
+  const debouncedTrimmedSearchQuery = useDebouncedValue(trimmedSearchQuery, LIST_SEARCH_DEBOUNCE_MS);
 
   const myListsQuery = useInfiniteQuery({
-    queryKey: restaurantListQueryKeys.paginated('my', trimmedSearchQuery),
+    queryKey: restaurantListQueryKeys.paginated('my', debouncedTrimmedSearchQuery),
     queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'my',
         page: pageParam,
         pageSize: 20,
-        search: trimmedSearchQuery || undefined,
+        search: debouncedTrimmedSearchQuery || undefined,
         signal,
       }),
     initialPageParam: 1,
@@ -360,13 +364,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   });
 
   const friendsListsQuery = useInfiniteQuery({
-    queryKey: restaurantListQueryKeys.paginated('friends', trimmedSearchQuery),
+    queryKey: restaurantListQueryKeys.paginated('friends', debouncedTrimmedSearchQuery),
     queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'friends',
         page: pageParam,
         pageSize: 20,
-        search: trimmedSearchQuery || undefined,
+        search: debouncedTrimmedSearchQuery || undefined,
         signal,
       }),
     initialPageParam: 1,
@@ -395,7 +399,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   useEffect(() => {
     if (
       !user?.id ||
-      trimmedSearchQuery.length > 0 ||
+      debouncedTrimmedSearchQuery.length > 0 ||
       hasTriedCreatingDefault.current ||
       !myListsQuery.data ||
       myListsQuery.isLoading ||
@@ -471,7 +475,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     })();
   }, [
     user?.id,
-    trimmedSearchQuery,
+    debouncedTrimmedSearchQuery,
     isCreatingDefaultList,
     myListsState.items,
     myListsQuery.data,
@@ -486,7 +490,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const friendLists = friendsListsState.items;
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
   const activeState = activeTab === 'my' ? myListsState : friendsListsState;
-  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(activeQuery.isRefetching);
 
   const visibleLists = useMemo(
     () => (activeTab === 'friends' ? friendLists : myLists),
@@ -520,30 +523,16 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     }),
     [activeTab, trimmedSearchQuery.length, visibleLists.length],
   );
-  const handleRefresh = async () => {
-    await runPullRefresh(async () => {
-      const resultCountBefore = visibleLists.length;
-      trackObservabilityEvent('LISTS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-      }));
-
-      try {
-        const result = await activeQuery.refetch();
-        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-        trackObservabilityEvent('LISTS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          resultCountAfter,
-          deltaCount: resultCountAfter - resultCountBefore,
-        }));
-      } catch (error) {
-        trackObservabilityEvent('LISTS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-        }));
-        throw error;
-      }
-    });
-  };
+  const browseState = useFeatureInfiniteBrowse({
+    analyticsSource: 'ListsScreen',
+    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
+    getResultCountFromData: (data, fallbackCount) =>
+      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    loadMoreEventPrefix: 'LISTS_LOAD_MORE',
+    query: activeQuery,
+    refreshEventPrefix: 'LISTS_REFRESH',
+    resultCount: visibleLists.length,
+  });
 
   useEffect(() => {
     if (!hasSearch) {
@@ -551,7 +540,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return;
     }
 
-    const trackingKey = `${activeTab}::${trimmedSearchQuery}::${visibleLists.length}`;
+    const trackingKey = `${activeTab}::${debouncedTrimmedSearchQuery}::${visibleLists.length}`;
     if (lastTrackedSearchExecutionKeyRef.current === trackingKey) {
       return;
     }
@@ -560,10 +549,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     trackObservabilityEvent('LISTS_SEARCH_EXECUTED', {
       source: 'ListsScreen',
       activeTab,
-      queryLength: trimmedSearchQuery.length,
+      queryLength: debouncedTrimmedSearchQuery.length,
       resultCount: visibleLists.length,
     });
-  }, [activeTab, hasSearch, trimmedSearchQuery, visibleLists.length]);
+  }, [activeTab, debouncedTrimmedSearchQuery, hasSearch, visibleLists.length]);
 
   const handleTabChange = (tab: ListTab) => {
     trackObservabilityEvent('LISTS_TAB_CHANGED', {
@@ -793,36 +782,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   );
 
   const listsFooter =
-    !isLoading && !activeState.hasBlockingError && visibleLists.length > 0 && activeQuery.hasNextPage ? (
-      <View style={styles.listFooter}>
-        <Button
-          label={activeQuery.isFetchingNextPage ? 'Loading more...' : 'Load more lists'}
-          loading={activeQuery.isFetchingNextPage}
-          onPress={() => {
-            const resultCountBefore = visibleLists.length;
-            trackObservabilityEvent('LISTS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-              resultCountBefore,
-            }));
-            void activeQuery.fetchNextPage()
-              .then((result) => {
-                const resultCountAfter =
-                  result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-                trackObservabilityEvent('LISTS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                  resultCountBefore,
-                  resultCountAfter,
-                  deltaCount: resultCountAfter - resultCountBefore,
-                }));
-              })
-              .catch((error) => {
-                trackObservabilityEvent('LISTS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                  resultCountBefore,
-                  errorType: error instanceof Error ? error.name : 'unknown_error',
-                }));
-              });
-          }}
-          variant="secondary"
-        />
-      </View>
+    !isLoading && !activeState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (
+      <FeatureListFooter
+        isFetchingNextPage={browseState.isFetchingNextPage}
+        label="Load more lists"
+        onLoadMore={browseState.onEndReached}
+      />
     ) : null;
 
   const listsBodyContent = (() => {
@@ -892,8 +857,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       subtitle="Create, organize, and browse the restaurant lists your friends share."
       testID="lists-screen"
       title="Lists"
-      onRefresh={handleRefresh}
-      refreshing={isPullRefreshing}
+      onRefresh={browseState.onRefresh}
+      refreshing={browseState.isRefreshing}
     >
       <View style={styles.listContent}>
         {listsHeader}

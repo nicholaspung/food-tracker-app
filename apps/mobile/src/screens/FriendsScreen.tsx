@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
@@ -9,6 +9,7 @@ import { FriendListItemCard } from '../components/friends';
 import {
   ConfirmDestructiveModal,
   EmptyState,
+  FeatureListFooter,
   HeaderAccessoryButton,
   ScreenContentSection,
   SegmentedControl,
@@ -33,7 +34,7 @@ import {
   type FriendRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -43,7 +44,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Text } from '../ui';
+import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { FriendCodePanel } from './friends/FriendCodePanel';
 import { FriendsPendingRequestsSection } from './friends/FriendsPendingRequestsSection';
@@ -253,7 +254,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     isLoading: friendsQuery.isLoading,
     isSuccess: friendsQuery.isSuccess,
   });
-  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(friendsQuery.isRefetching);
   const visibleFriends = friendsState.items;
   const friendsSummary = selectFriendsSummary(friendsQuery.data);
   const acceptedFriendsCount =
@@ -320,12 +320,22 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   }, [navigation, route.params]);
 
   const styles = useStyles();
-  const buildBrowseAnalyticsPayload = (overrides?: Record<string, string | number | boolean | null>) => ({
+  const buildBrowseAnalyticsPayload = useCallback((overrides?: Record<string, string | number | boolean | null>) => ({
     source: 'FriendsScreen',
     mainTab,
     friendsSubTab,
     resultCount: visibleFriends.length,
     ...overrides,
+  }), [friendsSubTab, mainTab, visibleFriends.length]);
+  const browseState = useFeatureInfiniteBrowse({
+    analyticsSource: 'FriendsScreen',
+    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
+    getResultCountFromData: (data, fallbackCount) =>
+      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    loadMoreEventPrefix: 'FRIENDS_LOAD_MORE',
+    query: friendsQuery,
+    refreshEventPrefix: 'FRIENDS_REFRESH',
+    resultCount: visibleFriends.length,
   });
 
   const invalidateFriends = async () => {
@@ -491,40 +501,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
     setPendingRemoveFriend(null);
   };
-  const handleRefresh = async () => {
-    await runPullRefresh(async () => {
-      const resultCountBefore = visibleFriends.length;
-      trackObservabilityEvent('FRIENDS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-      }));
-
-      try {
-        if (mainTab === 'friends-list') {
-          const result = await friendsQuery.refetch();
-          const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-          trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-            resultCountBefore,
-            resultCountAfter,
-            deltaCount: resultCountAfter - resultCountBefore,
-          }));
-          return;
-        }
-
-        trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          resultCountAfter: resultCountBefore,
-          deltaCount: 0,
-        }));
-      } catch (error) {
-        trackObservabilityEvent('FRIENDS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-        }));
-        throw error;
-      }
-    });
-  };
-
   const handleConfirmRemoveFriend = async () => {
     if (!pendingRemoveFriend) {
       return;
@@ -837,36 +813,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     !friendsQuery.isLoading &&
     !friendsState.hasBlockingError &&
     visibleFriends.length > 0 &&
-    friendsQuery.hasNextPage ? (
-      <View style={styles.body}>
-        <Button
-          label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
-          loading={friendsQuery.isFetchingNextPage}
-          onPress={() => {
-            const resultCountBefore = visibleFriends.length;
-            trackObservabilityEvent('FRIENDS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-              resultCountBefore,
-            }));
-            void friendsQuery.fetchNextPage()
-              .then((result) => {
-                const resultCountAfter =
-                  result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-                trackObservabilityEvent('FRIENDS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                  resultCountBefore,
-                  resultCountAfter,
-                  deltaCount: resultCountAfter - resultCountBefore,
-                }));
-              })
-              .catch((error) => {
-                trackObservabilityEvent('FRIENDS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                  resultCountBefore,
-                  errorType: error instanceof Error ? error.name : 'unknown_error',
-                }));
-              });
-          }}
-          variant="secondary"
-        />
-      </View>
+    browseState.hasNextPage ? (
+      <FeatureListFooter
+        isFetchingNextPage={browseState.isFetchingNextPage}
+        label="Load more"
+        onLoadMore={browseState.onEndReached}
+      />
     ) : null;
 
   return (
@@ -909,8 +861,11 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           ListEmptyComponent={friendsListEmptyComponent}
           ListFooterComponent={friendsListFooter}
           ListHeaderComponent={friendsListHeader}
-          onRefresh={mainTab === 'friends-list' ? handleRefresh : undefined}
-          refreshing={mainTab === 'friends-list' ? isPullRefreshing : false}
+          onRefresh={mainTab === 'friends-list' ? browseState.onRefresh : undefined}
+          refreshing={mainTab === 'friends-list' ? browseState.isRefreshing : false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
           removeClippedSubviews
           renderItem={renderFriendItem}
           style={styles.list}

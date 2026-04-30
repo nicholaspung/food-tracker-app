@@ -25,6 +25,7 @@ jest.mock('../components/shared', () => ({
   ) => mockReact.createElement('BackHeaderScreenScaffold', props, children),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
+  FeatureListFooter: (props: Record<string, unknown>) => mockReact.createElement('FeatureListFooter', props),
   HeaderAccessoryButton: (props: Record<string, unknown>) => mockReact.createElement('HeaderAccessoryButton', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
@@ -42,6 +43,13 @@ jest.mock('../features', () => ({
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
+}));
+
+jest.mock('../features/store/useQueuedFeatureWrites', () => ({
+  useQueuedFeatureWrites: () => ({
+    queuedWrites: [],
+    refreshQueuedWrites: jest.fn(),
+  }),
 }));
 
 jest.mock('../hooks/useListQueryState', () => ({
@@ -299,9 +307,7 @@ describe('ListsScreen', () => {
     expect(renderer.root.findAllByType('FlatList')).toHaveLength(0);
     expect(renderer.root.findByProps({ testID: 'lists-search-input' })).toBeTruthy();
     expect(renderer.root.findByProps({ testID: 'lists-list-card-my-0' })).toBeTruthy();
-    expect(
-      renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Load more lists'),
-    ).toBe(true);
+    expect(renderer.root.findByType('FeatureListFooter').props.label).toBe('Load more lists');
   });
 
   it('renders the empty state when there are no lists', async () => {

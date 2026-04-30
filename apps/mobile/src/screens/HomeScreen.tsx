@@ -10,6 +10,7 @@ import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/r
 
 import {
   EmptyState,
+  FeatureListFooter,
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
   HomeFoodProductEntryCard,
@@ -31,6 +32,7 @@ import {
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
@@ -38,14 +40,14 @@ import {
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Text } from '../ui';
+import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { HomeFeedActionModals } from './home/HomeFeedActionModals';
 import { HomePendingEntriesSection } from './home/HomePendingEntriesSection';
@@ -249,6 +251,7 @@ const useStyles = createThemedStyles((theme) => {
 });
 
 const HOME_FEED_PAGE_SIZE = 20;
+const HOME_FEED_SEARCH_DEBOUNCE_MS = 300;
 const VISIT_FOCUS_HIGHLIGHT_DURATION_MS = 2400;
 const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
 
@@ -298,6 +301,10 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const feedScope = feedMode;
   const sortFilter = sortByMode[feedMode];
   const trimmedSearchQuery = searchQuery.trim();
+  const debouncedTrimmedSearchQuery = useDebouncedValue(
+    trimmedSearchQuery,
+    HOME_FEED_SEARCH_DEBOUNCE_MS,
+  );
   const authenticatedUserId = user?.id ?? null;
   const currentUserId = authenticatedUserId;
   const inviterDisplayName = friendSuggestion?.inviterDisplayName?.trim() || 'your inviter';
@@ -313,7 +320,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       feedScope,
       typeFilter,
       sortFilter,
-      trimmedSearchQuery,
+      debouncedTrimmedSearchQuery,
     ),
     enabled: Boolean(authenticatedUserId),
     initialPageParam: undefined as HomeFeedCursor | undefined,
@@ -322,7 +329,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         cursor: pageParam,
         pageSize: HOME_FEED_PAGE_SIZE,
         scope: feedScope,
-        search: trimmedSearchQuery || undefined,
+        search: debouncedTrimmedSearchQuery || undefined,
         signal,
         sort: sortFilter,
         typeFilter,
@@ -341,8 +348,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     hasNextPage: hasNextHomeFeedPage,
     isFetchingNextPage: isFetchingNextHomeFeedPage,
   } = homeFeedQuery;
-  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(homeFeedQuery.isRefetching);
-
   useEffect(() => {
     if (previousDefaultsUserIdRef.current === undefined) {
       previousDefaultsUserIdRef.current = authenticatedUserId;
@@ -392,11 +397,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       feedMode,
       typeFilter,
       sortFilter,
-      queryLength: trimmedSearchQuery.length,
+      queryLength: debouncedTrimmedSearchQuery.length,
       resultCount: loadedFeed.length,
       ...overrides,
     }),
-    [feedMode, loadedFeed.length, sortFilter, trimmedSearchQuery.length, typeFilter],
+    [debouncedTrimmedSearchQuery.length, feedMode, loadedFeed.length, sortFilter, typeFilter],
   );
 
   useEffect(() => {
@@ -487,30 +492,16 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     typeFilter,
   ]);
 
-  const handleRefresh = useCallback(async () => {
-    return runPullRefresh(async () => {
-      const resultCountBefore = loadedFeed.length;
-      trackObservabilityEvent('HOME_FEED_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-      }));
-
-      try {
-        const result = await homeFeedQuery.refetch();
-        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-        trackObservabilityEvent('HOME_FEED_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          resultCountAfter,
-          deltaCount: resultCountAfter - resultCountBefore,
-        }));
-      } catch (error) {
-        trackObservabilityEvent('HOME_FEED_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-        }));
-        throw error;
-      }
-    });
-  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length, runPullRefresh]);
+  const browseState = useFeatureInfiniteBrowse({
+    analyticsSource: 'HomeScreen',
+    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
+    getResultCountFromData: (data, fallbackCount) =>
+      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    loadMoreEventPrefix: 'HOME_FEED_LOAD_MORE',
+    query: homeFeedQuery,
+    refreshEventPrefix: 'HOME_FEED_REFRESH',
+    resultCount: loadedFeed.length,
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -836,32 +827,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       [feedMode]: nextSort,
     }));
   }, [feedMode]);
-
-  const handleLoadMoreFeed = useCallback(() => {
-    if (!homeFeedQuery.hasNextPage || homeFeedQuery.isFetchingNextPage) {
-      return;
-    }
-
-    const resultCountBefore = loadedFeed.length;
-    trackObservabilityEvent('HOME_FEED_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
-    void homeFeedQuery.fetchNextPage()
-      .then((result) => {
-        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-        trackObservabilityEvent('HOME_FEED_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          resultCountAfter,
-          deltaCount: resultCountAfter - resultCountBefore,
-        }));
-      })
-      .catch((error) => {
-        trackObservabilityEvent('HOME_FEED_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-        }));
-      });
-  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length]);
 
   const handleDismissFriendSuggestion = useCallback(() => {
     setFriendSuggestionErrorMessage(null);
@@ -1348,15 +1313,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   })();
 
   const homeListFooter =
-    !isLoading && !hasBlockingFeedError && homeFeedQuery.hasNextPage ? (
-      <View style={styles.listFooter}>
-        <Button
-          label={homeFeedQuery.isFetchingNextPage ? 'Loading more...' : 'Load more activity'}
-          loading={homeFeedQuery.isFetchingNextPage}
-          onPress={handleLoadMoreFeed}
-          variant="secondary"
-        />
-      </View>
+    !isLoading && !hasBlockingFeedError && browseState.hasNextPage ? (
+      <FeatureListFooter
+        isFetchingNextPage={browseState.isFetchingNextPage}
+        label="Load more activity"
+        onLoadMore={browseState.onEndReached}
+      />
     ) : null;
 
   return (
@@ -1397,7 +1359,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             ListEmptyComponent={homeListEmptyComponent}
             ListFooterComponent={homeListFooter}
             ListHeaderComponent={homeListHeader}
-            onRefresh={handleRefresh}
+            onRefresh={browseState.onRefresh}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
                 mineFeedListRef.current?.scrollToIndex({
@@ -1407,7 +1369,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                 });
               }, SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS);
             }}
-            refreshing={isPullRefreshing}
+            refreshing={browseState.isRefreshing}
             removeClippedSubviews
             renderItem={renderMineFeedItem}
             style={styles.list}
@@ -1421,8 +1383,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             ListEmptyComponent={homeListEmptyComponent}
             ListFooterComponent={homeListFooter}
             ListHeaderComponent={homeListHeader}
-            onRefresh={handleRefresh}
-            refreshing={isPullRefreshing}
+            onRefresh={browseState.onRefresh}
+            refreshing={browseState.isRefreshing}
             removeClippedSubviews
             renderItem={renderFriendFeedItem}
             renderSectionHeader={renderFriendFeedSectionHeader}

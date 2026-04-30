@@ -5,6 +5,7 @@ import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstac
 
 import { getEnvironmentStorageKey } from '../config/persistence';
 import type { FeedbackRecord, NoteRecord } from '../features/models';
+import { isBillDetailQueryKey } from '../features/store/billsQuery';
 import { isFeedbackListQueryKey } from '../features/store/feedbackQuery';
 import { isFriendsSummaryQueryKey, isPaginatedFriendsQueryKey } from '../features/store/friendsQuery';
 import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
@@ -61,8 +62,11 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return isPaginatedHomeFeedQueryKey(queryKey);
     case 'visits':
     case 'foodProducts':
+      return queryKey.length === 2;
     case 'bills':
       return queryKey.length === 2;
+    case 'bill':
+      return isBillDetailQueryKey(queryKey);
     case 'visitPhotos':
       return queryKey.length === 2 || isHomeFeedPhotosQuery(queryKey);
     case 'notes':

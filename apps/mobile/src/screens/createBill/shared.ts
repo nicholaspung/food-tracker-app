@@ -46,6 +46,19 @@ export interface OwedAmountEntry {
   hasInputValue: boolean;
 }
 
+interface CalculateSuggestedBillAmountsInput {
+  customTipSplits: DraftAdvancedSplitEntry[];
+  customTipSplitType: DraftAdvancedSplitType;
+  effectiveDistributableExtrasTotal: number;
+  extrasSplitMode: BillRecord['extrasSplitMode'];
+  isCustomSplitMode: boolean;
+  isCustomTipEnabled: boolean;
+  items: DraftBillItem[];
+  normalizedTip: number;
+  participantIds: string[];
+  previewTotal: number;
+}
+
 function isLikelyUserId(value: string): boolean {
   return /^[a-z0-9]{15}$/i.test(value.trim());
 }
@@ -247,6 +260,164 @@ export function redistributeAdvancedSplits(
   }
 
   return nextSplits;
+}
+
+export function calculateSuggestedBillAmounts({
+  customTipSplitType,
+  customTipSplits,
+  effectiveDistributableExtrasTotal,
+  extrasSplitMode,
+  isCustomSplitMode,
+  isCustomTipEnabled,
+  items,
+  normalizedTip,
+  participantIds,
+  previewTotal,
+}: CalculateSuggestedBillAmountsInput): Map<string, number> {
+  const amountMap = new Map<string, number>();
+  participantIds.forEach((participantId) => {
+    amountMap.set(participantId, 0);
+  });
+
+  if (participantIds.length === 0) {
+    return amountMap;
+  }
+
+  if (!isCustomSplitMode) {
+    const normalizedTotal = roundToCurrency(previewTotal);
+    const evenAmount = normalizedTotal / participantIds.length;
+    let roundedTotal = 0;
+
+    participantIds.forEach((participantId) => {
+      const roundedAmount = roundToCurrency(evenAmount);
+      amountMap.set(participantId, roundedAmount);
+      roundedTotal += roundedAmount;
+    });
+
+    const roundingDifference = roundToCurrency(normalizedTotal - roundedTotal);
+    if (Math.abs(roundingDifference) > 0) {
+      const firstParticipantId = participantIds[0];
+      amountMap.set(
+        firstParticipantId,
+        roundToCurrency((amountMap.get(firstParticipantId) ?? 0) + roundingDifference),
+      );
+    }
+
+    return amountMap;
+  }
+
+  const participantIdSet = new Set(participantIds);
+  let computedSubtotal = 0;
+
+  items.forEach((item) => {
+    const parsedPrice = Number(item.price);
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      return;
+    }
+
+    const normalizedPrice = roundToCurrency(parsedPrice);
+    computedSubtotal += normalizedPrice;
+
+    if (item.splitMode === 'advanced' && item.advancedSplits.length > 0) {
+      item.advancedSplits.forEach((split) => {
+        if (!participantIdSet.has(split.participantId)) {
+          return;
+        }
+
+        const splitValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+        if (!Number.isFinite(splitValue) || splitValue <= 0) {
+          return;
+        }
+
+        const amount =
+          item.advancedSplitType === 'percentage'
+            ? (normalizedPrice * splitValue) / 100
+            : splitValue;
+
+        const currentAmount = amountMap.get(split.participantId) ?? 0;
+        amountMap.set(split.participantId, currentAmount + amount);
+      });
+
+      return;
+    }
+
+    const assignedParticipantIds = item.assignedParticipantIds.filter((participantId) =>
+      participantIdSet.has(participantId),
+    );
+
+    if (assignedParticipantIds.length === 0) {
+      return;
+    }
+
+    const perParticipantAmount = normalizedPrice / assignedParticipantIds.length;
+    assignedParticipantIds.forEach((participantId) => {
+      const currentAmount = amountMap.get(participantId) ?? 0;
+      amountMap.set(participantId, currentAmount + perParticipantAmount);
+    });
+  });
+
+  if (extrasSplitMode === 'proportional') {
+    participantIds.forEach((participantId) => {
+      const baseAmount = amountMap.get(participantId) ?? 0;
+      const proportion = computedSubtotal > 0 ? baseAmount / computedSubtotal : 0;
+      amountMap.set(participantId, baseAmount + (effectiveDistributableExtrasTotal * proportion));
+    });
+  } else {
+    const extrasPerParticipant = effectiveDistributableExtrasTotal / participantIds.length;
+    participantIds.forEach((participantId) => {
+      const baseAmount = amountMap.get(participantId) ?? 0;
+      amountMap.set(participantId, baseAmount + extrasPerParticipant);
+    });
+  }
+
+  if (isCustomTipEnabled) {
+    const tipContributionMap = new Map<string, number>();
+    participantIds.forEach((participantId) => {
+      tipContributionMap.set(participantId, 0);
+    });
+
+    customTipSplits.forEach((split) => {
+      if (!tipContributionMap.has(split.participantId)) {
+        return;
+      }
+
+      const splitValue = Number(getAdvancedSplitRawValue(split, customTipSplitType));
+      if (!Number.isFinite(splitValue) || splitValue < 0) {
+        return;
+      }
+
+      const contribution =
+        customTipSplitType === 'percentage'
+          ? (normalizedTip * splitValue) / 100
+          : splitValue;
+      tipContributionMap.set(split.participantId, (tipContributionMap.get(split.participantId) ?? 0) + contribution);
+    });
+
+    participantIds.forEach((participantId) => {
+      const baseAmount = amountMap.get(participantId) ?? 0;
+      const tipContribution = tipContributionMap.get(participantId) ?? 0;
+      amountMap.set(participantId, baseAmount + tipContribution);
+    });
+  }
+
+  let roundedTotal = 0;
+  participantIds.forEach((participantId) => {
+    const roundedAmount = roundToCurrency(amountMap.get(participantId) ?? 0);
+    amountMap.set(participantId, roundedAmount);
+    roundedTotal += roundedAmount;
+  });
+
+  const expectedTotal = roundToCurrency(previewTotal);
+  const roundingDifference = roundToCurrency(expectedTotal - roundedTotal);
+  if (Math.abs(roundingDifference) > 0) {
+    const firstParticipantId = participantIds[0];
+    amountMap.set(
+      firstParticipantId,
+      roundToCurrency((amountMap.get(firstParticipantId) ?? 0) + roundingDifference),
+    );
+  }
+
+  return amountMap;
 }
 
 export function buildDefaultAdvancedSplits(

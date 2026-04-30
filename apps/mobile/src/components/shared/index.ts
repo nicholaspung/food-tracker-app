@@ -12,6 +12,7 @@ export * from './ExpandableText';
 export * from './FilterChipGroup';
 export * from './FeatureDetailScreenScaffold';
 export * from './FeatureFormScreenScaffold';
+export * from './FeatureListFooter';
 export * from './FeatureIntroScreenContent';
 export * from './FeedbackStatus';
 export * from './FeedbackThreadCard';

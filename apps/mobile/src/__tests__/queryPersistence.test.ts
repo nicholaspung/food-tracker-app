@@ -3,6 +3,7 @@ import { persistQueryClientRestore, persistQueryClientSave } from '@tanstack/que
 import { QueryClient } from '@tanstack/react-query';
 
 import { getEnvironmentStorageKey } from '../config/persistence';
+import { billsQueryKeys } from '../features/store/billsQuery';
 import { feedbackQueryKeys } from '../features/store/feedbackQuery';
 import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
@@ -182,6 +183,13 @@ describe('React Query persistence', () => {
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
+    sourceClient.setQueryData(billsQueryKeys.detail('bill-1'), {
+      id: 'bill-1',
+      title: 'Persisted bill',
+      status: 'open',
+      createdAt: '2026-02-12T00:00:00.000Z',
+      updatedAt: '2026-02-12T00:00:00.000Z',
+    });
     sourceClient.setQueryData(['feature', 'feedback', 'thread_1'], {
       id: 'thread_1',
       description: 'Thread detail should not persist',
@@ -271,6 +279,9 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
+    );
+    expect(restoredClient.getQueryData(billsQueryKeys.detail('bill-1'))).toEqual(
+      sourceClient.getQueryData(billsQueryKeys.detail('bill-1')),
     );
     expect(restoredClient.getQueryData(['feature', 'quickTracks'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
