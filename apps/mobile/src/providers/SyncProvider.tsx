@@ -1,7 +1,7 @@
 import { AppState } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getAuthRecord } from '../features';
+import { getAuthRecord } from '../features/store/pocketbaseGateway';
 import { resolveEmailVerificationAccess } from '../lib/emailVerificationAccess';
 import { logger } from '../lib/logger';
 import { pb } from '../lib/pocketbase';
