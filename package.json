@@ -41,8 +41,6 @@
     "mobile:test": "pnpm --filter @food-tracker/mobile test",
     "mobile:tutorial:ios:gif": "bash scripts/tutorials/convert-ios-mov-to-gif.sh",
     "mobile:tutorial:ios:record": "bash scripts/tutorials/record-ios-mov.sh",
-    "mobile:tutorial:ios": "bash scripts/tutorials/record-ios-tutorial.sh",
-    "mobile:tutorial:ios:tip-calculator": "bash scripts/tutorials/record-ios-tutorial.sh tip-calculator",
     "mobile:verify-native-entrypoint": "node scripts/verify-mobile-native-entrypoint.mjs",
     "android": "pnpm mobile:android",
     "ios": "pnpm mobile:ios"

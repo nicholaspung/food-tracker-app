@@ -20,20 +20,6 @@
             ReferencedContainer = "container:YummyRecs.xcodeproj">
          </BuildableReference>
       </BuildActionEntry>
-      <BuildActionEntry
-         buildForTesting = "YES"
-         buildForRunning = "NO"
-         buildForProfiling = "NO"
-         buildForArchiving = "NO"
-         buildForAnalyzing = "NO">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F9A9A8072F4A100100000001"
-            BuildableName = "YummyRecsTutorialUITests.xctest"
-            BlueprintName = "YummyRecsTutorialUITests"
-            ReferencedContainer = "container:YummyRecs.xcodeproj">
-         </BuildableReference>
-      </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -49,16 +35,6 @@
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
                BuildableName = "YummyRecsTests.xctest"
                BlueprintName = "YummyRecsTests"
-            ReferencedContainer = "container:YummyRecs.xcodeproj">
-         </BuildableReference>
-      </TestableReference>
-      <TestableReference
-         skipped = "NO">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F9A9A8072F4A100100000001"
-            BuildableName = "YummyRecsTutorialUITests.xctest"
-            BlueprintName = "YummyRecsTutorialUITests"
             ReferencedContainer = "container:YummyRecs.xcodeproj">
          </BuildableReference>
       </TestableReference>

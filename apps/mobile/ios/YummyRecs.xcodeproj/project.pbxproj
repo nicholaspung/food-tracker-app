@@ -14,18 +14,7 @@
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F13F78A4D6C9D25EF78875A9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F75446B1B85B0281F94523EA /* PrivacyInfo.xcprivacy */; };
-		F9A9A8012F4A100100000001 /* YummyRecsTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A9A8002F4A100100000001 /* YummyRecsTutorialUITests.swift */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		F9A9A80C2F4A100100000001 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
-			remoteInfo = YummyRecs;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* YummyRecs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YummyRecs.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -41,9 +30,6 @@
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = YummyRecs/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* YummyRecs-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "YummyRecs-Bridging-Header.h"; path = "YummyRecs/YummyRecs-Bridging-Header.h"; sourceTree = "<group>"; };
 		F75446B1B85B0281F94523EA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = YummyRecs/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		F9A9A8002F4A100100000001 /* YummyRecsTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YummyRecsTutorialUITests.swift; sourceTree = "<group>"; };
-		F9A9A8022F4A100100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		F9A9A8032F4A100100000001 /* YummyRecsTutorialUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YummyRecsTutorialUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,13 +38,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				74F0B2A31123D76F2CA8C75C /* libPods-YummyRecs.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		F9A9A8042F4A100100000001 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,7 +94,6 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* YummyRecs */,
-				F9A9A8062F4A100100000001 /* YummyRecsTutorialUITests */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -131,7 +109,6 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* YummyRecs.app */,
-				F9A9A8032F4A100100000001 /* YummyRecsTutorialUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -153,15 +130,6 @@
 			);
 			name = Supporting;
 			path = YummyRecs/Supporting;
-			sourceTree = "<group>";
-		};
-		F9A9A8062F4A100100000001 /* YummyRecsTutorialUITests */ = {
-			isa = PBXGroup;
-			children = (
-				F9A9A8002F4A100100000001 /* YummyRecsTutorialUITests.swift */,
-				F9A9A8022F4A100100000001 /* Info.plist */,
-			);
-			path = YummyRecsTutorialUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -189,23 +157,6 @@
 			productReference = 13B07F961A680F5B00A75B9A /* YummyRecs.app */;
 			productType = "com.apple.product-type.application";
 		};
-		F9A9A8072F4A100100000001 /* YummyRecsTutorialUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = F9A9A80B2F4A100100000001 /* Build configuration list for PBXNativeTarget "YummyRecsTutorialUITests" */;
-			buildPhases = (
-				F9A9A8052F4A100100000001 /* Sources */,
-				F9A9A8042F4A100100000001 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				F9A9A80D2F4A100100000001 /* PBXTargetDependency */,
-			);
-			name = YummyRecsTutorialUITests;
-			productName = YummyRecsTutorialUITests;
-			productReference = F9A9A8032F4A100100000001 /* YummyRecsTutorialUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -216,10 +167,6 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
-					};
-					F9A9A8072F4A100100000001 = {
-						CreatedOnToolsVersion = 16.0;
-						TestTargetID = 13B07F861A680F5B00A75B9A;
 					};
 				};
 			};
@@ -237,7 +184,6 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* YummyRecs */,
-				F9A9A8072F4A100100000001 /* YummyRecsTutorialUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -402,23 +348,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F9A9A8052F4A100100000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F9A9A8012F4A100100000001 /* YummyRecsTutorialUITests.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		F9A9A80D2F4A100100000001 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 13B07F861A680F5B00A75B9A /* YummyRecs */;
-			targetProxy = F9A9A80C2F4A100100000001 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -613,61 +543,6 @@
 			};
 			name = Release;
 		};
-		F9A9A8082F4A100100000001 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				BUNDLE_LOADER = "";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = YummyRecsTutorialUITests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile.YummyRecsTutorialUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = YummyRecs;
-			};
-			name = Debug;
-		};
-		F9A9A8092F4A100100000001 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				BUNDLE_LOADER = "";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = YummyRecsTutorialUITests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile.YummyRecsTutorialUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = YummyRecs;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -685,15 +560,6 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		F9A9A80B2F4A100100000001 /* Build configuration list for PBXNativeTarget "YummyRecsTutorialUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				F9A9A8082F4A100100000001 /* Debug */,
-				F9A9A8092F4A100100000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
