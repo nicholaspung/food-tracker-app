@@ -14,6 +14,9 @@ var selfServiceUserEditableFields = map[string]struct{}{
 	"name":                        {},
 	"defaultVisitVisibility":      {},
 	"defaultRestaurantVisibility": {},
+	"defaultHomeFeedMode":         {},
+	"defaultHomeFeedTypeFilter":   {},
+	"defaultHomeFeedSort":         {},
 	"mobileOnboardingState":       {},
 }
 
@@ -58,6 +61,18 @@ func EnforceUserCreateRequestSecurity(e *core.RecordRequestEvent) error {
 
 	if strings.TrimSpace(e.Record.GetString("defaultRestaurantVisibility")) == "" {
 		e.Record.Set("defaultRestaurantVisibility", "friends")
+	}
+
+	if strings.TrimSpace(e.Record.GetString("defaultHomeFeedMode")) == "" {
+		e.Record.Set("defaultHomeFeedMode", "mine")
+	}
+
+	if strings.TrimSpace(e.Record.GetString("defaultHomeFeedTypeFilter")) == "" {
+		e.Record.Set("defaultHomeFeedTypeFilter", "visits")
+	}
+
+	if strings.TrimSpace(e.Record.GetString("defaultHomeFeedSort")) == "" {
+		e.Record.Set("defaultHomeFeedSort", "created")
 	}
 
 	if strings.TrimSpace(e.Record.GetString("moderationState")) == "" {
@@ -112,7 +127,7 @@ func EnforceUserUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 		sort.Strings(blockedFields)
 		return apis.NewForbiddenError(
 			fmt.Sprintf(
-				"you can only modify name, defaultVisitVisibility, defaultRestaurantVisibility, and mobileOnboardingState; blocked fields: %s",
+				"you can only modify name, default visibility, Home feed defaults, and mobileOnboardingState; blocked fields: %s",
 				strings.Join(blockedFields, ", "),
 			),
 			nil,

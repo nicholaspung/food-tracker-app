@@ -28,6 +28,9 @@ export interface AuthUser {
   name?: string;
   friendCode?: string;
   createdAt?: string;
+  defaultHomeFeedMode?: 'mine' | 'friends';
+  defaultHomeFeedTypeFilter?: 'all' | 'visits' | 'food-products';
+  defaultHomeFeedSort?: 'created' | 'tracked';
   verified: boolean;
   isAdmin?: boolean;
   isSubscriber?: boolean;
@@ -37,6 +40,18 @@ export interface AuthUser {
 
 function normalizeIsoString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function normalizeHomeFeedMode(value: unknown): AuthUser['defaultHomeFeedMode'] {
+  return value === 'friends' ? 'friends' : value === 'mine' ? 'mine' : undefined;
+}
+
+function normalizeHomeFeedTypeFilter(value: unknown): AuthUser['defaultHomeFeedTypeFilter'] {
+  return value === 'all' || value === 'visits' || value === 'food-products' ? value : undefined;
+}
+
+function normalizeHomeFeedSort(value: unknown): AuthUser['defaultHomeFeedSort'] {
+  return value === 'created' || value === 'tracked' ? value : undefined;
 }
 
 function normalizeMainOnboardingState(value: unknown): MainOnboardingState | undefined {
@@ -153,6 +168,9 @@ export function normalizeAuthUser(record: Record<string, unknown> | null | undef
     name: typeof record.name === 'string' ? record.name : undefined,
     friendCode: typeof record.friendCode === 'string' ? record.friendCode : undefined,
     createdAt: typeof record.created === 'string' ? record.created : undefined,
+    defaultHomeFeedMode: normalizeHomeFeedMode(record.defaultHomeFeedMode),
+    defaultHomeFeedTypeFilter: normalizeHomeFeedTypeFilter(record.defaultHomeFeedTypeFilter),
+    defaultHomeFeedSort: normalizeHomeFeedSort(record.defaultHomeFeedSort),
     verified: Boolean(record.verified),
     isAdmin: Boolean(record.isAdmin),
     isSubscriber: Boolean(record.isSubscriber),

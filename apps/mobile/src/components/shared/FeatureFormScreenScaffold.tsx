@@ -6,16 +6,9 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import { createThemedStyles, useTheme } from '../../theme';
-import { Button, Screen } from '../../ui';
+import { Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
-
-interface FeatureFormAction {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  variant?: 'primary' | 'secondary';
-}
+import { StickyActionFooter, type StickyActionFooterAction } from './StickyActionFooter';
 
 export interface FeatureFormScreenScaffoldProps {
   title: string;
@@ -31,8 +24,8 @@ export interface FeatureFormScreenScaffoldProps {
   scrollViewProps?: Omit<ScrollViewProps, 'ref' | 'contentContainerStyle' | 'style'>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
-  primaryAction: FeatureFormAction;
-  secondaryAction?: FeatureFormAction;
+  primaryAction: StickyActionFooterAction;
+  secondaryAction?: StickyActionFooterAction;
   testID?: string;
 }
 
@@ -60,18 +53,6 @@ const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
     gap: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
-  },
-  footer: {
-    backgroundColor: theme.colors.background.surface,
-    borderTopColor: theme.colors.border.subtle,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-  },
-  footerAction: {
-    flex: 1,
   },
 }));
 
@@ -143,7 +124,7 @@ export function FeatureFormScreenScaffold({
           {children}
         </KeyboardAwareScrollView>
 
-        <View
+        <StickyActionFooter
           onLayout={(event) => {
             const nextFooterHeight = event.nativeEvent.layout.height;
 
@@ -151,27 +132,9 @@ export function FeatureFormScreenScaffold({
               currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
             );
           }}
-          style={styles.footer}
-        >
-          {secondaryAction ? (
-            <Button
-              disabled={secondaryAction.disabled}
-              label={secondaryAction.label}
-              loading={secondaryAction.loading}
-              onPress={secondaryAction.onPress}
-              style={styles.footerAction}
-              variant={secondaryAction.variant ?? 'secondary'}
-            />
-          ) : null}
-          <Button
-            disabled={primaryAction.disabled}
-            label={primaryAction.label}
-            loading={primaryAction.loading}
-            onPress={primaryAction.onPress}
-            style={styles.footerAction}
-            variant={primaryAction.variant ?? 'primary'}
-          />
-        </View>
+          primaryAction={primaryAction}
+          secondaryAction={secondaryAction}
+        />
       </View>
     </Screen>
   );

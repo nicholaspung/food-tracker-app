@@ -5,6 +5,7 @@ export * from './friendCodeUtils';
 export * from './friendsQuery';
 export * from './homeFeedQuery';
 export * from './homeFeedPagination';
+export * from './homeFeedPreferences';
 export * from './menuParsingGateway';
 export * from './notesCache';
 export * from './notesQuery';

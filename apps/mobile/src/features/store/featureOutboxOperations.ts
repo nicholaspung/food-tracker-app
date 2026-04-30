@@ -5,6 +5,11 @@ import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
 import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
+  buildHomeFeedDefaultsUpdate,
+  mapHomeFeedDefaultsFromRecord,
+  type HomeFeedDefaultsRecord,
+} from './homeFeedPreferences';
+import {
   buildMainOnboardingCompletedState,
   buildAddOnboardingCardDismissedState,
   buildMoreOnboardingCardDismissedState,
@@ -149,7 +154,7 @@ interface FriendRemoveOperationPayload {
   friendId: string;
 }
 
-interface SettingsVisibilitySaveOperationPayload {
+interface SettingsSaveOperationPayload extends HomeFeedDefaultsRecord {
   userId: string;
   defaultVisitVisibility: 'friends' | 'private';
   defaultRestaurantVisibility: 'private' | 'friends';
@@ -169,7 +174,7 @@ interface AddOnboardingCardDismissOperationPayload extends DismissAddOnboardingC
 }
 
 export interface FeatureOutboxOperationPayloadMap {
-  'settings.visibility.save': SettingsVisibilitySaveOperationPayload;
+  'settings.visibility.save': SettingsSaveOperationPayload;
   'onboarding.main.complete': MainOnboardingCompleteOperationPayload;
   'onboarding.more-card.dismiss': MoreOnboardingCardDismissOperationPayload;
   'onboarding.add-card.dismiss': AddOnboardingCardDismissOperationPayload;
@@ -381,7 +386,10 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
 
   switch (operationName) {
     case 'settings.visibility.save': {
-      const settingsPayload = payload as SettingsVisibilitySaveOperationPayload;
+      const settingsPayload = payload as SettingsSaveOperationPayload;
+      const homeFeedDefaultsUpdate = buildHomeFeedDefaultsUpdate(
+        mapHomeFeedDefaultsFromRecord(settingsPayload),
+      );
       const updatedRecord = await updateCollectionRecord<RecordModel>(
         'users',
         settingsPayload.userId,
@@ -389,6 +397,7 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
           defaultListVisibility: settingsPayload.defaultListVisibility,
           defaultRestaurantVisibility: settingsPayload.defaultRestaurantVisibility,
           defaultVisitVisibility: settingsPayload.defaultVisitVisibility,
+          ...homeFeedDefaultsUpdate,
         },
         {
           headers: requestOptions.headers,

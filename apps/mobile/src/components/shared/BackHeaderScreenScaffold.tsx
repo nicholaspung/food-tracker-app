@@ -7,6 +7,7 @@ import { useWindowDimensions } from 'react-native';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
+import { StickyActionFooter, type StickyActionFooterAction } from './StickyActionFooter';
 
 type ContentBackgroundTone = 'app' | 'surface' | 'muted';
 type OverscrollBackgroundStrategy = 'measured-header' | 'legacy-midpoint';
@@ -33,6 +34,8 @@ export interface BackHeaderScreenScaffoldProps {
   headerScrollMode?: HeaderScrollMode;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
+  primaryAction?: StickyActionFooterAction;
+  secondaryAction?: StickyActionFooterAction;
   children: ReactNode;
   testID?: string;
 }
@@ -79,6 +82,8 @@ export function BackHeaderScreenScaffold({
   headerScrollMode = 'attached',
   contentStyle,
   bodyStyle,
+  primaryAction,
+  secondaryAction,
   children,
   testID,
 }: BackHeaderScreenScaffoldProps) {
@@ -103,6 +108,9 @@ export function BackHeaderScreenScaffold({
     backgroundColor,
     usesFixedHeaderScroll,
   );
+  const footerContent = primaryAction ? (
+    <StickyActionFooter primaryAction={primaryAction} secondaryAction={secondaryAction} />
+  ) : null;
 
   return (
     <Screen
@@ -137,30 +145,36 @@ export function BackHeaderScreenScaffold({
         />
       </View>
       {usesFixedHeaderScroll ? (
-        <KeyboardAwareScrollView
-          automaticallyAdjustKeyboardInsets={false}
-          bottomOffset={theme.spacing.sm}
-          contentContainerStyle={[styles.body, bodyStyle]}
-          enabled={keyboardAware}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            onRefresh ? (
-              <RefreshControl
-                colors={[theme.colors.text.brand]}
-                onRefresh={onRefresh}
-                progressBackgroundColor={theme.colors.background.surface}
-                refreshing={refreshing}
-                tintColor={theme.colors.text.brand}
-              />
-            ) : undefined
-          }
-          style={styles.scrollBody}
-        >
-          {children}
-        </KeyboardAwareScrollView>
+        <>
+          <KeyboardAwareScrollView
+            automaticallyAdjustKeyboardInsets={false}
+            bottomOffset={theme.spacing.sm}
+            contentContainerStyle={[styles.body, bodyStyle]}
+            enabled={keyboardAware}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              onRefresh ? (
+                <RefreshControl
+                  colors={[theme.colors.text.brand]}
+                  onRefresh={onRefresh}
+                  progressBackgroundColor={theme.colors.background.surface}
+                  refreshing={refreshing}
+                  tintColor={theme.colors.text.brand}
+                />
+              ) : undefined
+            }
+            style={styles.scrollBody}
+          >
+            {children}
+          </KeyboardAwareScrollView>
+          {footerContent}
+        </>
       ) : (
-        <View style={[styles.body, bodyStyle]}>{children}</View>
+        <>
+          <View style={[styles.body, bodyStyle]}>{children}</View>
+          {footerContent}
+        </>
       )}
     </Screen>
   );

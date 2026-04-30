@@ -12,6 +12,9 @@ const TEST_THEME = {
       muted: 'muted-background',
       surface: 'surface-background',
     },
+    border: {
+      subtle: 'subtle-border',
+    },
     text: {
       brand: 'brand-text',
     },
@@ -53,6 +56,7 @@ jest.mock('../theme', () => ({
 }));
 
 jest.mock('../ui', () => ({
+  Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Screen', props, children),
 }));
@@ -210,5 +214,52 @@ describe('BackHeaderScreenScaffold', () => {
     );
     expect(screen.props.scroll).toBe(true);
     expect(screen.props.scrollUnderlayTopInset).toBe(320);
+  });
+
+  it('does not render a sticky action footer by default', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        headerScrollMode: 'fixed',
+      });
+    });
+
+    expect(renderer.root.findAllByType('Button')).toHaveLength(0);
+  });
+
+  it('renders a sticky action footer after the fixed-header scroll body', async () => {
+    const onPress = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        headerScrollMode: 'fixed',
+        primaryAction: {
+          label: 'Save Settings',
+          onPress,
+          testID: 'settings-save-button',
+        },
+      });
+    });
+
+    const screen = renderer.root.findByType('Screen');
+    const scrollView = renderer.root.findByType('KeyboardAwareScrollView');
+    const button = renderer.root.findByType('Button');
+
+    expect(screen.props.scroll).toBe(false);
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        flex: 1,
+      }),
+    );
+    expect(button.props).toEqual(
+      expect.objectContaining({
+        label: 'Save Settings',
+        onPress,
+        testID: 'settings-save-button',
+        variant: 'primary',
+      }),
+    );
   });
 });

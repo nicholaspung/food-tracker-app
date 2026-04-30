@@ -47,6 +47,7 @@ export * from './Skeleton';
 export * from './StaticContentSectionsScreen';
 export * from './StatusPill';
 export * from './StepProgressBar';
+export * from './StickyActionFooter';
 export * from './TabBrandHeader';
 export * from './TabSectionCard';
 export * from './TabRootScreenScaffold';

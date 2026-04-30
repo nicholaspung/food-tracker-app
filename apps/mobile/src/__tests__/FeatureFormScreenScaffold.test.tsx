@@ -143,4 +143,75 @@ describe('FeatureFormScreenScaffold', () => {
 
     expect(headerBottomStyle.backgroundColor).toBe(TEST_THEME.colors.background.app);
   });
+
+  it('renders the shared sticky action footer with scaffold actions', async () => {
+    const primaryAction = {
+      label: 'Save',
+      onPress: jest.fn(),
+      testID: 'save-button',
+    };
+    const secondaryAction = {
+      label: 'Cancel',
+      onPress: jest.fn(),
+      testID: 'cancel-button',
+    };
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        primaryAction,
+        secondaryAction,
+      });
+    });
+
+    const buttons = renderer!.root.findAllByType('Button');
+
+    expect(buttons.map((button: any) => button.props.label)).toEqual(['Cancel', 'Save']);
+    expect(buttons[0].props).toEqual(
+      expect.objectContaining({
+        onPress: secondaryAction.onPress,
+        testID: 'cancel-button',
+        variant: 'secondary',
+      }),
+    );
+    expect(buttons[1].props).toEqual(
+      expect.objectContaining({
+        onPress: primaryAction.onPress,
+        testID: 'save-button',
+        variant: 'primary',
+      }),
+    );
+  });
+
+  it('updates the keyboard bottom offset from the measured footer height', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold();
+    });
+
+    const footer = renderer!.root.find(
+      (node: any) =>
+        node.type === 'View' &&
+        typeof node.props.onLayout === 'function' &&
+        node.findAllByType('Button').length > 0,
+    );
+
+    act(() => {
+      footer.props.onLayout({
+        nativeEvent: {
+          layout: {
+            height: 80,
+            width: 360,
+            x: 0,
+            y: 0,
+          },
+        },
+      });
+    });
+
+    const scrollView = renderer!.root.findByType('KeyboardAwareScrollView');
+
+    expect(scrollView.props.bottomOffset).toBe(80 + TEST_THEME.spacing.sm);
+  });
 });

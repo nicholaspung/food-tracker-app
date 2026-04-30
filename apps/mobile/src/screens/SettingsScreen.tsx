@@ -13,11 +13,16 @@ import {
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
+  buildHomeFeedDefaultsUpdate,
   getCollectionRecord,
   invalidateSettingsQueries,
+  mapHomeFeedDefaultsFromRecord,
   saveAuthRecord,
   settingsQueryKeys,
   updateCollectionRecord,
+  type HomeFeedDefaultMode,
+  type HomeFeedDefaultSort,
+  type HomeFeedDefaultTypeFilter,
 } from '../features';
 import { getAuthRecord } from '../features/store/pocketbaseGateway';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -26,7 +31,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme, type ThemePreference } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -40,16 +45,38 @@ const appearanceOptions = [
   { label: 'Dark', value: 'dark' },
 ] as const satisfies readonly { label: string; value: ThemePreference }[];
 
+const homeFeedModeOptions = [
+  { label: 'Mine', value: 'mine' },
+  { label: 'Friends', value: 'friends' },
+] as const satisfies readonly { label: string; value: HomeFeedDefaultMode }[];
+
+const homeFeedTypeOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Visits', value: 'visits' },
+  { label: 'Food Products', value: 'food-products' },
+] as const satisfies readonly { label: string; value: HomeFeedDefaultTypeFilter }[];
+
+const homeFeedSortOptions = [
+  { label: 'Date Created', value: 'created' },
+  { label: 'Date Tracked', value: 'tracked' },
+] as const satisfies readonly { label: string; value: HomeFeedDefaultSort }[];
+
 interface UserSettingsRecord {
   defaultVisitVisibility?: unknown;
   defaultRestaurantVisibility?: unknown;
   defaultListVisibility?: unknown;
+  defaultHomeFeedMode?: unknown;
+  defaultHomeFeedTypeFilter?: unknown;
+  defaultHomeFeedSort?: unknown;
 }
 
 interface UserSettings {
   visitVisibility: VisitVisibility;
   restaurantVisibility: RestaurantVisibility;
   listVisibility: ListVisibility;
+  homeFeedMode: HomeFeedDefaultMode;
+  homeFeedTypeFilter: HomeFeedDefaultTypeFilter;
+  homeFeedSort: HomeFeedDefaultSort;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -81,10 +108,13 @@ function normalizeListVisibility(value: unknown): ListVisibility {
 }
 
 function mapUserSettings(record: UserSettingsRecord): UserSettings {
+  const homeFeedDefaults = mapHomeFeedDefaultsFromRecord(record);
+
   return {
     visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
     restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
     listVisibility: normalizeListVisibility(record.defaultListVisibility),
+    ...homeFeedDefaults,
   };
 }
 
@@ -98,6 +128,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
   const [listVisibility, setListVisibility] = useState<ListVisibility>('friends');
+  const [homeFeedMode, setHomeFeedMode] = useState<HomeFeedDefaultMode>('mine');
+  const [homeFeedTypeFilter, setHomeFeedTypeFilter] = useState<HomeFeedDefaultTypeFilter>('visits');
+  const [homeFeedSort, setHomeFeedSort] = useState<HomeFeedDefaultSort>('created');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -123,6 +156,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setVisitVisibility(settingsQuery.data.visitVisibility);
     setRestaurantVisibility(settingsQuery.data.restaurantVisibility);
     setListVisibility(settingsQuery.data.listVisibility);
+    setHomeFeedMode(settingsQuery.data.homeFeedMode);
+    setHomeFeedTypeFilter(settingsQuery.data.homeFeedTypeFilter);
+    setHomeFeedSort(settingsQuery.data.homeFeedSort);
   }, [settingsQuery.data]);
 
   const hasPendingChanges = useMemo(() => {
@@ -133,9 +169,20 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     return (
       visitVisibility !== settingsQuery.data.visitVisibility ||
       restaurantVisibility !== settingsQuery.data.restaurantVisibility ||
-      listVisibility !== settingsQuery.data.listVisibility
+      listVisibility !== settingsQuery.data.listVisibility ||
+      homeFeedMode !== settingsQuery.data.homeFeedMode ||
+      homeFeedTypeFilter !== settingsQuery.data.homeFeedTypeFilter ||
+      homeFeedSort !== settingsQuery.data.homeFeedSort
     );
-  }, [listVisibility, restaurantVisibility, settingsQuery.data, visitVisibility]);
+  }, [
+    homeFeedMode,
+    homeFeedSort,
+    homeFeedTypeFilter,
+    listVisibility,
+    restaurantVisibility,
+    settingsQuery.data,
+    visitVisibility,
+  ]);
 
   const handleSaveSettings = async () => {
     if (!user?.id) {
@@ -155,6 +202,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       visitVisibility,
       restaurantVisibility,
       listVisibility,
+      homeFeedMode,
+      homeFeedTypeFilter,
+      homeFeedSort,
       hasPendingChanges,
       isOnline,
     });
@@ -165,6 +215,11 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         defaultListVisibility: listVisibility,
         defaultRestaurantVisibility: restaurantVisibility,
         defaultVisitVisibility: visitVisibility,
+        ...buildHomeFeedDefaultsUpdate({
+          homeFeedMode,
+          homeFeedTypeFilter,
+          homeFeedSort,
+        }),
       };
 
       const saveResult = await writeFeature({
@@ -202,6 +257,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
           visitVisibility,
           restaurantVisibility,
           listVisibility,
+          homeFeedMode,
+          homeFeedTypeFilter,
+          homeFeedSort,
           queued: true,
         });
         setSuccessMessage('Settings saved offline and will sync when you reconnect.');
@@ -220,6 +278,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         visitVisibility,
         restaurantVisibility,
         listVisibility,
+        homeFeedMode,
+        homeFeedTypeFilter,
+        homeFeedSort,
         queued: false,
       });
       setSuccessMessage('Settings saved successfully.');
@@ -270,6 +331,39 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setListVisibility(value);
   };
 
+  const handleSelectHomeFeedMode = (value: HomeFeedDefaultMode) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_HOME_FEED_MODE_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: homeFeedMode,
+      nextValue: value,
+    });
+    setHomeFeedMode(value);
+  };
+
+  const handleSelectHomeFeedTypeFilter = (value: HomeFeedDefaultTypeFilter) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_HOME_FEED_TYPE_FILTER_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: homeFeedTypeFilter,
+      nextValue: value,
+    });
+    setHomeFeedTypeFilter(value);
+  };
+
+  const handleSelectHomeFeedSort = (value: HomeFeedDefaultSort) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_HOME_FEED_SORT_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: homeFeedSort,
+      nextValue: value,
+    });
+    setHomeFeedSort(value);
+  };
+
   const handleSelectAppearance = (value: ThemePreference) => {
     trackObservabilityEvent('SETTINGS_APPEARANCE_CHANGED', {
       source: 'SettingsScreen',
@@ -292,6 +386,19 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       />
     </SectionCard>
   );
+
+  const canShowSaveSettingsAction = !settingsQuery.isLoading && !settingsQuery.isError;
+  const saveSettingsAction = canShowSaveSettingsAction
+    ? {
+        disabled: !hasPendingChanges || isSaving,
+        label: isSaving ? 'Saving...' : 'Save Settings',
+        loading: isSaving,
+        onPress: () => {
+          void handleSaveSettings();
+        },
+        testID: 'settings-save-button',
+      }
+    : undefined;
 
   const visitVisibilityDescriptions = useMemo(
     () =>
@@ -327,7 +434,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         onBackPress={() => {
           navigation.navigate('Profile');
         }}
-        subtitle="Set defaults for new visits, restaurants, and lists"
+        subtitle="Set Home and content defaults"
         testID="settings-screen"
         title="Settings"
       >
@@ -349,7 +456,8 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       onBackPress={() => {
         navigation.navigate('Profile');
       }}
-      subtitle="Set defaults for new visits, restaurants, and lists"
+      primaryAction={saveSettingsAction}
+      subtitle="Set Home and content defaults"
       testID="settings-screen"
       title="Settings"
     >
@@ -386,6 +494,41 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
         {!settingsQuery.isLoading && !settingsQuery.isError ? (
           <>
+            <SectionCard
+              description="Choose how your Home tab opens when you start a new app session."
+              title="Default Home Feed"
+            >
+              <View style={styles.optionList}>
+                <Text tone="muted" variant="label">
+                  Feed
+                </Text>
+                <SegmentedControl
+                  getOptionTestID={(value) => `settings-home-feed-mode-${value}`}
+                  onChange={handleSelectHomeFeedMode}
+                  options={homeFeedModeOptions}
+                  value={homeFeedMode}
+                />
+                <Text tone="muted" variant="label">
+                  Type
+                </Text>
+                <SegmentedControl
+                  getOptionTestID={(value) => `settings-home-feed-type-${value}`}
+                  onChange={handleSelectHomeFeedTypeFilter}
+                  options={homeFeedTypeOptions}
+                  value={homeFeedTypeFilter}
+                />
+                <Text tone="muted" variant="label">
+                  Sort
+                </Text>
+                <SegmentedControl
+                  getOptionTestID={(value) => `settings-home-feed-sort-${value}`}
+                  onChange={handleSelectHomeFeedSort}
+                  options={homeFeedSortOptions}
+                  value={homeFeedSort}
+                />
+              </View>
+            </SectionCard>
+
             <SectionCard
               description="Choose who can see your visits by default. You can change this on each visit later."
               title="Default Visit Visibility"
@@ -451,15 +594,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                 </Text>
               </Card>
             ) : null}
-
-            <Button
-              disabled={!hasPendingChanges || isSaving}
-              label={isSaving ? 'Saving...' : 'Save Settings'}
-              loading={isSaving}
-              onPress={() => {
-                void handleSaveSettings();
-              }}
-            />
           </>
         ) : null}
       </View>

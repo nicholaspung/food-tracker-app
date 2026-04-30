@@ -26,6 +26,7 @@ import {
   homeFeedQueryKeys,
   invalidateHomeFeedQueries,
   HOME_FEED_DEFAULT_SORTS,
+  mapHomeFeedDefaultsFromRecord,
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
@@ -392,19 +393,27 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
   const mineFeedListRef = useRef<FlatList<FeedItem> | null>(null);
   const highlightedVisitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousDefaultsUserIdRef = useRef<string | null | undefined>(undefined);
   const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const trackWriteTelemetry = useWriteTelemetry();
   const { isOnline } = useConnectivity();
-  const [feedMode, setFeedMode] = useState<FeedMode>('mine');
+  const initialHomeFeedDefaults = useMemo(() => mapHomeFeedDefaultsFromRecord(user), [user]);
+  const [feedMode, setFeedMode] = useState<FeedMode>(initialHomeFeedDefaults.homeFeedMode);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('visits');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialHomeFeedDefaults.homeFeedTypeFilter);
   const [sortByMode, setSortByMode] = useState<Record<FeedMode, SortFilter>>({
-    friends: HOME_FEED_DEFAULT_SORTS.friends,
-    mine: HOME_FEED_DEFAULT_SORTS.mine,
+    friends:
+      initialHomeFeedDefaults.homeFeedMode === 'friends'
+        ? initialHomeFeedDefaults.homeFeedSort
+        : HOME_FEED_DEFAULT_SORTS.friends,
+    mine:
+      initialHomeFeedDefaults.homeFeedMode === 'mine'
+        ? initialHomeFeedDefaults.homeFeedSort
+        : HOME_FEED_DEFAULT_SORTS.mine,
   });
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
@@ -466,6 +475,32 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     isFetchingNextPage: isFetchingNextHomeFeedPage,
   } = homeFeedQuery;
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(homeFeedQuery.isRefetching);
+
+  useEffect(() => {
+    if (previousDefaultsUserIdRef.current === undefined) {
+      previousDefaultsUserIdRef.current = authenticatedUserId;
+      return;
+    }
+
+    if (previousDefaultsUserIdRef.current === authenticatedUserId) {
+      return;
+    }
+
+    previousDefaultsUserIdRef.current = authenticatedUserId;
+    setFeedMode(initialHomeFeedDefaults.homeFeedMode);
+    setTypeFilter(initialHomeFeedDefaults.homeFeedTypeFilter);
+    setSearchQuery('');
+    setFiltersExpanded(false);
+    setSortByMode((previous) => ({
+      ...previous,
+      [initialHomeFeedDefaults.homeFeedMode]: initialHomeFeedDefaults.homeFeedSort,
+    }));
+  }, [
+    authenticatedUserId,
+    initialHomeFeedDefaults.homeFeedMode,
+    initialHomeFeedDefaults.homeFeedSort,
+    initialHomeFeedDefaults.homeFeedTypeFilter,
+  ]);
 
   const loadedFeed = useMemo(
     () =>

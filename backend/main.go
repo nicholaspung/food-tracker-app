@@ -100,6 +100,18 @@ func main() {
 			e.Record.Set("defaultRestaurantVisibility", "friends")
 		}
 
+		if strings.TrimSpace(e.Record.GetString("defaultHomeFeedMode")) == "" {
+			e.Record.Set("defaultHomeFeedMode", "mine")
+		}
+
+		if strings.TrimSpace(e.Record.GetString("defaultHomeFeedTypeFilter")) == "" {
+			e.Record.Set("defaultHomeFeedTypeFilter", "visits")
+		}
+
+		if strings.TrimSpace(e.Record.GetString("defaultHomeFeedSort")) == "" {
+			e.Record.Set("defaultHomeFeedSort", "created")
+		}
+
 		if strings.TrimSpace(e.Record.GetString("moderationState")) == "" {
 			e.Record.Set("moderationState", "active")
 		}

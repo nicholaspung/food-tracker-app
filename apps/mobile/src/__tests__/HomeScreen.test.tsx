@@ -180,6 +180,14 @@ jest.mock('../features', () => ({
   },
   invalidateHomeFeedQueries: jest.fn(),
   listHomeFeedPage: jest.fn(),
+  mapHomeFeedDefaultsFromRecord: (record: Record<string, unknown> | null | undefined) => ({
+    homeFeedMode: record?.defaultHomeFeedMode === 'friends' ? 'friends' : 'mine',
+    homeFeedSort: record?.defaultHomeFeedSort === 'tracked' ? 'tracked' : 'created',
+    homeFeedTypeFilter:
+      record?.defaultHomeFeedTypeFilter === 'all' || record?.defaultHomeFeedTypeFilter === 'food-products'
+        ? record.defaultHomeFeedTypeFilter
+        : 'visits',
+  }),
 }));
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
@@ -434,6 +442,48 @@ describe('HomeScreen', () => {
       expect.objectContaining({
         enabled: true,
         queryKey: ['feature', 'homeFeed', 'user', 'user-1', 'paginated', 'mine', 'visits', 'created', ''],
+      }),
+    );
+  });
+
+  it('uses saved home feed defaults for the initial query key', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedSort: 'tracked',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockedHomeFeedQueryKeys.paginated).toHaveBeenCalledWith(
+      'user-1',
+      'friends',
+      'all',
+      'tracked',
+      '',
+    );
+    expect(mockedUseInfiniteQuery.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        queryKey: ['feature', 'homeFeed', 'user', 'user-1', 'paginated', 'friends', 'all', 'tracked', ''],
       }),
     );
   });

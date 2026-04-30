@@ -6,6 +6,15 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 const mockReact = React;
 const mockSetPreference = jest.fn();
 const mockSaveSettings = jest.fn();
+const mockSetQueryData = jest.fn();
+const mockSettingsData = {
+  homeFeedMode: 'mine',
+  homeFeedSort: 'created',
+  homeFeedTypeFilter: 'visits',
+  listVisibility: 'friends',
+  restaurantVisibility: 'private',
+  visitVisibility: 'friends',
+};
 
 const mockTheme = {
   colors: {
@@ -41,17 +50,13 @@ jest.mock('react-native', () => ({
 
 jest.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
-    data: {
-      listVisibility: 'friends',
-      restaurantVisibility: 'private',
-      visitVisibility: 'friends',
-    },
+    data: mockSettingsData,
     isError: false,
     isLoading: false,
     refetch: jest.fn(),
   }),
   useQueryClient: () => ({
-    setQueryData: jest.fn(),
+    setQueryData: mockSetQueryData,
   }),
 }));
 
@@ -74,8 +79,32 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 }));
 
 jest.mock('../features', () => ({
+  buildHomeFeedDefaultsUpdate: ({
+    homeFeedMode,
+    homeFeedSort,
+    homeFeedTypeFilter,
+  }: {
+    homeFeedMode: string;
+    homeFeedSort: string;
+    homeFeedTypeFilter: string;
+  }) => ({
+    defaultHomeFeedMode: homeFeedMode === 'friends' ? 'friends' : 'mine',
+    defaultHomeFeedSort: homeFeedSort === 'tracked' ? 'tracked' : 'created',
+    defaultHomeFeedTypeFilter:
+      homeFeedTypeFilter === 'all' || homeFeedTypeFilter === 'food-products'
+        ? homeFeedTypeFilter
+        : 'visits',
+  }),
   getCollectionRecord: jest.fn(),
   invalidateSettingsQueries: jest.fn(),
+  mapHomeFeedDefaultsFromRecord: (record: Record<string, unknown> | null | undefined) => ({
+    homeFeedMode: record?.defaultHomeFeedMode === 'friends' ? 'friends' : 'mine',
+    homeFeedSort: record?.defaultHomeFeedSort === 'tracked' ? 'tracked' : 'created',
+    homeFeedTypeFilter:
+      record?.defaultHomeFeedTypeFilter === 'all' || record?.defaultHomeFeedTypeFilter === 'food-products'
+        ? record.defaultHomeFeedTypeFilter
+        : 'visits',
+  }),
   saveAuthRecord: jest.fn(),
   settingsQueryKeys: {
     detail: (userId: string) => ['settings', userId],
@@ -154,6 +183,18 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     mockSetPreference.mockClear();
     mockSaveSettings.mockClear();
+    mockSetQueryData.mockClear();
+    mockSaveSettings.mockResolvedValue({
+      result: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedSort: 'tracked',
+        defaultHomeFeedTypeFilter: 'all',
+        defaultListVisibility: 'friends',
+        defaultRestaurantVisibility: 'private',
+        defaultVisitVisibility: 'friends',
+      },
+      status: 'executed',
+    });
   });
 
   it('renders local appearance options and applies dark mode without saving server settings', async () => {
@@ -173,7 +214,7 @@ describe('SettingsScreen', () => {
     expect(sectionCards[0].props.description).toBe('Choose how Yummy Recs looks on this device.');
 
     const appearanceOptions = renderer.root.findAllByType('SegmentedOption');
-    expect(appearanceOptions.map((option: any) => option.props.label)).toEqual(['System', 'Light', 'Dark']);
+    expect(appearanceOptions.slice(0, 3).map((option: any) => option.props.label)).toEqual(['System', 'Light', 'Dark']);
 
     await act(async () => {
       renderer.root.findByProps({ testID: 'settings-appearance-dark' }).props.onPress();
@@ -181,5 +222,61 @@ describe('SettingsScreen', () => {
 
     expect(mockSetPreference).toHaveBeenCalledWith('dark');
     expect(mockSaveSettings).not.toHaveBeenCalled();
+  });
+
+  it('renders home feed default controls and saves changed defaults', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <SettingsScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'Settings-route', name: 'Settings' } as never}
+        />,
+      );
+    });
+
+    const sectionCards = renderer.root.findAllByType('SectionCard');
+    expect(sectionCards.map((section: any) => section.props.title)).toContain('Default Home Feed');
+
+    const findSaveAction = () => renderer.root.findByType('BackHeaderScreenScaffold').props.primaryAction;
+
+    expect(findSaveAction()).toEqual(
+      expect.objectContaining({
+        disabled: true,
+        label: 'Save Settings',
+        testID: 'settings-save-button',
+      }),
+    );
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'settings-home-feed-mode-friends' }).props.onPress();
+      renderer.root.findByProps({ testID: 'settings-home-feed-type-all' }).props.onPress();
+      renderer.root.findByProps({ testID: 'settings-home-feed-sort-tracked' }).props.onPress();
+    });
+
+    expect(findSaveAction().disabled).toBe(false);
+
+    await act(async () => {
+      findSaveAction().onPress();
+      await Promise.resolve();
+    });
+
+    expect(mockSaveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'settings.visibility.save',
+        offline: expect.objectContaining({
+          payload: expect.objectContaining({
+            defaultHomeFeedMode: 'friends',
+            defaultHomeFeedSort: 'tracked',
+            defaultHomeFeedTypeFilter: 'all',
+            defaultListVisibility: 'friends',
+            defaultRestaurantVisibility: 'private',
+            defaultVisitVisibility: 'friends',
+            userId: 'user-1',
+          }),
+        }),
+      }),
+    );
   });
 });
