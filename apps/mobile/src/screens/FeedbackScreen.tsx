@@ -145,7 +145,9 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             return (
               <PendingQueuedWriteRow
                 key={write.id}
+                createdAt={write.createdAt}
                 description={payload.description ?? payload.message}
+                idempotencyKey={write.idempotencyKey}
                 lastError={write.lastError}
                 status={write.status}
                 title={payload.title?.trim() || 'Feedback message'}

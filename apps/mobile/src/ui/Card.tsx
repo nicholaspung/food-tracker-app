@@ -9,6 +9,7 @@ export type CardTone = 'default' | 'muted' | 'info' | 'warning' | 'danger' | 'su
 export interface CardProps {
   tone?: CardTone;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 const useStyles = createThemedStyles((theme, tone: CardTone) => ({
@@ -44,8 +45,8 @@ const useStyles = createThemedStyles((theme, tone: CardTone) => ({
   },
 }));
 
-export function Card({ children, tone = 'default', style }: PropsWithChildren<CardProps>) {
+export function Card({ children, testID, tone = 'default', style }: PropsWithChildren<CardProps>) {
   const styles = useStyles(tone);
 
-  return <View style={[styles.card, style]}>{children}</View>;
+  return <View style={[styles.card, style]} testID={testID}>{children}</View>;
 }

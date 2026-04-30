@@ -4,14 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
-import QRCode from 'react-native-qrcode-svg';
 
 import { FriendListItemCard } from '../components/friends';
 import {
   ConfirmDestructiveModal,
   EmptyState,
   HeaderAccessoryButton,
-  PendingQueuedWriteRow,
   ScreenContentSection,
   SegmentedControl,
   Skeleton,
@@ -45,22 +43,19 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { FriendCodePanel } from './friends/FriendCodePanel';
+import { FriendsPendingRequestsSection } from './friends/FriendsPendingRequestsSection';
+import { formatDate } from './friends/friendsFormatters';
+import {
+  FRIEND_ACTION_BY_OPERATION,
+  type FriendRemoveOperationName,
+  type FriendsSubTab,
+  type MainTab,
+} from './friends/friendsScreenTypes';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
-
-type MainTab = 'my-code' | 'friends-list';
-type FriendsSubTab = 'friends' | 'requests' | 'sent';
-type FriendRemoveOperationName = 'friend.remove' | 'friend.request.reject' | 'friend.request.cancel';
-type FriendActionName = 'accept' | 'reject' | 'cancel' | 'remove';
-
-const FRIEND_ACTION_BY_OPERATION: Record<'friend.accept' | FriendRemoveOperationName, FriendActionName> = {
-  'friend.accept': 'accept',
-  'friend.remove': 'remove',
-  'friend.request.reject': 'reject',
-  'friend.request.cancel': 'cancel',
-};
 
 const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   {
@@ -217,15 +212,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
 }));
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Unknown date';
-  }
-
-  return date.toLocaleDateString();
-}
 
 export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
@@ -754,23 +740,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           }}
         />
 
-        {pendingFriendRequestWrites.length > 0 ? (
-          <View style={styles.pendingStack}>
-            <Text variant="label">Pending friend requests</Text>
-            {pendingFriendRequestWrites.map((write) => {
-              const payload = write.payload as { email?: string; friendCode?: string };
-              return (
-                <PendingQueuedWriteRow
-                  key={write.id}
-                  description={payload.email ?? payload.friendCode}
-                  lastError={write.lastError}
-                  status={write.status}
-                  title="Send friend request"
-                />
-              );
-            })}
-          </View>
-        ) : null}
+        <FriendsPendingRequestsSection
+          pendingWrites={pendingFriendRequestWrites}
+          styles={styles}
+        />
 
         {mainTab === 'friends-list' ? (
           <SegmentedControl
@@ -787,38 +760,14 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     if (mainTab === 'my-code') {
       return (
         <View style={styles.body}>
-          <Card>
-            <Text style={styles.cardTitle} variant="sectionTitleTight">My Friend Code</Text>
-            <Text style={styles.cardDescription}>Share this code so friends can send you a request.</Text>
-            <View style={styles.codeBox}>
-              <View style={styles.codeHeaderRow}>
-                <Text style={styles.codeLabel} variant="bodySmTightSemiBold">Friend Code</Text>
-                <Pressable
-                  accessibilityLabel="Copy friend code"
-                  accessibilityRole="button"
-                  onPress={() => {
-                    void handleCopyFriendCode();
-                  }}
-                  style={styles.copyButton}
-                >
-                  <Ionicons color={theme.colors.text.info} name="copy-outline" size={16} />
-                </Pressable>
-              </View>
-              <Text style={styles.codeText} variant="displaySm">{myFriendCode}</Text>
-            </View>
-            <View style={styles.qrContainer}>
-              <QRCode
-                backgroundColor={theme.colors.background.surface}
-                color={theme.colors.text.primary}
-                quietZone={8}
-                size={176}
-                value={myFriendQrPayload}
-              />
-              <Text style={styles.qrDescription} tone="secondary">
-                Friends can scan this QR code to autofill your friend code.
-              </Text>
-            </View>
-          </Card>
+          <FriendCodePanel
+            code={myFriendCode}
+            onCopy={() => {
+              void handleCopyFriendCode();
+            }}
+            qrPayload={myFriendQrPayload}
+            styles={styles}
+          />
         </View>
       );
     }

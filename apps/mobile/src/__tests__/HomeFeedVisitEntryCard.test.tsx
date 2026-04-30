@@ -79,6 +79,10 @@ jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(() => 'pb://photo-thumb'),
 }));
 
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  buildPocketBaseFileUrl: jest.fn(() => 'pb://photo-thumb'),
+}));
+
 jest.mock('../lib/ratingConstants', () => ({
   getRatingColor: jest.fn(() => 'rating-color'),
   getRatingLabel: jest.fn(() => 'Great'),

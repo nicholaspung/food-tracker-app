@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -6,21 +5,17 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
-  CachedRemoteImage,
   EmptyState,
   ErrorState,
-  ExpandableText,
   FeatureDetailScreenScaffold,
   HeaderAccessoryButton,
   PendingQueuedWriteRow,
   PhotoViewerModal,
   SegmentedControl,
   Skeleton,
-  StatusPill,
   type SegmentedControlOption,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
   deleteNote,
   listNotePhotosForNote,
   listNotesOverviewPage,
@@ -29,6 +24,7 @@ import {
   type NotePhotoRecord,
   type NoteRecord,
 } from '../features';
+import { buildPhotoViewerState } from '../lib/photoUrls';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
@@ -38,15 +34,21 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles, useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { NoteCard } from './notes/NoteCard';
+import { compareNotesByCreatedAtDesc } from './notes/notesFormatters';
+import {
+  matchesNoteSearch,
+  MIN_SERVER_NOTE_SEARCH_LENGTH,
+  NOTE_SEARCH_DEBOUNCE_MS,
+  resolveNoteStatusFilter,
+  serverSearchResultsMatchQuery,
+} from './notes/notesSearch';
+import type { NotesFilter } from './notes/notesTypes';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
-type NotesFilter = 'unused' | 'used' | 'all';
-
-const MIN_SERVER_NOTE_SEARCH_LENGTH = 2;
-const NOTE_SEARCH_DEBOUNCE_MS = 250;
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -178,112 +180,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | 'used' {
-  if (activeFilter === 'unused') {
-    return 'draft';
-  }
-
-  if (activeFilter === 'used') {
-    return 'used';
-  }
-
-  return 'all';
-}
-
-function buildNotePreview(content: string): string {
-  const trimmedContent = content.trim();
-  if (!trimmedContent) {
-    return '';
-  }
-
-  return trimmedContent
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map((line) => {
-      if (!line.trim()) {
-        return '';
-      }
-
-      return line.replace(/[^\S\n]+/g, ' ').trim();
-    })
-    .join('\n');
-}
-
-function matchesNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return (
-    note.content.toLowerCase().includes(normalizedQuery) ||
-    note.locationText?.toLowerCase().includes(normalizedQuery) === true
-  );
-}
-
-function serverSearchResultsMatchQuery(
-  notes: readonly Pick<NoteRecord, 'content' | 'locationText'>[],
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim();
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return notes.every((note) => matchesNoteSearch(note, normalizedQuery));
-}
-
-function formatTimeAgo(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Unknown';
-  }
-
-  const elapsedMs = Date.now() - date.getTime();
-  const elapsedMinutes = Math.max(0, Math.floor(elapsedMs / (1000 * 60)));
-  if (elapsedMinutes < 1) {
-    return 'just now';
-  }
-
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m ago`;
-  }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) {
-    return `${elapsedHours}h ago`;
-  }
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 30) {
-    return `${elapsedDays}d ago`;
-  }
-
-  const elapsedMonths = Math.floor(elapsedDays / 30);
-  if (elapsedMonths < 12) {
-    return `${elapsedMonths}mo ago`;
-  }
-
-  const elapsedYears = Math.floor(elapsedMonths / 12);
-  return `${elapsedYears}y ago`;
-}
-
-function compareNotesByCreatedAtDesc(left: Pick<NoteRecord, 'createdAt' | 'updatedAt'>, right: Pick<NoteRecord, 'createdAt' | 'updatedAt'>): number {
-  const createdDiff = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-  if (!Number.isNaN(createdDiff) && createdDiff !== 0) {
-    return createdDiff;
-  }
-
-  const updatedDiff = new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-  if (!Number.isNaN(updatedDiff)) {
-    return updatedDiff;
-  }
-
-  return 0;
-}
-
 export function NotesScreen({ navigation }: NotesScreenProps) {
-  const theme = useTheme();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const {
@@ -493,26 +390,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       initialIndex,
     });
 
-    const urls = photos.map((photo) =>
-      buildPocketBaseFileUrl({
-        collectionName: 'note_photos',
-        recordId: photo.id,
-        filename: photo.photo,
-      }),
-    );
-    const previewUrls = photos.map((photo) =>
-      buildPocketBaseFileUrl({
-        collectionName: 'note_photos',
-        recordId: photo.id,
-        filename: photo.photo,
-        thumb: '100x100',
-      }),
-    );
-    const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
+    const viewerState = buildPhotoViewerState(photos, initialIndex, {
+      collectionName: 'note_photos',
+    });
 
-    setPhotoViewerUrls(urls);
-    setPhotoViewerPreviewUrls(previewUrls);
-    setPhotoViewerInitialIndex(boundedIndex);
+    setPhotoViewerUrls(viewerState.urls);
+    setPhotoViewerPreviewUrls(viewerState.previewUrls);
+    setPhotoViewerInitialIndex(viewerState.initialIndex);
     setPhotoViewerVisible(true);
   }, []);
 
@@ -686,129 +570,39 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       : baseNotesQuery;
 
   const renderNoteCard = useCallback(
-    (note: NoteOverviewItemRecord) => {
-      const photoPreview = note.photoPreview;
-      const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
-      const thumbnailUrl = photoPreview
-        ? buildPocketBaseFileUrl({
-            collectionName: 'note_photos',
-            recordId: photoPreview.id,
-            filename: photoPreview.photo,
-            thumb: '100x100',
-          })
-        : null;
-
-      return (
-        <Card tone={note.status === 'used' ? 'default' : 'info'}>
-          <View style={styles.noteTopRow}>
-            <View style={styles.noteMeta}>
-              <Ionicons color={theme.colors.text.muted} name="document-text-outline" size={14} />
-              <Text tone="muted" variant="bodySm">
-                {formatTimeAgo(note.createdAt)}
-              </Text>
-              {note.status === 'used' ? <StatusPill label="Used" tone="success" /> : null}
-            </View>
-
-            <View style={styles.noteActionsInline}>
-              {note.status === 'draft' ? (
-                <Pressable
-                  accessibilityLabel="Use note"
-                  accessibilityRole="button"
-                  onPress={() => {
-                    trackObservabilityEvent('NOTE_USE_TAPPED', {
-                      source: 'NotesScreen',
-                      noteStatus: note.status,
-                    });
-                    navigation.navigate('ProcessPhotos', { sourceNoteId: note.id });
-                  }}
-                  testID={`note-use-button-${note.id}`}
-                >
-                  <Text style={styles.useActionLabel} variant="bodyBaseSemiBold">Use</Text>
-                </Pressable>
-              ) : null}
-
-              <Pressable
-                accessibilityLabel="Edit note"
-                accessibilityRole="button"
-                onPress={() => {
-                  trackObservabilityEvent('NOTE_EDIT_TAPPED', {
-                    source: 'NotesScreen',
-                    noteStatus: note.status,
-                  });
-                  navigation.navigate('NoteEditor', { noteId: note.id });
-                }}
-                style={styles.iconAction}
-                testID={`note-edit-button-${note.id}`}
-              >
-                <Ionicons color={theme.colors.text.primary} name="create-outline" size={18} />
-              </Pressable>
-
-              <Pressable
-                accessibilityLabel="Delete note"
-                accessibilityRole="button"
-                onPress={() => {
-                  trackObservabilityEvent('NOTE_DELETE_TAPPED', {
-                    source: 'NotesScreen',
-                    noteStatus: note.status,
-                  });
-                  setActionErrorMessage(null);
-                  setPendingDeleteNote(note);
-                }}
-                style={styles.iconAction}
-                testID={`note-delete-button-${note.id}`}
-              >
-                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.noteContentRow}>
-            {thumbnailUrl ? (
-              <Pressable
-                accessibilityLabel={`View photos for note ${note.id}`}
-                disabled={loadingPhotoNoteId === note.id}
-                onPress={() => {
-                  void handleOpenNotePhotos(note);
-                }}
-                style={[
-                  styles.photoWrap,
-                  loadingPhotoNoteId === note.id ? styles.photoWrapLoading : null,
-                ]}
-              >
-                <CachedRemoteImage uri={thumbnailUrl} style={styles.photoThumb} />
-                {extraPhotoCount > 0 ? (
-                  <View style={styles.photoCountBadge}>
-                    <Text style={styles.photoCountText} variant="captionStrong">
-                      +{extraPhotoCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </Pressable>
-            ) : null}
-
-            <View style={styles.noteTextContent}>
-              <ExpandableText
-                collapsedNumberOfLines={note.locationText ? 3 : 4}
-                containerStyle={styles.notePreviewTapTarget}
-                interactionMode="tap-text"
-                variant="bodyMd"
-              >
-                {buildNotePreview(note.content)}
-              </ExpandableText>
-              {note.locationText ? (
-                <View style={styles.locationRow}>
-                  <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
-                  <Text numberOfLines={1} style={styles.locationText} variant="bodySm">
-                    {note.locationText}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-        </Card>
-      );
-    },
-    [handleOpenNotePhotos, loadingPhotoNoteId, navigation, styles, theme.colors.text.danger, theme.colors.text.muted, theme.colors.text.primary],
+    (note: NoteOverviewItemRecord) => (
+      <NoteCard
+        loadingPhotoNoteId={loadingPhotoNoteId}
+        note={note}
+        onDelete={(targetNote) => {
+          trackObservabilityEvent('NOTE_DELETE_TAPPED', {
+            source: 'NotesScreen',
+            noteStatus: targetNote.status,
+          });
+          setActionErrorMessage(null);
+          setPendingDeleteNote(targetNote);
+        }}
+        onEdit={(targetNote) => {
+          trackObservabilityEvent('NOTE_EDIT_TAPPED', {
+            source: 'NotesScreen',
+            noteStatus: targetNote.status,
+          });
+          navigation.navigate('NoteEditor', { noteId: targetNote.id });
+        }}
+        onOpenPhotos={(targetNote) => {
+          void handleOpenNotePhotos(targetNote);
+        }}
+        onUse={(targetNote) => {
+          trackObservabilityEvent('NOTE_USE_TAPPED', {
+            source: 'NotesScreen',
+            noteStatus: targetNote.status,
+          });
+          navigation.navigate('ProcessPhotos', { sourceNoteId: targetNote.id });
+        }}
+        styles={styles}
+      />
+    ),
+    [handleOpenNotePhotos, loadingPhotoNoteId, navigation, styles],
   );
 
   const notesListHeader = (
@@ -869,7 +663,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             return (
               <PendingQueuedWriteRow
                 key={write.id}
+                createdAt={write.createdAt}
                 description={payload.locationText}
+                idempotencyKey={write.idempotencyKey}
                 lastError={write.lastError}
                 status={write.status}
                 title={payload.title?.trim() || payload.content.trim().slice(0, 80) || 'New note'}

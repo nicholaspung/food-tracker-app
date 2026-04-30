@@ -49,6 +49,12 @@ jest.mock('../features', () => ({
   useMonthlyUsage: jest.fn(),
 }));
 
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  buildPocketBaseFileUrl: jest.fn(({ recordId, filename, thumb }) =>
+    `pb://${recordId}/${filename}${thumb ? `?thumb=${thumb}` : ''}`,
+  ),
+}));
+
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
 }));

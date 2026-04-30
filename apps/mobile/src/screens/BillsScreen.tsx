@@ -176,11 +176,13 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
               return (
                 <PendingQueuedWriteRow
                   key={write.id}
+                  createdAt={write.createdAt}
                   description={
                     participantCount > 0
                       ? `${participantCount} participant${participantCount === 1 ? '' : 's'}`
                       : undefined
                   }
+                  idempotencyKey={write.idempotencyKey}
                   lastError={write.lastError}
                   status={write.status}
                   title={payload.title?.trim() || 'New bill'}

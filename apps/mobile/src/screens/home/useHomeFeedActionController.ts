@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  buildPocketBaseFileUrl,
   deleteFoodProduct,
   deleteVisit,
   homeFeedQueryKeys,
@@ -17,6 +16,7 @@ import {
 import { moveVisitItemApiMutationInput } from '../../features/store/featureOutboxOperations';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
+import { buildPhotoViewerState } from '../../lib/photoUrls';
 import { trackObservabilityEvent } from '../../observability';
 import type {
   PendingDeleteTarget,
@@ -644,36 +644,13 @@ export function useHomeFeedActionController({
         return;
       }
 
-      const urls = photos.map((photo) =>
-        buildPocketBaseFileUrl({
-          collectionId: photo.collectionId,
-          collectionName: photo.collectionName ?? 'visit_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-        }),
-      );
-      const previewUrls = photos.map((photo) => {
-        const localUri = photo.uri?.trim();
-        if (localUri) {
-          return localUri;
-        }
-
-        return buildPocketBaseFileUrl({
-          collectionId: photo.collectionId,
-          collectionName: photo.collectionName ?? 'visit_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-          thumb: '100x100',
-        });
+      const viewerState = buildPhotoViewerState(photos, initialIndex, {
+        fullSizePreferLocalUri: false,
       });
-      const boundedIndex = Math.max(
-        0,
-        Math.min(initialIndex, urls.length - 1),
-      );
 
-      setPhotoViewerUrls(urls);
-      setPhotoViewerPreviewUrls(previewUrls);
-      setPhotoViewerInitialIndex(boundedIndex);
+      setPhotoViewerUrls(viewerState.urls);
+      setPhotoViewerPreviewUrls(viewerState.previewUrls);
+      setPhotoViewerInitialIndex(viewerState.initialIndex);
       setIsPhotoViewerVisible(true);
     },
     [],

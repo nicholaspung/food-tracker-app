@@ -886,7 +886,9 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
             return (
               <PendingQueuedWriteRow
                 key={write.id}
+                createdAt={write.createdAt}
                 description={description}
+                idempotencyKey={write.idempotencyKey}
                 lastError={write.lastError}
                 status={write.status}
                 title={title}

@@ -16,7 +16,6 @@ import {
   Skeleton,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
   createNote,
   formatLimitExceededMessage,
   getNoteDetail,
@@ -25,6 +24,7 @@ import {
   useMonthlyUsage,
   type NotePhotoUploadInput,
 } from '../features';
+import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -229,17 +229,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         id: photo.id,
         kind: 'existing' as const,
         label: formatPhotoAttachmentDateLabel(photo.capturedAt ?? photo.created),
-        thumbnailUri: buildPocketBaseFileUrl({
-          collectionName: 'note_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-          thumb: '100x100',
-        }),
-        viewerUri: buildPocketBaseFileUrl({
-          collectionName: 'note_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-        }),
+        thumbnailUri: buildPhotoThumbnailUrl(photo, { collectionName: 'note_photos' }),
+        viewerUri: buildPhotoFileUrl(photo, { collectionName: 'note_photos' }),
       })),
       ...newPhotos.map((photo) => ({
         id: photo.id,

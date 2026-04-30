@@ -100,6 +100,10 @@ jest.mock('../features', () => ({
   saveRestaurantFoodItemToList: jest.fn(),
 }));
 
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
+}));
+
 jest.mock('../features/store/useFeatureOutboxQueue', () => ({
   useFeatureOutboxQueue: jest.fn(),
 }));

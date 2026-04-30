@@ -17,7 +17,6 @@ import {
   Skeleton,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   deleteRestaurantList,
   getRestaurantListDetail,
@@ -30,13 +29,11 @@ import {
   removeRestaurantListUserRating,
   restaurantListQueryKeys,
   saveRestaurantFoodItemToList,
-  type RestaurantListDetailPhotoPreviewRecord,
 } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
-import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -45,147 +42,28 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import {
+  buildBookmarkLookupIds,
+  formatFullDateLabel,
+  formatMonthYearLabel,
+  normalizeMenuItemKey,
+} from './listDetail/listDetailFormatters';
+import {
+  buildBookmarkedItemPhotoEntries as buildBookmarkedPhotoEntries,
+  buildOwnerItemPhotoEntries as buildOwnerPhotoEntries,
+  groupListDetailPhotosByFoodItemId,
+} from './listDetail/listDetailPhotoEntries';
+import type {
+  GroupedBookmarkedItem,
+  GroupedRestaurant,
+  OwnerDisplayItem,
+  OwnerItemPhotoEntry,
+  PendingDeleteListItem,
+  SaveBookmarkTarget,
+  SaveBookmarkTrackingContext,
+} from './listDetail/listDetailTypes';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
-
-interface GroupedBookmarkedItem {
-  key: string;
-  bookmarkLookupIds: string[];
-  foodItemId: string;
-  listItemId: string;
-  name: string;
-  rating: number;
-  visitedAt?: string;
-  sourceUserId?: string;
-  sourceUserName?: string;
-  sourceNote?: string;
-  userFoodItemId?: string;
-  userFoodItemRating?: number;
-  userFoodItemVisitedAt?: string;
-}
-
-interface OwnerSourceRating {
-  listItemId: string;
-  foodItemId: string;
-  sourceUserName: string;
-  rating: number;
-  visitedAt?: string;
-}
-
-type OwnerUserRating =
-  | {
-      kind: 'linked';
-      listItemId: string;
-      userFoodItemId: string;
-      rating: number;
-      visitedAt?: string;
-    }
-  | {
-      kind: 'standalone';
-      listItemId: string;
-      foodItemId: string;
-      rating: number;
-      visitedAt?: string;
-    };
-
-interface OwnerDisplayItem {
-  key: string;
-  name: string;
-  orderIndex: number;
-  source?: OwnerSourceRating;
-  user?: OwnerUserRating;
-}
-
-interface OwnerItemPhotoEntry {
-  id: string;
-  previewUrl: string;
-  url: string;
-  ownerLabel: string;
-}
-
-interface GroupedRestaurant {
-  restaurantId: string;
-  restaurantName: string;
-  restaurantCity?: string;
-  restaurantCuisineType?: string;
-  notes: string[];
-  firstPosition: number;
-  items: GroupedBookmarkedItem[];
-}
-
-interface SaveBookmarkTarget {
-  bookmarkLookupIds: string[];
-  restaurantId: string;
-  restaurantName: string;
-  foodItemId: string;
-  foodItemName: string;
-  foodItemRating: number;
-  visitedAt?: string;
-  sourceNote?: string;
-}
-
-interface SaveBookmarkTrackingContext {
-  entryMethod: 'quick_default' | 'selected_lists';
-  createdDefaultList: boolean;
-}
-
-type PendingDeleteListItem =
-  | {
-      kind: 'source';
-      itemName: string;
-      listItemId: string;
-      foodItemId: string;
-    }
-  | {
-      kind: 'user-linked';
-      itemName: string;
-      listItemId: string;
-    }
-  | {
-      kind: 'user-standalone';
-      itemName: string;
-      listItemId: string;
-      foodItemId: string;
-    };
-
-function buildBookmarkLookupIds(...ids: (string | undefined)[]): string[] {
-  return Array.from(
-    new Set(
-      ids
-        .map((id) => id?.trim())
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-}
-
-function formatMonthYearLabel(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const label = formatDisplayDate(value, {
-    fallback: '',
-    options: { month: 'short', year: 'numeric' },
-  });
-  return label || null;
-}
-
-function formatFullDateLabel(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const label = formatDisplayDate(value, {
-    fallback: '',
-    options: { month: 'short', day: 'numeric', year: 'numeric' },
-  });
-  return label || null;
-}
-
-function normalizeMenuItemKey(value: string): string {
-  const trimmed = value.trim().toLowerCase();
-  return trimmed || value;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -732,21 +610,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     return Array.from(groups.values()).sort((left, right) => left.firstPosition - right.firstPosition);
   }, [listItems]);
 
-  const photosByFoodItemId = useMemo(() => {
-    const map = new Map<string, RestaurantListDetailPhotoPreviewRecord[]>();
-
-    for (const photo of detailQuery.data?.photoPreviews ?? []) {
-      if (!photo.food_item) {
-        continue;
-      }
-
-      const existing = map.get(photo.food_item) ?? [];
-      existing.push(photo);
-      map.set(photo.food_item, existing);
-    }
-
-    return map;
-  }, [detailQuery.data]);
+  const photosByFoodItemId = useMemo(
+    () => groupListDetailPhotosByFoodItemId(detailQuery.data?.photoPreviews ?? []),
+    [detailQuery.data],
+  );
 
   const buildOwnerDisplayItems = (items: GroupedBookmarkedItem[]): OwnerDisplayItem[] => {
     const rows = new Map<string, OwnerDisplayItem>();
@@ -816,64 +683,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     return Array.from(rows.values()).sort((left, right) => left.orderIndex - right.orderIndex);
   };
 
-  const getUserPhotoFoodItemId = (userRating: OwnerUserRating): string =>
-    userRating.kind === 'linked' ? userRating.userFoodItemId : userRating.foodItemId;
+  const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] =>
+    buildOwnerPhotoEntries(item, photosByFoodItemId);
 
-  const appendPhotoEntries = (
-    entriesById: Map<string, OwnerItemPhotoEntry>,
-    foodItemId: string | undefined,
-    fallbackOwnerLabel: string,
-  ) => {
-    if (!foodItemId) {
-      return;
-    }
-
-    const photos = photosByFoodItemId.get(foodItemId) ?? [];
-    for (const photo of photos) {
-      const ownerLabel = photo.ownerName?.trim() || fallbackOwnerLabel;
-      entriesById.set(photo.id, {
-        id: photo.id,
-        previewUrl: buildPocketBaseFileUrl({
-          collectionId: photo.collectionId,
-          collectionName: photo.collectionName ?? 'visit_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-          thumb: '100x100',
-        }),
-        url: buildPocketBaseFileUrl({
-          collectionId: photo.collectionId,
-          collectionName: photo.collectionName ?? 'visit_photos',
-          recordId: photo.id,
-          filename: photo.photo,
-        }),
-        ownerLabel,
-      });
-    }
-  };
-
-  const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] => {
-    const entriesById = new Map<string, OwnerItemPhotoEntry>();
-
-    if (item.source) {
-      appendPhotoEntries(entriesById, item.source.foodItemId, item.source.sourceUserName);
-    }
-
-    if (item.user) {
-      appendPhotoEntries(entriesById, getUserPhotoFoodItemId(item.user), 'You');
-    }
-
-    return Array.from(entriesById.values());
-  };
-
-  const buildBookmarkedItemPhotoEntries = (item: GroupedBookmarkedItem): OwnerItemPhotoEntry[] => {
-    const entriesById = new Map<string, OwnerItemPhotoEntry>();
-    const fallbackOwnerLabel = item.sourceUserName?.trim() || 'Friend';
-
-    appendPhotoEntries(entriesById, item.foodItemId, fallbackOwnerLabel);
-    appendPhotoEntries(entriesById, item.userFoodItemId, fallbackOwnerLabel);
-
-    return Array.from(entriesById.values());
-  };
+  const buildBookmarkedItemPhotoEntries = (item: GroupedBookmarkedItem): OwnerItemPhotoEntry[] =>
+    buildBookmarkedPhotoEntries(item, photosByFoodItemId);
 
   const openPhotoViewer = useCallback((entries: OwnerItemPhotoEntry[], initialIndex = 0) => {
     if (entries.length === 0) {

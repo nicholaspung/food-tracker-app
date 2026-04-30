@@ -27,7 +27,6 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
   convertVisitItemToFoodProduct,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
@@ -42,6 +41,7 @@ import {
   type VisitItem,
   type VisitPhotoRecord,
 } from '../features';
+import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
@@ -467,19 +467,8 @@ function buildExistingDraftVisitPhoto(
     kind: 'existing',
     id: photo.id,
     photoId: photo.id,
-    thumbnailUri: buildPocketBaseFileUrl({
-      collectionId: photo.collectionId,
-      collectionName,
-      recordId: photo.id,
-      filename: photo.photo,
-      thumb: '100x100',
-    }),
-    viewerUri: buildPocketBaseFileUrl({
-      collectionId: photo.collectionId,
-      collectionName,
-      recordId: photo.id,
-      filename: photo.photo,
-    }),
+    thumbnailUri: buildPhotoThumbnailUrl({ ...photo, collectionName }),
+    viewerUri: buildPhotoFileUrl({ ...photo, collectionName }),
     labelDate: formatPhotoAttachmentDateLabel(photo.created),
   };
 }

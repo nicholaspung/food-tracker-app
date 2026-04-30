@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -13,13 +13,9 @@ import {
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
   HomeFoodProductEntryCard,
-  PendingQueuedWriteRow,
   ScreenContentSection,
   Skeleton,
   TabRootScreenScaffold,
-  type FeedModeValue,
-  type FeedTypeFilterValue,
-  type HomeFeedSortValue,
 } from '../components/shared';
 import {
   createFriendSuggestionAcceptance,
@@ -31,7 +27,6 @@ import {
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
-  type FoodProductRecord,
   type VisitRecord,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -44,7 +39,6 @@ import {
 } from '../lib/pendingFriendSuggestion';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { type HomeInitialViewParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -54,47 +48,29 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { HomeFeedActionModals } from './home/HomeFeedActionModals';
+import { HomePendingEntriesSection } from './home/HomePendingEntriesSection';
+import {
+  applyInitialViewParams,
+  buildFoodProductFeedItem,
+  buildVisitFeedItem,
+  formatCount,
+  formatFriendEntryMonthLabel,
+  formatMineEntryFooterLabel,
+  getFriendEntryMonthInfo,
+} from './home/homeFeedGrouping';
+import type {
+  FeedItem,
+  FeedMode,
+  FriendFeedSection,
+  GroupedMonth,
+  SortFilter,
+  TypeFilter,
+} from './home/homeFeedTypes';
 import { type VisitPhotoRecord } from './home/shared';
 import { useHomeFeedActionController } from './home/useHomeFeedActionController';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
-type FeedMode = FeedModeValue;
-type TypeFilter = FeedTypeFilterValue;
-type SortFilter = HomeFeedSortValue;
-
-interface BaseFeedItem {
-  id: string;
-  eventAt: string;
-  isFriend: boolean;
-  friendName?: string;
-  source: 'visit' | 'food-product';
-}
-
-interface VisitFeedItem extends BaseFeedItem {
-  source: 'visit';
-  visit: VisitRecord;
-}
-
-interface FoodProductFeedItem extends BaseFeedItem {
-  source: 'food-product';
-  foodProduct: FoodProductRecord;
-}
-
-type FeedItem = VisitFeedItem | FoodProductFeedItem;
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
-
-interface GroupedMonth {
-  monthKey: string;
-  monthLabel: string;
-  totalCount: number;
-  visitsCount: number;
-  foodProductCount: number;
-  entries: FeedItem[];
-}
-
-type FriendFeedSection = GroupedMonth & {
-  data: FeedItem[];
-};
 
 const useStyles = createThemedStyles((theme) => {
   const feedGap = theme.spacing.xs;
@@ -272,127 +248,9 @@ const useStyles = createThemedStyles((theme) => {
   };
 });
 
-const monthFormatter = new Intl.DateTimeFormat('en-US', {
-  month: 'long',
-  timeZone: 'UTC',
-  year: 'numeric',
-});
-
-const entryDateFormatter = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-});
-
 const HOME_FEED_PAGE_SIZE = 20;
 const VISIT_FOCUS_HIGHLIGHT_DURATION_MS = 2400;
 const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
-const REDACTED_MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
-
-function formatCount(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function formatEntryDateLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  return entryDateFormatter.format(date).toUpperCase();
-}
-
-function getFriendEntryMonthInfo(value: string): { monthKey: string; monthLabel: string } | null {
-  const trimmedValue = value.trim();
-  const redactedMonthMatch = REDACTED_MONTH_PATTERN.exec(trimmedValue);
-  if (redactedMonthMatch) {
-    const year = Number(redactedMonthMatch[1]);
-    const monthIndex = Number(redactedMonthMatch[2]) - 1;
-    if (monthIndex < 0 || monthIndex > 11) {
-      return null;
-    }
-
-    return {
-      monthKey: trimmedValue,
-      monthLabel: monthFormatter.format(new Date(Date.UTC(year, monthIndex, 15, 12))),
-    };
-  }
-
-  const date = new Date(trimmedValue);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-  return {
-    monthKey,
-    monthLabel: monthFormatter.format(date),
-  };
-}
-
-function formatFriendEntryMonthLabel(value: string): string {
-  return getFriendEntryMonthInfo(value)?.monthLabel ?? value;
-}
-
-function buildVisitFeedItem(
-  visit: VisitRecord,
-  currentUserId: string | null,
-  eventAt?: string,
-): VisitFeedItem {
-  return {
-    isFriend: !!visit.userId && !!currentUserId && visit.userId !== currentUserId,
-    friendName: visit.userName,
-    id: `visit_${visit.id}`,
-    eventAt: eventAt?.trim() || visit.visitedAt || visit.createdAt,
-    source: 'visit',
-    visit,
-  };
-}
-
-function buildFoodProductFeedItem(
-  foodProduct: FoodProductRecord,
-  currentUserId: string | null,
-  eventAt?: string,
-): FoodProductFeedItem {
-  return {
-    isFriend: !!foodProduct.userId && !!currentUserId && foodProduct.userId !== currentUserId,
-    friendName: foodProduct.userName,
-    id: `food_product_${foodProduct.id}`,
-    eventAt: eventAt?.trim() || foodProduct.itemDate || foodProduct.createdAt,
-    source: 'food-product',
-    foodProduct,
-  };
-}
-
-function formatMineEntryFooterLabel(feedItem: FeedItem): string {
-  return formatEntryDateLabel(feedItem.eventAt) || feedItem.eventAt;
-}
-
-function applyInitialViewParams(
-  initialView: HomeInitialViewParams,
-  {
-    setFeedMode,
-    setFiltersExpanded,
-    setSearchQuery,
-    setSortByMode,
-    setTypeFilter,
-  }: {
-    setFeedMode: (value: FeedMode) => void;
-    setFiltersExpanded: (value: boolean) => void;
-    setSearchQuery: (value: string) => void;
-    setSortByMode: Dispatch<SetStateAction<Record<FeedMode, SortFilter>>>;
-    setTypeFilter: (value: TypeFilter) => void;
-  },
-) {
-  setFeedMode(initialView.feedMode);
-  setTypeFilter(initialView.typeFilter);
-  setSearchQuery(initialView.searchQuery);
-  setFiltersExpanded(initialView.filtersExpanded);
-  setSortByMode((previous) => ({
-    ...previous,
-    [initialView.feedMode]: initialView.sortFilter,
-  }));
-}
 
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
@@ -1362,42 +1220,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             errorMessage={friendSuggestionErrorMessage}
             title="Friend suggestion unavailable"
           />
-          {feedMode === 'mine' && pendingHomeCreateWrites.length > 0 ? (
-            <View style={styles.pendingStack}>
-              <Text style={styles.infoTitle} variant="bodyLgBold">
-                Pending entries
-              </Text>
-              {pendingHomeCreateWrites.map((write) => {
-                if (write.operationName === 'visit.create') {
-                  const payload = write.payload as { restaurantName: string; items?: unknown[] };
-                  const itemCount = Array.isArray(payload.items) ? payload.items.length : 0;
-                  return (
-                    <PendingQueuedWriteRow
-                      key={write.id}
-                      description={
-                        itemCount > 0
-                          ? `${itemCount} item${itemCount === 1 ? '' : 's'}`
-                          : undefined
-                      }
-                      lastError={write.lastError}
-                      status={write.status}
-                      title={`Visit at ${payload.restaurantName}`}
-                    />
-                  );
-                }
-
-                const payload = write.payload as { itemName: string; locationText?: string };
-                return (
-                  <PendingQueuedWriteRow
-                    key={write.id}
-                    description={payload.locationText}
-                    lastError={write.lastError}
-                    status={write.status}
-                    title={payload.itemName}
-                  />
-                );
-              })}
-            </View>
+          {feedMode === 'mine' ? (
+            <HomePendingEntriesSection pendingWrites={pendingHomeCreateWrites} styles={styles} />
           ) : null}
           {friendSuggestion ? (
             <View style={styles.infoCard}>

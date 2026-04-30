@@ -16,7 +16,6 @@ import {
   UpgradePromptCard,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
   formatLimitExceededMessage,
   getFoodProductById,
   listFoodProductPhotos,
@@ -26,6 +25,7 @@ import {
   type VisitPhotoRecord,
   type VisitPhotoUploadInput,
 } from '../features';
+import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { foodProductsQueryKeys, syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
@@ -89,19 +89,8 @@ function buildExistingPhotoAttachment(photo: VisitPhotoRecord) {
   return {
     id: photo.id,
     label: formatPhotoAttachmentDateLabel(photo.created),
-    thumbnailUri: buildPocketBaseFileUrl({
-      collectionId: photo.collectionId,
-      collectionName: photo.collectionName ?? 'visit_photos',
-      recordId: photo.id,
-      filename: photo.photo,
-      thumb: '100x100',
-    }),
-    viewerUri: buildPocketBaseFileUrl({
-      collectionId: photo.collectionId,
-      collectionName: photo.collectionName ?? 'visit_photos',
-      recordId: photo.id,
-      filename: photo.photo,
-    }),
+    thumbnailUri: buildPhotoThumbnailUrl(photo),
+    viewerUri: buildPhotoFileUrl(photo),
   };
 }
 

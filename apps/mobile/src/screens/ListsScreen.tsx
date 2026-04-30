@@ -726,7 +726,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             return (
               <PendingQueuedWriteRow
                 key={write.id}
+                createdAt={write.createdAt}
                 description={payload.visibility ? `Visibility: ${payload.visibility}` : undefined}
+                idempotencyKey={write.idempotencyKey}
                 lastError={write.lastError}
                 status={write.status}
                 title={payload.name}

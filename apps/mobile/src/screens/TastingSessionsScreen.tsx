@@ -475,7 +475,9 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
                 return (
                   <PendingQueuedWriteRow
                     key={write.id}
+                    createdAt={write.createdAt}
                     description={`Create at ${payload.restaurantName}`}
+                    idempotencyKey={write.idempotencyKey}
                     lastError={write.lastError}
                     status={write.status}
                     title={payload.name}
@@ -487,7 +489,9 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
               return (
                 <PendingQueuedWriteRow
                   key={write.id}
+                  createdAt={write.createdAt}
                   description={`Join code ${payload.inviteCode}`}
+                  idempotencyKey={write.idempotencyKey}
                   lastError={write.lastError}
                   status={write.status}
                   title="Join tasting session"
