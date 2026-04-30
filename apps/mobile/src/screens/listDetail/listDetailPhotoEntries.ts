@@ -25,11 +25,11 @@ export function groupListDetailPhotosByFoodItemId(
   return map;
 }
 
-export function getUserPhotoFoodItemId(userRating: OwnerUserRating): string {
+function getUserPhotoFoodItemId(userRating: OwnerUserRating): string {
   return userRating.kind === 'linked' ? userRating.userFoodItemId : userRating.foodItemId;
 }
 
-export function appendPhotoEntries(
+function appendPhotoEntries(
   entriesById: Map<string, OwnerItemPhotoEntry>,
   photosByFoodItemId: Map<string, RestaurantListDetailPhotoPreviewRecord[]>,
   foodItemId: string | undefined,

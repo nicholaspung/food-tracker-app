@@ -146,7 +146,12 @@ jest.mock('../ui', () => ({
 
 jest.mock('../components/shared', () => ({
   CachedRemoteImage: (props: Record<string, unknown>) => mockReact.createElement('CachedRemoteImage', props),
-  ConfirmDestructiveModal: () => null,
+  ConfirmDestructiveModal: ({
+    children,
+    visible,
+    ...props
+  }: Record<string, unknown> & { children?: React.ReactNode; visible?: boolean }) =>
+    visible ? mockReact.createElement('ConfirmDestructiveModal', props, children) : null,
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   ExpandableText: jest.requireActual('../components/shared/ExpandableText').ExpandableText,
@@ -418,6 +423,98 @@ describe('ListDetailScreen', () => {
 
     expect(renderer.root.findByProps({ testID: 'list-detail-friend-photo-button-0-0' })).toBeTruthy();
     expect(renderer.root.findByType('CachedRemoteImage').props.uri).toBe('photo-url');
+  });
+
+  it('renders owner item photos from matching photo previews', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+          photoPreviews: [
+            {
+              id: 'photo_1',
+              food_item: 'food_item_1',
+              user: 'owner_1',
+              photo: 'ramen.jpg',
+              collectionId: 'visit_photos_collection',
+              collectionName: 'visit_photos',
+              created: '2026-01-03T00:00:00.000Z',
+              ownerName: 'Owner',
+            },
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findByProps({ testID: 'list-detail-photo-button-0-0' })).toBeTruthy();
+    expect(renderer.root.findByType('CachedRemoteImage').props.uri).toBe('photo-url');
+  });
+
+  it('stages owner item deletion in the destructive confirmation modal', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-source-rating-item_1-food_item_1' }).props.onPress();
+    });
+
+    const modal = renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' });
+
+    expect(modal.props.title).toBe('Delete Bookmarked Item?');
+    expect(modal.props.description).toBe('Delete "Spicy Ramen" from this list?');
   });
 
   it('keeps friend bookmark rows without photos on the existing save-only path', async () => {

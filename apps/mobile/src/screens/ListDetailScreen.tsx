@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
-  CachedRemoteImage,
   EmptyState,
   ErrorState,
   ExpandableText,
@@ -44,10 +43,11 @@ import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
   buildBookmarkLookupIds,
-  formatFullDateLabel,
   formatMonthYearLabel,
-  normalizeMenuItemKey,
 } from './listDetail/listDetailFormatters';
+import { buildOwnerDisplayItems } from './listDetail/listDetailDisplayItems';
+import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
+import { ListDetailOwnerItemCard } from './listDetail/ListDetailOwnerItemCard';
 import {
   buildBookmarkedItemPhotoEntries as buildBookmarkedPhotoEntries,
   buildOwnerItemPhotoEntries as buildOwnerPhotoEntries,
@@ -154,112 +154,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
     paddingTop: theme.spacing.sm,
   },
-  ownerItemCard: {
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    gap: theme.spacing.xxs,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  ownerItemHeaderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  itemPhotoWrap: {
-    position: 'relative',
-  },
-  itemPhotoThumb: {
-    backgroundColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.sm,
-    height: 52,
-    width: 52,
-  },
-  itemPhotoCountBadge: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.inverse,
-    borderRadius: theme.radii.pill,
-    justifyContent: 'center',
-    left: 2,
-    minWidth: 18,
-    paddingHorizontal: 4,
-    position: 'absolute',
-    top: 2,
-  },
-  itemPhotoCountText: {
-    color: theme.colors.text.inverse,
-    ...theme.typography.bodySmTightBold,
-  },
-  ownerItemName: {
-    color: theme.colors.text.primary,
-    flex: 1,
-    ...theme.typography.titleSm,
-  },
-  ownerItemMetaRow: {
-    alignItems: 'center',
-    columnGap: theme.spacing.xxs,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 4,
-  },
-  ownerItemMetaDate: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  ownerBookmarkRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  ownerBookmarkMeta: {
-    alignItems: 'center',
-    columnGap: theme.spacing.xxs,
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 4,
-  },
-  bookmarkedItemBlock: {
-    gap: 2,
-  },
-  bookmarkedItemRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  bookmarkedItemLeft: {
-    alignItems: 'center',
-    columnGap: theme.spacing.xxs,
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 4,
-  },
-  sourceUserRow: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.border.info,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: theme.spacing.xs,
-    paddingVertical: 1,
-  },
-  sourceUserText: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySmTightBold,
-  },
-  bookmarkedItemName: {
-    color: theme.colors.text.primary,
-    flexShrink: 1,
-    ...theme.typography.bodyLgTightMedium,
-  },
   metaDot: {
     color: theme.colors.text.muted,
     ...theme.typography.bodySm,
@@ -267,32 +161,6 @@ const useStyles = createThemedStyles((theme) => ({
   bookmarkedDate: {
     color: theme.colors.text.muted,
     ...theme.typography.bodySm,
-  },
-  ownerItemActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-  },
-  ownerYouRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  iWentButton: {
-    alignItems: 'center',
-    borderRadius: theme.radii.sm,
-    flexDirection: 'row',
-    gap: 2,
-    minHeight: 22,
-    paddingHorizontal: theme.spacing.xs,
-  },
-  iWentButtonPressed: {
-    backgroundColor: theme.colors.status.successBg,
-  },
-  iWentButtonLabel: {
-    color: theme.colors.text.success,
-    ...theme.typography.bodySmTightSemiBold,
   },
   reorderControls: {
     alignItems: 'center',
@@ -312,49 +180,10 @@ const useStyles = createThemedStyles((theme) => ({
   reorderButtonPressed: {
     backgroundColor: theme.colors.background.muted,
   },
-  itemDeleteButton: {
-    alignItems: 'center',
-    borderRadius: theme.radii.pill,
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
-  },
-  itemDeleteButtonPressed: {
-    backgroundColor: theme.colors.status.dangerBg,
-  },
-  itemBookmarkButton: {
-    alignItems: 'center',
-    borderRadius: theme.radii.sm,
-    height: 26,
-    justifyContent: 'center',
-    width: 26,
-  },
-  itemBookmarkButtonPressed: {
-    backgroundColor: theme.colors.status.infoBg,
-  },
   noteText: {
     color: theme.colors.text.secondary,
     fontStyle: 'italic',
     ...theme.typography.bodyMd,
-  },
-  ownerReviewRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xxs,
-    marginTop: 1,
-  },
-  ownerReviewArrow: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySm,
-  },
-  ownerReviewText: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySmTightSemiBold,
-  },
-  ownerReviewDate: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySm,
   },
   emptyItemsText: {
     color: theme.colors.text.muted,
@@ -614,74 +443,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     () => groupListDetailPhotosByFoodItemId(detailQuery.data?.photoPreviews ?? []),
     [detailQuery.data],
   );
-
-  const buildOwnerDisplayItems = (items: GroupedBookmarkedItem[]): OwnerDisplayItem[] => {
-    const rows = new Map<string, OwnerDisplayItem>();
-
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item) {
-        continue;
-      }
-
-      const normalizedKey = normalizeMenuItemKey(item.name);
-      const existing = rows.get(normalizedKey);
-      const nextRow: OwnerDisplayItem =
-        existing ??
-        {
-          key: normalizedKey || `${item.listItemId}:${item.foodItemId}`,
-          name: item.name,
-          orderIndex: index,
-        };
-
-      const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
-      if (hasSourceBookmark && !nextRow.source) {
-        nextRow.source = {
-          listItemId: item.listItemId,
-          foodItemId: item.foodItemId,
-          sourceUserName: item.sourceUserName?.trim() || 'Friend',
-          rating: item.rating,
-          visitedAt: item.visitedAt,
-        };
-      }
-
-      const linkedUserRating =
-        item.userFoodItemId && item.userFoodItemRating
-          ? {
-              kind: 'linked' as const,
-              listItemId: item.listItemId,
-              userFoodItemId: item.userFoodItemId,
-              rating: item.userFoodItemRating,
-              visitedAt: item.userFoodItemVisitedAt,
-            }
-          : null;
-
-      const standaloneUserRating =
-        !hasSourceBookmark && item.rating > 0
-          ? {
-              kind: 'standalone' as const,
-              listItemId: item.listItemId,
-              foodItemId: item.foodItemId,
-              rating: item.rating,
-              visitedAt: item.visitedAt,
-            }
-          : null;
-
-      const nextUserRating = linkedUserRating ?? standaloneUserRating;
-      if (nextUserRating) {
-        const shouldReplaceExisting =
-          !nextRow.user || (nextRow.user.kind === 'standalone' && nextUserRating.kind === 'linked');
-
-        if (shouldReplaceExisting) {
-          nextRow.user = nextUserRating;
-        }
-      }
-
-      rows.set(normalizedKey, nextRow);
-    }
-
-    return Array.from(rows.values()).sort((left, right) => left.orderIndex - right.orderIndex);
-  };
 
   const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] =>
     buildOwnerPhotoEntries(item, photosByFoodItemId);
@@ -1511,206 +1272,43 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     <Text style={styles.emptyItemsText}>No items added yet.</Text>
                   ) : isOwner ? (
                     ownerDisplayItems.map((item, itemIndex) => {
-                      const sourceRating = item.source;
-                      const userRating = item.user;
                       const itemPhotoEntries = buildOwnerItemPhotoEntries(item);
-                      const itemPrimaryPhotoUrl = itemPhotoEntries[0]?.url;
-                      const sourceMonthYearLabel = formatMonthYearLabel(sourceRating?.visitedAt);
-                      const userDisplayDateLabel =
-                        formatFullDateLabel(userRating?.visitedAt) ?? formatMonthYearLabel(userRating?.visitedAt);
-                      const canShowIWent = Boolean(sourceRating && !userRating);
 
                       return (
-                        <View key={item.key} style={styles.ownerItemCard}>
-                          <View style={styles.ownerItemHeaderRow}>
-                            <Text numberOfLines={1} style={styles.ownerItemName}>
-                              {item.name}
-                            </Text>
-                            {itemPrimaryPhotoUrl ? (
-                              <Pressable
-                                accessibilityLabel={`View photos for ${item.name}`}
-                                accessibilityRole="button"
-                                onPress={() => {
-                                  openPhotoViewer(itemPhotoEntries);
-                                }}
-                                style={styles.itemPhotoWrap}
-                                testID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
-                              >
-                                <CachedRemoteImage uri={itemPrimaryPhotoUrl} style={styles.itemPhotoThumb} />
-                                {itemPhotoEntries.length > 1 ? (
-                                  <View style={styles.itemPhotoCountBadge}>
-                                    <Text style={styles.itemPhotoCountText}>+{itemPhotoEntries.length - 1}</Text>
-                                  </View>
-                                ) : null}
-                              </Pressable>
-                            ) : null}
-                          </View>
-
-                          {sourceRating ? (
-                            <View style={styles.ownerBookmarkRow}>
-                              <View style={styles.ownerBookmarkMeta}>
-                                <View style={styles.sourceUserRow}>
-                                  <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
-                                  <Text style={styles.sourceUserText}>{sourceRating.sourceUserName}</Text>
-                                </View>
-                                {sourceRating.rating > 0 ? <RatingPill rating={sourceRating.rating} /> : null}
-                                {sourceMonthYearLabel ? (
-                                  <Text style={styles.ownerItemMetaDate}>{sourceMonthYearLabel}</Text>
-                                ) : null}
-                              </View>
-
-                              <View style={styles.ownerItemActions}>
-                                {canShowIWent ? (
-                                  <Pressable
-                                    accessibilityLabel={`I went for ${item.name}`}
-                                    accessibilityRole="button"
-                                    onPress={() => {
-                                      handleIWentThere(group, {
-                                        listItemId: sourceRating.listItemId,
-                                        name: item.name,
-                                      });
-                                    }}
-                                    style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
-                                    testID={`i-went-list-item-${sourceRating.listItemId}`}
-                                  >
-                                    <Ionicons color={theme.colors.text.success} name="location-outline" size={12} />
-                                    <Text style={styles.iWentButtonLabel}>I went</Text>
-                                  </Pressable>
-                                ) : null}
-                                <Pressable
-                                  accessibilityLabel={`Remove bookmarked rating for ${item.name}`}
-                                  accessibilityRole="button"
-                                  onPress={() => {
-                                    confirmDeleteItem({
-                                      kind: 'source',
-                                      itemName: item.name,
-                                      listItemId: sourceRating.listItemId,
-                                      foodItemId: sourceRating.foodItemId,
-                                    });
-                                  }}
-                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
-                                  testID={`remove-source-rating-${sourceRating.listItemId}-${sourceRating.foodItemId}`}
-                                >
-                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
-                                </Pressable>
-                              </View>
-                            </View>
-                          ) : null}
-
-                          {userRating ? (
-                            <View style={styles.ownerYouRow}>
-                              <View style={styles.ownerReviewRow}>
-                                <Text style={styles.ownerReviewArrow}>↳</Text>
-                                <Text style={styles.ownerReviewText}>You</Text>
-                                <RatingPill rating={userRating.rating} />
-                                {userDisplayDateLabel ? <Text style={styles.ownerReviewDate}>{userDisplayDateLabel}</Text> : null}
-                              </View>
-                              <Pressable
-                                accessibilityLabel={`Remove your rating for ${item.name}`}
-                                accessibilityRole="button"
-                                onPress={() => {
-                                  if (userRating.kind === 'linked') {
-                                    confirmDeleteItem({
-                                      kind: 'user-linked',
-                                      itemName: item.name,
-                                      listItemId: userRating.listItemId,
-                                    });
-                                    return;
-                                  }
-
-                                  confirmDeleteItem({
-                                    kind: 'user-standalone',
-                                    itemName: item.name,
-                                    listItemId: userRating.listItemId,
-                                    foodItemId: userRating.foodItemId,
-                                  });
-                                }}
-                                style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
-                                testID={
-                                  userRating.kind === 'linked'
-                                    ? `remove-user-rating-${userRating.listItemId}-${userRating.userFoodItemId}`
-                                    : `remove-list-item-${userRating.listItemId}-${userRating.foodItemId}`
-                                }
-                              >
-                                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
-                              </Pressable>
-                            </View>
-                          ) : null}
-                        </View>
+                        <ListDetailOwnerItemCard
+                          groupIndex={groupIndex}
+                          item={item}
+                          itemIndex={itemIndex}
+                          key={item.key}
+                          onConfirmDeleteItem={confirmDeleteItem}
+                          onIWentThere={(input) => {
+                            handleIWentThere(group, input);
+                          }}
+                          onOpenPhotos={openPhotoViewer}
+                          photoEntries={itemPhotoEntries}
+                        />
                       );
                     })
                   ) : (
                     group.items.map((item, itemIndex) => {
-                      const monthYearLabel = formatMonthYearLabel(item.visitedAt);
-                      const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
                       const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
                         savedBookmarkLookupIds.has(bookmarkLookupId),
                       );
-                      const sourceUserDisplayName = item.sourceUserName?.trim() || 'Friend';
                       const itemPhotoEntries = buildBookmarkedItemPhotoEntries(item);
-                      const itemPrimaryPhotoUrl = itemPhotoEntries[0]?.url;
 
                       return (
-                        <View key={item.key} style={styles.bookmarkedItemBlock}>
-                          <View style={styles.bookmarkedItemRow}>
-                            <View style={styles.bookmarkedItemLeft}>
-                              {hasSourceBookmark ? (
-                                <View style={styles.sourceUserRow}>
-                                  <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
-                                  <Text style={styles.sourceUserText}>{sourceUserDisplayName}</Text>
-                                </View>
-                              ) : null}
-                              <Text numberOfLines={1} style={styles.bookmarkedItemName}>
-                                {item.name}
-                              </Text>
-                              {item.rating > 0 ? (
-                                <>
-                                  <Text style={styles.metaDot}>•</Text>
-                                  <RatingPill rating={item.rating} />
-                                </>
-                              ) : null}
-                              {monthYearLabel ? (
-                                <>
-                                  <Text style={styles.metaDot}>•</Text>
-                                  <Text style={styles.bookmarkedDate}>{monthYearLabel}</Text>
-                                </>
-                              ) : null}
-                            </View>
-                            {itemPrimaryPhotoUrl ? (
-                              <Pressable
-                                accessibilityLabel={`View photos for ${item.name}`}
-                                accessibilityRole="button"
-                                onPress={() => {
-                                  openPhotoViewer(itemPhotoEntries);
-                                }}
-                                style={styles.itemPhotoWrap}
-                                testID={`list-detail-friend-photo-button-${groupIndex}-${itemIndex}`}
-                              >
-                                <CachedRemoteImage uri={itemPrimaryPhotoUrl} style={styles.itemPhotoThumb} />
-                                {itemPhotoEntries.length > 1 ? (
-                                  <View style={styles.itemPhotoCountBadge}>
-                                    <Text style={styles.itemPhotoCountText}>+{itemPhotoEntries.length - 1}</Text>
-                                  </View>
-                                ) : null}
-                              </Pressable>
-                            ) : null}
-                            <Pressable
-                              accessibilityLabel={`Save ${item.name} to my lists`}
-                              accessibilityRole="button"
-                              onPress={() => {
-                                openSaveModal(group, item);
-                              }}
-                              style={({ pressed }) => [styles.itemBookmarkButton, pressed && styles.itemBookmarkButtonPressed]}
-                              testID={`save-list-item-${item.listItemId}`}
-                            >
-                              <Ionicons
-                                color={isSaved ? theme.colors.text.info : theme.colors.text.muted}
-                                name={isSaved ? 'bookmark' : 'bookmark-outline'}
-                                size={18}
-                              />
-                            </Pressable>
-                          </View>
-                        </View>
+                        <ListDetailBookmarkedItemRow
+                          groupIndex={groupIndex}
+                          isSaved={isSaved}
+                          item={item}
+                          itemIndex={itemIndex}
+                          key={item.key}
+                          onOpenPhotos={openPhotoViewer}
+                          onSave={(targetItem) => {
+                            openSaveModal(group, targetItem);
+                          }}
+                          photoEntries={itemPhotoEntries}
+                        />
                       );
                     })
                   )}
