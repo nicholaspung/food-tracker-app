@@ -83,6 +83,7 @@ jest.mock('../features', () => ({
   getAuthRecord: jest.fn(() => ({ isInitialUser: false })),
   getFeedbackCountSummary: jest.fn(),
   getProfile: jest.fn(),
+  isAddOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.addCards?.[cardId]?.dismissedAt)),
   invalidateInviteCodesQueries: jest.fn(),
   listInviteCodes: jest.fn(),
   lockInviteCode: jest.fn(),
@@ -341,6 +342,69 @@ describe('tab root content sections', () => {
       }),
     );
     expect(renderer.root.findByProps({ testID: 'add-screen-content-section' })).toBeTruthy();
+  });
+
+  it('routes Add options through onboarding until the card is dismissed', async () => {
+    const navigate = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'add-option-restaurant-visit' }).props.onPress();
+    });
+
+    expect(navigate).toHaveBeenCalledWith('AddFeatureOnboarding', { cardId: 'trackRestaurantVisit' });
+  });
+
+  it('routes dismissed Add options directly to their destinations', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'user-1',
+        mobileOnboardingState: {
+          addCards: {
+            trackRestaurantVisit: { dismissedAt: '2026-04-28T12:00:00.000Z' },
+            trackFoodProduct: { dismissedAt: '2026-04-28T12:01:00.000Z' },
+            logNote: { dismissedAt: '2026-04-28T12:02:00.000Z' },
+            processSavedPhotos: { dismissedAt: '2026-04-28T12:03:00.000Z' },
+            manageNotes: { dismissedAt: '2026-04-28T12:04:00.000Z' },
+          },
+        },
+      },
+    } as never);
+    const navigate = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    const expectedRoutes = [
+      ['add-option-restaurant-visit', 'CreateVisit'],
+      ['add-option-food-product', 'FoodProduct'],
+      ['add-option-log-note', 'NoteEditor'],
+      ['add-option-process-photos', 'ProcessPhotos'],
+      ['add-option-manage-notes', 'Notes'],
+    ] as const;
+
+    for (const [testID, routeName] of expectedRoutes) {
+      await act(async () => {
+        renderer.root.findByProps({ testID }).props.onPress();
+      });
+      expect(navigate).toHaveBeenLastCalledWith(routeName);
+    }
   });
 
   it('keeps the More tab header fixed and renders an orange scroll body', async () => {

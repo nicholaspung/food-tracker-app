@@ -61,12 +61,13 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
-    trackRestaurantVisit: { uri: 'asset://track-restaurant-visit' },
-    trackFoodProduct: { uri: 'asset://track-food-product' },
-    logNote: { uri: 'asset://log-note' },
-    processSavedPhotos: { uri: 'asset://process-saved-photos' },
-    manageNotes: { uri: 'asset://manage-notes' },
+    lists: { uri: 'asset://lists' },
+    splitBill: { uri: 'asset://split-bill' },
   },
+}));
+
+jest.mock('../lib/branding', () => ({
+  BRAND_LOGO: { uri: 'asset://brand-logo' },
 }));
 
 jest.mock('../observability', () => ({
@@ -213,15 +214,19 @@ describe('FeatureOnboardingScreen', () => {
     mockWriteFeature.mockResolvedValue({ status: 'completed', result: {} });
   });
 
-  it('renders all five main onboarding cards', async () => {
+  it('renders the welcome onboarding cards', async () => {
     const renderer = await renderFeatureOnboardingScreen();
     const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
 
-    expect(text).toContain('Track a restaurant visit');
-    expect(text).toContain('Track a food product');
-    expect(text).toContain('Log a note');
-    expect(text).toContain('Process saved photos');
-    expect(text).toContain('Manage notes');
+    expect(text).toContain('Welcome to Yummy Recs');
+    expect(text).toContain('Shared with breathing room');
+    expect(text).toContain('Watch feature tutorials');
+    expect(text).toContain('Add friends intentionally');
+    expect(text).toContain('More than tracking');
+    expect(text).toContain('Use lists for ideas');
+    expect(text).toContain('Split bills and calculate tips');
+    expect(text).toContain('Invite friends and get help');
+    expect(text).not.toContain('Track a restaurant visit');
   });
 
   it('hides finish until the final card is selected', async () => {
@@ -231,7 +236,7 @@ describe('FeatureOnboardingScreen', () => {
     expect(findFinishButtons(renderer)).toHaveLength(0);
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
     });
 
     expect(findActionsSlots(renderer)).toHaveLength(1);
@@ -253,7 +258,7 @@ describe('FeatureOnboardingScreen', () => {
     expect(findFinishButtons(renderer)).toHaveLength(0);
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
     });
 
     expect(findFinishButtons(renderer)).toHaveLength(1);
@@ -264,7 +269,7 @@ describe('FeatureOnboardingScreen', () => {
     const renderer = await renderFeatureOnboardingScreen();
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
     });
     await act(async () => {
       await renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.onPress();
@@ -286,7 +291,7 @@ describe('FeatureOnboardingScreen', () => {
     const renderer = await renderFeatureOnboardingScreen();
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-manage_notes' }).props.onPress();
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
     });
     await act(async () => {
       await renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.onPress();
@@ -303,5 +308,33 @@ describe('FeatureOnboardingScreen', () => {
       index: 0,
       routes: [{ name: 'Home' }],
     });
+  });
+
+  it('renders replay mode as the welcome tutorial without destination CTAs', async () => {
+    let renderer: any;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureOnboardingScreen
+          navigation={
+            {
+              goBack: mockGoBack,
+              navigate: mockNavigate,
+              reset: mockReset,
+            } as never
+          }
+          route={
+            {
+              key: 'FeatureOnboarding-route',
+              name: 'FeatureOnboarding',
+              params: { mode: 'replay' },
+            } as never
+          }
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Welcome tutorial');
+    expect(renderer.root.findAllByType('Button')).toHaveLength(0);
   });
 });

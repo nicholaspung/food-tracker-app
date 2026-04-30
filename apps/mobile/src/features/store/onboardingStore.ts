@@ -2,6 +2,7 @@ import type { RecordModel } from 'pocketbase';
 
 import {
   normalizeMobileOnboardingState,
+  type AddOnboardingCardId,
   type MobileOnboardingState,
   type MoreOnboardingCardId,
 } from '../../types/auth';
@@ -21,6 +22,11 @@ export interface CompleteMainOnboardingInput {
 
 export interface DismissMoreOnboardingCardInput {
   cardId: MoreOnboardingCardId;
+  dismissedAt?: string;
+}
+
+export interface DismissAddOnboardingCardInput {
+  cardId: AddOnboardingCardId;
   dismissedAt?: string;
 }
 
@@ -44,6 +50,13 @@ export function isMoreOnboardingCardDismissed(
   cardId: MoreOnboardingCardId,
 ): boolean {
   return Boolean(state?.moreCards?.[cardId]?.dismissedAt);
+}
+
+export function isAddOnboardingCardDismissed(
+  state: MobileOnboardingState | null | undefined,
+  cardId: AddOnboardingCardId,
+): boolean {
+  return Boolean(state?.addCards?.[cardId]?.dismissedAt);
 }
 
 export function buildMainOnboardingCompletedState(
@@ -70,6 +83,22 @@ export function buildMoreOnboardingCardDismissedState(
       ...(currentState?.moreCards ?? {}),
       [input.cardId]: {
         ...(currentState?.moreCards?.[input.cardId] ?? {}),
+        dismissedAt: resolveTimestamp(input.dismissedAt),
+      },
+    },
+  };
+}
+
+export function buildAddOnboardingCardDismissedState(
+  currentState: MobileOnboardingState | null | undefined,
+  input: DismissAddOnboardingCardInput,
+): MobileOnboardingState {
+  return {
+    ...(currentState ?? {}),
+    addCards: {
+      ...(currentState?.addCards ?? {}),
+      [input.cardId]: {
+        ...(currentState?.addCards?.[input.cardId] ?? {}),
         dismissedAt: resolveTimestamp(input.dismissedAt),
       },
     },
@@ -129,6 +158,19 @@ export async function dismissMoreOnboardingCard(
 
     return updateUserOnboardingState(userId, (currentState) =>
       buildMoreOnboardingCardDismissedState(currentState, input),
+    );
+  });
+}
+
+export async function dismissAddOnboardingCard(
+  userId: string,
+  input: DismissAddOnboardingCardInput,
+): Promise<RecordModel & MobileOnboardingRecord> {
+  return trackFeatureMutation('onboarding.add-card.dismiss', async () => {
+    getAuthenticatedUserId();
+
+    return updateUserOnboardingState(userId, (currentState) =>
+      buildAddOnboardingCardDismissedState(currentState, input),
     );
   });
 }

@@ -511,15 +511,19 @@ export {
 } from './accountStore';
 export {
   MAIN_ONBOARDING_VERSION,
+  buildAddOnboardingCardDismissedState,
   buildMainOnboardingCompletedState,
   buildMoreOnboardingCardDismissedState,
   completeMainOnboarding,
+  dismissAddOnboardingCard,
   dismissMoreOnboardingCard,
   getMobileOnboardingState,
+  isAddOnboardingCardDismissed,
   isMainOnboardingComplete,
   isMoreOnboardingCardDismissed,
   saveOptimisticMobileOnboardingState,
   type CompleteMainOnboardingInput,
+  type DismissAddOnboardingCardInput,
   type DismissMoreOnboardingCardInput,
 } from './onboardingStore';
 export {

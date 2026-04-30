@@ -1,4 +1,5 @@
 export * from './AddRestaurantToListScreen';
+export * from './AddFeatureOnboardingScreen';
 export * from './AddVisitScreen';
 export * from './AboutScreen';
 export * from './AddFriendScreen';

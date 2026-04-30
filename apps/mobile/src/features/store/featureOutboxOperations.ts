@@ -6,9 +6,11 @@ import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from './p
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
   buildMainOnboardingCompletedState,
+  buildAddOnboardingCardDismissedState,
   buildMoreOnboardingCardDismissedState,
   getMobileOnboardingState,
   type CompleteMainOnboardingInput,
+  type DismissAddOnboardingCardInput,
   type DismissMoreOnboardingCardInput,
 } from './onboardingStore';
 import type { BillParticipantRecord, BillRecord } from '../models';
@@ -162,10 +164,15 @@ interface MoreOnboardingCardDismissOperationPayload extends DismissMoreOnboardin
   userId: string;
 }
 
+interface AddOnboardingCardDismissOperationPayload extends DismissAddOnboardingCardInput {
+  userId: string;
+}
+
 export interface FeatureOutboxOperationPayloadMap {
   'settings.visibility.save': SettingsVisibilitySaveOperationPayload;
   'onboarding.main.complete': MainOnboardingCompleteOperationPayload;
   'onboarding.more-card.dismiss': MoreOnboardingCardDismissOperationPayload;
+  'onboarding.add-card.dismiss': AddOnboardingCardDismissOperationPayload;
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
@@ -209,6 +216,7 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'settings.visibility.save',
   'onboarding.main.complete',
   'onboarding.more-card.dismiss',
+  'onboarding.add-card.dismiss',
   'visit.create',
   'visit.update',
   'visit.delete',
@@ -425,6 +433,31 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
         onboardingPayload.userId,
         {
           mobileOnboardingState: buildMoreOnboardingCardDismissedState(
+            getMobileOnboardingState(currentRecord),
+            {
+              cardId: onboardingPayload.cardId,
+              dismissedAt: onboardingPayload.dismissedAt,
+            },
+          ),
+        },
+        {
+          headers: requestOptions.headers,
+        },
+      );
+      saveAuthRecord(updatedRecord);
+      return true;
+    }
+    case 'onboarding.add-card.dismiss': {
+      const onboardingPayload = payload as AddOnboardingCardDismissOperationPayload;
+      const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
+        'users',
+        onboardingPayload.userId,
+      );
+      const updatedRecord = await updateCollectionRecord<RecordModel>(
+        'users',
+        onboardingPayload.userId,
+        {
+          mobileOnboardingState: buildAddOnboardingCardDismissedState(
             getMobileOnboardingState(currentRecord),
             {
               cardId: onboardingPayload.cardId,

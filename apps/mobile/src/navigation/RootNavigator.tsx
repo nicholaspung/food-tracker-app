@@ -18,12 +18,13 @@ import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
-import type { MoreOnboardingCardId } from '../types/auth';
+import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
   AddRestaurantToListScreen,
+  AddFeatureOnboardingScreen,
   AddVisitScreen,
   AboutScreen,
   BillDetailScreen,
@@ -131,6 +132,11 @@ export type RootStackParamList = {
     }[];
   };
   AddVisit: undefined;
+  AddFeatureOnboarding: {
+    cardId: AddOnboardingCardId;
+    mode?: 'firstRun' | 'replay';
+    source?: 'add' | 'profile';
+  };
   CreateVisit:
     | {
         preselectedRestaurantId?: string;
@@ -243,6 +249,7 @@ export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
 const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Home',
   'AddVisit',
+  'AddFeatureOnboarding',
   'CreateVisit',
   'CreateVisitAddRestaurant',
   'CreateVisitAddMenuItem',
@@ -298,6 +305,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   ResetPassword: 'Check Email',
   VerifyEmail: 'Verify Email',
   FeatureOnboarding: 'Onboarding',
+  AddFeatureOnboarding: 'Feature Intro',
   CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',
 };
@@ -583,6 +591,11 @@ export function RootNavigator() {
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={AddFeatureOnboardingScreen}
+                    name="AddFeatureOnboarding"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen
                     component={CreateVisitScreen}
                     name="CreateVisit"

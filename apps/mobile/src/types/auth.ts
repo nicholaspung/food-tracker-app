@@ -5,6 +5,13 @@ export interface MainOnboardingState {
 
 export type MoreOnboardingCardId = 'lists' | 'splitBill' | 'tipCalculator';
 
+export type AddOnboardingCardId =
+  | 'trackRestaurantVisit'
+  | 'trackFoodProduct'
+  | 'logNote'
+  | 'processSavedPhotos'
+  | 'manageNotes';
+
 export interface MoreOnboardingCardState {
   dismissedAt?: string;
 }
@@ -12,6 +19,7 @@ export interface MoreOnboardingCardState {
 export interface MobileOnboardingState {
   main?: MainOnboardingState;
   moreCards?: Partial<Record<MoreOnboardingCardId, MoreOnboardingCardState>>;
+  addCards?: Partial<Record<AddOnboardingCardId, MoreOnboardingCardState>>;
 }
 
 export interface AuthUser {
@@ -71,6 +79,8 @@ export function normalizeMobileOnboardingState(value: unknown): MobileOnboarding
   const main = normalizeMainOnboardingState(record.main);
   const rawMoreCards = record.moreCards;
   const moreCards: MobileOnboardingState['moreCards'] = {};
+  const rawAddCards = record.addCards;
+  const addCards: MobileOnboardingState['addCards'] = {};
 
   if (rawMoreCards && typeof rawMoreCards === 'object' && !Array.isArray(rawMoreCards)) {
     const moreCardsRecord = rawMoreCards as Record<string, unknown>;
@@ -89,13 +99,39 @@ export function normalizeMobileOnboardingState(value: unknown): MobileOnboarding
     }
   }
 
-  if (!main && Object.keys(moreCards).length === 0) {
+  if (rawAddCards && typeof rawAddCards === 'object' && !Array.isArray(rawAddCards)) {
+    const addCardsRecord = rawAddCards as Record<string, unknown>;
+    const trackRestaurantVisit = normalizeMoreOnboardingCardState(addCardsRecord.trackRestaurantVisit);
+    const trackFoodProduct = normalizeMoreOnboardingCardState(addCardsRecord.trackFoodProduct);
+    const logNote = normalizeMoreOnboardingCardState(addCardsRecord.logNote);
+    const processSavedPhotos = normalizeMoreOnboardingCardState(addCardsRecord.processSavedPhotos);
+    const manageNotes = normalizeMoreOnboardingCardState(addCardsRecord.manageNotes);
+
+    if (trackRestaurantVisit) {
+      addCards.trackRestaurantVisit = trackRestaurantVisit;
+    }
+    if (trackFoodProduct) {
+      addCards.trackFoodProduct = trackFoodProduct;
+    }
+    if (logNote) {
+      addCards.logNote = logNote;
+    }
+    if (processSavedPhotos) {
+      addCards.processSavedPhotos = processSavedPhotos;
+    }
+    if (manageNotes) {
+      addCards.manageNotes = manageNotes;
+    }
+  }
+
+  if (!main && Object.keys(moreCards).length === 0 && Object.keys(addCards).length === 0) {
     return undefined;
   }
 
   return {
     ...(main ? { main } : {}),
     ...(Object.keys(moreCards).length > 0 ? { moreCards } : {}),
+    ...(Object.keys(addCards).length > 0 ? { addCards } : {}),
   };
 }
 

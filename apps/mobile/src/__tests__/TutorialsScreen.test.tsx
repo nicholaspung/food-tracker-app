@@ -61,14 +61,44 @@ describe('TutorialsScreen', () => {
     const renderer = await renderTutorialsScreen();
 
     expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Tutorials');
-    expect(findRow(renderer, 'tutorial-main-onboarding-link').props.title).toBe('Core Food Tracking');
+    expect(findRow(renderer, 'tutorial-main-onboarding-link').props.title).toBe('Welcome to Yummy Recs');
+    expect(findRow(renderer, 'tutorial-track-restaurant-visit-link').props.title).toBe('Track Restaurant Visit');
+    expect(findRow(renderer, 'tutorial-track-food-product-link').props.title).toBe('Track Food Product');
+    expect(findRow(renderer, 'tutorial-log-note-link').props.title).toBe('Log a Note');
+    expect(findRow(renderer, 'tutorial-process-saved-photos-link').props.title).toBe('Process Saved Photos');
+    expect(findRow(renderer, 'tutorial-manage-notes-link').props.title).toBe('Manage Notes');
     expect(findRow(renderer, 'tutorial-lists-link').props.title).toBe('Restaurant Lists');
     expect(findRow(renderer, 'tutorial-split-bill-link').props.title).toBe('Split a Bill');
     expect(findRow(renderer, 'tutorial-tip-calculator-link').props.title).toBe('Tip Calculator');
   });
 
   it.each([
-    ['tutorial-main-onboarding-link', 'main', ['FeatureOnboarding', { mode: 'replay' }]],
+    ['tutorial-main-onboarding-link', 'welcome', ['FeatureOnboarding', { mode: 'replay' }]],
+    [
+      'tutorial-track-restaurant-visit-link',
+      'trackRestaurantVisit',
+      ['AddFeatureOnboarding', { cardId: 'trackRestaurantVisit', mode: 'replay', source: 'profile' }],
+    ],
+    [
+      'tutorial-track-food-product-link',
+      'trackFoodProduct',
+      ['AddFeatureOnboarding', { cardId: 'trackFoodProduct', mode: 'replay', source: 'profile' }],
+    ],
+    [
+      'tutorial-log-note-link',
+      'logNote',
+      ['AddFeatureOnboarding', { cardId: 'logNote', mode: 'replay', source: 'profile' }],
+    ],
+    [
+      'tutorial-process-saved-photos-link',
+      'processSavedPhotos',
+      ['AddFeatureOnboarding', { cardId: 'processSavedPhotos', mode: 'replay', source: 'profile' }],
+    ],
+    [
+      'tutorial-manage-notes-link',
+      'manageNotes',
+      ['AddFeatureOnboarding', { cardId: 'manageNotes', mode: 'replay', source: 'profile' }],
+    ],
     [
       'tutorial-lists-link',
       'lists',

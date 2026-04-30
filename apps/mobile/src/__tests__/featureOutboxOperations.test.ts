@@ -351,4 +351,71 @@ describe('featureOutboxOperations', () => {
       expect.any(Object),
     );
   });
+
+  it('replays one Add onboarding card dismissal without clearing existing onboarding state', async () => {
+    mockedGetCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+      mobileOnboardingState: {
+        main: {
+          completedVersion: 1,
+          completedAt: '2026-04-28T12:05:00.000Z',
+        },
+        moreCards: {
+          lists: {
+            dismissedAt: '2026-04-28T12:15:00.000Z',
+          },
+        },
+        addCards: {
+          trackFoodProduct: {
+            dismissedAt: '2026-04-28T12:25:00.000Z',
+          },
+        },
+      },
+    });
+    mockedUpdateCollectionRecord.mockResolvedValue({
+      id: 'user_1',
+    });
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/onboarding.add-card.dismiss',
+        body: JSON.stringify({
+          userId: 'user_1',
+          cardId: 'trackRestaurantVisit',
+          dismissedAt: '2026-04-28T12:30:00.000Z',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'onboarding.add-card.dismiss',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'users',
+      'user_1',
+      {
+        mobileOnboardingState: {
+          main: {
+            completedVersion: 1,
+            completedAt: '2026-04-28T12:05:00.000Z',
+          },
+          moreCards: {
+            lists: {
+              dismissedAt: '2026-04-28T12:15:00.000Z',
+            },
+          },
+          addCards: {
+            trackRestaurantVisit: {
+              dismissedAt: '2026-04-28T12:30:00.000Z',
+            },
+            trackFoodProduct: {
+              dismissedAt: '2026-04-28T12:25:00.000Z',
+            },
+          },
+        },
+      },
+      expect.any(Object),
+    );
+  });
 });

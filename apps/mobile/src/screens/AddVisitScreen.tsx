@@ -4,15 +4,19 @@ import { ScrollView } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
 import { ScreenContentSection, TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
+import { isAddOnboardingCardDismissed } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
+import type { AddOnboardingCardId } from '../types/auth';
 
 type AddVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'AddVisit'>;
 type AddOptionId = 'restaurant-visit' | 'food-product' | 'log-note' | 'process-photos' | 'manage-notes';
 
 interface AddOptionConfig {
   id: AddOptionId;
+  onboardingCardId: AddOnboardingCardId;
   title: string;
   description: string;
   icon: ComponentProps<typeof AddOptionCard>['icon'];
@@ -43,6 +47,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const { user } = useAuth();
 
   const optionColors = {
     restaurant: theme.colors.text.info,
@@ -56,6 +61,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const options: AddOptionConfig[] = [
     {
       id: 'restaurant-visit',
+      onboardingCardId: 'trackRestaurantVisit',
       title: 'Track Restaurant Visit',
       description: 'Full experience with restaurant, menu items, and ratings',
       icon: 'restaurant-outline',
@@ -64,6 +70,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     },
     {
       id: 'food-product',
+      onboardingCardId: 'trackFoodProduct',
       title: 'Track Food Product',
       description: 'Rate a grocery, convenience-store, or market item',
       icon: 'flash-outline',
@@ -72,6 +79,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     },
     {
       id: 'log-note',
+      onboardingCardId: 'logNote',
       title: 'Log a Note',
       description: 'Jot down notes about food/places for later',
       icon: 'document-text-outline',
@@ -80,6 +88,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     },
     {
       id: 'process-photos',
+      onboardingCardId: 'processSavedPhotos',
       title: 'Process Saved Photos',
       description: 'Upload multiple photos and rate each one',
       icon: 'images-outline',
@@ -88,6 +97,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     },
     {
       id: 'manage-notes',
+      onboardingCardId: 'manageNotes',
       title: 'Manage Notes',
       description: 'View, edit, or delete your saved notes',
       icon: 'folder-open-outline',
@@ -97,6 +107,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   ];
 
   const handleOptionPress = (optionId: AddOptionId) => {
+    const selectedOption = options.find((option) => option.id === optionId);
     const normalizedOption =
       optionId === 'restaurant-visit'
         ? 'restaurant_visit'
@@ -112,6 +123,11 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       source: 'AddVisitScreen',
       option: normalizedOption,
     });
+
+    if (selectedOption && !isAddOnboardingCardDismissed(user?.mobileOnboardingState, selectedOption.onboardingCardId)) {
+      navigation.navigate('AddFeatureOnboarding', { cardId: selectedOption.onboardingCardId });
+      return;
+    }
 
     if (optionId === 'restaurant-visit') {
       trackObservabilityEvent('Visit Creation Started', { source: 'AddVisitScreen' });

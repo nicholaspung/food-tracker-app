@@ -142,6 +142,7 @@ jest.mock('../ui', () => ({
 jest.mock('../screens', () => {
   const screenNames = [
     'AddRestaurantToListScreen',
+    'AddFeatureOnboardingScreen',
     'AddVisitScreen',
     'AboutScreen',
     'BillDetailScreen',
@@ -359,6 +360,7 @@ describe('RootNavigator', () => {
 
     const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
     expect(renderedStackScreens.indexOf('Home')).toBeLessThan(renderedStackScreens.indexOf('FeatureOnboarding'));
+    expect(renderedStackScreens).toContain('AddFeatureOnboarding');
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
   });
 

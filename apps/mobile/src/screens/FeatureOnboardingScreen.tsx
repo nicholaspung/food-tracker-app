@@ -15,6 +15,7 @@ import {
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
+import { BRAND_LOGO } from '../lib/branding';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -25,19 +26,23 @@ import { Button, Card, Screen, Text } from '../ui';
 type FeatureOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'FeatureOnboarding'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type MainOnboardingCardId =
-  | 'track_restaurant_visit'
-  | 'track_food_product'
-  | 'log_note'
-  | 'process_saved_photos'
-  | 'manage_notes';
+  | 'welcome'
+  | 'month_privacy'
+  | 'tutorials'
+  | 'friends'
+  | 'more_tools'
+  | 'lists'
+  | 'bills_tips'
+  | 'support_invites';
 
 interface MainOnboardingCard {
   id: MainOnboardingCardId;
   title: string;
   description: string;
   icon: IoniconName;
-  imageSource: ImageSourcePropType;
-  ctaLabel: string;
+  imageSource?: ImageSourcePropType;
+  heroLogo?: boolean;
+  accentIcons?: IoniconName[];
 }
 
 function resolveOnboardingImageSource(key: keyof typeof FEATURE_ONBOARDING_ASSETS) {
@@ -46,44 +51,69 @@ function resolveOnboardingImageSource(key: keyof typeof FEATURE_ONBOARDING_ASSET
 
 const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
   {
-    id: 'track_restaurant_visit',
-    title: 'Track a restaurant visit',
-    description: 'Add a restaurant, rate dishes, attach photos, and keep the visit ready for your feed.',
+    id: 'welcome',
+    title: 'Welcome to Yummy Recs',
+    description:
+      'Track restaurant visits, food products, and notes so you can remember what you liked and share useful recommendations with friends.',
     icon: 'restaurant-outline',
-    imageSource: resolveOnboardingImageSource('trackRestaurantVisit'),
-    ctaLabel: 'Try Visit Tracking',
+    heroLogo: true,
+    accentIcons: ['fast-food-outline', 'people-outline', 'star-outline'],
   },
   {
-    id: 'track_food_product',
-    title: 'Track a food product',
-    description: 'Save groceries, market finds, snacks, and drinks without creating a full restaurant visit.',
-    icon: 'bag-outline',
-    imageSource: resolveOnboardingImageSource('trackFoodProduct'),
-    ctaLabel: 'Try Food Product',
+    id: 'month_privacy',
+    title: 'Shared with breathing room',
+    description:
+      'Tracked items show the month they were added, so recommendations stay useful without making every meal feel watched in real time.',
+    icon: 'calendar-outline',
+    accentIcons: ['calendar-number-outline', 'eye-off-outline', 'time-outline'],
   },
   {
-    id: 'log_note',
-    title: 'Log a note',
-    description: 'Capture food ideas, places, recipes, and reminders before turning them into entries later.',
-    icon: 'create-outline',
-    imageSource: resolveOnboardingImageSource('logNote'),
-    ctaLabel: 'Write a Note',
+    id: 'tutorials',
+    title: 'Watch feature tutorials',
+    description:
+      'Some sections include short tutorial GIFs before you use them. Watching the full tutorial first will make the feature easier to use.',
+    icon: 'play-circle-outline',
+    accentIcons: ['phone-portrait-outline', 'play-outline', 'sparkles-outline'],
   },
   {
-    id: 'process_saved_photos',
-    title: 'Process saved photos',
-    description: 'Review saved food photos one by one and decide whether each should become a visit or product.',
-    icon: 'images-outline',
-    imageSource: resolveOnboardingImageSource('processSavedPhotos'),
-    ctaLabel: 'Process Photos',
+    id: 'friends',
+    title: 'Add friends intentionally',
+    description:
+      'There is no contact-list import. Add friends with codes when you are together, ideally over food or drinks.',
+    icon: 'people-outline',
+    accentIcons: ['qr-code-outline', 'person-add-outline', 'restaurant-outline'],
   },
   {
-    id: 'manage_notes',
-    title: 'Manage notes',
-    description: 'Search, edit, and convert your notes when you are ready to track what they describe.',
-    icon: 'document-text-outline',
-    imageSource: resolveOnboardingImageSource('manageNotes'),
-    ctaLabel: 'View Notes',
+    id: 'more_tools',
+    title: 'More than tracking',
+    description:
+      'You can organize restaurants into lists, split bills with friends, and use the tip calculator when you do not want to do the math.',
+    icon: 'apps-outline',
+    accentIcons: ['list-outline', 'cash-outline', 'calculator-outline'],
+  },
+  {
+    id: 'lists',
+    title: 'Use lists for ideas',
+    description:
+      'Lists can group restaurants, show your ratings and recommended menu items, or bookmark food your friends shared for later.',
+    icon: 'list-outline',
+    imageSource: resolveOnboardingImageSource('lists'),
+  },
+  {
+    id: 'bills_tips',
+    title: 'Split bills and calculate tips',
+    description:
+      'Bills help one person organize the split and keep payment details remembered. The tip calculator is there for quick totals.',
+    icon: 'cash-outline',
+    imageSource: resolveOnboardingImageSource('splitBill'),
+  },
+  {
+    id: 'support_invites',
+    title: 'Invite friends and get help',
+    description:
+      'The app is invite-only. Each user has 5 invite codes, and invite links can automatically add the inviter as a friend. For help, open Profile, Tutorials, or Feedback and Support.',
+    icon: 'restaurant-outline',
+    accentIcons: ['ticket-outline', 'help-circle-outline', 'chatbubble-ellipses-outline'],
   },
 ];
 
@@ -133,6 +163,55 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHei
   image: {
     height: '100%',
     width: '100%',
+  },
+  iconVisual: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: mediaHeight,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  heroLogo: {
+    height: 64,
+    width: 64,
+  },
+  heroIconFrame: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 96,
+    justifyContent: 'center',
+    width: 96,
+  },
+  accentIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: 'center',
+    position: 'absolute',
+    width: 38,
+  },
+  accentIconTopLeft: {
+    left: theme.spacing.lg,
+    top: theme.spacing.lg,
+  },
+  accentIconTopRight: {
+    right: theme.spacing.lg,
+    top: theme.spacing.lg,
+  },
+  accentIconBottom: {
+    bottom: theme.spacing.lg,
+    right: theme.spacing.lg,
   },
   cardIcon: {
     alignItems: 'center',
@@ -206,22 +285,36 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHei
 
 function FeatureOnboardingCardView({
   card,
-  mode,
-  onCtaPress,
   styles,
 }: {
   card: MainOnboardingCard;
-  mode: 'required' | 'replay';
-  onCtaPress: (cardId: MainOnboardingCardId) => void;
   styles: ReturnType<typeof useStyles>;
 }) {
   const theme = useTheme();
+  const accentPositions = [styles.accentIconTopLeft, styles.accentIconTopRight, styles.accentIconBottom];
 
   return (
     <Card style={styles.card}>
-      <View style={styles.imageFrame}>
-        <Image resizeMode="cover" source={card.imageSource} style={styles.image} />
-      </View>
+      {card.imageSource ? (
+        <View style={styles.imageFrame}>
+          <Image resizeMode="cover" source={card.imageSource} style={styles.image} />
+        </View>
+      ) : (
+        <View style={styles.iconVisual}>
+          {(card.accentIcons ?? []).map((iconName, index) => (
+            <View key={`${card.id}-${iconName}`} style={[styles.accentIcon, accentPositions[index]]}>
+              <Ionicons color={theme.colors.text.info} name={iconName} size={18} />
+            </View>
+          ))}
+          <View style={styles.heroIconFrame}>
+            {card.heroLogo ? (
+              <Image resizeMode="contain" source={BRAND_LOGO} style={styles.heroLogo} />
+            ) : (
+              <Ionicons color={theme.colors.text.brand} name={card.icon} size={44} />
+            )}
+          </View>
+        </View>
+      )}
       <View style={styles.cardTitleRow}>
         <View style={styles.cardIcon}>
           <Ionicons color={theme.colors.text.info} name={card.icon} size={22} />
@@ -231,15 +324,6 @@ function FeatureOnboardingCardView({
       <Text style={styles.cardCopy} variant="bodyMd">
         {card.description}
       </Text>
-      {mode === 'replay' ? (
-        <Button
-          label={card.ctaLabel}
-          onPress={() => {
-            onCtaPress(card.id);
-          }}
-          variant="secondary"
-        />
-      ) : null}
     </Card>
   );
 }
@@ -312,41 +396,6 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
       y: 0,
     });
   }, [carouselCardWidth, trackCardViewed]);
-
-  const navigateToCardDestination = useCallback(
-    (cardId: MainOnboardingCardId) => {
-      switch (cardId) {
-        case 'track_restaurant_visit':
-          navigation.navigate('CreateVisit');
-          return;
-        case 'track_food_product':
-          navigation.navigate('FoodProduct');
-          return;
-        case 'log_note':
-          navigation.navigate('NoteEditor');
-          return;
-        case 'process_saved_photos':
-          navigation.navigate('ProcessPhotos');
-          return;
-        case 'manage_notes':
-          navigation.navigate('Notes');
-          return;
-      }
-    },
-    [navigation],
-  );
-
-  const handleReplayCtaPress = useCallback(
-    (cardId: MainOnboardingCardId) => {
-      trackObservabilityEvent('FEATURE_ONBOARDING_CARD_CTA_TAPPED', {
-        cardId,
-        mode,
-        source: 'FeatureOnboardingScreen',
-      });
-      navigateToCardDestination(cardId);
-    },
-    [mode, navigateToCardDestination],
-  );
 
   const handleFinish = async () => {
     if (!user?.id) {
@@ -427,12 +476,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
           >
             {MAIN_ONBOARDING_CARDS.map((card) => (
               <View key={card.id} style={styles.carouselItem}>
-                <FeatureOnboardingCardView
-                  card={card}
-                  mode={mode}
-                  onCtaPress={handleReplayCtaPress}
-                  styles={styles}
-                />
+                <FeatureOnboardingCardView card={card} styles={styles} />
               </View>
             ))}
           </ScrollView>
@@ -496,9 +540,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
     [
       boundedActiveCardIndex,
       carouselCardWidth,
-      handleReplayCtaPress,
       isFinalCard,
-      mode,
       navigateToCardIndex,
       styles,
       theme.colors.text.primary,
@@ -527,7 +569,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
         }}
         subtitle="Review how to use Yummy Recs features"
         testID="feature-onboarding-screen"
-        title="Onboarding tutorials"
+        title="Welcome tutorial"
       >
         <View style={styles.replayBody}>{cardCarousel}</View>
       </BackHeaderScreenScaffold>
