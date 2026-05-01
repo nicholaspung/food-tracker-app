@@ -23,7 +23,7 @@ ffmpeg -version
 ffprobe -version
 ```
 
-## Open the Annotation Tool
+## Open the Tool
 
 Run the local helper server:
 
@@ -39,9 +39,9 @@ You can still open the static file directly if you only need JSON export:
 scripts/tutorials/video-annotation/index.html
 ```
 
-No dev server is required.
+No dev server is required for JSON-only annotation export. The helper server is required for MOV rendering and GIF export workflows.
 
-## Annotate a Video
+## Video Annotation Tab
 
 1. Load a `.mov` file with the file picker.
 2. Play or seek through the video.
@@ -58,6 +58,20 @@ Tap coordinates are normalized to the displayed video content:
 - `x=0, y=0` is the top-left of the visible video.
 - `x=1, y=1` is the bottom-right of the visible video.
 
+## Screenshot GIF Tab
+
+The `Screenshot GIF` tab builds an animated GIF from browser-captured still frames:
+
+1. Upload a local video.
+2. Seek to the frame you want with the browser video controls.
+3. Click `Capture Current Frame`.
+4. Reorder, duplicate, remove, and select screenshots in the gallery.
+5. Click the selected screenshot preview to place a tap ripple, or use `Clear Tap` to remove it.
+6. Configure GIF filename, frame duration, FPS, width, and ripple settings.
+7. Click `Export to GIF`, then choose a save folder or use the browser download fallback.
+
+Screenshot capture, gallery editing, duplication, removal, reordering, and tap placement happen in the browser. Final GIF rendering uses the local helper server and FFmpeg so the output can be saved with the same folder picker/download behavior as the existing exports.
+
 ## Render
 
 From the browser, click `Export MOV`. In supported browsers such as Chrome and Edge, the tool asks you to choose a folder and writes the rendered `.mov` there. If folder picking is unavailable, the rendered `.mov` downloads through the browser.
@@ -69,6 +83,16 @@ After the rendered `.mov` is created, the browser shows GIF export controls. GIF
 - Start and duration: blank, which uses the full rendered `.mov`
 
 In supported browsers, the generated `.gif` is written to the folder you choose. If folder picking is unavailable, the `.gif` downloads through the browser.
+
+The screenshot GIF tab uses the same save behavior. Defaults are:
+
+- Frame duration: `1.6` seconds
+- FPS: `12`
+- Width: `480`
+- Ripple duration: `0.6`
+- Ripple radius: `44`
+- Ripple color: `white`
+- Ripple opacity: `0.85`
 
 The Python renderer is used internally by the local helper server for `Export MOV`.
 

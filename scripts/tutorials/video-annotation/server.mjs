@@ -134,6 +134,41 @@ function optionalColor(value) {
   return color;
 }
 
+function requiredNumber(value, label, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw userInputError(`${label} must be a number from ${min} to ${max}.`);
+  }
+  return number;
+}
+
+function requiredInteger(value, label, min, max) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw userInputError(`${label} must be an integer from ${min} to ${max}.`);
+  }
+  return number;
+}
+
+function sanitizePngFilename(value, fallback) {
+  const raw = typeof value === 'string' && value.trim() ? value.trim() : fallback;
+  const filename = basename(raw);
+  if (filename !== raw || filename.includes('/') || filename.includes('\\')) {
+    throw userInputError('Frame filename must not include a path.');
+  }
+  if (!filename.toLowerCase().endsWith('.png')) {
+    throw userInputError('Frame filename must end in .png.');
+  }
+  if (filename === '.png' || filename.includes('\0')) {
+    throw userInputError('Frame filename is invalid.');
+  }
+  return filename;
+}
+
+function escapeConcatPath(value) {
+  return value.replaceAll('\\', '\\\\').replaceAll("'", "'\\''");
+}
+
 function runCommand(command, args) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
@@ -333,6 +368,257 @@ async function handleGif(req, res) {
   }
 }
 
+function parseScreenshotGifPayload(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw userInputError('Frames payload is required.');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(value);
+  } catch {
+    throw userInputError('Frames payload must be valid JSON.');
+  }
+
+  if (!payload || typeof payload !== 'object' || payload.version !== 1) {
+    throw userInputError('Frames payload must be a version 1 object.');
+  }
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    throw userInputError('At least one screenshot frame is required.');
+  }
+
+  const outputFilename = sanitizeGifFilename(payload.outputFilename, 'screenshots.gif');
+  const fps = requiredInteger(payload.fps, 'FPS', 1, 60);
+  const width = requiredInteger(payload.width, 'Width', 120, 2160);
+  const defaultFrameDuration = requiredNumber(payload.defaultFrameDuration, 'Default frame duration', 0.05, 30);
+  const rippleDuration = requiredNumber(payload.rippleDuration, 'Ripple duration', 0.01, 30);
+  const rippleRadius = requiredNumber(payload.rippleRadius, 'Ripple radius', 1, 1000);
+  const rippleOpacity = requiredNumber(payload.rippleOpacity, 'Ripple opacity', 0, 1);
+  const rippleColor = optionalColor(payload.rippleColor);
+
+  const items = payload.items.map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      throw userInputError(`Frame ${index + 1} is invalid.`);
+    }
+
+    const filename = sanitizePngFilename(item.filename, `frame-${String(index + 1).padStart(3, '0')}.png`);
+    const duration = requiredNumber(item.duration ?? defaultFrameDuration, `Frame ${index + 1} duration`, 0.05, 30);
+    let tap = null;
+
+    if (item.tap !== null && item.tap !== undefined) {
+      if (!item.tap || typeof item.tap !== 'object') {
+        throw userInputError(`Frame ${index + 1} tap is invalid.`);
+      }
+      tap = {
+        x: requiredNumber(item.tap.x, `Frame ${index + 1} tap x`, 0, 1),
+        y: requiredNumber(item.tap.y, `Frame ${index + 1} tap y`, 0, 1),
+      };
+    }
+
+    return {
+      id: typeof item.id === 'string' && item.id ? item.id : `frame-${index + 1}`,
+      filename,
+      duration,
+      tap,
+    };
+  });
+
+  return {
+    outputFilename,
+    fps,
+    width,
+    defaultFrameDuration,
+    rippleDuration,
+    rippleRadius,
+    rippleOpacity,
+    rippleColor,
+    items,
+  };
+}
+
+function ffexpr(value) {
+  const fixed = Number(value).toFixed(6);
+  return fixed.replace(/0+$/, '').replace(/\.$/, '') || '0';
+}
+
+function escapeFfmpegExpr(expr) {
+  return expr.replaceAll(',', '\\,');
+}
+
+function parseFfmpegRgbColor(value) {
+  const named = new Map([
+    ['white', 'ffffff'],
+    ['black', '000000'],
+    ['red', 'ff0000'],
+    ['blue', '1667d9'],
+    ['yellow', 'f5b400'],
+  ]);
+  const color = optionalColor(value);
+  const hex = named.get(color.toLowerCase()) || color.replace(/^#/, '');
+
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function geqScreenshotComponentExpr({ source, colorValue, tap, rippleDuration, rippleRadius, rippleOpacity }) {
+  const duration = ffexpr(rippleDuration);
+  const maxRadius = ffexpr(rippleRadius);
+  const opacity = ffexpr(rippleOpacity);
+  const centerX = `W*${ffexpr(tap.x)}`;
+  const centerY = `H*${ffexpr(tap.y)}`;
+  const color = ffexpr(colorValue);
+
+  const progress = `(T/${duration})`;
+  const radius = `(6+(${maxRadius}-6)*${progress})`;
+  const alpha = `(${opacity}*(1-${progress}))`;
+  const distance = `hypot(X-${centerX},Y-${centerY})`;
+  const ring = `(between(T,0,${duration})*lte(abs(${distance}-${radius}),4))`;
+  const blended = `(${source}(X,Y)*(1-${alpha})+${color}*${alpha})`;
+
+  return escapeFfmpegExpr(`if(${ring},${blended},${source}(X,Y))`);
+}
+
+function buildScreenshotFrameFilter({ width, tap, rippleDuration, rippleRadius, rippleOpacity, rippleColor }) {
+  const filters = [`scale=${width}:-2:flags=lanczos`, 'setsar=1'];
+
+  if (tap) {
+    const { r, g, b } = parseFfmpegRgbColor(rippleColor);
+    const red = geqScreenshotComponentExpr({
+      source: 'r',
+      colorValue: r,
+      tap,
+      rippleDuration,
+      rippleRadius,
+      rippleOpacity,
+    });
+    const green = geqScreenshotComponentExpr({
+      source: 'g',
+      colorValue: g,
+      tap,
+      rippleDuration,
+      rippleRadius,
+      rippleOpacity,
+    });
+    const blue = geqScreenshotComponentExpr({
+      source: 'b',
+      colorValue: b,
+      tap,
+      rippleDuration,
+      rippleRadius,
+      rippleOpacity,
+    });
+    filters.push('format=rgb24', `geq=r='${red}':g='${green}':b='${blue}'`);
+  }
+
+  filters.push('format=yuv420p');
+  return filters.join(',');
+}
+
+async function streamGeneratedGif(res, outputPath, outputFilename, tempDir) {
+  const outputStats = await stat(outputPath);
+  res.writeHead(200, {
+    'content-type': 'image/gif',
+    'content-length': outputStats.size,
+    'content-disposition': `attachment; filename="${outputFilename.replaceAll('"', '')}"`,
+  });
+
+  const stream = createReadStream(outputPath);
+  stream.pipe(res);
+  stream.on('close', () => {
+    rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  });
+  stream.on('error', () => {
+    rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    if (!res.headersSent) {
+      sendJson(res, 500, { error: 'Could not stream generated GIF.' });
+    } else {
+      res.destroy();
+    }
+  });
+}
+
+async function handleScreenshotGif(req, res) {
+  let tempDir;
+
+  try {
+    const form = await parseMultipart(req);
+    const payload = parseScreenshotGifPayload(form.get('frames'));
+
+    tempDir = await mkdtemp(join(tmpdir(), 'video-annotation-screenshot-gif-'));
+    const segmentPaths = [];
+
+    for (const [index, item] of payload.items.entries()) {
+      const frameFile = form.get(item.filename);
+      if (!(frameFile instanceof File)) {
+        throw userInputError(`Frame file is required for ${item.filename}.`);
+      }
+
+      const framePath = join(tempDir, item.filename);
+      const segmentPath = join(tempDir, `segment-${String(index + 1).padStart(3, '0')}.mp4`);
+      await writeFile(framePath, Buffer.from(await frameFile.arrayBuffer()));
+
+      await runCommand('ffmpeg', [
+        '-y',
+        '-loop',
+        '1',
+        '-t',
+        String(item.duration),
+        '-i',
+        framePath,
+        '-vf',
+        buildScreenshotFrameFilter({
+          width: payload.width,
+          tap: item.tap,
+          rippleDuration: payload.rippleDuration,
+          rippleRadius: payload.rippleRadius,
+          rippleOpacity: payload.rippleOpacity,
+          rippleColor: payload.rippleColor,
+        }),
+        '-r',
+        String(payload.fps),
+        '-an',
+        '-movflags',
+        '+faststart',
+        segmentPath,
+      ]);
+
+      segmentPaths.push(segmentPath);
+    }
+
+    const concatPath = join(tempDir, 'segments.txt');
+    const concatBody = segmentPaths.map((segmentPath) => `file '${escapeConcatPath(segmentPath)}'`).join('\n');
+    await writeFile(concatPath, `${concatBody}\n`, 'utf8');
+
+    const outputPath = join(tempDir, payload.outputFilename);
+    await runCommand('ffmpeg', [
+      '-y',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      concatPath,
+      '-filter_complex',
+      `fps=${payload.fps},scale=${payload.width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`,
+      outputPath,
+    ]);
+
+    await streamGeneratedGif(res, outputPath, payload.outputFilename, tempDir);
+    tempDir = undefined;
+  } catch (error) {
+    const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
+    const message = error instanceof Error ? error.message : 'Screenshot GIF conversion failed.';
+    sendJson(res, statusCode, { error: message });
+  } finally {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
   const pathname = decodeURIComponent(url.pathname);
@@ -380,6 +666,15 @@ const server = createServer((req, res) => {
     handleGif(req, res).catch((error) => {
       sendJson(res, 500, {
         error: error instanceof Error ? error.message : 'GIF conversion failed.',
+      });
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url && req.url.startsWith('/api/screenshot-gif')) {
+    handleScreenshotGif(req, res).catch((error) => {
+      sendJson(res, 500, {
+        error: error instanceof Error ? error.message : 'Screenshot GIF conversion failed.',
       });
     });
     return;

@@ -144,6 +144,36 @@
       margin-bottom: 14px;
     }
 
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab-button {
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .tab-button:hover:not(:disabled) {
+      color: var(--text);
+      background: #eef2f8;
+    }
+
+    .tab-button.active {
+      color: var(--text);
+      border-color: var(--line);
+      background: var(--panel);
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
+
     .file-input {
       max-width: 100%;
       color: var(--muted);
@@ -269,6 +299,93 @@
       border: 1px solid #161d33;
       border-radius: 8px;
       background: #0c1020;
+    }
+
+    .screenshot-preview {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 320px;
+      overflow: hidden;
+      border: 1px solid #161d33;
+      border-radius: 8px;
+      background: #0c1020;
+      cursor: crosshair;
+    }
+
+    .screenshot-preview.empty-preview {
+      cursor: default;
+    }
+
+    .screenshot-preview img {
+      width: 100%;
+      max-height: 520px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .screenshot-preview img[hidden],
+    .screenshot-preview-placeholder[hidden],
+    .screenshot-ripple-marker[hidden] {
+      display: none;
+    }
+
+    .screenshot-preview-placeholder {
+      color: #aab4ca;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .screenshot-ripple-marker {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.95);
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      box-shadow: 0 0 0 2px rgba(22, 103, 217, 0.9);
+    }
+
+    .gallery-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .gallery-item {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .gallery-item.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(22, 103, 217, 0.14);
+    }
+
+    .gallery-thumb {
+      width: 92px;
+      height: 64px;
+      object-fit: contain;
+      border: 1px solid #161d33;
+      border-radius: 6px;
+      background: #0c1020;
+    }
+
+    .gallery-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .gallery-actions button {
+      padding: 7px 9px;
+      font-size: 13px;
     }
 
     .tap-preview {
@@ -513,18 +630,22 @@
         <h1>Video Annotation & Export Tool</h1>
         <div class="status" id="statusText">Load a .mov file to start annotating.</div>
       </div>
-      <div class="controls-row">
-        <button id="exportButton" disabled>Export JSON</button>
-        <button id="exportMovButton" disabled>Export MOV</button>
-      </div>
     </div>
 
+    <div class="tabs" role="tablist" aria-label="Tool mode">
+      <button class="tab-button active" id="annotationTabButton" type="button" role="tab" aria-controls="annotationTabPanel" aria-selected="true">Video Annotation</button>
+      <button class="tab-button" id="screenshotTabButton" type="button" role="tab" aria-controls="screenshotTabPanel" aria-selected="false">Screenshot GIF</button>
+    </div>
+
+    <section class="tab-panel" id="annotationTabPanel" role="tabpanel" aria-labelledby="annotationTabButton">
     <div class="grid">
       <section class="panel">
         <div class="panel-header">
           <h2>Player</h2>
           <div class="controls-row">
             <button class="secondary" id="previewCutsButton" disabled>Preview Without Cuts</button>
+            <button id="exportButton" disabled>Export JSON</button>
+            <button id="exportMovButton" disabled>Export MOV</button>
             <div class="status" id="filenameText">No video loaded</div>
           </div>
         </div>
@@ -634,6 +755,105 @@
         </div>
       </aside>
     </div>
+    </section>
+
+    <section class="tab-panel" id="screenshotTabPanel" role="tabpanel" aria-labelledby="screenshotTabButton" hidden>
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Screenshot GIF</h2>
+            <div class="controls-row">
+              <button id="captureScreenshotButton" disabled>Capture Current Frame</button>
+              <div class="status" id="screenshotFilenameText">No video loaded</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="file-row">
+              <input class="file-input" id="screenshotVideoInput" type="file" accept=".mov,video/*">
+            </div>
+
+            <div class="video-wrap">
+              <video id="screenshotVideo" controls playsinline></video>
+              <div class="video-placeholder" id="screenshotVideoPlaceholder">Video preview appears here</div>
+            </div>
+
+            <div class="time-row">
+              <span id="screenshotCurrentTimeText">00:00.000</span>
+              <span id="screenshotDurationText">00:00.000</span>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <h2>Selected Screenshot</h2>
+                <button class="secondary" id="clearScreenshotTapButton" disabled>Clear Tap</button>
+              </div>
+              <div class="screenshot-preview empty-preview" id="selectedScreenshotPreview">
+                <div class="screenshot-preview-placeholder" id="selectedScreenshotPlaceholder">Select a screenshot to add a tap ripple.</div>
+                <img id="selectedScreenshotImage" alt="Selected screenshot preview" hidden>
+                <div class="screenshot-ripple-marker" id="selectedScreenshotTapMarker" hidden></div>
+              </div>
+              <div class="hint" id="screenshotHintText">Capture frames from the video, then select a screenshot and click the preview to place a tap ripple.</div>
+            </div>
+
+            <div class="gif-export">
+              <h2>GIF export</h2>
+              <div class="field">
+                <label for="screenshotGifFilenameInput">GIF filename</label>
+                <input class="output-input" id="screenshotGifFilenameInput" type="text" value="screenshots.gif" spellcheck="false">
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="screenshotFrameDurationInput">Frame duration</label>
+                  <input class="output-input" id="screenshotFrameDurationInput" type="number" min="0.05" max="30" step="0.05" value="1.6">
+                </div>
+                <div class="field">
+                  <label for="screenshotGifFpsInput">FPS</label>
+                  <input class="output-input" id="screenshotGifFpsInput" type="number" min="1" max="60" step="1" value="12">
+                </div>
+                <div class="field">
+                  <label for="screenshotGifWidthInput">Width</label>
+                  <input class="output-input" id="screenshotGifWidthInput" type="number" min="120" max="2160" step="1" value="480">
+                </div>
+                <div class="field">
+                  <label for="screenshotRippleDurationInput">Ripple duration</label>
+                  <input class="output-input" id="screenshotRippleDurationInput" type="number" min="0.01" max="30" step="0.01" value="0.6">
+                </div>
+                <div class="field">
+                  <label for="screenshotRippleRadiusInput">Ripple radius</label>
+                  <input class="output-input" id="screenshotRippleRadiusInput" type="number" min="1" max="1000" step="1" value="44">
+                </div>
+                <div class="field">
+                  <label for="screenshotRippleOpacityInput">Ripple opacity</label>
+                  <input class="output-input" id="screenshotRippleOpacityInput" type="number" min="0" max="1" step="0.05" value="0.85">
+                </div>
+                <div class="field">
+                  <label for="screenshotRippleColorInput">Ripple color</label>
+                  <input class="output-input" id="screenshotRippleColorInput" type="text" value="white" spellcheck="false">
+                </div>
+              </div>
+              <div class="controls-row">
+                <button id="exportScreenshotGifButton" disabled>Export to GIF</button>
+                <div class="status" id="screenshotGifStatusText"></div>
+              </div>
+              <div class="gif-preview" id="screenshotGifPreview" hidden>
+                <img id="screenshotGifPreviewImage" alt="Generated screenshot GIF preview">
+                <div class="status" id="screenshotGifPreviewText"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Gallery</h2>
+            <div class="status" id="screenshotGalleryCountText">0 screenshots</div>
+          </div>
+          <div class="panel-body">
+            <div class="gallery-list" id="screenshotGalleryList"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -656,8 +876,20 @@
       gifObjectUrl: null,
       isExportingMov: false,
       isExportingGif: false,
+      activeTab: 'annotation',
+      screenshotVideoFile: null,
+      screenshotVideoObjectUrl: null,
+      screenshotDuration: 0,
+      screenshots: [],
+      selectedScreenshotId: null,
+      screenshotGifObjectUrl: null,
+      isExportingScreenshotGif: false,
     };
 
+    const annotationTabButton = document.getElementById('annotationTabButton');
+    const screenshotTabButton = document.getElementById('screenshotTabButton');
+    const annotationTabPanel = document.getElementById('annotationTabPanel');
+    const screenshotTabPanel = document.getElementById('screenshotTabPanel');
     const videoInput = document.getElementById('videoInput');
     const video = document.getElementById('video');
     const videoWrap = document.getElementById('videoWrap');
@@ -697,9 +929,41 @@
     const gifPreviewText = document.getElementById('gifPreviewText');
     const cutsList = document.getElementById('cutsList');
     const tapsList = document.getElementById('tapsList');
+    const screenshotVideoInput = document.getElementById('screenshotVideoInput');
+    const screenshotVideo = document.getElementById('screenshotVideo');
+    const screenshotVideoPlaceholder = document.getElementById('screenshotVideoPlaceholder');
+    const screenshotFilenameText = document.getElementById('screenshotFilenameText');
+    const captureScreenshotButton = document.getElementById('captureScreenshotButton');
+    const screenshotCurrentTimeText = document.getElementById('screenshotCurrentTimeText');
+    const screenshotDurationText = document.getElementById('screenshotDurationText');
+    const selectedScreenshotPreview = document.getElementById('selectedScreenshotPreview');
+    const selectedScreenshotPlaceholder = document.getElementById('selectedScreenshotPlaceholder');
+    const selectedScreenshotImage = document.getElementById('selectedScreenshotImage');
+    const selectedScreenshotTapMarker = document.getElementById('selectedScreenshotTapMarker');
+    const clearScreenshotTapButton = document.getElementById('clearScreenshotTapButton');
+    const screenshotHintText = document.getElementById('screenshotHintText');
+    const screenshotGifFilenameInput = document.getElementById('screenshotGifFilenameInput');
+    const screenshotFrameDurationInput = document.getElementById('screenshotFrameDurationInput');
+    const screenshotGifFpsInput = document.getElementById('screenshotGifFpsInput');
+    const screenshotGifWidthInput = document.getElementById('screenshotGifWidthInput');
+    const screenshotRippleDurationInput = document.getElementById('screenshotRippleDurationInput');
+    const screenshotRippleRadiusInput = document.getElementById('screenshotRippleRadiusInput');
+    const screenshotRippleOpacityInput = document.getElementById('screenshotRippleOpacityInput');
+    const screenshotRippleColorInput = document.getElementById('screenshotRippleColorInput');
+    const exportScreenshotGifButton = document.getElementById('exportScreenshotGifButton');
+    const screenshotGifStatusText = document.getElementById('screenshotGifStatusText');
+    const screenshotGifPreview = document.getElementById('screenshotGifPreview');
+    const screenshotGifPreviewImage = document.getElementById('screenshotGifPreviewImage');
+    const screenshotGifPreviewText = document.getElementById('screenshotGifPreviewText');
+    const screenshotGalleryList = document.getElementById('screenshotGalleryList');
+    const screenshotGalleryCountText = document.getElementById('screenshotGalleryCountText');
 
     function isReady() {
       return Number.isFinite(state.duration) && state.duration > 0;
+    }
+
+    function isScreenshotVideoReady() {
+      return Number.isFinite(state.screenshotDuration) && state.screenshotDuration > 0 && screenshotVideo.videoWidth > 0 && screenshotVideo.videoHeight > 0;
     }
 
     function clamp(value, min, max) {
@@ -728,6 +992,13 @@
       return state.videoFile.name.replace(/\.[^.]+$/, '') || 'video';
     }
 
+    function screenshotVideoBaseName() {
+      if (!state.screenshotVideoFile) {
+        return 'screenshots';
+      }
+      return state.screenshotVideoFile.name.replace(/\.[^.]+$/, '') || 'screenshots';
+    }
+
     function defaultOutputFilename() {
       return `${videoBaseName()}-final.mov`;
     }
@@ -748,11 +1019,34 @@
       return `${gifBaseName()}.gif`;
     }
 
+    function defaultScreenshotGifFilename() {
+      return `${screenshotVideoBaseName()}-screenshots.gif`;
+    }
+
     function normalizeGifFilename(value) {
       const trimmed = value.trim();
       const fallback = defaultGifFilename();
       const filename = trimmed || fallback;
       return filename.toLowerCase().endsWith('.gif') ? filename : `${filename}.gif`;
+    }
+
+    function normalizeScreenshotGifFilename(value) {
+      const trimmed = value.trim();
+      const fallback = defaultScreenshotGifFilename();
+      const filename = trimmed || fallback;
+      return filename.toLowerCase().endsWith('.gif') ? filename : `${filename}.gif`;
+    }
+
+    function selectedScreenshot() {
+      return state.screenshots.find((screenshot) => screenshot.id === state.selectedScreenshotId) || null;
+    }
+
+    function readNumberInput(input, fallback, min, max) {
+      const number = Number(input.value);
+      if (!Number.isFinite(number)) {
+        return fallback;
+      }
+      return clamp(number, min, max);
     }
 
     function buildAnnotationPayload() {
@@ -851,6 +1145,12 @@
       gifWidthInput.disabled = state.isExportingGif;
       gifStartInput.disabled = state.isExportingGif;
       gifDurationInput.disabled = state.isExportingGif;
+      annotationTabButton.classList.toggle('active', state.activeTab === 'annotation');
+      screenshotTabButton.classList.toggle('active', state.activeTab === 'screenshot');
+      annotationTabButton.setAttribute('aria-selected', state.activeTab === 'annotation' ? 'true' : 'false');
+      screenshotTabButton.setAttribute('aria-selected', state.activeTab === 'screenshot' ? 'true' : 'false');
+      annotationTabPanel.hidden = state.activeTab !== 'annotation';
+      screenshotTabPanel.hidden = state.activeTab !== 'screenshot';
       videoPlaceholder.style.display = ready ? 'none' : 'grid';
       cutEditor.hidden = !state.cutMode || !state.draftCut;
       videoWrap.classList.toggle('tap-mode', state.tapMode);
@@ -871,6 +1171,22 @@
         draftCutText.textContent = 'Move the Start and End handles on the timeline.';
         confirmCutButton.disabled = true;
       }
+
+      const screenshotReady = isScreenshotVideoReady();
+      const selected = selectedScreenshot();
+      captureScreenshotButton.disabled = !screenshotReady;
+      screenshotVideoPlaceholder.style.display = screenshotReady ? 'none' : 'grid';
+      clearScreenshotTapButton.disabled = !selected || !selected.tap;
+      exportScreenshotGifButton.disabled = state.screenshots.length === 0 || state.isExportingScreenshotGif;
+      screenshotGifFilenameInput.disabled = state.isExportingScreenshotGif;
+      screenshotFrameDurationInput.disabled = state.isExportingScreenshotGif;
+      screenshotGifFpsInput.disabled = state.isExportingScreenshotGif;
+      screenshotGifWidthInput.disabled = state.isExportingScreenshotGif;
+      screenshotRippleDurationInput.disabled = state.isExportingScreenshotGif;
+      screenshotRippleRadiusInput.disabled = state.isExportingScreenshotGif;
+      screenshotRippleOpacityInput.disabled = state.isExportingScreenshotGif;
+      screenshotRippleColorInput.disabled = state.isExportingScreenshotGif;
+      exportScreenshotGifButton.textContent = state.isExportingScreenshotGif ? 'Exporting...' : 'Export to GIF';
     }
 
     function updateTime() {
@@ -1021,11 +1337,138 @@
       }
     }
 
+    function updateScreenshotTime() {
+      const current = isScreenshotVideoReady() ? clamp(screenshotVideo.currentTime, 0, state.screenshotDuration) : 0;
+      const duration = isScreenshotVideoReady() ? state.screenshotDuration : 0;
+      screenshotCurrentTimeText.textContent = formatTime(current);
+      screenshotDurationText.textContent = formatTime(duration);
+    }
+
+    function getDisplayedScreenshotRect() {
+      const wrapRect = selectedScreenshotPreview.getBoundingClientRect();
+      const screenshot = selectedScreenshot();
+      if (!screenshot || screenshot.width <= 0 || screenshot.height <= 0) {
+        return wrapRect;
+      }
+
+      const imageRatio = screenshot.width / screenshot.height;
+      const boxRatio = wrapRect.width / wrapRect.height;
+      if (boxRatio > imageRatio) {
+        const width = wrapRect.height * imageRatio;
+        const left = wrapRect.left + (wrapRect.width - width) / 2;
+        return { left, top: wrapRect.top, width, height: wrapRect.height };
+      }
+
+      const height = wrapRect.width / imageRatio;
+      const top = wrapRect.top + (wrapRect.height - height) / 2;
+      return { left: wrapRect.left, top, width: wrapRect.width, height };
+    }
+
+    function renderSelectedScreenshot() {
+      const screenshot = selectedScreenshot();
+      if (!screenshot) {
+        selectedScreenshotPreview.classList.add('empty-preview');
+        selectedScreenshotPlaceholder.hidden = false;
+        selectedScreenshotImage.hidden = true;
+        selectedScreenshotImage.removeAttribute('src');
+        selectedScreenshotTapMarker.hidden = true;
+        return;
+      }
+
+      selectedScreenshotPreview.classList.remove('empty-preview');
+      selectedScreenshotPlaceholder.hidden = true;
+      selectedScreenshotImage.hidden = false;
+      selectedScreenshotImage.src = screenshot.objectUrl;
+
+      if (screenshot.tap) {
+        const rect = getDisplayedScreenshotRect();
+        const wrapRect = selectedScreenshotPreview.getBoundingClientRect();
+        selectedScreenshotTapMarker.style.left = `${rect.left - wrapRect.left + screenshot.tap.x * rect.width}px`;
+        selectedScreenshotTapMarker.style.top = `${rect.top - wrapRect.top + screenshot.tap.y * rect.height}px`;
+        selectedScreenshotTapMarker.hidden = false;
+      } else {
+        selectedScreenshotTapMarker.hidden = true;
+      }
+    }
+
+    function renderScreenshotGallery() {
+      screenshotGalleryList.innerHTML = '';
+      screenshotGalleryCountText.textContent = `${state.screenshots.length} screenshot${state.screenshots.length === 1 ? '' : 's'}`;
+
+      if (state.screenshots.length === 0) {
+        screenshotGalleryList.innerHTML = '<div class="empty">No screenshots yet. Capture frames from the video to build a GIF.</div>';
+        return;
+      }
+
+      state.screenshots.forEach((screenshot, index) => {
+        const item = document.createElement('div');
+        item.className = `gallery-item${screenshot.id === state.selectedScreenshotId ? ' selected' : ''}`;
+
+        const thumb = document.createElement('img');
+        thumb.className = 'gallery-thumb';
+        thumb.src = screenshot.objectUrl;
+        thumb.alt = `Screenshot ${index + 1}`;
+        item.appendChild(thumb);
+
+        const body = document.createElement('div');
+        body.innerHTML = `
+          <div class="item-title">Screenshot ${index + 1}</div>
+          <div class="item-meta">${formatTime(screenshot.sourceTimestamp)} | ${screenshot.duration.toFixed(2)}s | ${screenshot.tap ? 'Tap ripple' : 'No tap'}</div>
+        `;
+
+        const actions = document.createElement('div');
+        actions.className = 'gallery-actions';
+
+        const selectButton = document.createElement('button');
+        selectButton.className = 'secondary';
+        selectButton.textContent = 'Select';
+        selectButton.addEventListener('click', () => {
+          state.selectedScreenshotId = screenshot.id;
+          screenshotHintText.textContent = 'Click the selected screenshot preview to place or move the tap ripple.';
+          render();
+        });
+        actions.appendChild(selectButton);
+
+        const duplicateButton = document.createElement('button');
+        duplicateButton.className = 'secondary';
+        duplicateButton.textContent = 'Duplicate';
+        duplicateButton.addEventListener('click', () => duplicateScreenshot(screenshot.id));
+        actions.appendChild(duplicateButton);
+
+        const moveLeftButton = document.createElement('button');
+        moveLeftButton.className = 'secondary';
+        moveLeftButton.textContent = 'Move left';
+        moveLeftButton.disabled = index === 0;
+        moveLeftButton.addEventListener('click', () => moveScreenshot(index, index - 1));
+        actions.appendChild(moveLeftButton);
+
+        const moveRightButton = document.createElement('button');
+        moveRightButton.className = 'secondary';
+        moveRightButton.textContent = 'Move right';
+        moveRightButton.disabled = index === state.screenshots.length - 1;
+        moveRightButton.addEventListener('click', () => moveScreenshot(index, index + 1));
+        actions.appendChild(moveRightButton);
+
+        const removeButton = document.createElement('button');
+        removeButton.className = 'danger';
+        removeButton.textContent = 'Remove';
+        removeButton.addEventListener('click', () => removeScreenshot(screenshot.id));
+        actions.appendChild(removeButton);
+
+        body.appendChild(actions);
+        item.appendChild(body);
+        screenshotGalleryList.appendChild(item);
+      });
+    }
+
     function render() {
       updateControls();
       updateTime();
+      updateScreenshotTime();
       renderTimeline();
       renderLists();
+      renderSelectedScreenshot();
+      renderScreenshotGallery();
     }
 
     function addCut(startTime, endTime) {
@@ -1190,6 +1633,159 @@
       statusText.textContent = `Added tap at ${formatTime(timestamp)}.`;
       state.tapMode = false;
       hintText.textContent = 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      render();
+    }
+
+    function clearScreenshotGifPreview() {
+      if (state.screenshotGifObjectUrl) {
+        URL.revokeObjectURL(state.screenshotGifObjectUrl);
+      }
+      state.screenshotGifObjectUrl = null;
+      screenshotGifPreviewImage.removeAttribute('src');
+      screenshotGifPreview.hidden = true;
+      screenshotGifPreviewText.textContent = '';
+    }
+
+    function showScreenshotGifPreview(blob, filename) {
+      if (state.screenshotGifObjectUrl) {
+        URL.revokeObjectURL(state.screenshotGifObjectUrl);
+      }
+      state.screenshotGifObjectUrl = URL.createObjectURL(blob);
+      screenshotGifPreviewImage.src = state.screenshotGifObjectUrl;
+      screenshotGifPreview.hidden = false;
+      screenshotGifPreviewText.textContent = `Previewing ${filename}.`;
+    }
+
+    function clearScreenshots() {
+      for (const screenshot of state.screenshots) {
+        URL.revokeObjectURL(screenshot.objectUrl);
+      }
+      state.screenshots = [];
+      state.selectedScreenshotId = null;
+      clearScreenshotGifPreview();
+    }
+
+    function screenshotFrameDuration() {
+      return readNumberInput(screenshotFrameDurationInput, 1.6, 0.05, 30);
+    }
+
+    async function captureCurrentScreenshot() {
+      if (!isScreenshotVideoReady()) {
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = screenshotVideo.videoWidth;
+      canvas.height = screenshotVideo.videoHeight;
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        screenshotHintText.textContent = 'Could not create a canvas for screenshot capture.';
+        return;
+      }
+
+      try {
+        context.drawImage(screenshotVideo, 0, 0, canvas.width, canvas.height);
+      } catch {
+        screenshotHintText.textContent = 'Could not capture this video frame in the browser.';
+        return;
+      }
+
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+
+      if (!(blob instanceof Blob)) {
+        screenshotHintText.textContent = 'Could not encode the screenshot as a PNG.';
+        return;
+      }
+
+      const screenshot = {
+        id: makeId('shot'),
+        sourceTimestamp: clamp(screenshotVideo.currentTime, 0, state.screenshotDuration),
+        blob,
+        objectUrl: URL.createObjectURL(blob),
+        width: canvas.width,
+        height: canvas.height,
+        duration: screenshotFrameDuration(),
+        tap: null,
+      };
+
+      state.screenshots.push(screenshot);
+      state.selectedScreenshotId = screenshot.id;
+      clearScreenshotGifPreview();
+      screenshotHintText.textContent = `Captured screenshot at ${formatTime(screenshot.sourceTimestamp)}.`;
+      render();
+    }
+
+    function duplicateScreenshot(id) {
+      const index = state.screenshots.findIndex((screenshot) => screenshot.id === id);
+      if (index === -1) {
+        return;
+      }
+
+      const original = state.screenshots[index];
+      const duplicate = {
+        id: makeId('shot'),
+        sourceTimestamp: original.sourceTimestamp,
+        blob: original.blob,
+        objectUrl: URL.createObjectURL(original.blob),
+        width: original.width,
+        height: original.height,
+        duration: original.duration,
+        tap: original.tap ? { ...original.tap } : null,
+      };
+
+      state.screenshots.splice(index + 1, 0, duplicate);
+      state.selectedScreenshotId = duplicate.id;
+      clearScreenshotGifPreview();
+      screenshotHintText.textContent = `Duplicated screenshot ${index + 1}.`;
+      render();
+    }
+
+    function moveScreenshot(fromIndex, toIndex) {
+      if (fromIndex < 0 || fromIndex >= state.screenshots.length || toIndex < 0 || toIndex >= state.screenshots.length) {
+        return;
+      }
+      const [screenshot] = state.screenshots.splice(fromIndex, 1);
+      state.screenshots.splice(toIndex, 0, screenshot);
+      clearScreenshotGifPreview();
+      render();
+    }
+
+    function removeScreenshot(id) {
+      const index = state.screenshots.findIndex((screenshot) => screenshot.id === id);
+      if (index === -1) {
+        return;
+      }
+
+      const [removed] = state.screenshots.splice(index, 1);
+      URL.revokeObjectURL(removed.objectUrl);
+
+      if (state.selectedScreenshotId === id) {
+        const next = state.screenshots[Math.min(index, state.screenshots.length - 1)] || null;
+        state.selectedScreenshotId = next ? next.id : null;
+      }
+
+      clearScreenshotGifPreview();
+      screenshotHintText.textContent = state.screenshots.length === 0
+        ? 'Capture frames from the video, then select a screenshot and click the preview to place a tap ripple.'
+        : 'Removed screenshot.';
+      render();
+    }
+
+    function setScreenshotTap(event) {
+      const screenshot = selectedScreenshot();
+      if (!screenshot) {
+        return;
+      }
+
+      const rect = getDisplayedScreenshotRect();
+      const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      screenshot.tap = { x, y };
+      clearScreenshotGifPreview();
+      screenshotHintText.textContent = 'Tap ripple added to the selected screenshot.';
       render();
     }
 
@@ -1513,6 +2109,163 @@
         }
       } finally {
         state.isExportingGif = false;
+        render();
+      }
+    });
+
+    annotationTabButton.addEventListener('click', () => {
+      state.activeTab = 'annotation';
+      statusText.textContent = state.videoFile ? statusText.textContent : 'Load a .mov file to start annotating.';
+      render();
+    });
+
+    screenshotTabButton.addEventListener('click', () => {
+      state.activeTab = 'screenshot';
+      statusText.textContent = 'Build a GIF from captured video screenshots.';
+      render();
+    });
+
+    screenshotVideoInput.addEventListener('change', () => {
+      const file = screenshotVideoInput.files && screenshotVideoInput.files[0];
+      if (!file) {
+        return;
+      }
+
+      if (state.screenshotVideoObjectUrl) {
+        URL.revokeObjectURL(state.screenshotVideoObjectUrl);
+      }
+
+      clearScreenshots();
+      state.screenshotVideoFile = file;
+      state.screenshotDuration = 0;
+      state.screenshotVideoObjectUrl = URL.createObjectURL(file);
+      state.isExportingScreenshotGif = false;
+      screenshotVideo.src = state.screenshotVideoObjectUrl;
+      screenshotFilenameText.textContent = file.name;
+      screenshotGifFilenameInput.value = defaultScreenshotGifFilename();
+      screenshotGifStatusText.textContent = '';
+      screenshotHintText.textContent = 'Loading video metadata...';
+      render();
+    });
+
+    screenshotVideo.addEventListener('loadedmetadata', () => {
+      state.screenshotDuration = Number.isFinite(screenshotVideo.duration) ? screenshotVideo.duration : 0;
+      screenshotHintText.textContent = isScreenshotVideoReady()
+        ? 'Seek to a frame, then capture it into the gallery.'
+        : 'Could not read a finite video duration.';
+      render();
+    });
+
+    screenshotVideo.addEventListener('timeupdate', updateScreenshotTime);
+    screenshotVideo.addEventListener('durationchange', () => {
+      state.screenshotDuration = Number.isFinite(screenshotVideo.duration) ? screenshotVideo.duration : state.screenshotDuration;
+      render();
+    });
+
+    captureScreenshotButton.addEventListener('click', () => {
+      captureCurrentScreenshot().catch(() => {
+        screenshotHintText.textContent = 'Could not capture this video frame.';
+        render();
+      });
+    });
+
+    selectedScreenshotPreview.addEventListener('click', setScreenshotTap);
+
+    clearScreenshotTapButton.addEventListener('click', () => {
+      const screenshot = selectedScreenshot();
+      if (!screenshot) {
+        return;
+      }
+      screenshot.tap = null;
+      clearScreenshotGifPreview();
+      screenshotHintText.textContent = 'Removed tap ripple from the selected screenshot.';
+      render();
+    });
+
+    screenshotFrameDurationInput.addEventListener('input', () => {
+      const duration = screenshotFrameDuration();
+      state.screenshots = state.screenshots.map((screenshot) => ({
+        ...screenshot,
+        duration,
+      }));
+      clearScreenshotGifPreview();
+      render();
+    });
+
+    exportScreenshotGifButton.addEventListener('click', async () => {
+      if (state.screenshots.length === 0 || state.isExportingScreenshotGif) {
+        return;
+      }
+
+      const outputFilename = normalizeScreenshotGifFilename(screenshotGifFilenameInput.value);
+      screenshotGifFilenameInput.value = outputFilename;
+      const frameDuration = screenshotFrameDuration();
+      const fps = readNumberInput(screenshotGifFpsInput, 12, 1, 60);
+      const width = readNumberInput(screenshotGifWidthInput, 480, 120, 2160);
+      const rippleDuration = readNumberInput(screenshotRippleDurationInput, 0.6, 0.01, 30);
+      const rippleRadius = readNumberInput(screenshotRippleRadiusInput, 44, 1, 1000);
+      const rippleOpacity = readNumberInput(screenshotRippleOpacityInput, 0.85, 0, 1);
+
+      state.isExportingScreenshotGif = true;
+      screenshotGifStatusText.textContent = 'Rendering GIF...';
+      statusText.textContent = 'Rendering screenshot GIF with local FFmpeg...';
+      render();
+
+      try {
+        const formData = new FormData();
+        const items = state.screenshots.map((screenshot, index) => {
+          const filename = `frame-${String(index + 1).padStart(3, '0')}.png`;
+          formData.append(filename, screenshot.blob, filename);
+          return {
+            id: screenshot.id,
+            filename,
+            duration: screenshot.duration || frameDuration,
+            tap: screenshot.tap,
+          };
+        });
+
+        formData.append('frames', JSON.stringify({
+          version: 1,
+          outputFilename,
+          fps,
+          width,
+          defaultFrameDuration: frameDuration,
+          rippleDuration,
+          rippleRadius,
+          rippleOpacity,
+          rippleColor: screenshotRippleColorInput.value || 'white',
+          items,
+        }));
+
+        const response = await fetch('/api/screenshot-gif', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorResponse(response));
+        }
+
+        const blob = await response.blob();
+        showScreenshotGifPreview(blob, outputFilename);
+        screenshotGifStatusText.textContent = 'Choose where to save the generated GIF.';
+        const destination = await saveBlobWithDownloadFallback(blob, outputFilename);
+        const message = destination === 'folder'
+          ? `Saved ${outputFilename}.`
+          : `Downloaded ${outputFilename}.`;
+        screenshotGifStatusText.textContent = message;
+        statusText.textContent = message;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          screenshotGifStatusText.textContent = 'GIF export canceled.';
+          statusText.textContent = 'GIF export canceled.';
+        } else {
+          const message = error instanceof Error ? error.message : 'Screenshot GIF conversion failed.';
+          screenshotGifStatusText.textContent = message;
+          statusText.textContent = message;
+        }
+      } finally {
+        state.isExportingScreenshotGif = false;
         render();
       }
     });
