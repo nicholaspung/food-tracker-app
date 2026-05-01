@@ -28,7 +28,7 @@ ffprobe -version
 Run the local helper server:
 
 ```bash
-pnpm mobile:tutorial:video-annotation
+pnpm video-annotation:dev
 ```
 
 Then open the printed localhost URL. The helper server is required for button-based `.mov` rendering because the browser cannot run Python or FFmpeg by itself.

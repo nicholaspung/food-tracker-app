@@ -19,6 +19,7 @@ import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
 import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
+import type { MainOnboardingCardId } from '../types/onboarding';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { trackObservabilityEvent } from '../observability';
@@ -111,6 +112,7 @@ export type RootStackParamList = {
   FeatureOnboarding:
     | {
         mode?: 'required' | 'replay';
+        initialCardId?: MainOnboardingCardId;
       }
     | undefined;
   Home:

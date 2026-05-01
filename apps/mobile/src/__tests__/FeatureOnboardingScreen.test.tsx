@@ -159,7 +159,7 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
   typeof useOfflineAwareFeatureWrite
 >;
 
-async function renderFeatureOnboardingScreen(): Promise<any> {
+async function renderFeatureOnboardingScreen(params: Record<string, unknown> = { mode: 'required' }): Promise<any> {
   let renderer: any;
 
   await act(async () => {
@@ -173,13 +173,13 @@ async function renderFeatureOnboardingScreen(): Promise<any> {
           } as never
         }
         route={
-          {
-            key: 'FeatureOnboarding-route',
-            name: 'FeatureOnboarding',
-            params: { mode: 'required' },
-          } as never
-        }
-      />,
+            {
+              key: 'FeatureOnboarding-route',
+              name: 'FeatureOnboarding',
+              params,
+            } as never
+          }
+        />,
     );
   });
 
@@ -231,6 +231,35 @@ describe('FeatureOnboardingScreen', () => {
     );
     expect(text).toContain('Invite friends and get help');
     expect(text).not.toContain('Track a restaurant visit');
+    expect(
+      renderer.root.findAll((node: any) =>
+        node.type === 'Pressable' &&
+        typeof node.props.testID === 'string' &&
+        node.props.testID.startsWith('feature-onboarding-indicator-'),
+      ),
+    ).toHaveLength(9);
+  });
+
+  it('starts on the requested main onboarding card', async () => {
+    const renderer = await renderFeatureOnboardingScreen({
+      initialCardId: 'support_invites',
+      mode: 'required',
+    });
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.disabled).toBe(false);
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.disabled).toBe(true);
+    expect(findFinishButtons(renderer)).toHaveLength(1);
+  });
+
+  it('falls back to the first card when the requested main card is invalid', async () => {
+    const renderer = await renderFeatureOnboardingScreen({
+      initialCardId: 'unknown-card',
+      mode: 'required',
+    });
+
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.disabled).toBe(false);
+    expect(findFinishButtons(renderer)).toHaveLength(0);
   });
 
   it('hides finish until the final card is selected', async () => {
@@ -340,5 +369,33 @@ describe('FeatureOnboardingScreen', () => {
 
     expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Welcome tutorial');
     expect(renderer.root.findAllByType('Button')).toHaveLength(0);
+  });
+
+  it('uses the selected card title in replay mode', async () => {
+    let renderer: any;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureOnboardingScreen
+          navigation={
+            {
+              goBack: mockGoBack,
+              navigate: mockNavigate,
+              reset: mockReset,
+            } as never
+          }
+          route={
+            {
+              key: 'FeatureOnboarding-route',
+              name: 'FeatureOnboarding',
+              params: { initialCardId: 'settings', mode: 'replay' },
+            } as never
+          }
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Personalize your experience');
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.disabled).toBe(false);
   });
 });

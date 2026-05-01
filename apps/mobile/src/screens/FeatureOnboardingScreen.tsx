@@ -21,20 +21,11 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
+import type { MainOnboardingCardId } from '../types/onboarding';
 import { Button, Card, Screen, Text } from '../ui';
 
 type FeatureOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'FeatureOnboarding'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
-type MainOnboardingCardId =
-  | 'welcome'
-  | 'month_privacy'
-  | 'tutorials'
-  | 'friends'
-  | 'more_tools'
-  | 'lists'
-  | 'bills_tips'
-  | 'settings'
-  | 'support_invites';
 
 interface MainOnboardingCard {
   id: MainOnboardingCardId;
@@ -93,7 +84,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     accentIcons: ['list-outline', 'cash-outline', 'calculator-outline'],
   },
   {
-    id: 'lists',
+    id: 'lists_intro',
     title: 'Use lists for ideas',
     description:
       'Lists can group restaurants, show your ratings and recommended menu items, or bookmark food your friends shared for later.',
@@ -125,6 +116,15 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     accentIcons: ['ticket-outline', 'help-circle-outline', 'chatbubble-ellipses-outline'],
   },
 ];
+
+function findMainOnboardingCardIndex(cardId: MainOnboardingCardId | undefined): number {
+  if (!cardId) {
+    return 0;
+  }
+
+  const cardIndex = MAIN_ONBOARDING_CARDS.findIndex((card) => card.id === cardId);
+  return cardIndex >= 0 ? cardIndex : 0;
+}
 
 type CardViewTrigger = 'initial' | 'swipe' | 'indicator' | 'arrow';
 
@@ -339,6 +339,7 @@ function FeatureOnboardingCardView({
 
 export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboardingScreenProps) {
   const mode = route.params?.mode ?? 'required';
+  const initialCardId = route.params?.initialCardId;
   const theme = useTheme();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const { user } = useAuth();
@@ -346,12 +347,13 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
   const writeFeature = useOfflineAwareFeatureWrite();
   const carouselRef = useRef<ScrollView | null>(null);
   const lastTrackedCardKeyRef = useRef<string | null>(null);
-  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [activeCardIndex, setActiveCardIndex] = useState(() => findMainOnboardingCardIndex(initialCardId));
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const carouselCardWidth = Math.min(viewportWidth - theme.spacing.lg * 2, theme.sizes.modalMaxWidth);
   const mediaHeight = Math.min(Math.max(320, Math.round(viewportHeight * 0.42)), 430);
   const boundedActiveCardIndex = Math.min(activeCardIndex, MAIN_ONBOARDING_CARDS.length - 1);
+  const activeCard = MAIN_ONBOARDING_CARDS[boundedActiveCardIndex] ?? MAIN_ONBOARDING_CARDS[0];
   const isFinalCard = boundedActiveCardIndex === MAIN_ONBOARDING_CARDS.length - 1;
   const styles = useStyles(carouselCardWidth, mediaHeight);
 
@@ -578,7 +580,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
         }}
         subtitle="Review how to use Yummy Recs features"
         testID="feature-onboarding-screen"
-        title="Welcome tutorial"
+        title={initialCardId ? activeCard.title : 'Welcome tutorial'}
       >
         <View style={styles.replayBody}>{cardCarousel}</View>
       </BackHeaderScreenScaffold>

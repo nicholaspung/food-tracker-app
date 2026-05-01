@@ -1,15 +1,31 @@
-# Manual iOS Tutorial Recording
+# iOS Tutorial Recording
 
-Record a booted iOS Simulator by hand:
+Run the interactive recorder from the repo root:
+
+```bash
+pnpm mobile:tutorial:ios:record
+```
+
+Choose a tutorial from the numbered menu. The recorder prints the selected
+tutorial, the manual in-app navigation path, and the output directory before it
+starts recording.
+
+For repeat recordings, pass a flow slug directly:
 
 ```bash
 pnpm mobile:tutorial:ios:record tip-calculator --open
 ```
 
-This starts `simctl recordVideo` and waits until you press Enter. It writes:
+List all available flow slugs:
+
+```bash
+pnpm mobile:tutorial:ios:record --list
+```
+
+The command starts `simctl recordVideo` and waits until you press Enter. It writes:
 
 ```text
-tutorial-artifacts/ios/<flow-id>/<timestamp>/raw.mov
+tutorial-artifacts/ios/<flow-slug>/<timestamp>/raw.mov
 ```
 
 The recorder uses the first booted simulator. If no simulator is booted, it boots

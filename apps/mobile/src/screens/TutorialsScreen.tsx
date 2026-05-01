@@ -1,12 +1,19 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { BackHeaderScreenScaffold, OptionList, OptionListRow, SectionCard } from '../components/shared';
+import {
+  BackHeaderScreenScaffold,
+  OptionList,
+  OptionListRow,
+  type OptionListRowProps,
+  SectionCard,
+} from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import type { MainOnboardingCardId } from '../types/onboarding';
 
 type TutorialsScreenProps = NativeStackScreenProps<RootStackParamList, 'Tutorials'>;
 type TutorialId =
-  | 'welcome'
+  | MainOnboardingCardId
   | 'trackRestaurantVisit'
   | 'trackFoodProduct'
   | 'logNote'
@@ -17,6 +24,78 @@ type TutorialId =
   | 'tipCalculator';
 
 const TUTORIAL_ANALYTICS_SOURCE = 'TutorialsScreen';
+
+const MAIN_TUTORIALS: {
+  id: MainOnboardingCardId;
+  iconName: NonNullable<OptionListRowProps['iconName']>;
+  subtitle: string;
+  testID: string;
+  title: string;
+}[] = [
+  {
+    id: 'welcome',
+    iconName: 'restaurant-outline',
+    subtitle: 'The app goals and what you can track',
+    testID: 'tutorial-welcome-link',
+    title: 'Welcome to Yummy Recs',
+  },
+  {
+    id: 'month_privacy',
+    iconName: 'calendar-outline',
+    subtitle: 'How shared tracking keeps timing private',
+    testID: 'tutorial-month-privacy-link',
+    title: 'Shared with Breathing Room',
+  },
+  {
+    id: 'tutorials',
+    iconName: 'play-circle-outline',
+    subtitle: 'Where to find tutorial GIFs before using features',
+    testID: 'tutorial-tutorials-link',
+    title: 'Watch Feature Tutorials',
+  },
+  {
+    id: 'friends',
+    iconName: 'people-outline',
+    subtitle: 'Add friends with codes when you are together',
+    testID: 'tutorial-friends-link',
+    title: 'Add Friends Intentionally',
+  },
+  {
+    id: 'more_tools',
+    iconName: 'apps-outline',
+    subtitle: 'Lists, bill splitting, and tip calculation',
+    testID: 'tutorial-more-tools-link',
+    title: 'More Than Tracking',
+  },
+  {
+    id: 'lists_intro',
+    iconName: 'list-outline',
+    subtitle: 'Use lists for ideas and saved recommendations',
+    testID: 'tutorial-lists-intro-link',
+    title: 'Use Lists for Ideas',
+  },
+  {
+    id: 'bills_tips',
+    iconName: 'cash-outline',
+    subtitle: 'Split bills and estimate tips',
+    testID: 'tutorial-bills-tips-link',
+    title: 'Split Bills and Calculate Tips',
+  },
+  {
+    id: 'settings',
+    iconName: 'settings-outline',
+    subtitle: 'Appearance, visibility, and Home feed defaults',
+    testID: 'tutorial-settings-link',
+    title: 'Personalize Your Experience',
+  },
+  {
+    id: 'support_invites',
+    iconName: 'ticket-outline',
+    subtitle: 'Invite friends and find support options',
+    testID: 'tutorial-support-invites-link',
+    title: 'Invite Friends and Get Help',
+  },
+];
 
 export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
   const trackTutorialOpened = (tutorialId: TutorialId) => {
@@ -43,17 +122,23 @@ export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
     >
       <SectionCard title="Getting Started">
         <OptionList>
-          <OptionListRow
-            iconName="sparkles-outline"
-            isLast
-            onPress={() => {
-              trackTutorialOpened('welcome');
-              navigation.navigate('FeatureOnboarding', { mode: 'replay' });
-            }}
-            subtitle="The app goals, privacy rhythm, invites, and support"
-            testID="tutorial-main-onboarding-link"
-            title="Welcome to Yummy Recs"
-          />
+          {MAIN_TUTORIALS.map((tutorial, index) => (
+            <OptionListRow
+              iconName={tutorial.iconName}
+              isLast={index === MAIN_TUTORIALS.length - 1}
+              key={tutorial.id}
+              onPress={() => {
+                trackTutorialOpened(tutorial.id);
+                navigation.navigate('FeatureOnboarding', {
+                  initialCardId: tutorial.id,
+                  mode: 'replay',
+                });
+              }}
+              subtitle={tutorial.subtitle}
+              testID={tutorial.testID}
+              title={tutorial.title}
+            />
+          ))}
         </OptionList>
       </SectionCard>
 

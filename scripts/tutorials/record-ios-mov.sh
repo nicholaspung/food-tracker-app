@@ -5,21 +5,127 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEFAULT_DEVICE_NAME="iPhone 16"
 DEVICE_NAME=""
-FLOW_ID="manual"
+FLOW_ID=""
 OPEN_OUTPUT=0
+LIST_FLOWS=0
+
+FLOW_COUNT=0
+FLOW_SLUGS=()
+FLOW_TITLES=()
+FLOW_SECTIONS=()
+FLOW_HINTS=()
+
+add_flow() {
+  local section="$1"
+  local slug="$2"
+  local title="$3"
+  local hint="$4"
+
+  FLOW_SLUGS[$FLOW_COUNT]="$slug"
+  FLOW_TITLES[$FLOW_COUNT]="$title"
+  FLOW_SECTIONS[$FLOW_COUNT]="$section"
+  FLOW_HINTS[$FLOW_COUNT]="$hint"
+  FLOW_COUNT=$((FLOW_COUNT + 1))
+}
+
+add_flow "Getting Started" "welcome" "Welcome to Yummy Recs" "Profile -> Tutorials -> Welcome to Yummy Recs"
+add_flow "Getting Started" "month-privacy" "Shared with Breathing Room" "Profile -> Tutorials -> Shared with Breathing Room"
+add_flow "Getting Started" "tutorials" "Watch Feature Tutorials" "Profile -> Tutorials -> Watch Feature Tutorials"
+add_flow "Getting Started" "friends" "Add Friends Intentionally" "Profile -> Tutorials -> Add Friends Intentionally"
+add_flow "Getting Started" "more-tools" "More Than Tracking" "Profile -> Tutorials -> More Than Tracking"
+add_flow "Getting Started" "lists-intro" "Use Lists for Ideas" "Profile -> Tutorials -> Use Lists for Ideas"
+add_flow "Getting Started" "bills-tips" "Split Bills and Calculate Tips" "Profile -> Tutorials -> Split Bills and Calculate Tips"
+add_flow "Getting Started" "settings" "Personalize Your Experience" "Profile -> Tutorials -> Personalize Your Experience"
+add_flow "Getting Started" "support-invites" "Invite Friends and Get Help" "Profile -> Tutorials -> Invite Friends and Get Help"
+add_flow "Add Tutorials" "track-restaurant-visit" "Track Restaurant Visit" "Profile -> Tutorials -> Track Restaurant Visit"
+add_flow "Add Tutorials" "track-food-product" "Track Food Product" "Profile -> Tutorials -> Track Food Product"
+add_flow "Add Tutorials" "log-note" "Log a Note" "Profile -> Tutorials -> Log a Note"
+add_flow "Add Tutorials" "process-saved-photos" "Process Saved Photos" "Profile -> Tutorials -> Process Saved Photos"
+add_flow "Add Tutorials" "manage-notes" "Manage Notes" "Profile -> Tutorials -> Manage Notes"
+add_flow "More Tutorials" "lists" "Restaurant Lists" "Profile -> Tutorials -> Restaurant Lists"
+add_flow "More Tutorials" "split-bill" "Split a Bill" "Profile -> Tutorials -> Split a Bill"
+add_flow "More Tutorials" "tip-calculator" "Tip Calculator" "Profile -> Tutorials -> Tip Calculator"
+
+SELECTED_TITLE=""
+SELECTED_SECTION=""
+SELECTED_HINT=""
 
 usage() {
   cat <<'USAGE'
 Usage:
-  pnpm mobile:tutorial:ios:record [flow-id] [--device "iPhone 16"] [--open]
+  pnpm mobile:tutorial:ios:record [flow-slug] [--device "iPhone 16"] [--open]
+  pnpm mobile:tutorial:ios:record --list
 
 Records the booted iOS Simulator to a .mov without building or running XCUITest.
+When no flow slug is provided, choose a tutorial from an interactive menu.
 Press Enter to stop recording.
 
 Examples:
   pnpm mobile:tutorial:ios:record tip-calculator
   pnpm mobile:tutorial:ios:record tip-calculator --device "iPhone 17" --open
 USAGE
+}
+
+print_flows() {
+  local current_section=""
+
+  for ((i = 0; i < FLOW_COUNT; i++)); do
+    if [[ "${FLOW_SECTIONS[$i]}" != "$current_section" ]]; then
+      current_section="${FLOW_SECTIONS[$i]}"
+      printf '\n%s\n' "$current_section"
+    fi
+
+    printf '  %-24s %s\n' "${FLOW_SLUGS[$i]}" "${FLOW_TITLES[$i]}"
+  done
+}
+
+print_menu() {
+  local current_section=""
+
+  echo "Select a tutorial to record:"
+  for ((i = 0; i < FLOW_COUNT; i++)); do
+    if [[ "${FLOW_SECTIONS[$i]}" != "$current_section" ]]; then
+      current_section="${FLOW_SECTIONS[$i]}"
+      printf '\n%s\n' "$current_section"
+    fi
+
+    printf '  %2d. %s (%s)\n' "$((i + 1))" "${FLOW_TITLES[$i]}" "${FLOW_SLUGS[$i]}"
+  done
+  echo
+}
+
+resolve_flow() {
+  local slug="$1"
+
+  for ((i = 0; i < FLOW_COUNT; i++)); do
+    if [[ "${FLOW_SLUGS[$i]}" == "$slug" ]]; then
+      FLOW_ID="${FLOW_SLUGS[$i]}"
+      SELECTED_TITLE="${FLOW_TITLES[$i]}"
+      SELECTED_SECTION="${FLOW_SECTIONS[$i]}"
+      SELECTED_HINT="${FLOW_HINTS[$i]}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+select_flow_interactively() {
+  local selection=""
+
+  print_menu
+  read -r -p "Enter tutorial number: " selection
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [[ "$selection" -lt 1 ]] || [[ "$selection" -gt "$FLOW_COUNT" ]]; then
+    echo "Invalid selection: $selection" >&2
+    exit 1
+  fi
+
+  local index=$((selection - 1))
+  FLOW_ID="${FLOW_SLUGS[$index]}"
+  SELECTED_TITLE="${FLOW_TITLES[$index]}"
+  SELECTED_SECTION="${FLOW_SECTIONS[$index]}"
+  SELECTED_HINT="${FLOW_HINTS[$index]}"
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -42,6 +148,10 @@ while [[ $# -gt 0 ]]; do
       OPEN_OUTPUT=1
       shift
       ;;
+    --list)
+      LIST_FLOWS=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1" >&2
       usage
@@ -49,6 +159,20 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$LIST_FLOWS" -eq 1 ]]; then
+  print_flows
+  exit 0
+fi
+
+if [[ -z "$FLOW_ID" ]]; then
+  select_flow_interactively
+elif ! resolve_flow "$FLOW_ID"; then
+  echo "Unknown tutorial flow slug: $FLOW_ID" >&2
+  echo "Valid tutorial flow slugs:" >&2
+  print_flows >&2
+  exit 1
+fi
 
 command -v xcrun >/dev/null || { echo "xcrun is required." >&2; exit 1; }
 
@@ -106,6 +230,12 @@ DEVICE_UDID="$(select_device)"
 RAW_VIDEO="$OUTPUT_DIR/raw.mov"
 RECORDER_LOG="$OUTPUT_DIR/recordVideo.log"
 
+echo "Tutorial: $SELECTED_TITLE"
+echo "Section: $SELECTED_SECTION"
+echo "Manual navigation: $SELECTED_HINT"
+echo "Output directory: $OUTPUT_DIR"
+echo
+
 recording_pid=""
 cleanup() {
   if [[ -n "$recording_pid" ]] && kill -0 "$recording_pid" >/dev/null 2>&1; then
@@ -148,3 +278,5 @@ if [[ "$OPEN_OUTPUT" -eq 1 ]]; then
 fi
 
 echo "MOV: $RAW_VIDEO"
+echo "Recorder log: $RECORDER_LOG"
+echo "Output directory: $OUTPUT_DIR"
