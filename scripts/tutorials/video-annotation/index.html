@@ -28,6 +28,8 @@
 
     body {
       margin: 0;
+      height: 100vh;
+      overflow: hidden;
       background: var(--bg);
       color: var(--text);
     }
@@ -72,8 +74,13 @@
 
     .shell {
       width: min(1180px, calc(100vw - 32px));
+      height: 100vh;
       margin: 0 auto;
-      padding: 28px 0 48px;
+      padding: 16px 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .topbar {
@@ -171,6 +178,141 @@
     }
 
     .tab-panel[hidden] {
+      display: none;
+    }
+
+    .tab-panel {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .tabs {
+      flex: 0 0 auto;
+    }
+
+    #mixedGifTabPanel {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #mixedGifTabPanel .grid {
+      height: 100%;
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    #mixedGifTabPanel .panel {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #mixedGifTabPanel .panel-body {
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    #mixedGalleryList .gallery-item {
+      cursor: pointer;
+    }
+
+    .mixed-editor-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mixed-editor-tab-panel[hidden] {
+      display: none;
+    }
+
+    .icon-button {
+      display: inline-grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+    }
+
+    .icon-button svg {
+      width: 17px;
+      height: 17px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .clip-taps-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .clip-tap-marker {
+      background: var(--accent);
+    }
+
+    .preview-thumb-button {
+      border: 0;
+      padding: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      width: 92px;
+      height: 64px;
+    }
+
+    .preview-thumb-button:hover:not(:disabled) {
+      background: transparent;
+      outline: 3px solid rgba(22, 103, 217, 0.18);
+    }
+
+    .preview-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(12, 16, 32, 0.72);
+    }
+
+    .preview-modal[hidden] {
+      display: none;
+    }
+
+    .preview-modal-dialog {
+      width: min(920px, calc(100vw - 48px));
+      max-height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .preview-modal-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .preview-modal-media {
+      width: 100%;
+      max-height: calc(100vh - 180px);
+      object-fit: contain;
+      border: 1px solid #161d33;
+      border-radius: 8px;
+      background: #0c1020;
+    }
+
+    .preview-modal-media[hidden] {
       display: none;
     }
 
@@ -376,6 +518,14 @@
       background: #0c1020;
     }
 
+    .gallery-thumb.placeholder {
+      display: grid;
+      place-items: center;
+      color: #aab4ca;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
     .gallery-actions {
       display: flex;
       flex-wrap: wrap;
@@ -503,6 +653,7 @@
       border: 2px solid #ffffff;
       transform: translate(-50%, -50%);
       box-shadow: 0 1px 5px rgba(20, 26, 40, 0.25);
+      pointer-events: none;
     }
 
     .playhead {
@@ -624,6 +775,16 @@
   </style>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="icon-select" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
+    <symbol id="icon-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"></path></symbol>
+    <symbol id="icon-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"></path></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"></path></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+  </svg>
   <main class="shell">
     <div class="topbar">
       <div>
@@ -635,6 +796,7 @@
     <div class="tabs" role="tablist" aria-label="Tool mode">
       <button class="tab-button active" id="annotationTabButton" type="button" role="tab" aria-controls="annotationTabPanel" aria-selected="true">Video Annotation</button>
       <button class="tab-button" id="screenshotTabButton" type="button" role="tab" aria-controls="screenshotTabPanel" aria-selected="false">Screenshot GIF</button>
+      <button class="tab-button" id="mixedGifTabButton" type="button" role="tab" aria-controls="mixedGifTabPanel" aria-selected="false">Mixed GIF</button>
     </div>
 
     <section class="tab-panel" id="annotationTabPanel" role="tabpanel" aria-labelledby="annotationTabButton">
@@ -854,7 +1016,206 @@
         </aside>
       </div>
     </section>
+
+    <section class="tab-panel" id="mixedGifTabPanel" role="tabpanel" aria-labelledby="mixedGifTabButton" hidden>
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Mixed GIF</h2>
+            <div class="controls-row">
+              <button id="captureMixedScreenshotButton" disabled>Capture Screenshot</button>
+              <button class="secondary" id="addMixedClipButton" disabled>Add Clip</button>
+              <div class="status" id="mixedFilenameText">No video loaded</div>
+            </div>
+          </div>
+          <div class="mixed-editor-tabs" role="tablist" aria-label="Mixed GIF editor">
+            <button class="tab-button active" id="mixedComposeTabButton" type="button" role="tab" aria-controls="mixedComposePanel" aria-selected="true">Mixed GIF</button>
+            <button class="tab-button" id="mixedSelectedTabButton" type="button" role="tab" aria-controls="mixedSelectedPanel" aria-selected="false">Selected Item</button>
+            <button class="tab-button" id="mixedExportTabButton" type="button" role="tab" aria-controls="mixedExportPanel" aria-selected="false">GIF Export</button>
+          </div>
+          <div class="panel-body">
+            <div class="mixed-editor-tab-panel" id="mixedComposePanel" role="tabpanel" aria-labelledby="mixedComposeTabButton">
+              <div class="file-row">
+                <input class="file-input" id="mixedVideoInput" type="file" accept=".mov,video/*">
+              </div>
+
+              <div class="video-wrap">
+                <video id="mixedVideo" controls playsinline></video>
+                <div class="video-placeholder" id="mixedVideoPlaceholder">Video preview appears here</div>
+              </div>
+
+              <div class="time-row">
+                <span id="mixedCurrentTimeText">00:00.000</span>
+                <span id="mixedDurationText">00:00.000</span>
+              </div>
+
+              <div class="timeline" id="mixedTimeline" aria-label="Mixed GIF timeline">
+                <div class="timeline-track"></div>
+                <div id="mixedOverlayLayer"></div>
+                <div class="playhead" id="mixedPlayhead" style="left: 0%;"></div>
+              </div>
+
+              <div class="cut-editor" id="mixedClipEditor" hidden>
+                <div>
+                  <div class="item-title">Pending Clip</div>
+                  <div class="item-meta" id="mixedDraftClipText">Move the Start and End handles on the timeline.</div>
+                </div>
+                <div class="controls-row">
+                  <button id="confirmMixedClipButton" disabled>Confirm Clip</button>
+                  <button class="secondary" id="cancelMixedClipButton">Cancel</button>
+                </div>
+              </div>
+
+              <div class="hint" id="mixedHintText">Capture screenshots for taps, or add clips for transitions.</div>
+            </div>
+
+            <div class="mixed-editor-tab-panel" id="mixedSelectedPanel" role="tabpanel" aria-labelledby="mixedSelectedTabButton" hidden>
+              <div class="section" id="mixedSelectedEmpty">
+                <div class="empty">Select a screenshot or clip from Timeline Items.</div>
+              </div>
+
+              <div class="section" id="mixedSelectedScreenshotSection" hidden>
+                <div class="section-header">
+                  <h2>Selected Screenshot</h2>
+                  <button class="secondary" id="clearMixedScreenshotTapButton" disabled>Clear Tap</button>
+                </div>
+                <div class="screenshot-preview empty-preview" id="selectedMixedScreenshotPreview">
+                  <div class="screenshot-preview-placeholder" id="selectedMixedScreenshotPlaceholder">Select a screenshot to add a tap ripple.</div>
+                  <img id="selectedMixedScreenshotImage" alt="Selected mixed screenshot preview" hidden>
+                  <div class="screenshot-ripple-marker" id="selectedMixedScreenshotTapMarker" hidden></div>
+                </div>
+                <label class="field" style="margin-top: 12px;">
+                  <span>Tap timing</span>
+                  <span class="controls-row">
+                    <input id="mixedScreenshotTapBeforeNextInput" type="checkbox">
+                    Play tap right before next item
+                  </span>
+                </label>
+              </div>
+
+              <div class="section" id="mixedSelectedClipSection" hidden>
+                <div class="section-header">
+                  <h2>Selected Clip</h2>
+                  <div class="controls-row">
+                    <button class="secondary" id="previewSelectedMixedClipButton" disabled>Preview Clip</button>
+                    <button class="secondary" id="clearMixedClipTapsButton" disabled>Clear Taps</button>
+                  </div>
+                </div>
+                <div class="video-wrap tap-mode" id="mixedClipTapVideoWrap">
+                  <video id="mixedClipTapVideo" controls playsinline></video>
+                  <div class="video-placeholder" id="mixedClipTapPlaceholder">Select a clip to add timed taps.</div>
+                </div>
+                <div class="field-grid" style="margin-top: 12px;">
+                  <div class="field">
+                    <label for="mixedClipStartInput">Clip start</label>
+                    <input class="output-input" id="mixedClipStartInput" type="number" min="0" step="0.001" value="0">
+                  </div>
+                  <div class="field">
+                    <label for="mixedClipEndInput">Clip end</label>
+                    <input class="output-input" id="mixedClipEndInput" type="number" min="0.05" step="0.001" value="0">
+                  </div>
+                </div>
+                <div class="controls-row" style="margin-top: 10px;">
+                  <button class="secondary" id="goMixedClipStartButton" type="button">Go to Start</button>
+                  <button class="secondary" id="goMixedClipEndButton" type="button">Go to End</button>
+                  <button class="secondary" id="setMixedClipStartButton" type="button">Set Start to Current</button>
+                  <button class="secondary" id="setMixedClipEndButton" type="button">Set End to Current</button>
+                </div>
+                <div class="time-row">
+                  <span id="mixedSelectedClipStartText">00:00.000</span>
+                  <span id="mixedSelectedClipEndText">00:00.000</span>
+                </div>
+                <div class="timeline" id="mixedSelectedClipTimeline" aria-label="Selected clip timeline">
+                  <div class="timeline-track"></div>
+                  <div id="mixedSelectedClipOverlayLayer"></div>
+                </div>
+                <div class="field" style="margin-top: 12px;">
+                  <label for="mixedClipSpeedInput">Clip speed</label>
+                  <input class="output-input" id="mixedClipSpeedInput" type="number" min="0.25" max="4" step="0.25" value="1">
+                </div>
+                <div class="clip-taps-list" id="mixedClipTapsList"></div>
+              </div>
+            </div>
+
+            <div class="mixed-editor-tab-panel" id="mixedExportPanel" role="tabpanel" aria-labelledby="mixedExportTabButton" hidden>
+              <h2>GIF export</h2>
+              <div class="field">
+                <label for="mixedGifFilenameInput">GIF filename</label>
+                <input class="output-input" id="mixedGifFilenameInput" type="text" value="mixed.gif" spellcheck="false">
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="mixedScreenshotDurationInput">Screenshot duration</label>
+                  <input class="output-input" id="mixedScreenshotDurationInput" type="number" min="0.05" max="30" step="0.05" value="1.6">
+                </div>
+                <div class="field">
+                  <label for="mixedGifFpsInput">FPS</label>
+                  <input class="output-input" id="mixedGifFpsInput" type="number" min="1" max="60" step="1" value="12">
+                </div>
+                <div class="field">
+                  <label for="mixedGifWidthInput">Width</label>
+                  <input class="output-input" id="mixedGifWidthInput" type="number" min="120" max="2160" step="1" value="480">
+                </div>
+                <div class="field">
+                  <label for="mixedRippleDurationInput">Ripple duration</label>
+                  <input class="output-input" id="mixedRippleDurationInput" type="number" min="0.01" max="30" step="0.01" value="0.6">
+                </div>
+                <div class="field">
+                  <label for="mixedRippleRadiusInput">Ripple radius</label>
+                  <input class="output-input" id="mixedRippleRadiusInput" type="number" min="1" max="1000" step="1" value="44">
+                </div>
+                <div class="field">
+                  <label for="mixedRippleOpacityInput">Ripple opacity</label>
+                  <input class="output-input" id="mixedRippleOpacityInput" type="number" min="0" max="1" step="0.05" value="0.85">
+                </div>
+                <div class="field">
+                  <label for="mixedRippleColorInput">Ripple color</label>
+                  <input class="output-input" id="mixedRippleColorInput" type="text" value="white" spellcheck="false">
+                </div>
+              </div>
+              <div class="controls-row">
+                <button id="generateMixedGifButton" disabled>Generate Preview</button>
+                <div class="status" id="mixedGifStatusText"></div>
+              </div>
+              <div class="gif-preview" id="mixedGifPreview" hidden>
+                <img id="mixedGifPreviewImage" alt="Generated mixed GIF preview">
+                <div class="status" id="mixedGifPreviewText"></div>
+                <div class="controls-row">
+                  <button id="downloadMixedGifButton" hidden>Download GIF</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Timeline Items</h2>
+            <div class="status" id="mixedGalleryCountText">0 items</div>
+          </div>
+          <div class="panel-body">
+            <div class="gallery-list" id="mixedGalleryList"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
   </main>
+
+  <div class="preview-modal" id="mixedItemPreviewModal" role="dialog" aria-modal="true" aria-labelledby="mixedItemPreviewTitle" hidden>
+    <div class="preview-modal-dialog">
+      <div class="panel-header">
+        <h2 id="mixedItemPreviewTitle">Preview</h2>
+        <button class="secondary icon-button" id="closeMixedItemPreviewButton" type="button" aria-label="Close preview" title="Close preview">
+          <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="preview-modal-body">
+        <img class="preview-modal-media" id="mixedItemPreviewImage" alt="Timeline item preview" hidden>
+        <video class="preview-modal-media" id="mixedItemPreviewVideo" controls playsinline hidden></video>
+        <div class="status" id="mixedItemPreviewText"></div>
+      </div>
+    </div>
+  </div>
 
   <script>
     const state = {
@@ -884,12 +1245,33 @@
       selectedScreenshotId: null,
       screenshotGifObjectUrl: null,
       isExportingScreenshotGif: false,
+      mixedVideoFile: null,
+      mixedVideoObjectUrl: null,
+      mixedDuration: 0,
+      mixedItems: [],
+      selectedMixedItemId: null,
+      mixedClipMode: false,
+      mixedDraftClip: null,
+      mixedActiveClipHandle: null,
+      mixedIsScrubbing: false,
+      mixedPreviewClipId: null,
+      mixedPreviewClipEnd: null,
+      mixedGifObjectUrl: null,
+      isExportingMixedGif: false,
+      mixedEditorTab: 'compose',
+      mixedGeneratedGifBlob: null,
+      mixedGeneratedGifFilename: '',
+      mixedModalPreviewClipId: null,
+      mixedModalPreviewObjectUrl: null,
+      mixedSelectedClipActiveHandle: null,
     };
 
     const annotationTabButton = document.getElementById('annotationTabButton');
     const screenshotTabButton = document.getElementById('screenshotTabButton');
+    const mixedGifTabButton = document.getElementById('mixedGifTabButton');
     const annotationTabPanel = document.getElementById('annotationTabPanel');
     const screenshotTabPanel = document.getElementById('screenshotTabPanel');
+    const mixedGifTabPanel = document.getElementById('mixedGifTabPanel');
     const videoInput = document.getElementById('videoInput');
     const video = document.getElementById('video');
     const videoWrap = document.getElementById('videoWrap');
@@ -957,6 +1339,76 @@
     const screenshotGifPreviewText = document.getElementById('screenshotGifPreviewText');
     const screenshotGalleryList = document.getElementById('screenshotGalleryList');
     const screenshotGalleryCountText = document.getElementById('screenshotGalleryCountText');
+    const mixedVideoInput = document.getElementById('mixedVideoInput');
+    const mixedVideo = document.getElementById('mixedVideo');
+    const mixedVideoPlaceholder = document.getElementById('mixedVideoPlaceholder');
+    const mixedFilenameText = document.getElementById('mixedFilenameText');
+    const mixedComposeTabButton = document.getElementById('mixedComposeTabButton');
+    const mixedSelectedTabButton = document.getElementById('mixedSelectedTabButton');
+    const mixedExportTabButton = document.getElementById('mixedExportTabButton');
+    const mixedComposePanel = document.getElementById('mixedComposePanel');
+    const mixedSelectedPanel = document.getElementById('mixedSelectedPanel');
+    const mixedExportPanel = document.getElementById('mixedExportPanel');
+    const captureMixedScreenshotButton = document.getElementById('captureMixedScreenshotButton');
+    const addMixedClipButton = document.getElementById('addMixedClipButton');
+    const mixedCurrentTimeText = document.getElementById('mixedCurrentTimeText');
+    const mixedDurationText = document.getElementById('mixedDurationText');
+    const mixedTimeline = document.getElementById('mixedTimeline');
+    const mixedOverlayLayer = document.getElementById('mixedOverlayLayer');
+    const mixedPlayhead = document.getElementById('mixedPlayhead');
+    const mixedClipEditor = document.getElementById('mixedClipEditor');
+    const mixedDraftClipText = document.getElementById('mixedDraftClipText');
+    const confirmMixedClipButton = document.getElementById('confirmMixedClipButton');
+    const cancelMixedClipButton = document.getElementById('cancelMixedClipButton');
+    const mixedHintText = document.getElementById('mixedHintText');
+    const mixedSelectedEmpty = document.getElementById('mixedSelectedEmpty');
+    const mixedSelectedScreenshotSection = document.getElementById('mixedSelectedScreenshotSection');
+    const selectedMixedScreenshotPreview = document.getElementById('selectedMixedScreenshotPreview');
+    const selectedMixedScreenshotPlaceholder = document.getElementById('selectedMixedScreenshotPlaceholder');
+    const selectedMixedScreenshotImage = document.getElementById('selectedMixedScreenshotImage');
+    const selectedMixedScreenshotTapMarker = document.getElementById('selectedMixedScreenshotTapMarker');
+    const clearMixedScreenshotTapButton = document.getElementById('clearMixedScreenshotTapButton');
+    const mixedScreenshotTapBeforeNextInput = document.getElementById('mixedScreenshotTapBeforeNextInput');
+    const mixedSelectedClipSection = document.getElementById('mixedSelectedClipSection');
+    const previewSelectedMixedClipButton = document.getElementById('previewSelectedMixedClipButton');
+    const clearMixedClipTapsButton = document.getElementById('clearMixedClipTapsButton');
+    const mixedClipTapVideoWrap = document.getElementById('mixedClipTapVideoWrap');
+    const mixedClipTapVideo = document.getElementById('mixedClipTapVideo');
+    const mixedClipTapPlaceholder = document.getElementById('mixedClipTapPlaceholder');
+    const mixedClipStartInput = document.getElementById('mixedClipStartInput');
+    const mixedClipEndInput = document.getElementById('mixedClipEndInput');
+    const goMixedClipStartButton = document.getElementById('goMixedClipStartButton');
+    const goMixedClipEndButton = document.getElementById('goMixedClipEndButton');
+    const setMixedClipStartButton = document.getElementById('setMixedClipStartButton');
+    const setMixedClipEndButton = document.getElementById('setMixedClipEndButton');
+    const mixedSelectedClipStartText = document.getElementById('mixedSelectedClipStartText');
+    const mixedSelectedClipEndText = document.getElementById('mixedSelectedClipEndText');
+    const mixedSelectedClipTimeline = document.getElementById('mixedSelectedClipTimeline');
+    const mixedSelectedClipOverlayLayer = document.getElementById('mixedSelectedClipOverlayLayer');
+    const mixedClipSpeedInput = document.getElementById('mixedClipSpeedInput');
+    const mixedClipTapsList = document.getElementById('mixedClipTapsList');
+    const mixedGifFilenameInput = document.getElementById('mixedGifFilenameInput');
+    const mixedScreenshotDurationInput = document.getElementById('mixedScreenshotDurationInput');
+    const mixedGifFpsInput = document.getElementById('mixedGifFpsInput');
+    const mixedGifWidthInput = document.getElementById('mixedGifWidthInput');
+    const mixedRippleDurationInput = document.getElementById('mixedRippleDurationInput');
+    const mixedRippleRadiusInput = document.getElementById('mixedRippleRadiusInput');
+    const mixedRippleOpacityInput = document.getElementById('mixedRippleOpacityInput');
+    const mixedRippleColorInput = document.getElementById('mixedRippleColorInput');
+    const generateMixedGifButton = document.getElementById('generateMixedGifButton');
+    const downloadMixedGifButton = document.getElementById('downloadMixedGifButton');
+    const mixedGifStatusText = document.getElementById('mixedGifStatusText');
+    const mixedGifPreview = document.getElementById('mixedGifPreview');
+    const mixedGifPreviewImage = document.getElementById('mixedGifPreviewImage');
+    const mixedGifPreviewText = document.getElementById('mixedGifPreviewText');
+    const mixedGalleryList = document.getElementById('mixedGalleryList');
+    const mixedGalleryCountText = document.getElementById('mixedGalleryCountText');
+    const mixedItemPreviewModal = document.getElementById('mixedItemPreviewModal');
+    const mixedItemPreviewTitle = document.getElementById('mixedItemPreviewTitle');
+    const closeMixedItemPreviewButton = document.getElementById('closeMixedItemPreviewButton');
+    const mixedItemPreviewImage = document.getElementById('mixedItemPreviewImage');
+    const mixedItemPreviewVideo = document.getElementById('mixedItemPreviewVideo');
+    const mixedItemPreviewText = document.getElementById('mixedItemPreviewText');
 
     function isReady() {
       return Number.isFinite(state.duration) && state.duration > 0;
@@ -964,6 +1416,10 @@
 
     function isScreenshotVideoReady() {
       return Number.isFinite(state.screenshotDuration) && state.screenshotDuration > 0 && screenshotVideo.videoWidth > 0 && screenshotVideo.videoHeight > 0;
+    }
+
+    function isMixedVideoReady() {
+      return Number.isFinite(state.mixedDuration) && state.mixedDuration > 0 && mixedVideo.videoWidth > 0 && mixedVideo.videoHeight > 0;
     }
 
     function clamp(value, min, max) {
@@ -999,6 +1455,13 @@
       return state.screenshotVideoFile.name.replace(/\.[^.]+$/, '') || 'screenshots';
     }
 
+    function mixedVideoBaseName() {
+      if (!state.mixedVideoFile) {
+        return 'mixed';
+      }
+      return state.mixedVideoFile.name.replace(/\.[^.]+$/, '') || 'mixed';
+    }
+
     function defaultOutputFilename() {
       return `${videoBaseName()}-final.mov`;
     }
@@ -1023,6 +1486,10 @@
       return `${screenshotVideoBaseName()}-screenshots.gif`;
     }
 
+    function defaultMixedGifFilename() {
+      return `${mixedVideoBaseName()}-mixed.gif`;
+    }
+
     function normalizeGifFilename(value) {
       const trimmed = value.trim();
       const fallback = defaultGifFilename();
@@ -1037,8 +1504,34 @@
       return filename.toLowerCase().endsWith('.gif') ? filename : `${filename}.gif`;
     }
 
+    function normalizeMixedGifFilename(value) {
+      const trimmed = value.trim();
+      const fallback = defaultMixedGifFilename();
+      const filename = trimmed || fallback;
+      return filename.toLowerCase().endsWith('.gif') ? filename : `${filename}.gif`;
+    }
+
     function selectedScreenshot() {
       return state.screenshots.find((screenshot) => screenshot.id === state.selectedScreenshotId) || null;
+    }
+
+    function selectedMixedItem() {
+      return state.mixedItems.find((item) => item.id === state.selectedMixedItemId) || null;
+    }
+
+    function selectedMixedScreenshot() {
+      const item = selectedMixedItem();
+      return item && item.type === 'screenshot' ? item : null;
+    }
+
+    function selectedMixedClip() {
+      const item = selectedMixedItem();
+      return item && item.type === 'clip' ? item : null;
+    }
+
+    function previewedMixedClip() {
+      const item = state.mixedItems.find((candidate) => candidate.id === state.mixedPreviewClipId);
+      return item && item.type === 'clip' ? item : null;
     }
 
     function readNumberInput(input, fallback, min, max) {
@@ -1187,6 +1680,60 @@
       screenshotRippleOpacityInput.disabled = state.isExportingScreenshotGif;
       screenshotRippleColorInput.disabled = state.isExportingScreenshotGif;
       exportScreenshotGifButton.textContent = state.isExportingScreenshotGif ? 'Exporting...' : 'Export to GIF';
+
+      const mixedReady = isMixedVideoReady();
+      const selectedMixedScreenshotItem = selectedMixedScreenshot();
+      captureMixedScreenshotButton.disabled = !mixedReady || state.isExportingMixedGif;
+      addMixedClipButton.disabled = !mixedReady || state.isExportingMixedGif;
+      addMixedClipButton.classList.toggle('mode-on', state.mixedClipMode);
+      addMixedClipButton.textContent = state.mixedClipMode ? 'Cancel Pending Clip' : 'Add Clip';
+      mixedVideoPlaceholder.style.display = mixedReady ? 'none' : 'grid';
+      mixedClipEditor.hidden = !state.mixedClipMode || !state.mixedDraftClip;
+      clearMixedScreenshotTapButton.disabled = !selectedMixedScreenshotItem || !selectedMixedScreenshotItem.tap || state.isExportingMixedGif;
+      generateMixedGifButton.disabled = state.mixedItems.length === 0 || state.isExportingMixedGif;
+      downloadMixedGifButton.hidden = !state.mixedGeneratedGifBlob;
+      downloadMixedGifButton.disabled = !state.mixedGeneratedGifBlob || state.isExportingMixedGif;
+      mixedGifFilenameInput.disabled = state.isExportingMixedGif;
+      mixedScreenshotDurationInput.disabled = state.isExportingMixedGif;
+      mixedGifFpsInput.disabled = state.isExportingMixedGif;
+      mixedGifWidthInput.disabled = state.isExportingMixedGif;
+      mixedRippleDurationInput.disabled = state.isExportingMixedGif;
+      mixedRippleRadiusInput.disabled = state.isExportingMixedGif;
+      mixedRippleOpacityInput.disabled = state.isExportingMixedGif;
+      mixedRippleColorInput.disabled = state.isExportingMixedGif;
+      generateMixedGifButton.textContent = state.isExportingMixedGif ? 'Generating...' : 'Generate Preview';
+      previewSelectedMixedClipButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      clearMixedClipTapsButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip' || selectedMixedItem().taps.length === 0;
+      mixedClipSpeedInput.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      mixedClipStartInput.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      mixedClipEndInput.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      setMixedClipStartButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      setMixedClipEndButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      goMixedClipStartButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      goMixedClipEndButton.disabled = !selectedMixedItem() || selectedMixedItem().type !== 'clip';
+      mixedScreenshotTapBeforeNextInput.disabled = !selectedMixedScreenshotItem;
+
+      if (state.mixedDraftClip) {
+        const duration = state.mixedDraftClip.end - state.mixedDraftClip.start;
+        mixedDraftClipText.textContent = `${formatTime(state.mixedDraftClip.start)} - ${formatTime(state.mixedDraftClip.end)} (${duration.toFixed(3)}s)`;
+        confirmMixedClipButton.disabled = !mixedReady || duration < 0.05 || state.isExportingMixedGif;
+      } else {
+        mixedDraftClipText.textContent = 'Move the Start and End handles on the timeline.';
+        confirmMixedClipButton.disabled = true;
+      }
+
+      mixedGifTabButton.classList.toggle('active', state.activeTab === 'mixed');
+      mixedGifTabButton.setAttribute('aria-selected', state.activeTab === 'mixed' ? 'true' : 'false');
+      mixedGifTabPanel.hidden = state.activeTab !== 'mixed';
+      mixedComposeTabButton.classList.toggle('active', state.mixedEditorTab === 'compose');
+      mixedSelectedTabButton.classList.toggle('active', state.mixedEditorTab === 'selected');
+      mixedExportTabButton.classList.toggle('active', state.mixedEditorTab === 'export');
+      mixedComposeTabButton.setAttribute('aria-selected', state.mixedEditorTab === 'compose' ? 'true' : 'false');
+      mixedSelectedTabButton.setAttribute('aria-selected', state.mixedEditorTab === 'selected' ? 'true' : 'false');
+      mixedExportTabButton.setAttribute('aria-selected', state.mixedEditorTab === 'export' ? 'true' : 'false');
+      mixedComposePanel.hidden = state.mixedEditorTab !== 'compose';
+      mixedSelectedPanel.hidden = state.mixedEditorTab !== 'selected';
+      mixedExportPanel.hidden = state.mixedEditorTab !== 'export';
     }
 
     function updateTime() {
@@ -1461,14 +2008,326 @@
       });
     }
 
+    function updateMixedTime() {
+      const current = isMixedVideoReady() ? clamp(mixedVideo.currentTime, 0, state.mixedDuration) : 0;
+      const duration = isMixedVideoReady() ? state.mixedDuration : 0;
+      mixedCurrentTimeText.textContent = formatTime(current);
+      mixedDurationText.textContent = formatTime(duration);
+      mixedPlayhead.style.left = `${duration > 0 ? (current / duration) * 100 : 0}%`;
+    }
+
+    function renderMixedTimeline() {
+      mixedOverlayLayer.innerHTML = '';
+      const duration = state.mixedDuration || 1;
+
+      for (const item of state.mixedItems) {
+        if (item.type !== 'clip') {
+          continue;
+        }
+        const left = clamp(item.start / duration, 0, 1) * 100;
+        const right = clamp(item.end / duration, 0, 1) * 100;
+        const el = document.createElement('div');
+        el.className = 'cut-region';
+        el.style.left = `${left}%`;
+        el.style.width = `${Math.max(0, right - left)}%`;
+        mixedOverlayLayer.appendChild(el);
+      }
+
+      if (state.mixedDraftClip) {
+        const left = clamp(state.mixedDraftClip.start / duration, 0, 1) * 100;
+        const right = clamp(state.mixedDraftClip.end / duration, 0, 1) * 100;
+        const el = document.createElement('div');
+        el.className = 'draft-cut';
+        el.style.left = `${left}%`;
+        el.style.width = `${Math.max(0, right - left)}%`;
+        mixedOverlayLayer.appendChild(el);
+
+        const startHandle = document.createElement('div');
+        startHandle.className = 'cut-handle';
+        startHandle.dataset.label = 'Start';
+        startHandle.style.left = `${left}%`;
+        mixedOverlayLayer.appendChild(startHandle);
+
+        const endHandle = document.createElement('div');
+        endHandle.className = 'cut-handle';
+        endHandle.dataset.label = 'End';
+        endHandle.style.left = `${right}%`;
+        mixedOverlayLayer.appendChild(endHandle);
+      }
+
+      for (const item of state.mixedItems) {
+        if (item.type !== 'screenshot') {
+          continue;
+        }
+        const el = document.createElement('div');
+        el.className = 'tap-marker';
+        el.title = `Screenshot at ${formatTime(item.sourceTimestamp)}`;
+        el.style.left = `${clamp(item.sourceTimestamp / duration, 0, 1) * 100}%`;
+        mixedOverlayLayer.appendChild(el);
+      }
+
+      for (const item of state.mixedItems) {
+        if (item.type !== 'clip') {
+          continue;
+        }
+        for (const tap of item.taps || []) {
+          const el = document.createElement('div');
+          el.className = 'tap-marker clip-tap-marker';
+          el.title = `Clip tap at ${formatTime(tap.timestamp)}`;
+          el.style.left = `${clamp(tap.timestamp / duration, 0, 1) * 100}%`;
+          mixedOverlayLayer.appendChild(el);
+        }
+      }
+    }
+
+    function getDisplayedMixedScreenshotRect() {
+      const wrapRect = selectedMixedScreenshotPreview.getBoundingClientRect();
+      const screenshot = selectedMixedScreenshot();
+      if (!screenshot || screenshot.width <= 0 || screenshot.height <= 0) {
+        return wrapRect;
+      }
+
+      const imageRatio = screenshot.width / screenshot.height;
+      const boxRatio = wrapRect.width / wrapRect.height;
+      if (boxRatio > imageRatio) {
+        const width = wrapRect.height * imageRatio;
+        const left = wrapRect.left + (wrapRect.width - width) / 2;
+        return { left, top: wrapRect.top, width, height: wrapRect.height };
+      }
+
+      const height = wrapRect.width / imageRatio;
+      const top = wrapRect.top + (wrapRect.height - height) / 2;
+      return { left: wrapRect.left, top, width: wrapRect.width, height };
+    }
+
+    function renderSelectedMixedScreenshot() {
+      const screenshot = selectedMixedScreenshot();
+      const selected = selectedMixedItem();
+      mixedSelectedEmpty.hidden = Boolean(selected);
+      mixedSelectedScreenshotSection.hidden = !screenshot;
+      mixedSelectedClipSection.hidden = !selected || selected.type !== 'clip';
+
+      if (!screenshot) {
+        selectedMixedScreenshotPreview.classList.add('empty-preview');
+        selectedMixedScreenshotPlaceholder.hidden = false;
+        selectedMixedScreenshotImage.hidden = true;
+        selectedMixedScreenshotImage.removeAttribute('src');
+        selectedMixedScreenshotTapMarker.hidden = true;
+        mixedScreenshotTapBeforeNextInput.checked = false;
+        return;
+      }
+
+      selectedMixedScreenshotPreview.classList.remove('empty-preview');
+      selectedMixedScreenshotPlaceholder.hidden = true;
+      selectedMixedScreenshotImage.hidden = false;
+      selectedMixedScreenshotImage.src = screenshot.objectUrl;
+      mixedScreenshotTapBeforeNextInput.checked = (screenshot.tapTiming || 'start') === 'before-next';
+
+      if (screenshot.tap) {
+        const rect = getDisplayedMixedScreenshotRect();
+        const wrapRect = selectedMixedScreenshotPreview.getBoundingClientRect();
+        selectedMixedScreenshotTapMarker.style.left = `${rect.left - wrapRect.left + screenshot.tap.x * rect.width}px`;
+        selectedMixedScreenshotTapMarker.style.top = `${rect.top - wrapRect.top + screenshot.tap.y * rect.height}px`;
+        selectedMixedScreenshotTapMarker.hidden = false;
+      } else {
+        selectedMixedScreenshotTapMarker.hidden = true;
+      }
+    }
+
+    function renderSelectedMixedClip() {
+      const item = selectedMixedItem();
+      const clip = item && item.type === 'clip' ? item : null;
+      mixedClipTapsList.innerHTML = '';
+
+      if (!clip) {
+        mixedClipTapPlaceholder.style.display = 'grid';
+        mixedClipStartInput.value = '0';
+        mixedClipEndInput.value = '0';
+        mixedClipSpeedInput.value = '1';
+        mixedSelectedClipStartText.textContent = '00:00.000';
+        mixedSelectedClipEndText.textContent = '00:00.000';
+        return;
+      }
+
+      mixedClipTapPlaceholder.style.display = isMixedVideoReady() ? 'none' : 'grid';
+      mixedClipStartInput.value = clip.start.toFixed(3);
+      mixedClipEndInput.value = clip.end.toFixed(3);
+      mixedClipSpeedInput.value = String(clip.speed || 1);
+      mixedSelectedClipStartText.textContent = formatTime(clip.start);
+      mixedSelectedClipEndText.textContent = formatTime(clip.end);
+
+      if (clip.taps.length === 0) {
+        mixedClipTapsList.innerHTML = '<div class="empty">No clip taps yet. Preview or seek inside this clip, then click the video frame.</div>';
+        return;
+      }
+
+      clip.taps.forEach((tap, index) => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = `
+          <div>
+            <div class="item-title">Tap ${index + 1}</div>
+            <div class="item-meta">${formatTime(tap.timestamp)} | x ${tap.x.toFixed(4)}, y ${tap.y.toFixed(4)}</div>
+          </div>
+        `;
+        const removeButton = createIconButton('icon-trash', 'Remove tap', 'danger');
+        removeButton.addEventListener('click', () => removeMixedClipTap(clip.id, tap.id));
+        row.appendChild(removeButton);
+        mixedClipTapsList.appendChild(row);
+      });
+    }
+
+    function renderSelectedClipTimeline() {
+      mixedSelectedClipOverlayLayer.innerHTML = '';
+      const clip = selectedMixedClip();
+      const duration = state.mixedDuration || 1;
+
+      if (!clip) {
+        return;
+      }
+
+      const left = clamp(clip.start / duration, 0, 1) * 100;
+      const right = clamp(clip.end / duration, 0, 1) * 100;
+      const region = document.createElement('div');
+      region.className = 'draft-cut';
+      region.style.left = `${left}%`;
+      region.style.width = `${Math.max(0, right - left)}%`;
+      mixedSelectedClipOverlayLayer.appendChild(region);
+
+      const startHandle = document.createElement('div');
+      startHandle.className = 'cut-handle';
+      startHandle.dataset.label = 'Start';
+      startHandle.style.left = `${left}%`;
+      mixedSelectedClipOverlayLayer.appendChild(startHandle);
+
+      const endHandle = document.createElement('div');
+      endHandle.className = 'cut-handle';
+      endHandle.dataset.label = 'End';
+      endHandle.style.left = `${right}%`;
+      mixedSelectedClipOverlayLayer.appendChild(endHandle);
+    }
+
+    function renderMixedGallery() {
+      mixedGalleryList.innerHTML = '';
+      mixedGalleryCountText.textContent = `${state.mixedItems.length} item${state.mixedItems.length === 1 ? '' : 's'}`;
+
+      if (state.mixedItems.length === 0) {
+        mixedGalleryList.innerHTML = '<div class="empty">No items yet. Capture screenshots for taps or add clips for transitions.</div>';
+        return;
+      }
+
+      state.mixedItems.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = `gallery-item${item.id === state.selectedMixedItemId ? ' selected' : ''}`;
+        row.addEventListener('click', () => selectMixedItem(item));
+
+        const thumbButton = document.createElement('button');
+        thumbButton.className = 'preview-thumb-button';
+        thumbButton.type = 'button';
+        thumbButton.setAttribute('aria-label', item.type === 'screenshot' ? `Preview screenshot ${index + 1}` : `Preview clip ${index + 1}`);
+        thumbButton.title = item.type === 'screenshot' ? 'Preview screenshot' : 'Preview clip';
+        thumbButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openMixedItemPreview(item);
+        });
+
+        if (item.type === 'screenshot') {
+          const thumb = document.createElement('img');
+          thumb.className = 'gallery-thumb';
+          thumb.src = item.objectUrl;
+          thumb.alt = `Screenshot ${index + 1}`;
+          thumbButton.appendChild(thumb);
+        } else {
+          const thumb = document.createElement('div');
+          thumb.className = 'gallery-thumb placeholder';
+          thumb.textContent = 'CLIP';
+          thumbButton.appendChild(thumb);
+        }
+        row.appendChild(thumbButton);
+
+        const title = item.type === 'screenshot' ? `Screenshot ${index + 1}` : `Clip ${index + 1}`;
+        const screenshotTapText = item.tap
+          ? ((item.tapTiming || 'start') === 'before-next' ? 'Tap before next' : 'Tap ripple')
+          : 'No tap';
+        const meta = item.type === 'screenshot'
+          ? `${formatTime(item.sourceTimestamp)} | ${item.duration.toFixed(2)}s | ${screenshotTapText}`
+          : `${formatTime(item.start)} - ${formatTime(item.end)} (${((item.end - item.start) / (item.speed || 1)).toFixed(3)}s)${(item.speed || 1) === 1 ? '' : ` | ${item.speed}x`} | ${(item.taps || []).length} tap${(item.taps || []).length === 1 ? '' : 's'}`;
+
+        const body = document.createElement('div');
+        body.innerHTML = `
+          <div class="item-title">${title}</div>
+          <div class="item-meta">${meta}</div>
+        `;
+
+        const actions = document.createElement('div');
+        actions.className = 'gallery-actions';
+
+        const selectButton = createIconButton('icon-select', 'Select item');
+        selectButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          selectMixedItem(item);
+        });
+        actions.appendChild(selectButton);
+
+        if (item.type === 'clip') {
+          const previewButton = createIconButton('icon-play', 'Preview clip');
+          previewButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            previewMixedClip(item.id);
+          });
+          actions.appendChild(previewButton);
+        }
+
+        const duplicateButton = createIconButton('icon-copy', 'Duplicate item');
+        duplicateButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          duplicateMixedItem(item.id);
+        });
+        actions.appendChild(duplicateButton);
+
+        const moveLeftButton = createIconButton('icon-left', 'Move left');
+        moveLeftButton.disabled = index === 0;
+        moveLeftButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          moveMixedItem(index, index - 1);
+        });
+        actions.appendChild(moveLeftButton);
+
+        const moveRightButton = createIconButton('icon-right', 'Move right');
+        moveRightButton.disabled = index === state.mixedItems.length - 1;
+        moveRightButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          moveMixedItem(index, index + 1);
+        });
+        actions.appendChild(moveRightButton);
+
+        const removeButton = createIconButton('icon-trash', 'Remove item', 'danger');
+        removeButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          removeMixedItem(item.id);
+        });
+        actions.appendChild(removeButton);
+
+        body.appendChild(actions);
+        row.appendChild(body);
+        mixedGalleryList.appendChild(row);
+      });
+    }
+
     function render() {
       updateControls();
       updateTime();
       updateScreenshotTime();
+      updateMixedTime();
       renderTimeline();
       renderLists();
       renderSelectedScreenshot();
       renderScreenshotGallery();
+      renderMixedTimeline();
+      renderSelectedMixedScreenshot();
+      renderSelectedMixedClip();
+      renderSelectedClipTimeline();
+      renderMixedGallery();
     }
 
     function addCut(startTime, endTime) {
@@ -1787,6 +2646,642 @@
       clearScreenshotGifPreview();
       screenshotHintText.textContent = 'Tap ripple added to the selected screenshot.';
       render();
+    }
+
+    function clearMixedGifPreview() {
+      if (state.mixedGifObjectUrl) {
+        URL.revokeObjectURL(state.mixedGifObjectUrl);
+      }
+      state.mixedGifObjectUrl = null;
+      state.mixedGeneratedGifBlob = null;
+      state.mixedGeneratedGifFilename = '';
+      mixedGifPreviewImage.removeAttribute('src');
+      mixedGifPreview.hidden = true;
+      downloadMixedGifButton.hidden = true;
+      mixedGifPreviewText.textContent = '';
+    }
+
+    function showMixedGifPreview(blob, filename) {
+      if (state.mixedGifObjectUrl) {
+        URL.revokeObjectURL(state.mixedGifObjectUrl);
+      }
+      state.mixedGifObjectUrl = URL.createObjectURL(blob);
+      state.mixedGeneratedGifBlob = blob;
+      state.mixedGeneratedGifFilename = filename;
+      mixedGifPreviewImage.src = state.mixedGifObjectUrl;
+      mixedGifPreview.hidden = false;
+      downloadMixedGifButton.hidden = false;
+      mixedGifPreviewText.textContent = `Previewing ${filename}.`;
+    }
+
+    function createIconButton(iconId, label, className = 'secondary') {
+      const button = document.createElement('button');
+      button.className = `icon-button ${className}`.trim();
+      button.type = 'button';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.innerHTML = `<svg aria-hidden="true"><use href="#${iconId}"></use></svg>`;
+      return button;
+    }
+
+    function selectMixedItem(item) {
+      state.selectedMixedItemId = item.id;
+      state.mixedEditorTab = 'selected';
+      if (item.type === 'clip') {
+        stopMixedClipPreview();
+        mixedVideo.currentTime = item.start;
+        mixedClipTapVideo.currentTime = item.start;
+        mixedHintText.textContent = 'Selected clip. Use Preview to watch only this clip range.';
+      } else {
+        stopMixedClipPreview();
+        mixedHintText.textContent = 'Click the selected screenshot preview to place or move the tap ripple.';
+      }
+      render();
+    }
+
+    function closeMixedItemPreview() {
+      mixedItemPreviewVideo.pause();
+      mixedItemPreviewVideo.removeAttribute('src');
+      mixedItemPreviewVideo.load();
+      if (state.mixedModalPreviewObjectUrl) {
+        URL.revokeObjectURL(state.mixedModalPreviewObjectUrl);
+      }
+      state.mixedModalPreviewObjectUrl = null;
+      mixedItemPreviewImage.removeAttribute('src');
+      mixedItemPreviewImage.hidden = true;
+      mixedItemPreviewImage.style.display = 'none';
+      mixedItemPreviewVideo.hidden = true;
+      mixedItemPreviewVideo.style.display = 'none';
+      mixedItemPreviewText.textContent = '';
+      state.mixedModalPreviewClipId = null;
+      mixedItemPreviewModal.hidden = true;
+    }
+
+    async function openMixedItemPreview(item) {
+      if (!item) {
+        return;
+      }
+
+      closeMixedItemPreview();
+      mixedItemPreviewModal.hidden = false;
+
+      if (item.type === 'screenshot') {
+        mixedItemPreviewTitle.textContent = 'Screenshot Preview';
+        mixedItemPreviewVideo.pause();
+        mixedItemPreviewVideo.removeAttribute('src');
+        mixedItemPreviewVideo.load();
+        mixedItemPreviewVideo.hidden = true;
+        mixedItemPreviewVideo.style.display = 'none';
+        mixedItemPreviewImage.src = item.objectUrl;
+        mixedItemPreviewImage.hidden = false;
+        mixedItemPreviewImage.style.display = 'block';
+        mixedItemPreviewText.textContent = `${formatTime(item.sourceTimestamp)} | ${item.duration.toFixed(2)}s${item.tap ? ' | Tap ripple' : ''}`;
+        return;
+      }
+
+      if (!state.mixedVideoFile) {
+        mixedItemPreviewTitle.textContent = 'Clip Preview';
+        mixedItemPreviewText.textContent = 'Load the source video to preview this clip.';
+        return;
+      }
+
+      mixedItemPreviewTitle.textContent = 'Clip Preview';
+      state.mixedModalPreviewClipId = item.id;
+      mixedItemPreviewImage.hidden = true;
+      mixedItemPreviewImage.style.display = 'none';
+      mixedItemPreviewVideo.hidden = true;
+      mixedItemPreviewVideo.style.display = 'none';
+      mixedItemPreviewText.textContent = 'Rendering clip preview...';
+
+      try {
+        const formData = new FormData();
+        formData.append('video', state.mixedVideoFile, state.mixedVideoFile.name);
+        formData.append('start', String(item.start));
+        formData.append('end', String(item.end));
+        formData.append('speed', String(item.speed || 1));
+        formData.append('width', '720');
+
+        const response = await fetch('/api/clip-preview', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorResponse(response));
+        }
+
+        const blob = await response.blob();
+        state.mixedModalPreviewObjectUrl = URL.createObjectURL(blob);
+        mixedItemPreviewVideo.src = state.mixedModalPreviewObjectUrl;
+        mixedItemPreviewVideo.hidden = false;
+        mixedItemPreviewVideo.style.display = 'block';
+        mixedItemPreviewText.textContent = `${formatTime(item.start)} - ${formatTime(item.end)} (${((item.end - item.start) / (item.speed || 1)).toFixed(3)}s)`;
+        mixedItemPreviewVideo.play().catch(() => {});
+      } catch (error) {
+        mixedItemPreviewText.textContent = error instanceof Error ? error.message : 'Clip preview failed.';
+      }
+    }
+
+    function stopMixedClipPreview(message = null, shouldPause = false) {
+      const wasPreviewing = Boolean(state.mixedPreviewClipId || state.mixedPreviewClipEnd !== null);
+      state.mixedPreviewClipId = null;
+      state.mixedPreviewClipEnd = null;
+      if (shouldPause && !mixedVideo.paused) {
+        mixedVideo.pause();
+      }
+      if (message) {
+        mixedHintText.textContent = message;
+      }
+      if (wasPreviewing || message) {
+        render();
+      }
+    }
+
+    function handleMixedClipPreviewProgress(player = mixedVideo) {
+      if (state.mixedPreviewClipEnd === null) {
+        return;
+      }
+
+      if (player.currentTime >= state.mixedPreviewClipEnd) {
+        const end = state.mixedPreviewClipEnd;
+        player.pause();
+        player.currentTime = end;
+        stopMixedClipPreview('Finished clip preview.');
+      }
+    }
+
+    function previewMixedClip(id) {
+      const clip = state.mixedItems.find((item) => item.id === id && item.type === 'clip');
+      if (!clip || !isMixedVideoReady()) {
+        return;
+      }
+
+      state.mixedIsScrubbing = false;
+      state.mixedActiveClipHandle = null;
+      state.selectedMixedItemId = clip.id;
+      state.mixedPreviewClipId = clip.id;
+      state.mixedPreviewClipEnd = clip.end;
+      mixedVideo.currentTime = clip.start;
+      mixedClipTapVideo.currentTime = clip.start;
+      mixedHintText.textContent = 'Previewing selected clip.';
+      render();
+
+      const player = state.mixedEditorTab === 'selected' ? mixedClipTapVideo : mixedVideo;
+      player.currentTime = clip.start;
+      player.play().catch(() => {
+        mixedHintText.textContent = 'Clip preview is ready. Press play to watch the selected range.';
+        render();
+      });
+    }
+
+    function clearMixedItems() {
+      for (const item of state.mixedItems) {
+        if (item.type === 'screenshot') {
+          URL.revokeObjectURL(item.objectUrl);
+        }
+      }
+      state.mixedItems = [];
+      state.selectedMixedItemId = null;
+      state.mixedClipMode = false;
+      state.mixedDraftClip = null;
+      state.mixedActiveClipHandle = null;
+      state.mixedIsScrubbing = false;
+      state.mixedPreviewClipId = null;
+      state.mixedPreviewClipEnd = null;
+      clearMixedGifPreview();
+    }
+
+    function mixedScreenshotDuration() {
+      return readNumberInput(mixedScreenshotDurationInput, 1.6, 0.05, 30);
+    }
+
+    async function captureCurrentMixedScreenshot() {
+      if (!isMixedVideoReady()) {
+        return;
+      }
+
+      stopMixedClipPreview();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = mixedVideo.videoWidth;
+      canvas.height = mixedVideo.videoHeight;
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        mixedHintText.textContent = 'Could not create a canvas for screenshot capture.';
+        return;
+      }
+
+      try {
+        context.drawImage(mixedVideo, 0, 0, canvas.width, canvas.height);
+      } catch {
+        mixedHintText.textContent = 'Could not capture this video frame in the browser.';
+        return;
+      }
+
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+
+      if (!(blob instanceof Blob)) {
+        mixedHintText.textContent = 'Could not encode the screenshot as a PNG.';
+        return;
+      }
+
+      const item = {
+        id: makeId('mixed-shot'),
+        type: 'screenshot',
+        sourceTimestamp: clamp(mixedVideo.currentTime, 0, state.mixedDuration),
+        blob,
+        objectUrl: URL.createObjectURL(blob),
+        width: canvas.width,
+        height: canvas.height,
+        duration: mixedScreenshotDuration(),
+        tap: null,
+        tapTiming: 'start',
+      };
+
+      state.mixedItems.push(item);
+      state.selectedMixedItemId = item.id;
+      clearMixedGifPreview();
+      mixedHintText.textContent = `Captured screenshot at ${formatTime(item.sourceTimestamp)}.`;
+      render();
+    }
+
+    function mixedTimelineTimeFromEvent(event) {
+      const rect = mixedTimeline.getBoundingClientRect();
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      return ratio * state.mixedDuration;
+    }
+
+    function beginMixedClipDraft() {
+      if (!isMixedVideoReady()) {
+        return;
+      }
+
+      stopMixedClipPreview();
+      mixedVideo.pause();
+      const current = clamp(mixedVideo.currentTime, 0, state.mixedDuration);
+      const defaultLength = Math.min(Math.max(state.mixedDuration * 0.08, 0.5), 2);
+      let start = current;
+      let end = Math.min(state.mixedDuration, current + defaultLength);
+
+      if (end - start < 0.05) {
+        start = Math.max(0, state.mixedDuration - defaultLength);
+        end = state.mixedDuration;
+      }
+
+      state.mixedClipMode = true;
+      state.mixedActiveClipHandle = null;
+      state.mixedIsScrubbing = false;
+      state.mixedDraftClip = { start, end };
+      mixedVideo.currentTime = start;
+      mixedHintText.textContent = 'Adjust the clip handles, then confirm the clip.';
+      render();
+    }
+
+    function cancelMixedClipDraft() {
+      stopMixedClipPreview();
+      state.mixedClipMode = false;
+      state.mixedActiveClipHandle = null;
+      state.mixedIsScrubbing = false;
+      state.mixedDraftClip = null;
+      mixedHintText.textContent = 'Capture screenshots for taps, or add clips for transitions.';
+      render();
+    }
+
+    function confirmMixedClipDraft() {
+      if (!state.mixedDraftClip) {
+        return;
+      }
+
+      stopMixedClipPreview();
+      const start = clamp(Math.min(state.mixedDraftClip.start, state.mixedDraftClip.end), 0, state.mixedDuration);
+      const end = clamp(Math.max(state.mixedDraftClip.start, state.mixedDraftClip.end), 0, state.mixedDuration);
+      if (end - start < 0.05) {
+        mixedHintText.textContent = 'Clip ignored because it was shorter than 0.05s.';
+        return;
+      }
+
+      const item = {
+        id: makeId('mixed-clip'),
+        type: 'clip',
+        start,
+        end,
+        speed: 1,
+        taps: [],
+      };
+      state.mixedItems.push(item);
+      state.selectedMixedItemId = item.id;
+      state.mixedClipMode = false;
+      state.mixedActiveClipHandle = null;
+      state.mixedIsScrubbing = false;
+      state.mixedDraftClip = null;
+      clearMixedGifPreview();
+      mixedHintText.textContent = `Added clip from ${formatTime(start)} to ${formatTime(end)}.`;
+      render();
+    }
+
+    function nearestMixedDraftHandle(time) {
+      if (!state.mixedDraftClip) {
+        return null;
+      }
+
+      const startDistance = Math.abs(time - state.mixedDraftClip.start);
+      const endDistance = Math.abs(time - state.mixedDraftClip.end);
+      return startDistance <= endDistance ? 'start' : 'end';
+    }
+
+    function mixedDraftHandleFromEvent(event) {
+      if (!state.mixedDraftClip || !isMixedVideoReady()) {
+        return null;
+      }
+
+      const rect = mixedTimeline.getBoundingClientRect();
+      const startX = rect.left + (state.mixedDraftClip.start / state.mixedDuration) * rect.width;
+      const endX = rect.left + (state.mixedDraftClip.end / state.mixedDuration) * rect.width;
+      const hitRadius = 18;
+
+      if (Math.abs(event.clientX - startX) <= hitRadius) {
+        return 'start';
+      }
+      if (Math.abs(event.clientX - endX) <= hitRadius) {
+        return 'end';
+      }
+      return null;
+    }
+
+    function setMixedDraftClipHandle(handle, time) {
+      if (!state.mixedDraftClip || !handle) {
+        return;
+      }
+
+      const minGap = 0.05;
+      if (handle === 'start') {
+        state.mixedDraftClip.start = clamp(time, 0, Math.max(0, state.mixedDraftClip.end - minGap));
+        mixedVideo.currentTime = state.mixedDraftClip.start;
+      } else {
+        state.mixedDraftClip.end = clamp(time, Math.min(state.mixedDuration, state.mixedDraftClip.start + minGap), state.mixedDuration);
+        mixedVideo.currentTime = state.mixedDraftClip.end;
+      }
+      updateMixedTime();
+      renderMixedTimeline();
+      updateControls();
+    }
+
+    function duplicateMixedItem(id) {
+      const index = state.mixedItems.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return;
+      }
+
+      const original = state.mixedItems[index];
+      let duplicate;
+      if (original.type === 'screenshot') {
+        duplicate = {
+          id: makeId('mixed-shot'),
+          type: 'screenshot',
+          sourceTimestamp: original.sourceTimestamp,
+          blob: original.blob,
+          objectUrl: URL.createObjectURL(original.blob),
+          width: original.width,
+          height: original.height,
+          duration: original.duration,
+          tap: original.tap ? { ...original.tap } : null,
+          tapTiming: original.tapTiming || 'start',
+        };
+      } else {
+        duplicate = {
+          id: makeId('mixed-clip'),
+          type: 'clip',
+          start: original.start,
+          end: original.end,
+          speed: original.speed || 1,
+          taps: (original.taps || []).map((tap) => ({ ...tap, id: makeId('mixed-clip-tap') })),
+        };
+      }
+
+      state.mixedItems.splice(index + 1, 0, duplicate);
+      state.selectedMixedItemId = duplicate.id;
+      clearMixedGifPreview();
+      mixedHintText.textContent = `Duplicated ${original.type}.`;
+      render();
+    }
+
+    function moveMixedItem(fromIndex, toIndex) {
+      if (fromIndex < 0 || fromIndex >= state.mixedItems.length || toIndex < 0 || toIndex >= state.mixedItems.length) {
+        return;
+      }
+      const [item] = state.mixedItems.splice(fromIndex, 1);
+      state.mixedItems.splice(toIndex, 0, item);
+      clearMixedGifPreview();
+      render();
+    }
+
+    function removeMixedItem(id) {
+      const index = state.mixedItems.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return;
+      }
+
+      const [removed] = state.mixedItems.splice(index, 1);
+      if (state.mixedPreviewClipId === removed.id) {
+        stopMixedClipPreview();
+      }
+      if (removed.type === 'screenshot') {
+        URL.revokeObjectURL(removed.objectUrl);
+      }
+
+      if (state.selectedMixedItemId === id) {
+        const next = state.mixedItems[Math.min(index, state.mixedItems.length - 1)] || null;
+        state.selectedMixedItemId = next ? next.id : null;
+      }
+
+      clearMixedGifPreview();
+      mixedHintText.textContent = state.mixedItems.length === 0
+        ? 'Capture screenshots for taps, or add clips for transitions.'
+        : 'Removed item.';
+      render();
+    }
+
+    function setMixedScreenshotTap(event) {
+      const screenshot = selectedMixedScreenshot();
+      if (!screenshot) {
+        return;
+      }
+
+      const rect = getDisplayedMixedScreenshotRect();
+      const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      screenshot.tap = { x, y };
+      clearMixedGifPreview();
+      mixedHintText.textContent = 'Tap ripple added to the selected screenshot.';
+      render();
+    }
+
+    function getDisplayedMixedClipVideoRect() {
+      const wrapRect = mixedClipTapVideoWrap.getBoundingClientRect();
+      const videoRatio = mixedClipTapVideo.videoWidth / mixedClipTapVideo.videoHeight;
+      const boxRatio = wrapRect.width / wrapRect.height;
+
+      if (!Number.isFinite(videoRatio) || videoRatio <= 0) {
+        return wrapRect;
+      }
+
+      if (boxRatio > videoRatio) {
+        const width = wrapRect.height * videoRatio;
+        const left = wrapRect.left + (wrapRect.width - width) / 2;
+        return { left, top: wrapRect.top, width, height: wrapRect.height };
+      }
+
+      const height = wrapRect.width / videoRatio;
+      const top = wrapRect.top + (wrapRect.height - height) / 2;
+      return { left: wrapRect.left, top, width: wrapRect.width, height };
+    }
+
+    function addMixedClipTap(event) {
+      const item = selectedMixedItem();
+      const clip = item && item.type === 'clip' ? item : null;
+      if (!clip || !isMixedVideoReady()) {
+        return;
+      }
+
+      if (mixedClipTapVideo.currentTime < clip.start || mixedClipTapVideo.currentTime >= clip.end) {
+        mixedClipTapVideo.currentTime = clip.start;
+      }
+
+      const rect = getDisplayedMixedClipVideoRect();
+      const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      const timestamp = clamp(mixedClipTapVideo.currentTime, clip.start, Math.max(clip.start, clip.end - 0.001));
+
+      clip.taps.push({
+        id: makeId('mixed-clip-tap'),
+        timestamp,
+        x,
+        y,
+      });
+
+      const preview = document.createElement('div');
+      preview.className = 'tap-preview';
+      preview.style.left = `${rect.left - mixedClipTapVideoWrap.getBoundingClientRect().left + x * rect.width}px`;
+      preview.style.top = `${rect.top - mixedClipTapVideoWrap.getBoundingClientRect().top + y * rect.height}px`;
+      mixedClipTapVideoWrap.appendChild(preview);
+      window.setTimeout(() => preview.remove(), 800);
+
+      clearMixedGifPreview();
+      mixedHintText.textContent = `Added clip tap at ${formatTime(timestamp)}.`;
+      render();
+    }
+
+    function removeMixedClipTap(clipId, tapId) {
+      const clip = state.mixedItems.find((item) => item.id === clipId && item.type === 'clip');
+      if (!clip) {
+        return;
+      }
+      clip.taps = clip.taps.filter((tap) => tap.id !== tapId);
+      clearMixedGifPreview();
+      render();
+    }
+
+    function clearMixedClipTaps(clipId) {
+      const clip = state.mixedItems.find((item) => item.id === clipId && item.type === 'clip');
+      if (!clip) {
+        return;
+      }
+      clip.taps = [];
+      clearMixedGifPreview();
+      render();
+    }
+
+    function pruneClipTapsToRange(clip) {
+      const before = clip.taps.length;
+      clip.taps = clip.taps.filter((tap) => clip.start <= tap.timestamp && tap.timestamp < clip.end);
+      return before - clip.taps.length;
+    }
+
+    function updateSelectedMixedClipRange(nextStart, nextEnd) {
+      const item = selectedMixedItem();
+      const clip = item && item.type === 'clip' ? item : null;
+      if (!clip || !isMixedVideoReady()) {
+        return;
+      }
+
+      let start = clamp(Number(nextStart), 0, Math.max(0, state.mixedDuration - 0.05));
+      let end = clamp(Number(nextEnd), 0.05, state.mixedDuration);
+
+      if (!Number.isFinite(start)) {
+        start = clip.start;
+      }
+      if (!Number.isFinite(end)) {
+        end = clip.end;
+      }
+      if (end - start < 0.05) {
+        if (start !== clip.start) {
+          end = Math.min(state.mixedDuration, start + 0.05);
+        } else {
+          start = Math.max(0, end - 0.05);
+        }
+      }
+
+      clip.start = start;
+      clip.end = end;
+      const removedTaps = pruneClipTapsToRange(clip);
+      mixedVideo.currentTime = clip.start;
+      mixedClipTapVideo.currentTime = clip.start;
+      clearMixedGifPreview();
+      mixedHintText.textContent = removedTaps > 0
+        ? 'Updated clip range. Removed taps outside the new range.'
+        : 'Updated clip range.';
+      render();
+    }
+
+    function selectedClipTimelineTimeFromEvent(event) {
+      const rect = mixedSelectedClipTimeline.getBoundingClientRect();
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      return ratio * state.mixedDuration;
+    }
+
+    function selectedClipDraftHandleFromEvent(event) {
+      const clip = selectedMixedClip();
+      if (!clip || !isMixedVideoReady()) {
+        return null;
+      }
+
+      const rect = mixedSelectedClipTimeline.getBoundingClientRect();
+      const startX = rect.left + (clip.start / state.mixedDuration) * rect.width;
+      const endX = rect.left + (clip.end / state.mixedDuration) * rect.width;
+      const hitRadius = 18;
+
+      if (Math.abs(event.clientX - startX) <= hitRadius) {
+        return 'start';
+      }
+      if (Math.abs(event.clientX - endX) <= hitRadius) {
+        return 'end';
+      }
+      return null;
+    }
+
+    function nearestSelectedClipHandle(time) {
+      const clip = selectedMixedClip();
+      if (!clip) {
+        return null;
+      }
+
+      return Math.abs(time - clip.start) <= Math.abs(time - clip.end) ? 'start' : 'end';
+    }
+
+    function setSelectedClipHandle(handle, time) {
+      const clip = selectedMixedClip();
+      if (!clip || !handle) {
+        return;
+      }
+
+      if (handle === 'start') {
+        updateSelectedMixedClipRange(clamp(time, 0, Math.max(0, clip.end - 0.05)), clip.end);
+      } else {
+        updateSelectedMixedClipRange(clip.start, clamp(time, Math.min(state.mixedDuration, clip.start + 0.05), state.mixedDuration));
+      }
     }
 
     videoInput.addEventListener('change', () => {
@@ -2125,6 +3620,27 @@
       render();
     });
 
+    mixedGifTabButton.addEventListener('click', () => {
+      state.activeTab = 'mixed';
+      statusText.textContent = 'Build a GIF from screenshots and clips.';
+      render();
+    });
+
+    mixedComposeTabButton.addEventListener('click', () => {
+      state.mixedEditorTab = 'compose';
+      render();
+    });
+
+    mixedSelectedTabButton.addEventListener('click', () => {
+      state.mixedEditorTab = 'selected';
+      render();
+    });
+
+    mixedExportTabButton.addEventListener('click', () => {
+      state.mixedEditorTab = 'export';
+      render();
+    });
+
     screenshotVideoInput.addEventListener('change', () => {
       const file = screenshotVideoInput.files && screenshotVideoInput.files[0];
       if (!file) {
@@ -2266,6 +3782,426 @@
         }
       } finally {
         state.isExportingScreenshotGif = false;
+        render();
+      }
+    });
+
+    mixedVideoInput.addEventListener('change', () => {
+      const file = mixedVideoInput.files && mixedVideoInput.files[0];
+      if (!file) {
+        return;
+      }
+
+      if (state.mixedVideoObjectUrl) {
+        URL.revokeObjectURL(state.mixedVideoObjectUrl);
+      }
+
+      clearMixedItems();
+      state.mixedVideoFile = file;
+      state.mixedDuration = 0;
+      state.mixedVideoObjectUrl = URL.createObjectURL(file);
+      state.isExportingMixedGif = false;
+      mixedVideo.src = state.mixedVideoObjectUrl;
+      mixedClipTapVideo.src = state.mixedVideoObjectUrl;
+      mixedFilenameText.textContent = file.name;
+      mixedGifFilenameInput.value = defaultMixedGifFilename();
+      mixedGifStatusText.textContent = '';
+      mixedHintText.textContent = 'Loading video metadata...';
+      render();
+    });
+
+    mixedVideo.addEventListener('loadedmetadata', () => {
+      state.mixedDuration = Number.isFinite(mixedVideo.duration) ? mixedVideo.duration : 0;
+      mixedHintText.textContent = isMixedVideoReady()
+        ? 'Capture screenshots for taps, or add clips for transitions.'
+        : 'Could not read a finite video duration.';
+      render();
+    });
+
+    mixedVideo.addEventListener('timeupdate', () => {
+      updateMixedTime();
+      handleMixedClipPreviewProgress();
+    });
+    mixedVideo.addEventListener('play', () => {
+      const clip = previewedMixedClip();
+      if (!clip) {
+        return;
+      }
+      if (mixedVideo.currentTime < clip.start || mixedVideo.currentTime >= clip.end) {
+        mixedVideo.currentTime = clip.start;
+      }
+    });
+    mixedVideo.addEventListener('durationchange', () => {
+      state.mixedDuration = Number.isFinite(mixedVideo.duration) ? mixedVideo.duration : state.mixedDuration;
+      render();
+    });
+
+    mixedClipTapVideo.addEventListener('timeupdate', () => {
+      handleMixedClipPreviewProgress(mixedClipTapVideo);
+    });
+    mixedClipTapVideo.addEventListener('play', () => {
+      const clip = previewedMixedClip();
+      if (!clip) {
+        return;
+      }
+      if (mixedClipTapVideo.currentTime < clip.start || mixedClipTapVideo.currentTime >= clip.end) {
+        mixedClipTapVideo.currentTime = clip.start;
+      }
+    });
+    mixedItemPreviewVideo.addEventListener('timeupdate', () => {
+      const clip = state.mixedItems.find((item) => item.id === state.mixedModalPreviewClipId && item.type === 'clip');
+      if (!clip || mixedItemPreviewVideo.currentTime < clip.end) {
+        return;
+      }
+      mixedItemPreviewVideo.pause();
+      mixedItemPreviewVideo.currentTime = clip.end;
+    });
+
+    mixedTimeline.addEventListener('pointerdown', (event) => {
+      if (!isMixedVideoReady()) {
+        return;
+      }
+
+      mixedTimeline.setPointerCapture(event.pointerId);
+      const time = mixedTimelineTimeFromEvent(event);
+
+      if (state.mixedClipMode) {
+        mixedVideo.pause();
+        stopMixedClipPreview();
+        state.mixedActiveClipHandle = mixedDraftHandleFromEvent(event) || nearestMixedDraftHandle(time);
+        setMixedDraftClipHandle(state.mixedActiveClipHandle, time);
+      } else {
+        stopMixedClipPreview();
+        state.mixedIsScrubbing = true;
+        mixedVideo.currentTime = time;
+        updateMixedTime();
+      }
+    });
+
+    mixedTimeline.addEventListener('pointermove', (event) => {
+      if (!isMixedVideoReady()) {
+        return;
+      }
+
+      const time = mixedTimelineTimeFromEvent(event);
+      if (state.mixedClipMode && state.mixedActiveClipHandle) {
+        setMixedDraftClipHandle(state.mixedActiveClipHandle, time);
+      } else if (state.mixedIsScrubbing) {
+        mixedVideo.currentTime = time;
+        updateMixedTime();
+      }
+    });
+
+    mixedTimeline.addEventListener('pointerup', (event) => {
+      if (!isMixedVideoReady()) {
+        return;
+      }
+
+      if (state.mixedClipMode && state.mixedActiveClipHandle) {
+        const time = mixedTimelineTimeFromEvent(event);
+        setMixedDraftClipHandle(state.mixedActiveClipHandle, time);
+        state.mixedActiveClipHandle = null;
+        render();
+      } else {
+        state.mixedIsScrubbing = false;
+        updateMixedTime();
+      }
+    });
+
+    mixedTimeline.addEventListener('pointercancel', () => {
+      state.mixedIsScrubbing = false;
+      state.mixedActiveClipHandle = null;
+      render();
+    });
+
+    closeMixedItemPreviewButton.addEventListener('click', closeMixedItemPreview);
+    mixedItemPreviewModal.addEventListener('click', (event) => {
+      if (event.target === mixedItemPreviewModal) {
+        closeMixedItemPreview();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !mixedItemPreviewModal.hidden) {
+        closeMixedItemPreview();
+      }
+    });
+
+    captureMixedScreenshotButton.addEventListener('click', () => {
+      captureCurrentMixedScreenshot().catch(() => {
+        mixedHintText.textContent = 'Could not capture this video frame.';
+        render();
+      });
+    });
+
+    addMixedClipButton.addEventListener('click', () => {
+      if (state.mixedClipMode) {
+        cancelMixedClipDraft();
+      } else {
+        beginMixedClipDraft();
+      }
+    });
+
+    confirmMixedClipButton.addEventListener('click', confirmMixedClipDraft);
+    cancelMixedClipButton.addEventListener('click', cancelMixedClipDraft);
+    selectedMixedScreenshotPreview.addEventListener('click', setMixedScreenshotTap);
+    mixedClipTapVideo.addEventListener('click', addMixedClipTap);
+    previewSelectedMixedClipButton.addEventListener('click', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        previewMixedClip(clip.id);
+      }
+    });
+    clearMixedClipTapsButton.addEventListener('click', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        clearMixedClipTaps(clip.id);
+      }
+    });
+    mixedClipSpeedInput.addEventListener('input', () => {
+      const clip = selectedMixedItem();
+      if (!clip || clip.type !== 'clip') {
+        return;
+      }
+      clip.speed = readNumberInput(mixedClipSpeedInput, 1, 0.25, 4);
+      clearMixedGifPreview();
+      render();
+    });
+    mixedClipStartInput.addEventListener('change', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        updateSelectedMixedClipRange(Number(mixedClipStartInput.value), clip.end);
+      }
+    });
+    mixedClipEndInput.addEventListener('change', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        updateSelectedMixedClipRange(clip.start, Number(mixedClipEndInput.value));
+      }
+    });
+    setMixedClipStartButton.addEventListener('click', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        updateSelectedMixedClipRange(mixedClipTapVideo.currentTime, clip.end);
+      }
+    });
+    setMixedClipEndButton.addEventListener('click', () => {
+      const clip = selectedMixedItem();
+      if (clip && clip.type === 'clip') {
+        updateSelectedMixedClipRange(clip.start, mixedClipTapVideo.currentTime);
+      }
+    });
+    goMixedClipStartButton.addEventListener('click', () => {
+      const clip = selectedMixedClip();
+      if (clip) {
+        mixedClipTapVideo.currentTime = clip.start;
+      }
+    });
+    goMixedClipEndButton.addEventListener('click', () => {
+      const clip = selectedMixedClip();
+      if (clip) {
+        mixedClipTapVideo.currentTime = Math.max(clip.start, clip.end - 0.001);
+      }
+    });
+    mixedScreenshotTapBeforeNextInput.addEventListener('change', () => {
+      const screenshot = selectedMixedScreenshot();
+      if (!screenshot) {
+        return;
+      }
+      screenshot.tapTiming = mixedScreenshotTapBeforeNextInput.checked ? 'before-next' : 'start';
+      clearMixedGifPreview();
+      render();
+    });
+
+    mixedSelectedClipTimeline.addEventListener('pointerdown', (event) => {
+      if (!selectedMixedClip() || !isMixedVideoReady()) {
+        return;
+      }
+      mixedSelectedClipTimeline.setPointerCapture(event.pointerId);
+      const time = selectedClipTimelineTimeFromEvent(event);
+      state.mixedSelectedClipActiveHandle = selectedClipDraftHandleFromEvent(event) || nearestSelectedClipHandle(time);
+      setSelectedClipHandle(state.mixedSelectedClipActiveHandle, time);
+    });
+
+    mixedSelectedClipTimeline.addEventListener('pointermove', (event) => {
+      if (!selectedMixedClip() || !state.mixedSelectedClipActiveHandle || !isMixedVideoReady()) {
+        return;
+      }
+      setSelectedClipHandle(state.mixedSelectedClipActiveHandle, selectedClipTimelineTimeFromEvent(event));
+    });
+
+    mixedSelectedClipTimeline.addEventListener('pointerup', (event) => {
+      if (!selectedMixedClip() || !state.mixedSelectedClipActiveHandle || !isMixedVideoReady()) {
+        state.mixedSelectedClipActiveHandle = null;
+        return;
+      }
+      setSelectedClipHandle(state.mixedSelectedClipActiveHandle, selectedClipTimelineTimeFromEvent(event));
+      state.mixedSelectedClipActiveHandle = null;
+      render();
+    });
+
+    mixedSelectedClipTimeline.addEventListener('pointercancel', () => {
+      state.mixedSelectedClipActiveHandle = null;
+      render();
+    });
+
+    clearMixedScreenshotTapButton.addEventListener('click', () => {
+      const screenshot = selectedMixedScreenshot();
+      if (!screenshot) {
+        return;
+      }
+      screenshot.tap = null;
+      clearMixedGifPreview();
+      mixedHintText.textContent = 'Removed tap ripple from the selected screenshot.';
+      render();
+    });
+
+    mixedScreenshotDurationInput.addEventListener('input', () => {
+      const duration = mixedScreenshotDuration();
+      state.mixedItems = state.mixedItems.map((item) => (
+        item.type === 'screenshot'
+          ? { ...item, duration }
+          : item
+      ));
+      clearMixedGifPreview();
+      render();
+    });
+
+    [
+      mixedGifFilenameInput,
+      mixedGifFpsInput,
+      mixedGifWidthInput,
+      mixedRippleDurationInput,
+      mixedRippleRadiusInput,
+      mixedRippleOpacityInput,
+      mixedRippleColorInput,
+    ].forEach((input) => {
+      input.addEventListener('input', () => {
+        clearMixedGifPreview();
+        render();
+      });
+    });
+
+    generateMixedGifButton.addEventListener('click', async () => {
+      if (state.mixedItems.length === 0 || state.isExportingMixedGif) {
+        return;
+      }
+
+      const outputFilename = normalizeMixedGifFilename(mixedGifFilenameInput.value);
+      mixedGifFilenameInput.value = outputFilename;
+      const screenshotDuration = mixedScreenshotDuration();
+      const fps = readNumberInput(mixedGifFpsInput, 12, 1, 60);
+      const width = readNumberInput(mixedGifWidthInput, 480, 120, 2160);
+      const rippleDuration = readNumberInput(mixedRippleDurationInput, 0.6, 0.01, 30);
+      const rippleRadius = readNumberInput(mixedRippleRadiusInput, 44, 1, 1000);
+      const rippleOpacity = readNumberInput(mixedRippleOpacityInput, 0.85, 0, 1);
+      const hasClipItems = state.mixedItems.some((item) => item.type === 'clip');
+
+      if (hasClipItems && !state.mixedVideoFile) {
+        mixedGifStatusText.textContent = 'Video file is required when exporting clips.';
+        return;
+      }
+
+      state.isExportingMixedGif = true;
+      mixedGifStatusText.textContent = 'Generating GIF preview...';
+      statusText.textContent = 'Generating mixed GIF preview with local FFmpeg...';
+      render();
+
+      try {
+        const formData = new FormData();
+        if (state.mixedVideoFile) {
+          formData.append('video', state.mixedVideoFile, state.mixedVideoFile.name);
+        }
+
+        let screenshotIndex = 0;
+        const items = state.mixedItems.map((item) => {
+          if (item.type === 'screenshot') {
+            screenshotIndex += 1;
+            const filename = `mixed-frame-${String(screenshotIndex).padStart(3, '0')}.png`;
+            formData.append(filename, item.blob, filename);
+            return {
+              id: item.id,
+              type: 'screenshot',
+              filename,
+              duration: item.duration || screenshotDuration,
+              tap: item.tap,
+              tapTiming: item.tapTiming || 'start',
+            };
+          }
+
+          return {
+            id: item.id,
+            type: 'clip',
+            start: item.start,
+            end: item.end,
+            speed: item.speed || 1,
+            taps: item.taps || [],
+          };
+        });
+
+        formData.append('items', JSON.stringify({
+          version: 1,
+          outputFilename,
+          fps,
+          width,
+          defaultScreenshotDuration: screenshotDuration,
+          rippleDuration,
+          rippleRadius,
+          rippleOpacity,
+          rippleColor: mixedRippleColorInput.value || 'white',
+          items,
+        }));
+
+        const response = await fetch('/api/mixed-gif', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorResponse(response));
+        }
+
+        const blob = await response.blob();
+        showMixedGifPreview(blob, outputFilename);
+        mixedGifStatusText.textContent = 'Preview generated.';
+        statusText.textContent = 'Preview generated.';
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          mixedGifStatusText.textContent = 'GIF export canceled.';
+          statusText.textContent = 'GIF export canceled.';
+        } else {
+          const message = error instanceof Error ? error.message : 'Mixed GIF conversion failed.';
+          mixedGifStatusText.textContent = message;
+          statusText.textContent = message;
+        }
+      } finally {
+        state.isExportingMixedGif = false;
+        render();
+      }
+    });
+
+    downloadMixedGifButton.addEventListener('click', async () => {
+      if (!state.mixedGeneratedGifBlob || !state.mixedGeneratedGifFilename) {
+        return;
+      }
+
+      try {
+        mixedGifStatusText.textContent = 'Choose where to save the generated GIF.';
+        const destination = await saveBlobWithDownloadFallback(state.mixedGeneratedGifBlob, state.mixedGeneratedGifFilename);
+        const message = destination === 'folder'
+          ? `Saved ${state.mixedGeneratedGifFilename}.`
+          : `Downloaded ${state.mixedGeneratedGifFilename}.`;
+        mixedGifStatusText.textContent = message;
+        statusText.textContent = message;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          mixedGifStatusText.textContent = 'Download canceled.';
+          statusText.textContent = 'Download canceled.';
+        } else {
+          const message = error instanceof Error ? error.message : 'Download failed.';
+          mixedGifStatusText.textContent = message;
+          statusText.textContent = message;
+        }
+      } finally {
         render();
       }
     });

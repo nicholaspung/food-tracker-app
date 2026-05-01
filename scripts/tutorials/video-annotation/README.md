@@ -1,6 +1,6 @@
 # Video Annotation & Export Tool
 
-This folder contains a local browser annotation tool and a Python renderer for trimming `.mov` files and adding animated tap ripples.
+This folder contains a local browser annotation tool and a Python renderer for trimming `.mov` files, adding animated tap ripples, and building tutorial GIFs from screenshots, clips, or both.
 
 All repo-owned files required to run this web app live in this folder:
 
@@ -72,6 +72,24 @@ The `Screenshot GIF` tab builds an animated GIF from browser-captured still fram
 
 Screenshot capture, gallery editing, duplication, removal, reordering, and tap placement happen in the browser. Final GIF rendering uses the local helper server and FFmpeg so the output can be saved with the same folder picker/download behavior as the existing exports.
 
+## Mixed GIF Tab
+
+The `Mixed GIF` tab builds one animated GIF from a manually ordered list of browser-captured screenshots and source-video clips:
+
+1. Upload a local video.
+2. Seek to tap moments and click `Capture Screenshot`.
+3. Select screenshot items and click the preview to place tap ripples.
+4. Click `Add Clip`, adjust the `Start` and `End` handles on the timeline, then click `Confirm Clip`.
+5. Select a clip row, or click its select icon, then click `Preview` to play only that clip range in the source video.
+6. In the `Selected Item` sub-tab, click inside the selected clip preview to add timed tap ripples. Clips can have multiple taps.
+7. Adjust clip start/end with the selected clip slider or numeric fields, jump the preview to clip start/end, and adjust clip speed in the `Selected Item` sub-tab when a clip is selected.
+8. Reorder, duplicate, remove, and select screenshots and clips in the scrollable timeline item list. Clicking a thumbnail opens a modal preview; screenshot previews show only the screenshot, while clip previews render and play the clipped segment.
+9. In the `GIF Export` sub-tab, configure GIF filename, screenshot duration, FPS, width, and ripple settings.
+10. Click `Generate Preview` to render the GIF preview, then click `Download GIF` when the preview looks right.
+
+Screenshot items keep their configured still-frame duration. Screenshot taps can play at the beginning of the still frame or right before the next item. Clip items keep their selected source-video duration adjusted by their per-clip speed. Final GIF order matches the manual order in the timeline item list. Mixed GIF export intentionally drops audio because GIF output has no audio.
+Manual timeline dragging remains available for seeking through the full source video; clip preview only constrains playback while that preview is active. The timeline item list scrolls independently for larger tutorials.
+
 ## Render
 
 From the browser, click `Export MOV`. In supported browsers such as Chrome and Edge, the tool asks you to choose a folder and writes the rendered `.mov` there. If folder picking is unavailable, the rendered `.mov` downloads through the browser.
@@ -92,6 +110,8 @@ The screenshot GIF tab uses the same save behavior. Defaults are:
 - Ripple duration: `0.6`
 - Ripple radius: `44`
 - Ripple color: `white`
+
+The mixed GIF tab uses the same save behavior and rendering defaults as the screenshot GIF tab. The default filename is `<video-base>-mixed.gif`.
 - Ripple opacity: `0.85`
 
 The Python renderer is used internally by the local helper server for `Export MOV`.
