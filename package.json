@@ -39,8 +39,9 @@
     "mobile:unused-exports": "node scripts/check-mobile-unused-exports.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
     "mobile:test": "pnpm --filter @food-tracker/mobile test",
-    "mobile:tutorial:ios:gif": "bash scripts/tutorials/convert-ios-mov-to-gif.sh",
     "mobile:tutorial:ios:record": "bash scripts/tutorials/record-ios-mov.sh",
+    "video-annotation:dev": "node scripts/tutorials/video-annotation/server.mjs",
+    "mobile:tutorial:video-annotation": "node scripts/tutorials/video-annotation/server.mjs",
     "mobile:verify-native-entrypoint": "node scripts/verify-mobile-native-entrypoint.mjs",
     "android": "pnpm mobile:android",
     "ios": "pnpm mobile:ios"

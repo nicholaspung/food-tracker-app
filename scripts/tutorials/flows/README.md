@@ -16,14 +16,16 @@ The recorder uses the first booted simulator. If no simulator is booted, it boot
 the default simulator from the script. While recording, manually click around the
 app, then press Enter in the terminal to stop.
 
-Convert the resulting movie to a GIF:
+Create the final tutorial media in the video annotation web app:
 
 ```bash
-pnpm mobile:tutorial:ios:gif tutorial-artifacts/ios/tip-calculator/<timestamp>/raw.mov
+pnpm video-annotation:dev
 ```
 
-Useful conversion options:
+Then open the printed localhost URL and:
 
-```bash
-pnpm mobile:tutorial:ios:gif raw.mov --output tip-calculator.gif --start 0.8 --duration 5.5 --fps 12 --width 480
-```
+1. Load the recorded `raw.mov`.
+2. Add any cuts and tap annotations.
+3. Click `Export MOV`.
+4. Review the rendered preview.
+5. Click `Export GIF`.

@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Annotation & Export Tool</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #5c667a;
+      --line: #d9deea;
+      --strong-line: #b7c0d4;
+      --accent: #1667d9;
+      --accent-dark: #0d4fab;
+      --danger: #cf2e2e;
+      --danger-soft: rgba(207, 46, 46, 0.24);
+      --marker: #f5b400;
+      --shadow: 0 18px 45px rgba(32, 43, 70, 0.12);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #ffffff;
+      background: var(--accent);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent-dark);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    button.secondary {
+      color: var(--text);
+      border: 1px solid var(--line);
+      background: #ffffff;
+    }
+
+    button.secondary:hover:not(:disabled) {
+      background: #eef2f8;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 28px;
+      line-height: 1.15;
+    }
+
+    h2 {
+      font-size: 18px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+      min-height: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header,
+    .panel-body {
+      padding: 16px;
+    }
+
+    .panel-header {
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .file-row,
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-row {
+      margin-bottom: 14px;
+    }
+
+    .file-input {
+      max-width: 100%;
+      color: var(--muted);
+    }
+
+    .output-row {
+      display: grid;
+      grid-template-columns: auto minmax(220px, 320px) auto;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .output-row label {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .output-input {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #0c1020;
+      aspect-ratio: 16 / 9;
+      border: 1px solid #161d33;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      background: #0c1020;
+      cursor: default;
+    }
+
+    .video-wrap.tap-mode video {
+      cursor: crosshair;
+    }
+
+    .video-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #aab4ca;
+      text-align: center;
+      padding: 24px;
+      pointer-events: none;
+    }
+
+    .rendered-preview {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .rendered-preview[hidden] {
+      display: none;
+    }
+
+    .rendered-preview h2 {
+      font-size: 16px;
+    }
+
+    .gif-export {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .gif-export[hidden],
+    .gif-preview[hidden] {
+      display: none;
+    }
+
+    .gif-export h2 {
+      font-size: 16px;
+    }
+
+    .gif-preview {
+      display: grid;
+      gap: 8px;
+    }
+
+    .gif-preview img {
+      width: 100%;
+      max-height: 420px;
+      object-fit: contain;
+      border: 1px solid #161d33;
+      border-radius: 8px;
+      background: #0c1020;
+    }
+
+    .tap-preview {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.95);
+      border-radius: 999px;
+      transform: translate(-50%, -50%) scale(0.2);
+      pointer-events: none;
+      animation: ripple 700ms ease-out forwards;
+      box-shadow: 0 0 0 2px rgba(22, 103, 217, 0.9);
+    }
+
+    @keyframes ripple {
+      to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(4.2);
+      }
+    }
+
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 14px 0 8px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 14px;
+    }
+
+    .timeline {
+      position: relative;
+      height: 48px;
+      border: 1px solid var(--strong-line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f8faff 0%, #eef2f9 100%);
+      overflow: hidden;
+      cursor: pointer;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .timeline-track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 8px;
+      transform: translateY(-50%);
+      background: #c8d1e4;
+    }
+
+    .cut-region,
+    .draft-cut {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: var(--danger-soft);
+      border-left: 1px solid rgba(207, 46, 46, 0.65);
+      border-right: 1px solid rgba(207, 46, 46, 0.65);
+    }
+
+    .draft-cut {
+      background: rgba(22, 103, 217, 0.2);
+      border-color: rgba(22, 103, 217, 0.7);
+    }
+
+    .cut-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 4;
+      width: 18px;
+      transform: translateX(-50%);
+      cursor: ew-resize;
+    }
+
+    .cut-handle::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      bottom: 5px;
+      left: 50%;
+      width: 4px;
+      border-radius: 999px;
+      background: var(--accent);
+      transform: translateX(-50%);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 2px 8px rgba(20, 26, 40, 0.24);
+    }
+
+    .cut-handle::after {
+      content: attr(data-label);
+      position: absolute;
+      top: 3px;
+      left: 50%;
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: #ffffff;
+      background: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .tap-marker {
+      position: absolute;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: var(--marker);
+      border: 2px solid #ffffff;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 1px 5px rgba(20, 26, 40, 0.25);
+    }
+
+    .playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+      transform: translateX(-1.5px);
+      pointer-events: none;
+    }
+
+    .playhead::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 13px;
+      height: 13px;
+      background: var(--accent);
+      border-radius: 999px;
+      transform: translate(-50%, 4px);
+    }
+
+    .mode-on {
+      outline: 3px solid rgba(22, 103, 217, 0.2);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .cut-editor {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+
+    .cut-editor[hidden] {
+      display: none;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .item-title {
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .item-meta {
+      color: var(--muted);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      padding: 13px 12px;
+      border: 1px dashed var(--strong-line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: #fafbfe;
+    }
+
+    .section + .section {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .hint {
+      margin-top: 10px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .grid,
+      .topbar {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+
+      .topbar {
+        align-items: start;
+      }
+
+      .output-row {
+        grid-template-columns: 1fr;
+      }
+
+      .field-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div>
+        <h1>Video Annotation & Export Tool</h1>
+        <div class="status" id="statusText">Load a .mov file to start annotating.</div>
+      </div>
+      <div class="controls-row">
+        <button id="exportButton" disabled>Export JSON</button>
+        <button id="exportMovButton" disabled>Export MOV</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Player</h2>
+          <div class="controls-row">
+            <button class="secondary" id="previewCutsButton" disabled>Preview Without Cuts</button>
+            <div class="status" id="filenameText">No video loaded</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="file-row">
+            <input class="file-input" id="videoInput" type="file" accept=".mov,video/*">
+          </div>
+
+          <div class="video-wrap" id="videoWrap">
+            <video id="video" controls playsinline></video>
+            <div class="video-placeholder" id="videoPlaceholder">Video preview appears here</div>
+          </div>
+
+          <div class="time-row">
+            <span id="currentTimeText">00:00.000</span>
+            <span id="durationText">00:00.000</span>
+          </div>
+
+          <div class="timeline" id="timeline" aria-label="Video timeline">
+            <div class="timeline-track"></div>
+            <div id="overlayLayer"></div>
+            <div class="playhead" id="playhead" style="left: 0%;"></div>
+          </div>
+
+          <div class="hint" id="hintText">Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.</div>
+
+          <div class="output-row">
+            <label for="outputFilenameInput">Output filename</label>
+            <input class="output-input" id="outputFilenameInput" type="text" value="output.mov" spellcheck="false">
+            <div class="status" id="exportStatusText"></div>
+          </div>
+
+          <div class="rendered-preview" id="renderedPreview" hidden>
+            <h2>Rendered preview</h2>
+            <div class="video-wrap">
+              <video id="renderedVideo" controls playsinline></video>
+            </div>
+            <div class="status" id="renderedPreviewText"></div>
+          </div>
+
+          <div class="gif-export" id="gifExport" hidden>
+            <h2>GIF export</h2>
+            <div class="field">
+              <label for="gifFilenameInput">GIF filename</label>
+              <input class="output-input" id="gifFilenameInput" type="text" value="output.gif" spellcheck="false">
+            </div>
+            <div class="field-grid">
+              <div class="field">
+                <label for="gifFpsInput">FPS</label>
+                <input class="output-input" id="gifFpsInput" type="number" min="1" max="60" step="1" value="12">
+              </div>
+              <div class="field">
+                <label for="gifWidthInput">Width</label>
+                <input class="output-input" id="gifWidthInput" type="number" min="120" max="2160" step="1" value="480">
+              </div>
+              <div class="field">
+                <label for="gifStartInput">Start</label>
+                <input class="output-input" id="gifStartInput" type="number" min="0" step="0.001" placeholder="Full video">
+              </div>
+              <div class="field">
+                <label for="gifDurationInput">Duration</label>
+                <input class="output-input" id="gifDurationInput" type="number" min="0.001" step="0.001" placeholder="Full video">
+              </div>
+            </div>
+            <div class="controls-row">
+              <button id="exportGifButton" disabled>Export GIF</button>
+              <div class="status" id="gifStatusText"></div>
+            </div>
+            <div class="gif-preview" id="gifPreview" hidden>
+              <img id="gifPreviewImage" alt="Generated GIF preview">
+              <div class="status" id="gifPreviewText"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-header">
+          <h2>Annotations</h2>
+        </div>
+        <div class="panel-body">
+          <div class="section">
+            <div class="section-header">
+              <h2>Cuts</h2>
+              <button class="secondary" id="addCutButton" disabled>Add Cut</button>
+            </div>
+            <div class="cut-editor" id="cutEditor" hidden>
+              <div>
+                <div class="item-title">Pending Cut</div>
+                <div class="item-meta" id="draftCutText">Move the Start and End handles on the timeline.</div>
+              </div>
+              <div class="controls-row">
+                <button id="confirmCutButton" disabled>Confirm Cut</button>
+                <button class="secondary" id="cancelCutButton">Cancel</button>
+              </div>
+            </div>
+            <div class="list" id="cutsList"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-header">
+              <h2>Taps</h2>
+              <button class="secondary" id="addTapButton" disabled>Add Tap</button>
+            </div>
+            <div class="list" id="tapsList"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      videoFile: null,
+      duration: 0,
+      cuts: [],
+      taps: [],
+      cutMode: false,
+      tapMode: false,
+      isScrubbing: false,
+      previewWithoutCuts: false,
+      isSkippingCut: false,
+      activeCutHandle: null,
+      draftCut: null,
+      objectUrl: null,
+      renderedObjectUrl: null,
+      renderedMovBlob: null,
+      renderedMovFilename: '',
+      gifObjectUrl: null,
+      isExportingMov: false,
+      isExportingGif: false,
+    };
+
+    const videoInput = document.getElementById('videoInput');
+    const video = document.getElementById('video');
+    const videoWrap = document.getElementById('videoWrap');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const filenameText = document.getElementById('filenameText');
+    const statusText = document.getElementById('statusText');
+    const currentTimeText = document.getElementById('currentTimeText');
+    const durationText = document.getElementById('durationText');
+    const timeline = document.getElementById('timeline');
+    const overlayLayer = document.getElementById('overlayLayer');
+    const playhead = document.getElementById('playhead');
+    const hintText = document.getElementById('hintText');
+    const addCutButton = document.getElementById('addCutButton');
+    const addTapButton = document.getElementById('addTapButton');
+    const previewCutsButton = document.getElementById('previewCutsButton');
+    const cutEditor = document.getElementById('cutEditor');
+    const draftCutText = document.getElementById('draftCutText');
+    const confirmCutButton = document.getElementById('confirmCutButton');
+    const cancelCutButton = document.getElementById('cancelCutButton');
+    const exportButton = document.getElementById('exportButton');
+    const exportMovButton = document.getElementById('exportMovButton');
+    const outputFilenameInput = document.getElementById('outputFilenameInput');
+    const exportStatusText = document.getElementById('exportStatusText');
+    const renderedPreview = document.getElementById('renderedPreview');
+    const renderedVideo = document.getElementById('renderedVideo');
+    const renderedPreviewText = document.getElementById('renderedPreviewText');
+    const gifExport = document.getElementById('gifExport');
+    const gifFilenameInput = document.getElementById('gifFilenameInput');
+    const gifFpsInput = document.getElementById('gifFpsInput');
+    const gifWidthInput = document.getElementById('gifWidthInput');
+    const gifStartInput = document.getElementById('gifStartInput');
+    const gifDurationInput = document.getElementById('gifDurationInput');
+    const exportGifButton = document.getElementById('exportGifButton');
+    const gifStatusText = document.getElementById('gifStatusText');
+    const gifPreview = document.getElementById('gifPreview');
+    const gifPreviewImage = document.getElementById('gifPreviewImage');
+    const gifPreviewText = document.getElementById('gifPreviewText');
+    const cutsList = document.getElementById('cutsList');
+    const tapsList = document.getElementById('tapsList');
+
+    function isReady() {
+      return Number.isFinite(state.duration) && state.duration > 0;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function formatTime(value) {
+      if (!Number.isFinite(value) || value < 0) {
+        return '00:00.000';
+      }
+
+      const minutes = Math.floor(value / 60);
+      const seconds = Math.floor(value % 60);
+      const millis = Math.floor((value % 1) * 1000);
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+    }
+
+    function makeId(prefix) {
+      return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function videoBaseName() {
+      if (!state.videoFile) {
+        return 'video';
+      }
+      return state.videoFile.name.replace(/\.[^.]+$/, '') || 'video';
+    }
+
+    function defaultOutputFilename() {
+      return `${videoBaseName()}-final.mov`;
+    }
+
+    function normalizeOutputFilename(value) {
+      const trimmed = value.trim();
+      const fallback = defaultOutputFilename();
+      const filename = trimmed || fallback;
+      return filename.toLowerCase().endsWith('.mov') ? filename : `${filename}.mov`;
+    }
+
+    function gifBaseName() {
+      const filename = state.renderedMovFilename || defaultOutputFilename();
+      return filename.replace(/\.[^.]+$/, '') || 'video';
+    }
+
+    function defaultGifFilename() {
+      return `${gifBaseName()}.gif`;
+    }
+
+    function normalizeGifFilename(value) {
+      const trimmed = value.trim();
+      const fallback = defaultGifFilename();
+      const filename = trimmed || fallback;
+      return filename.toLowerCase().endsWith('.gif') ? filename : `${filename}.gif`;
+    }
+
+    function buildAnnotationPayload() {
+      return {
+        version: 1,
+        videoFilename: state.videoFile.name,
+        duration: Number(state.duration.toFixed(6)),
+        cuts: sortedCuts().map((cut) => ({
+          id: cut.id,
+          start: Number(clamp(cut.start, 0, state.duration).toFixed(6)),
+          end: Number(clamp(cut.end, 0, state.duration).toFixed(6)),
+        })),
+        taps: sortedTaps().map((tap) => ({
+          id: tap.id,
+          timestamp: Number(clamp(tap.timestamp, 0, state.duration).toFixed(6)),
+          x: Number(clamp(tap.x, 0, 1).toFixed(6)),
+          y: Number(clamp(tap.y, 0, 1).toFixed(6)),
+        })),
+      };
+    }
+
+    function clearRenderedPreview() {
+      if (state.renderedObjectUrl) {
+        URL.revokeObjectURL(state.renderedObjectUrl);
+      }
+      state.renderedObjectUrl = null;
+      state.renderedMovBlob = null;
+      state.renderedMovFilename = '';
+      renderedVideo.removeAttribute('src');
+      renderedVideo.load();
+      renderedPreview.hidden = true;
+      renderedPreviewText.textContent = '';
+      gifExport.hidden = true;
+      gifFilenameInput.value = 'output.gif';
+      gifStatusText.textContent = '';
+      clearGifPreview();
+    }
+
+    function showRenderedPreview(blob, filename) {
+      if (state.renderedObjectUrl) {
+        URL.revokeObjectURL(state.renderedObjectUrl);
+      }
+      clearGifPreview();
+      state.renderedMovBlob = blob;
+      state.renderedMovFilename = filename;
+      state.renderedObjectUrl = URL.createObjectURL(blob);
+      renderedVideo.src = state.renderedObjectUrl;
+      renderedPreview.hidden = false;
+      renderedPreviewText.textContent = `Previewing ${filename}.`;
+      gifExport.hidden = false;
+      gifFilenameInput.value = defaultGifFilename();
+      gifStatusText.textContent = '';
+    }
+
+    function clearGifPreview() {
+      if (state.gifObjectUrl) {
+        URL.revokeObjectURL(state.gifObjectUrl);
+      }
+      state.gifObjectUrl = null;
+      gifPreviewImage.removeAttribute('src');
+      gifPreview.hidden = true;
+      gifPreviewText.textContent = '';
+    }
+
+    function showGifPreview(blob, filename) {
+      if (state.gifObjectUrl) {
+        URL.revokeObjectURL(state.gifObjectUrl);
+      }
+      state.gifObjectUrl = URL.createObjectURL(blob);
+      gifPreviewImage.src = state.gifObjectUrl;
+      gifPreview.hidden = false;
+      gifPreviewText.textContent = `Previewing ${filename}.`;
+    }
+
+    function timelineTimeFromEvent(event) {
+      const rect = timeline.getBoundingClientRect();
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      return ratio * state.duration;
+    }
+
+    function updateControls() {
+      const ready = isReady();
+      if (state.previewWithoutCuts && state.cuts.length === 0) {
+        state.previewWithoutCuts = false;
+      }
+
+      addCutButton.disabled = !ready;
+      addTapButton.disabled = !ready;
+      previewCutsButton.disabled = !ready || state.cuts.length === 0;
+      exportButton.disabled = !ready;
+      exportMovButton.disabled = !ready || state.isExportingMov;
+      outputFilenameInput.disabled = state.isExportingMov;
+      exportGifButton.disabled = !state.renderedMovBlob || state.isExportingGif;
+      gifFilenameInput.disabled = state.isExportingGif;
+      gifFpsInput.disabled = state.isExportingGif;
+      gifWidthInput.disabled = state.isExportingGif;
+      gifStartInput.disabled = state.isExportingGif;
+      gifDurationInput.disabled = state.isExportingGif;
+      videoPlaceholder.style.display = ready ? 'none' : 'grid';
+      cutEditor.hidden = !state.cutMode || !state.draftCut;
+      videoWrap.classList.toggle('tap-mode', state.tapMode);
+      addCutButton.classList.toggle('mode-on', state.cutMode);
+      addTapButton.classList.toggle('mode-on', state.tapMode);
+      previewCutsButton.classList.toggle('mode-on', state.previewWithoutCuts);
+      addCutButton.textContent = state.cutMode ? 'Cancel Pending Cut' : 'Add Cut';
+      addTapButton.textContent = state.tapMode ? 'Cancel Tap' : 'Add Tap';
+      previewCutsButton.textContent = state.previewWithoutCuts ? 'Stop Cut Preview' : 'Preview Without Cuts';
+      exportMovButton.textContent = state.isExportingMov ? 'Rendering...' : 'Export MOV';
+      exportGifButton.textContent = state.isExportingGif ? 'Converting...' : 'Export GIF';
+
+      if (state.draftCut) {
+        const duration = state.draftCut.end - state.draftCut.start;
+        draftCutText.textContent = `${formatTime(state.draftCut.start)} - ${formatTime(state.draftCut.end)} (${duration.toFixed(3)}s)`;
+        confirmCutButton.disabled = !ready || duration < 0.05;
+      } else {
+        draftCutText.textContent = 'Move the Start and End handles on the timeline.';
+        confirmCutButton.disabled = true;
+      }
+    }
+
+    function updateTime() {
+      const current = isReady() ? clamp(video.currentTime, 0, state.duration) : 0;
+      const duration = isReady() ? state.duration : 0;
+      currentTimeText.textContent = formatTime(current);
+      durationText.textContent = formatTime(duration);
+      playhead.style.left = `${duration > 0 ? (current / duration) * 100 : 0}%`;
+    }
+
+    function sortedCuts() {
+      return [...state.cuts].sort((a, b) => a.start - b.start);
+    }
+
+    function sortedTaps() {
+      return [...state.taps].sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    function activeCutAt(time) {
+      return sortedCuts().find((cut) => cut.start <= time && time < cut.end);
+    }
+
+    function seekPreviewableTime(time) {
+      const cut = activeCutAt(time);
+      if (!cut) {
+        return clamp(time, 0, state.duration);
+      }
+      return clamp(cut.end + 0.001, 0, state.duration);
+    }
+
+    function maybeSkipCutForPreview() {
+      if (!state.previewWithoutCuts || state.isSkippingCut || !isReady()) {
+        return;
+      }
+
+      const cut = activeCutAt(video.currentTime);
+      if (!cut) {
+        return;
+      }
+
+      state.isSkippingCut = true;
+      video.currentTime = clamp(cut.end + 0.001, 0, state.duration);
+      window.setTimeout(() => {
+        state.isSkippingCut = false;
+      }, 0);
+    }
+
+    function renderTimeline() {
+      overlayLayer.innerHTML = '';
+      const duration = state.duration || 1;
+
+      for (const cut of state.cuts) {
+        const left = clamp(cut.start / duration, 0, 1) * 100;
+        const right = clamp(cut.end / duration, 0, 1) * 100;
+        const el = document.createElement('div');
+        el.className = 'cut-region';
+        el.style.left = `${left}%`;
+        el.style.width = `${Math.max(0, right - left)}%`;
+        overlayLayer.appendChild(el);
+      }
+
+      if (state.draftCut) {
+        const left = clamp(state.draftCut.start / duration, 0, 1) * 100;
+        const right = clamp(state.draftCut.end / duration, 0, 1) * 100;
+        const el = document.createElement('div');
+        el.className = 'draft-cut';
+        el.style.left = `${left}%`;
+        el.style.width = `${Math.max(0, right - left)}%`;
+        overlayLayer.appendChild(el);
+
+        const startHandle = document.createElement('div');
+        startHandle.className = 'cut-handle';
+        startHandle.dataset.label = 'Start';
+        startHandle.style.left = `${left}%`;
+        overlayLayer.appendChild(startHandle);
+
+        const endHandle = document.createElement('div');
+        endHandle.className = 'cut-handle';
+        endHandle.dataset.label = 'End';
+        endHandle.style.left = `${right}%`;
+        overlayLayer.appendChild(endHandle);
+      }
+
+      for (const tap of state.taps) {
+        const el = document.createElement('div');
+        el.className = 'tap-marker';
+        el.title = `Tap at ${formatTime(tap.timestamp)}`;
+        el.style.left = `${clamp(tap.timestamp / duration, 0, 1) * 100}%`;
+        overlayLayer.appendChild(el);
+      }
+    }
+
+    function renderLists() {
+      cutsList.innerHTML = '';
+      tapsList.innerHTML = '';
+
+      const cuts = sortedCuts();
+      if (cuts.length === 0) {
+        cutsList.innerHTML = '<div class="empty">No cuts yet.</div>';
+      } else {
+        cuts.forEach((cut, index) => {
+          const item = document.createElement('div');
+          item.className = 'item';
+          item.innerHTML = `
+            <div>
+              <div class="item-title">Cut ${index + 1}</div>
+              <div class="item-meta">${formatTime(cut.start)} - ${formatTime(cut.end)} (${(cut.end - cut.start).toFixed(3)}s)</div>
+            </div>
+          `;
+          const button = document.createElement('button');
+          button.className = 'danger';
+          button.textContent = 'Delete';
+          button.addEventListener('click', () => {
+            state.cuts = state.cuts.filter((candidate) => candidate.id !== cut.id);
+            if (state.cuts.length === 0) {
+              state.previewWithoutCuts = false;
+            }
+            render();
+          });
+          item.appendChild(button);
+          cutsList.appendChild(item);
+        });
+      }
+
+      const taps = sortedTaps();
+      if (taps.length === 0) {
+        tapsList.innerHTML = '<div class="empty">No taps yet.</div>';
+      } else {
+        taps.forEach((tap, index) => {
+          const item = document.createElement('div');
+          item.className = 'item';
+          item.innerHTML = `
+            <div>
+              <div class="item-title">Tap ${index + 1}</div>
+              <div class="item-meta">${formatTime(tap.timestamp)} | x ${tap.x.toFixed(4)}, y ${tap.y.toFixed(4)}</div>
+            </div>
+          `;
+          const button = document.createElement('button');
+          button.className = 'danger';
+          button.textContent = 'Delete';
+          button.addEventListener('click', () => {
+            state.taps = state.taps.filter((candidate) => candidate.id !== tap.id);
+            render();
+          });
+          item.appendChild(button);
+          tapsList.appendChild(item);
+        });
+      }
+    }
+
+    function render() {
+      updateControls();
+      updateTime();
+      renderTimeline();
+      renderLists();
+    }
+
+    function addCut(startTime, endTime) {
+      const start = clamp(Math.min(startTime, endTime), 0, state.duration);
+      const end = clamp(Math.max(startTime, endTime), 0, state.duration);
+
+      if (end - start < 0.05) {
+        statusText.textContent = 'Cut ignored because it was shorter than 0.05s.';
+        return;
+      }
+
+      state.cuts.push({
+        id: makeId('cut'),
+        start,
+        end,
+      });
+      state.previewWithoutCuts = false;
+      statusText.textContent = `Added cut from ${formatTime(start)} to ${formatTime(end)}.`;
+    }
+
+    function beginCutDraft() {
+      if (!isReady()) {
+        return;
+      }
+
+      video.pause();
+      const current = clamp(video.currentTime, 0, state.duration);
+      const defaultLength = Math.min(Math.max(state.duration * 0.08, 0.5), 2);
+      let start = current;
+      let end = Math.min(state.duration, current + defaultLength);
+
+      if (end - start < 0.05) {
+        start = Math.max(0, state.duration - defaultLength);
+        end = state.duration;
+      }
+
+      state.cutMode = true;
+      state.tapMode = false;
+      state.isScrubbing = false;
+      state.previewWithoutCuts = false;
+      state.activeCutHandle = null;
+      state.draftCut = { start, end };
+      video.currentTime = start;
+      statusText.textContent = 'Adjust the cut handles, then confirm the cut.';
+      hintText.textContent = 'Drag the Start or End handle on the timeline. The video follows the handle you move.';
+      render();
+    }
+
+    function cancelCutDraft() {
+      state.cutMode = false;
+      state.activeCutHandle = null;
+      state.draftCut = null;
+      hintText.textContent = 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      statusText.textContent = 'Canceled pending cut.';
+      render();
+    }
+
+    function confirmCutDraft() {
+      if (!state.draftCut) {
+        return;
+      }
+
+      addCut(state.draftCut.start, state.draftCut.end);
+      state.cutMode = false;
+      state.activeCutHandle = null;
+      state.draftCut = null;
+      hintText.textContent = 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      render();
+    }
+
+    function nearestDraftHandle(time) {
+      if (!state.draftCut) {
+        return null;
+      }
+
+      const startDistance = Math.abs(time - state.draftCut.start);
+      const endDistance = Math.abs(time - state.draftCut.end);
+      return startDistance <= endDistance ? 'start' : 'end';
+    }
+
+    function draftHandleFromEvent(event) {
+      if (!state.draftCut || !isReady()) {
+        return null;
+      }
+
+      const rect = timeline.getBoundingClientRect();
+      const startX = rect.left + (state.draftCut.start / state.duration) * rect.width;
+      const endX = rect.left + (state.draftCut.end / state.duration) * rect.width;
+      const hitRadius = 18;
+
+      if (Math.abs(event.clientX - startX) <= hitRadius) {
+        return 'start';
+      }
+      if (Math.abs(event.clientX - endX) <= hitRadius) {
+        return 'end';
+      }
+      return null;
+    }
+
+    function setDraftCutHandle(handle, time) {
+      if (!state.draftCut || !handle) {
+        return;
+      }
+
+      const minGap = 0.05;
+      if (handle === 'start') {
+        state.draftCut.start = clamp(time, 0, Math.max(0, state.draftCut.end - minGap));
+        video.currentTime = state.draftCut.start;
+      } else {
+        state.draftCut.end = clamp(time, Math.min(state.duration, state.draftCut.start + minGap), state.duration);
+        video.currentTime = state.draftCut.end;
+      }
+      updateTime();
+      renderTimeline();
+      updateControls();
+    }
+
+    function getDisplayedVideoRect() {
+      const wrapRect = videoWrap.getBoundingClientRect();
+      const videoRatio = video.videoWidth / video.videoHeight;
+      const boxRatio = wrapRect.width / wrapRect.height;
+
+      if (!Number.isFinite(videoRatio) || videoRatio <= 0) {
+        return wrapRect;
+      }
+
+      if (boxRatio > videoRatio) {
+        const width = wrapRect.height * videoRatio;
+        const left = wrapRect.left + (wrapRect.width - width) / 2;
+        return { left, top: wrapRect.top, width, height: wrapRect.height };
+      }
+
+      const height = wrapRect.width / videoRatio;
+      const top = wrapRect.top + (wrapRect.height - height) / 2;
+      return { left: wrapRect.left, top, width: wrapRect.width, height };
+    }
+
+    function addTap(event) {
+      if (!isReady()) {
+        return;
+      }
+
+      const rect = getDisplayedVideoRect();
+      const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      const timestamp = clamp(video.currentTime, 0, state.duration);
+
+      state.taps.push({
+        id: makeId('tap'),
+        timestamp,
+        x,
+        y,
+      });
+
+      const preview = document.createElement('div');
+      preview.className = 'tap-preview';
+      preview.style.left = `${rect.left - videoWrap.getBoundingClientRect().left + x * rect.width}px`;
+      preview.style.top = `${rect.top - videoWrap.getBoundingClientRect().top + y * rect.height}px`;
+      videoWrap.appendChild(preview);
+      window.setTimeout(() => preview.remove(), 800);
+
+      statusText.textContent = `Added tap at ${formatTime(timestamp)}.`;
+      state.tapMode = false;
+      hintText.textContent = 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      render();
+    }
+
+    videoInput.addEventListener('change', () => {
+      const file = videoInput.files && videoInput.files[0];
+      if (!file) {
+        return;
+      }
+
+      if (state.objectUrl) {
+        URL.revokeObjectURL(state.objectUrl);
+      }
+
+      clearRenderedPreview();
+      state.videoFile = file;
+      state.duration = 0;
+      state.cuts = [];
+      state.taps = [];
+      state.cutMode = false;
+      state.tapMode = false;
+      state.isScrubbing = false;
+      state.previewWithoutCuts = false;
+      state.isSkippingCut = false;
+      state.activeCutHandle = null;
+      state.draftCut = null;
+      state.isExportingGif = false;
+      state.objectUrl = URL.createObjectURL(file);
+
+      video.src = state.objectUrl;
+      filenameText.textContent = file.name;
+      outputFilenameInput.value = defaultOutputFilename();
+      exportStatusText.textContent = '';
+      statusText.textContent = 'Loading video metadata...';
+      render();
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      state.duration = Number.isFinite(video.duration) ? video.duration : 0;
+      statusText.textContent = isReady() ? 'Video loaded. Drag the timeline to scrub.' : 'Could not read a finite video duration.';
+      render();
+    });
+
+    video.addEventListener('timeupdate', () => {
+      maybeSkipCutForPreview();
+      updateTime();
+    });
+
+    video.addEventListener('play', () => {
+      if (state.previewWithoutCuts) {
+        video.currentTime = seekPreviewableTime(video.currentTime);
+      }
+    });
+    video.addEventListener('durationchange', () => {
+      state.duration = Number.isFinite(video.duration) ? video.duration : state.duration;
+      render();
+    });
+
+    video.addEventListener('click', (event) => {
+      if (!state.tapMode) {
+        return;
+      }
+      addTap(event);
+    });
+
+    addCutButton.addEventListener('click', () => {
+      if (state.cutMode) {
+        cancelCutDraft();
+      } else {
+        beginCutDraft();
+      }
+    });
+
+    addTapButton.addEventListener('click', () => {
+      state.tapMode = !state.tapMode;
+      state.cutMode = false;
+      state.isScrubbing = false;
+      state.previewWithoutCuts = false;
+      state.activeCutHandle = null;
+      state.draftCut = null;
+      hintText.textContent = state.tapMode ? 'Click the video frame where the tap should appear.' : 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      render();
+    });
+
+    confirmCutButton.addEventListener('click', confirmCutDraft);
+    cancelCutButton.addEventListener('click', cancelCutDraft);
+
+    previewCutsButton.addEventListener('click', () => {
+      if (!isReady() || state.cuts.length === 0) {
+        return;
+      }
+
+      state.previewWithoutCuts = !state.previewWithoutCuts;
+      state.cutMode = false;
+      state.tapMode = false;
+      state.isScrubbing = false;
+      state.activeCutHandle = null;
+      state.draftCut = null;
+
+      if (state.previewWithoutCuts) {
+        video.currentTime = seekPreviewableTime(video.currentTime);
+        statusText.textContent = 'Previewing playback with cuts skipped.';
+        hintText.textContent = 'Playing this preview skips red cut regions. Stop preview to edit normally.';
+        video.play().catch(() => {
+          statusText.textContent = 'Preview is ready. Press play to watch with cuts skipped.';
+        });
+      } else {
+        statusText.textContent = 'Stopped cut preview.';
+        hintText.textContent = 'Drag the timeline to scrub, or choose Add Cut/Add Tap for annotations.';
+      }
+      render();
+    });
+
+    timeline.addEventListener('pointerdown', (event) => {
+      if (!isReady()) {
+        return;
+      }
+
+      timeline.setPointerCapture(event.pointerId);
+      const time = timelineTimeFromEvent(event);
+
+      if (state.cutMode) {
+        video.pause();
+        state.activeCutHandle = draftHandleFromEvent(event) || nearestDraftHandle(time);
+        setDraftCutHandle(state.activeCutHandle, time);
+      } else {
+        state.isScrubbing = true;
+        video.currentTime = state.previewWithoutCuts ? seekPreviewableTime(time) : time;
+        updateTime();
+      }
+    });
+
+    timeline.addEventListener('pointermove', (event) => {
+      if (!isReady()) {
+        return;
+      }
+
+      const time = timelineTimeFromEvent(event);
+      if (state.cutMode && state.activeCutHandle) {
+        setDraftCutHandle(state.activeCutHandle, time);
+      } else if (state.isScrubbing) {
+        video.currentTime = state.previewWithoutCuts ? seekPreviewableTime(time) : time;
+        updateTime();
+      }
+    });
+
+    timeline.addEventListener('pointerup', (event) => {
+      if (!isReady()) {
+        return;
+      }
+
+      if (state.cutMode && state.activeCutHandle) {
+        const time = timelineTimeFromEvent(event);
+        setDraftCutHandle(state.activeCutHandle, time);
+        state.activeCutHandle = null;
+        render();
+      } else {
+        state.isScrubbing = false;
+        updateTime();
+      }
+    });
+
+    timeline.addEventListener('pointercancel', () => {
+      state.isScrubbing = false;
+      state.activeCutHandle = null;
+      render();
+    });
+
+    exportButton.addEventListener('click', () => {
+      if (!isReady() || !state.videoFile) {
+        return;
+      }
+
+      const payload = buildAnnotationPayload();
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const baseName = videoBaseName();
+      link.href = url;
+      link.download = `${baseName || 'video'}-annotations.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      statusText.textContent = 'Exported annotations JSON.';
+    });
+
+    async function saveBlobWithDownloadFallback(blob, filename) {
+      if ('showDirectoryPicker' in window) {
+        const directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return 'folder';
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return 'download';
+    }
+
+    async function readErrorResponse(response) {
+      const fallback = `Render failed with status ${response.status}.`;
+      try {
+        const data = await response.json();
+        return data && typeof data.error === 'string' ? data.error : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+
+    exportMovButton.addEventListener('click', async () => {
+      if (!isReady() || !state.videoFile || state.isExportingMov) {
+        return;
+      }
+
+      const outputFilename = normalizeOutputFilename(outputFilenameInput.value);
+      outputFilenameInput.value = outputFilename;
+      state.isExportingMov = true;
+      exportStatusText.textContent = 'Rendering MOV...';
+      statusText.textContent = 'Rendering MOV with local Python/FFmpeg...';
+      render();
+
+      try {
+        const formData = new FormData();
+        formData.append('video', state.videoFile, state.videoFile.name);
+        formData.append('annotations', JSON.stringify(buildAnnotationPayload()));
+        formData.append('outputFilename', outputFilename);
+
+        const response = await fetch('/api/render', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorResponse(response));
+        }
+
+        const blob = await response.blob();
+        showRenderedPreview(blob, outputFilename);
+        exportStatusText.textContent = 'Choose where to save the rendered MOV.';
+        const destination = await saveBlobWithDownloadFallback(blob, outputFilename);
+        const message = destination === 'folder'
+          ? `Saved ${outputFilename}.`
+          : `Downloaded ${outputFilename}.`;
+        exportStatusText.textContent = message;
+        statusText.textContent = message;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          exportStatusText.textContent = 'Export canceled.';
+          statusText.textContent = 'Export canceled.';
+        } else {
+          const message = error instanceof Error ? error.message : 'Render failed.';
+          exportStatusText.textContent = message;
+          statusText.textContent = message;
+        }
+      } finally {
+        state.isExportingMov = false;
+        render();
+      }
+    });
+
+    exportGifButton.addEventListener('click', async () => {
+      if (!state.renderedMovBlob || state.isExportingGif) {
+        return;
+      }
+
+      const outputFilename = normalizeGifFilename(gifFilenameInput.value);
+      gifFilenameInput.value = outputFilename;
+      state.isExportingGif = true;
+      gifStatusText.textContent = 'Converting GIF...';
+      statusText.textContent = 'Converting rendered MOV to GIF with local FFmpeg...';
+      render();
+
+      try {
+        const formData = new FormData();
+        formData.append('video', state.renderedMovBlob, state.renderedMovFilename || defaultOutputFilename());
+        formData.append('outputFilename', outputFilename);
+        formData.append('fps', gifFpsInput.value || '12');
+        formData.append('width', gifWidthInput.value || '480');
+        if (gifStartInput.value.trim()) {
+          formData.append('start', gifStartInput.value.trim());
+        }
+        if (gifDurationInput.value.trim()) {
+          formData.append('duration', gifDurationInput.value.trim());
+        }
+
+        const response = await fetch('/api/gif', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorResponse(response));
+        }
+
+        const blob = await response.blob();
+        showGifPreview(blob, outputFilename);
+        gifStatusText.textContent = 'Choose where to save the generated GIF.';
+        const destination = await saveBlobWithDownloadFallback(blob, outputFilename);
+        const message = destination === 'folder'
+          ? `Saved ${outputFilename}.`
+          : `Downloaded ${outputFilename}.`;
+        gifStatusText.textContent = message;
+        statusText.textContent = message;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          gifStatusText.textContent = 'GIF export canceled.';
+          statusText.textContent = 'GIF export canceled.';
+        } else {
+          const message = error instanceof Error ? error.message : 'GIF conversion failed.';
+          gifStatusText.textContent = message;
+          statusText.textContent = message;
+        }
+      } finally {
+        state.isExportingGif = false;
+        render();
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
