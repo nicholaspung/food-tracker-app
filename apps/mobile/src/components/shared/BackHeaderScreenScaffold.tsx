@@ -32,6 +32,7 @@ export interface BackHeaderScreenScaffoldProps {
   contentBackgroundTone?: ContentBackgroundTone;
   overscrollBackgroundStrategy?: OverscrollBackgroundStrategy;
   headerScrollMode?: HeaderScrollMode;
+  adjustKeyboardSpaceForFixedHeader?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
   primaryAction?: StickyActionFooterAction;
@@ -80,6 +81,7 @@ export function BackHeaderScreenScaffold({
   contentBackgroundTone = 'app',
   overscrollBackgroundStrategy = 'measured-header',
   headerScrollMode = 'attached',
+  adjustKeyboardSpaceForFixedHeader = false,
   contentStyle,
   bodyStyle,
   primaryAction,
@@ -151,6 +153,7 @@ export function BackHeaderScreenScaffold({
             bottomOffset={theme.spacing.sm}
             contentContainerStyle={[styles.body, bodyStyle]}
             enabled={keyboardAware}
+            extraKeyboardSpace={adjustKeyboardSpaceForFixedHeader ? -headerHeight : 0}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
             refreshControl={

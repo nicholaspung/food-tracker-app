@@ -168,6 +168,24 @@ describe('BackHeaderScreenScaffold', () => {
         flexGrow: 1,
       }),
     );
+    expect(scrollView.props.extraKeyboardSpace).toBe(0);
+  });
+
+  it('can reduce fixed-header keyboard spacing by the measured header height', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        adjustKeyboardSpaceForFixedHeader: true,
+        headerScrollMode: 'fixed',
+      });
+    });
+
+    triggerHeaderLayout(renderer, 96);
+
+    const scrollView = renderer.root.findByType('KeyboardAwareScrollView');
+
+    expect(scrollView.props.extraKeyboardSpace).toBe(-96);
   });
 
   it('keeps the body tone when fixed-header mode is used with muted content', async () => {
