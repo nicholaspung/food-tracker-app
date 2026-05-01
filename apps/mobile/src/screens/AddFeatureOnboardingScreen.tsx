@@ -104,6 +104,7 @@ export function AddFeatureOnboardingScreen({ navigation, route }: AddFeatureOnbo
   const { cardId } = route.params;
   const mode = route.params.mode ?? 'firstRun';
   const entrySource = route.params.source ?? 'add';
+  const isProfileReplay = mode === 'replay' && entrySource === 'profile';
   const config = ADD_FEATURE_ONBOARDING_CONFIG[cardId];
   const { dismiss, errorMessage, isSubmitting } = useDismissibleOnboardingCard({
     buildOptimisticState: buildAddOnboardingCardDismissedState,
@@ -185,11 +186,13 @@ export function AddFeatureOnboardingScreen({ navigation, route }: AddFeatureOnbo
         config={config}
         errorMessage={errorMessage}
         isSubmitting={isSubmitting}
+        layout={isProfileReplay ? 'profileReplay' : 'standard'}
         onBackPress={handleBack}
         onPrimaryPress={() => {
           void handleContinue();
         }}
         primaryTestID="add-feature-onboarding-primary-button"
+        showSecondaryAction={!isProfileReplay}
       />
     </BackHeaderScreenScaffold>
   );

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { Image, View } from 'react-native';
+import { Image, View, useWindowDimensions } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -30,14 +30,21 @@ interface FeatureIntroScreenContentProps<Destination extends keyof RootStackPara
   config: FeatureIntroConfig<Destination>;
   errorMessage: string | null;
   isSubmitting: boolean;
+  layout?: 'standard' | 'profileReplay';
   onBackPress: () => void;
   onPrimaryPress: () => void;
   primaryTestID: string;
+  showSecondaryAction?: boolean;
 }
 
-const useStyles = createThemedStyles((theme) => ({
+const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
   body: {
     gap: theme.spacing.md,
+  },
+  profileReplayBody: {
+    flexGrow: 1,
+    gap: theme.spacing.lg,
+    justifyContent: 'space-between',
   },
   imageFrame: {
     alignItems: 'center',
@@ -45,7 +52,7 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.md,
     borderWidth: 1,
-    height: 188,
+    height: mediaHeight,
     justifyContent: 'center',
     overflow: 'hidden',
     width: '100%',
@@ -59,8 +66,14 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xs,
   },
+  titleText: {
+    flex: 1,
+  },
   description: {
     color: theme.colors.text.secondary,
+  },
+  copyCluster: {
+    gap: theme.spacing.md,
   },
   actions: {
     gap: theme.spacing.xs,
@@ -73,42 +86,56 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
   config,
   errorMessage,
   isSubmitting,
+  layout = 'standard',
   onBackPress,
   onPrimaryPress,
   primaryTestID,
+  showSecondaryAction = true,
 }: FeatureIntroScreenContentProps<Destination>) {
-  const styles = useStyles();
+  const { height: viewportHeight } = useWindowDimensions();
+  const isProfileReplayLayout = layout === 'profileReplay';
+  const mediaHeight = isProfileReplayLayout
+    ? Math.min(Math.max(360, Math.round(viewportHeight * 0.48)), 500)
+    : 188;
+  const styles = useStyles(mediaHeight);
   const theme = useTheme();
   const iconColor = resolveIconColor(config.iconTone, theme.colors.text);
+  const imageResizeMode = isProfileReplayLayout ? 'contain' : 'cover';
 
   return (
-    <View style={styles.body}>
+    <View style={[styles.body, isProfileReplayLayout ? styles.profileReplayBody : null]}>
       <View style={styles.imageFrame}>
-        <Image resizeMode="cover" source={config.imageSource} style={styles.image} />
+        <Image resizeMode={imageResizeMode} source={config.imageSource} style={styles.image} />
       </View>
-      <View style={styles.titleRow}>
-        <Ionicons color={iconColor} name={config.iconName} size={22} />
-        <Text variant="titleMd">{config.title}</Text>
-      </View>
-      <Text style={styles.description} variant="bodyMd">
-        {config.description}
-      </Text>
-      <PageErrorToast errorMessage={errorMessage} title="Onboarding update failed" />
-      <View style={styles.actions}>
-        <Button
-          disabled={isSubmitting}
-          label={config.primaryLabel}
-          loading={isSubmitting}
-          onPress={onPrimaryPress}
-          testID={primaryTestID}
-        />
-        <Button
-          disabled={isSubmitting}
-          label={backLabel}
-          onPress={onBackPress}
-          testID={backTestID}
-          variant="secondary"
-        />
+      <View style={styles.copyCluster}>
+        <View style={styles.titleRow}>
+          <Ionicons color={iconColor} name={config.iconName} size={22} />
+          <Text style={styles.titleText} variant="titleMd">
+            {config.title}
+          </Text>
+        </View>
+        <Text style={styles.description} variant="bodyMd">
+          {config.description}
+        </Text>
+        <PageErrorToast errorMessage={errorMessage} title="Onboarding update failed" />
+        <View style={styles.actions}>
+          <Button
+            disabled={isSubmitting}
+            label={config.primaryLabel}
+            loading={isSubmitting}
+            onPress={onPrimaryPress}
+            testID={primaryTestID}
+          />
+          {showSecondaryAction ? (
+            <Button
+              disabled={isSubmitting}
+              label={backLabel}
+              onPress={onBackPress}
+              testID={backTestID}
+              variant="secondary"
+            />
+          ) : null}
+        </View>
       </View>
     </View>
   );

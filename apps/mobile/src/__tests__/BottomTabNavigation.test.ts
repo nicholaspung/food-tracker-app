@@ -47,6 +47,44 @@ jest.mock('../ui', () => ({
 }));
 
 describe('getBottomTabRouteForScreen', () => {
+  it('maps Profile tutorials routes to the Profile tab', () => {
+    expect(getBottomTabRouteForScreen('Tutorials')).toBe('Profile');
+    expect(getBottomTabRouteForScreen('FeatureOnboarding', { mode: 'replay', source: 'profile' })).toBe(
+      'Profile',
+    );
+    expect(
+      getBottomTabRouteForScreen('AddFeatureOnboarding', {
+        cardId: 'trackRestaurantVisit',
+        mode: 'replay',
+        source: 'profile',
+      }),
+    ).toBe('Profile');
+    expect(
+      getBottomTabRouteForScreen('MoreFeatureOnboarding', {
+        cardId: 'tipCalculator',
+        mode: 'replay',
+        source: 'profile',
+      }),
+    ).toBe('Profile');
+  });
+
+  it('keeps non-profile feature tutorials on their owning tabs', () => {
+    expect(
+      getBottomTabRouteForScreen('AddFeatureOnboarding', {
+        cardId: 'trackRestaurantVisit',
+        mode: 'firstRun',
+        source: 'add',
+      }),
+    ).toBe('AddVisit');
+    expect(
+      getBottomTabRouteForScreen('MoreFeatureOnboarding', {
+        cardId: 'tipCalculator',
+        mode: 'firstRun',
+        source: 'more',
+      }),
+    ).toBe('Misc');
+  });
+
   it('maps TipCalculator to the More tab', () => {
     expect(getBottomTabRouteForScreen('TipCalculator')).toBe('Misc');
   });

@@ -12,6 +12,7 @@ export type BottomTabRoute = 'Home' | 'AddVisit' | 'Friends' | 'Misc' | 'Profile
 
 interface BottomTabNavigationProps {
   currentRouteName?: keyof RootStackParamList;
+  currentRouteParams?: RootStackParamList[keyof RootStackParamList];
   bottomPadding: number;
   onNavigate: (route: BottomTabRoute) => void;
 }
@@ -20,6 +21,7 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
   Home: ['Home'],
   AddVisit: [
     'AddVisit',
+    'AddFeatureOnboarding',
     'CreateVisit',
     'CreateVisitAddRestaurant',
     'CreateVisitAddMenuItem',
@@ -32,6 +34,7 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
   Friends: ['Friends', 'AddFriend', 'QRScanner'],
   Misc: [
     'Misc',
+    'MoreFeatureOnboarding',
     'Lists',
     'CreateRestaurantList',
     'ListDetail',
@@ -50,6 +53,7 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
     'Settings',
     'Feedback',
     'FeedbackDetail',
+    'Tutorials',
   ],
 };
 
@@ -102,12 +106,42 @@ const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
 
 export function getBottomTabRouteForScreen(
   routeName?: keyof RootStackParamList,
+  routeParams?: RootStackParamList[keyof RootStackParamList],
 ): BottomTabRoute | undefined {
   if (!routeName) {
     return undefined;
   }
 
+  if (isProfileTutorialRoute(routeName, routeParams)) {
+    return 'Profile';
+  }
+
   return BOTTOM_TAB_ROUTES.find((tabRoute) => TAB_ACTIVE_ROUTES[tabRoute].includes(routeName));
+}
+
+function isProfileTutorialRoute(
+  routeName: keyof RootStackParamList,
+  routeParams?: RootStackParamList[keyof RootStackParamList],
+): boolean {
+  if (routeName === 'Tutorials') {
+    return true;
+  }
+
+  if (!routeParams || typeof routeParams !== 'object') {
+    return false;
+  }
+
+  const params = routeParams as Record<string, unknown>;
+
+  if (routeName === 'FeatureOnboarding') {
+    return params.mode === 'replay' && params.source === 'profile';
+  }
+
+  if (routeName === 'AddFeatureOnboarding' || routeName === 'MoreFeatureOnboarding') {
+    return params.mode === 'replay' && params.source === 'profile';
+  }
+
+  return false;
 }
 
 const TABS: {
@@ -150,6 +184,7 @@ const TABS: {
 
 export function BottomTabNavigation({
   currentRouteName,
+  currentRouteParams,
   bottomPadding,
   onNavigate,
 }: BottomTabNavigationProps) {
@@ -173,7 +208,8 @@ export function BottomTabNavigation({
     <View style={styles.container}>
       <View style={styles.row}>
         {TABS.map((tab) => {
-          const isActive = !!currentRouteName && TAB_ACTIVE_ROUTES[tab.route].includes(currentRouteName);
+          const activeTabRoute = getBottomTabRouteForScreen(currentRouteName, currentRouteParams);
+          const isActive = activeTabRoute === tab.route;
           const showBadge = tab.route === 'Friends' && pendingInvitesCount > 0;
 
           return (

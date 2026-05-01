@@ -132,6 +132,7 @@ export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
                 navigation.navigate('FeatureOnboarding', {
                   initialCardId: tutorial.id,
                   mode: 'replay',
+                  source: 'profile',
                 });
               }}
               subtitle={tutorial.subtitle}

@@ -93,34 +93,50 @@ describe('TutorialsScreen', () => {
   });
 
   it.each([
-    ['tutorial-welcome-link', 'welcome', ['FeatureOnboarding', { initialCardId: 'welcome', mode: 'replay' }]],
+    [
+      'tutorial-welcome-link',
+      'welcome',
+      ['FeatureOnboarding', { initialCardId: 'welcome', mode: 'replay', source: 'profile' }],
+    ],
     [
       'tutorial-month-privacy-link',
       'month_privacy',
-      ['FeatureOnboarding', { initialCardId: 'month_privacy', mode: 'replay' }],
+      ['FeatureOnboarding', { initialCardId: 'month_privacy', mode: 'replay', source: 'profile' }],
     ],
-    ['tutorial-tutorials-link', 'tutorials', ['FeatureOnboarding', { initialCardId: 'tutorials', mode: 'replay' }]],
-    ['tutorial-friends-link', 'friends', ['FeatureOnboarding', { initialCardId: 'friends', mode: 'replay' }]],
+    [
+      'tutorial-tutorials-link',
+      'tutorials',
+      ['FeatureOnboarding', { initialCardId: 'tutorials', mode: 'replay', source: 'profile' }],
+    ],
+    [
+      'tutorial-friends-link',
+      'friends',
+      ['FeatureOnboarding', { initialCardId: 'friends', mode: 'replay', source: 'profile' }],
+    ],
     [
       'tutorial-more-tools-link',
       'more_tools',
-      ['FeatureOnboarding', { initialCardId: 'more_tools', mode: 'replay' }],
+      ['FeatureOnboarding', { initialCardId: 'more_tools', mode: 'replay', source: 'profile' }],
     ],
     [
       'tutorial-lists-intro-link',
       'lists_intro',
-      ['FeatureOnboarding', { initialCardId: 'lists_intro', mode: 'replay' }],
+      ['FeatureOnboarding', { initialCardId: 'lists_intro', mode: 'replay', source: 'profile' }],
     ],
     [
       'tutorial-bills-tips-link',
       'bills_tips',
-      ['FeatureOnboarding', { initialCardId: 'bills_tips', mode: 'replay' }],
+      ['FeatureOnboarding', { initialCardId: 'bills_tips', mode: 'replay', source: 'profile' }],
     ],
-    ['tutorial-settings-link', 'settings', ['FeatureOnboarding', { initialCardId: 'settings', mode: 'replay' }]],
+    [
+      'tutorial-settings-link',
+      'settings',
+      ['FeatureOnboarding', { initialCardId: 'settings', mode: 'replay', source: 'profile' }],
+    ],
     [
       'tutorial-support-invites-link',
       'support_invites',
-      ['FeatureOnboarding', { initialCardId: 'support_invites', mode: 'replay' }],
+      ['FeatureOnboarding', { initialCardId: 'support_invites', mode: 'replay', source: 'profile' }],
     ],
     [
       'tutorial-track-restaurant-visit-link',

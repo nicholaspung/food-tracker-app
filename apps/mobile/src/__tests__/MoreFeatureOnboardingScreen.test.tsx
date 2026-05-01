@@ -34,14 +34,19 @@ jest.mock('../components/shared', () => ({
     config,
     errorMessage,
     isSubmitting,
+    layout,
     onBackPress,
     onPrimaryPress,
     primaryTestID,
+    showSecondaryAction = true,
   }: Record<string, any>) =>
     mockReact.createElement(
       'FeatureIntroScreenContent',
-      null,
-      mockReact.createElement('Image', { source: config.imageSource }),
+      {
+        layout,
+        showSecondaryAction,
+      },
+      mockReact.createElement('Image', { resizeMode: layout === 'profileReplay' ? 'contain' : 'cover', source: config.imageSource }),
       mockReact.createElement('Text', null, config.title),
       mockReact.createElement('Text', null, config.description),
       mockReact.createElement('PageErrorToast', {
@@ -55,13 +60,15 @@ jest.mock('../components/shared', () => ({
         onPress: onPrimaryPress,
         testID: primaryTestID,
       }),
-      mockReact.createElement('Button', {
-        disabled: isSubmitting,
-        label: backLabel,
-        onPress: onBackPress,
-        testID: backTestID,
-        variant: 'secondary',
-      }),
+      showSecondaryAction
+        ? mockReact.createElement('Button', {
+            disabled: isSubmitting,
+            label: backLabel,
+            onPress: onBackPress,
+            testID: backTestID,
+            variant: 'secondary',
+          })
+        : null,
     ),
 }));
 
@@ -391,15 +398,17 @@ describe('MoreFeatureOnboardingScreen', () => {
     );
   });
 
-  it('labels the secondary replay action for Profile tutorials', async () => {
+  it('uses the Profile replay layout without a secondary action for Profile tutorials', async () => {
     const renderer = await renderMoreFeatureOnboardingScreen('lists', {
       mode: 'replay',
       source: 'profile',
     });
 
-    expect(renderer.root.findByProps({ testID: 'more-feature-onboarding-back-button' }).props.label).toBe(
-      'Back to Tutorials',
-    );
+    expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('profileReplay');
+    expect(renderer.root.findByType('FeatureIntroScreenContent').props.showSecondaryAction).toBe(false);
+    expect(renderer.root.findAllByProps({ testID: 'more-feature-onboarding-back-button' })).toHaveLength(0);
+    expect(findPrimaryButton(renderer).props.label).toBe('View My Lists');
+    expect(renderer.root.findByType('Image').props.resizeMode).toBe('contain');
     expect(renderer.root.findByType('BackHeaderScreenScaffold').props.title).toBe('Tutorial');
   });
 
@@ -410,7 +419,7 @@ describe('MoreFeatureOnboardingScreen', () => {
     });
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'more-feature-onboarding-back-button' }).props.onPress();
+      renderer.root.findByType('BackHeaderScreenScaffold').props.onBackPress();
     });
 
     expect(mockGoBack).not.toHaveBeenCalled();

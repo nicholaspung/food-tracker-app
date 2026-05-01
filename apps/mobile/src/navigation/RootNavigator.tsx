@@ -113,6 +113,7 @@ export type RootStackParamList = {
     | {
         mode?: 'required' | 'replay';
         initialCardId?: MainOnboardingCardId;
+        source?: 'profile';
       }
     | undefined;
   Home:
@@ -250,6 +251,7 @@ export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
 
 const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Home',
+  'FeatureOnboarding',
   'AddVisit',
   'AddFeatureOnboarding',
   'CreateVisit',
@@ -342,6 +344,7 @@ export function RootNavigator() {
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList>();
+  const [currentRouteParams, setCurrentRouteParams] = useState<RootStackParamList[keyof RootStackParamList]>();
   const [verificationBannerHeight, setVerificationBannerHeight] = useState(0);
   const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
   const activeRouteNameRef = useRef<keyof RootStackParamList | null>(null);
@@ -390,9 +393,12 @@ export function RootNavigator() {
   }, []);
 
   const updateCurrentRoute = useCallback(() => {
-    const routeName = navigationRef.getCurrentRoute()?.name;
+    const currentRoute = navigationRef.getCurrentRoute();
+    const routeName = currentRoute?.name;
     const typedRouteName = routeName as keyof RootStackParamList | undefined;
+    const typedRouteParams = currentRoute?.params as RootStackParamList[keyof RootStackParamList] | undefined;
     setCurrentRouteName(typedRouteName);
+    setCurrentRouteParams(typedRouteParams);
 
     if (!typedRouteName) {
       return;
@@ -745,6 +751,7 @@ export function RootNavigator() {
             <BottomTabNavigation
               bottomPadding={bottomPadding}
               currentRouteName={currentRouteName}
+              currentRouteParams={currentRouteParams}
               onNavigate={handleTabPress}
             />
           ) : null}
