@@ -318,6 +318,12 @@ export interface ListRecentRestaurantsInput {
   signal?: AbortSignal;
 }
 
+export interface ListRestaurantSuggestionsInput {
+  limit?: number;
+  search?: string;
+  signal?: AbortSignal;
+}
+
 export interface RestaurantListRestaurantNoteRecord {
   restaurantId: string;
   note: string;
@@ -537,6 +543,7 @@ export {
 export {
   listMenuItemsForRestaurant,
   listRecentRestaurants,
+  listRestaurantSuggestions,
   searchRestaurantsPage,
   upsertRestaurantRecord,
 } from './restaurantsStore';

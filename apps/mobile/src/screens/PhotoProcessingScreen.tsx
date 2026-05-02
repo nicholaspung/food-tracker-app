@@ -396,6 +396,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     showNearbyPlaces,
     triggerSavedRestaurantsRefetch,
   } = useRestaurantSelectionFlow({
+    autoCaptureReferenceLocation:
+      shouldEnableRestaurantSelectionQueries && !currentPhoto?.captureCoordinates,
     fallbackReferenceCoords: currentPhoto?.captureCoordinates
       ? {
           lat: currentPhoto.captureCoordinates.latitude,

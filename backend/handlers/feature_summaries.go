@@ -22,6 +22,8 @@ const ownerAccessibleQuickTrackModerationCondition = `(food_items.moderationStat
 
 const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
+const defaultRestaurantSuggestionsLimit = 50
+const maxRestaurantSuggestionsLimit = 50
 const defaultRestaurantSearchPageSize = 20
 const maxRestaurantSearchPageSize = 50
 const defaultHomeFeedPageSize = 20
@@ -503,6 +505,31 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			log.Printf("Failed to load recent restaurants for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load recent restaurants", err)
+		}
+
+		return e.JSON(200, restaurants)
+	})
+
+	se.Router.GET("/api/restaurants/suggestions", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		limit, err := normalizeRestaurantSuggestionsLimit(e.Request.URL.Query().Get("limit"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		restaurants, err := listRestaurantSuggestionsSummary(
+			app,
+			e.Auth.Id,
+			limit,
+			e.Request.URL.Query().Get("search"),
+			e.Auth.GetBool("isAdmin"),
+		)
+		if err != nil {
+			log.Printf("Failed to load restaurant suggestions for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load restaurant suggestions", err)
 		}
 
 		return e.JSON(200, restaurants)
@@ -2118,6 +2145,190 @@ func listRecentRestaurantsSummary(
 	return buildRestaurantSelectionSummaries(app, userID, isAdmin, restaurantIDs)
 }
 
+func listRestaurantSuggestionsSummary(
+	app core.App,
+	userID string,
+	limit int,
+	search string,
+	isAdmin bool,
+) ([]restaurantSearchResult, error) {
+	normalizedLimit := clampRestaurantSuggestionsLimit(limit)
+	if normalizedLimit <= 0 {
+		return []restaurantSearchResult{}, nil
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(search))
+	if normalizedSearch != "" {
+		return searchRestaurantSuggestionsSummary(app, userID, isAdmin, normalizedLimit, normalizedSearch)
+	}
+
+	return listInitialRestaurantSuggestionsSummary(app, userID, isAdmin, normalizedLimit)
+}
+
+func listInitialRestaurantSuggestionsSummary(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	limit int,
+) ([]restaurantSearchResult, error) {
+	restaurantAccessCondition := `
+			restaurants.visibility = 'public'
+			OR restaurants.createdBy = {:userId}
+			OR (
+				restaurants.visibility = 'friends'
+				AND restaurants.createdBy IN (SELECT friendId FROM accepted_friends)
+			)
+	`
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		ranked_visits AS (
+			SELECT
+				visits.restaurant AS restaurantId,
+				visits.visitDate AS visitDate,
+				visits.updated AS updatedAt,
+				visits.created AS createdAt,
+				ROW_NUMBER() OVER (
+					PARTITION BY visits.restaurant
+					ORDER BY visits.visitDate DESC, visits.updated DESC, visits.created DESC, visits.id DESC
+				) AS visitRank
+			FROM visits
+			JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE visits.user = {:userId}
+				AND TRIM(visits.restaurant) != ''
+	`
+
+	if !isAdmin {
+		query += `
+				AND ` + ownerAccessibleVisitModerationCondition + `
+				AND (` + restaurantAccessCondition + `)
+		`
+	}
+
+	query += `
+		),
+		recent_restaurants AS (
+			SELECT
+				ranked_visits.restaurantId AS restaurantId,
+				ranked_visits.visitDate AS sortAt,
+				ranked_visits.updatedAt AS updatedAt,
+				ranked_visits.createdAt AS createdAt,
+				0 AS sortGroup
+			FROM ranked_visits
+			WHERE ranked_visits.visitRank = 1
+		),
+		created_restaurants AS (
+			SELECT
+				restaurants.id AS restaurantId,
+				restaurants.updated AS sortAt,
+				restaurants.updated AS updatedAt,
+				restaurants.created AS createdAt,
+				1 AS sortGroup
+			FROM restaurants
+			WHERE restaurants.createdBy = {:userId}
+				AND NOT EXISTS (
+					SELECT 1
+					FROM recent_restaurants
+					WHERE recent_restaurants.restaurantId = restaurants.id
+				)
+		),
+		friend_restaurants AS (
+			SELECT
+				restaurants.id AS restaurantId,
+				restaurants.updated AS sortAt,
+				restaurants.updated AS updatedAt,
+				restaurants.created AS createdAt,
+				2 AS sortGroup
+			FROM restaurants
+			WHERE restaurants.visibility = 'friends'
+				AND restaurants.createdBy IN (SELECT friendId FROM accepted_friends)
+				AND NOT EXISTS (
+					SELECT 1
+					FROM recent_restaurants
+					WHERE recent_restaurants.restaurantId = restaurants.id
+				)
+		),
+		suggestions AS (
+			SELECT * FROM recent_restaurants
+			UNION ALL
+			SELECT * FROM created_restaurants
+			UNION ALL
+			SELECT * FROM friend_restaurants
+		)
+		SELECT suggestions.restaurantId AS [[restaurantId]]
+		FROM suggestions
+		ORDER BY suggestions.sortGroup ASC, suggestions.sortAt DESC, suggestions.updatedAt DESC, suggestions.createdAt DESC, suggestions.restaurantId DESC
+		LIMIT {:limit}
+	`
+
+	rows := []restaurantSearchIDRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"limit":  limit,
+			"userId": userID,
+		}).
+		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	restaurantIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		restaurantIDs = append(restaurantIDs, row.RestaurantID)
+	}
+
+	return buildRestaurantSelectionSummaries(app, userID, isAdmin, restaurantIDs)
+}
+
+func searchRestaurantSuggestionsSummary(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	limit int,
+	normalizedSearch string,
+) ([]restaurantSearchResult, error) {
+	params := dbx.Params{
+		"limit":            limit,
+		"normalizedSearch": normalizedSearch,
+		"searchLike":       "%" + normalizedSearch + "%",
+		"userId":           userID,
+	}
+
+	query := buildRestaurantSearchBaseQuery(isAdmin) + `
+		SELECT restaurants.id AS [[restaurantId]]
+		FROM restaurants
+		WHERE ` + restaurantSearchFilterClause()
+	if !isAdmin {
+		query += `
+			AND (` + restaurantAccessCondition() + `)
+		`
+	}
+	query += `
+		ORDER BY LOWER(TRIM(COALESCE(restaurants.name, ''))) ASC, LOWER(TRIM(COALESCE(restaurants.location, ''))) ASC, restaurants.id ASC
+		LIMIT {:limit}
+	`
+
+	rows := []restaurantSearchIDRow{}
+	if err := app.DB().NewQuery(query).Bind(params).All(&rows); err != nil {
+		return nil, err
+	}
+
+	restaurantIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		restaurantIDs = append(restaurantIDs, row.RestaurantID)
+	}
+
+	return buildRestaurantSelectionSummaries(app, userID, isAdmin, restaurantIDs)
+}
+
 func searchRestaurantsSummaryPage(
 	app core.App,
 	userID string,
@@ -2621,6 +2832,20 @@ func normalizeRecentRestaurantLimit(limitRaw string) (int, error) {
 	return clampRecentRestaurantLimit(parsedLimit), nil
 }
 
+func normalizeRestaurantSuggestionsLimit(limitRaw string) (int, error) {
+	trimmedLimit := strings.TrimSpace(limitRaw)
+	if trimmedLimit == "" {
+		return defaultRestaurantSuggestionsLimit, nil
+	}
+
+	parsedLimit, err := strconv.Atoi(trimmedLimit)
+	if err != nil {
+		return 0, fmt.Errorf("limit must be an integer")
+	}
+
+	return clampRestaurantSuggestionsLimit(parsedLimit), nil
+}
+
 func clampRecentRestaurantLimit(limit int) int {
 	if limit <= 0 {
 		return 1
@@ -2628,6 +2853,18 @@ func clampRecentRestaurantLimit(limit int) int {
 
 	if limit > maxRecentRestaurantLimit {
 		return maxRecentRestaurantLimit
+	}
+
+	return limit
+}
+
+func clampRestaurantSuggestionsLimit(limit int) int {
+	if limit <= 0 {
+		return 1
+	}
+
+	if limit > maxRestaurantSuggestionsLimit {
+		return maxRestaurantSuggestionsLimit
 	}
 
 	return limit

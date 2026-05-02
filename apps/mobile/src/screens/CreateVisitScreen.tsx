@@ -588,6 +588,7 @@ export function CreateVisitScreen({
     showNearbyPlaces,
     triggerSavedRestaurantsRefetch,
   } = useRestaurantSelectionFlow({
+    autoCaptureReferenceLocation: step === 0,
     isOnline,
     menuItemsEnabled: step === 1 && Boolean(selectedRestaurantId),
     savedRestaurantsEnabled: step === 0,
@@ -2182,7 +2183,6 @@ export function CreateVisitScreen({
             searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
               buildRestaurantOption(restaurant, index, "search"),
             )}
-            selectedRestaurantName={restaurantName.trim() || null}
             showSearchResults={showNearbyPlaces}
             upgradePromptDescription={
               shouldShowPlacesUpgradePrompt

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1665,6 +1666,185 @@ func TestRecentRestaurantsEndpoint(t *testing.T) {
 	}
 	if payload[1].UserVisitCount != 2 || payload[1].FriendCount != 1 || !payload[1].HasPendingMenuReview {
 		t.Fatalf("unexpected metadata for deduped restaurant: %#v", payload[1])
+	}
+}
+
+func TestRestaurantSuggestionsEndpointReturnsRecentCreatedAndFriendRestaurants(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	otherOwner, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	visitedCreatedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Visited Created Restaurant",
+		"location":   "San Diego, CA",
+		"visibility": "friends",
+		"createdBy":  user.Id,
+	})
+	ownUnvisitedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Own Unvisited Restaurant",
+		"location":   "Los Angeles, CA",
+		"visibility": "private",
+		"createdBy":  user.Id,
+	})
+	friendVisibleRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Visible Restaurant",
+		"location":   "Oakland, CA",
+		"visibility": "friends",
+		"createdBy":  friend.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Private Restaurant",
+		"location":   "Berkeley, CA",
+		"visibility": "private",
+		"createdBy":  friend.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Friends Restaurant",
+		"location":   "Portland, OR",
+		"visibility": "friends",
+		"createdBy":  otherOwner.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":          "Cached Google Restaurant",
+		"location":      "Seattle, WA",
+		"visibility":    "public",
+		"createdBy":     "",
+		"placeId":       "cached-google-restaurant",
+		"isGooglePlace": true,
+	})
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": visitedCreatedRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-07 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": visitedCreatedRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurants/suggestions?limit=10",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID             string `json:"id"`
+		Name           string `json:"name"`
+		UserVisitCount int    `json:"userVisitCount"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse suggestions response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	ids := make([]string, 0, len(payload))
+	for _, item := range payload {
+		ids = append(ids, item.ID)
+	}
+
+	expectedIDs := []string{
+		visitedCreatedRestaurant.Id,
+		ownUnvisitedRestaurant.Id,
+		friendVisibleRestaurant.Id,
+	}
+	if !reflect.DeepEqual(ids, expectedIDs) {
+		t.Fatalf("unexpected initial suggestions order: got %#v want %#v; payload=%#v", ids, expectedIDs, payload)
+	}
+	if payload[0].UserVisitCount != 2 {
+		t.Fatalf("expected visited restaurant to be deduped with visit metadata, got %#v", payload[0])
+	}
+}
+
+func TestRestaurantSuggestionsEndpointSearchesAccessibleCachedRestaurants(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	otherOwner, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	cachedGoogleRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":          "Cached Tacos",
+		"location":      "San Diego, CA",
+		"visibility":    "public",
+		"createdBy":     "",
+		"placeId":       "cached-tacos",
+		"isGooglePlace": true,
+	})
+	friendVisibleRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Tacos",
+		"location":   "Oakland, CA",
+		"visibility": "friends",
+		"createdBy":  friend.Id,
+	})
+	ownerRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Owner Tacos",
+		"location":   "Los Angeles, CA",
+		"visibility": "private",
+		"createdBy":  user.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Private Tacos",
+		"location":   "Berkeley, CA",
+		"visibility": "private",
+		"createdBy":  friend.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Friends Tacos",
+		"location":   "Portland, OR",
+		"visibility": "friends",
+		"createdBy":  otherOwner.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurants/suggestions?limit=10&search=tacos",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		IsGooglePlace bool   `json:"isGooglePlace"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse suggestions search response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	ids := make([]string, 0, len(payload))
+	for _, item := range payload {
+		ids = append(ids, item.ID)
+	}
+
+	expectedIDs := []string{
+		cachedGoogleRestaurant.Id,
+		friendVisibleRestaurant.Id,
+		ownerRestaurant.Id,
+	}
+	if !reflect.DeepEqual(ids, expectedIDs) {
+		t.Fatalf("unexpected searched suggestions: got %#v want %#v; payload=%#v", ids, expectedIDs, payload)
+	}
+	if !payload[0].IsGooglePlace {
+		t.Fatalf("expected cached Google restaurant metadata, got %#v", payload[0])
 	}
 }
 

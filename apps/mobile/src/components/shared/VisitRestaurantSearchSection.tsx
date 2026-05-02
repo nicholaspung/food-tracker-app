@@ -22,7 +22,6 @@ export interface VisitRestaurantSearchOption {
 }
 
 interface VisitRestaurantSearchSectionProps {
-  selectedRestaurantName?: string | null;
   locationMetadataHintText?: string | null;
   headerAccessory?: ReactNode;
   searchInputsMode?: 'full' | 'compact';
@@ -111,17 +110,6 @@ const useStyles = createThemedStyles((theme) => ({
   listCard: {
     gap: theme.spacing.xs,
   },
-  selectedHint: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.status.successBg,
-    borderColor: theme.colors.status.successBorder,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.xxs,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
   selectedOption: {
     backgroundColor: theme.colors.status.successBg,
     borderColor: theme.colors.status.successBorder,
@@ -129,7 +117,6 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function VisitRestaurantSearchSection({
-  selectedRestaurantName,
   locationMetadataHintText,
   headerAccessory,
   searchInputsMode = 'full',
@@ -274,17 +261,6 @@ export function VisitRestaurantSearchSection({
             />
           ) : null}
         </Card>
-      ) : null}
-
-      {selectedRestaurantName ? (
-        <View style={styles.selectedHint}>
-          <Ionicons
-            color={theme.colors.text.success}
-            name="checkmark-circle"
-            size={16}
-          />
-          <Text tone="success">Selected: {selectedRestaurantName}</Text>
-        </View>
       ) : null}
 
       {showSearchResults ? (

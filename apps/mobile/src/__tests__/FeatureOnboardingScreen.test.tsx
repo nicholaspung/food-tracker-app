@@ -219,7 +219,7 @@ describe('FeatureOnboardingScreen', () => {
     const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
 
     expect(text).toContain('Welcome to Yummy Recs');
-    expect(text).toContain('Shared with breathing room');
+    expect(text).toContain('Shared by month');
     expect(text).toContain('Watch feature tutorials');
     expect(text).toContain('Add friends intentionally');
     expect(text).toContain('More than tracking');

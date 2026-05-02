@@ -1,6 +1,7 @@
 import { pb } from '../../lib/pocketbase';
 import type { RestaurantRecord } from '../models';
 import type {
+  ListRestaurantSuggestionsInput,
   ListRecentRestaurantsInput,
   MenuItemRecord,
   PaginatedResult,
@@ -16,6 +17,7 @@ import type { RestaurantCollectionRecord } from './pocketbaseRecordTypes';
 import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
+  ListRestaurantSuggestionsInput,
   ListRecentRestaurantsInput,
   MenuItemRecord,
   SearchRestaurantsPageInput,
@@ -77,6 +79,8 @@ export interface UpsertRestaurantInput {
 
 const DEFAULT_RECENT_RESTAURANT_LIMIT = 12;
 const MAX_RECENT_RESTAURANT_LIMIT = 24;
+const DEFAULT_RESTAURANT_SUGGESTIONS_LIMIT = 50;
+const MAX_RESTAURANT_SUGGESTIONS_LIMIT = 50;
 
 function resolveRecentRestaurantLimit(limit?: number): number {
   if (typeof limit !== 'number' || Number.isNaN(limit)) {
@@ -84,6 +88,14 @@ function resolveRecentRestaurantLimit(limit?: number): number {
   }
 
   return Math.min(MAX_RECENT_RESTAURANT_LIMIT, Math.max(1, Math.floor(limit)));
+}
+
+function resolveRestaurantSuggestionsLimit(limit?: number): number {
+  if (typeof limit !== 'number' || Number.isNaN(limit)) {
+    return DEFAULT_RESTAURANT_SUGGESTIONS_LIMIT;
+  }
+
+  return Math.min(MAX_RESTAURANT_SUGGESTIONS_LIMIT, Math.max(1, Math.floor(limit)));
 }
 
 function mapRestaurantCollectionRecord(record: RestaurantCollectionRecord): RestaurantRecord {
@@ -204,6 +216,33 @@ export async function listRecentRestaurants(
   const limit = resolveRecentRestaurantLimit(input?.limit);
   const response = await sendApiRequest<RestaurantSelectionApiRecord[]>(
     `/api/restaurants/recent?limit=${encodeURIComponent(String(limit))}`,
+    {
+      method: 'GET',
+      signal: input?.signal,
+    },
+  );
+
+  return response.map(mapRestaurantSelectionApiRecord);
+}
+
+export async function listRestaurantSuggestions(
+  input?: ListRestaurantSuggestionsInput,
+): Promise<RestaurantRecord[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const limit = resolveRestaurantSuggestionsLimit(input?.limit);
+  const trimmedSearch = input?.search?.replace(/\s+/g, ' ').trim() ?? '';
+  const query = new URLSearchParams({
+    limit: String(limit),
+  });
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
+
+  const response = await sendApiRequest<RestaurantSelectionApiRecord[]>(
+    `/api/restaurants/suggestions?${query.toString()}`,
     {
       method: 'GET',
       signal: input?.signal,

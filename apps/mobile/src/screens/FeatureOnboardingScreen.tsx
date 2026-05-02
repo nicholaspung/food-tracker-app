@@ -53,7 +53,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
   },
   {
     id: 'month_privacy',
-    title: 'Shared with breathing room',
+    title: 'Shared by month',
     description:
       'Tracked items show the month they were added, so recommendations stay useful without making every meal feel watched in real time.',
     icon: 'calendar-outline',
