@@ -88,4 +88,9 @@ describe('getBottomTabRouteForScreen', () => {
   it('maps TipCalculator to the More tab', () => {
     expect(getBottomTabRouteForScreen('TipCalculator')).toBe('Misc');
   });
+
+  it('maps note management routes to the Add tab', () => {
+    expect(getBottomTabRouteForScreen('Notes')).toBe('AddVisit');
+    expect(getBottomTabRouteForScreen('NoteEditor')).toBe('AddVisit');
+  });
 });

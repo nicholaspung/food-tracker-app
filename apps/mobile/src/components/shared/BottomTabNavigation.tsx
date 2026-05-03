@@ -30,6 +30,8 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
     'FoodProduct',
     'EditFoodProduct',
     'ProcessPhotos',
+    'Notes',
+    'NoteEditor',
   ],
   Friends: ['Friends', 'AddFriend', 'QRScanner'],
   Misc: [
@@ -40,8 +42,6 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
     'ListDetail',
     'EditRestaurantList',
     'AddRestaurantToList',
-    'Notes',
-    'NoteEditor',
     'Bills',
     'BillDetail',
     'TipCalculator',
