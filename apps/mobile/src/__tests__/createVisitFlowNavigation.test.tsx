@@ -257,6 +257,7 @@ describe('create visit flow navigation', () => {
               mode: 'menu_scan',
               restaurantId: 'restaurant_1',
               restaurantName: 'Cafe Test',
+              sourceNoteId: 'note_1',
             },
           } as never}
         />,
@@ -271,6 +272,7 @@ describe('create visit flow navigation', () => {
       preselectedRestaurantId: 'restaurant_1',
       preselectedRestaurantName: 'Cafe Test',
       returnToStep: 1,
+      sourceNoteId: 'note_1',
     });
   });
 
@@ -293,6 +295,7 @@ describe('create visit flow navigation', () => {
           route={{
             params: {
               editVisitId: 'visit_7',
+              sourceNoteId: 'note_1',
             },
           } as never}
         />,
@@ -316,6 +319,7 @@ describe('create visit flow navigation', () => {
       editVisitId: 'visit_7',
       preselectedRestaurantId: 'restaurant_42',
       preselectedRestaurantName: 'Cafe Test',
+      sourceNoteId: 'note_1',
     });
   });
 
@@ -340,6 +344,7 @@ describe('create visit flow navigation', () => {
               editVisitId: 'visit_7',
               restaurantId: 'restaurant_42',
               restaurantName: 'Cafe Test',
+              sourceNoteId: 'note_1',
             },
           } as never}
         />,
@@ -363,6 +368,7 @@ describe('create visit flow navigation', () => {
       preselectedMenuItemId: 'item_9',
       preselectedMenuItemName: 'Miso Ramen',
       returnToStep: 1,
+      sourceNoteId: 'note_1',
     });
   });
 });

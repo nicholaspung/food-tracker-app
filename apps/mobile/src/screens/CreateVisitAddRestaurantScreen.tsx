@@ -48,6 +48,7 @@ export function CreateVisitAddRestaurantScreen({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const editVisitId = route.params?.editVisitId;
+  const sourceNoteId = route.params?.sourceNoteId;
 
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantLocation, setRestaurantLocation] = useState('');
@@ -115,6 +116,7 @@ export function CreateVisitAddRestaurantScreen({
         editVisitId,
         preselectedRestaurantId: createdRestaurant.id,
         preselectedRestaurantName: createdRestaurant.name,
+        sourceNoteId,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add restaurant.';

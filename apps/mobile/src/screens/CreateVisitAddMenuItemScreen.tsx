@@ -48,7 +48,7 @@ export function CreateVisitAddMenuItemScreen({
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
 
-  const { editVisitId, restaurantId, restaurantName } = route.params;
+  const { editVisitId, restaurantId, restaurantName, sourceNoteId } = route.params;
 
   const [menuItemName, setMenuItemName] = useState('');
   const [visibility, setVisibility] = useState<VisibilityOptionValue>('friends');
@@ -135,6 +135,7 @@ export function CreateVisitAddMenuItemScreen({
         preselectedMenuItemId: createdItem.id,
         preselectedMenuItemName: createdItem.name,
         returnToStep: 1,
+        sourceNoteId,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add menu item.';

@@ -2107,6 +2107,7 @@ export function CreateVisitScreen({
                   onPress={() => {
                     navigation.navigate("CreateVisitAddRestaurant", {
                       editVisitId,
+                      sourceNoteId,
                     });
                   }}
                   style={styles.inlineLink}
@@ -2231,6 +2232,7 @@ export function CreateVisitScreen({
                     restaurantId: selectedRestaurantId ?? undefined,
                     restaurantName: restaurantName.trim() || undefined,
                     autoStartSourcePicker: false,
+                    sourceNoteId,
                   });
                 }}
                 style={[
@@ -2319,6 +2321,7 @@ export function CreateVisitScreen({
                   editVisitId,
                   restaurantId: selectedRestaurantId,
                   restaurantName: restaurantName.trim(),
+                  sourceNoteId,
                 });
               }}
               style={[

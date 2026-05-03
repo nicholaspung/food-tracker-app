@@ -86,6 +86,7 @@ export function MenuScanPhotoProcessingScreen({
   const mode = route.params?.mode ?? 'general';
   const restaurantId = route.params?.restaurantId;
   const restaurantName = route.params?.restaurantName?.trim() ?? 'this restaurant';
+  const sourceNoteId = route.params?.sourceNoteId;
   const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
   const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
 
@@ -123,8 +124,9 @@ export function MenuScanPhotoProcessingScreen({
       preselectedRestaurantId: restaurantId,
       preselectedRestaurantName: restaurantName,
       returnToStep: 1,
+      sourceNoteId,
     });
-  }, [navigation, restaurantId, restaurantName]);
+  }, [navigation, restaurantId, restaurantName, sourceNoteId]);
 
   const startCountdown = useCallback(() => {
     if (countdownIntervalRef.current) {

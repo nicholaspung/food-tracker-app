@@ -156,12 +156,14 @@ export type RootStackParamList = {
   CreateVisitAddRestaurant:
     | {
         editVisitId?: string;
+        sourceNoteId?: string;
       }
     | undefined;
   CreateVisitAddMenuItem: {
     restaurantId: string;
     restaurantName: string;
     editVisitId?: string;
+    sourceNoteId?: string;
   };
   CreateVisitEditMenuItem: {
     menuItemId: string;
