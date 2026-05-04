@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 
 import {
+  combineGifBuffers,
   probeVideo,
   renderClipMp4,
   renderMixedGif,
@@ -635,6 +636,101 @@ async function handleMixedGif(req, res, projectId, save) {
   }
 }
 
+async function handleGifCombinationCreate(req, res) {
+  const body = await readJsonBody(req);
+  const assetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
+  if (assetIds.length !== 2 || assetIds.some((id) => typeof id !== 'string' || !id)) {
+    throw userInputError('Choose exactly two GIF assets.');
+  }
+
+  const filename = sanitizeFilename(body.filename, 'combined.gif', '.gif');
+  const projectName = typeof body.projectName === 'string' && body.projectName.trim()
+    ? body.projectName.trim().slice(0, 180)
+    : filename.replace(/\.gif$/i, '');
+  const sourceKey = `combined-gif:${assetIds.join('+')}`;
+
+  const inputs = [];
+  const sourceProjects = [];
+  for (const assetId of assetIds) {
+    const { record, buffer } = await resolveAssetFileBuffer(assetId);
+    if (record.kind !== 'gif_export' || record.mimeType !== 'image/gif') {
+      throw userInputError('Only saved GIF exports can be combined.');
+    }
+    inputs.push({ record, buffer });
+    sourceProjects.push(await getProject(record.project));
+  }
+
+  const rendered = await combineGifBuffers({
+    inputs: inputs.map((item) => item.buffer),
+    outputFilename: filename,
+    cwd: REPO_ROOT,
+  });
+
+  try {
+    const exportSettings = {
+      outputFilename: filename,
+      defaultScreenshotDuration: 1.6,
+      fps: 12,
+      width: rendered.width || 480,
+      rippleDuration: 0.75,
+      rippleRadius: 58,
+      rippleOpacity: 0.95,
+      rippleColor: '#006CFF',
+    };
+    const editorState = {
+      version: 1,
+      selectedItemId: null,
+      sourceVideo: {
+        path: sourceKey,
+        filename,
+        duration: 0,
+        width: 0,
+        height: 0,
+      },
+      items: [],
+      exportSettings,
+    };
+    const combinedMetadata = {
+      combinedFromAssetIds: assetIds,
+      combinedFromProjectIds: sourceProjects.map((project) => project.id),
+    };
+
+    const project = await pbJson('/api/collections/tool_projects/records', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: projectName,
+        toolType: 'mixed_gif',
+        flowSlug: 'combined-gif',
+        sourceVideoPath: sourceKey,
+        sourceVideoFilename: filename,
+        sourceVideoDuration: 0,
+        sourceVideoWidth: 0,
+        sourceVideoHeight: 0,
+        editorState,
+        exportSettings,
+        tags: ['combined_gif'],
+        notes: JSON.stringify(combinedMetadata),
+      }),
+    });
+
+    const asset = await createAsset({
+      projectId: project.id,
+      kind: 'gif_export',
+      filename,
+      mimeType: 'image/gif',
+      buffer: rendered.buffer,
+      metadata: {
+        label: 'Combined GIF',
+        metadata: combinedMetadata,
+      },
+    });
+
+    sendJson(res, 201, { project: { ...project, assets: await listAssets(project.id) }, asset });
+  } finally {
+    await rendered.cleanup().catch(() => {});
+  }
+}
+
 async function handleAssets(req, res) {
   if (req.method === 'GET') {
     sendJson(res, 200, { items: await listAllAssets() });
@@ -767,6 +863,10 @@ const server = createServer((req, res) => {
     const exportMatch = pathname.match(/^\/api\/tools\/projects\/([^/]+)\/exports\/gif$/);
     if (exportMatch && req.method === 'POST') {
       await handleMixedGif(req, res, exportMatch[1], true);
+      return;
+    }
+    if (pathname === '/api/tools/gif-combinations' && req.method === 'POST') {
+      await handleGifCombinationCreate(req, res);
       return;
     }
     if (pathname === '/api/tools/assets') {

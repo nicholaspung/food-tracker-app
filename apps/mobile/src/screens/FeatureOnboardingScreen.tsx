@@ -111,7 +111,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     id: 'support_invites',
     title: 'Invite friends and get help',
     description:
-      'The app is invite-only. Each user has 5 invite codes, and invite links can automatically add the inviter as a friend. For help, open Profile, Tutorials, or Feedback and Support.',
+      'The app is invite-only. Each user has 5 invite links, and can automatically add the inviter as a friend. For help, go to Feedback and Support.',
     icon: 'restaurant-outline',
     accentIcons: ['ticket-outline', 'help-circle-outline', 'chatbubble-ellipses-outline'],
   },

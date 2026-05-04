@@ -193,7 +193,7 @@ export function App() {
 
   function renderContent() {
     if (view.name === 'assetLibrary') {
-      return <AssetLibraryPage projects={projects} />;
+      return <AssetLibraryPage onProjectsRefresh={refreshProjects} projects={projects} />;
     }
 
     if (view.name === 'projectEditor' && selectedProject) {

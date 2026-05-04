@@ -505,3 +505,51 @@ export async function renderMixedGif({ state, sourceVideoPath, screenshotResolve
     throw error;
   }
 }
+
+export async function combineGifBuffers({ inputs, outputFilename, cwd }) {
+  if (!Array.isArray(inputs) || inputs.length !== 2) {
+    throw userInputError('Exactly two GIF inputs are required.');
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), 'tools-combine-gif-'));
+  try {
+    const inputPaths = [];
+    for (const [index, buffer] of inputs.entries()) {
+      const inputPath = join(tempDir, `input-${index + 1}.gif`);
+      await writeFile(inputPath, buffer);
+      inputPaths.push(inputPath);
+    }
+
+    const outputPath = join(tempDir, sanitizeFilename(outputFilename, 'combined.gif', '.gif'));
+
+    await runCommand('ffmpeg', [
+      '-y',
+      '-i',
+      inputPaths[0],
+      '-i',
+      inputPaths[1],
+      '-filter_complex',
+      [
+        '[0:v]fps=12,scale=480:-2:flags=lanczos,setsar=1,format=rgba[v0]',
+        '[1:v]fps=12,scale=480:-2:flags=lanczos,setsar=1,format=rgba[v1]',
+        '[v0][v1]concat=n=2:v=1:a=0,split[s0][s1]',
+        '[s0]palettegen[p]',
+        '[s1][p]paletteuse',
+      ].join(';'),
+      outputPath,
+    ], cwd);
+
+    const buffer = await readFile(outputPath);
+    const stats = await stat(outputPath);
+
+    return {
+      buffer,
+      bytes: stats.size,
+      width: 480,
+      cleanup: () => rm(tempDir, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}

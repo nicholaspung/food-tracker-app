@@ -149,8 +149,10 @@ export function MixedGifBuilder({
   const [draftClipPreviewTime, setDraftClipPreviewTime] = useState(0);
   const [, setMediaLayoutVersion] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewRestartVersion, setPreviewRestartVersion] = useState(0);
   const [timelinePreviewItem, setTimelinePreviewItem] = useState<MixedGifItem | null>(null);
   const [projectPreviewAsset, setProjectPreviewAsset] = useState<ToolAsset | null>(null);
+  const [projectPreviewRestartVersion, setProjectPreviewRestartVersion] = useState(0);
   const [assetPendingDelete, setAssetPendingDelete] = useState<ToolAsset | null>(null);
   const [isDeletingAsset, setIsDeletingAsset] = useState(false);
   const [isAssetReuseOpen, setIsAssetReuseOpen] = useState(false);
@@ -203,6 +205,13 @@ export function MixedGifBuilder({
 
   function refreshMediaLayout() {
     setMediaLayoutVersion((version) => version + 1);
+  }
+
+  function openProjectPreviewAsset(asset: ToolAsset) {
+    setProjectPreviewAsset(asset);
+    if (asset.mimeType === 'image/gif') {
+      setProjectPreviewRestartVersion((version) => version + 1);
+    }
   }
 
   useEffect(() => {
@@ -652,6 +661,7 @@ export function MixedGifBuilder({
       }
       const nextPreviewUrl = URL.createObjectURL(blob);
       setPreviewUrl(nextPreviewUrl);
+      setPreviewRestartVersion(0);
       setStatus('Preview generated.');
       window.requestAnimationFrame(() => {
         gifPreviewRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -1110,9 +1120,16 @@ export function MixedGifBuilder({
           <section className="gif-preview-panel" ref={gifPreviewRef}>
             <div className="section-header">
               <h2>Generated Preview</h2>
+              <button
+                className="button secondary"
+                onClick={() => setPreviewRestartVersion((version) => version + 1)}
+                type="button"
+              >
+                Restart Preview
+              </button>
             </div>
             <div className="gif-preview">
-              <img alt="Generated GIF preview" src={previewUrl} />
+              <img key={`${previewUrl}-${previewRestartVersion}`} alt="Generated GIF preview" src={previewUrl} />
             </div>
           </section>
         ) : null}
@@ -1130,7 +1147,7 @@ export function MixedGifBuilder({
             : ''}
           isAssetDeleteDisabled={(asset) => currentTimelineAssetIds.has(asset.id)}
           onDeleteAsset={setAssetPendingDelete}
-          onOpenAsset={setProjectPreviewAsset}
+          onOpenAsset={openProjectPreviewAsset}
         />
       </div>
     );
@@ -1236,6 +1253,8 @@ export function MixedGifBuilder({
     }
 
     const fileUrl = assetFileUrl(projectPreviewAsset.id);
+    const isGif = projectPreviewAsset.mimeType === 'image/gif';
+    const previewFileUrl = assetFileUrl(projectPreviewAsset.id, isGif ? projectPreviewRestartVersion : undefined);
 
     return (
       <div
@@ -1258,7 +1277,11 @@ export function MixedGifBuilder({
           </div>
           <div className="asset-modal-body">
             {projectPreviewAsset.mimeType.startsWith('image/') ? (
-              <img alt={projectPreviewAsset.filename} src={fileUrl} />
+              <img
+                alt={projectPreviewAsset.filename}
+                key={isGif ? `${projectPreviewAsset.id}-${projectPreviewRestartVersion}` : projectPreviewAsset.id}
+                src={previewFileUrl}
+              />
             ) : projectPreviewAsset.mimeType.startsWith('video/') ? (
               <video controls playsInline src={fileUrl} />
             ) : (
@@ -1269,6 +1292,11 @@ export function MixedGifBuilder({
             <a className="button secondary" href={fileUrl} target="_blank" rel="noreferrer">
               Open in New Tab
             </a>
+            {isGif ? (
+              <button className="button secondary" onClick={() => setProjectPreviewRestartVersion((version) => version + 1)} type="button">
+                Restart GIF
+              </button>
+            ) : null}
             <button className="button" onClick={() => setProjectPreviewAsset(null)} type="button">
               Close
             </button>

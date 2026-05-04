@@ -15,9 +15,14 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function isCombinedGifProject(project: ToolProject) {
+  return Array.isArray(project.tags) && project.tags.includes('combined_gif');
+}
+
 export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, onDeleteProject }: ProjectLibraryProps) {
   const [query, setQuery] = useState('');
   const [previewAsset, setPreviewAsset] = useState<ToolAsset | null>(null);
+  const [gifRestartVersion, setGifRestartVersion] = useState(0);
 
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -30,6 +35,11 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
       || project.sourceVideoFilename.toLowerCase().includes(normalized)
     ));
   }, [projects, query]);
+
+  function openPreviewAsset(asset: ToolAsset) {
+    setPreviewAsset(asset);
+    setGifRestartVersion((value) => value + 1);
+  }
 
   return (
     <section className="panel project-library">
@@ -53,21 +63,36 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
             <div className="empty-state">No matching projects.</div>
           ) : filteredProjects.map((project) => {
             const latestExport = project.assets?.find((asset) => asset.kind === 'gif_export');
+            const isCombinedProject = isCombinedGifProject(project);
             return (
               <article
                 className={`project-row${project.id === selectedProjectId ? ' selected' : ''}`}
                 key={project.id}
               >
-                <button className="project-row-main" onClick={() => onSelectProject(project.id)} type="button">
+                <button
+                  className="project-row-main"
+                  onClick={() => {
+                    if (isCombinedProject && latestExport) {
+                      openPreviewAsset(latestExport);
+                      return;
+                    }
+                    onSelectProject(project.id);
+                  }}
+                  type="button"
+                >
                   <strong>{project.name}</strong>
-                  <span>{project.flowSlug || 'Uncategorized'} · {project.sourceVideoFilename}</span>
+                  <span>
+                    {isCombinedProject
+                      ? `Combined GIF · ${latestExport?.filename || project.sourceVideoFilename}`
+                      : `${project.flowSlug || 'Uncategorized'} · ${project.sourceVideoFilename}`}
+                  </span>
                   <span>{formatDate(project.updated)}</span>
                 </button>
                 <div className="project-row-actions">
                   {latestExport ? (
                     <button
                       className="button secondary small"
-                      onClick={() => setPreviewAsset(latestExport)}
+                      onClick={() => openPreviewAsset(latestExport)}
                       type="button"
                     >
                       Open GIF
@@ -102,12 +127,19 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
               </button>
             </div>
             <div className="asset-modal-body">
-              <img alt={previewAsset.filename} src={assetFileUrl(previewAsset.id)} />
+              <img
+                alt={previewAsset.filename}
+                key={`${previewAsset.id}-${gifRestartVersion}`}
+                src={assetFileUrl(previewAsset.id, gifRestartVersion)}
+              />
             </div>
             <div className="asset-modal-footer">
               <a className="button secondary" href={assetFileUrl(previewAsset.id)} target="_blank" rel="noreferrer">
                 Open in New Tab
               </a>
+              <button className="button secondary" onClick={() => setGifRestartVersion((value) => value + 1)} type="button">
+                Restart GIF
+              </button>
               <button className="button" onClick={() => setPreviewAsset(null)} type="button">
                 Close
               </button>

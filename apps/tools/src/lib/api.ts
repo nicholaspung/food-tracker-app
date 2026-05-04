@@ -14,8 +14,9 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function assetFileUrl(assetId: string) {
-  return `/api/tools/assets/${encodeURIComponent(assetId)}/file`;
+export function assetFileUrl(assetId: string, version?: string | number) {
+  const base = `/api/tools/assets/${encodeURIComponent(assetId)}/file`;
+  return version === undefined ? base : `${base}?v=${encodeURIComponent(String(version))}`;
 }
 
 export function sourceVideoStreamUrl(sourceVideoId: string) {
@@ -181,4 +182,18 @@ export async function saveMixedGif(projectId: string, editorState: unknown): Pro
     }),
   );
   return data.asset;
+}
+
+export async function combineGifAssets(payload: {
+  assetIds: [string, string];
+  projectName: string;
+  filename: string;
+}): Promise<{ project: ToolProject; asset: ToolAsset }> {
+  return parseJsonResponse<{ project: ToolProject; asset: ToolAsset }>(
+    await fetch('/api/tools/gif-combinations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  );
 }
