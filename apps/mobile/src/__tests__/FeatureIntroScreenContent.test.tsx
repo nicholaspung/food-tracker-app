@@ -56,14 +56,11 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 describe('FeatureIntroScreenContent', () => {
   it('renders the shared feature intro layout and actions', async () => {
     const onPrimaryPress = jest.fn();
-    const onBackPress = jest.fn();
     let renderer: any = null;
 
     await act(async () => {
       renderer = create(
         <FeatureIntroScreenContent
-          backLabel="Back to More"
-          backTestID="back-button"
           config={{
             analyticsFeature: 'bills',
             description: 'Split bills with friends.',
@@ -77,7 +74,6 @@ describe('FeatureIntroScreenContent', () => {
           }}
           errorMessage="Could not update onboarding."
           isSubmitting={false}
-          onBackPress={onBackPress}
           onPrimaryPress={onPrimaryPress}
           primaryTestID="primary-button"
         />,
@@ -85,12 +81,8 @@ describe('FeatureIntroScreenContent', () => {
     });
 
     const buttons = renderer.root.findAllByType('Button');
-    expect(buttons.map((button: any) => button.props.label)).toEqual([
-      'Open Bills',
-      'Back to More',
-    ]);
+    expect(buttons.map((button: any) => button.props.label)).toEqual(['Open Bills']);
     expect(buttons[0].props.testID).toBe('primary-button');
-    expect(buttons[1].props.testID).toBe('back-button');
     expect(renderer.root.findByType(Image).props.resizeMode).toBe('cover');
 
     const errorToast = renderer.root.findByType('PageErrorToast');
@@ -98,22 +90,17 @@ describe('FeatureIntroScreenContent', () => {
 
     await act(async () => {
       buttons[0].props.onPress();
-      buttons[1].props.onPress();
     });
     expect(onPrimaryPress).toHaveBeenCalledTimes(1);
-    expect(onBackPress).toHaveBeenCalledTimes(1);
   });
 
-  it('renders profile replay with a contained image and no secondary action', async () => {
+  it('renders immersive layout with a contained image and one primary action', async () => {
     const onPrimaryPress = jest.fn();
-    const onBackPress = jest.fn();
     let renderer: any = null;
 
     await act(async () => {
       renderer = create(
         <FeatureIntroScreenContent
-          backLabel="Back to Tutorials"
-          backTestID="back-button"
           config={{
             analyticsFeature: 'tip_calculator',
             description: 'Estimate tips quickly.',
@@ -127,11 +114,41 @@ describe('FeatureIntroScreenContent', () => {
           }}
           errorMessage={null}
           isSubmitting={false}
-          layout="profileReplay"
-          onBackPress={onBackPress}
+          layout="immersive"
           onPrimaryPress={onPrimaryPress}
           primaryTestID="primary-button"
-          showSecondaryAction={false}
+        />,
+      );
+    });
+
+    const buttons = renderer.root.findAllByType('Button');
+    expect(buttons.map((button: any) => button.props.label)).toEqual(['Open Tip Calculator']);
+    expect(renderer.root.findByType(Image).props.resizeMode).toBe('contain');
+  });
+
+  it('calls the primary action from immersive profile replay content', async () => {
+    const onPrimaryPress = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureIntroScreenContent
+          config={{
+            analyticsFeature: 'tip_calculator',
+            description: 'Estimate tips quickly.',
+            destination: 'TipCalculator',
+            iconName: 'calculator-outline',
+            iconTone: 'green',
+            imageSource: 1,
+            primaryLabel: 'Open Tip Calculator',
+            subtitle: 'Tip Calculator',
+            title: 'Calculate tips quickly',
+          }}
+          errorMessage={null}
+          isSubmitting={false}
+          layout="immersive"
+          onPrimaryPress={onPrimaryPress}
+          primaryTestID="primary-button"
         />,
       );
     });
@@ -145,6 +162,5 @@ describe('FeatureIntroScreenContent', () => {
       buttons[0].props.onPress();
     });
     expect(onPrimaryPress).toHaveBeenCalledTimes(1);
-    expect(onBackPress).not.toHaveBeenCalled();
   });
 });

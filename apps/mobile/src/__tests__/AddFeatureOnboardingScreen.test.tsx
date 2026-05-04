@@ -29,24 +29,19 @@ jest.mock('../components/shared', () => ({
   BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('BackHeaderScreenScaffold', props, children),
   FeatureIntroScreenContent: ({
-    backLabel,
-    backTestID,
     config,
     errorMessage,
     isSubmitting,
     layout,
-    onBackPress,
     onPrimaryPress,
     primaryTestID,
-    showSecondaryAction = true,
   }: Record<string, any>) =>
     mockReact.createElement(
       'FeatureIntroScreenContent',
       {
         layout,
-        showSecondaryAction,
       },
-      mockReact.createElement('Image', { resizeMode: layout === 'profileReplay' ? 'contain' : 'cover', source: config.imageSource }),
+      mockReact.createElement('Image', { resizeMode: layout === 'immersive' ? 'contain' : 'cover', source: config.imageSource }),
       mockReact.createElement('Text', null, config.title),
       mockReact.createElement('Text', null, config.description),
       mockReact.createElement('PageErrorToast', {
@@ -60,15 +55,6 @@ jest.mock('../components/shared', () => ({
         onPress: onPrimaryPress,
         testID: primaryTestID,
       }),
-      showSecondaryAction
-        ? mockReact.createElement('Button', {
-            disabled: isSubmitting,
-            label: backLabel,
-            onPress: onBackPress,
-            testID: backTestID,
-            variant: 'secondary',
-          })
-        : null,
     ),
 }));
 
@@ -284,6 +270,8 @@ describe('AddFeatureOnboardingScreen', () => {
       expect(findTextNodes(renderer, config.title)).toHaveLength(1);
       expect(findTextNodes(renderer, config.description)).toHaveLength(1);
       expect(renderer.root.findByType('Image').props.source).toEqual(config.imageSource);
+      expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('immersive');
+      expect(renderer.root.findAllByProps({ testID: 'add-feature-onboarding-back-button' })).toHaveLength(0);
       expect(findPrimaryButton(renderer).props.label).toBe(config.primaryLabel);
     },
   );
@@ -347,11 +335,11 @@ describe('AddFeatureOnboardingScreen', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('returns to Add without dismissing onboarding', async () => {
+  it('returns to Add from the header without dismissing onboarding', async () => {
     const renderer = await renderAddFeatureOnboardingScreen('processSavedPhotos');
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'add-feature-onboarding-back-button' }).props.onPress();
+      renderer.root.findByType('BackHeaderScreenScaffold').props.onBackPress();
     });
 
     expect(mockWriteFeature).not.toHaveBeenCalled();
@@ -406,8 +394,7 @@ describe('AddFeatureOnboardingScreen', () => {
       source: 'profile',
     });
 
-    expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('profileReplay');
-    expect(renderer.root.findByType('FeatureIntroScreenContent').props.showSecondaryAction).toBe(false);
+    expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('immersive');
     expect(renderer.root.findAllByProps({ testID: 'add-feature-onboarding-back-button' })).toHaveLength(0);
     expect(findPrimaryButton(renderer).props.label).toBe('Start Visit');
     expect(renderer.root.findByType('Image').props.resizeMode).toBe('contain');

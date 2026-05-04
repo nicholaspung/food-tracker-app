@@ -41,6 +41,12 @@
     "mobile:test": "pnpm --filter @food-tracker/mobile test",
     "mobile:tutorial:ios:record": "bash scripts/tutorials/record-ios-mov.sh",
     "video-annotation:dev": "node scripts/tutorials/video-annotation/server.mjs",
+    "tools:dev": "concurrently \"pnpm tools:pb\" \"pnpm tools:server\" \"pnpm tools:web\"",
+    "tools:web": "pnpm --filter @food-tracker/tools dev --host localhost --port 5174",
+    "tools:server": "node apps/tools/server.mjs",
+    "tools:pb": "cd tools/pocketbase && go run . serve --http=127.0.0.1:8092 --dir=../pb_data",
+    "tools:build": "pnpm --filter @food-tracker/tools build",
+    "tools:typecheck": "pnpm --filter @food-tracker/tools typecheck",
     "mobile:verify-native-entrypoint": "node scripts/verify-mobile-native-entrypoint.mjs",
     "android": "pnpm mobile:android",
     "ios": "pnpm mobile:ios"

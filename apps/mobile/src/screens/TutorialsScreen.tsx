@@ -9,6 +9,7 @@ import {
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
 import type { MainOnboardingCardId } from '../types/onboarding';
 
 type TutorialsScreenProps = NativeStackScreenProps<RootStackParamList, 'Tutorials'>;
@@ -25,77 +26,133 @@ type TutorialId =
 
 const TUTORIAL_ANALYTICS_SOURCE = 'TutorialsScreen';
 
-const MAIN_TUTORIALS: {
-  id: MainOnboardingCardId;
-  iconName: NonNullable<OptionListRowProps['iconName']>;
-  subtitle: string;
-  testID: string;
-  title: string;
-}[] = [
+type TutorialSectionItem =
+  | {
+      id: AddOnboardingCardId;
+      iconName: NonNullable<OptionListRowProps['iconName']>;
+      routeName: 'AddFeatureOnboarding';
+      routeParams: { cardId: AddOnboardingCardId; mode: 'replay'; source: 'profile' };
+      subtitle: string;
+      testID: string;
+      title: string;
+    }
+  | {
+      id: MoreOnboardingCardId;
+      iconName: NonNullable<OptionListRowProps['iconName']>;
+      routeName: 'MoreFeatureOnboarding';
+      routeParams: { cardId: MoreOnboardingCardId; mode: 'replay'; source: 'profile' };
+      subtitle: string;
+      testID: string;
+      title: string;
+    };
+
+const ADD_TUTORIALS: TutorialSectionItem[] = [
   {
-    id: 'welcome',
+    id: 'trackRestaurantVisit',
     iconName: 'restaurant-outline',
-    subtitle: 'The app goals and what you can track',
-    testID: 'tutorial-welcome-link',
-    title: 'Welcome to Yummy Recs',
+    routeName: 'AddFeatureOnboarding',
+    routeParams: { cardId: 'trackRestaurantVisit', mode: 'replay', source: 'profile' },
+    subtitle: 'Add restaurants, menu items, ratings, and photos',
+    testID: 'tutorial-track-restaurant-visit-link',
+    title: 'Track Restaurant Visit',
   },
   {
-    id: 'month_privacy',
-    iconName: 'calendar-outline',
-    subtitle: 'How shared tracking keeps timing private',
-    testID: 'tutorial-month-privacy-link',
-    title: 'Shared with Breathing Room',
+    id: 'trackFoodProduct',
+    iconName: 'bag-outline',
+    routeName: 'AddFeatureOnboarding',
+    routeParams: { cardId: 'trackFoodProduct', mode: 'replay', source: 'profile' },
+    subtitle: 'Save groceries, snacks, drinks, and market finds',
+    testID: 'tutorial-track-food-product-link',
+    title: 'Track Food Product',
   },
   {
-    id: 'tutorials',
-    iconName: 'play-circle-outline',
-    subtitle: 'Where to find tutorial GIFs before using features',
-    testID: 'tutorial-tutorials-link',
-    title: 'Watch Feature Tutorials',
+    id: 'logNote',
+    iconName: 'create-outline',
+    routeName: 'AddFeatureOnboarding',
+    routeParams: { cardId: 'logNote', mode: 'replay', source: 'profile' },
+    subtitle: 'Capture food ideas before turning them into entries',
+    testID: 'tutorial-log-note-link',
+    title: 'Log a Note',
   },
   {
-    id: 'friends',
-    iconName: 'people-outline',
-    subtitle: 'Add friends with codes when you are together',
-    testID: 'tutorial-friends-link',
-    title: 'Add Friends Intentionally',
+    id: 'processSavedPhotos',
+    iconName: 'images-outline',
+    routeName: 'AddFeatureOnboarding',
+    routeParams: { cardId: 'processSavedPhotos', mode: 'replay', source: 'profile' },
+    subtitle: 'Turn saved food photos into tracked entries',
+    testID: 'tutorial-process-saved-photos-link',
+    title: 'Process Saved Photos',
   },
   {
-    id: 'more_tools',
-    iconName: 'apps-outline',
-    subtitle: 'Lists, bill splitting, and tip calculation',
-    testID: 'tutorial-more-tools-link',
-    title: 'More Than Tracking',
-  },
-  {
-    id: 'lists_intro',
-    iconName: 'list-outline',
-    subtitle: 'Use lists for ideas and saved recommendations',
-    testID: 'tutorial-lists-intro-link',
-    title: 'Use Lists for Ideas',
-  },
-  {
-    id: 'bills_tips',
-    iconName: 'cash-outline',
-    subtitle: 'Split bills and estimate tips',
-    testID: 'tutorial-bills-tips-link',
-    title: 'Split Bills and Calculate Tips',
-  },
-  {
-    id: 'settings',
-    iconName: 'settings-outline',
-    subtitle: 'Appearance, visibility, and Home feed defaults',
-    testID: 'tutorial-settings-link',
-    title: 'Personalize Your Experience',
-  },
-  {
-    id: 'support_invites',
-    iconName: 'ticket-outline',
-    subtitle: 'Invite friends and find support options',
-    testID: 'tutorial-support-invites-link',
-    title: 'Invite Friends and Get Help',
+    id: 'manageNotes',
+    iconName: 'document-text-outline',
+    routeName: 'AddFeatureOnboarding',
+    routeParams: { cardId: 'manageNotes', mode: 'replay', source: 'profile' },
+    subtitle: 'Search, edit, delete, and convert notes',
+    testID: 'tutorial-manage-notes-link',
+    title: 'Manage Notes',
   },
 ];
+
+const MORE_TUTORIALS: TutorialSectionItem[] = [
+  {
+    id: 'lists',
+    iconName: 'list-outline',
+    routeName: 'MoreFeatureOnboarding',
+    routeParams: { cardId: 'lists', mode: 'replay', source: 'profile' },
+    subtitle: 'Save, organize, and revisit restaurants',
+    testID: 'tutorial-lists-link',
+    title: 'Restaurant Lists',
+  },
+  {
+    id: 'splitBill',
+    iconName: 'cash-outline',
+    routeName: 'MoreFeatureOnboarding',
+    routeParams: { cardId: 'splitBill', mode: 'replay', source: 'profile' },
+    subtitle: 'Create a bill, assign items, and track payment',
+    testID: 'tutorial-split-bill-link',
+    title: 'Split a Bill',
+  },
+  {
+    id: 'tipCalculator',
+    iconName: 'calculator-outline',
+    routeName: 'MoreFeatureOnboarding',
+    routeParams: { cardId: 'tipCalculator', mode: 'replay', source: 'profile' },
+    subtitle: 'Estimate tips and totals before paying',
+    testID: 'tutorial-tip-calculator-link',
+    title: 'Tip Calculator',
+  },
+];
+
+function TutorialSection({
+  items,
+  onOpenTutorial,
+  title,
+}: {
+  items: TutorialSectionItem[];
+  onOpenTutorial: (item: TutorialSectionItem) => void;
+  title: string;
+}) {
+  return (
+    <SectionCard title={title}>
+      <OptionList>
+        {items.map((item, index) => (
+          <OptionListRow
+            iconName={item.iconName}
+            isLast={index === items.length - 1}
+            key={item.id}
+            onPress={() => {
+              onOpenTutorial(item);
+            }}
+            subtitle={item.subtitle}
+            testID={item.testID}
+            title={item.title}
+          />
+        ))}
+      </OptionList>
+    </SectionCard>
+  );
+}
 
 export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
   const trackTutorialOpened = (tutorialId: TutorialId) => {
@@ -103,6 +160,17 @@ export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
       source: TUTORIAL_ANALYTICS_SOURCE,
       tutorialId,
     });
+  };
+
+  const openFeatureTutorial = (tutorial: TutorialSectionItem) => {
+    trackTutorialOpened(tutorial.id);
+
+    if (tutorial.routeName === 'AddFeatureOnboarding') {
+      navigation.navigate('AddFeatureOnboarding', tutorial.routeParams);
+      return;
+    }
+
+    navigation.navigate('MoreFeatureOnboarding', tutorial.routeParams);
   };
 
   return (
@@ -122,150 +190,26 @@ export function TutorialsScreen({ navigation }: TutorialsScreenProps) {
     >
       <SectionCard title="Getting Started">
         <OptionList>
-          {MAIN_TUTORIALS.map((tutorial, index) => (
-            <OptionListRow
-              iconName={tutorial.iconName}
-              isLast={index === MAIN_TUTORIALS.length - 1}
-              key={tutorial.id}
-              onPress={() => {
-                trackTutorialOpened(tutorial.id);
-                navigation.navigate('FeatureOnboarding', {
-                  initialCardId: tutorial.id,
-                  mode: 'replay',
-                  source: 'profile',
-                });
-              }}
-              subtitle={tutorial.subtitle}
-              testID={tutorial.testID}
-              title={tutorial.title}
-            />
-          ))}
-        </OptionList>
-      </SectionCard>
-
-      <SectionCard title="Add Tutorials">
-        <OptionList>
           <OptionListRow
             iconName="restaurant-outline"
-            onPress={() => {
-              trackTutorialOpened('trackRestaurantVisit');
-              navigation.navigate('AddFeatureOnboarding', {
-                cardId: 'trackRestaurantVisit',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Add restaurants, menu items, ratings, and photos"
-            testID="tutorial-track-restaurant-visit-link"
-            title="Track Restaurant Visit"
-          />
-          <OptionListRow
-            iconName="bag-outline"
-            onPress={() => {
-              trackTutorialOpened('trackFoodProduct');
-              navigation.navigate('AddFeatureOnboarding', {
-                cardId: 'trackFoodProduct',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Save groceries, snacks, drinks, and market finds"
-            testID="tutorial-track-food-product-link"
-            title="Track Food Product"
-          />
-          <OptionListRow
-            iconName="create-outline"
-            onPress={() => {
-              trackTutorialOpened('logNote');
-              navigation.navigate('AddFeatureOnboarding', {
-                cardId: 'logNote',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Capture food ideas before turning them into entries"
-            testID="tutorial-log-note-link"
-            title="Log a Note"
-          />
-          <OptionListRow
-            iconName="images-outline"
-            onPress={() => {
-              trackTutorialOpened('processSavedPhotos');
-              navigation.navigate('AddFeatureOnboarding', {
-                cardId: 'processSavedPhotos',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Turn saved food photos into tracked entries"
-            testID="tutorial-process-saved-photos-link"
-            title="Process Saved Photos"
-          />
-          <OptionListRow
-            iconName="document-text-outline"
             isLast
             onPress={() => {
-              trackTutorialOpened('manageNotes');
-              navigation.navigate('AddFeatureOnboarding', {
-                cardId: 'manageNotes',
+              trackTutorialOpened('welcome');
+              navigation.navigate('FeatureOnboarding', {
                 mode: 'replay',
                 source: 'profile',
               });
             }}
-            subtitle="Search, edit, delete, and convert notes"
-            testID="tutorial-manage-notes-link"
-            title="Manage Notes"
+            subtitle="Review the main onboarding cards"
+            testID="tutorial-welcome-link"
+            title="Welcome to Yummy Recs"
           />
         </OptionList>
       </SectionCard>
 
-      <SectionCard title="More Tutorials">
-        <OptionList>
-          <OptionListRow
-            iconName="list-outline"
-            onPress={() => {
-              trackTutorialOpened('lists');
-              navigation.navigate('MoreFeatureOnboarding', {
-                cardId: 'lists',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Save, organize, and revisit restaurants"
-            testID="tutorial-lists-link"
-            title="Restaurant Lists"
-          />
-          <OptionListRow
-            iconName="cash-outline"
-            onPress={() => {
-              trackTutorialOpened('splitBill');
-              navigation.navigate('MoreFeatureOnboarding', {
-                cardId: 'splitBill',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Create a bill, assign items, and track payment"
-            testID="tutorial-split-bill-link"
-            title="Split a Bill"
-          />
-          <OptionListRow
-            iconName="calculator-outline"
-            isLast
-            onPress={() => {
-              trackTutorialOpened('tipCalculator');
-              navigation.navigate('MoreFeatureOnboarding', {
-                cardId: 'tipCalculator',
-                mode: 'replay',
-                source: 'profile',
-              });
-            }}
-            subtitle="Estimate tips and totals before paying"
-            testID="tutorial-tip-calculator-link"
-            title="Tip Calculator"
-          />
-        </OptionList>
-      </SectionCard>
+      <TutorialSection items={ADD_TUTORIALS} onOpenTutorial={openFeatureTutorial} title="Add Tutorials" />
+
+      <TutorialSection items={MORE_TUTORIALS} onOpenTutorial={openFeatureTutorial} title="More Tutorials" />
     </BackHeaderScreenScaffold>
   );
 }

@@ -139,7 +139,9 @@ jest.mock('../theme', () => ({
       modalMaxWidth: 420,
     },
     spacing: {
+      md: 12,
       lg: 16,
+      sm: 8,
     },
   }),
 }));
@@ -238,6 +240,29 @@ describe('FeatureOnboardingScreen', () => {
         node.props.testID.startsWith('feature-onboarding-indicator-'),
       ),
     ).toHaveLength(9);
+  });
+
+  it('keeps onboarding card dimensions and copy constraints stable', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+    const cards = renderer.root.findAllByType('Card');
+
+    expect(cards).toHaveLength(9);
+    cards.forEach((card: any) => {
+      expect(card.props.style).toEqual(expect.objectContaining({ height: expect.any(Number) }));
+    });
+    expect(new Set(cards.map((card: any) => card.props.style.height)).size).toBe(1);
+
+    const titleText = renderer.root.findAllByType('Text').find((node: any) => node.props.children === 'Shared by month');
+    expect(titleText?.props.numberOfLines).toBe(2);
+
+    const descriptionText = renderer.root
+      .findAllByType('Text')
+      .find((node: any) =>
+        node.props.children ===
+        'Tracked items show the month they were added, so recommendations stay useful without making every meal feel watched in real time.',
+      );
+    expect(descriptionText?.props.numberOfLines).toBe(3);
+    expect(descriptionText?.props.ellipsizeMode).toBe('tail');
   });
 
   it('starts on the requested main onboarding card', async () => {

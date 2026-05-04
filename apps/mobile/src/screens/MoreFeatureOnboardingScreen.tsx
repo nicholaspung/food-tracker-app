@@ -62,7 +62,6 @@ export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOn
   const { cardId } = route.params;
   const mode = route.params.mode ?? 'firstRun';
   const entrySource = route.params.source ?? 'more';
-  const isProfileReplay = mode === 'replay' && entrySource === 'profile';
   const config = MORE_FEATURE_ONBOARDING_CONFIG[cardId];
   const { dismiss, errorMessage, isSubmitting } = useDismissibleOnboardingCard({
     buildOptimisticState: buildMoreOnboardingCardDismissedState,
@@ -137,18 +136,14 @@ export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOn
       title={mode === 'replay' ? 'Tutorial' : 'Feature Intro'}
     >
       <FeatureIntroScreenContent
-        backLabel={mode === 'replay' && entrySource === 'profile' ? 'Back to Tutorials' : 'Back to More'}
-        backTestID="more-feature-onboarding-back-button"
         config={config}
         errorMessage={errorMessage}
         isSubmitting={isSubmitting}
-        layout={isProfileReplay ? 'profileReplay' : 'standard'}
-        onBackPress={handleBack}
+        layout="immersive"
         onPrimaryPress={() => {
           void handleContinue();
         }}
         primaryTestID="more-feature-onboarding-primary-button"
-        showSecondaryAction={!isProfileReplay}
       />
     </BackHeaderScreenScaffold>
   );

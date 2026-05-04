@@ -128,7 +128,12 @@ function findMainOnboardingCardIndex(cardId: MainOnboardingCardId | undefined): 
 
 type CardViewTrigger = 'initial' | 'swipe' | 'indicator' | 'arrow';
 
-const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHeight: number) => ({
+const useStyles = createThemedStyles((
+  theme,
+  carouselCardWidth: number,
+  mediaHeight: number,
+  carouselCardHeight: number,
+) => ({
   requiredContent: {
     gap: theme.spacing.md,
     justifyContent: 'space-between',
@@ -157,6 +162,7 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHei
   },
   card: {
     gap: theme.spacing.sm,
+    height: carouselCardHeight,
   },
   imageFrame: {
     alignItems: 'center',
@@ -236,9 +242,14 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number, mediaHei
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.sm,
+    minHeight: 40,
+  },
+  cardTitle: {
+    flex: 1,
   },
   cardCopy: {
     color: theme.colors.text.secondary,
+    minHeight: 72,
   },
   indicatorControlsRow: {
     alignItems: 'center',
@@ -328,9 +339,11 @@ function FeatureOnboardingCardView({
         <View style={styles.cardIcon}>
           <Ionicons color={theme.colors.text.info} name={card.icon} size={22} />
         </View>
-        <Text variant="cardTitle">{card.title}</Text>
+        <Text numberOfLines={2} style={styles.cardTitle} variant="cardTitle">
+          {card.title}
+        </Text>
       </View>
-      <Text style={styles.cardCopy} variant="bodyMd">
+      <Text ellipsizeMode="tail" numberOfLines={3} style={styles.cardCopy} variant="bodyMd">
         {card.description}
       </Text>
     </Card>
@@ -352,10 +365,14 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const carouselCardWidth = Math.min(viewportWidth - theme.spacing.lg * 2, theme.sizes.modalMaxWidth);
   const mediaHeight = Math.min(Math.max(320, Math.round(viewportHeight * 0.42)), 430);
+  const cardCopyHeight = 72;
+  const cardTitleAreaHeight = 40;
+  const cardVerticalChrome = theme.spacing.md * 2 + theme.spacing.sm * 2;
+  const carouselCardHeight = mediaHeight + cardTitleAreaHeight + cardCopyHeight + cardVerticalChrome;
   const boundedActiveCardIndex = Math.min(activeCardIndex, MAIN_ONBOARDING_CARDS.length - 1);
   const activeCard = MAIN_ONBOARDING_CARDS[boundedActiveCardIndex] ?? MAIN_ONBOARDING_CARDS[0];
   const isFinalCard = boundedActiveCardIndex === MAIN_ONBOARDING_CARDS.length - 1;
-  const styles = useStyles(carouselCardWidth, mediaHeight);
+  const styles = useStyles(carouselCardWidth, mediaHeight, carouselCardHeight);
 
   useEffect(() => {
     trackObservabilityEvent('FEATURE_ONBOARDING_STARTED', {

@@ -25,23 +25,19 @@ export interface FeatureIntroConfig<Destination extends keyof RootStackParamList
 }
 
 interface FeatureIntroScreenContentProps<Destination extends keyof RootStackParamList> {
-  backLabel: string;
-  backTestID: string;
   config: FeatureIntroConfig<Destination>;
   errorMessage: string | null;
   isSubmitting: boolean;
-  layout?: 'standard' | 'profileReplay';
-  onBackPress: () => void;
+  layout?: 'compact' | 'immersive';
   onPrimaryPress: () => void;
   primaryTestID: string;
-  showSecondaryAction?: boolean;
 }
 
 const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
   body: {
     gap: theme.spacing.md,
   },
-  profileReplayBody: {
+  immersiveBody: {
     flexGrow: 1,
     gap: theme.spacing.lg,
     justifyContent: 'space-between',
@@ -81,29 +77,25 @@ const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
 }));
 
 export function FeatureIntroScreenContent<Destination extends keyof RootStackParamList>({
-  backLabel,
-  backTestID,
   config,
   errorMessage,
   isSubmitting,
-  layout = 'standard',
-  onBackPress,
+  layout = 'compact',
   onPrimaryPress,
   primaryTestID,
-  showSecondaryAction = true,
 }: FeatureIntroScreenContentProps<Destination>) {
   const { height: viewportHeight } = useWindowDimensions();
-  const isProfileReplayLayout = layout === 'profileReplay';
-  const mediaHeight = isProfileReplayLayout
+  const isImmersiveLayout = layout === 'immersive';
+  const mediaHeight = isImmersiveLayout
     ? Math.min(Math.max(360, Math.round(viewportHeight * 0.48)), 500)
     : 188;
   const styles = useStyles(mediaHeight);
   const theme = useTheme();
   const iconColor = resolveIconColor(config.iconTone, theme.colors.text);
-  const imageResizeMode = isProfileReplayLayout ? 'contain' : 'cover';
+  const imageResizeMode = isImmersiveLayout ? 'contain' : 'cover';
 
   return (
-    <View style={[styles.body, isProfileReplayLayout ? styles.profileReplayBody : null]}>
+    <View style={[styles.body, isImmersiveLayout ? styles.immersiveBody : null]}>
       <View style={styles.imageFrame}>
         <Image resizeMode={imageResizeMode} source={config.imageSource} style={styles.image} />
       </View>
@@ -126,15 +118,6 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
             onPress={onPrimaryPress}
             testID={primaryTestID}
           />
-          {showSecondaryAction ? (
-            <Button
-              disabled={isSubmitting}
-              label={backLabel}
-              onPress={onBackPress}
-              testID={backTestID}
-              variant="secondary"
-            />
-          ) : null}
         </View>
       </View>
     </View>

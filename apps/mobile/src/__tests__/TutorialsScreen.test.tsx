@@ -68,16 +68,9 @@ describe('TutorialsScreen', () => {
       'Add Tutorials',
       'More Tutorials',
     ]);
-    expect(renderer.root.findAllByType('OptionListRow')).toHaveLength(17);
+    expect(renderer.root.findAllByType('OptionListRow')).toHaveLength(9);
     expect(findRow(renderer, 'tutorial-welcome-link').props.title).toBe('Welcome to Yummy Recs');
-    expect(findRow(renderer, 'tutorial-month-privacy-link').props.title).toBe('Shared with Breathing Room');
-    expect(findRow(renderer, 'tutorial-tutorials-link').props.title).toBe('Watch Feature Tutorials');
-    expect(findRow(renderer, 'tutorial-friends-link').props.title).toBe('Add Friends Intentionally');
-    expect(findRow(renderer, 'tutorial-more-tools-link').props.title).toBe('More Than Tracking');
-    expect(findRow(renderer, 'tutorial-lists-intro-link').props.title).toBe('Use Lists for Ideas');
-    expect(findRow(renderer, 'tutorial-bills-tips-link').props.title).toBe('Split Bills and Calculate Tips');
-    expect(findRow(renderer, 'tutorial-settings-link').props.title).toBe('Personalize Your Experience');
-    expect(findRow(renderer, 'tutorial-support-invites-link').props.title).toBe('Invite Friends and Get Help');
+    expect(findRow(renderer, 'tutorial-welcome-link').props.subtitle).toBe('Review the main onboarding cards');
     expect(findRow(renderer, 'tutorial-track-restaurant-visit-link').props.title).toBe('Track Restaurant Visit');
     expect(findRow(renderer, 'tutorial-track-food-product-link').props.title).toBe('Track Food Product');
     expect(findRow(renderer, 'tutorial-log-note-link').props.title).toBe('Log a Note');
@@ -86,8 +79,7 @@ describe('TutorialsScreen', () => {
     expect(findRow(renderer, 'tutorial-lists-link').props.title).toBe('Restaurant Lists');
     expect(findRow(renderer, 'tutorial-split-bill-link').props.title).toBe('Split a Bill');
     expect(findRow(renderer, 'tutorial-tip-calculator-link').props.title).toBe('Tip Calculator');
-    expect(findRow(renderer, 'tutorial-welcome-link').props.isLast).toBe(false);
-    expect(findRow(renderer, 'tutorial-support-invites-link').props.isLast).toBe(true);
+    expect(findRow(renderer, 'tutorial-welcome-link').props.isLast).toBe(true);
     expect(findRow(renderer, 'tutorial-manage-notes-link').props.isLast).toBe(true);
     expect(findRow(renderer, 'tutorial-tip-calculator-link').props.isLast).toBe(true);
   });
@@ -96,47 +88,7 @@ describe('TutorialsScreen', () => {
     [
       'tutorial-welcome-link',
       'welcome',
-      ['FeatureOnboarding', { initialCardId: 'welcome', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-month-privacy-link',
-      'month_privacy',
-      ['FeatureOnboarding', { initialCardId: 'month_privacy', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-tutorials-link',
-      'tutorials',
-      ['FeatureOnboarding', { initialCardId: 'tutorials', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-friends-link',
-      'friends',
-      ['FeatureOnboarding', { initialCardId: 'friends', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-more-tools-link',
-      'more_tools',
-      ['FeatureOnboarding', { initialCardId: 'more_tools', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-lists-intro-link',
-      'lists_intro',
-      ['FeatureOnboarding', { initialCardId: 'lists_intro', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-bills-tips-link',
-      'bills_tips',
-      ['FeatureOnboarding', { initialCardId: 'bills_tips', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-settings-link',
-      'settings',
-      ['FeatureOnboarding', { initialCardId: 'settings', mode: 'replay', source: 'profile' }],
-    ],
-    [
-      'tutorial-support-invites-link',
-      'support_invites',
-      ['FeatureOnboarding', { initialCardId: 'support_invites', mode: 'replay', source: 'profile' }],
+      ['FeatureOnboarding', { mode: 'replay', source: 'profile' }],
     ],
     [
       'tutorial-track-restaurant-visit-link',

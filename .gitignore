@@ -37,6 +37,8 @@ scripts/ssh-vps.sh
 backend/pb_data/
 backend/pb_data_production/
 backend/pb_data_beta/
+tools/pb_data/
+tools/pocketbase/pocketbase
 
 # Logs
 *.log
