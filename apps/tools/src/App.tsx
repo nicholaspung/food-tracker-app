@@ -31,6 +31,7 @@ export function App() {
   const [projectName, setProjectName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [error, setError] = useState('');
 
   const selectedProject = useMemo(() => {
@@ -229,29 +230,45 @@ export function App() {
   const activeItem = activeSidebarItem(view);
 
   return (
-    <div className="tools-shell">
+    <div className={`tools-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
-        <div className="brand-block">
-          <div className="brand-mark">YR</div>
-          <div>
-            <strong>Yummy Recs</strong>
-            <span>Tools</span>
+        <div className="sidebar-header">
+          <div className="brand-block">
+            <div className="brand-mark">YR</div>
+            <div className="brand-copy">
+              <strong>Yummy Recs</strong>
+              <span>Tools</span>
+            </div>
           </div>
+          <button
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="sidebar-toggle"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            type="button"
+          >
+            <span aria-hidden="true">{isSidebarCollapsed ? 'Expand' : 'Hide'}</span>
+          </button>
         </div>
         <nav className="nav-list" aria-label="Tools navigation">
           <button
+            aria-label="Video Tools"
             className={activeItem === 'videoTools' ? 'active' : ''}
             onClick={() => setView({ name: 'videoToolsHome' })}
+            title={isSidebarCollapsed ? 'Video Tools' : undefined}
             type="button"
           >
-            Video Tools
+            <span className="nav-label">Video Tools</span>
+            <span className="nav-short-label">Video</span>
           </button>
           <button
+            aria-label="Asset Library"
             className={activeItem === 'assetLibrary' ? 'active' : ''}
             onClick={() => setView({ name: 'assetLibrary' })}
+            title={isSidebarCollapsed ? 'Asset Library' : undefined}
             type="button"
           >
-            Asset Library
+            <span className="nav-label">Asset Library</span>
+            <span className="nav-short-label">Assets</span>
           </button>
         </nav>
       </aside>

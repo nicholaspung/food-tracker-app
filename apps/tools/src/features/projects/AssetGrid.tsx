@@ -32,6 +32,26 @@ export function AssetGrid({
 }: AssetGridProps) {
   const storedAssets = assets.filter((asset) => asset.kind !== 'source_reference');
 
+  function renderAssetPreview(asset: ToolAsset) {
+    if (asset.mimeType.startsWith('image/')) {
+      return <img alt="" src={assetFileUrl(asset.id)} />;
+    }
+    if (asset.mimeType.startsWith('video/')) {
+      return <video muted playsInline src={assetFileUrl(asset.id)} />;
+    }
+    return <span>{asset.kind}</span>;
+  }
+
+  function renderAssetMeta(asset: ToolAsset, project?: ToolProject) {
+    return (
+      <span className="asset-meta">
+        <strong title={asset.filename}>{asset.filename}</strong>
+        <span>{asset.kind} · {formatBytes(asset.bytes)}</span>
+        {project ? <span title={project.name}>{project.name}</span> : null}
+      </span>
+    );
+  }
+
   return (
     <section className="panel asset-grid-panel">
       <div className="panel-header">
@@ -46,42 +66,34 @@ export function AssetGrid({
           <div className="empty-state">{emptyText}</div>
         ) : storedAssets.map((asset) => {
           const project = projectById?.get(asset.project);
+          const preview = <span className="asset-preview">{renderAssetPreview(asset)}</span>;
+          const meta = renderAssetMeta(asset, project);
           return (
             <article className="asset-card" key={asset.id}>
-              <div className="asset-preview">
-                {asset.mimeType.startsWith('image/') ? (
-                  <img alt="" src={assetFileUrl(asset.id)} />
-                ) : asset.mimeType.startsWith('video/') ? (
-                  <video muted playsInline src={assetFileUrl(asset.id)} />
-                ) : (
-                  <span>{asset.kind}</span>
-                )}
-              </div>
-              <div className="asset-meta">
-                <strong title={asset.filename}>{asset.filename}</strong>
-                <span>{asset.kind} · {formatBytes(asset.bytes)}</span>
-                {project ? <span>{project.name}</span> : null}
+              {onOpenAsset ? (
+                <button className="asset-card-main" onClick={() => onOpenAsset(asset)} type="button">
+                  {preview}
+                  {meta}
+                </button>
+              ) : (
+                <a className="asset-card-main" href={assetFileUrl(asset.id)} target="_blank" rel="noreferrer">
+                  {preview}
+                  {meta}
+                </a>
+              )}
+              {onDeleteAsset ? (
                 <div className="asset-card-actions">
-                  {onOpenAsset ? (
-                    <button className="asset-open-button" onClick={() => onOpenAsset(asset)} type="button">
-                      Open
-                    </button>
-                  ) : (
-                    <a href={assetFileUrl(asset.id)} target="_blank" rel="noreferrer">Open</a>
-                  )}
-                  {onDeleteAsset ? (
-                    <button
-                      className="asset-delete-button"
-                      disabled={isAssetDeleteDisabled?.(asset) || false}
-                      onClick={() => onDeleteAsset(asset)}
-                      title={deleteDisabledReason?.(asset)}
-                      type="button"
-                    >
-                      Delete
-                    </button>
-                  ) : null}
+                  <button
+                    className="asset-delete-button"
+                    disabled={isAssetDeleteDisabled?.(asset) || false}
+                    onClick={() => onDeleteAsset(asset)}
+                    title={deleteDisabledReason?.(asset)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
                 </div>
-              </div>
+              ) : null}
             </article>
           );
         })}

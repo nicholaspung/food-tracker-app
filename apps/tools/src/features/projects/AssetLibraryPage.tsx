@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { AssetGrid } from '@/features/projects/AssetGrid';
 import { assetFileUrl } from '@/lib/api';
@@ -50,6 +50,21 @@ export function AssetLibraryPage({ projects }: AssetLibraryPageProps) {
       return matchesFilter && matchesQuery;
     });
   }, [filter, projectById, query, storedAssets]);
+  const previewAssetIndex = previewAsset
+    ? filteredAssets.findIndex((asset) => asset.id === previewAsset.id)
+    : -1;
+  const previousPreviewAsset = previewAssetIndex > 0
+    ? filteredAssets[previewAssetIndex - 1]
+    : null;
+  const nextPreviewAsset = previewAssetIndex >= 0 && previewAssetIndex < filteredAssets.length - 1
+    ? filteredAssets[previewAssetIndex + 1]
+    : null;
+
+  useEffect(() => {
+    if (previewAsset && !filteredAssets.some((asset) => asset.id === previewAsset.id)) {
+      setPreviewAsset(null);
+    }
+  }, [filteredAssets, previewAsset]);
 
   return (
     <div className="asset-library-page">
@@ -85,35 +100,37 @@ export function AssetLibraryPage({ projects }: AssetLibraryPageProps) {
         </div>
       </section>
 
-      <AssetGrid
-        assets={filteredAssets}
-        emptyText="No saved assets match the current filters."
-        onOpenAsset={setPreviewAsset}
-        projectById={projectById}
-      />
+      <div className="asset-library-content">
+        <AssetGrid
+          assets={filteredAssets}
+          emptyText="No saved assets match the current filters."
+          onOpenAsset={setPreviewAsset}
+          projectById={projectById}
+        />
 
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Sources</p>
-            <h2>Source References</h2>
+        <section className="panel source-reference-panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Sources</p>
+              <h2>Source References</h2>
+            </div>
+            <span className="count-pill">{sourceReferences.length}</span>
           </div>
-          <span className="count-pill">{sourceReferences.length}</span>
-        </div>
-        <div className="panel-body source-reference-list">
-          {sourceReferences.length === 0 ? (
-            <div className="empty-state">Source video references appear here after projects are created.</div>
-          ) : sourceReferences.map((asset: ToolAsset) => {
-            const project = projectById.get(asset.project);
-            return (
-              <article className="source-reference-row" key={asset.id}>
-                <strong>{project?.name || asset.filename}</strong>
-                <span>{asset.externalPath || project?.sourceVideoPath || asset.filename}</span>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+          <div className="panel-body source-reference-list">
+            {sourceReferences.length === 0 ? (
+              <div className="empty-state">Source video references appear here after projects are created.</div>
+            ) : sourceReferences.map((asset: ToolAsset) => {
+              const project = projectById.get(asset.project);
+              return (
+                <article className="source-reference-row" key={asset.id}>
+                  <strong>{project?.name || asset.filename}</strong>
+                  <span>{asset.externalPath || project?.sourceVideoPath || asset.filename}</span>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </div>
 
       {previewAsset ? (
         <div
@@ -128,22 +145,61 @@ export function AssetLibraryPage({ projects }: AssetLibraryPageProps) {
               <div>
                 <p className="eyebrow">Preview</p>
                 <h2 id="assetPreviewTitle">{previewAsset.filename}</h2>
-                <span>{projectById.get(previewAsset.project)?.name || previewAsset.kind}</span>
+                <span>
+                  {projectById.get(previewAsset.project)?.name || previewAsset.kind}
+                  {previewAssetIndex >= 0 ? ` · ${previewAssetIndex + 1} of ${filteredAssets.length}` : ''}
+                </span>
               </div>
               <button className="button secondary" onClick={() => setPreviewAsset(null)} type="button">
                 Close
               </button>
             </div>
-            <div className="asset-modal-body">
-              {previewAsset.mimeType.startsWith('image/') ? (
-                <img alt={previewAsset.filename} src={assetFileUrl(previewAsset.id)} />
-              ) : previewAsset.mimeType.startsWith('video/') ? (
-                <video controls playsInline src={assetFileUrl(previewAsset.id)} />
-              ) : (
-                <div className="empty-state">This asset type cannot be previewed inline.</div>
-              )}
+            <div className="asset-modal-body asset-preview-modal-body">
+              <button
+                aria-label="Previous asset"
+                className="asset-preview-nav previous"
+                disabled={!previousPreviewAsset}
+                onClick={() => previousPreviewAsset && setPreviewAsset(previousPreviewAsset)}
+                type="button"
+              >
+                Previous
+              </button>
+              <div className="asset-preview-modal-media">
+                {previewAsset.mimeType.startsWith('image/') ? (
+                  <img alt={previewAsset.filename} src={assetFileUrl(previewAsset.id)} />
+                ) : previewAsset.mimeType.startsWith('video/') ? (
+                  <video controls playsInline src={assetFileUrl(previewAsset.id)} />
+                ) : (
+                  <div className="empty-state">This asset type cannot be previewed inline.</div>
+                )}
+              </div>
+              <button
+                aria-label="Next asset"
+                className="asset-preview-nav next"
+                disabled={!nextPreviewAsset}
+                onClick={() => nextPreviewAsset && setPreviewAsset(nextPreviewAsset)}
+                type="button"
+              >
+                Next
+              </button>
             </div>
             <div className="asset-modal-footer">
+              <button
+                className="button secondary"
+                disabled={!previousPreviewAsset}
+                onClick={() => previousPreviewAsset && setPreviewAsset(previousPreviewAsset)}
+                type="button"
+              >
+                Previous
+              </button>
+              <button
+                className="button secondary"
+                disabled={!nextPreviewAsset}
+                onClick={() => nextPreviewAsset && setPreviewAsset(nextPreviewAsset)}
+                type="button"
+              >
+                Next
+              </button>
               <a className="button secondary" href={assetFileUrl(previewAsset.id)} target="_blank" rel="noreferrer">
                 Open in New Tab
               </a>

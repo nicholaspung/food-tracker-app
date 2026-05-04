@@ -517,7 +517,9 @@ export function MixedGifBuilder({
       }
       setDraftClip(null);
       setIsClipModalOpen(false);
-      setStatus(`${draftClip.mode === 'edit' ? 'Updated' : 'Added'} reused clip from ${formatTime(item.start)} to ${formatTime(item.end)}.`);
+      setStatus(draftClip.mode === 'edit'
+        ? 'Updated reused clip timeline item.'
+        : 'Added reused clip asset to the timeline.');
       return;
     }
 
@@ -540,7 +542,9 @@ export function MixedGifBuilder({
       setDraftClip(null);
       setIsClipModalOpen(false);
       await refreshProject();
-      setStatus(`${draftClip.mode === 'edit' ? 'Updated' : 'Added'} clip from ${formatTime(item.start)} to ${formatTime(item.end)}.`);
+      setStatus(draftClip.mode === 'edit'
+        ? 'Updated clip asset.'
+        : 'Created clip asset and added it to the timeline.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not render clip.');
     } finally {
@@ -801,6 +805,13 @@ export function MixedGifBuilder({
     const duration = Math.max(draftClipDuration(), 0.001);
     const left = (draftClip.start / duration) * 100;
     const width = ((draftClip.end - draftClip.start) / duration) * 100;
+    const modalTitle = draftClip.mode === 'edit' ? 'Configure Clip' : 'Create Clip Asset';
+    const primaryActionLabel = isBusy
+      ? draftClip.mode === 'edit' ? 'Saving Clip...' : 'Creating Clip...'
+      : draftClip.mode === 'edit' ? 'Save Clip' : 'Create Clip Asset';
+    const actionHint = draftClip.mode === 'edit'
+      ? 'Save Clip updates the timeline item and renders a replacement MP4 asset when needed.'
+      : 'Cancel discards this pending clip. Create Clip Asset saves an MP4 to this project and adds it to the timeline.';
 
     return (
       <div className="modal-backdrop clip-modal-backdrop" role="presentation">
@@ -812,10 +823,10 @@ export function MixedGifBuilder({
         >
           <div className="asset-modal-header">
             <div>
-            <h2 id="clip-modal-title">{draftClip.mode === 'edit' ? 'Configure Clip' : 'Pending Clip'}</h2>
+              <h2 id="clip-modal-title">{modalTitle}</h2>
               <span>{formatTime(draftClip.start)} - {formatTime(draftClip.end)} · {draftClip.speed}x</span>
             </div>
-            <button className="button secondary" onClick={cancelDraftClip} type="button">
+            <button className="button secondary" disabled={isBusy} onClick={cancelDraftClip} type="button">
               Cancel
             </button>
           </div>
@@ -977,9 +988,10 @@ export function MixedGifBuilder({
           </div>
 
           <div className="asset-modal-footer">
-            <button className="button secondary" onClick={cancelDraftClip} type="button">Cancel</button>
-            <button className="button" disabled={isBusy} onClick={confirmClip} type="button">
-              {draftClip.mode === 'edit' ? 'Save Clip' : 'Confirm Clip'}
+            <p className="modal-action-hint">{actionHint}</p>
+            <button className="button secondary" disabled={isBusy} onClick={cancelDraftClip} type="button">Cancel</button>
+            <button className="button" disabled={isBusy || !draftVideoUrl} onClick={confirmClip} type="button">
+              {primaryActionLabel}
             </button>
           </div>
         </section>

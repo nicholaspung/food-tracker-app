@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { assetFileUrl } from '@/lib/api';
-import type { ToolProject } from '@/lib/types';
+import type { ToolAsset, ToolProject } from '@/lib/types';
 
 interface ProjectLibraryProps {
   projects: ToolProject[];
@@ -17,6 +17,7 @@ function formatDate(value: string) {
 
 export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, onDeleteProject }: ProjectLibraryProps) {
   const [query, setQuery] = useState('');
+  const [previewAsset, setPreviewAsset] = useState<ToolAsset | null>(null);
 
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -64,9 +65,13 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
                 </button>
                 <div className="project-row-actions">
                   {latestExport ? (
-                    <a className="button secondary small" href={assetFileUrl(latestExport.id)} target="_blank" rel="noreferrer">
+                    <button
+                      className="button secondary small"
+                      onClick={() => setPreviewAsset(latestExport)}
+                      type="button"
+                    >
                       Open GIF
-                    </a>
+                    </button>
                   ) : null}
                   <button className="button danger small" onClick={() => onDeleteProject(project.id)} type="button">
                     Delete
@@ -77,6 +82,39 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
           })}
         </div>
       </div>
+      {previewAsset ? (
+        <div
+          aria-labelledby="projectGifPreviewTitle"
+          aria-modal="true"
+          className="modal-backdrop"
+          onClick={() => setPreviewAsset(null)}
+          role="dialog"
+        >
+          <div className="asset-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="asset-modal-header">
+              <div>
+                <p className="eyebrow">GIF Preview</p>
+                <h2 id="projectGifPreviewTitle">{previewAsset.filename}</h2>
+                <span>Saved project export</span>
+              </div>
+              <button className="button secondary" onClick={() => setPreviewAsset(null)} type="button">
+                Close
+              </button>
+            </div>
+            <div className="asset-modal-body">
+              <img alt={previewAsset.filename} src={assetFileUrl(previewAsset.id)} />
+            </div>
+            <div className="asset-modal-footer">
+              <a className="button secondary" href={assetFileUrl(previewAsset.id)} target="_blank" rel="noreferrer">
+                Open in New Tab
+              </a>
+              <button className="button" onClick={() => setPreviewAsset(null)} type="button">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
