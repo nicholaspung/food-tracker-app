@@ -9,6 +9,8 @@ Proprietary software. Copyright (c) 2025-2026 Yummy Recs. All rights reserved. N
 - `apps/mobile`: Expo + React Native mobile app
 - `apps/admin`: Vite + React admin console
 - `apps/marketing`: Static public site served by Caddy in production
+- `tools/frontend`: Vite tools UI for tutorial media and asset workflows
+- `tools/backend`: Isolated tools PocketBase backend
 - `backend`: PocketBase-based Go backend
 
 ## Tooling

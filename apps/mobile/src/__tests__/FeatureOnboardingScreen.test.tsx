@@ -334,12 +334,19 @@ describe('FeatureOnboardingScreen', () => {
     });
 
     const renderer = await renderFeatureOnboardingScreen();
-    const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
+    const images = renderer.root.findAllByType('Image');
+    const imageSources = images.map((node: any) => node.props.source);
 
     expect(imageSources).toContainEqual({ uri: 'asset://getting-started-lists-intro' });
     expect(imageSources).toContainEqual({ uri: 'asset://getting-started-bills-tips' });
     expect(imageSources).not.toContainEqual({ uri: 'asset://lists' });
     expect(imageSources).not.toContainEqual({ uri: 'asset://split-bill' });
+    expect(
+      images.find((node: any) => node.props.source.uri === 'asset://getting-started-lists-intro')?.props.resizeMode,
+    ).toBe('contain');
+    expect(
+      images.find((node: any) => node.props.source.uri === 'asset://getting-started-bills-tips')?.props.resizeMode,
+    ).toBe('contain');
   });
 
   it('starts on the requested main onboarding card', async () => {

@@ -8,7 +8,7 @@ From the repo root:
 
 ```bash
 pnpm install
-cd tools/pocketbase && go mod tidy && cd ../..
+cd tools/backend && go mod tidy && cd ../..
 pnpm tools:dev
 ```
 

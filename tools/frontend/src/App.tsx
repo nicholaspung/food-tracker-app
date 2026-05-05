@@ -320,7 +320,7 @@ export function App() {
         <header className="workspace-header">
           <div>
             <p className="eyebrow">Local workspace</p>
-            <h1>Video Annotation & Export Tools</h1>
+            <h1>Tutorial Asset Tools</h1>
           </div>
           <button className="button secondary" onClick={loadData} type="button">Refresh</button>
         </header>

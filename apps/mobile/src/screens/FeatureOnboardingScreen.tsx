@@ -330,7 +330,7 @@ function FeatureOnboardingCardView({
     <Card style={styles.card}>
       {imageSource ? (
         <View style={styles.imageFrame}>
-          <Image resizeMode="cover" source={imageSource} style={styles.image} />
+          <Image resizeMode="contain" source={imageSource} style={styles.image} />
         </View>
       ) : (
         <View style={styles.iconVisual}>

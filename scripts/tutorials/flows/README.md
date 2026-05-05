@@ -32,16 +32,15 @@ The recorder uses the first booted simulator. If no simulator is booted, it boot
 the default simulator from the script. While recording, manually click around the
 app, then press Enter in the terminal to stop.
 
-Create the final tutorial media in the video annotation web app:
+Create the final tutorial media in the tools app:
 
 ```bash
-pnpm video-annotation:dev
+pnpm tools:dev
 ```
 
 Then open the printed localhost URL and:
 
-1. Load the recorded `raw.mov`.
-2. Add any cuts and tap annotations.
-3. Click `Export MOV`.
-4. Review the rendered preview.
-5. Click `Export GIF`.
+1. Open the matching source video from `tutorial-artifacts`.
+2. Add screenshots, clips, tap placement, and timeline ordering.
+3. Generate and review the GIF preview.
+4. Save the GIF export to the local tools asset library.
