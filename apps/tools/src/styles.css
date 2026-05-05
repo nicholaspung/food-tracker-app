@@ -1187,6 +1187,7 @@ label {
 }
 
 .asset-meta a,
+.asset-card-action-button,
 .asset-delete-button,
 .link-button {
   background: transparent;

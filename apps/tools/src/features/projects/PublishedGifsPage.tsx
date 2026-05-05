@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { assignPublishedGif, assetFileUrl, listPublishedGifs } from '@/lib/api';
 import type { PublishedGifAssignment, PublishedGifsResponse, ToolAsset, ToolProject, TutorialFlowDefinition } from '@/lib/types';
@@ -147,6 +147,15 @@ export function PublishedGifsPage({
     ? historyItems.find((assignment) => assignment.id === selectedHistoryAssignmentId) || null
     : historyItems.find((assignment) => assignment.isCurrent) || historyItems[0] || null;
 
+  const selectDefaultAssignAsset = useCallback((flowSlug: string, preferredAsset?: ToolAsset | null) => {
+    const currentAssignment = currentByFlowSlug.get(flowSlug);
+    const currentAsset = currentAssignment
+      ? gifAssets.find((asset) => asset.id === currentAssignment.asset) || null
+      : null;
+    const matchingAsset = gifAssets.find((asset) => projectById.get(asset.project)?.flowSlug === flowSlug) || null;
+    return preferredAsset || currentAsset || matchingAsset || gifAssets[0] || null;
+  }, [currentByFlowSlug, gifAssets, projectById]);
+
   async function loadPublishedData() {
     setIsLoading(true);
     setError('');
@@ -178,26 +187,30 @@ export function PublishedGifsPage({
       || (sourceFlowSlug && publishedData.flows.some((flow) => flow.slug === sourceFlowSlug) ? sourceFlowSlug : '')
       || publishedData.flows[0]?.slug
       || '';
+    const nextAsset = selectDefaultAssignAsset(nextFlowSlug, initialAsset);
     setAssignModal({
       flowSlug: nextFlowSlug,
-      assetId: initialAsset?.id || gifAssets[0]?.id || '',
+      assetId: nextAsset?.id || '',
     });
     setAssignPreviewRestartVersion((version) => version + 1);
     setAssetQuery('');
     setNotes('');
     setAssignError('');
-  }, [gifAssets, initialAssetId, initialFlowSlug, projectById, publishedData]);
+  }, [gifAssets, initialAssetId, initialFlowSlug, projectById, publishedData, selectDefaultAssignAsset]);
 
   function openAssignModal(flow: TutorialFlowDefinition, preferredAsset?: ToolAsset) {
-    const matchingAsset = preferredAsset
-      || gifAssets.find((asset) => projectById.get(asset.project)?.flowSlug === flow.slug)
-      || gifAssets[0]
-      || null;
-    setAssignModal({ flowSlug: flow.slug, assetId: matchingAsset?.id || '' });
+    const nextAsset = selectDefaultAssignAsset(flow.slug, preferredAsset);
+    setAssignModal({ flowSlug: flow.slug, assetId: nextAsset?.id || '' });
     setAssignPreviewRestartVersion((version) => version + 1);
     setAssetQuery('');
     setNotes('');
     setAssignError('');
+  }
+
+  function selectAssignFlow(flowSlug: string) {
+    const nextAsset = selectDefaultAssignAsset(flowSlug);
+    setAssignModal((current) => current ? { ...current, flowSlug, assetId: nextAsset?.id || '' } : current);
+    setAssignPreviewRestartVersion((version) => version + 1);
   }
 
   function selectAssignAsset(assetId: string) {
@@ -365,7 +378,7 @@ export function PublishedGifsPage({
                   <select
                     className="field"
                     disabled={isAssigning}
-                    onChange={(event) => setAssignModal((current) => current ? { ...current, flowSlug: event.target.value } : current)}
+                    onChange={(event) => selectAssignFlow(event.target.value)}
                     value={assignModal.flowSlug}
                   >
                     {publishedData.flows.map((flow) => (

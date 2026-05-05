@@ -53,6 +53,7 @@ export interface TutorialFlowDefinition {
   navigationHint: string;
   mobileAssetFilename?: string;
   mobileAssetKey?: string;
+  mainOnboardingCardId?: string;
 }
 
 export type PublishedGifCopyStatus = 'copied' | 'tracked_only' | 'copy_failed';

@@ -7,8 +7,11 @@ interface AssetGridProps {
   emptyText?: string;
   onOpenAsset?: (asset: ToolAsset) => void;
   onDeleteAsset?: (asset: ToolAsset) => void;
+  onRenameAsset?: (asset: ToolAsset) => void;
   isAssetDeleteDisabled?: (asset: ToolAsset) => boolean;
+  isAssetRenameDisabled?: (asset: ToolAsset) => boolean;
   deleteDisabledReason?: (asset: ToolAsset) => string;
+  renameDisabledReason?: (asset: ToolAsset) => string;
   projectById?: Map<string, ToolProject>;
   scrollable?: boolean;
 }
@@ -29,9 +32,12 @@ export function AssetGrid({
   emptyText = 'Saved screenshots, clips, and GIFs appear here.',
   deleteDisabledReason,
   isAssetDeleteDisabled,
+  isAssetRenameDisabled,
   onDeleteAsset,
   onOpenAsset,
+  onRenameAsset,
   projectById,
+  renameDisabledReason,
   scrollable = true,
 }: AssetGridProps) {
   const storedAssets = assets.filter((asset) => asset.kind !== 'source_reference');
@@ -95,17 +101,30 @@ export function AssetGrid({
                   {meta}
                 </a>
               )}
-              {onDeleteAsset ? (
+              {onDeleteAsset || onRenameAsset ? (
                 <div className="asset-card-actions">
-                  <button
-                    className="asset-delete-button"
-                    disabled={isAssetDeleteDisabled?.(asset) || false}
-                    onClick={() => onDeleteAsset(asset)}
-                    title={deleteDisabledReason?.(asset)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
+                  {onRenameAsset ? (
+                    <button
+                      className="asset-card-action-button"
+                      disabled={isAssetRenameDisabled?.(asset) || false}
+                      onClick={() => onRenameAsset(asset)}
+                      title={renameDisabledReason?.(asset)}
+                      type="button"
+                    >
+                      Rename
+                    </button>
+                  ) : null}
+                  {onDeleteAsset ? (
+                    <button
+                      className="asset-card-action-button asset-delete-button"
+                      disabled={isAssetDeleteDisabled?.(asset) || false}
+                      onClick={() => onDeleteAsset(asset)}
+                      title={deleteDisabledReason?.(asset)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </article>

@@ -106,6 +106,17 @@ export async function deleteAsset(assetId: string): Promise<void> {
   );
 }
 
+export async function renameAsset(assetId: string, filename: string): Promise<ToolAsset> {
+  const data = await parseJsonResponse<{ asset: ToolAsset }>(
+    await fetch(`/api/tools/assets/${encodeURIComponent(assetId)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    }),
+  );
+  return data.asset;
+}
+
 export async function uploadScreenshotAsset({
   projectId,
   file,

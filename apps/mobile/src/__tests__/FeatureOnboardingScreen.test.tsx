@@ -11,6 +11,17 @@ const mockGoBack = jest.fn();
 const mockNavigate = jest.fn();
 const mockWriteFeature = jest.fn();
 const mockSaveOptimisticMobileOnboardingState = jest.fn();
+const mockMainOnboardingPublishedAssets: Record<string, boolean> = {
+  welcome: false,
+  month_privacy: false,
+  tutorials: false,
+  friends: false,
+  more_tools: false,
+  lists_intro: false,
+  bills_tips: false,
+  settings: false,
+  support_invites: false,
+};
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
@@ -61,9 +72,24 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
+    gettingStartedWelcome: { uri: 'asset://getting-started-welcome' },
+    gettingStartedMonthPrivacy: { uri: 'asset://getting-started-month-privacy' },
+    gettingStartedTutorials: { uri: 'asset://getting-started-tutorials' },
+    gettingStartedFriends: { uri: 'asset://getting-started-friends' },
+    gettingStartedMoreTools: { uri: 'asset://getting-started-more-tools' },
+    gettingStartedListsIntro: { uri: 'asset://getting-started-lists-intro' },
+    gettingStartedBillsTips: { uri: 'asset://getting-started-bills-tips' },
+    gettingStartedSettings: { uri: 'asset://getting-started-settings' },
+    gettingStartedSupportInvites: { uri: 'asset://getting-started-support-invites' },
     lists: { uri: 'asset://lists' },
     splitBill: { uri: 'asset://split-bill' },
   },
+}));
+
+jest.mock('../lib/onboardingPublishedAssets', () => ({
+  MAIN_ONBOARDING_PUBLISHED_ASSETS: new Proxy({}, {
+    get: (_target, prop: string) => mockMainOnboardingPublishedAssets[prop],
+  }),
 }));
 
 jest.mock('../lib/branding', () => ({
@@ -202,6 +228,17 @@ function findActionsSlots(renderer: any): any[] {
 
 describe('FeatureOnboardingScreen', () => {
   beforeEach(() => {
+    Object.assign(mockMainOnboardingPublishedAssets, {
+      welcome: false,
+      month_privacy: false,
+      tutorials: false,
+      friends: false,
+      more_tools: false,
+      lists_intro: false,
+      bills_tips: false,
+      settings: false,
+      support_invites: false,
+    });
     mockReset.mockReset();
     mockGoBack.mockReset();
     mockNavigate.mockReset();
@@ -265,13 +302,20 @@ describe('FeatureOnboardingScreen', () => {
     expect(descriptionText?.props.ellipsizeMode).toBe('tail');
   });
 
-  it('renders configured GIF media and icon fallback media in the carousel', async () => {
+  it('renders icon fallback media until Getting Started GIFs are published', async () => {
     const renderer = await renderFeatureOnboardingScreen();
     const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://lists' });
-    expect(imageSources).toContainEqual({ uri: 'asset://split-bill' });
-
+    expect(imageSources).toContainEqual({ uri: 'asset://brand-logo' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-welcome' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-month-privacy' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-tutorials' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-friends' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-more-tools' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-lists-intro' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-bills-tips' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-settings' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-support-invites' });
     expect(
       renderer.root.findAll(
         (node: any) =>
@@ -281,6 +325,21 @@ describe('FeatureOnboardingScreen', () => {
           node.props.size === 44,
       ),
     ).toHaveLength(1);
+  });
+
+  it('renders configured Getting Started GIF media after the cards are published', async () => {
+    Object.assign(mockMainOnboardingPublishedAssets, {
+      lists_intro: true,
+      bills_tips: true,
+    });
+
+    const renderer = await renderFeatureOnboardingScreen();
+    const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
+
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-lists-intro' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-bills-tips' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://lists' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://split-bill' });
   });
 
   it('starts on the requested main onboarding card', async () => {

@@ -24,6 +24,18 @@ const ARTIFACTS_ROOT = resolve(REPO_ROOT, 'tutorial-artifacts/ios');
 const PB_URL = process.env.TOOLS_POCKETBASE_URL || 'http://127.0.0.1:8092';
 const HOST = process.env.TOOLS_API_HOST || '127.0.0.1';
 const PORT = Number.parseInt(process.env.TOOLS_API_PORT || '8765', 10);
+const MAIN_ONBOARDING_PUBLISHED_ASSETS_PATH = resolve(REPO_ROOT, 'apps/mobile/src/lib/onboardingPublishedAssets.ts');
+const MAIN_ONBOARDING_CARD_IDS = [
+  'welcome',
+  'month_privacy',
+  'tutorials',
+  'friends',
+  'more_tools',
+  'lists_intro',
+  'bills_tips',
+  'settings',
+  'support_invites',
+];
 
 const MIME_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -38,15 +50,15 @@ const MIME_TYPES = new Map([
 ]);
 
 const TUTORIAL_FLOWS = [
-  { slug: 'welcome', title: 'Welcome to Yummy Recs', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Welcome to Yummy Recs' },
-  { slug: 'month-privacy', title: 'Shared with Breathing Room', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Shared with Breathing Room' },
-  { slug: 'tutorials', title: 'Watch Feature Tutorials', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Watch Feature Tutorials' },
-  { slug: 'friends', title: 'Add Friends Intentionally', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Add Friends Intentionally' },
-  { slug: 'more-tools', title: 'More Than Tracking', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> More Than Tracking' },
-  { slug: 'lists-intro', title: 'Use Lists for Ideas', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Use Lists for Ideas' },
-  { slug: 'bills-tips', title: 'Split Bills and Calculate Tips', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Split Bills and Calculate Tips' },
-  { slug: 'settings', title: 'Personalize Your Experience', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Personalize Your Experience' },
-  { slug: 'support-invites', title: 'Invite Friends and Get Help', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Invite Friends and Get Help' },
+  { slug: 'welcome', title: 'Welcome to Yummy Recs', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Welcome to Yummy Recs', mobileAssetFilename: 'getting-started-welcome.gif', mobileAssetKey: 'gettingStartedWelcome', mainOnboardingCardId: 'welcome' },
+  { slug: 'month-privacy', title: 'Shared with Breathing Room', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Shared with Breathing Room', mobileAssetFilename: 'getting-started-month-privacy.gif', mobileAssetKey: 'gettingStartedMonthPrivacy', mainOnboardingCardId: 'month_privacy' },
+  { slug: 'tutorials', title: 'Watch Feature Tutorials', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Watch Feature Tutorials', mobileAssetFilename: 'getting-started-tutorials.gif', mobileAssetKey: 'gettingStartedTutorials', mainOnboardingCardId: 'tutorials' },
+  { slug: 'friends', title: 'Add Friends Intentionally', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Add Friends Intentionally', mobileAssetFilename: 'getting-started-friends.gif', mobileAssetKey: 'gettingStartedFriends', mainOnboardingCardId: 'friends' },
+  { slug: 'more-tools', title: 'More Than Tracking', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> More Than Tracking', mobileAssetFilename: 'getting-started-more-tools.gif', mobileAssetKey: 'gettingStartedMoreTools', mainOnboardingCardId: 'more_tools' },
+  { slug: 'lists-intro', title: 'Use Lists for Ideas', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Use Lists for Ideas', mobileAssetFilename: 'getting-started-lists-intro.gif', mobileAssetKey: 'gettingStartedListsIntro', mainOnboardingCardId: 'lists_intro' },
+  { slug: 'bills-tips', title: 'Split Bills and Calculate Tips', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Split Bills and Calculate Tips', mobileAssetFilename: 'getting-started-bills-tips.gif', mobileAssetKey: 'gettingStartedBillsTips', mainOnboardingCardId: 'bills_tips' },
+  { slug: 'settings', title: 'Personalize Your Experience', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Personalize Your Experience', mobileAssetFilename: 'getting-started-settings.gif', mobileAssetKey: 'gettingStartedSettings', mainOnboardingCardId: 'settings' },
+  { slug: 'support-invites', title: 'Invite Friends and Get Help', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Invite Friends and Get Help', mobileAssetFilename: 'getting-started-support-invites.gif', mobileAssetKey: 'gettingStartedSupportInvites', mainOnboardingCardId: 'support_invites' },
   { slug: 'track-restaurant-visit', title: 'Track Restaurant Visit', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Track Restaurant Visit', mobileAssetFilename: 'track-restaurant-visit.gif', mobileAssetKey: 'trackRestaurantVisit' },
   { slug: 'track-food-product', title: 'Track Food Product', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Track Food Product', mobileAssetFilename: 'track-food-product.gif', mobileAssetKey: 'trackFoodProduct' },
   { slug: 'log-note', title: 'Log a Note', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Log a Note', mobileAssetFilename: 'log-note.gif', mobileAssetKey: 'logNote' },
@@ -440,6 +452,53 @@ async function copyPublishedGifToMobileAsset(asset, buffer, flow) {
   };
 }
 
+function parseMainOnboardingPublishedAssets(source) {
+  const values = {};
+  for (const cardId of MAIN_ONBOARDING_CARD_IDS) {
+    const pattern = new RegExp(`\\b${cardId}\\s*:\\s*(true|false)\\b`);
+    const match = source.match(pattern);
+    if (!match) {
+      throw userInputError(`Published asset manifest is missing ${cardId}.`);
+    }
+    values[cardId] = match[1] === 'true';
+  }
+  return values;
+}
+
+function formatMainOnboardingPublishedAssets(values) {
+  const rows = MAIN_ONBOARDING_CARD_IDS
+    .map((cardId) => `  ${cardId}: ${values[cardId] ? 'true' : 'false'},`)
+    .join('\n');
+  return [
+    "import type { MainOnboardingCardId } from '../types/onboarding';",
+    '',
+    'export const MAIN_ONBOARDING_PUBLISHED_ASSETS: Record<MainOnboardingCardId, boolean> = {',
+    rows,
+    '} as const;',
+    '',
+  ].join('\n');
+}
+
+async function markMainOnboardingGifPublished(flow) {
+  if (!flow.mainOnboardingCardId) {
+    return;
+  }
+  if (!MAIN_ONBOARDING_CARD_IDS.includes(flow.mainOnboardingCardId)) {
+    throw userInputError(`Unknown main onboarding card id: ${flow.mainOnboardingCardId}.`);
+  }
+
+  let source;
+  try {
+    source = await readFile(MAIN_ONBOARDING_PUBLISHED_ASSETS_PATH, 'utf8');
+  } catch (error) {
+    throw userInputError('Could not read the mobile onboarding published asset manifest.');
+  }
+
+  const values = parseMainOnboardingPublishedAssets(source);
+  values[flow.mainOnboardingCardId] = true;
+  await writeFile(MAIN_ONBOARDING_PUBLISHED_ASSETS_PATH, formatMainOnboardingPublishedAssets(values));
+}
+
 async function assignPublishedGif(flowSlug, body) {
   const flow = findTutorialFlow(flowSlug);
   if (!flow) {
@@ -459,6 +518,9 @@ async function assignPublishedGif(flowSlug, body) {
   let copyResult;
   try {
     copyResult = await copyPublishedGifToMobileAsset(asset, buffer, flow);
+    if (copyResult.copyStatus === 'copied') {
+      await markMainOnboardingGifPublished(flow);
+    }
   } catch (error) {
     copyResult = {
       copyStatus: 'copy_failed',
@@ -923,6 +985,31 @@ async function handleAssets(req, res) {
   sendJson(res, 405, { error: 'Method not allowed.' });
 }
 
+async function handleAssetUpdate(req, res, assetId) {
+  const body = await readJsonBody(req);
+  const record = await pbJson(`/api/collections/tool_assets/records/${encodeURIComponent(assetId)}`);
+  if (record.kind !== 'gif_export' || record.mimeType !== 'image/gif') {
+    throw userInputError('Only saved GIF exports can be renamed.');
+  }
+
+  const filename = sanitizeFilename(body.filename, record.filename || 'renamed.gif', '.gif');
+  const asset = await pbJson(`/api/collections/tool_assets/records/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ filename }),
+  });
+
+  const publishedReferences = await listPublishedGifAssignments(
+    `filter=${encodeURIComponent(`asset="${assetId}"`)}`,
+  );
+  await Promise.all(
+    publishedReferences.map((assignment) =>
+      updateAssignment(assignment.id, { assetFilename: filename }),
+    ),
+  );
+
+  sendJson(res, 200, { asset });
+}
+
 async function handleAssetDelete(_req, res, assetId) {
   const record = await pbJson(`/api/collections/tool_assets/records/${encodeURIComponent(assetId)}`);
   if (record.kind === 'source_reference') {
@@ -1084,6 +1171,10 @@ const server = createServer((req, res) => {
       return;
     }
     const assetItemMatch = pathname.match(/^\/api\/tools\/assets\/([^/]+)$/);
+    if (assetItemMatch && req.method === 'PATCH') {
+      await handleAssetUpdate(req, res, assetItemMatch[1]);
+      return;
+    }
     if (assetItemMatch && req.method === 'DELETE') {
       await handleAssetDelete(req, res, assetItemMatch[1]);
       return;

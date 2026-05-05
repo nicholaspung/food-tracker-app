@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { AssetGrid } from '@/features/projects/AssetGrid';
-import { assetFileUrl, combineGifAssets } from '@/lib/api';
+import { assetFileUrl, combineGifAssets, renameAsset } from '@/lib/api';
 import type { ToolAsset, ToolProject } from '@/lib/types';
 
 interface AssetLibraryPageProps {
@@ -41,6 +41,10 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
   const [combineError, setCombineError] = useState('');
   const [combinedProjectName, setCombinedProjectName] = useState('');
   const [combinedFilename, setCombinedFilename] = useState('combined.gif');
+  const [renameAssetTarget, setRenameAssetTarget] = useState<ToolAsset | null>(null);
+  const [renameFilename, setRenameFilename] = useState('');
+  const [isRenamingAsset, setIsRenamingAsset] = useState(false);
+  const [renameError, setRenameError] = useState('');
 
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const allAssets = useMemo(
@@ -103,6 +107,32 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
     if (asset.mimeType === 'image/gif') {
       setGifRestartVersion((value) => value + 1);
     }
+  }
+
+  function canRenameAsset(asset: ToolAsset) {
+    return asset.kind === 'gif_export' && asset.mimeType === 'image/gif';
+  }
+
+  function renameDisabledReason(asset: ToolAsset) {
+    return canRenameAsset(asset) ? '' : 'Only saved GIF exports can be renamed.';
+  }
+
+  function openRenameModal(asset: ToolAsset) {
+    if (!canRenameAsset(asset)) {
+      return;
+    }
+    setRenameAssetTarget(asset);
+    setRenameFilename(asset.filename);
+    setRenameError('');
+  }
+
+  function closeRenameModal() {
+    if (isRenamingAsset) {
+      return;
+    }
+    setRenameAssetTarget(null);
+    setRenameFilename('');
+    setRenameError('');
   }
 
   function handleCombinePickerClick(asset: ToolAsset) {
@@ -168,6 +198,26 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
     }
   }
 
+  async function handleRenameAsset() {
+    if (!renameAssetTarget) {
+      return;
+    }
+
+    setIsRenamingAsset(true);
+    setRenameError('');
+    try {
+      const updatedAsset = await renameAsset(renameAssetTarget.id, renameFilename);
+      await onProjectsRefresh();
+      setPreviewAsset((current) => current?.id === updatedAsset.id ? updatedAsset : current);
+      setRenameAssetTarget(null);
+      setRenameFilename('');
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Could not rename GIF.');
+    } finally {
+      setIsRenamingAsset(false);
+    }
+  }
+
   return (
     <div className="asset-library-page">
       <section className="panel">
@@ -216,8 +266,11 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
         <AssetGrid
           assets={filteredAssets}
           emptyText="No saved assets match the current filters."
+          isAssetRenameDisabled={(asset) => !canRenameAsset(asset)}
           onOpenAsset={openPreviewAsset}
+          onRenameAsset={openRenameModal}
           projectById={projectById}
+          renameDisabledReason={renameDisabledReason}
         />
 
         <section className="panel source-reference-panel scrollable-panel">
@@ -324,11 +377,65 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
                   Restart GIF
                 </button>
               ) : null}
+              {canRenameAsset(previewAsset) ? (
+                <button className="button secondary" onClick={() => openRenameModal(previewAsset)} type="button">
+                  Rename GIF
+                </button>
+              ) : null}
               {previewAsset.kind === 'gif_export' && previewAsset.mimeType === 'image/gif' && onAssignPublished ? (
                 <button className="button" onClick={() => onAssignPublished(previewAsset)} type="button">
                   Assign as Published
                 </button>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {renameAssetTarget ? (
+        <div
+          aria-labelledby="renameGifTitle"
+          aria-modal="true"
+          className="modal-backdrop"
+          onClick={closeRenameModal}
+          role="dialog"
+        >
+          <div className="asset-modal asset-rename-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="asset-modal-header">
+              <div>
+                <p className="eyebrow">Rename</p>
+                <h2 id="renameGifTitle">Rename GIF</h2>
+                <span>{projectById.get(renameAssetTarget.project)?.name || renameAssetTarget.filename}</span>
+              </div>
+              <button className="button secondary" disabled={isRenamingAsset} onClick={closeRenameModal} type="button">
+                Cancel
+              </button>
+            </div>
+            <div className="asset-modal-body light">
+              <label className="published-notes-field">
+                <span>GIF filename</span>
+                <input
+                  className="field"
+                  disabled={isRenamingAsset}
+                  onChange={(event) => setRenameFilename(event.target.value)}
+                  placeholder="example-flow-v2.gif"
+                  value={renameFilename}
+                />
+              </label>
+              {renameError ? <div className="error-banner">{renameError}</div> : null}
+            </div>
+            <div className="asset-modal-footer">
+              <button className="button secondary" disabled={isRenamingAsset} onClick={closeRenameModal} type="button">
+                Cancel
+              </button>
+              <button
+                className="button"
+                disabled={isRenamingAsset || !renameFilename.trim()}
+                onClick={handleRenameAsset}
+                type="button"
+              >
+                {isRenamingAsset ? 'Saving...' : 'Save Name'}
+              </button>
             </div>
           </div>
         </div>

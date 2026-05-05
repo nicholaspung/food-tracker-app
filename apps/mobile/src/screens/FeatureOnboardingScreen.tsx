@@ -3,7 +3,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
-import type { ImageSourcePropType } from 'react-native';
 
 import { BackHeaderScreenScaffold, Skeleton } from '../components/shared';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -15,6 +14,7 @@ import {
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
+import { MAIN_ONBOARDING_PUBLISHED_ASSETS } from '../lib/onboardingPublishedAssets';
 import { BRAND_LOGO } from '../lib/branding';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -32,13 +32,16 @@ interface MainOnboardingCard {
   title: string;
   description: string;
   icon: IoniconName;
-  imageSource?: ImageSourcePropType;
+  imageAssetKey?: keyof typeof FEATURE_ONBOARDING_ASSETS;
   heroLogo?: boolean;
   accentIcons?: IoniconName[];
 }
 
-function resolveOnboardingImageSource(key: keyof typeof FEATURE_ONBOARDING_ASSETS) {
-  return FEATURE_ONBOARDING_ASSETS[key];
+function resolvePublishedMainOnboardingImageSource(
+  cardId: MainOnboardingCardId,
+  key: keyof typeof FEATURE_ONBOARDING_ASSETS,
+) {
+  return MAIN_ONBOARDING_PUBLISHED_ASSETS[cardId] ? FEATURE_ONBOARDING_ASSETS[key] : undefined;
 }
 
 const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
@@ -48,6 +51,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Track restaurant visits, food products, and notes so you can remember what you liked and share useful recommendations with friends.',
     icon: 'restaurant-outline',
+    imageAssetKey: 'gettingStartedWelcome',
     heroLogo: true,
     accentIcons: ['fast-food-outline', 'people-outline', 'star-outline'],
   },
@@ -57,6 +61,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Tracked items show the month they were added, so recommendations stay useful without making every meal feel watched in real time.',
     icon: 'calendar-outline',
+    imageAssetKey: 'gettingStartedMonthPrivacy',
     accentIcons: ['calendar-number-outline', 'eye-off-outline', 'time-outline'],
   },
   {
@@ -65,6 +70,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Some sections include short tutorial GIFs before you use them. Watching the full tutorial first will make the feature easier to use.',
     icon: 'play-circle-outline',
+    imageAssetKey: 'gettingStartedTutorials',
     accentIcons: ['phone-portrait-outline', 'play-outline', 'sparkles-outline'],
   },
   {
@@ -73,6 +79,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'There is no contact-list import. Add friends with codes when you are together, ideally over food or drinks.',
     icon: 'people-outline',
+    imageAssetKey: 'gettingStartedFriends',
     accentIcons: ['qr-code-outline', 'person-add-outline', 'restaurant-outline'],
   },
   {
@@ -81,6 +88,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'You can organize restaurants into lists, split bills with friends, and use the tip calculator when you do not want to do the math.',
     icon: 'apps-outline',
+    imageAssetKey: 'gettingStartedMoreTools',
     accentIcons: ['list-outline', 'cash-outline', 'calculator-outline'],
   },
   {
@@ -89,7 +97,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Lists can group restaurants, show your ratings and recommended menu items, or bookmark food your friends shared for later.',
     icon: 'list-outline',
-    imageSource: resolveOnboardingImageSource('lists'),
+    imageAssetKey: 'gettingStartedListsIntro',
   },
   {
     id: 'bills_tips',
@@ -97,7 +105,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Bills help one person organize the split and keep payment details remembered. The tip calculator is there for quick totals.',
     icon: 'cash-outline',
-    imageSource: resolveOnboardingImageSource('splitBill'),
+    imageAssetKey: 'gettingStartedBillsTips',
   },
   {
     id: 'settings',
@@ -105,6 +113,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Settings let you choose appearance, default visibility, and Home feed preferences so Yummy Recs fits how you track and share food.',
     icon: 'settings-outline',
+    imageAssetKey: 'gettingStartedSettings',
     accentIcons: ['color-palette-outline', 'eye-outline', 'options-outline'],
   },
   {
@@ -113,6 +122,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'The app is invite-only. Each user has 5 invite links, and can automatically add the inviter as a friend. For help, go to Feedback and Support.',
     icon: 'restaurant-outline',
+    imageAssetKey: 'gettingStartedSupportInvites',
     accentIcons: ['ticket-outline', 'help-circle-outline', 'chatbubble-ellipses-outline'],
   },
 ];
@@ -312,12 +322,15 @@ function FeatureOnboardingCardView({
 }) {
   const theme = useTheme();
   const accentPositions = [styles.accentIconTopLeft, styles.accentIconTopRight, styles.accentIconBottom];
+  const imageSource = card.imageAssetKey
+    ? resolvePublishedMainOnboardingImageSource(card.id, card.imageAssetKey)
+    : undefined;
 
   return (
     <Card style={styles.card}>
-      {card.imageSource ? (
+      {imageSource ? (
         <View style={styles.imageFrame}>
-          <Image resizeMode="cover" source={card.imageSource} style={styles.image} />
+          <Image resizeMode="cover" source={imageSource} style={styles.image} />
         </View>
       ) : (
         <View style={styles.iconVisual}>
