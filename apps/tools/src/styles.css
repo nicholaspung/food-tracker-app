@@ -1621,7 +1621,7 @@ label {
 
 .published-current-preview,
 .published-asset-row,
-.published-history-row {
+.published-history-picker-row {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1662,7 +1662,15 @@ label {
 }
 
 .asset-modal.published-history-modal {
-  max-width: min(94vw, 1040px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: min(90vh, 920px);
+  max-width: min(94vw, 1180px);
+}
+
+.published-history-modal .asset-modal-body.light {
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
 }
 
 .published-assign-fields {
@@ -1772,12 +1780,66 @@ label {
   resize: vertical;
 }
 
-.published-history-row {
+.published-history-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
+  min-height: 0;
+  width: 100%;
+}
+
+.published-history-picker {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  max-height: min(58vh, 560px);
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.published-history-picker-row {
   align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 76px minmax(0, 1fr);
+  padding: 8px;
+  text-align: left;
+}
+
+.published-history-picker-row:hover,
+.published-history-picker-row.selected {
+  border-color: var(--accent);
+}
+
+.published-history-picker-row.selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.published-history-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
-  padding: 10px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  max-height: min(58vh, 560px);
+  min-height: 0;
+  padding: 12px;
+}
+
+.published-history-detail-grid {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 8px;
+  overflow-wrap: anywhere;
 }
 
 .modal-backdrop {
@@ -2117,7 +2179,8 @@ label {
   .published-current,
   .published-assign-fields,
   .published-assign-layout,
-  .published-history-row {
+  .published-history-layout,
+  .published-history-picker-row {
     grid-template-columns: 1fr;
   }
 
@@ -2221,7 +2284,8 @@ label {
   }
 }
 
-.published-assign-modal .published-selected-media img {
+.published-assign-modal .published-selected-media img,
+.published-history-modal .published-selected-media img {
   height: auto;
   max-height: min(44vh, 420px);
   max-width: 100%;

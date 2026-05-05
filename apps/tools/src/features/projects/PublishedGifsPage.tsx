@@ -70,6 +70,7 @@ export function PublishedGifsPage({
   const [error, setError] = useState('');
   const [assignModal, setAssignModal] = useState<AssignModalState | null>(null);
   const [historyFlowSlug, setHistoryFlowSlug] = useState<string | null>(null);
+  const [selectedHistoryAssignmentId, setSelectedHistoryAssignmentId] = useState<string | null>(null);
   const [assetQuery, setAssetQuery] = useState('');
   const [notes, setNotes] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
@@ -141,6 +142,9 @@ export function PublishedGifsPage({
     ? publishedData.flows.find((flow) => flow.slug === historyFlowSlug) || null
     : null;
   const historyItems = historyFlowSlug ? historyByFlowSlug.get(historyFlowSlug) || [] : [];
+  const selectedHistoryAssignment = selectedHistoryAssignmentId
+    ? historyItems.find((assignment) => assignment.id === selectedHistoryAssignmentId) || null
+    : historyItems.find((assignment) => assignment.isCurrent) || historyItems[0] || null;
 
   async function loadPublishedData() {
     setIsLoading(true);
@@ -191,6 +195,22 @@ export function PublishedGifsPage({
     setAssetQuery('');
     setNotes('');
     setAssignError('');
+  }
+
+  function openHistoryModal(flowSlug: string, preferredAssignmentId?: string) {
+    const assignments = historyByFlowSlug.get(flowSlug) || [];
+    const nextSelected = preferredAssignmentId
+      || assignments.find((assignment) => assignment.isCurrent)?.id
+      || assignments[0]?.id
+      || null;
+
+    setHistoryFlowSlug(flowSlug);
+    setSelectedHistoryAssignmentId(nextSelected);
+  }
+
+  function closeHistoryModal() {
+    setHistoryFlowSlug(null);
+    setSelectedHistoryAssignmentId(null);
   }
 
   async function handleAssignGif() {
@@ -272,7 +292,7 @@ export function PublishedGifsPage({
                       <div className="published-current">
                         {current ? (
                           <>
-                            <button className="published-current-preview" onClick={() => setHistoryFlowSlug(flow.slug)} type="button">
+                            <button className="published-current-preview" onClick={() => openHistoryModal(flow.slug, current.id)} type="button">
                               <img alt={current.assetFilename} src={assetFileUrl(current.asset)} />
                             </button>
                             <div className="published-current-copy">
@@ -296,7 +316,7 @@ export function PublishedGifsPage({
                         <button
                           className="button secondary"
                           disabled={(historyByFlowSlug.get(flow.slug) || []).length === 0}
-                          onClick={() => setHistoryFlowSlug(flow.slug)}
+                          onClick={() => openHistoryModal(flow.slug)}
                           type="button"
                         >
                           View History
@@ -439,7 +459,7 @@ export function PublishedGifsPage({
           aria-labelledby="publishedHistoryTitle"
           aria-modal="true"
           className="modal-backdrop"
-          onClick={() => setHistoryFlowSlug(null)}
+          onClick={closeHistoryModal}
           role="dialog"
         >
           <div className="asset-modal published-history-modal" onClick={(event) => event.stopPropagation()}>
@@ -449,41 +469,71 @@ export function PublishedGifsPage({
                 <h2 id="publishedHistoryTitle">{historyFlow.title}</h2>
                 <span>{historyFlow.slug}</span>
               </div>
-              <button className="button secondary" onClick={() => setHistoryFlowSlug(null)} type="button">
+              <button className="button secondary" onClick={closeHistoryModal} type="button">
                 Close
               </button>
             </div>
             <div className="asset-modal-body light">
-              <div className="published-history-list">
-                {historyItems.length === 0 ? (
-                  <div className="empty-state compact">No assignments have been saved for this flow.</div>
-                ) : historyItems.map((assignment) => (
-                  <article className="published-history-row" key={assignment.id}>
-                    <span className="published-history-thumb">
-                      <img alt="" src={assetFileUrl(assignment.asset)} />
-                    </span>
-                    <span className="published-history-copy">
-                      <strong>{assignment.assetFilename}</strong>
-                      <span>{assignment.sourceProjectName || 'Unknown project'} · {formatDate(assignment.created)}</span>
-                      {assignment.targetRelativePath ? <span>{assignment.targetRelativePath}</span> : null}
-                      {assignment.copyError ? <span>{assignment.copyError}</span> : null}
-                      {assignment.notes ? <span>{assignment.notes}</span> : null}
-                    </span>
-                    <span className="published-history-actions">
-                      {assignment.isCurrent ? <span className="status-pill success">Current</span> : null}
-                      <span className={`status-pill ${assignmentStatusClass(assignment.copyStatus)}`}>
-                        {statusLabel(assignment.copyStatus)}
+              <div className="published-history-layout">
+                <div className="published-history-picker">
+                  {historyItems.length === 0 ? (
+                    <div className="empty-state compact">No assignments have been saved for this flow.</div>
+                  ) : historyItems.map((assignment) => (
+                    <button
+                      aria-pressed={selectedHistoryAssignment?.id === assignment.id}
+                      className={`published-history-picker-row${selectedHistoryAssignment?.id === assignment.id ? ' selected' : ''}`}
+                      key={assignment.id}
+                      onClick={() => setSelectedHistoryAssignmentId(assignment.id)}
+                      type="button"
+                    >
+                      <span className="published-history-thumb">
+                        <img alt="" src={assetFileUrl(assignment.asset)} />
                       </span>
-                      <a className="button secondary small" href={assetFileUrl(assignment.asset)} target="_blank" rel="noreferrer">
-                        Open
+                      <span className="published-history-copy">
+                        <strong>{assignment.assetFilename}</strong>
+                        <span>{assignment.sourceProjectName || 'Unknown project'}</span>
+                        <span>{formatDate(assignment.created)}</span>
+                        <span className={`status-pill ${assignmentStatusClass(assignment.copyStatus)}`}>
+                          {statusLabel(assignment.copyStatus)}
+                        </span>
+                        {assignment.isCurrent ? <span className="status-pill success">Current</span> : null}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="published-history-preview">
+                  {selectedHistoryAssignment ? (
+                    <>
+                      <div className="published-selected-header">
+                        <strong>{selectedHistoryAssignment.assetFilename}</strong>
+                        <span>{selectedHistoryAssignment.sourceProjectName || 'Unknown project'}</span>
+                        <span>{formatDate(selectedHistoryAssignment.created)}</span>
+                      </div>
+                      <div className="published-selected-media">
+                        <img alt={selectedHistoryAssignment.assetFilename} src={assetFileUrl(selectedHistoryAssignment.asset)} />
+                      </div>
+                      <div className="published-history-detail-grid">
+                        <span className={`status-pill ${assignmentStatusClass(selectedHistoryAssignment.copyStatus)}`}>
+                          {statusLabel(selectedHistoryAssignment.copyStatus)}
+                        </span>
+                        {selectedHistoryAssignment.isCurrent ? <span className="status-pill success">Current</span> : null}
+                        {selectedHistoryAssignment.targetRelativePath ? <span>{selectedHistoryAssignment.targetRelativePath}</span> : null}
+                        {selectedHistoryAssignment.copyError ? <span>{selectedHistoryAssignment.copyError}</span> : null}
+                        {selectedHistoryAssignment.notes ? <span>{selectedHistoryAssignment.notes}</span> : null}
+                      </div>
+                      <a className="button secondary" href={assetFileUrl(selectedHistoryAssignment.asset)} target="_blank" rel="noreferrer">
+                        Open in New Tab
                       </a>
-                    </span>
-                  </article>
-                ))}
+                    </>
+                  ) : (
+                    <div className="empty-state compact">Select a GIF assignment to preview it.</div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="asset-modal-footer">
-              <button className="button" onClick={() => setHistoryFlowSlug(null)} type="button">
+              <button className="button" onClick={closeHistoryModal} type="button">
                 Close
               </button>
             </div>
