@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { createReadStream } from 'node:fs';
-import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
 
 import {
   combineGifBuffers,
@@ -13,6 +14,7 @@ import {
   renderClipMp4,
   renderMixedGif,
   requiredNumber,
+  runCommand,
   sanitizeFilename,
   userInputError,
 } from './server/rendering/mixedGif.mjs';
@@ -25,6 +27,7 @@ const PB_URL = process.env.TOOLS_POCKETBASE_URL || 'http://127.0.0.1:8092';
 const HOST = process.env.TOOLS_API_HOST || '127.0.0.1';
 const PORT = Number.parseInt(process.env.TOOLS_API_PORT || '8765', 10);
 const MAIN_ONBOARDING_PUBLISHED_ASSETS_PATH = resolve(REPO_ROOT, 'apps/mobile/src/lib/onboardingPublishedAssets.ts');
+const SOURCE_PROXY_DIR = resolve(REPO_ROOT, 'tools/pb_data/source_proxies');
 const MAIN_ONBOARDING_CARD_IDS = [
   'welcome',
   'month_privacy',
@@ -250,6 +253,73 @@ async function sourceVideoRecordFromPath(videoPath) {
     width: videoInfo.width,
     height: videoInfo.height,
   };
+}
+
+async function ensureSourceVideoProxy(sourceVideoPath) {
+  const resolved = assertRawVideoPath(sourceVideoPath);
+  const fileStats = await stat(resolved);
+  const cacheKey = createHash('sha256')
+    .update(resolved)
+    .update('\0')
+    .update(String(fileStats.size))
+    .update('\0')
+    .update(String(Math.trunc(fileStats.mtimeMs)))
+    .digest('hex')
+    .slice(0, 24);
+  const outputPath = join(SOURCE_PROXY_DIR, `${cacheKey}.mp4`);
+
+  try {
+    const proxyStats = await stat(outputPath);
+    if (proxyStats.isFile() && proxyStats.size > 0) {
+      return outputPath;
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  await mkdir(SOURCE_PROXY_DIR, { recursive: true });
+  const tempPath = join(SOURCE_PROXY_DIR, `${cacheKey}-${process.pid}-${Date.now()}.tmp.mp4`);
+  try {
+    await runCommand('ffmpeg', [
+      '-y',
+      '-i',
+      resolved,
+      '-an',
+      '-vf',
+      'fps=30,scale=720:-2:flags=lanczos,setsar=1,format=yuv420p,setpts=N/(30*TB)',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      tempPath,
+    ], REPO_ROOT);
+    await rename(tempPath, outputPath);
+  } catch (error) {
+    await rmIfExists(tempPath);
+    try {
+      const proxyStats = await stat(outputPath);
+      if (proxyStats.isFile() && proxyStats.size > 0) {
+        return outputPath;
+      }
+    } catch {
+      // Keep original error.
+    }
+    throw error;
+  }
+
+  return outputPath;
+}
+
+async function rmIfExists(filePath) {
+  try {
+    await rm(filePath, { force: true });
+  } catch {
+    // Best-effort cleanup.
+  }
 }
 
 async function listFlowSlugs() {
@@ -598,9 +668,8 @@ async function handleSourceVideos(_req, res) {
   sendJson(res, 200, { items: await findRawVideos() });
 }
 
-async function handleSourceVideoStream(req, res, id) {
-  const sourcePath = decodeSourceId(id);
-  const fileStats = await stat(sourcePath);
+async function streamVideoFile(req, res, filePath, contentType) {
+  const fileStats = await stat(filePath);
   const range = req.headers.range;
   if (range) {
     const match = /^bytes=(\d+)-(\d*)$/.exec(range);
@@ -617,20 +686,31 @@ async function handleSourceVideoStream(req, res, id) {
       return;
     }
     res.writeHead(206, {
-      'content-type': 'video/quicktime',
+      'content-type': contentType,
       'content-length': end - start + 1,
       'content-range': `bytes ${start}-${end}/${fileStats.size}`,
       'accept-ranges': 'bytes',
     });
-    createReadStream(sourcePath, { start, end }).pipe(res);
+    createReadStream(filePath, { start, end }).pipe(res);
     return;
   }
   res.writeHead(200, {
-    'content-type': 'video/quicktime',
+    'content-type': contentType,
     'content-length': fileStats.size,
     'accept-ranges': 'bytes',
   });
-  createReadStream(sourcePath).pipe(res);
+  createReadStream(filePath).pipe(res);
+}
+
+async function handleSourceVideoStream(req, res, id) {
+  const sourcePath = decodeSourceId(id);
+  await streamVideoFile(req, res, sourcePath, 'video/quicktime');
+}
+
+async function handleSourceVideoProxy(req, res, id) {
+  const sourcePath = decodeSourceId(id);
+  const proxyPath = await ensureSourceVideoProxy(sourcePath);
+  await streamVideoFile(req, res, proxyPath, 'video/mp4');
 }
 
 async function handleSourceVideoDelete(_req, res, id) {
@@ -796,8 +876,9 @@ async function handleClipCreate(req, res, projectId) {
     throw userInputError('Clip start must be before clip end.');
   }
   const filename = sanitizeFilename(body.filename, `${body.itemId || 'clip'}.mp4`, '.mp4');
+  const sourceVideoPath = await ensureSourceVideoProxy(project.sourceVideoPath);
   const rendered = await renderClipMp4({
-    sourceVideoPath: project.sourceVideoPath,
+    sourceVideoPath,
     item,
     width: body.width || 720,
     cwd: REPO_ROOT,
@@ -829,9 +910,10 @@ async function handleMixedGif(req, res, projectId, save) {
   const project = await getProject(projectId);
   const body = await readJsonBody(req);
   const state = body.editorState || project.editorState;
+  const sourceVideoPath = await ensureSourceVideoProxy(project.sourceVideoPath);
   const rendered = await renderMixedGif({
     state,
-    sourceVideoPath: project.sourceVideoPath,
+    sourceVideoPath,
     screenshotResolver: resolveScreenshotBuffer,
     clipAssetResolver: async (item) => {
       const { record, buffer } = await resolveAssetFileBuffer(item.assetId);
@@ -1103,6 +1185,11 @@ const server = createServer((req, res) => {
     const sourceMatch = pathname.match(/^\/api\/tools\/source-videos\/([^/]+)\/stream$/);
     if (sourceMatch && req.method === 'GET') {
       await handleSourceVideoStream(req, res, sourceMatch[1]);
+      return;
+    }
+    const sourceProxyMatch = pathname.match(/^\/api\/tools\/source-videos\/([^/]+)\/proxy$/);
+    if (sourceProxyMatch && req.method === 'GET') {
+      await handleSourceVideoProxy(req, res, sourceProxyMatch[1]);
       return;
     }
     const sourceItemMatch = pathname.match(/^\/api\/tools\/source-videos\/([^/]+)$/);

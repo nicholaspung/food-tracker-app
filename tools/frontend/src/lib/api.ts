@@ -30,6 +30,10 @@ export function sourceVideoStreamUrl(sourceVideoId: string) {
   return `/api/tools/source-videos/${encodeURIComponent(sourceVideoId)}/stream`;
 }
 
+export function sourceVideoProxyUrl(sourceVideoId: string) {
+  return `/api/tools/source-videos/${encodeURIComponent(sourceVideoId)}/proxy`;
+}
+
 export async function listSourceVideos(): Promise<SourceVideo[]> {
   const data = await parseJsonResponse<{ items: SourceVideo[] }>(await fetch('/api/tools/source-videos'));
   return data.items;

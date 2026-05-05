@@ -7,7 +7,7 @@ import {
   deleteAsset,
   previewMixedGif,
   saveMixedGif,
-  sourceVideoStreamUrl,
+  sourceVideoProxyUrl,
   updateProject,
   uploadScreenshotAsset,
 } from '@/lib/api';
@@ -167,6 +167,8 @@ export function MixedGifBuilder({
   const screenshotPreviewRef = useRef<HTMLButtonElement | null>(null);
   const draftClipWrapRef = useRef<HTMLDivElement | null>(null);
   const draftClipPlaybackRef = useRef<number | null>(null);
+  const draftClipSeekTimeoutRef = useRef<number | null>(null);
+  const draftClipPreviewTimeRef = useRef(0);
   const gifPreviewRef = useRef<HTMLDivElement | null>(null);
 
   const sourceVideo = useMemo(
@@ -176,7 +178,7 @@ export function MixedGifBuilder({
   const activeItem = selectedItem(state.items, state.selectedItemId);
   const activeScreenshot = activeItem?.type === 'screenshot' ? activeItem : null;
   const activeClip = activeItem?.type === 'clip' ? activeItem : null;
-  const videoUrl = sourceVideo ? sourceVideoStreamUrl(sourceVideo.id) : '';
+  const videoUrl = sourceVideo ? sourceVideoProxyUrl(sourceVideo.id) : '';
   const projectById = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const assetPickerAssets = useMemo(
     () => projects
@@ -256,6 +258,9 @@ export function MixedGifBuilder({
     if (draftClipPlaybackRef.current !== null) {
       window.clearInterval(draftClipPlaybackRef.current);
     }
+    if (draftClipSeekTimeoutRef.current !== null) {
+      window.clearTimeout(draftClipSeekTimeoutRef.current);
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = 1;
     }
@@ -268,6 +273,43 @@ export function MixedGifBuilder({
     window.addEventListener('resize', refreshMediaLayout);
     return () => window.removeEventListener('resize', refreshMediaLayout);
   }, []);
+
+  useEffect(() => {
+    if (!draftClip || !isClipModalOpen) {
+      return;
+    }
+
+    const video = draftClipVideoRef.current;
+    if (!video) {
+      return;
+    }
+
+    if (!isPlayingDraftClip) {
+      video.pause();
+    }
+    video.playbackRate = draftClip.speed;
+
+    const targetTime = clampDraftVideoTime(draftClipPreviewTime);
+    const seekThreshold = isPlayingDraftClip ? 0.25 : 0.015;
+    if (Math.abs(video.currentTime - targetTime) > seekThreshold) {
+      video.currentTime = targetTime;
+      window.requestAnimationFrame(() => {
+        const activeVideo = draftClipVideoRef.current;
+        if (activeVideo && Math.abs(activeVideo.currentTime - targetTime) > 0.015) {
+          activeVideo.currentTime = targetTime;
+        }
+      });
+    }
+
+    if (draftClip.sourceKind !== 'asset_file' && videoRef.current && Math.abs(videoRef.current.currentTime - targetTime) > 0.015) {
+      videoRef.current.currentTime = targetTime;
+    }
+  }, [
+    draftClip,
+    draftClipPreviewTime,
+    isClipModalOpen,
+    isPlayingDraftClip,
+  ]);
 
   async function refreshProject() {
     const updatedProject = await updateProject(project.id, {});
@@ -284,6 +326,15 @@ export function MixedGifBuilder({
     return Math.min(duration, Math.max(0, value));
   }
 
+  function draftVideoDurationForSeek() {
+    return Math.max(draftClipDuration(), 0);
+  }
+
+  function clampDraftVideoTime(value: number) {
+    const duration = draftVideoDurationForSeek();
+    return Math.min(duration, Math.max(0, value));
+  }
+
   function setVideoTime(value: number) {
     const nextTime = clampVideoTime(value);
     setCurrentTime(nextTime);
@@ -295,7 +346,33 @@ export function MixedGifBuilder({
     }
   }
 
+  function setDraftVideoTime(value: number) {
+    const nextTime = clampDraftVideoTime(value);
+    draftClipPreviewTimeRef.current = nextTime;
+    setCurrentTime(nextTime);
+    setDraftClipPreviewTime(nextTime);
+
+    const modalVideo = draftClipVideoRef.current;
+    if (modalVideo && Math.abs(modalVideo.currentTime - nextTime) > 0.015) {
+      modalVideo.currentTime = nextTime;
+      window.requestAnimationFrame(() => {
+        const activeVideo = draftClipVideoRef.current;
+        if (activeVideo && Math.abs(activeVideo.currentTime - nextTime) > 0.015) {
+          activeVideo.currentTime = nextTime;
+        }
+      });
+    }
+
+    if (draftClip?.sourceKind !== 'asset_file' && videoRef.current && Math.abs(videoRef.current.currentTime - nextTime) > 0.015) {
+      videoRef.current.currentTime = nextTime;
+    }
+  }
+
   function nudgeVideoTime(delta: number) {
+    if (draftClip && isClipModalOpen) {
+      setDraftVideoTime(draftClipPreviewTimeRef.current + delta);
+      return;
+    }
     setVideoTime(currentTime + delta);
   }
 
@@ -303,6 +380,10 @@ export function MixedGifBuilder({
     if (draftClipPlaybackRef.current !== null) {
       window.clearInterval(draftClipPlaybackRef.current);
       draftClipPlaybackRef.current = null;
+    }
+    if (draftClipSeekTimeoutRef.current !== null) {
+      window.clearTimeout(draftClipSeekTimeoutRef.current);
+      draftClipSeekTimeoutRef.current = null;
     }
     const video = activeDraftVideo();
     if (video) {
@@ -358,7 +439,8 @@ export function MixedGifBuilder({
       boundary === 'start' ? value : draftClip.start,
       boundary === 'end' ? value : draftClip.end,
     );
-    const seekTime = boundary === 'start' ? start : end;
+    const duration = Math.max(draftVideoDurationForSeek(), 0.05);
+    const seekTime = boundary === 'start' ? start : Math.min(end, Math.max(0, duration - 0.001));
     setDraftClip({
       ...draftClip,
       start,
@@ -366,8 +448,7 @@ export function MixedGifBuilder({
       taps: draftClip.taps.filter((tap) => tap.timestamp >= start && tap.timestamp < end),
     });
     stopDraftClipPlayback();
-    setVideoTime(seekTime);
-    setDraftClipPreviewTime(seekTime);
+    setDraftVideoTime(seekTime);
   }
 
   function updateDraftClipSpeed(speed: number) {
@@ -382,18 +463,7 @@ export function MixedGifBuilder({
     }
   }
 
-  function playDraftClip() {
-    const video = activeDraftVideo();
-    if (!draftClip || !video) {
-      return;
-    }
-
-    const clipStart = draftClip.start;
-    const clipEnd = draftClip.end;
-    const clipSpeed = draftClip.speed;
-    stopDraftClipPlayback();
-    video.currentTime = clipStart;
-    setCurrentTime(clipStart);
+  function beginDraftClipPlayback(video: HTMLVideoElement, clipEnd: number, clipSpeed: number) {
     setIsPlayingDraftClip(true);
     video.playbackRate = clipSpeed;
     video.play().catch(() => {
@@ -411,10 +481,58 @@ export function MixedGifBuilder({
       if (activeVideo.currentTime >= clipEnd || activeVideo.paused) {
         activeVideo.pause();
         activeVideo.playbackRate = 1;
-        setVideoTime(clipEnd);
+        setDraftVideoTime(Math.min(clipEnd, Math.max(0, draftVideoDurationForSeek() - 0.001)));
         stopDraftClipPlayback();
       }
     }, 50);
+  }
+
+  function seekDraftClipThenPlay(video: HTMLVideoElement, playStart: number, clipEnd: number, clipSpeed: number) {
+    let didStart = false;
+
+    const startPlayback = () => {
+      if (didStart) {
+        return;
+      }
+      didStart = true;
+      video.removeEventListener('seeked', startPlayback);
+      if (draftClipSeekTimeoutRef.current !== null) {
+        window.clearTimeout(draftClipSeekTimeoutRef.current);
+        draftClipSeekTimeoutRef.current = null;
+      }
+      beginDraftClipPlayback(video, clipEnd, clipSpeed);
+    };
+
+    if (Math.abs(video.currentTime - playStart) > 0.015) {
+      video.addEventListener('seeked', startPlayback, { once: true });
+      video.currentTime = playStart;
+      draftClipSeekTimeoutRef.current = window.setTimeout(startPlayback, 120);
+      return;
+    }
+
+    window.requestAnimationFrame(startPlayback);
+  }
+
+  function playDraftClip() {
+    const video = activeDraftVideo();
+    if (!draftClip || !video) {
+      return;
+    }
+
+    const clipStart = draftClip.start;
+    const clipEnd = draftClip.end;
+    const clipSpeed = draftClip.speed;
+    const currentPlayhead = Number.isFinite(draftClipPreviewTimeRef.current)
+      ? draftClipPreviewTimeRef.current
+      : Number.isFinite(video.currentTime)
+        ? video.currentTime
+        : draftClipPreviewTime;
+    const playStart = currentPlayhead >= clipStart && currentPlayhead < clipEnd
+      ? currentPlayhead
+      : clipStart;
+    stopDraftClipPlayback();
+    setDraftVideoTime(playStart);
+    seekDraftClipThenPlay(video, playStart, clipEnd, clipSpeed);
   }
 
   function toggleDraftClipPlayback() {
@@ -490,6 +608,8 @@ export function MixedGifBuilder({
     const duration = state.sourceVideo.duration || video?.duration || 0;
     const start = currentTime;
     const end = Math.min(duration, start + Math.min(Math.max(duration * 0.08, 0.5), 2));
+    draftClipPreviewTimeRef.current = start;
+    setDraftClipPreviewTime(start);
     setDraftClip({ mode: 'create', start, end: Math.max(start + 0.05, end), speed: 1, taps: [] });
     setIsClipModalOpen(true);
     setActiveTab('compose');
@@ -500,7 +620,10 @@ export function MixedGifBuilder({
       return;
     }
     stopDraftClipPlayback();
-    setCurrentTime(activeClip.start);
+    const initialTime = activeClip.start;
+    draftClipPreviewTimeRef.current = initialTime;
+    setCurrentTime(initialTime);
+    setDraftClipPreviewTime(initialTime);
     setDraftClip({
       mode: 'edit',
       itemId: activeClip.id,
@@ -556,10 +679,15 @@ export function MixedGifBuilder({
         speed: item.speed,
         filename: `${itemId}.mp4`,
       });
+      const sourceVideoItem: MixedGifClipItem = {
+        ...item,
+        assetId: asset.id,
+        sourceKind: 'source_video',
+      };
       if (draftClip.mode === 'edit') {
-        dispatch({ type: 'replaceClip', item: { ...item, assetId: asset.id } });
+        dispatch({ type: 'replaceClip', item: sourceVideoItem });
       } else {
-        dispatch({ type: 'addClip', item: { ...item, assetId: asset.id } });
+        dispatch({ type: 'addClip', item: sourceVideoItem });
       }
       setDraftClip(null);
       setIsClipModalOpen(false);
@@ -823,6 +951,7 @@ export function MixedGifBuilder({
 
     const draftVideoUrl = clipVideoUrlForDraft(draftClip);
     const duration = Math.max(draftClipDuration(), 0.001);
+    const modalPreviewTime = Math.min(duration, Math.max(0, draftClipPreviewTime));
     const left = (draftClip.start / duration) * 100;
     const width = ((draftClip.end - draftClip.start) / duration) * 100;
     const modalTitle = draftClip.mode === 'edit' ? 'Configure Clip' : 'Create Clip Asset';
@@ -860,24 +989,42 @@ export function MixedGifBuilder({
                     setIsSourcePlaying(false);
                     stopDraftClipPlayback();
                   }}
-                onLoadedMetadata={(event) => {
-                  event.currentTarget.currentTime = currentTime;
-                  refreshMediaLayout();
-                }}
+                  onLoadedMetadata={(event) => {
+                    const mediaDuration = Number.isFinite(event.currentTarget.duration)
+                      ? event.currentTarget.duration
+                      : duration;
+                    const preferredTime = draftClipPreviewTimeRef.current >= draftClip.start && draftClipPreviewTimeRef.current <= draftClip.end
+                      ? draftClipPreviewTimeRef.current
+                      : draftClip.start;
+                    const nextTime = Math.min(Math.max(0, preferredTime), Math.max(0, mediaDuration));
+                    setDraftVideoTime(nextTime);
+                    refreshMediaLayout();
+                  }}
                   onPause={() => setIsSourcePlaying(false)}
                   onPlay={() => setIsSourcePlaying(true)}
+                  onSeeked={(event) => {
+                    refreshMediaLayout();
+                  }}
                   onTimeUpdate={(event) => {
-                    setCurrentTime(event.currentTarget.currentTime);
-                    setDraftClipPreviewTime(event.currentTarget.currentTime);
+                    if (!isPlayingDraftClip) {
+                      return;
+                    }
+                    const nextTime = Math.min(
+                      draftClip.end,
+                      Math.max(draftClip.start, event.currentTarget.currentTime),
+                    );
+                    draftClipPreviewTimeRef.current = nextTime;
+                    setCurrentTime(nextTime);
+                    setDraftClipPreviewTime(nextTime);
                   }}
                   playsInline
                   src={draftVideoUrl}
                   ref={draftClipVideoRef}
                 />
-                {draftClip.taps.filter((tap) => isTapRippleActive(tap.timestamp, draftClipPreviewTime)).map((tap) => (
+                {draftClip.taps.filter((tap) => isTapRippleActive(tap.timestamp, modalPreviewTime)).map((tap) => (
                   <span
                     className="tap-ripple active"
-                    key={`${tap.id}-${Math.floor((draftClipPreviewTime - tap.timestamp) * 10)}`}
+                    key={`${tap.id}-${Math.floor((modalPreviewTime - tap.timestamp) * 10)}`}
                     style={markerStyleForTap(tap, draftClipWrapRef.current, draftClipVideoRef.current)}
                   />
                 ))}
@@ -897,14 +1044,15 @@ export function MixedGifBuilder({
                 <button className="button secondary" onClick={() => nudgeVideoTime(1)} type="button">+1s</button>
               </div>
               <div className="source-scrub-row">
-                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(modalPreviewTime)}</span>
                 <input
                   max={duration}
                   min={0}
-                  onChange={(event) => setVideoTime(Number(event.target.value))}
+                  onChange={(event) => setDraftVideoTime(Number(event.target.value))}
+                  onInput={(event) => setDraftVideoTime(Number(event.currentTarget.value))}
                   step={0.001}
                   type="range"
-                  value={currentTime}
+                  value={modalPreviewTime}
                 />
                 <span>{formatTime(duration)}</span>
               </div>
@@ -930,6 +1078,7 @@ export function MixedGifBuilder({
                   max={duration}
                   min={0}
                   onChange={(event) => updateDraftClipBoundary('start', Number(event.target.value))}
+                  onInput={(event) => updateDraftClipBoundary('start', Number(event.currentTarget.value))}
                   step={0.001}
                   type="range"
                   value={draftClip.start}
@@ -939,6 +1088,7 @@ export function MixedGifBuilder({
                   max={duration}
                   min={0}
                   onChange={(event) => updateDraftClipBoundary('end', Number(event.target.value))}
+                  onInput={(event) => updateDraftClipBoundary('end', Number(event.currentTarget.value))}
                   step={0.001}
                   type="range"
                   value={draftClip.end}
@@ -1185,6 +1335,18 @@ export function MixedGifBuilder({
     return item.assetId ? assetFileUrl(item.assetId) : '';
   }
 
+  function getTimelineModalPreviewUrl(item: MixedGifItem) {
+    if (item.type === 'screenshot') {
+      return assetFileUrl(item.assetId);
+    }
+
+    if (item.sourceKind === 'asset_file') {
+      return item.assetId ? assetFileUrl(item.assetId) : '';
+    }
+
+    return videoUrl;
+  }
+
   function renderTimelineThumbnail(item: MixedGifItem) {
     const previewUrl = getTimelinePreviewUrl(item);
 
@@ -1204,7 +1366,7 @@ export function MixedGifBuilder({
       return null;
     }
 
-    const previewUrl = getTimelinePreviewUrl(timelinePreviewItem);
+    const previewUrl = getTimelineModalPreviewUrl(timelinePreviewItem);
     const title = timelinePreviewItem.type === 'screenshot' ? 'Screenshot Preview' : 'Clip Preview';
     const subtitle = timelinePreviewItem.type === 'screenshot'
       ? `${formatTime(timelinePreviewItem.sourceTimestamp)} · ${timelinePreviewItem.duration.toFixed(2)}s`
@@ -1232,7 +1394,34 @@ export function MixedGifBuilder({
             {timelinePreviewItem.type === 'screenshot' ? (
               <img alt="Timeline screenshot preview" src={previewUrl} />
             ) : previewUrl ? (
-              <video controls playsInline src={previewUrl} />
+              <video
+                controls
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget;
+                  video.playbackRate = timelinePreviewItem.speed;
+                  video.currentTime = timelinePreviewItem.start;
+                }}
+                onPlay={(event) => {
+                  const video = event.currentTarget;
+                  video.playbackRate = timelinePreviewItem.speed;
+                  if (video.currentTime < timelinePreviewItem.start || video.currentTime >= timelinePreviewItem.end) {
+                    video.currentTime = timelinePreviewItem.start;
+                  }
+                }}
+                onTimeUpdate={(event) => {
+                  const video = event.currentTarget;
+                  if (video.currentTime >= timelinePreviewItem.end) {
+                    video.pause();
+                    video.playbackRate = 1;
+                    video.currentTime = Math.min(
+                      timelinePreviewItem.end,
+                      Math.max(timelinePreviewItem.start, timelinePreviewItem.end - 0.001),
+                    );
+                  }
+                }}
+                playsInline
+                src={previewUrl}
+              />
             ) : (
               <div className="empty-state compact">Clip asset is not available yet.</div>
             )}

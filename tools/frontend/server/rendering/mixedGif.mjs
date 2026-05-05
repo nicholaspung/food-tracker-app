@@ -218,8 +218,11 @@ function clipFilter({ width, item, settings }) {
   const outputDuration = (item.end - item.start) / item.speed;
   const frameDuration = 1 / Math.max(1, settings.fps || 12);
   const filters = [
+    'setpts=PTS-STARTPTS',
     `trim=start=${ffexpr(item.start)}:end=${ffexpr(item.end)}`,
     `setpts=(PTS-STARTPTS)/${ffexpr(item.speed)}`,
+    `trim=start=0:duration=${ffexpr(outputDuration)}`,
+    'setpts=PTS-STARTPTS',
     `scale=${width}:-2:flags=lanczos`,
     'setsar=1',
   ];
@@ -337,16 +340,23 @@ export function parseMixedGifState(state) {
 export async function renderClipMp4({ sourceVideoPath, item, width = 720, cwd }) {
   const tempDir = await mkdtemp(join(tmpdir(), 'tools-clip-'));
   const outputPath = join(tempDir, 'clip.mp4');
+  const rawDuration = item.end - item.start;
 
   try {
     await runCommand('ffmpeg', [
       '-y',
+      '-ss',
+      ffexpr(item.start),
+      '-t',
+      ffexpr(rawDuration),
       '-i',
       sourceVideoPath,
       '-vf',
       [
-        `trim=start=${ffexpr(item.start)}:end=${ffexpr(item.end)}`,
+        'setpts=PTS-STARTPTS',
         `setpts=(PTS-STARTPTS)/${ffexpr(item.speed || 1)}`,
+        `trim=start=0:duration=${ffexpr(rawDuration / (item.speed || 1))}`,
+        'setpts=PTS-STARTPTS',
         `scale=${width}:-2:flags=lanczos`,
         'setsar=1',
         'format=yuv420p',
@@ -425,6 +435,8 @@ export async function renderMixedGif({ state, sourceVideoPath, screenshotResolve
         ], cwd);
       } else {
         let clipInputPath = sourceVideoPath;
+        let renderItem = item;
+        const inputSeekArgs = [];
         if (item.sourceKind === 'asset_file') {
           if (typeof clipAssetResolver !== 'function') {
             throw userInputError(`Item ${index + 1} cannot resolve stored clip asset.`);
@@ -436,13 +448,29 @@ export async function renderMixedGif({ state, sourceVideoPath, screenshotResolve
           if (item.end > clipInfo.duration) {
             throw userInputError(`Item ${index + 1} clip ends after stored clip duration.`);
           }
+        } else {
+          const rawDuration = item.end - item.start;
+          inputSeekArgs.push('-ss', ffexpr(item.start), '-t', ffexpr(rawDuration));
+          renderItem = {
+            ...item,
+            start: 0,
+            end: rawDuration,
+            taps: item.taps.map((tap) => ({
+              ...tap,
+              timestamp: Math.min(
+                Math.max(0, tap.timestamp - item.start),
+                Math.max(0, rawDuration - 0.001),
+              ),
+            })),
+          };
         }
         await runCommand('ffmpeg', [
           '-y',
+          ...inputSeekArgs,
           '-i',
           clipInputPath,
           '-vf',
-          clipFilter({ width: payload.width, item, settings }),
+          clipFilter({ width: payload.width, item: renderItem, settings }),
           '-r',
           String(payload.fps),
           '-an',
