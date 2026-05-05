@@ -1,4 +1,11 @@
-import type { CreateProjectPayload, SourceVideo, ToolAsset, ToolProject } from '@/lib/types';
+import type {
+  CreateProjectPayload,
+  PublishedGifAssignment,
+  PublishedGifsResponse,
+  SourceVideo,
+  ToolAsset,
+  ToolProject,
+} from '@/lib/types';
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -196,4 +203,23 @@ export async function combineGifAssets(payload: {
       body: JSON.stringify(payload),
     }),
   );
+}
+
+export async function listPublishedGifs(): Promise<PublishedGifsResponse> {
+  return parseJsonResponse<PublishedGifsResponse>(await fetch('/api/tools/published-gifs'));
+}
+
+export async function assignPublishedGif(
+  flowSlug: string,
+  assetId: string,
+  notes?: string,
+): Promise<PublishedGifAssignment> {
+  const data = await parseJsonResponse<{ assignment: PublishedGifAssignment }>(
+    await fetch(`/api/tools/published-gifs/${encodeURIComponent(flowSlug)}/assign`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ assetId, notes }),
+    }),
+  );
+  return data.assignment;
 }

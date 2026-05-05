@@ -5,6 +5,7 @@ import { assetFileUrl, combineGifAssets } from '@/lib/api';
 import type { ToolAsset, ToolProject } from '@/lib/types';
 
 interface AssetLibraryPageProps {
+  onAssignPublished?: (asset: ToolAsset) => void;
   projects: ToolProject[];
   onProjectsRefresh: () => Promise<void>;
 }
@@ -27,7 +28,7 @@ function projectSearchText(project: ToolProject) {
   ].join(' ').toLowerCase();
 }
 
-export function AssetLibraryPage({ projects, onProjectsRefresh }: AssetLibraryPageProps) {
+export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefresh }: AssetLibraryPageProps) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<AssetFilter>('all');
   const [previewAsset, setPreviewAsset] = useState<ToolAsset | null>(null);
@@ -321,6 +322,11 @@ export function AssetLibraryPage({ projects, onProjectsRefresh }: AssetLibraryPa
               {previewAsset.mimeType === 'image/gif' ? (
                 <button className="button secondary" onClick={() => setGifRestartVersion((value) => value + 1)} type="button">
                   Restart GIF
+                </button>
+              ) : null}
+              {previewAsset.kind === 'gif_export' && previewAsset.mimeType === 'image/gif' && onAssignPublished ? (
+                <button className="button" onClick={() => onAssignPublished(previewAsset)} type="button">
+                  Assign as Published
                 </button>
               ) : null}
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { AssetLibraryPage } from '@/features/projects/AssetLibraryPage';
+import { PublishedGifsPage } from '@/features/projects/PublishedGifsPage';
 import { ProjectEditorPage } from '@/features/projects/ProjectEditorPage';
 import { VideoToolsHome, defaultProjectName } from '@/features/projects/VideoToolsHome';
 import { createInitialState } from '@/features/mixed-gif/state';
@@ -17,10 +18,17 @@ import type { SourceVideo, ToolProject } from '@/lib/types';
 type ToolsView =
   | { name: 'videoToolsHome' }
   | { name: 'projectEditor'; projectId: string }
-  | { name: 'assetLibrary' };
+  | { name: 'assetLibrary' }
+  | { name: 'publishedGifs'; initialAssetId?: string; initialFlowSlug?: string };
 
 function activeSidebarItem(view: ToolsView) {
-  return view.name === 'assetLibrary' ? 'assetLibrary' : 'videoTools';
+  if (view.name === 'assetLibrary') {
+    return 'assetLibrary';
+  }
+  if (view.name === 'publishedGifs') {
+    return 'publishedGifs';
+  }
+  return 'videoTools';
 }
 
 export function App() {
@@ -172,6 +180,8 @@ export function App() {
         <span aria-hidden="true">/</span>
         {view.name === 'assetLibrary' ? (
           <span>Asset Library</span>
+        ) : view.name === 'publishedGifs' ? (
+          <span>Published GIFs</span>
         ) : (
           <>
             {view.name === 'projectEditor' ? (
@@ -193,7 +203,30 @@ export function App() {
 
   function renderContent() {
     if (view.name === 'assetLibrary') {
-      return <AssetLibraryPage onProjectsRefresh={refreshProjects} projects={projects} />;
+      return (
+        <AssetLibraryPage
+          onAssignPublished={(asset) => {
+            setView({
+              name: 'publishedGifs',
+              initialAssetId: asset.id,
+              initialFlowSlug: projects.find((project) => project.id === asset.project)?.flowSlug,
+            });
+          }}
+          onProjectsRefresh={refreshProjects}
+          projects={projects}
+        />
+      );
+    }
+
+    if (view.name === 'publishedGifs') {
+      return (
+        <PublishedGifsPage
+          initialAssetId={view.initialAssetId}
+          initialFlowSlug={view.initialFlowSlug}
+          onProjectsRefresh={refreshProjects}
+          projects={projects}
+        />
+      );
     }
 
     if (view.name === 'projectEditor' && selectedProject) {
@@ -269,6 +302,16 @@ export function App() {
           >
             <span className="nav-label">Asset Library</span>
             <span className="nav-short-label">Assets</span>
+          </button>
+          <button
+            aria-label="Published GIFs"
+            className={activeItem === 'publishedGifs' ? 'active' : ''}
+            onClick={() => setView({ name: 'publishedGifs' })}
+            title={isSidebarCollapsed ? 'Published GIFs' : undefined}
+            type="button"
+          >
+            <span className="nav-label">Published GIFs</span>
+            <span className="nav-short-label">Publish</span>
           </button>
         </nav>
       </aside>

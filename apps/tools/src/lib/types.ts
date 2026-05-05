@@ -46,6 +46,47 @@ export interface ToolAsset {
   updated: string;
 }
 
+export interface TutorialFlowDefinition {
+  slug: string;
+  title: string;
+  section: string;
+  navigationHint: string;
+  mobileAssetFilename?: string;
+  mobileAssetKey?: string;
+}
+
+export type PublishedGifCopyStatus = 'copied' | 'tracked_only' | 'copy_failed';
+
+export interface PublishedGifAssignment {
+  id: string;
+  flowSlug: string;
+  flowTitle: string;
+  flowSection?: string;
+  asset: string;
+  project: string;
+  assetFilename: string;
+  assetFile?: string;
+  sourceProjectName?: string;
+  sourceProjectFlowSlug?: string;
+  sourceVideoPath?: string;
+  sourceVideoFilename?: string;
+  targetRelativePath?: string;
+  copiedToPath?: string;
+  copiedBytes?: number;
+  copyStatus: PublishedGifCopyStatus;
+  copyError?: string;
+  isCurrent: boolean;
+  notes?: string;
+  created: string;
+  updated: string;
+}
+
+export interface PublishedGifsResponse {
+  flows: TutorialFlowDefinition[];
+  current: PublishedGifAssignment[];
+  history: PublishedGifAssignment[];
+}
+
 export interface MixedGifExportSettings {
   outputFilename: string;
   defaultScreenshotDuration: number;

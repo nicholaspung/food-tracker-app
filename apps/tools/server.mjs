@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createReadStream } from 'node:fs';
-import { mkdir, readdir, readFile, rename, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,30 @@ const MIME_TYPES = new Map([
   ['.mp4', 'video/mp4'],
   ['.mov', 'video/quicktime'],
 ]);
+
+const TUTORIAL_FLOWS = [
+  { slug: 'welcome', title: 'Welcome to Yummy Recs', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Welcome to Yummy Recs' },
+  { slug: 'month-privacy', title: 'Shared with Breathing Room', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Shared with Breathing Room' },
+  { slug: 'tutorials', title: 'Watch Feature Tutorials', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Watch Feature Tutorials' },
+  { slug: 'friends', title: 'Add Friends Intentionally', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Add Friends Intentionally' },
+  { slug: 'more-tools', title: 'More Than Tracking', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> More Than Tracking' },
+  { slug: 'lists-intro', title: 'Use Lists for Ideas', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Use Lists for Ideas' },
+  { slug: 'bills-tips', title: 'Split Bills and Calculate Tips', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Split Bills and Calculate Tips' },
+  { slug: 'settings', title: 'Personalize Your Experience', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Personalize Your Experience' },
+  { slug: 'support-invites', title: 'Invite Friends and Get Help', section: 'Getting Started', navigationHint: 'Profile -> Tutorials -> Invite Friends and Get Help' },
+  { slug: 'track-restaurant-visit', title: 'Track Restaurant Visit', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Track Restaurant Visit', mobileAssetFilename: 'track-restaurant-visit.gif', mobileAssetKey: 'trackRestaurantVisit' },
+  { slug: 'track-food-product', title: 'Track Food Product', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Track Food Product', mobileAssetFilename: 'track-food-product.gif', mobileAssetKey: 'trackFoodProduct' },
+  { slug: 'log-note', title: 'Log a Note', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Log a Note', mobileAssetFilename: 'log-note.gif', mobileAssetKey: 'logNote' },
+  { slug: 'process-saved-photos', title: 'Process Saved Photos', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Process Saved Photos', mobileAssetFilename: 'process-saved-photos.gif', mobileAssetKey: 'processSavedPhotos' },
+  { slug: 'manage-notes', title: 'Manage Notes', section: 'Add Tutorials', navigationHint: 'Profile -> Tutorials -> Manage Notes', mobileAssetFilename: 'manage-notes.gif', mobileAssetKey: 'manageNotes' },
+  { slug: 'lists', title: 'Restaurant Lists', section: 'More Tutorials', navigationHint: 'Profile -> Tutorials -> Restaurant Lists', mobileAssetFilename: 'lists.gif', mobileAssetKey: 'lists' },
+  { slug: 'split-bill', title: 'Split a Bill', section: 'More Tutorials', navigationHint: 'Profile -> Tutorials -> Split a Bill', mobileAssetFilename: 'split-bill.gif', mobileAssetKey: 'splitBill' },
+  { slug: 'tip-calculator', title: 'Tip Calculator', section: 'More Tutorials', navigationHint: 'Profile -> Tutorials -> Tip Calculator', mobileAssetFilename: 'tip-calculator.gif', mobileAssetKey: 'tipCalculator' },
+];
+
+function findTutorialFlow(slug) {
+  return TUTORIAL_FLOWS.find((flow) => flow.slug === slug) || null;
+}
 
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -347,6 +371,165 @@ async function findAssetTimelineReferences(assetId) {
   }
 
   return references;
+}
+
+async function listPublishedGifAssignments(query = '') {
+  const suffix = query ? `&${query}` : '';
+  const data = await pbJson(`/api/collections/tool_published_gif_assignments/records?perPage=500&sort=-created${suffix}`);
+  return data.items || [];
+}
+
+async function listCurrentPublishedGifAssignments() {
+  const filter = encodeURIComponent('isCurrent=true');
+  return listPublishedGifAssignments(`filter=${filter}`);
+}
+
+async function findAssetPublishedReferences(assetId) {
+  const filter = encodeURIComponent(`asset="${assetId}"`);
+  const assignments = await listPublishedGifAssignments(`filter=${filter}`);
+  return assignments.map((assignment) => ({
+    assignmentId: assignment.id,
+    flowSlug: assignment.flowSlug,
+    flowTitle: assignment.flowTitle,
+    isCurrent: Boolean(assignment.isCurrent),
+  }));
+}
+
+async function updateAssignment(assignmentId, body) {
+  return pbJson(`/api/collections/tool_published_gif_assignments/records/${encodeURIComponent(assignmentId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+async function createPublishedGifAssignment(body) {
+  return pbJson('/api/collections/tool_published_gif_assignments/records', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+async function copyPublishedGifToMobileAsset(asset, buffer, flow) {
+  if (!flow.mobileAssetFilename) {
+    return {
+      copyStatus: 'tracked_only',
+      copiedToPath: '',
+      targetRelativePath: '',
+      copiedBytes: 0,
+      copyError: '',
+    };
+  }
+
+  const targetRelativePath = join('apps/mobile/assets/onboarding', flow.mobileAssetFilename);
+  const targetPath = resolve(REPO_ROOT, targetRelativePath);
+  const targetDir = resolve(REPO_ROOT, 'apps/mobile/assets/onboarding');
+  const targetPrefix = `${targetDir}${sep}`;
+  if (targetPath !== targetDir && !targetPath.startsWith(targetPrefix)) {
+    throw userInputError('Published GIF target path is invalid.');
+  }
+
+  const tempPath = join(targetDir, `.${flow.mobileAssetFilename}.${Date.now()}.tmp`);
+  await writeFile(tempPath, buffer);
+  await rename(tempPath, targetPath);
+  return {
+    copyStatus: 'copied',
+    copiedToPath: targetPath,
+    targetRelativePath,
+    copiedBytes: buffer.length || asset.bytes || 0,
+    copyError: '',
+  };
+}
+
+async function assignPublishedGif(flowSlug, body) {
+  const flow = findTutorialFlow(flowSlug);
+  if (!flow) {
+    throw userInputError('Unknown tutorial flow.');
+  }
+  const assetId = typeof body.assetId === 'string' ? body.assetId : '';
+  if (!assetId) {
+    throw userInputError('Choose a GIF asset.');
+  }
+
+  const { record: asset, buffer } = await resolveAssetFileBuffer(assetId);
+  if (asset.kind !== 'gif_export' || asset.mimeType !== 'image/gif') {
+    throw userInputError('Only saved GIF exports can be published.');
+  }
+  const project = await getProject(asset.project);
+
+  let copyResult;
+  try {
+    copyResult = await copyPublishedGifToMobileAsset(asset, buffer, flow);
+  } catch (error) {
+    copyResult = {
+      copyStatus: 'copy_failed',
+      copiedToPath: '',
+      targetRelativePath: flow.mobileAssetFilename ? join('apps/mobile/assets/onboarding', flow.mobileAssetFilename) : '',
+      copiedBytes: 0,
+      copyError: error instanceof Error ? error.message : 'Could not copy GIF to mobile assets.',
+    };
+  }
+
+  const currentAssignments = await listCurrentPublishedGifAssignments();
+  await Promise.all(
+    currentAssignments
+      .filter((assignment) => assignment.flowSlug === flow.slug)
+      .map((assignment) => updateAssignment(assignment.id, { isCurrent: false })),
+  );
+
+  const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 5000) : '';
+  const assignment = await createPublishedGifAssignment({
+    flowSlug: flow.slug,
+    flowTitle: flow.title,
+    flowSection: flow.section,
+    asset: asset.id,
+    project: project.id,
+    assetFilename: asset.filename,
+    assetFile: asset.file || '',
+    sourceProjectName: project.name || '',
+    sourceProjectFlowSlug: project.flowSlug || '',
+    sourceVideoPath: project.sourceVideoPath || '',
+    sourceVideoFilename: project.sourceVideoFilename || '',
+    targetRelativePath: copyResult.targetRelativePath,
+    copiedToPath: copyResult.copiedToPath,
+    copiedBytes: copyResult.copiedBytes,
+    copyStatus: copyResult.copyStatus,
+    copyError: copyResult.copyError,
+    isCurrent: true,
+    notes,
+  });
+
+  if (copyResult.copyStatus === 'copy_failed') {
+    const error = new Error(copyResult.copyError || 'Could not copy GIF to mobile assets.');
+    error.statusCode = 500;
+    error.payload = { assignment };
+    throw error;
+  }
+
+  return assignment;
+}
+
+async function handlePublishedGifs(_req, res) {
+  const history = await listPublishedGifAssignments();
+  const current = history.filter((assignment) => assignment.isCurrent);
+  sendJson(res, 200, {
+    flows: TUTORIAL_FLOWS,
+    current,
+    history,
+  });
+}
+
+async function handlePublishedGifAssign(req, res, flowSlug) {
+  const assignment = await assignPublishedGif(flowSlug, await readJsonBody(req));
+  sendJson(res, 201, { assignment });
+}
+
+async function handlePublishedGifHistory(_req, res, flowSlug) {
+  const flow = findTutorialFlow(flowSlug);
+  if (!flow) {
+    throw userInputError('Unknown tutorial flow.');
+  }
+  const filter = encodeURIComponent(`flowSlug="${flow.slug}"`);
+  sendJson(res, 200, { items: await listPublishedGifAssignments(`filter=${filter}`) });
 }
 
 async function handleSourceVideos(_req, res) {
@@ -746,6 +929,14 @@ async function handleAssetDelete(_req, res, assetId) {
     throw userInputError('Source references cannot be deleted from the asset grid.');
   }
 
+  const publishedReferences = await findAssetPublishedReferences(assetId);
+  if (publishedReferences.length > 0) {
+    const error = new Error('Asset is used by published GIF history.');
+    error.statusCode = 409;
+    error.payload = { references: publishedReferences, usedBy: publishedReferences };
+    throw error;
+  }
+
   const references = await findAssetTimelineReferences(assetId);
   if (references.length > 0) {
     const error = new Error('Asset is used by one or more timeline items.');
@@ -867,6 +1058,20 @@ const server = createServer((req, res) => {
     }
     if (pathname === '/api/tools/gif-combinations' && req.method === 'POST') {
       await handleGifCombinationCreate(req, res);
+      return;
+    }
+    if (pathname === '/api/tools/published-gifs' && req.method === 'GET') {
+      await handlePublishedGifs(req, res);
+      return;
+    }
+    const publishedAssignMatch = pathname.match(/^\/api\/tools\/published-gifs\/([^/]+)\/assign$/);
+    if (publishedAssignMatch && req.method === 'POST') {
+      await handlePublishedGifAssign(req, res, publishedAssignMatch[1]);
+      return;
+    }
+    const publishedHistoryMatch = pathname.match(/^\/api\/tools\/published-gifs\/([^/]+)\/history$/);
+    if (publishedHistoryMatch && req.method === 'GET') {
+      await handlePublishedGifHistory(req, res, publishedHistoryMatch[1]);
       return;
     }
     if (pathname === '/api/tools/assets') {
