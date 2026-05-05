@@ -3,12 +3,14 @@ import type { ToolAsset, ToolProject } from '@/lib/types';
 
 interface AssetGridProps {
   assets: ToolAsset[];
+  className?: string;
   emptyText?: string;
   onOpenAsset?: (asset: ToolAsset) => void;
   onDeleteAsset?: (asset: ToolAsset) => void;
   isAssetDeleteDisabled?: (asset: ToolAsset) => boolean;
   deleteDisabledReason?: (asset: ToolAsset) => string;
   projectById?: Map<string, ToolProject>;
+  scrollable?: boolean;
 }
 
 function formatBytes(value?: number) {
@@ -23,14 +25,26 @@ function formatBytes(value?: number) {
 
 export function AssetGrid({
   assets,
+  className,
   emptyText = 'Saved screenshots, clips, and GIFs appear here.',
   deleteDisabledReason,
   isAssetDeleteDisabled,
   onDeleteAsset,
   onOpenAsset,
   projectById,
+  scrollable = true,
 }: AssetGridProps) {
   const storedAssets = assets.filter((asset) => asset.kind !== 'source_reference');
+  const panelClassName = [
+    'panel',
+    'asset-grid-panel',
+    scrollable ? 'scrollable-panel' : '',
+    className || '',
+  ].filter(Boolean).join(' ');
+  const gridClassName = [
+    'asset-grid',
+    scrollable ? 'scrollable-panel-body' : '',
+  ].filter(Boolean).join(' ');
 
   function renderAssetPreview(asset: ToolAsset) {
     if (asset.mimeType.startsWith('image/')) {
@@ -53,7 +67,7 @@ export function AssetGrid({
   }
 
   return (
-    <section className="panel asset-grid-panel">
+    <section className={panelClassName}>
       <div className="panel-header">
         <div>
           <p className="eyebrow">Assets</p>
@@ -61,7 +75,7 @@ export function AssetGrid({
         </div>
         <span className="count-pill">{storedAssets.length}</span>
       </div>
-      <div className="asset-grid">
+      <div className={gridClassName}>
         {storedAssets.length === 0 ? (
           <div className="empty-state">{emptyText}</div>
         ) : storedAssets.map((asset) => {

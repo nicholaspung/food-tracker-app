@@ -16,7 +16,7 @@ export interface FeatureIntroConfig<Destination extends keyof RootStackParamList
   title: string;
   subtitle: string;
   description: string;
-  imageSource: ImageSourcePropType;
+  imageSource?: ImageSourcePropType;
   iconName: IoniconName;
   iconTone: FeatureIntroIconTone;
   destination: Destination;
@@ -56,6 +56,16 @@ const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
   image: {
     height: '100%',
     width: '100%',
+  },
+  iconFrame: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 96,
+    justifyContent: 'center',
+    width: 96,
   },
   titleRow: {
     alignItems: 'center',
@@ -97,7 +107,13 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
   return (
     <View style={[styles.body, isImmersiveLayout ? styles.immersiveBody : null]}>
       <View style={styles.imageFrame}>
-        <Image resizeMode={imageResizeMode} source={config.imageSource} style={styles.image} />
+        {config.imageSource ? (
+          <Image resizeMode={imageResizeMode} source={config.imageSource} style={styles.image} />
+        ) : (
+          <View style={styles.iconFrame}>
+            <Ionicons color={iconColor} name={config.iconName} size={44} />
+          </View>
+        )}
       </View>
       <View style={styles.copyCluster}>
         <View style={styles.titleRow}>

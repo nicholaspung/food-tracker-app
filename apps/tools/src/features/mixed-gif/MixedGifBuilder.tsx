@@ -148,6 +148,7 @@ export function MixedGifBuilder({
   const [isClipModalOpen, setIsClipModalOpen] = useState(false);
   const [draftClipPreviewTime, setDraftClipPreviewTime] = useState(0);
   const [, setMediaLayoutVersion] = useState(0);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewRestartVersion, setPreviewRestartVersion] = useState(0);
   const [timelinePreviewItem, setTimelinePreviewItem] = useState<MixedGifItem | null>(null);
@@ -205,6 +206,18 @@ export function MixedGifBuilder({
 
   function refreshMediaLayout() {
     setMediaLayoutVersion((version) => version + 1);
+  }
+
+  function replacePreviewUrl(blob: Blob) {
+    setPreviewUrl(URL.createObjectURL(blob));
+  }
+
+  function restartGeneratedPreview() {
+    if (!previewBlob) {
+      return;
+    }
+    replacePreviewUrl(previewBlob);
+    setPreviewRestartVersion((version) => version + 1);
   }
 
   function openProjectPreviewAsset(asset: ToolAsset) {
@@ -656,11 +669,8 @@ export function MixedGifBuilder({
     setStatus('Generating GIF preview...');
     try {
       const blob = await previewMixedGif(project.id, state);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      const nextPreviewUrl = URL.createObjectURL(blob);
-      setPreviewUrl(nextPreviewUrl);
+      setPreviewBlob(blob);
+      replacePreviewUrl(blob);
       setPreviewRestartVersion(0);
       setStatus('Preview generated.');
       window.requestAnimationFrame(() => {
@@ -1122,7 +1132,7 @@ export function MixedGifBuilder({
               <h2>Generated Preview</h2>
               <button
                 className="button secondary"
-                onClick={() => setPreviewRestartVersion((version) => version + 1)}
+                onClick={restartGeneratedPreview}
                 type="button"
               >
                 Restart Preview

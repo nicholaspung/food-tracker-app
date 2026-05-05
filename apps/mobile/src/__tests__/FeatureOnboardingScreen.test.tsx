@@ -265,6 +265,24 @@ describe('FeatureOnboardingScreen', () => {
     expect(descriptionText?.props.ellipsizeMode).toBe('tail');
   });
 
+  it('renders configured GIF media and icon fallback media in the carousel', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+    const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
+
+    expect(imageSources).toContainEqual({ uri: 'asset://lists' });
+    expect(imageSources).toContainEqual({ uri: 'asset://split-bill' });
+
+    expect(
+      renderer.root.findAll(
+        (node: any) =>
+          node.type === 'Ionicons' &&
+          node.props.name === 'calendar-outline' &&
+          node.props.color === 'brand' &&
+          node.props.size === 44,
+      ),
+    ).toHaveLength(1);
+  });
+
   it('starts on the requested main onboarding card', async () => {
     const renderer = await renderFeatureOnboardingScreen({
       initialCardId: 'support_invites',

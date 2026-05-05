@@ -272,6 +272,18 @@ a {
   padding: 16px;
 }
 
+.scrollable-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.scrollable-panel-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .breadcrumbs {
   align-items: center;
   color: var(--muted);
@@ -1089,24 +1101,17 @@ label {
   overflow: hidden;
 }
 
-.asset-library-content .asset-grid-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  overflow: hidden;
-}
-
 .asset-grid {
+  align-content: start;
   display: grid;
   gap: 12px;
+  grid-auto-rows: max-content;
   grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
   padding: 16px;
 }
 
 .asset-library-content .asset-grid {
-  align-content: start;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  overflow-y: auto;
 }
 
 .asset-library-page .asset-grid-panel {
@@ -1114,22 +1119,20 @@ label {
 }
 
 .assets-tab-panel {
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
 
 .assets-tab-panel .asset-grid-panel {
+  height: 100%;
   box-shadow: none;
-}
-
-.assets-tab-panel .asset-grid {
-  overflow-y: auto;
 }
 
 .asset-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   overflow: hidden;
 }
 
@@ -1222,16 +1225,8 @@ label {
   gap: 10px;
 }
 
-.source-reference-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  overflow: hidden;
-}
-
 .source-reference-panel .source-reference-list {
   align-content: start;
-  overflow-y: auto;
 }
 
 .source-reference-row {
@@ -1742,11 +1737,19 @@ label {
 }
 
 .published-selected-header {
-  display: grid;
-  gap: 4px;
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
 }
 
-.published-selected-header span {
+.published-selected-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.published-selected-copy span {
   color: var(--muted);
   font-size: 13px;
 }
@@ -2239,11 +2242,13 @@ label {
     overflow: visible;
   }
 
+  .scrollable-panel,
   .asset-library-content .asset-grid-panel,
   .source-reference-panel {
     overflow: visible;
   }
 
+  .scrollable-panel-body,
   .asset-library-content .asset-grid,
   .source-reference-panel .source-reference-list {
     overflow: visible;

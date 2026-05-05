@@ -220,7 +220,7 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
           projectById={projectById}
         />
 
-        <section className="panel source-reference-panel">
+        <section className="panel source-reference-panel scrollable-panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Sources</p>
@@ -228,7 +228,7 @@ export function AssetLibraryPage({ onAssignPublished, projects, onProjectsRefres
             </div>
             <span className="count-pill">{sourceReferences.length}</span>
           </div>
-          <div className="panel-body source-reference-list">
+          <div className="panel-body source-reference-list scrollable-panel-body">
             {sourceReferences.length === 0 ? (
               <div className="empty-state">Source video references appear here after projects are created.</div>
             ) : sourceReferences.map((asset: ToolAsset) => {

@@ -75,6 +75,7 @@ export function PublishedGifsPage({
   const [notes, setNotes] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState('');
+  const [assignPreviewRestartVersion, setAssignPreviewRestartVersion] = useState(0);
   const openedInitialModalKey = useRef('');
 
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
@@ -181,6 +182,7 @@ export function PublishedGifsPage({
       flowSlug: nextFlowSlug,
       assetId: initialAsset?.id || gifAssets[0]?.id || '',
     });
+    setAssignPreviewRestartVersion((version) => version + 1);
     setAssetQuery('');
     setNotes('');
     setAssignError('');
@@ -192,9 +194,15 @@ export function PublishedGifsPage({
       || gifAssets[0]
       || null;
     setAssignModal({ flowSlug: flow.slug, assetId: matchingAsset?.id || '' });
+    setAssignPreviewRestartVersion((version) => version + 1);
     setAssetQuery('');
     setNotes('');
     setAssignError('');
+  }
+
+  function selectAssignAsset(assetId: string) {
+    setAssignModal((current) => current ? { ...current, assetId } : current);
+    setAssignPreviewRestartVersion((version) => version + 1);
   }
 
   function openHistoryModal(flowSlug: string, preferredAssignmentId?: string) {
@@ -392,7 +400,7 @@ export function PublishedGifsPage({
                         className={`published-asset-row${assignModal.assetId === asset.id ? ' selected' : ''}`}
                         disabled={isAssigning}
                         key={asset.id}
-                        onClick={() => setAssignModal((current) => current ? { ...current, assetId: asset.id } : current)}
+                        onClick={() => selectAssignAsset(asset.id)}
                         type="button"
                       >
                         <span className="published-asset-thumb">
@@ -411,11 +419,25 @@ export function PublishedGifsPage({
                   {selectedAsset ? (
                     <>
                       <div className="published-selected-header">
-                        <strong>{selectedAsset.filename}</strong>
-                        <span>{projectById.get(selectedAsset.project)?.name || 'Unknown project'}</span>
+                        <div className="published-selected-copy">
+                          <strong>{selectedAsset.filename}</strong>
+                          <span>{projectById.get(selectedAsset.project)?.name || 'Unknown project'}</span>
+                        </div>
+                        <button
+                          className="button secondary"
+                          disabled={isAssigning}
+                          onClick={() => setAssignPreviewRestartVersion((version) => version + 1)}
+                          type="button"
+                        >
+                          Reset GIF
+                        </button>
                       </div>
                       <div className="published-selected-media">
-                        <img alt={selectedAsset.filename} src={assetFileUrl(selectedAsset.id)} />
+                        <img
+                          alt={selectedAsset.filename}
+                          key={`${selectedAsset.id}-${assignPreviewRestartVersion}`}
+                          src={assetFileUrl(selectedAsset.id, assignPreviewRestartVersion)}
+                        />
                       </div>
                       <div className="published-target-summary">
                         {selectedFlow?.mobileAssetFilename ? (

@@ -10,6 +10,7 @@ const TEST_THEME = {
   colors: {
     background: {
       muted: 'muted-background',
+      surface: 'surface-background',
     },
     border: {
       subtle: 'subtle-border',
@@ -24,6 +25,7 @@ const TEST_THEME = {
   },
   radii: {
     md: 8,
+    pill: 999,
   },
   spacing: {
     xs: 8,
@@ -40,6 +42,10 @@ jest.mock('../theme', () => ({
     (...args: Args) =>
       factory(TEST_THEME, ...args),
   useTheme: () => TEST_THEME,
+}));
+
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
 jest.mock('../ui', () => ({
@@ -92,6 +98,47 @@ describe('FeatureIntroScreenContent', () => {
       buttons[0].props.onPress();
     });
     expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the icon fallback when no image source is configured', async () => {
+    const onPrimaryPress = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureIntroScreenContent
+          config={{
+            analyticsFeature: 'settings',
+            description: 'Choose appearance and feed preferences.',
+            destination: 'Settings',
+            iconName: 'settings-outline',
+            iconTone: 'brand',
+            primaryLabel: 'Open Settings',
+            subtitle: 'Settings',
+            title: 'Personalize your experience',
+          }}
+          errorMessage={null}
+          isSubmitting={false}
+          onPrimaryPress={onPrimaryPress}
+          primaryTestID="primary-button"
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+    expect(
+      renderer.root.findAll(
+        (node: any) =>
+          node.type === 'Ionicons' &&
+          node.props.name === 'settings-outline' &&
+          node.props.color === TEST_THEME.colors.text.brand &&
+          node.props.size === 44,
+      ),
+    ).toHaveLength(1);
+
+    const buttons = renderer.root.findAllByType('Button');
+    expect(buttons.map((button: any) => button.props.label)).toEqual(['Open Settings']);
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
   });
 
   it('renders immersive layout with a contained image and one primary action', async () => {
