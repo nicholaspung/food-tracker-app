@@ -33,6 +33,8 @@ export * from './PhotoProcessingScreen';
 export * from './PrivacyPolicyScreen';
 export * from './ProfileScreen';
 export * from './QRScannerScreen';
+export * from './RestaurantDiscoveryRestaurantScreen';
+export * from './RestaurantDiscoveryScreen';
 export * from './FoodProductScreen';
 export * from './ResetPasswordScreen';
 export * from './SettingsScreen';

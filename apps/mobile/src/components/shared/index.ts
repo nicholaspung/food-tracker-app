@@ -61,4 +61,6 @@ export * from './VisibilityOptionSelector';
 export * from './VisitMenuItemOptionRow';
 export * from './VisitMetadataCard';
 export * from './VisitRestaurantOptionTrailing';
+export * from './VisitRestaurantSearchHeaderToggle';
+export * from './VisitRestaurantSearchOptionDescription';
 export * from './VisitRestaurantSearchSection';

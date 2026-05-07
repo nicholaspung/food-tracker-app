@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "APP_OPEN_URL",
+    "EXPO_PUBLIC_*",
+    "FOOD_TRACKER_*",
+    "GOOGLE_*",
+    "LOOPS_*",
+    "MARKETING_DEV_PORT",
+    "POSTHOG_*",
+    "VITE_*"
+  ],
+  "ui": "tui",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "interactive": true,
+      "persistent": true
+    }
+  }
+}

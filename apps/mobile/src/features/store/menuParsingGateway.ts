@@ -5,11 +5,40 @@ interface ParseMenuImageInput {
   uri: string;
   name: string;
   mimeType: string;
+  restaurantId?: string;
+  restaurantName?: string;
 }
 
 interface ParseMenuImageResponse {
   csv: string;
+  verification?: {
+    checked: boolean;
+    matched: boolean | null;
+    confidence: 'high' | 'medium' | 'low' | 'unknown';
+    selectedRestaurantName?: string;
+    observedRestaurantNames: string[];
+    reason?: string;
+  };
 }
+
+export type RestaurantNameExtractionResponse =
+  | {
+      found: true;
+      options: {
+        name: string;
+        confidence: 'high' | 'medium' | 'low';
+        reason?: string;
+      }[];
+      language?: string;
+    }
+  | {
+      found: false;
+      allText?: string;
+    }
+  | {
+      error: 'NOT_RESTAURANT';
+      reason?: string;
+    };
 
 interface CreateMenuReviewRequestInput {
   restaurantId: string;
@@ -44,12 +73,28 @@ function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
     name: input.name,
     type: input.mimeType,
   } as unknown as Blob);
+  if (input.restaurantId?.trim()) {
+    formData.append('restaurantId', input.restaurantId.trim());
+  }
+  if (input.restaurantName?.trim()) {
+    formData.append('restaurantName', input.restaurantName.trim());
+  }
   return formData;
 }
 
 export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseMenuImageResponse> {
   const formData = buildParseMenuFormData(input);
   return sendApiRequest<ParseMenuImageResponse>('/api/parse-menu', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function extractRestaurantNamesFromImage(
+  input: ParseMenuImageInput,
+): Promise<RestaurantNameExtractionResponse> {
+  const formData = buildParseMenuFormData(input);
+  return sendApiRequest<RestaurantNameExtractionResponse>('/api/find-restaurant-name', {
     method: 'POST',
     body: formData,
   });

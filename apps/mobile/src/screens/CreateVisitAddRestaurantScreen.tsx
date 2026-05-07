@@ -49,9 +49,10 @@ export function CreateVisitAddRestaurantScreen({
   const { user } = useAuth();
   const editVisitId = route.params?.editVisitId;
   const sourceNoteId = route.params?.sourceNoteId;
+  const returnTo = route.params?.returnTo ?? 'CreateVisit';
 
-  const [restaurantName, setRestaurantName] = useState('');
-  const [restaurantLocation, setRestaurantLocation] = useState('');
+  const [restaurantName, setRestaurantName] = useState(route.params?.initialRestaurantName ?? '');
+  const [restaurantLocation, setRestaurantLocation] = useState(route.params?.initialLocation ?? '');
   const [restaurantCuisine, setRestaurantCuisine] = useState('');
   const [visibility, setVisibility] = useState<RestaurantVisibility>(resolveDefaultRestaurantVisibility());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -112,6 +113,27 @@ export function CreateVisitAddRestaurantScreen({
         restaurantId: createdRestaurant.id,
         visibility,
       });
+      if (returnTo === 'RestaurantDiscovery') {
+        navigation.popTo('RestaurantDiscovery');
+        return;
+      }
+
+      if (returnTo === 'RestaurantDiscoveryRestaurant') {
+        navigation.replace('RestaurantDiscoveryRestaurant', {
+          city: createdRestaurant.city,
+          cuisineType: createdRestaurant.cuisineType,
+          isGooglePlace: createdRestaurant.isGooglePlace,
+          latitude: createdRestaurant.latitude,
+          location: createdRestaurant.location,
+          longitude: createdRestaurant.longitude,
+          placeId: createdRestaurant.placeId,
+          restaurantId: createdRestaurant.id,
+          restaurantName: createdRestaurant.name,
+          visibility: createdRestaurant.visibility,
+        });
+        return;
+      }
+
       navigation.popTo('CreateVisit', {
         editVisitId,
         preselectedRestaurantId: createdRestaurant.id,

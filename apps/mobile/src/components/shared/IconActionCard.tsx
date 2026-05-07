@@ -20,6 +20,7 @@ export interface IconActionCardProps {
   layout?: IconActionCardLayout;
   tone?: IconActionCardTone;
   testID?: string;
+  titleAccessory?: ReactNode;
   trailing?: ReactNode;
 }
 
@@ -61,6 +62,13 @@ const useStyles = createThemedStyles((theme, isVertical: boolean, tone: IconActi
     flex: isVertical ? undefined : 1,
     gap: theme.spacing.xxs,
   },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    justifyContent: isVertical ? 'center' : 'flex-start',
+  },
   title: {
     textAlign: isVertical ? 'center' : 'left',
   },
@@ -89,6 +97,7 @@ export function IconActionCard({
   layout = 'horizontal',
   tone = 'default',
   testID,
+  titleAccessory,
   trailing,
 }: IconActionCardProps) {
   const isVertical = layout === 'vertical';
@@ -105,9 +114,12 @@ export function IconActionCard({
               <Ionicons color={iconColor} name={iconName} size={isVertical ? 18 : 22} />
             </View>
             <View style={styles.textWrap}>
-              <Text style={styles.title} tone={titleTone} variant="label">
-                {title}
-              </Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.title} tone={titleTone} variant="label">
+                  {title}
+                </Text>
+                {titleAccessory}
+              </View>
               <Text
                 style={styles.description}
                 tone={descriptionTone}

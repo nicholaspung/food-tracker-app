@@ -24,7 +24,7 @@ function projectSearchText(project: ToolProject) {
   return [
     project.name,
     project.flowSlug || '',
-    project.sourceVideoFilename,
+    project.sourceVideoFilename || '',
   ].join(' ').toLowerCase();
 }
 

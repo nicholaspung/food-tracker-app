@@ -3,7 +3,12 @@ import type { ComponentProps } from 'react';
 import { ScrollView } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
-import { ScreenContentSection, TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
+import {
+  ScreenContentSection,
+  StatusPill,
+  TabBrandHeader,
+  TabRootScreenScaffold,
+} from '../components/shared';
 import { isAddOnboardingCardDismissed } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -12,16 +17,23 @@ import { createThemedStyles, useTheme } from '../theme';
 import type { AddOnboardingCardId } from '../types/auth';
 
 type AddVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'AddVisit'>;
-type AddOptionId = 'restaurant-visit' | 'food-product' | 'log-note' | 'process-photos' | 'manage-notes';
+type AddOptionId =
+  | 'restaurant-visit'
+  | 'food-discovery'
+  | 'food-product'
+  | 'log-note'
+  | 'process-photos'
+  | 'manage-notes';
 
 interface AddOptionConfig {
   id: AddOptionId;
-  onboardingCardId: AddOnboardingCardId;
+  onboardingCardId?: AddOnboardingCardId;
   title: string;
   description: string;
   icon: ComponentProps<typeof AddOptionCard>['icon'];
   iconBackground: string;
   iconColor: string;
+  titleAccessory?: ComponentProps<typeof AddOptionCard>['titleAccessory'];
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -47,10 +59,12 @@ const useStyles = createThemedStyles((theme) => ({
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const { user } = useAuth();
+  const { actualUser, user } = useAuth();
+  const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
 
   const optionColors = {
     restaurant: theme.colors.text.info,
+    foodDiscovery: theme.colors.text.brand,
     foodProduct: theme.colors.text.success,
     logNote: theme.colors.text.warning,
     processPhotos: theme.colors.text.brand,
@@ -68,6 +82,17 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       iconBackground: optionColors.restaurant,
       iconColor: optionColors.iconOnColor,
     },
+    ...(canAccessFoodDiscovery
+      ? [{
+          id: 'food-discovery',
+          title: 'Food Discovery',
+          description: 'Find restaurants abroad, scan menus, and add menu items',
+          icon: 'compass-outline',
+          iconBackground: optionColors.foodDiscovery,
+          iconColor: optionColors.iconOnColor,
+          titleAccessory: <StatusPill label="Beta" tone="brand" uppercase />,
+        } satisfies AddOptionConfig]
+      : []),
     {
       id: 'food-product',
       onboardingCardId: 'trackFoodProduct',
@@ -111,6 +136,8 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     const normalizedOption =
       optionId === 'restaurant-visit'
         ? 'restaurant_visit'
+        : optionId === 'food-discovery'
+          ? 'food_discovery'
         : optionId === 'food-product'
           ? 'food_product'
           : optionId === 'process-photos'
@@ -124,7 +151,10 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       option: normalizedOption,
     });
 
-    if (selectedOption && !isAddOnboardingCardDismissed(user?.mobileOnboardingState, selectedOption.onboardingCardId)) {
+    if (
+      selectedOption?.onboardingCardId &&
+      !isAddOnboardingCardDismissed(user?.mobileOnboardingState, selectedOption.onboardingCardId)
+    ) {
       navigation.navigate('AddFeatureOnboarding', { cardId: selectedOption.onboardingCardId });
       return;
     }
@@ -132,6 +162,12 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     if (optionId === 'restaurant-visit') {
       trackObservabilityEvent('Visit Creation Started', { source: 'AddVisitScreen' });
       navigation.navigate('CreateVisit');
+      return;
+    }
+
+    if (optionId === 'food-discovery') {
+      trackObservabilityEvent('FOOD_DISCOVERY_STARTED', { source: 'AddVisitScreen' });
+      navigation.navigate('RestaurantDiscovery');
       return;
     }
 
@@ -190,6 +226,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
               }}
               testID={`add-option-${option.id}`}
               title={option.title}
+              titleAccessory={option.titleAccessory}
             />
           ))}
         </ScrollView>

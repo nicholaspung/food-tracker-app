@@ -30,7 +30,7 @@ interface MixedGifBuilderProps {
 }
 
 type MixedGifBuilderTab = 'compose' | 'selected' | 'export' | 'assets';
-type AssetReuseFilter = 'all' | 'screenshot_png' | 'clip_mp4' | 'gif_export';
+type AssetReuseFilter = 'all' | 'screenshot_png' | 'clip_mp4';
 type AssetReuseModalView = { name: 'list' } | { name: 'detail'; assetId: string };
 type DraftClip = {
   mode: 'create' | 'edit';
@@ -170,11 +170,16 @@ export function MixedGifBuilder({
   const draftClipSeekTimeoutRef = useRef<number | null>(null);
   const draftClipPreviewTimeRef = useRef(0);
   const gifPreviewRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const sourceVideo = useMemo(
-    () => sourceVideos.find((video) => video.path === project.sourceVideoPath),
+    () => project.sourceVideoPath
+      ? sourceVideos.find((video) => video.path === project.sourceVideoPath)
+      : undefined,
     [project.sourceVideoPath, sourceVideos],
   );
+  const hasSourceVideoPath = Boolean(project.sourceVideoPath);
+  const hasSourceVideo = Boolean(sourceVideo && project.sourceVideoPath);
   const activeItem = selectedItem(state.items, state.selectedItemId);
   const activeScreenshot = activeItem?.type === 'screenshot' ? activeItem : null;
   const activeClip = activeItem?.type === 'clip' ? activeItem : null;
@@ -183,7 +188,7 @@ export function MixedGifBuilder({
   const assetPickerAssets = useMemo(
     () => projects
       .flatMap((item) => item.assets || [])
-      .filter((asset) => asset.kind === 'screenshot_png' || asset.kind === 'clip_mp4' || asset.kind === 'gif_export'),
+      .filter((asset) => asset.kind === 'screenshot_png' || asset.kind === 'clip_mp4'),
     [projects],
   );
   const currentTimelineAssetIds = useMemo(
@@ -550,6 +555,10 @@ export function MixedGifBuilder({
   }
 
   async function captureScreenshot() {
+    if (!hasSourceVideo) {
+      setStatus('Add PNG screenshots from the asset library or upload one to this project.');
+      return;
+    }
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) {
       setStatus('Video metadata is not ready.');
@@ -578,7 +587,7 @@ export function MixedGifBuilder({
         filename,
         itemId,
         sourceTimestamp: video.currentTime,
-        sourceVideoPath: project.sourceVideoPath,
+        sourceVideoPath: project.sourceVideoPath || '',
       });
       dispatch({
         type: 'addScreenshot',
@@ -603,6 +612,12 @@ export function MixedGifBuilder({
   }
 
   function addClip() {
+    if (!hasSourceVideo) {
+      setStatus('Add an existing MP4 clip asset to this project.');
+      setIsAssetReuseOpen(true);
+      setAssetReuseView({ name: 'list' });
+      return;
+    }
     stopDraftClipPlayback();
     const video = videoRef.current;
     const duration = state.sourceVideo.duration || video?.duration || 0;
@@ -848,6 +863,57 @@ export function MixedGifBuilder({
     }
   }
 
+  async function uploadPngAsset(file: File | null | undefined, addToTimeline: boolean) {
+    if (!file) {
+      return;
+    }
+    if (file.type !== 'image/png' && !file.name.toLowerCase().endsWith('.png')) {
+      setStatus('Upload a PNG screenshot.');
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus('Uploading PNG...');
+    try {
+      const itemId = addToTimeline ? makeId('shot') : undefined;
+      const asset = await uploadScreenshotAsset({
+        projectId: project.id,
+        file,
+        filename: file.name || `${itemId || makeId('shot')}.png`,
+        itemId,
+        label: 'Uploaded PNG',
+      });
+      await refreshProject();
+      await onProjectsRefresh();
+      if (addToTimeline && itemId) {
+        dispatch({
+          type: 'addScreenshot',
+          item: {
+            id: itemId,
+            type: 'screenshot',
+            assetId: asset.id,
+            filename: asset.filename,
+            sourceTimestamp: 0,
+            duration: state.exportSettings.defaultScreenshotDuration,
+            tap: null,
+            tapTiming: 'start',
+          },
+        });
+        setActiveTab('compose');
+      } else {
+        setActiveTab('assets');
+      }
+      setStatus(addToTimeline ? `Uploaded and added ${asset.filename}.` : `Uploaded ${asset.filename}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not upload PNG.');
+    } finally {
+      setIsBusy(false);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
+    }
+  }
+
   function addReusableAssetToTimeline(asset: ToolAsset) {
     if (asset.kind === 'screenshot_png') {
       dispatch({
@@ -897,7 +963,7 @@ export function MixedGifBuilder({
     return (
       <div className="mixed-tab-panel">
         <div className="video-section">
-          {sourceVideo ? (
+          {hasSourceVideo ? (
             <video
               onEnded={() => {
                 setIsSourcePlaying(false);
@@ -911,10 +977,30 @@ export function MixedGifBuilder({
               ref={videoRef}
               src={videoUrl}
             />
-          ) : (
+          ) : hasSourceVideoPath ? (
             <div className="empty-state">Source video is missing from tutorial-artifacts.</div>
+          ) : (
+            <div className="empty-state asset-project-empty-state">
+              <strong>Build this GIF from saved assets.</strong>
+              <span>Add PNG screenshots or MP4 clips from the asset library, or upload a PNG screenshot to this project.</span>
+              <div className="source-actions">
+                <button
+                  className="button"
+                  onClick={() => {
+                    setIsAssetReuseOpen(true);
+                    setAssetReuseView({ name: 'list' });
+                  }}
+                  type="button"
+                >
+                  Add Asset
+                </button>
+                <button className="button secondary" disabled={isBusy} onClick={() => uploadInputRef.current?.click()} type="button">
+                  Upload PNG
+                </button>
+              </div>
+            </div>
           )}
-          <div className="source-control-row">
+          {hasSourceVideo ? <div className="source-control-row">
             <div className="source-playback-controls">
               <button className="button secondary" onClick={() => nudgeVideoTime(-1)} type="button">-1s</button>
               <button className="button secondary" onClick={() => nudgeVideoTime(-0.5)} type="button">-0.5s</button>
@@ -936,10 +1022,14 @@ export function MixedGifBuilder({
               />
               <span>{formatTime(state.sourceVideo.duration || 0)}</span>
             </div>
-          </div>
+          </div> : null}
         </div>
 
-        <div className="hint-row">Capture screenshots for taps, or add clips for transitions.</div>
+        <div className="hint-row">
+          {hasSourceVideo
+            ? 'Capture screenshots for taps, or add clips for transitions.'
+            : 'Screenshots keep tap timing controls, and MP4 clips keep clip tap overlays.'}
+        </div>
       </div>
     );
   }
@@ -1624,7 +1714,7 @@ export function MixedGifBuilder({
                       Add to Timeline
                     </button>
                   ) : (
-                    <span className="asset-availability">GIF exports are preview-only.</span>
+                    <span className="asset-availability">This asset cannot be added.</span>
                   )}
                 </div>
               </div>
@@ -1643,7 +1733,6 @@ export function MixedGifBuilder({
                       ['all', 'All'],
                       ['screenshot_png', 'Screenshots'],
                       ['clip_mp4', 'Clips'],
-                      ['gif_export', 'GIF Exports'],
                     ] as const).map(([value, label]) => (
                       <button
                         aria-selected={assetReuseFilter === value}
@@ -1659,7 +1748,7 @@ export function MixedGifBuilder({
                 </div>
                 <div className="asset-picker-grid">
                   {filteredAssets.length === 0 ? (
-                    <div className="empty-state">No saved screenshots, clips, or GIF exports match the current filters.</div>
+                    <div className="empty-state">No saved screenshots or clips match the current filters.</div>
                   ) : filteredAssets.map((asset) => (
                     <article className="asset-picker-card" key={asset.id}>
                       <button
@@ -1788,12 +1877,37 @@ export function MixedGifBuilder({
                 <h2>{project.name}</h2>
               </div>
               <div className="toolbar">
-                <button className="button secondary" disabled={isBusy} onClick={captureScreenshot} type="button">
-                  Capture Screenshot
+                {hasSourceVideo ? (
+                  <>
+                    <button className="button secondary" disabled={isBusy} onClick={captureScreenshot} type="button">
+                      Capture Screenshot
+                    </button>
+                    <button className="button secondary" disabled={isBusy} onClick={addClip} type="button">
+                      Add Clip
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  className="button secondary"
+                  disabled={isBusy}
+                  onClick={() => {
+                    setIsAssetReuseOpen(true);
+                    setAssetReuseView({ name: 'list' });
+                  }}
+                  type="button"
+                >
+                  + Asset
                 </button>
-                <button className="button secondary" disabled={isBusy} onClick={addClip} type="button">
-                  Add Clip
+                <button className="button secondary" disabled={isBusy} onClick={() => uploadInputRef.current?.click()} type="button">
+                  Upload PNG
                 </button>
+                <input
+                  accept="image/png"
+                  className="visually-hidden-file"
+                  onChange={(event) => uploadPngAsset(event.target.files?.[0], false)}
+                  ref={uploadInputRef}
+                  type="file"
+                />
               </div>
             </div>
 

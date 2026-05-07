@@ -52,6 +52,8 @@ import {
   LoginScreen,
   MiscScreen,
   MoreFeatureOnboardingScreen,
+  RestaurantDiscoveryRestaurantScreen,
+  RestaurantDiscoveryScreen,
   NoteEditorScreen,
   NotesScreen,
   OnboardingScreen,
@@ -135,6 +137,22 @@ export type RootStackParamList = {
     }[];
   };
   AddVisit: undefined;
+  RestaurantDiscovery: undefined;
+  RestaurantDiscoveryRestaurant: {
+    restaurantId: string;
+    restaurantName: string;
+    location?: string;
+    city?: string;
+    cuisineType?: string;
+    visibility?: 'private' | 'friends' | 'public';
+    latitude?: number;
+    longitude?: number;
+    placeId?: string;
+    isGooglePlace?: boolean;
+    userVisitCount?: number;
+    friendCount?: number;
+    hasPendingMenuReview?: boolean;
+  };
   AddFeatureOnboarding: {
     cardId: AddOnboardingCardId;
     mode?: 'firstRun' | 'replay';
@@ -156,6 +174,9 @@ export type RootStackParamList = {
   CreateVisitAddRestaurant:
     | {
         editVisitId?: string;
+        initialLocation?: string;
+        initialRestaurantName?: string;
+        returnTo?: 'CreateVisit' | 'RestaurantDiscovery' | 'RestaurantDiscoveryRestaurant';
         sourceNoteId?: string;
       }
     | undefined;
@@ -255,6 +276,8 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Home',
   'FeatureOnboarding',
   'AddVisit',
+  'RestaurantDiscovery',
+  'RestaurantDiscoveryRestaurant',
   'AddFeatureOnboarding',
   'CreateVisit',
   'CreateVisitAddRestaurant',
@@ -311,6 +334,8 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   ResetPassword: 'Check Email',
   VerifyEmail: 'Verify Email',
   FeatureOnboarding: 'Onboarding',
+  RestaurantDiscovery: 'Food Discovery',
+  RestaurantDiscoveryRestaurant: 'Food Discovery',
   AddFeatureOnboarding: 'Feature Intro',
   CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',
@@ -340,8 +365,19 @@ function AdminOnlyRouteGuard() {
   );
 }
 
+function BetaFeatureRouteGuard() {
+  return (
+    <Screen>
+      <EmptyState
+        description="This beta feature is available to admins and beta users."
+        title="Access denied"
+      />
+    </Screen>
+  );
+}
+
 export function RootNavigator() {
-  const { status, user, verificationGraceEndsAt, verificationStatus, isSubmitting } = useAuth();
+  const { status, actualUser, user, verificationGraceEndsAt, verificationStatus, isSubmitting } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -439,6 +475,7 @@ export function RootNavigator() {
   const requiresFeatureOnboarding =
     status === 'authenticated' &&
     (user?.mobileOnboardingState?.main?.completedVersion ?? 0) < MAIN_ONBOARDING_VERSION;
+  const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
   const hasBottomTabsRoute =
     status === 'authenticated' &&
     !requiresFeatureOnboarding &&
@@ -601,6 +638,16 @@ export function RootNavigator() {
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={canAccessFoodDiscovery ? RestaurantDiscoveryScreen : BetaFeatureRouteGuard}
+                    name="RestaurantDiscovery"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={canAccessFoodDiscovery ? RestaurantDiscoveryRestaurantScreen : BetaFeatureRouteGuard}
+                    name="RestaurantDiscoveryRestaurant"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen
                     component={AddFeatureOnboardingScreen}
                     name="AddFeatureOnboarding"

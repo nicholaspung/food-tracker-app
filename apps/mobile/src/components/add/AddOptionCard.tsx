@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { IconActionCard } from '../shared';
@@ -14,6 +14,7 @@ interface AddOptionCardProps {
   iconBackground: string;
   onPress: () => void;
   testID?: string;
+  titleAccessory?: ReactNode;
 }
 
 const useStyles = createThemedStyles(() => ({
@@ -30,6 +31,7 @@ export function AddOptionCard({
   iconBackground,
   onPress,
   testID,
+  titleAccessory,
 }: AddOptionCardProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -43,6 +45,7 @@ export function AddOptionCard({
       onPress={onPress}
       testID={testID}
       title={title}
+      titleAccessory={titleAccessory}
       trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={18} style={styles.chevron} />}
     />
   );

@@ -4,7 +4,7 @@ import { AssetLibraryPage } from '@/features/projects/AssetLibraryPage';
 import { PublishedGifsPage } from '@/features/projects/PublishedGifsPage';
 import { ProjectEditorPage } from '@/features/projects/ProjectEditorPage';
 import { VideoToolsHome, defaultProjectName } from '@/features/projects/VideoToolsHome';
-import { createInitialState } from '@/features/mixed-gif/state';
+import { createEmptyAssetProjectState, createInitialState } from '@/features/mixed-gif/state';
 import {
   archiveSourceVideo,
   createProject,
@@ -36,6 +36,7 @@ export function App() {
   const [projects, setProjects] = useState<ToolProject[]>([]);
   const [view, setView] = useState<ToolsView>({ name: 'videoToolsHome' });
   const [selectedSourceId, setSelectedSourceId] = useState('');
+  const [createMode, setCreateMode] = useState<'source_video' | 'asset_library'>('source_video');
   const [projectName, setProjectName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -103,25 +104,38 @@ export function App() {
   }
 
   async function handleCreateProject() {
-    if (!selectedSource) {
+    if (createMode === 'source_video' && !selectedSource) {
       setError('Choose a source video first.');
       return;
     }
     setIsCreating(true);
     setError('');
     try {
-      const editorState = createInitialState(selectedSource);
-      const project = await createProject({
-        name: projectName.trim() || defaultProjectName(selectedSource),
-        flowSlug: selectedSource.flowSlug,
-        sourceVideoPath: selectedSource.path,
-        sourceVideoFilename: selectedSource.filename,
-        sourceVideoDuration: selectedSource.duration || 0,
-        sourceVideoWidth: selectedSource.width || 0,
-        sourceVideoHeight: selectedSource.height || 0,
-        editorState,
-        exportSettings: editorState.exportSettings,
-      });
+      let project: ToolProject;
+      if (selectedSource && createMode === 'source_video') {
+        const editorState = createInitialState(selectedSource);
+        project = await createProject({
+          name: projectName.trim() || defaultProjectName(selectedSource),
+          flowSlug: selectedSource.flowSlug,
+          sourceVideoPath: selectedSource.path,
+          sourceVideoFilename: selectedSource.filename,
+          sourceVideoDuration: selectedSource.duration || 0,
+          sourceVideoWidth: selectedSource.width || 0,
+          sourceVideoHeight: selectedSource.height || 0,
+          editorState,
+          exportSettings: editorState.exportSettings,
+        });
+      } else {
+        const name = projectName.trim() || 'Asset Library GIF';
+        const editorState = createEmptyAssetProjectState(name);
+        project = await createProject({
+          name,
+          flowSlug: '',
+          editorState,
+          exportSettings: editorState.exportSettings,
+          tags: ['asset_library'],
+        });
+      }
       setProjects((current) => [project, ...current]);
       setView({ name: 'projectEditor', projectId: project.id });
       setProjectName('');
@@ -249,9 +263,18 @@ export function App() {
         onCreateProject={handleCreateProject}
         onDeleteProject={handleDeleteProject}
         onMoveSourceVideo={handleMoveSourceVideo}
+        onCreateModeChange={(mode) => {
+          setCreateMode(mode);
+          if (mode === 'asset_library') {
+            setProjectName((current) => current || 'Asset Library GIF');
+          } else if (selectedSource) {
+            setProjectName(defaultProjectName(selectedSource));
+          }
+        }}
         onProjectNameChange={setProjectName}
         onSelectProject={(projectId) => setView({ name: 'projectEditor', projectId })}
         onSourceChange={handleSourceChange}
+        createMode={createMode}
         projectName={projectName}
         projects={projects}
         selectedSourceId={selectedSourceId}

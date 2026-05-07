@@ -111,6 +111,7 @@ interface UseRestaurantSelectionFlowResult {
   searchButtonDisabled: boolean;
   searchByText: (options?: {
     collapseAfterSearch?: boolean;
+    queryOverride?: string;
   }) => Promise<TextRestaurantSearchResult>;
   searchErrorMessage: string | null;
   searchNearby: () => Promise<NearbyRestaurantSearchResult>;
@@ -500,8 +501,10 @@ export function useRestaurantSelectionFlow({
   const searchByText = useCallback(
     async ({
       collapseAfterSearch = false,
+      queryOverride,
     }: {
       collapseAfterSearch?: boolean;
+      queryOverride?: string;
     } = {}): Promise<TextRestaurantSearchResult> => {
       if (!isOnline) {
         const message = 'Google Places search requires internet connection.';
@@ -516,7 +519,8 @@ export function useRestaurantSelectionFlow({
       }
 
       const trimmedLocation = manualLocation.trim();
-      if (!trimmedSearchQuery && !trimmedLocation) {
+      const effectiveSearchQuery = queryOverride?.trim() ?? trimmedSearchQuery;
+      if (!effectiveSearchQuery && !trimmedLocation) {
         const message = 'Enter a place name/type or a location to search.';
         setSearchErrorMessage(message);
         return { message, status: 'validation_error' };
@@ -539,7 +543,7 @@ export function useRestaurantSelectionFlow({
 
         const { resolvedLocation, restaurants, usageSnapshot } = await searchAndCacheRestaurantsByText({
           locationText: trimmedLocation || undefined,
-          query: trimmedSearchQuery || 'food',
+          query: effectiveSearchQuery || 'food',
           radius: 5000,
         });
         didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(queryClient, usageSnapshot);

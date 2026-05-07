@@ -389,10 +389,19 @@ export async function renderMixedGif({ state, sourceVideoPath, screenshotResolve
   const tempDir = await mkdtemp(join(tmpdir(), 'tools-mixed-gif-'));
 
   try {
-    const videoInfo = await probeVideo(sourceVideoPath, cwd);
-    for (const [index, item] of payload.items.entries()) {
-      if (item.type === 'clip' && item.sourceKind !== 'asset_file' && item.end > videoInfo.duration) {
-        throw userInputError(`Item ${index + 1} clip ends after source duration.`);
+    const sourceVideoClipItems = payload.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.type === 'clip' && item.sourceKind !== 'asset_file');
+    let videoInfo = null;
+    if (sourceVideoClipItems.length > 0) {
+      if (!sourceVideoPath) {
+        throw userInputError('A source video is required for timeline clips created from recording footage.');
+      }
+      videoInfo = await probeVideo(sourceVideoPath, cwd);
+      for (const { item, index } of sourceVideoClipItems) {
+        if (item.end > videoInfo.duration) {
+          throw userInputError(`Item ${index + 1} clip ends after source duration.`);
+        }
       }
     }
 
@@ -434,7 +443,7 @@ export async function renderMixedGif({ state, sourceVideoPath, screenshotResolve
           segmentPath,
         ], cwd);
       } else {
-        let clipInputPath = sourceVideoPath;
+        let clipInputPath = sourceVideoPath || '';
         let renderItem = item;
         const inputSeekArgs = [];
         if (item.sourceKind === 'asset_file') {

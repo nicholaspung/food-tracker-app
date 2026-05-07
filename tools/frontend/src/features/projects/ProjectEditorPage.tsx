@@ -23,16 +23,18 @@ export function ProjectEditorPage({
   onProjectChange,
   onProjectsRefresh,
 }: ProjectEditorPageProps) {
+  const hasSourceVideo = Boolean(project.sourceVideoPath);
+
   return (
     <div className="project-editor-page">
       <section className="project-summary">
         <div>
-          <strong>{project.flowSlug || 'Mixed GIF'}</strong>
-          <span>{project.sourceVideoFilename}</span>
+          <strong>{hasSourceVideo ? project.flowSlug || 'Mixed GIF' : 'Asset library project'}</strong>
+          <span>{hasSourceVideo ? project.sourceVideoFilename : 'No source video'}</span>
         </div>
         <div>
-          <strong>{formatDuration(project.sourceVideoDuration)}</strong>
-          <span>{project.sourceVideoWidth || 0}x{project.sourceVideoHeight || 0}</span>
+          <strong>{hasSourceVideo ? formatDuration(project.sourceVideoDuration) : `${project.editorState.items.length} timeline items`}</strong>
+          <span>{hasSourceVideo ? `${project.sourceVideoWidth || 0}x${project.sourceVideoHeight || 0}` : `${project.assets?.length || 0} saved assets`}</span>
         </div>
       </section>
 

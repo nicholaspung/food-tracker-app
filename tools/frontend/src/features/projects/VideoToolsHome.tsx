@@ -7,10 +7,12 @@ import type { SourceVideo, ToolProject } from '@/lib/types';
 interface VideoToolsHomeProps {
   sourceVideos: SourceVideo[];
   projects: ToolProject[];
+  createMode: 'source_video' | 'asset_library';
   selectedSourceId: string;
   projectName: string;
   isLoading: boolean;
   isCreating: boolean;
+  onCreateModeChange: (mode: 'source_video' | 'asset_library') => void;
   onSourceChange: (sourceId: string) => void;
   onProjectNameChange: (projectName: string) => void;
   onCreateProject: () => void;
@@ -34,10 +36,12 @@ export function defaultProjectName(video: SourceVideo) {
 export function VideoToolsHome({
   sourceVideos,
   projects,
+  createMode,
   selectedSourceId,
   projectName,
   isLoading,
   isCreating,
+  onCreateModeChange,
   onSourceChange,
   onProjectNameChange,
   onCreateProject,
@@ -151,10 +155,45 @@ export function VideoToolsHome({
             </div>
           </div>
           <div className="panel-body create-form">
-            {isLoading ? (
+            <div className="create-mode-tabs" role="tablist" aria-label="Project source">
+              <button
+                aria-selected={createMode === 'source_video'}
+                className={`filter-tab${createMode === 'source_video' ? ' active' : ''}`}
+                onClick={() => onCreateModeChange('source_video')}
+                type="button"
+              >
+                From screen recording
+              </button>
+              <button
+                aria-selected={createMode === 'asset_library'}
+                className={`filter-tab${createMode === 'asset_library' ? ' active' : ''}`}
+                onClick={() => onCreateModeChange('asset_library')}
+                type="button"
+              >
+                Without video
+              </button>
+            </div>
+            {createMode === 'asset_library' ? (
+              <>
+                <div className="empty-state compact">
+                  Start from saved PNG screenshots and MP4 clips, then upload more PNG screenshots from the editor.
+                </div>
+                <label>
+                  <span>Project name</span>
+                  <input
+                    className="field"
+                    onChange={(event) => onProjectNameChange(event.target.value)}
+                    value={projectName}
+                  />
+                </label>
+                <button className="button" disabled={isCreating || isManagingSource} onClick={onCreateProject} type="button">
+                  Create Project
+                </button>
+              </>
+            ) : isLoading ? (
               <div className="empty-state">Loading local source videos...</div>
             ) : sourceVideos.length === 0 ? (
-              <div className="empty-state">No `raw.mov` files found under tutorial-artifacts/ios.</div>
+              <div className="empty-state">No `raw.mov` files found under tutorial-artifacts/ios. Switch to Without video to build from saved assets.</div>
             ) : (
               <>
                 <label>

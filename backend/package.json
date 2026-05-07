@@ -1,0 +1,8 @@
+{
+  "name": "@food-tracker/api",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "go run . serve --http=127.0.0.1:${FOOD_TRACKER_POCKETBASE_PORT:-8090}"
+  }
+}

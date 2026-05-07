@@ -21,6 +21,8 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
   Home: ['Home'],
   AddVisit: [
     'AddVisit',
+    'RestaurantDiscovery',
+    'RestaurantDiscoveryRestaurant',
     'AddFeatureOnboarding',
     'CreateVisit',
     'CreateVisitAddRestaurant',

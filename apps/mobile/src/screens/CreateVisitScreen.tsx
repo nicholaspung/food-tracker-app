@@ -23,6 +23,8 @@ import {
   StepProgressBar,
   VisitMenuItemOptionRow,
   VisitRestaurantOptionTrailing,
+  VisitRestaurantSearchHeaderToggle,
+  VisitRestaurantSearchOptionDescription,
   VisitRestaurantSearchSection,
   type VisitRestaurantSearchOption,
 } from '../components/shared';
@@ -56,10 +58,7 @@ import {
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
-import {
-  buildVisitRestaurantDescription,
-  type VisitRestaurantWithDistance,
-} from '../lib/visitRestaurantSearch';
+import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import {
   resolveDisplayPhotoUploadsPerRecordLimit,
   shouldShowOfflineUsageWarning,
@@ -73,8 +72,6 @@ import {
   FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
   WIZARD_STEPS,
   buildDraftVisitItem,
-  formatFriendCount,
-  formatVisitCount,
   resolveDefaultVisitVisibility,
   type CreateVisitScreenProps,
   type DraftVisitItemPhoto,
@@ -158,16 +155,6 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: "center",
     flexDirection: "row",
     gap: theme.spacing.xs,
-  },
-  searchHeaderButton: {
-    alignItems: "center",
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: theme.spacing.xxs,
-    paddingHorizontal: theme.spacing.xs,
-    paddingVertical: theme.spacing.xxs,
   },
   headerActionButton: {
     alignItems: "center",
@@ -430,31 +417,6 @@ const useStyles = createThemedStyles((theme) => ({
   selectedRestaurantItem: {
     backgroundColor: theme.colors.status.successBg,
     borderColor: theme.colors.status.successBorder,
-  },
-  descriptionContainer: {
-    gap: theme.spacing.xxs,
-  },
-  statsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.xs,
-  },
-  statPill: {
-    alignItems: "center",
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: theme.spacing.xxs,
-    paddingHorizontal: theme.spacing.xs,
-    paddingVertical: 2,
-  },
-  userStatPill: {
-    backgroundColor: theme.colors.status.successBg,
-    borderColor: theme.colors.status.successBorder,
-  },
-  friendStatPill: {
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.status.infoBorder,
   },
 }));
 
@@ -894,48 +856,6 @@ export function CreateVisitScreen({
     };
   };
 
-  const renderRestaurantListDescription = (
-    restaurant: RestaurantRecord,
-    distance: number | null,
-  ) => {
-    const base = buildVisitRestaurantDescription(restaurant, distance);
-    const stats = getRestaurantStats(restaurant.id);
-
-    return (
-      <View style={styles.descriptionContainer}>
-        <Text tone="secondary">{base}</Text>
-        {stats.userVisitCount > 0 || stats.friendCount > 0 ? (
-          <View style={styles.statsRow}>
-            {stats.userVisitCount > 0 ? (
-              <View style={[styles.statPill, styles.userStatPill]}>
-                <Ionicons
-                  color={theme.colors.text.success}
-                  name="calendar-outline"
-                  size={12}
-                />
-                <Text tone="success" variant="bodySm">
-                  {`You: ${formatVisitCount(stats.userVisitCount)}`}
-                </Text>
-              </View>
-            ) : null}
-            {stats.friendCount > 0 ? (
-              <View style={[styles.statPill, styles.friendStatPill]}>
-                <Ionicons
-                  color={theme.colors.text.info}
-                  name="people-outline"
-                  size={12}
-                />
-                <Text tone="info" variant="bodySm">
-                  {`Friends: ${formatFriendCount(stats.friendCount)}`}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
-    );
-  };
-
   const buildRestaurantOption = (
     {
       restaurant,
@@ -947,7 +867,13 @@ export function CreateVisitScreen({
     const isSelected = selectedRestaurantId === restaurant.id;
 
     return {
-      description: renderRestaurantListDescription(restaurant, distance),
+      description: (
+        <VisitRestaurantSearchOptionDescription
+          distance={distance}
+          restaurant={restaurant}
+          stats={getRestaurantStats(restaurant.id)}
+        />
+      ),
       key: restaurant.id,
       onPress: () => {
         handleSelectRestaurant(restaurant);
@@ -2118,23 +2044,13 @@ export function CreateVisitScreen({
               ) : null
             }
             headerAccessory={
-              <Pressable
-                accessibilityRole="button"
+              <VisitRestaurantSearchHeaderToggle
+                expanded={isSearchExpanded}
                 onPress={() => {
                   setIsSearchExpanded((currentValue) => !currentValue);
                 }}
-                style={styles.searchHeaderButton}
                 testID="create-visit-search-toggle"
-              >
-                <Text tone="secondary" variant="bodySm">
-                  {isSearchExpanded ? "Collapse" : "Expand"}
-                </Text>
-                <Ionicons
-                  color={theme.colors.text.secondary}
-                  name={isSearchExpanded ? "chevron-up-outline" : "chevron-down-outline"}
-                  size={14}
-                />
-              </Pressable>
+              />
             }
             isSearchResultsLoading={isSearching || isSearchingNearby || isGettingLocation}
             locationPermissionNeedsSettings={locationPermissionNeedsSettings}

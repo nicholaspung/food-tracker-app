@@ -779,14 +779,16 @@ async function handleProjects(req, res) {
 
   if (req.method === 'POST') {
     const body = await readJsonBody(req);
+    const sourceVideoPath = typeof body.sourceVideoPath === 'string' ? body.sourceVideoPath : '';
+    const sourceVideoFilename = typeof body.sourceVideoFilename === 'string' ? body.sourceVideoFilename : '';
     const project = await pbJson('/api/collections/tool_projects/records', {
       method: 'POST',
       body: JSON.stringify({
         name: body.name,
         toolType: 'mixed_gif',
         flowSlug: body.flowSlug || '',
-        sourceVideoPath: body.sourceVideoPath,
-        sourceVideoFilename: body.sourceVideoFilename,
+        sourceVideoPath,
+        sourceVideoFilename,
         sourceVideoDuration: body.sourceVideoDuration || 0,
         sourceVideoWidth: body.sourceVideoWidth || 0,
         sourceVideoHeight: body.sourceVideoHeight || 0,
@@ -796,18 +798,20 @@ async function handleProjects(req, res) {
         notes: body.notes || '',
       }),
     });
-    await createAsset({
-      projectId: project.id,
-      kind: 'source_reference',
-      filename: body.sourceVideoFilename,
-      mimeType: 'video/quicktime',
-      metadata: {
-        externalPath: body.sourceVideoPath,
-        duration: body.sourceVideoDuration || 0,
-        width: body.sourceVideoWidth || 0,
-        height: body.sourceVideoHeight || 0,
-      },
-    });
+    if (sourceVideoPath) {
+      await createAsset({
+        projectId: project.id,
+        kind: 'source_reference',
+        filename: sourceVideoFilename || 'raw.mov',
+        mimeType: 'video/quicktime',
+        metadata: {
+          externalPath: sourceVideoPath,
+          duration: body.sourceVideoDuration || 0,
+          width: body.sourceVideoWidth || 0,
+          height: body.sourceVideoHeight || 0,
+        },
+      });
+    }
     sendJson(res, 201, { project: { ...project, assets: await listAssets(project.id) } });
     return;
   }
@@ -867,6 +871,9 @@ async function handleScreenshotUpload(req, res, projectId) {
 async function handleClipCreate(req, res, projectId) {
   const body = await readJsonBody(req);
   const project = await getProject(projectId);
+  if (!project.sourceVideoPath) {
+    throw userInputError('A source video is required to create a new clip from recording footage. Add an existing clip asset instead.');
+  }
   const item = {
     start: requiredNumber(body.start, 'Clip start', 0, Number.MAX_SAFE_INTEGER),
     end: requiredNumber(body.end, 'Clip end', 0, Number.MAX_SAFE_INTEGER),
@@ -910,7 +917,8 @@ async function handleMixedGif(req, res, projectId, save) {
   const project = await getProject(projectId);
   const body = await readJsonBody(req);
   const state = body.editorState || project.editorState;
-  const sourceVideoPath = await ensureSourceVideoProxy(project.sourceVideoPath);
+  const hasSourceVideo = typeof project.sourceVideoPath === 'string' && project.sourceVideoPath.trim();
+  const sourceVideoPath = hasSourceVideo ? await ensureSourceVideoProxy(project.sourceVideoPath) : '';
   const rendered = await renderMixedGif({
     state,
     sourceVideoPath,

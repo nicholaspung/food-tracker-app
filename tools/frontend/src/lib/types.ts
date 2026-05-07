@@ -158,8 +158,8 @@ export interface ToolProject {
   name: string;
   toolType: ToolType;
   flowSlug?: string;
-  sourceVideoPath: string;
-  sourceVideoFilename: string;
+  sourceVideoPath?: string;
+  sourceVideoFilename?: string;
   sourceVideoDuration?: number;
   sourceVideoWidth?: number;
   sourceVideoHeight?: number;
@@ -175,11 +175,11 @@ export interface ToolProject {
 export interface CreateProjectPayload {
   name: string;
   flowSlug?: string;
-  sourceVideoPath: string;
-  sourceVideoFilename: string;
-  sourceVideoDuration: number;
-  sourceVideoWidth: number;
-  sourceVideoHeight: number;
+  sourceVideoPath?: string;
+  sourceVideoFilename?: string;
+  sourceVideoDuration?: number;
+  sourceVideoWidth?: number;
+  sourceVideoHeight?: number;
   editorState: MixedGifProjectState;
   exportSettings: MixedGifExportSettings;
   tags?: string[];

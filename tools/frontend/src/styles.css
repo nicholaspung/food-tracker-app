@@ -379,6 +379,12 @@ a {
   gap: 14px;
 }
 
+.create-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 label {
   color: var(--muted);
   display: grid;
@@ -475,6 +481,21 @@ label {
 .empty-state.compact {
   min-height: 48px;
   padding: 12px;
+}
+
+.asset-project-empty-state {
+  gap: 8px;
+  justify-items: center;
+  min-height: 260px;
+}
+
+.asset-project-empty-state strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.asset-project-empty-state span {
+  max-width: 54ch;
 }
 
 .status-pill {
@@ -915,6 +936,14 @@ label {
 
 .field-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.visually-hidden-file {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
 }
 
 .timeline-list {

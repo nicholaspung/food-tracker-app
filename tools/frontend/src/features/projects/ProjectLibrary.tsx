@@ -32,7 +32,7 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
     return projects.filter((project) => (
       project.name.toLowerCase().includes(normalized)
       || project.flowSlug?.toLowerCase().includes(normalized)
-      || project.sourceVideoFilename.toLowerCase().includes(normalized)
+      || (project.sourceVideoFilename || '').toLowerCase().includes(normalized)
     ));
   }, [projects, query]);
 
@@ -83,8 +83,8 @@ export function ProjectLibrary({ projects, selectedProjectId, onSelectProject, o
                   <strong>{project.name}</strong>
                   <span>
                     {isCombinedProject
-                      ? `Combined GIF · ${latestExport?.filename || project.sourceVideoFilename}`
-                      : `${project.flowSlug || 'Uncategorized'} · ${project.sourceVideoFilename}`}
+                      ? `Combined GIF · ${latestExport?.filename || project.sourceVideoFilename || 'saved export'}`
+                      : `${project.flowSlug || 'Asset library'} · ${project.sourceVideoFilename || 'No source video'}`}
                   </span>
                   <span>{formatDate(project.updated)}</span>
                 </button>

@@ -93,4 +93,9 @@ describe('getBottomTabRouteForScreen', () => {
     expect(getBottomTabRouteForScreen('Notes')).toBe('AddVisit');
     expect(getBottomTabRouteForScreen('NoteEditor')).toBe('AddVisit');
   });
+
+  it('maps restaurant discovery to the Add tab', () => {
+    expect(getBottomTabRouteForScreen('RestaurantDiscovery')).toBe('AddVisit');
+    expect(getBottomTabRouteForScreen('RestaurantDiscoveryRestaurant')).toBe('AddVisit');
+  });
 });

@@ -309,6 +309,7 @@ describe('tab root content sections', () => {
       user: {
         email: 'user@example.com',
         id: 'user-1',
+        isBetaUser: false,
         verified: true,
       },
       verificationGraceEndsAt: null,
@@ -354,6 +355,90 @@ describe('tab root content sections', () => {
     expect(renderer.root.findByProps({ testID: 'add-screen-content-section' })).toBeTruthy();
   });
 
+  it('hides Food Discovery from non-beta non-admin users', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'add-option-food-discovery' })).toHaveLength(0);
+  });
+
+  it('shows Food Discovery for beta users', async () => {
+    const navigate = jest.fn();
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+        isBetaUser: true,
+        isSubscriber: false,
+      },
+      user: {
+        email: 'beta@example.com',
+        id: 'user-beta',
+        isBetaUser: true,
+        verified: true,
+      },
+      verificationGraceEndsAt: null,
+      verificationStatus: 'verified',
+    } as never);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    const foodDiscoveryCard = renderer.root.findByProps({ testID: 'add-option-food-discovery' });
+    expect(foodDiscoveryCard.props.titleAccessory).toBeTruthy();
+
+    await act(async () => {
+      foodDiscoveryCard.props.onPress();
+    });
+
+    expect(navigate).toHaveBeenCalledWith('RestaurantDiscovery');
+  });
+
+  it('shows Food Discovery for actual admins even when previewing non-admin', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: true,
+        isBetaUser: false,
+        isSubscriber: false,
+      },
+      user: {
+        email: 'admin@example.com',
+        id: 'user-admin',
+        isAdmin: false,
+        isBetaUser: false,
+        verified: true,
+      },
+      verificationGraceEndsAt: null,
+      verificationStatus: 'verified',
+    } as never);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ testID: 'add-option-food-discovery' }).props.titleAccessory).toBeTruthy();
+  });
+
   it('routes Add options through onboarding until the card is dismissed', async () => {
     const navigate = jest.fn();
     let renderer: any = null;
@@ -376,8 +461,14 @@ describe('tab root content sections', () => {
 
   it('routes dismissed Add options directly to their destinations', async () => {
     mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+        isBetaUser: true,
+        isSubscriber: false,
+      },
       user: {
         id: 'user-1',
+        isBetaUser: true,
         mobileOnboardingState: {
           addCards: {
             trackRestaurantVisit: { dismissedAt: '2026-04-28T12:00:00.000Z' },
@@ -403,6 +494,7 @@ describe('tab root content sections', () => {
 
     const expectedRoutes = [
       ['add-option-restaurant-visit', 'CreateVisit'],
+      ['add-option-food-discovery', 'RestaurantDiscovery'],
       ['add-option-food-product', 'FoodProduct'],
       ['add-option-log-note', 'NoteEditor'],
       ['add-option-process-photos', 'ProcessPhotos'],

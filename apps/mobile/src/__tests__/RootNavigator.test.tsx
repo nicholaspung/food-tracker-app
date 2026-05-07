@@ -168,6 +168,8 @@ jest.mock('../screens', () => {
     'ListsScreen',
     'LoginScreen',
     'MiscScreen',
+    'RestaurantDiscoveryRestaurantScreen',
+    'RestaurantDiscoveryScreen',
     'NoteEditorScreen',
     'NotesScreen',
     'OnboardingScreen',
@@ -343,6 +345,10 @@ describe('RootNavigator', () => {
   it('keeps completed authenticated users on the normal Home-first stack', async () => {
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
       user: {
         id: 'user_1',
         isAdmin: false,
@@ -361,7 +367,107 @@ describe('RootNavigator', () => {
     const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
     expect(renderedStackScreens.indexOf('Home')).toBeLessThan(renderedStackScreens.indexOf('FeatureOnboarding'));
     expect(renderedStackScreens).toContain('AddFeatureOnboarding');
+    expect(renderedStackScreens).toContain('RestaurantDiscovery');
+    expect(renderedStackScreens).toContain('RestaurantDiscoveryRestaurant');
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+  });
+
+  it('guards restaurant discovery routes for non-beta non-admin users', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+        isBetaUser: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        isBetaUser: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
+    const renderedMockScreens = renderer.root.findAllByType('MockScreen').map((node: any) => node.props.screenName);
+    const betaGuardMessages = renderer.root
+      .findAllByType('EmptyState')
+      .filter((node: any) => node.props.description === 'This beta feature is available to admins and beta users.');
+
+    expect(renderedStackScreens).toContain('RestaurantDiscovery');
+    expect(renderedStackScreens).toContain('RestaurantDiscoveryRestaurant');
+    expect(renderedMockScreens).not.toContain('RestaurantDiscoveryScreen');
+    expect(renderedMockScreens).not.toContain('RestaurantDiscoveryRestaurantScreen');
+    expect(betaGuardMessages).toHaveLength(2);
+  });
+
+  it('renders restaurant discovery routes for beta users', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+        isBetaUser: true,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        isBetaUser: true,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedMockScreens = renderer.root.findAllByType('MockScreen').map((node: any) => node.props.screenName);
+    expect(renderedMockScreens).toContain('RestaurantDiscoveryScreen');
+    expect(renderedMockScreens).toContain('RestaurantDiscoveryRestaurantScreen');
+  });
+
+  it('renders restaurant discovery routes for actual admins previewing non-admin', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'admin_1',
+        isAdmin: true,
+        isBetaUser: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      user: {
+        id: 'admin_1',
+        isAdmin: false,
+        isBetaUser: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedMockScreens = renderer.root.findAllByType('MockScreen').map((node: any) => node.props.screenName);
+    expect(renderedMockScreens).toContain('RestaurantDiscoveryScreen');
+    expect(renderedMockScreens).toContain('RestaurantDiscoveryRestaurantScreen');
   });
 
   it('waits for the auth screen transition before showing the verification banner after submission', async () => {

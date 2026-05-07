@@ -8,11 +8,12 @@
   "description": "Mobile tracker application with React frontend and Go backend",
   "scripts": {
     "dev": "bash scripts/dev.sh",
+    "dev:stream": "FOOD_TRACKER_DEV_UI=stream bash scripts/dev.sh",
     "dev:app": "bash scripts/mobile-expo.sh local",
     "dev:app-ios": "bash scripts/mobile-expo.sh local --ios",
-    "dev:admin": "pnpm --filter @food-tracker/admin dev -- --host localhost --port 5173",
-    "dev:api": "cd backend && go run . serve",
-    "dev:marketing": "node scripts/dev-marketing.mjs",
+    "dev:admin": "pnpm --filter @food-tracker/admin dev",
+    "dev:api": "pnpm --filter @food-tracker/api dev",
+    "dev:marketing": "pnpm --filter @food-tracker/marketing dev",
     "dev:web": "concurrently \"pnpm dev:admin\" \"pnpm dev:api\"",
     "install:admin": "pnpm install --filter @food-tracker/admin...",
     "install:backend": "cd backend && go mod tidy",
@@ -54,7 +55,8 @@
     "browser-sync": "3.0.4",
     "chokidar": "^4.0.3",
     "concurrently": "^8.2.2",
-    "start-server-and-test": "3.0.2"
+    "start-server-and-test": "3.0.2",
+    "turbo": "^2.9.10"
   },
   "dependencies": {
     "expo": "~55.0.18",

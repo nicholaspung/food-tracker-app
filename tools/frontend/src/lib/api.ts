@@ -128,20 +128,31 @@ export async function uploadScreenshotAsset({
   itemId,
   sourceTimestamp,
   sourceVideoPath,
+  label,
 }: {
   projectId: string;
   file: Blob;
   filename: string;
-  itemId: string;
-  sourceTimestamp: number;
-  sourceVideoPath: string;
+  itemId?: string;
+  sourceTimestamp?: number;
+  sourceVideoPath?: string;
+  label?: string;
 }): Promise<ToolAsset> {
   const form = new FormData();
   form.set('file', file, filename);
   form.set('filename', filename);
-  form.set('itemId', itemId);
-  form.set('sourceTimestamp', String(sourceTimestamp));
-  form.set('sourceVideoPath', sourceVideoPath);
+  if (itemId) {
+    form.set('itemId', itemId);
+  }
+  if (sourceTimestamp !== undefined) {
+    form.set('sourceTimestamp', String(sourceTimestamp));
+  }
+  if (sourceVideoPath) {
+    form.set('sourceVideoPath', sourceVideoPath);
+  }
+  if (label) {
+    form.set('label', label);
+  }
   const data = await parseJsonResponse<{ asset: ToolAsset }>(
     await fetch(`/api/tools/projects/${encodeURIComponent(projectId)}/screenshots`, {
       method: 'POST',

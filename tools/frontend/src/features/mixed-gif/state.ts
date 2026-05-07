@@ -52,6 +52,28 @@ export function createInitialState(sourceVideo: SourceVideo): MixedGifProjectSta
   };
 }
 
+export function createEmptyAssetProjectState(projectName = 'Asset Library GIF'): MixedGifProjectState {
+  const baseName = projectName.trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'asset-library';
+  return {
+    version: 1,
+    selectedItemId: null,
+    sourceVideo: {
+      path: '',
+      filename: '',
+      duration: 0,
+      width: 0,
+      height: 0,
+    },
+    items: [],
+    exportSettings: {
+      ...defaultExportSettings,
+      outputFilename: `${baseName}-mixed.gif`,
+    },
+  };
+}
+
 export type MixedGifAction =
   | { type: 'selectItem'; itemId: string | null }
   | { type: 'addScreenshot'; item: MixedGifScreenshotItem }
