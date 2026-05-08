@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"log"
 	"net/mail"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/mailer"
 
 	"myapp/lib"
 )
@@ -127,8 +129,8 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 			return err
 		}
 
-		if err := syncWaitlistApprovedToLoops(app, runtimeResources, record); err != nil {
-			log.Printf("Loops waitlist approval sync failed for %s: %v", record.GetString("email"), err)
+		if err := sendWaitlistApprovalEmail(app, runtimeResources, record); err != nil {
+			log.Printf("Waitlist approval email failed for %s: %v", record.GetString("email"), err)
 		}
 
 		return e.JSON(200, serializeWaitlistRecord(record))
@@ -433,40 +435,36 @@ func syncWaitlistJoinedToLoops(app core.App, runtimeResources lib.RuntimeResourc
 	})
 }
 
-func syncWaitlistApprovedToLoops(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
-	client := lib.NewLoopsClientFromEnv()
-	_, err := client.UpsertContact(waitlistContactInput(runtimeResources, record, WaitlistStatusApproved, "approvedAt"))
-	if err != nil {
-		record.Set("lastLoopsSyncError", err.Error())
-		_ = app.Save(record)
-		return err
+func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
+	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
+	signupURL := buildSignupURL(runtimeResources.MarketingURL, email)
+	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
+	if senderName == "" {
+		senderName = "Yummy Recs"
 	}
 
-	signupURL := buildSignupURL(runtimeResources.MarketingURL, record.GetString("email"))
-	transactionalID := strings.TrimSpace(os.Getenv("LOOPS_WAITLIST_APPROVED_TRANSACTIONAL_ID"))
-	if transactionalID != "" {
-		if err := client.SendTransactionalEmail(lib.LoopsTransactionalInput{
-			TransactionalID: transactionalID,
-			Email:           record.GetString("email"),
-			DataVariables: map[string]any{
-				"signupUrl": signupURL,
-				"email":     record.GetString("email"),
-			},
-		}); err != nil {
-			record.Set("lastLoopsSyncError", err.Error())
-			_ = app.Save(record)
-			return err
-		}
-	}
-
-	return client.SendEvent(lib.LoopsEventInput{
-		Email:     record.GetString("email"),
-		EventName: WaitlistApprovedEventName,
-		EventProperties: map[string]any{
-			"signupUrl":      signupURL,
-			"appEnvironment": string(runtimeResources.Environment),
+	message := &mailer.Message{
+		From: mail.Address{
+			Address: app.Settings().Meta.SenderAddress,
+			Name:    senderName,
 		},
-	})
+		To:      []mail.Address{{Address: email}},
+		Subject: "You're approved for Yummy Recs",
+		Text: fmt.Sprintf(
+			"You're approved! You can now create your Yummy Recs account with %s. Sign up here: %s",
+			email,
+			signupURL,
+		),
+		HTML: fmt.Sprintf(`
+			<p>You're approved!</p>
+			<p>You can now create your Yummy Recs account with <strong>%s</strong>.</p>
+			<p><a href="%s">Create your account</a></p>
+			<p>If the button does not work, copy and paste this link into your browser:</p>
+			<p>%s</p>
+		`, html.EscapeString(email), html.EscapeString(signupURL), html.EscapeString(signupURL)),
+	}
+
+	return app.NewMailClient().Send(message)
 }
 
 func syncWaitlistRejectedToLoops(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {

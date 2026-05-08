@@ -58,7 +58,7 @@ export function WaitlistPage() {
         <p className="eyebrow">Waitlist</p>
         <h2 style={{ marginBottom: 0 }}>Approve account access by email</h2>
         <p className="text-muted" style={{ margin: 0 }}>
-          Approved emails can create an account without an invite code. Approval emails are sent through Loops when configured.
+          Approved emails can create an account without an invite code. Approval emails are sent through PocketBase SMTP.
         </p>
       </section>
 
