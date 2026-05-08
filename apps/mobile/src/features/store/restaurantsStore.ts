@@ -2,7 +2,6 @@ import { pb } from '../../lib/pocketbase';
 import type { RestaurantRecord } from '../models';
 import type {
   ListRestaurantSuggestionsInput,
-  ListRecentRestaurantsInput,
   MenuItemRecord,
   PaginatedResult,
   SearchRestaurantsPageInput,
@@ -18,7 +17,6 @@ import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
   ListRestaurantSuggestionsInput,
-  ListRecentRestaurantsInput,
   MenuItemRecord,
   SearchRestaurantsPageInput,
 } from './featureStore';
@@ -77,18 +75,8 @@ export interface UpsertRestaurantInput {
   isGooglePlace?: boolean;
 }
 
-const DEFAULT_RECENT_RESTAURANT_LIMIT = 12;
-const MAX_RECENT_RESTAURANT_LIMIT = 24;
 const DEFAULT_RESTAURANT_SUGGESTIONS_LIMIT = 50;
 const MAX_RESTAURANT_SUGGESTIONS_LIMIT = 50;
-
-function resolveRecentRestaurantLimit(limit?: number): number {
-  if (typeof limit !== 'number' || Number.isNaN(limit)) {
-    return DEFAULT_RECENT_RESTAURANT_LIMIT;
-  }
-
-  return Math.min(MAX_RECENT_RESTAURANT_LIMIT, Math.max(1, Math.floor(limit)));
-}
 
 function resolveRestaurantSuggestionsLimit(limit?: number): number {
   if (typeof limit !== 'number' || Number.isNaN(limit)) {
@@ -204,25 +192,6 @@ export async function searchRestaurantsPage(
     totalPages: response.totalPages ?? 0,
     hasNextPage: response.hasNextPage ?? false,
   };
-}
-
-export async function listRecentRestaurants(
-  input?: ListRecentRestaurantsInput,
-): Promise<RestaurantRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const limit = resolveRecentRestaurantLimit(input?.limit);
-  const response = await sendApiRequest<RestaurantSelectionApiRecord[]>(
-    `/api/restaurants/recent?limit=${encodeURIComponent(String(limit))}`,
-    {
-      method: 'GET',
-      signal: input?.signal,
-    },
-  );
-
-  return response.map(mapRestaurantSelectionApiRecord);
 }
 
 export async function listRestaurantSuggestions(

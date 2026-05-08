@@ -37,6 +37,10 @@ jest.mock('react-native', () => ({
       remove: jest.fn(),
     })),
   },
+  Platform: {
+    OS: 'ios',
+    select: jest.fn((options: Record<string, unknown>) => options.ios ?? options.default),
+  },
 }));
 
 jest.mock('../features', () => ({
@@ -48,6 +52,10 @@ jest.mock('../lib/logger', () => ({
     error: jest.fn(),
     warn: jest.fn(),
   },
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
 }));
 
 jest.mock('../lib/pocketbase', () => ({

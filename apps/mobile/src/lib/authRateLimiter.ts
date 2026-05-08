@@ -326,7 +326,7 @@ export async function recordAuthRateLimitCooldown(
   return buildDecision(nextState, now);
 }
 
-export function formatAuthRateLimitCountdown(remainingMs: number): string {
+function formatAuthRateLimitCountdown(remainingMs: number): string {
   const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
 
   if (remainingSeconds < 60) {

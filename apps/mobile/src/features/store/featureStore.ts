@@ -313,11 +313,6 @@ export interface SearchRestaurantsPageInput extends PaginationInput {
   search: string;
 }
 
-export interface ListRecentRestaurantsInput {
-  limit?: number;
-  signal?: AbortSignal;
-}
-
 export interface ListRestaurantSuggestionsInput {
   limit?: number;
   search?: string;
@@ -523,9 +518,7 @@ export {
   completeMainOnboarding,
   dismissAddOnboardingCard,
   dismissMoreOnboardingCard,
-  getMobileOnboardingState,
   isAddOnboardingCardDismissed,
-  isMainOnboardingComplete,
   isMoreOnboardingCardDismissed,
   saveOptimisticMobileOnboardingState,
   type CompleteMainOnboardingInput,
@@ -542,7 +535,6 @@ export {
 } from './foodProductsStore';
 export {
   listMenuItemsForRestaurant,
-  listRecentRestaurants,
   listRestaurantSuggestions,
   searchRestaurantsPage,
   upsertRestaurantRecord,

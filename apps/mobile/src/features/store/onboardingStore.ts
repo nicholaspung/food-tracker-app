@@ -38,13 +38,6 @@ export function getMobileOnboardingState(record: MobileOnboardingRecord | null |
   return normalizeMobileOnboardingState(record?.mobileOnboardingState) ?? {};
 }
 
-export function isMainOnboardingComplete(
-  state: MobileOnboardingState | null | undefined,
-  version = MAIN_ONBOARDING_VERSION,
-): boolean {
-  return (state?.main?.completedVersion ?? 0) >= version;
-}
-
 export function isMoreOnboardingCardDismissed(
   state: MobileOnboardingState | null | undefined,
   cardId: MoreOnboardingCardId,

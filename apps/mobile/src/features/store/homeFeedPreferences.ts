@@ -20,7 +20,7 @@ export interface HomeFeedDefaultsUpdate {
   defaultHomeFeedSort: HomeFeedDefaultSort;
 }
 
-export const DEFAULT_HOME_FEED_DEFAULTS: HomeFeedDefaults = {
+const DEFAULT_HOME_FEED_DEFAULTS: HomeFeedDefaults = {
   homeFeedMode: 'mine',
   homeFeedTypeFilter: 'visits',
   homeFeedSort: 'created',
@@ -46,9 +46,11 @@ export function mapHomeFeedDefaultsFromRecord(
   record: HomeFeedDefaultsRecord | null | undefined,
 ): HomeFeedDefaults {
   return {
-    homeFeedMode: normalizeHomeFeedMode(record?.defaultHomeFeedMode),
-    homeFeedTypeFilter: normalizeHomeFeedTypeFilter(record?.defaultHomeFeedTypeFilter),
-    homeFeedSort: normalizeHomeFeedSort(record?.defaultHomeFeedSort),
+    homeFeedMode: normalizeHomeFeedMode(record?.defaultHomeFeedMode ?? DEFAULT_HOME_FEED_DEFAULTS.homeFeedMode),
+    homeFeedTypeFilter: normalizeHomeFeedTypeFilter(
+      record?.defaultHomeFeedTypeFilter ?? DEFAULT_HOME_FEED_DEFAULTS.homeFeedTypeFilter,
+    ),
+    homeFeedSort: normalizeHomeFeedSort(record?.defaultHomeFeedSort ?? DEFAULT_HOME_FEED_DEFAULTS.homeFeedSort),
   };
 }
 

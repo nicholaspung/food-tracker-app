@@ -131,6 +131,7 @@ jest.mock('@tanstack/react-query', () => ({
 
 jest.mock('../components/shared', () => ({
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
+  FeatureListFooter: (props: Record<string, unknown>) => mockReact.createElement('FeatureListFooter', props),
   FeedHeaderControls: (props: Record<string, unknown>) => mockReact.createElement('FeedHeaderControls', props),
   HomeFeedVisitEntryCard: (props: Record<string, unknown>) =>
     mockReact.createElement('HomeFeedVisitEntryCard', props),
@@ -200,6 +201,10 @@ jest.mock('../features/store/useWriteTelemetry', () => ({
 
 jest.mock('../hooks/useListQueryState', () => ({
   usePaginatedQueryState: jest.fn(),
+}));
+
+jest.mock('../hooks/useDebouncedValue', () => ({
+  useDebouncedValue: (value: unknown) => value,
 }));
 
 jest.mock('../lib/pendingFriendSuggestion', () => ({

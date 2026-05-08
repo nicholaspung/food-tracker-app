@@ -29,7 +29,7 @@ export function formatCount(count: number, singular: string, plural: string): st
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-export function formatEntryDateLabel(value: string): string {
+function formatEntryDateLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return '';
