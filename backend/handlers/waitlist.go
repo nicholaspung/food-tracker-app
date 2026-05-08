@@ -33,34 +33,25 @@ const (
 )
 
 type waitlistRequest struct {
-	Email                        string `json:"email"`
-	Source                       string `json:"source"`
-	ProductUpdatesConsent        bool   `json:"productUpdatesConsent"`
-	MarketingConsent             bool   `json:"marketingConsent"`
-	OnboardingEmailsAcknowledged bool   `json:"onboardingEmailsAcknowledged"`
-	ConsentVersion               string `json:"consentVersion"`
+	Email  string `json:"email"`
+	Source string `json:"source"`
 }
 
 type WaitlistEntry struct {
-	ID                           string
-	Email                        string
-	Status                       string
-	Source                       string
-	ProductUpdatesConsent        bool
-	MarketingConsent             bool
-	OnboardingEmailsAcknowledged bool
-	ConsentVersion               string
-	ConsentCapturedAt            string
-	ApprovedAt                   string
-	ApprovedBy                   string
-	RejectedAt                   string
-	RejectedBy                   string
-	SignedUpAt                   string
-	SignedUpUser                 string
-	LoopsContactID               string
-	LastLoopsSyncError           string
-	Created                      string
-	Updated                      string
+	ID                 string
+	Email              string
+	Status             string
+	Source             string
+	ApprovedAt         string
+	ApprovedBy         string
+	RejectedAt         string
+	RejectedBy         string
+	SignedUpAt         string
+	SignedUpUser       string
+	LoopsContactID     string
+	LastLoopsSyncError string
+	Created            string
+	Updated            string
 }
 
 func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResources lib.RuntimeResources) {
@@ -74,10 +65,6 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
-		if !requestBody.OnboardingEmailsAcknowledged {
-			return apis.NewBadRequestError("onboarding email acknowledgement is required", nil)
-		}
-
 		record, err := upsertWaitlistEntry(app, requestBody, email)
 		if err != nil {
 			log.Printf("Waitlist upsert failed for %s: %v", email, err)
@@ -192,13 +179,9 @@ func MarkWaitlistEntrySignedUp(app core.App, runtimeResources lib.RuntimeResourc
 		UserID:    user.Id,
 		Source:    waitlistDefaultString(strings.TrimSpace(entry.GetString("source")), "mobile_signup"),
 		Properties: map[string]any{
-			"waitlistStatus":               WaitlistStatusSignedUp,
-			"accountCreatedAt":             now.Format(time.RFC3339),
-			"productUpdatesConsent":        entry.GetBool("productUpdatesConsent"),
-			"marketingConsent":             entry.GetBool("marketingConsent"),
-			"emailConsentVersion":          strings.TrimSpace(entry.GetString("consentVersion")),
-			"appEnvironment":               string(runtimeResources.Environment),
-			"onboardingEmailsAcknowledged": entry.GetBool("onboardingEmailsAcknowledged"),
+			"waitlistStatus":   WaitlistStatusSignedUp,
+			"accountCreatedAt": now.Format(time.RFC3339),
+			"appEnvironment":   string(runtimeResources.Environment),
 		},
 	})
 	if err != nil {
@@ -264,13 +247,7 @@ func upsertWaitlistEntry(app core.App, requestBody waitlistRequest, email string
 		record.Set("rejectedBy", "")
 	}
 
-	now := time.Now().UTC()
 	record.Set("source", waitlistDefaultString(strings.TrimSpace(requestBody.Source), "mobile_signup"))
-	record.Set("productUpdatesConsent", requestBody.ProductUpdatesConsent)
-	record.Set("marketingConsent", requestBody.MarketingConsent)
-	record.Set("onboardingEmailsAcknowledged", requestBody.OnboardingEmailsAcknowledged)
-	record.Set("consentVersion", strings.TrimSpace(requestBody.ConsentVersion))
-	record.Set("consentCapturedAt", now)
 	record.Set("lastLoopsSyncError", "")
 
 	return record, app.Save(record)
@@ -487,14 +464,10 @@ func syncWaitlistRejectedToLoops(app core.App, runtimeResources lib.RuntimeResou
 
 func waitlistContactInput(runtimeResources lib.RuntimeResources, record *core.Record, status string, dateField string) lib.LoopsContactInput {
 	properties := map[string]any{
-		"waitlistStatus":               status,
-		"signupSource":                 record.GetString("source"),
-		"appEnvironment":               string(runtimeResources.Environment),
-		"productUpdatesConsent":        record.GetBool("productUpdatesConsent"),
-		"marketingConsent":             record.GetBool("marketingConsent"),
-		"onboardingEmailsAcknowledged": record.GetBool("onboardingEmailsAcknowledged"),
-		"emailConsentVersion":          record.GetString("consentVersion"),
-		"waitlistJoinedAt":             record.GetString("created"),
+		"waitlistStatus":   status,
+		"signupSource":     record.GetString("source"),
+		"appEnvironment":   string(runtimeResources.Environment),
+		"waitlistJoinedAt": record.GetString("created"),
 	}
 	if dateField != "" {
 		properties[dateField] = record.GetString(dateField)
@@ -513,12 +486,6 @@ func waitlistMailingLists(record *core.Record) map[string]bool {
 	if id := strings.TrimSpace(os.Getenv("LOOPS_WAITLIST_MAILING_LIST_ID")); id != "" {
 		lists[id] = true
 	}
-	if id := strings.TrimSpace(os.Getenv("LOOPS_PRODUCT_UPDATES_MAILING_LIST_ID")); id != "" {
-		lists[id] = record.GetBool("productUpdatesConsent")
-	}
-	if id := strings.TrimSpace(os.Getenv("LOOPS_MARKETING_MAILING_LIST_ID")); id != "" {
-		lists[id] = record.GetBool("marketingConsent")
-	}
 	return lists
 }
 
@@ -528,30 +495,25 @@ func buildSignupURL(marketingURL string, email string) string {
 		base = "https://yummyrecs.com"
 	}
 
-	return base + "/signup?email=" + url.QueryEscape(strings.ToLower(strings.TrimSpace(email)))
+	return base + "/signup?email=" + url.QueryEscape(strings.ToLower(strings.TrimSpace(email))) + "&mode=waitlist_approved"
 }
 
 func serializeWaitlistRecord(record *core.Record) map[string]any {
 	return map[string]any{
-		"id":                           record.Id,
-		"email":                        record.GetString("email"),
-		"status":                       record.GetString("status"),
-		"source":                       record.GetString("source"),
-		"productUpdatesConsent":        record.GetBool("productUpdatesConsent"),
-		"marketingConsent":             record.GetBool("marketingConsent"),
-		"onboardingEmailsAcknowledged": record.GetBool("onboardingEmailsAcknowledged"),
-		"consentVersion":               record.GetString("consentVersion"),
-		"consentCapturedAt":            record.GetString("consentCapturedAt"),
-		"approvedAt":                   record.GetString("approvedAt"),
-		"approvedBy":                   record.GetString("approvedBy"),
-		"rejectedAt":                   record.GetString("rejectedAt"),
-		"rejectedBy":                   record.GetString("rejectedBy"),
-		"signedUpAt":                   record.GetString("signedUpAt"),
-		"signedUpUser":                 record.GetString("signedUpUser"),
-		"loopsContactId":               record.GetString("loopsContactId"),
-		"lastLoopsSyncError":           record.GetString("lastLoopsSyncError"),
-		"created":                      record.GetString("created"),
-		"updated":                      record.GetString("updated"),
+		"id":                 record.Id,
+		"email":              record.GetString("email"),
+		"status":             record.GetString("status"),
+		"source":             record.GetString("source"),
+		"approvedAt":         record.GetString("approvedAt"),
+		"approvedBy":         record.GetString("approvedBy"),
+		"rejectedAt":         record.GetString("rejectedAt"),
+		"rejectedBy":         record.GetString("rejectedBy"),
+		"signedUpAt":         record.GetString("signedUpAt"),
+		"signedUpUser":       record.GetString("signedUpUser"),
+		"loopsContactId":     record.GetString("loopsContactId"),
+		"lastLoopsSyncError": record.GetString("lastLoopsSyncError"),
+		"created":            record.GetString("created"),
+		"updated":            record.GetString("updated"),
 	}
 }
 

@@ -130,7 +130,6 @@ export function WaitlistPage() {
                   <tr>
                     <th>Email</th>
                     <th>Status</th>
-                    <th>Consent</th>
                     <th>Joined</th>
                     <th>Decision</th>
                     <th />
@@ -142,13 +141,6 @@ export function WaitlistPage() {
                       <td>{entry.email}</td>
                       <td>
                         <span className="tag">{formatStatus(entry.status)}</span>
-                      </td>
-                      <td>
-                        <div className="tag-row">
-                          {entry.productUpdatesConsent ? <span className="tag">product</span> : null}
-                          {entry.marketingConsent ? <span className="tag">marketing</span> : null}
-                          {entry.onboardingEmailsAcknowledged ? <span className="tag">required</span> : null}
-                        </div>
                       </td>
                       <td>{formatDateTime(entry.created)}</td>
                       <td>

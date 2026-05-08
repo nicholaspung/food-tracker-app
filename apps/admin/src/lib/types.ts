@@ -7,11 +7,6 @@ export interface WaitlistEntry {
   email: string;
   status: WaitlistStatus;
   source?: string;
-  productUpdatesConsent: boolean;
-  marketingConsent: boolean;
-  onboardingEmailsAcknowledged: boolean;
-  consentVersion?: string;
-  consentCapturedAt?: string;
   approvedAt?: string;
   approvedBy?: string;
   rejectedAt?: string;

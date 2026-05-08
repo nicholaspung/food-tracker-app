@@ -1,8 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
-import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay, SegmentedControl } from '../components/shared';
 import { createCollectionRecord, sendApiRequest } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
@@ -22,6 +22,7 @@ import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
+type SignUpAccessMode = 'waitlist_approved' | 'invite_code' | 'join_waitlist';
 
 interface InviteCodeInviterResponse {
   hasInviter?: boolean;
@@ -32,6 +33,32 @@ interface InviteCodeInviterResponse {
 }
 
 const EMAIL_CONSENT_VERSION = '2026-04-27';
+
+const SIGNUP_ACCESS_MODE_OPTIONS: { label: string; value: SignUpAccessMode }[] = [
+  { label: 'Got off waitlist', value: 'waitlist_approved' },
+  { label: 'Have invite code', value: 'invite_code' },
+  { label: 'Join waitlist', value: 'join_waitlist' },
+];
+
+function resolveInitialAccessMode(
+  params: RootStackParamList['SignUp'],
+  prefilledInviteCode: string,
+  prefilledEmail: string,
+): SignUpAccessMode {
+  if (prefilledInviteCode) {
+    return 'invite_code';
+  }
+
+  if (params?.mode === 'waitlist_approved' || params?.mode === 'invite_code' || params?.mode === 'join_waitlist') {
+    return params.mode;
+  }
+
+  if (prefilledEmail) {
+    return 'waitlist_approved';
+  }
+
+  return 'join_waitlist';
+}
 
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
@@ -46,39 +73,12 @@ const useStyles = createThemedStyles((theme) => ({
   helperText: {
     marginTop: -theme.spacing.xs,
   },
-  consentGroup: {
-    gap: theme.spacing.xs,
-  },
-  consentRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  checkbox: {
-    alignItems: 'center',
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.sm,
-    borderWidth: 1,
-    height: 22,
-    justifyContent: 'center',
-    marginTop: 1,
-    width: 22,
-  },
-  checkboxChecked: {
-    backgroundColor: theme.colors.button.primaryBg,
-    borderColor: theme.colors.button.primaryBg,
-  },
-  checkboxDisabled: {
-    opacity: 0.7,
-  },
-  consentText: {
-    flex: 1,
-    gap: theme.spacing.xxs,
-  },
   supportActions: {
     gap: theme.spacing.sm,
     marginTop: theme.spacing.xs,
+  },
+  modeCard: {
+    gap: theme.spacing.sm,
   },
   waitlistCard: {
     gap: theme.spacing.sm,
@@ -96,9 +96,10 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
-  const [productUpdatesConsent, setProductUpdatesConsent] = useState(false);
-  const [marketingConsent, setMarketingConsent] = useState(false);
   const [onboardingEmailsAcknowledged] = useState(true);
+  const [accessMode, setAccessMode] = useState<SignUpAccessMode>(() =>
+    resolveInitialAccessMode(route.params, prefilledInviteCode, prefilledEmail),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isJoiningWaitlist, setIsJoiningWaitlist] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -122,6 +123,9 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const waitlistSubmitLabel = isWaitlistRateLimited
     ? `Try Again in ${Math.max(1, Math.ceil(waitlistRateLimitDecision.remainingMs / 1000))}s`
     : isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet';
+  const isInviteCodeMode = accessMode === 'invite_code';
+  const isWaitlistJoinMode = accessMode === 'join_waitlist';
+  const isAccountCreationMode = !isWaitlistJoinMode;
 
   useEffect(() => {
     if (!prefilledInviteCode) {
@@ -129,6 +133,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
 
     setInviteCode(prefilledInviteCode);
+    setAccessMode('invite_code');
   }, [prefilledInviteCode]);
 
   useEffect(() => {
@@ -154,7 +159,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
-    if (!trimmedInviteCode) {
+    if (isInviteCodeMode && !trimmedInviteCode) {
       trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
         source: 'SignUpScreen',
         reason: 'missing_invite_code',
@@ -204,6 +209,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       hasEmail: Boolean(trimmedEmail),
       hasInviteCode: Boolean(trimmedInviteCode),
       inviteCodeLength: trimmedInviteCode.length,
+      accessMode,
     });
 
     try {
@@ -249,8 +255,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         defaultHomeFeedMode: 'mine',
         defaultHomeFeedTypeFilter: 'visits',
         defaultHomeFeedSort: 'created',
-        productUpdatesConsent,
-        marketingConsent,
+        productUpdatesConsent: false,
+        marketingConsent: false,
         onboardingEmailsAcknowledged,
         emailConsentVersion: EMAIL_CONSENT_VERSION,
         password,
@@ -267,6 +273,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_SUCCEEDED', {
         source: 'SignUpScreen',
         hasInviter: Boolean(pendingFriendSuggestion),
+        accessMode,
       });
 
       try {
@@ -308,18 +315,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
-    if (!onboardingEmailsAcknowledged) {
-      setWaitlistErrorMessage('Required onboarding and account emails must be acknowledged.');
-      return;
-    }
-
     if (!isOnline) {
       setWaitlistErrorMessage('Joining the waitlist requires an internet connection.');
-      return;
-    }
-
-    if (inviteCode.trim()) {
-      setWaitlistErrorMessage('Remove the invite code to join the waitlist.');
       return;
     }
 
@@ -338,10 +335,6 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         body: {
           email: trimmedEmail,
           source: 'mobile_signup',
-          productUpdatesConsent,
-          marketingConsent,
-          onboardingEmailsAcknowledged,
-          consentVersion: EMAIL_CONSENT_VERSION,
         },
       });
       trackObservabilityEvent('AUTH_WAITLIST_JOIN_SUCCEEDED', {
@@ -375,10 +368,18 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     const normalizedMessage = message.toLowerCase();
 
     if (normalizedMessage.includes('invite code is required')) {
+      if (!isInviteCodeMode) {
+        return 'Sign up failed.';
+      }
+
       return 'Invite code is required, or this email must be approved from the waitlist.';
     }
 
     if (normalizedMessage.includes('invalid or already used invite code')) {
+      if (!isInviteCodeMode) {
+        return 'Sign up failed.';
+      }
+
       return 'Invite code is invalid or already used.';
     }
 
@@ -419,136 +420,137 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           title="Create Account"
         />
 
-        <Card style={styles.formCard}>
-          <Input
-            label="Name"
-            onChangeText={setName}
-            placeholder="Your name"
-            testID="signup-name-input"
-            value={name}
-          />
-          <Input
-            autoCapitalize="none"
-            autoComplete="username"
-            autoCorrect={false}
-            keyboardType="email-address"
-            label="Email"
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            testID="signup-email-input"
-            textContentType="username"
-            value={email}
-          />
-          <Input
-            autoCapitalize="none"
-            autoCorrect={false}
-            label="Invite Code"
-            onChangeText={setInviteCode}
-            placeholder="Enter invite code"
-            testID="signup-invite-code-input"
-            value={inviteCode}
-          />
-          <Text style={styles.helperText} tone="muted" variant="bodySm">
-            Have an invite code? Enter it here. If not, join the waitlist below.
-          </Text>
-          <Input
-            autoCapitalize="none"
-            autoComplete="new-password"
-            autoCorrect={false}
-            label="Password"
-            onChangeText={setPassword}
-            passwordRules="minlength: 8;"
-            placeholder="Create password"
-            secureTextEntry
-            testID="signup-password-input"
-            textContentType="newPassword"
-            value={password}
-          />
-          <Input
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect={false}
-            importantForAutofill="no"
-            label="Confirm Password"
-            onChangeText={setPasswordConfirm}
-            placeholder="Repeat password"
-            secureTextEntry
-            testID="signup-confirm-password-input"
-            textContentType="none"
-            value={passwordConfirm}
-          />
-
-          <View style={styles.consentGroup}>
-            <ConsentRow
-              checked={onboardingEmailsAcknowledged}
-              disabled
-              label="Required onboarding and account emails"
-              onPress={() => {}}
-              testID="signup-onboarding-emails-checkbox"
-              helperText="These include account, security, onboarding, and service messages needed to use Yummy Recs."
-            />
-            <ConsentRow
-              checked={productUpdatesConsent}
-              label="Occasional product update emails"
-              onPress={() => setProductUpdatesConsent((value) => !value)}
-              testID="signup-product-updates-checkbox"
-              helperText="You can unsubscribe later."
-            />
-            <ConsentRow
-              checked={marketingConsent}
-              label="Marketing emails"
-              onPress={() => setMarketingConsent((value) => !value)}
-              testID="signup-marketing-checkbox"
-              helperText="Promotions and launch updates are optional."
-            />
-          </View>
-
-          <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
-
-          <Button
-            disabled={
-              !name.trim() ||
-              !email.trim() ||
-              !inviteCode.trim() ||
-              !password ||
-              !passwordConfirm ||
-              password.length < 8 ||
-              passwordConfirm.length < 8 ||
-              !onboardingEmailsAcknowledged ||
-              isSignupRateLimited
-            }
-            label={signupSubmitLabel}
-            loading={isSubmitting}
-            onPress={() => {
-              void handleSignUp();
+        <Card style={styles.modeCard}>
+          <Text variant="label">How are you joining?</Text>
+          <SegmentedControl
+            getOptionTestID={(value) => `signup-access-mode-${value}`}
+            onChange={(value) => {
+              setAccessMode(value);
+              setErrorMessage(null);
+              setWaitlistErrorMessage(null);
             }}
-            testID="signup-submit-button"
+            options={SIGNUP_ACCESS_MODE_OPTIONS}
+            value={accessMode}
           />
         </Card>
 
-        <Card style={styles.waitlistCard}>
-          <Text variant="label">No invite code?</Text>
-          <Text tone="secondary" variant="bodySm">
-            Join the waitlist with the email above. When approved, you can create an account with that email.
-          </Text>
-          <PageErrorToast errorMessage={waitlistErrorMessage} title="Could not join waitlist" />
-          <Button
-            disabled={
-              !email.trim() ||
-              Boolean(inviteCode.trim()) ||
-              !isOnline ||
-              !onboardingEmailsAcknowledged ||
-              isWaitlistRateLimited
-            }
-            label={waitlistSubmitLabel}
-            loading={isJoiningWaitlist}
-            onPress={() => {
-              void handleJoinWaitlist();
-            }}
-            testID="signup-waitlist-submit-button"
-            variant="secondary"
-          />
-        </Card>
+        {isAccountCreationMode ? (
+          <Card style={styles.formCard}>
+            <Input
+              label="Name"
+              onChangeText={setName}
+              placeholder="Your name"
+              testID="signup-name-input"
+              value={name}
+            />
+            <Input
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect={false}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              testID="signup-email-input"
+              textContentType="username"
+              value={email}
+            />
+            {isInviteCodeMode ? (
+              <>
+                <Input
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  label="Invite Code"
+                  onChangeText={setInviteCode}
+                  placeholder="Enter invite code"
+                  testID="signup-invite-code-input"
+                  value={inviteCode}
+                />
+                <Text style={styles.helperText} tone="muted" variant="bodySm">
+                  Use the invite code from the message you received.
+                </Text>
+              </>
+            ) : null}
+            <Input
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect={false}
+              label="Password"
+              onChangeText={setPassword}
+              passwordRules="minlength: 8;"
+              placeholder="Create password"
+              secureTextEntry
+              testID="signup-password-input"
+              textContentType="newPassword"
+              value={password}
+            />
+            <Input
+              autoCapitalize="none"
+              autoComplete="off"
+              autoCorrect={false}
+              importantForAutofill="no"
+              label="Confirm Password"
+              onChangeText={setPasswordConfirm}
+              placeholder="Repeat password"
+              secureTextEntry
+              testID="signup-confirm-password-input"
+              textContentType="none"
+              value={passwordConfirm}
+            />
+
+            <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
+
+            <Button
+              disabled={
+                !name.trim() ||
+                !email.trim() ||
+                (isInviteCodeMode && !inviteCode.trim()) ||
+                !password ||
+                !passwordConfirm ||
+                password.length < 8 ||
+                passwordConfirm.length < 8 ||
+                !onboardingEmailsAcknowledged ||
+                isSignupRateLimited
+              }
+              label={signupSubmitLabel}
+              loading={isSubmitting}
+              onPress={() => {
+                void handleSignUp();
+              }}
+              testID="signup-submit-button"
+            />
+          </Card>
+        ) : (
+          <Card style={styles.waitlistCard}>
+            <Text variant="label">Join the waitlist</Text>
+            <Text tone="secondary" variant="bodySm">
+              Enter your email and we will let you know when your account is ready.
+            </Text>
+            <Input
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect={false}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              testID="signup-email-input"
+              textContentType="username"
+              value={email}
+            />
+            <PageErrorToast errorMessage={waitlistErrorMessage} title="Could not join waitlist" />
+            <Button
+              disabled={!email.trim() || !isOnline || isWaitlistRateLimited}
+              label={waitlistSubmitLabel}
+              loading={isJoiningWaitlist}
+              onPress={() => {
+                void handleJoinWaitlist();
+              }}
+              testID="signup-waitlist-submit-button"
+              variant="secondary"
+            />
+          </Card>
+        )}
 
         <View style={styles.supportActions}>
           <Text tone="muted" variant="bodySm">
@@ -576,41 +578,4 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 function formatAuthSubmitRateLimitMessage(action: string, remainingMs: number): string {
   const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
   return `Too many attempts to ${action}. Try again in ${remainingSeconds} seconds.`;
-}
-
-function ConsentRow({
-  checked,
-  disabled = false,
-  helperText,
-  label,
-  onPress,
-  testID,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  helperText: string;
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  const styles = useStyles();
-
-  return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked, disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={styles.consentRow}
-      testID={testID}
-    >
-      <View style={[styles.checkbox, checked ? styles.checkboxChecked : null, disabled ? styles.checkboxDisabled : null]} />
-      <View style={styles.consentText}>
-        <Text variant="label">{label}</Text>
-        <Text tone="muted" variant="bodySm">
-          {helperText}
-        </Text>
-      </View>
-    </Pressable>
-  );
 }

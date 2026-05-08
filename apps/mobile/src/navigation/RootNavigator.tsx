@@ -90,6 +90,7 @@ export type RootStackParamList = {
         email?: string;
         inviteCode?: string;
         code?: string;
+        mode?: 'waitlist_approved' | 'invite_code' | 'join_waitlist';
       }
     | undefined;
   WaitlistConfirmation: {

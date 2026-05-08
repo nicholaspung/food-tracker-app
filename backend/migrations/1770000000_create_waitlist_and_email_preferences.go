@@ -36,11 +36,6 @@ func init() {
 			Values:    []string{"pending", "approved", "rejected", "signed_up"},
 		})
 		waitlistCollection.Fields.Add(&core.TextField{Name: "source", Max: 120})
-		waitlistCollection.Fields.Add(&core.BoolField{Name: "productUpdatesConsent"})
-		waitlistCollection.Fields.Add(&core.BoolField{Name: "marketingConsent"})
-		waitlistCollection.Fields.Add(&core.BoolField{Name: "onboardingEmailsAcknowledged"})
-		waitlistCollection.Fields.Add(&core.TextField{Name: "consentVersion", Max: 80})
-		waitlistCollection.Fields.Add(&core.DateField{Name: "consentCapturedAt"})
 		waitlistCollection.Fields.Add(&core.DateField{Name: "approvedAt"})
 		waitlistCollection.Fields.Add(&core.RelationField{
 			Name:          "approvedBy",

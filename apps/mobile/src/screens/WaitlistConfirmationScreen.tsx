@@ -38,7 +38,7 @@ export function WaitlistConfirmationScreen({
         lead={
           <AuthTopBar
             onBackPress={() => {
-              navigation.navigate('SignUp', { email });
+              navigation.navigate('SignUp', { email, mode: 'join_waitlist' });
             }}
           />
         }
@@ -68,7 +68,7 @@ export function WaitlistConfirmationScreen({
           <Button
             label="Back to Sign Up"
             onPress={() => {
-              navigation.navigate('SignUp', { email });
+              navigation.navigate('SignUp', { email, mode: 'join_waitlist' });
             }}
             testID="waitlist-confirmation-signup-button"
           />

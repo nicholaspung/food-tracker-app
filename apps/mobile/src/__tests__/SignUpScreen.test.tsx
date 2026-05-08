@@ -71,6 +71,7 @@ jest.mock('../components/shared', () => ({
   FormScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('FormScaffold', props, children),
   LoadingOverlay: (props: Record<string, unknown>) => mockReact.createElement('LoadingOverlay', props),
+  SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
 }));
 
 jest.mock('../components/shared/PageErrorToast', () => ({
@@ -131,6 +132,18 @@ describe('SignUpScreen', () => {
     name: 'SignUp' as const,
     params: undefined,
   };
+  const waitlistApprovedRoute = {
+    ...route,
+    params: {
+      mode: 'waitlist_approved' as const,
+    },
+  };
+  const inviteCodeRoute = {
+    ...route,
+    params: {
+      mode: 'invite_code' as const,
+    },
+  };
 
   beforeEach(() => {
     navigation.navigate.mockReset();
@@ -165,7 +178,7 @@ describe('SignUpScreen', () => {
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 
-  it('renders signup password creation on the password field only', async () => {
+  it('renders the three signup access modes', async () => {
     mockedUseAuth.mockReturnValue({
       signInWithPassword: jest.fn(),
     } as unknown as ReturnType<typeof useAuth>);
@@ -173,6 +186,26 @@ describe('SignUpScreen', () => {
     let renderer: any;
     await act(async () => {
       renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+    });
+
+    const modeControl = renderer.root.findByType('SegmentedControl');
+
+    expect(modeControl.props.value).toBe('join_waitlist');
+    expect(modeControl.props.options).toEqual([
+      { label: 'Got off waitlist', value: 'waitlist_approved' },
+      { label: 'Have invite code', value: 'invite_code' },
+      { label: 'Join waitlist', value: 'join_waitlist' },
+    ]);
+  });
+
+  it('renders signup password creation on the password field only', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={waitlistApprovedRoute} />);
     });
 
     const emailInput = renderer.root.findByProps({ testID: 'signup-email-input' });
@@ -204,7 +237,7 @@ describe('SignUpScreen', () => {
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
     });
 
     setInputValue(renderer, 'signup-name-input', 'Test User');
@@ -240,7 +273,7 @@ describe('SignUpScreen', () => {
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
     });
 
     setInputValue(renderer, 'signup-name-input', 'Test User');
@@ -261,7 +294,7 @@ describe('SignUpScreen', () => {
     });
   });
 
-  it('keeps create account disabled without an invite code', async () => {
+  it('keeps invite-code account creation disabled without an invite code', async () => {
     const signInWithPassword = jest.fn().mockResolvedValue(undefined);
     mockedUseAuth.mockReturnValue({
       signInWithPassword,
@@ -269,7 +302,7 @@ describe('SignUpScreen', () => {
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
     });
 
     setInputValue(renderer, 'signup-name-input', 'Test User');
@@ -280,25 +313,103 @@ describe('SignUpScreen', () => {
     expect(renderer.root.findByProps({ testID: 'signup-submit-button' }).props.disabled).toBe(true);
   });
 
-  it('disables waitlist joining when an invite code is present', async () => {
+  it('prefills copied invite-code links and hides waitlist joining', async () => {
     mockedUseAuth.mockReturnValue({
       signInWithPassword: jest.fn(),
     } as unknown as ReturnType<typeof useAuth>);
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(
+        <SignUpScreen
+          navigation={navigation as never}
+          route={{ ...route, params: { code: 'INVITE123' } }}
+        />,
+      );
     });
 
-    setInputValue(renderer, 'signup-email-input', 'user@example.com');
-    expect(renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.disabled).toBe(false);
-
-    setInputValue(renderer, 'signup-invite-code-input', 'invite123');
-
-    expect(renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.disabled).toBe(true);
+    expect(renderer.root.findByType('SegmentedControl').props.value).toBe('invite_code');
+    expect(renderer.root.findByProps({ testID: 'signup-invite-code-input' }).props.value).toBe('INVITE123');
+    expect(renderer.root.findAllByProps({ testID: 'signup-waitlist-submit-button' })).toHaveLength(0);
   });
 
-  it('submits the waitlist form with consent fields', async () => {
+  it('prefills inviteCode route params', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <SignUpScreen
+          navigation={navigation as never}
+          route={{ ...route, params: { inviteCode: 'INVITE456' } }}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('SegmentedControl').props.value).toBe('invite_code');
+    expect(renderer.root.findByProps({ testID: 'signup-invite-code-input' }).props.value).toBe('INVITE456');
+  });
+
+  it('uses email-only links for got-off-waitlist mode and hides invite code', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <SignUpScreen
+          navigation={navigation as never}
+          route={{ ...route, params: { email: 'APPROVED@example.com' } }}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('SegmentedControl').props.value).toBe('waitlist_approved');
+    expect(renderer.root.findByProps({ testID: 'signup-email-input' }).props.value).toBe('approved@example.com');
+    expect(renderer.root.findAllByProps({ testID: 'signup-invite-code-input' })).toHaveLength(0);
+  });
+
+  it('creates a got-off-waitlist account without an invite code', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={waitlistApprovedRoute} />);
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-email-input', 'approved@example.com');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    const submitButton = renderer.root.findByProps({ testID: 'signup-submit-button' });
+    expect(submitButton.props.disabled).toBe(false);
+
+    await act(async () => {
+      submitButton.props.onPress();
+    });
+
+    expect(mockedCreateCollectionRecord).toHaveBeenCalledWith(
+      'users',
+      expect.not.objectContaining({
+        inviteCode: expect.anything(),
+      }),
+    );
+    expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('users', expect.objectContaining({
+      email: 'approved@example.com',
+      marketingConsent: false,
+      onboardingEmailsAcknowledged: true,
+      productUpdatesConsent: false,
+    }));
+  });
+
+  it('submits the lightweight waitlist form without consent fields', async () => {
     mockedUseAuth.mockReturnValue({
       signInWithPassword: jest.fn(),
     } as unknown as ReturnType<typeof useAuth>);
@@ -311,27 +422,23 @@ describe('SignUpScreen', () => {
     setInputValue(renderer, 'signup-email-input', ' USER@example.com ');
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'signup-product-updates-checkbox' }).props.onPress();
-    });
-
-    await act(async () => {
       renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' }).props.onPress();
     });
 
     expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/waitlist', {
       method: 'POST',
-      body: expect.objectContaining({
+      body: {
         email: 'user@example.com',
-        marketingConsent: false,
-        onboardingEmailsAcknowledged: true,
-        productUpdatesConsent: true,
         source: 'mobile_signup',
-      }),
+      },
     });
     expect(navigation.navigate).toHaveBeenCalledWith('WaitlistConfirmation', {
       email: 'user@example.com',
     });
     expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith('waitlist', 'user@example.com');
+    expect(renderer.root.findAllByProps({ testID: 'signup-name-input' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'signup-password-input' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'signup-invite-code-input' })).toHaveLength(0);
   });
 
   it('blocks create account when the signup limiter is active', async () => {
@@ -360,7 +467,7 @@ describe('SignUpScreen', () => {
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
     });
 
     setInputValue(renderer, 'signup-name-input', 'Test User');
@@ -417,14 +524,14 @@ describe('SignUpScreen', () => {
     const waitlistButton = renderer.root.findByProps({ testID: 'signup-waitlist-submit-button' });
     expect(waitlistButton.props.disabled).toBe(true);
     expect(waitlistButton.props.label).toBe('Try Again in 30s');
-    expect(renderer.root.findByProps({ testID: 'signup-submit-button' }).props.label).toBe('Create Account');
+    expect(renderer.root.findAllByProps({ testID: 'signup-submit-button' })).toHaveLength(0);
 
     await act(async () => {
       await waitlistButton.props.onPress();
     });
 
     expect(mockedSendApiRequest).not.toHaveBeenCalledWith('/api/waitlist', expect.anything());
-    expect(renderer.root.findAllByType('PageErrorToast')[1].props.errorMessage).toBe(
+    expect(renderer.root.findAllByType('PageErrorToast')[0].props.errorMessage).toBe(
       'Too many attempts to join waitlist. Try again in 30 seconds.',
     );
   });
@@ -437,7 +544,7 @@ describe('SignUpScreen', () => {
 
     let renderer: any;
     await act(async () => {
-      renderer = create(<SignUpScreen navigation={navigation as never} route={route} />);
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
     });
 
     setInputValue(renderer, 'signup-name-input', 'Test User');

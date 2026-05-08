@@ -8,8 +8,6 @@ Set these values on the API server:
 
 - `LOOPS_API_KEY`
 - `LOOPS_WAITLIST_MAILING_LIST_ID`
-- `LOOPS_MARKETING_MAILING_LIST_ID`
-- `LOOPS_PRODUCT_UPDATES_MAILING_LIST_ID`
 When `LOOPS_API_KEY` is absent, backend waitlist and signup state still work, but Loops sync and sends are skipped.
 
 ## Loops Contact Properties
@@ -19,23 +17,17 @@ Create these custom contact properties in Loops:
 - `waitlistStatus`
 - `signupSource`
 - `appEnvironment`
-- `productUpdatesConsent`
-- `marketingConsent`
-- `onboardingEmailsAcknowledged`
-- `emailConsentVersion`
 - `waitlistJoinedAt`
 - `approvedAt`
 - `accountCreatedAt`
 
 ## Mailing Lists
 
-Create these Loops mailing lists and copy their IDs into the matching env vars:
+Create this Loops mailing list and copy its ID into the matching env var:
 
 - Waitlist: `LOOPS_WAITLIST_MAILING_LIST_ID`
-- Product Updates: `LOOPS_PRODUCT_UPDATES_MAILING_LIST_ID`
-- Marketing: `LOOPS_MARKETING_MAILING_LIST_ID`
 
-The backend always adds waitlist signups to the Waitlist list when configured. Product Updates and Marketing are controlled by the user's optional consent choices.
+The backend adds waitlist signups to the Waitlist list when configured.
 
 ## Events
 
@@ -55,7 +47,7 @@ Future lifecycle events can include:
 
 ## Waitlist Approval Email
 
-Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email sends the user to the signup page. The backend will allow account creation only for the approved email.
+Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email sends the user to the signup page with `mode=waitlist_approved` so the mobile app opens account creation without an invite code field. The backend will allow account creation only for the approved email.
 
 ## Local Testing
 

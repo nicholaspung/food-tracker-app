@@ -36,11 +36,6 @@ func ensureWaitlistCollection(t *testing.T, app core.App) {
 		Values:    []string{"pending", "approved", "rejected", "signed_up"},
 	})
 	collection.Fields.Add(&core.TextField{Name: "source", Max: 120})
-	collection.Fields.Add(&core.BoolField{Name: "productUpdatesConsent"})
-	collection.Fields.Add(&core.BoolField{Name: "marketingConsent"})
-	collection.Fields.Add(&core.BoolField{Name: "onboardingEmailsAcknowledged"})
-	collection.Fields.Add(&core.TextField{Name: "consentVersion", Max: 80})
-	collection.Fields.Add(&core.DateField{Name: "consentCapturedAt"})
 	collection.Fields.Add(&core.DateField{Name: "approvedAt"})
 	collection.Fields.Add(&core.RelationField{Name: "approvedBy", CollectionId: usersCollection.Id, MaxSelect: 1})
 	collection.Fields.Add(&core.DateField{Name: "rejectedAt"})
@@ -69,7 +64,7 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 		http.MethodPost,
 		"/api/waitlist",
 		"",
-		`{"email":" USER@example.COM ","source":"mobile_signup","productUpdatesConsent":true,"marketingConsent":false,"onboardingEmailsAcknowledged":true,"consentVersion":"2026-04-27"}`,
+		`{"email":" USER@example.COM ","source":"mobile_signup"}`,
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", response.Code, response.Body.String())
@@ -87,10 +82,9 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	}
 
 	record := createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{
-		"email":                        "dupe@example.com",
-		"status":                       "pending",
-		"source":                       "old",
-		"onboardingEmailsAcknowledged": true,
+		"email":  "dupe@example.com",
+		"status": "pending",
+		"source": "old",
 	})
 
 	response = performJSONRequest(
@@ -99,7 +93,7 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 		http.MethodPost,
 		"/api/waitlist",
 		"",
-		`{"email":"dupe@example.com","source":"mobile_signup","productUpdatesConsent":false,"marketingConsent":true,"onboardingEmailsAcknowledged":true,"consentVersion":"2026-04-27"}`,
+		`{"email":"dupe@example.com","source":"mobile_signup"}`,
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected duplicate upsert 200, got %d body=%s", response.Code, response.Body.String())
@@ -112,28 +106,6 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	if got := reloaded.GetString("source"); got != "mobile_signup" {
 		t.Fatalf("expected source update, got %q", got)
 	}
-	if !reloaded.GetBool("marketingConsent") {
-		t.Fatalf("expected marketing consent to be updated")
-	}
-}
-
-func TestWaitlistJoinRequiresOnboardingAcknowledgement(t *testing.T) {
-	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
-		ensureWaitlistCollection(t, app)
-		handlers.RegisterWaitlistHandlers(se, app, lib.LoadRuntimeResourcesFromEnv())
-	})
-
-	response := performJSONRequest(
-		t,
-		server.mux,
-		http.MethodPost,
-		"/api/waitlist",
-		"",
-		`{"email":"user@example.com","onboardingEmailsAcknowledged":false}`,
-	)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", response.Code, response.Body.String())
-	}
 }
 
 func TestAdminWaitlistApproveAndReject(t *testing.T) {
@@ -143,10 +115,9 @@ func TestAdminWaitlistApproveAndReject(t *testing.T) {
 	})
 	admin, token := createAuthUser(t, server.app, true, true)
 	entry := createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{
-		"email":                        "pending@example.com",
-		"status":                       "pending",
-		"source":                       "mobile_signup",
-		"onboardingEmailsAcknowledged": true,
+		"email":  "pending@example.com",
+		"status": "pending",
+		"source": "mobile_signup",
 	})
 
 	response := performJSONRequest(
