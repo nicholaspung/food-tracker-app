@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Yummy Recs</string>
+	<string>Yummy Recs$(YUMMYRECS_IOS_DISPLAY_NAME_SUFFIX)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Yummy Recs</string>
+	<string>Yummy Recs$(YUMMYRECS_IOS_DISPLAY_NAME_SUFFIX)</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,8 +27,8 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>yummyrecs</string>
-				<string>com.yummyrecs.mobile</string>
+				<string>yummyrecs$(YUMMYRECS_IOS_URL_SCHEME_SUFFIX)</string>
+				<string>com.yummyrecs.mobile$(YUMMYRECS_IOS_BUNDLE_IDENTIFIER_SUFFIX)</string>
 			</array>
 		</dict>
 		<dict>

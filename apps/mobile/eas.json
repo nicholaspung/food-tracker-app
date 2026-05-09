@@ -26,6 +26,9 @@
       "env": {
         "APP_VARIANT": "preview",
         "EXPO_PUBLIC_APP_ENV": "beta",
+        "YUMMYRECS_IOS_BUNDLE_IDENTIFIER_SUFFIX": ".preview",
+        "YUMMYRECS_IOS_DISPLAY_NAME_SUFFIX": " Preview",
+        "YUMMYRECS_IOS_URL_SCHEME_SUFFIX": "-preview",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
         "EXPO_PUBLIC_BETA_ADMIN_ONLY": "true"
@@ -41,6 +44,9 @@
       "env": {
         "APP_VARIANT": "preview",
         "EXPO_PUBLIC_APP_ENV": "production",
+        "YUMMYRECS_IOS_BUNDLE_IDENTIFIER_SUFFIX": ".preview",
+        "YUMMYRECS_IOS_DISPLAY_NAME_SUFFIX": " Preview",
+        "YUMMYRECS_IOS_URL_SCHEME_SUFFIX": "-preview",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
         "EXPO_PUBLIC_BETA_ADMIN_ONLY": "false"
