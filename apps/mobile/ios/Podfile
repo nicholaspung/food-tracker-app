@@ -18,6 +18,11 @@ ENV['RCT_USE_PREBUILT_RNCORE'] ||= '1' if podfile_properties['ios.buildReactNati
 ENV['RCT_HERMES_V1_ENABLED'] ||= '1' if podfile_properties['expo.useHermesV1'] == 'true'
 platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 
+project 'YummyRecs',
+  'Debug' => :debug,
+  'Release' => :release,
+  'ReleasePreview' => :release
+
 prepare_react_native_project!
 
 target 'YummyRecs' do
