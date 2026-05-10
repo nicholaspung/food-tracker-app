@@ -265,8 +265,20 @@ describe('ResetPasswordScreen', () => {
     });
 
     expect(renderer.root.findByType('AuthIntroCard').props.title).toBe('Reset Password');
-    expect(renderer.root.findByProps({ testID: 'reset-password-new-password-input' })).toBeDefined();
-    expect(renderer.root.findByProps({ testID: 'reset-password-confirm-password-input' })).toBeDefined();
+    const passwordInput = renderer.root.findByProps({ testID: 'reset-password-new-password-input' });
+    const confirmPasswordInput = renderer.root.findByProps({ testID: 'reset-password-confirm-password-input' });
+
+    expect(passwordInput.props.passwordMode).toBe('new');
+    expect(passwordInput.props.autoComplete).toBeUndefined();
+    expect(passwordInput.props.textContentType).toBeUndefined();
+    expect(passwordInput.props.passwordRules).toBeUndefined();
+    expect(passwordInput.props.secureTextEntry).toBeUndefined();
+
+    expect(confirmPasswordInput.props.passwordMode).toBe('confirm');
+    expect(confirmPasswordInput.props.autoComplete).toBeUndefined();
+    expect(confirmPasswordInput.props.textContentType).toBeUndefined();
+    expect(confirmPasswordInput.props.passwordRules).toBeUndefined();
+    expect(confirmPasswordInput.props.secureTextEntry).toBeUndefined();
   });
 
   it('validates token reset password length and mismatch before submitting', async () => {

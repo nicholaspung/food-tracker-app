@@ -44,6 +44,8 @@ func ensureWaitlistCollection(t *testing.T, app core.App) {
 	collection.Fields.Add(&core.RelationField{Name: "signedUpUser", CollectionId: usersCollection.Id, MaxSelect: 1})
 	collection.Fields.Add(&core.TextField{Name: "loopsContactId", Max: 120})
 	collection.Fields.Add(&core.TextField{Name: "lastLoopsSyncError", Max: 2000})
+	collection.Fields.Add(&core.DateField{Name: "joinedEmailSentAt"})
+	collection.Fields.Add(&core.TextField{Name: "lastJoinedEmailError", Max: 2000})
 	collection.Fields.Add(&core.DateField{Name: "created"})
 	collection.Fields.Add(&core.DateField{Name: "updated"})
 
@@ -79,6 +81,12 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	}
 	if got := normalizedRecord.GetString("status"); got != "pending" {
 		t.Fatalf("expected pending status, got %q", got)
+	}
+	if got := normalizedRecord.GetString("joinedEmailSentAt"); got == "" {
+		t.Fatal("expected joined email sent timestamp")
+	}
+	if got := normalizedRecord.GetString("lastJoinedEmailError"); got != "" {
+		t.Fatalf("expected no joined email error after successful test send, got %q", got)
 	}
 
 	record := createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{

@@ -36,6 +36,7 @@ load_food_tracker_env() {
             export FOOD_TRACKER_API_BASE_URL="http://127.0.0.1:8090"
             export FOOD_TRACKER_POCKETBASE_URL="http://127.0.0.1:8090"
             export FOOD_TRACKER_POSTHOG_HOST="http://127.0.0.1:8090/api/analytics"
+            export FOOD_TRACKER_IOS_APP_STORE_URL="https://apps.apple.com/us/app/yummy-recs/id6761597807"
             export FOOD_TRACKER_APP_SCHEME="yummyrecs"
             export FOOD_TRACKER_POCKETBASE_PORT="8090"
             export EXPO_PUBLIC_APP_ENV="local"
@@ -43,12 +44,14 @@ load_food_tracker_env() {
             export EXPO_PUBLIC_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
             export EXPO_PUBLIC_APP_WEB_URL="$FOOD_TRACKER_APP_URL"
             export EXPO_PUBLIC_ADMIN_URL="$FOOD_TRACKER_ADMIN_URL"
+            export EXPO_PUBLIC_IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             export EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS="false"
             export EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS="false"
             export EXPO_PUBLIC_BETA_ADMIN_ONLY="false"
             export VITE_APP_ENV="local"
             export VITE_API_URL="$FOOD_TRACKER_API_BASE_URL"
             export APP_OPEN_URL="${FOOD_TRACKER_APP_URL}/"
+            export IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             ;;
         beta)
             export FOOD_TRACKER_MARKETING_URL="https://beta.yummyrecs.com"
@@ -57,6 +60,7 @@ load_food_tracker_env() {
             export FOOD_TRACKER_API_BASE_URL="$FOOD_TRACKER_APP_URL"
             export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_APP_URL"
             export FOOD_TRACKER_POSTHOG_HOST="${FOOD_TRACKER_APP_URL}/api/analytics"
+            export FOOD_TRACKER_IOS_APP_STORE_URL="https://apps.apple.com/us/app/yummy-recs/id6761597807"
             export FOOD_TRACKER_APP_SCHEME="yummyrecs-preview"
             export FOOD_TRACKER_POCKETBASE_PORT="8091"
             export EXPO_PUBLIC_APP_ENV="beta"
@@ -64,12 +68,14 @@ load_food_tracker_env() {
             export EXPO_PUBLIC_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
             export EXPO_PUBLIC_APP_WEB_URL="$FOOD_TRACKER_APP_URL"
             export EXPO_PUBLIC_ADMIN_URL="$FOOD_TRACKER_ADMIN_URL"
+            export EXPO_PUBLIC_IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             export EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS="true"
             export EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS="true"
             export EXPO_PUBLIC_BETA_ADMIN_ONLY="true"
             export VITE_APP_ENV="beta"
             export VITE_API_URL="$FOOD_TRACKER_ADMIN_URL"
             export APP_OPEN_URL="${FOOD_TRACKER_APP_URL}/"
+            export IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             ;;
         production)
             export FOOD_TRACKER_MARKETING_URL="https://yummyrecs.com"
@@ -78,6 +84,7 @@ load_food_tracker_env() {
             export FOOD_TRACKER_API_BASE_URL="$FOOD_TRACKER_APP_URL"
             export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_APP_URL"
             export FOOD_TRACKER_POSTHOG_HOST="${FOOD_TRACKER_APP_URL}/api/analytics"
+            export FOOD_TRACKER_IOS_APP_STORE_URL="https://apps.apple.com/us/app/yummy-recs/id6761597807"
             export FOOD_TRACKER_APP_SCHEME="yummyrecs"
             export FOOD_TRACKER_POCKETBASE_PORT="8090"
             export EXPO_PUBLIC_APP_ENV="production"
@@ -85,12 +92,14 @@ load_food_tracker_env() {
             export EXPO_PUBLIC_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
             export EXPO_PUBLIC_APP_WEB_URL="$FOOD_TRACKER_APP_URL"
             export EXPO_PUBLIC_ADMIN_URL="$FOOD_TRACKER_ADMIN_URL"
+            export EXPO_PUBLIC_IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             export EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS="true"
             export EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS="true"
             export EXPO_PUBLIC_BETA_ADMIN_ONLY="false"
             export VITE_APP_ENV="production"
             export VITE_API_URL="$FOOD_TRACKER_ADMIN_URL"
             export APP_OPEN_URL="${FOOD_TRACKER_APP_URL}/"
+            export IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
             ;;
     esac
 }

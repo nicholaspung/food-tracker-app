@@ -1,0 +1,8 @@
+{
+  "name": "@food-tracker/mailpit",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "bash ../../scripts/dev-mailpit.sh"
+  }
+}

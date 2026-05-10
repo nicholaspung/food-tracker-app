@@ -27,6 +27,7 @@ func TestValidateStartupConfigurationRejectsInvalidConfiguredURLs(t *testing.T) 
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
 	t.Setenv("POSTHOG_HOST", "not-a-url")
 	t.Setenv("FOOD_TRACKER_APP_URL", "ftp://bad.example.com")
+	t.Setenv("FOOD_TRACKER_IOS_APP_STORE_URL", "not-a-url")
 
 	_, err := validateStartupConfiguration()
 	if err == nil {
@@ -39,6 +40,9 @@ func TestValidateStartupConfigurationRejectsInvalidConfiguredURLs(t *testing.T) 
 	if !strings.Contains(err.Error(), "FOOD_TRACKER_APP_URL") {
 		t.Fatalf("expected FOOD_TRACKER_APP_URL validation failure, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "FOOD_TRACKER_IOS_APP_STORE_URL") {
+		t.Fatalf("expected FOOD_TRACKER_IOS_APP_STORE_URL validation failure, got %v", err)
+	}
 }
 
 func TestValidateStartupConfigurationAcceptsCurrentRequiredConfig(t *testing.T) {
@@ -46,6 +50,7 @@ func TestValidateStartupConfigurationAcceptsCurrentRequiredConfig(t *testing.T) 
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
 	t.Setenv("POSTHOG_HOST", "https://analytics.example.com")
 	t.Setenv("FOOD_TRACKER_APP_URL", "https://app.example.com")
+	t.Setenv("FOOD_TRACKER_IOS_APP_STORE_URL", "https://apps.apple.com/us/app/yummy-recs/id6761597807")
 	t.Setenv("FOOD_TRACKER_API_BASE_URL", "https://api.example.com")
 	t.Setenv("FOOD_TRACKER_ADMIN_URL", "https://admin.example.com")
 	t.Setenv("FOOD_TRACKER_MARKETING_URL", "https://www.example.com")
@@ -89,11 +94,44 @@ func TestValidateStartupConfigurationRejectsNonLocalEnvironmentLoopbackURLs(t *t
 	}
 }
 
+func TestValidateStartupConfigurationRejectsMailpitConfigOutsideLocal(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "test-gemini")
+	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
+	t.Setenv("FOOD_TRACKER_ENV", "beta")
+	t.Setenv("FOOD_TRACKER_MAILPIT_SMTP_HOST", "127.0.0.1")
+
+	_, err := validateStartupConfiguration()
+	if err == nil {
+		t.Fatalf("expected beta configuration with Mailpit env to fail validation")
+	}
+
+	if !strings.Contains(err.Error(), "FOOD_TRACKER_MAILPIT_SMTP_HOST is local-development only and must not be set in beta") {
+		t.Fatalf("expected Mailpit env validation failure, got %v", err)
+	}
+}
+
+func TestValidateStartupConfigurationRejectsLocalSMTPHostOutsideLocal(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "test-gemini")
+	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
+	t.Setenv("FOOD_TRACKER_ENV", "production")
+	t.Setenv("SMTP_HOST", "127.0.0.1")
+
+	_, err := validateStartupConfiguration()
+	if err == nil {
+		t.Fatalf("expected production configuration with local SMTP host to fail validation")
+	}
+
+	if !strings.Contains(err.Error(), `SMTP_HOST must not use local Mailpit host "127.0.0.1" in production`) {
+		t.Fatalf("expected local SMTP validation failure, got %v", err)
+	}
+}
+
 func TestValidateStartupConfigurationAcceptsProductionURLs(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "test-gemini")
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
 	t.Setenv("FOOD_TRACKER_ENV", "production")
 	t.Setenv("FOOD_TRACKER_APP_URL", "https://app.yummyrecs.com")
+	t.Setenv("FOOD_TRACKER_IOS_APP_STORE_URL", "https://apps.apple.com/us/app/yummy-recs/id6761597807")
 	t.Setenv("FOOD_TRACKER_API_BASE_URL", "https://app.yummyrecs.com")
 	t.Setenv("FOOD_TRACKER_ADMIN_URL", "https://admin.yummyrecs.com")
 	t.Setenv("FOOD_TRACKER_MARKETING_URL", "https://yummyrecs.com")
@@ -111,6 +149,7 @@ func TestValidateStartupConfigurationAcceptsLocalDefaults(t *testing.T) {
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
 	t.Setenv("FOOD_TRACKER_ENV", "local")
 	t.Setenv("FOOD_TRACKER_APP_URL", "http://localhost:8081")
+	t.Setenv("FOOD_TRACKER_IOS_APP_STORE_URL", "https://apps.apple.com/us/app/yummy-recs/id6761597807")
 	t.Setenv("FOOD_TRACKER_API_BASE_URL", "http://127.0.0.1:8090")
 	t.Setenv("FOOD_TRACKER_ADMIN_URL", "http://localhost:5173")
 	t.Setenv("FOOD_TRACKER_MARKETING_URL", "http://localhost:4173")

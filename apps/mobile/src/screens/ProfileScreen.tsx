@@ -48,12 +48,12 @@ import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { env } from '../config/env';
 
 type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type ExpandablePanel = 'account' | 'invite' | 'danger';
 
 const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
-const IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
@@ -200,7 +200,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function buildInviteShareMessage(code: string): string {
+function buildInviteShareMessage(code: string, iosAppStoreUrl: string = env.iosAppStoreUrl): string {
   const signupUrl = `${INVITE_SIGNUP_DEEP_LINK_PREFIX}${encodeURIComponent(code)}`;
 
   return [
@@ -210,7 +210,7 @@ function buildInviteShareMessage(code: string): string {
     signupUrl,
     '',
     'Download Yummy Recs for iPhone:',
-    IOS_APP_STORE_URL,
+    iosAppStoreUrl,
     '',
     `Your invite code: ${code}`,
     '',
@@ -1120,8 +1120,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         visible={showDeleteConfirm}
       >
         <Input
-          autoCapitalize="none"
-          autoCorrect={false}
           errorText={dangerErrorMessage}
           label="Current Password"
           onChangeText={(value) => {
@@ -1130,9 +1128,8 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               setDangerErrorMessage(null);
             }
           }}
+          passwordMode="current"
           placeholder="Enter your password"
-          secureTextEntry
-          textContentType="password"
           value={deleteAccountPassword}
         />
       </ConfirmDestructiveModal>

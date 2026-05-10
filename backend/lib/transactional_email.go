@@ -19,42 +19,46 @@ type TransactionalEmailInput struct {
 }
 
 func BuildTransactionalEmailHTML(input TransactionalEmailInput) string {
-	return fmt.Sprintf(`<!doctype html>
-<html>
-  <body style="margin:0;background:#f7f4ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#241f1b;">
-    <div style="display:none;max-height:0;overflow:hidden;">%s</div>
-    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f7f4ef;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #e6ded5;">
-            <tr>
-              <td>
-                <p style="margin:0 0 8px;font-size:14px;color:#8a5a35;font-weight:700;">Yummy Recs</p>
-                <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;color:#241f1b;">%s</h1>
-                <p style="margin:0 0 24px;font-size:16px;line-height:1.5;color:#4b4038;">%s</p>
-                <p style="margin:0 0 24px;">
-                  <a href="%s" target="_blank" rel="noopener" style="display:inline-block;background:#8a5a35;color:#ffffff;text-decoration:none;border-radius:8px;padding:13px 18px;font-weight:700;">%s</a>
-                </p>
-                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5c5148;">%s <a href="%s" style="color:#8a5a35;font-weight:700;">%s</a></p>
-                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5c5148;">%s</p>
-                <p style="margin:0;font-size:13px;line-height:1.5;color:#75695f;">Visit <a href="%s" style="color:#8a5a35;">Yummy Recs</a>.</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`,
-		html.EscapeString(input.Preheader),
-		html.EscapeString(input.Title),
-		html.EscapeString(input.Body),
-		html.EscapeString(input.WebURL),
-		html.EscapeString(input.ButtonLabel),
-		html.EscapeString(input.SecondaryPrompt),
-		html.EscapeString(input.AppURL),
-		html.EscapeString(input.SecondaryLabel),
-		html.EscapeString(input.SafetyNote),
-		html.EscapeString(input.MarketingURL),
+	return fmt.Sprintf(`<table role="presentation" cellspacing="0" cellpadding="32" align="center">
+  <tr>
+    <td style="font-family:Arial,Helvetica,sans-serif;color:#241f1b;">
+      <span style="font-size:12px;color:#75695f;">%s</span>
+      <br><br>
+      <span style="font-size:14px;color:#8a5a35;"><strong>Yummy Recs</strong></span>
+      <br><br>
+      <span style="font-size:28px;color:#241f1b;"><strong>%s</strong></span>
+      <br><br>
+      <span style="font-size:16px;color:#4b4038;">%s</span>
+      <br><br>
+      %s
+      <br><br>
+      <span style="font-size:14px;color:#5c5148;">%s %s</span>
+      <br><br>
+      <span style="font-size:14px;color:#5c5148;">%s</span>
+      <br><br>
+      <span style="font-size:13px;color:#75695f;">Visit %s.</span>
+    </td>
+  </tr>
+</table>`,
+		escapeEmailText(input.Preheader),
+		escapeEmailText(input.Title),
+		escapeEmailText(input.Body),
+		renderButton(input.WebURL, input.ButtonLabel),
+		escapeEmailText(input.SecondaryPrompt),
+		renderTextLink(input.AppURL, input.SecondaryLabel),
+		escapeEmailText(input.SafetyNote),
+		renderTextLink(input.MarketingURL, "Yummy Recs"),
 	)
+}
+
+func escapeEmailText(value string) string {
+	return html.EscapeString(value)
+}
+
+func renderButton(href string, label string) string {
+	return fmt.Sprintf(`<a href="%s" style="color:#8a5a35;"><strong>%s</strong></a>`, escapeEmailText(href), escapeEmailText(label))
+}
+
+func renderTextLink(href string, label string) string {
+	return fmt.Sprintf(`<a href="%s" style="color:#8a5a35;"><strong>%s</strong></a>`, escapeEmailText(href), escapeEmailText(label))
 }

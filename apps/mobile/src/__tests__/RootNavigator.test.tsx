@@ -255,6 +255,28 @@ describe('RootNavigator', () => {
     expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
   });
 
+  it('does not render the grace-period banner while required feature onboarding is incomplete', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      isSubmitting: false,
+      verificationStatus: 'grace_period',
+      verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedStackScreens = renderer.root.findAllByType('StackScreen').map((node: any) => node.props.name);
+    expect(renderedStackScreens.indexOf('FeatureOnboarding')).toBeLessThan(renderedStackScreens.indexOf('Home'));
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
+  });
+
   it('renders only the verification flow after the grace period expires', async () => {
     mockedUseAuth.mockReturnValue({
       status: 'verification_required',

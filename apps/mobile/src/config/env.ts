@@ -15,6 +15,7 @@ export interface MobileEnv {
   apiBaseUrl: string;
   appWebUrl: string;
   environment: AppEnvironment;
+  iosAppStoreUrl: string;
   marketingUrl: string;
   pocketbaseUrl: string;
   posthogApiKey: string;
@@ -26,6 +27,7 @@ const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
   EXPO_PUBLIC_ADMIN_URL: process.env.EXPO_PUBLIC_ADMIN_URL,
   EXPO_PUBLIC_APP_WEB_URL: process.env.EXPO_PUBLIC_APP_WEB_URL,
+  EXPO_PUBLIC_IOS_APP_STORE_URL: process.env.EXPO_PUBLIC_IOS_APP_STORE_URL,
   EXPO_PUBLIC_MARKETING_URL: process.env.EXPO_PUBLIC_MARKETING_URL,
   EXPO_PUBLIC_POCKETBASE_URL: process.env.EXPO_PUBLIC_POCKETBASE_URL,
   EXPO_PUBLIC_POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -33,7 +35,7 @@ const expoPublicEnv: EnvSource = {
 };
 
 function resolveCurrentOrigin(): string | undefined {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.origin) {
+  if (Platform?.OS === 'web' && typeof window !== 'undefined' && window.location.origin) {
     return window.location.origin;
   }
 
@@ -97,6 +99,9 @@ export function loadMobileEnv(
     readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_APP_WEB_URL) ?? environmentDefaults.appWebUrl;
   const adminUrl =
     readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_ADMIN_URL) ?? environmentDefaults.adminUrl;
+  const iosAppStoreUrl =
+    readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_IOS_APP_STORE_URL) ??
+    environmentDefaults.iosAppStoreUrl;
   const marketingUrl =
     readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_MARKETING_URL) ?? environmentDefaults.marketingUrl;
   const posthogHost =
@@ -107,6 +112,7 @@ export function loadMobileEnv(
     apiBaseUrl,
     appWebUrl,
     environment,
+    iosAppStoreUrl,
     marketingUrl,
     pocketbaseUrl,
     posthogApiKey: readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY) ?? '',

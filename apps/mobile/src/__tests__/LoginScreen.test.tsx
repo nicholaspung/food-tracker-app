@@ -169,10 +169,11 @@ describe('LoginScreen', () => {
 
     expect(emailInput.props.autoComplete).toBe('username');
     expect(emailInput.props.textContentType).toBe('username');
-    expect(input.props.secureTextEntry).toBe(true);
-    expect(input.props.autoComplete).toBe('current-password');
-    expect(input.props.importantForAutofill).not.toBe('no');
-    expect(input.props.textContentType).toBe('password');
+    expect(input.props.passwordMode).toBe('current');
+    expect(input.props.secureTextEntry).toBeUndefined();
+    expect(input.props.autoComplete).toBeUndefined();
+    expect(input.props.importantForAutofill).toBeUndefined();
+    expect(input.props.textContentType).toBeUndefined();
     expect(input.props.passwordRules).toBeUndefined();
   });
 

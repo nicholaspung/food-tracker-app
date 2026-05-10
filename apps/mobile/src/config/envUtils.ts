@@ -2,10 +2,13 @@ export type AppEnvironment = 'local' | 'beta' | 'production';
 
 export type EnvSource = Record<string, string | undefined>;
 
+export const DEFAULT_IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
+
 interface MobileEnvironmentDefaults {
   adminUrl: string;
   apiBaseUrl: string;
   appWebUrl: string;
+  iosAppStoreUrl: string;
   marketingUrl: string;
   pocketbaseUrl: string;
   posthogHost: string;
@@ -26,6 +29,7 @@ export const MOBILE_ENVIRONMENT_DEFAULTS: Record<AppEnvironment, MobileEnvironme
     adminUrl: 'http://localhost:5173',
     apiBaseUrl: 'http://127.0.0.1:8090',
     appWebUrl: 'http://localhost:8081',
+    iosAppStoreUrl: DEFAULT_IOS_APP_STORE_URL,
     marketingUrl: 'http://localhost:4173',
     pocketbaseUrl: 'http://127.0.0.1:8090',
     posthogHost: 'http://127.0.0.1:8090/api/analytics',
@@ -34,6 +38,7 @@ export const MOBILE_ENVIRONMENT_DEFAULTS: Record<AppEnvironment, MobileEnvironme
     adminUrl: 'https://beta.admin.yummyrecs.com',
     apiBaseUrl: 'https://beta.app.yummyrecs.com',
     appWebUrl: 'https://beta.app.yummyrecs.com',
+    iosAppStoreUrl: DEFAULT_IOS_APP_STORE_URL,
     marketingUrl: 'https://beta.yummyrecs.com',
     pocketbaseUrl: 'https://beta.app.yummyrecs.com',
     posthogHost: 'https://beta.app.yummyrecs.com/api/analytics',
@@ -42,6 +47,7 @@ export const MOBILE_ENVIRONMENT_DEFAULTS: Record<AppEnvironment, MobileEnvironme
     adminUrl: 'https://admin.yummyrecs.com',
     apiBaseUrl: 'https://app.yummyrecs.com',
     appWebUrl: 'https://app.yummyrecs.com',
+    iosAppStoreUrl: DEFAULT_IOS_APP_STORE_URL,
     marketingUrl: 'https://yummyrecs.com',
     pocketbaseUrl: 'https://app.yummyrecs.com',
     posthogHost: 'https://app.yummyrecs.com/api/analytics',

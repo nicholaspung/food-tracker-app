@@ -14,6 +14,49 @@ PocketBase can send emails in two ways:
 
 ---
 
+## Local Development: Mailpit
+
+Use Mailpit to capture PocketBase emails on your machine without sending real email. `pnpm dev` starts Mailpit with the rest of the local dev stack.
+
+### Install Mailpit
+
+```bash
+brew install mailpit
+```
+
+### Start the local dev stack
+
+```bash
+pnpm dev
+```
+
+Mailpit runs locally only:
+
+```text
+SMTP: http://127.0.0.1:1025
+Inbox: http://127.0.0.1:8025
+```
+
+### Configure PocketBase Mail Settings
+
+Open the local PocketBase admin UI and set:
+
+```text
+SMTP server host: 127.0.0.1
+SMTP server port: 1025
+Username: blank
+Password: blank
+Use TLS: off
+Sender name: Yummy Recs Dev
+Sender address: dev@yummyrecs.local
+```
+
+Use this for verification emails, password resets, email change confirmations, waitlist approval emails, and PocketBase test emails. Messages appear in the Mailpit inbox instead of reaching real recipients.
+
+For security, Mailpit is bound to `127.0.0.1` by default in this repo. Do not expose ports `1025` or `8025` through a public tunnel, reverse proxy, or LAN bind address.
+
+---
+
 ## Quick Start: Resend Setup
 
 **Recommended for production deployments** - This guide gets you up and running with Resend in ~15 minutes.

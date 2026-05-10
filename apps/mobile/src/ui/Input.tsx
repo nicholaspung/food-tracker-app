@@ -12,9 +12,12 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
   errorText?: string | null;
   containerStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
+  passwordMode?: PasswordInputMode;
   showInlineKeyboardDismissButton?: boolean;
   useDefaultReturnKeyType?: boolean;
 }
+
+export type PasswordInputMode = 'current' | 'new' | 'confirm' | 'off';
 
 const INLINE_DISMISS_KEYBOARD_TYPES = new Set<NonNullable<TextInputProps['keyboardType']>>([
   'decimal-pad',
@@ -74,6 +77,7 @@ export function Input({
   errorText,
   containerStyle,
   inputStyle,
+  passwordMode,
   showInlineKeyboardDismissButton = true,
   useDefaultReturnKeyType = true,
   onBlur,
@@ -86,10 +90,18 @@ export function Input({
   const isMultiline = props.multiline === true;
   const isNumericInput = INLINE_DISMISS_KEYBOARD_TYPES.has(props.keyboardType ?? 'default');
   const shouldDisableAutofill = isNumericInput;
-  const resolvedAutoComplete = props.autoComplete ?? (shouldDisableAutofill ? 'off' : undefined);
-  const resolvedImportantForAutofill = props.importantForAutofill ?? (shouldDisableAutofill ? 'no' : undefined);
+  const passwordProps = resolvePasswordInputProps(passwordMode);
+  const resolvedAutoComplete =
+    passwordProps.autoComplete ?? props.autoComplete ?? (shouldDisableAutofill ? 'off' : undefined);
+  const resolvedImportantForAutofill =
+    passwordProps.importantForAutofill ??
+    props.importantForAutofill ??
+    (shouldDisableAutofill ? 'no' : undefined);
   const resolvedTextContentType =
-    props.textContentType ?? (Platform.OS === 'ios' && shouldDisableAutofill ? 'none' : undefined);
+    passwordProps.textContentType ??
+    props.textContentType ??
+    (Platform.OS === 'ios' && shouldDisableAutofill ? 'none' : undefined);
+  const resolvedPasswordRules = passwordProps.passwordRules ?? props.passwordRules;
   const resolvedReturnKeyType =
     props.returnKeyType ?? (useDefaultReturnKeyType && !isMultiline ? 'done' : undefined);
   const shouldShowInlineDismissButton =
@@ -111,8 +123,13 @@ export function Input({
           returnKeyType={resolvedReturnKeyType}
           {...props}
           autoComplete={resolvedAutoComplete}
+          autoCapitalize={passwordProps.autoCapitalize ?? props.autoCapitalize}
+          autoCorrect={passwordProps.autoCorrect ?? props.autoCorrect}
           importantForAutofill={resolvedImportantForAutofill}
+          passwordRules={resolvedPasswordRules}
           ref={inputRef}
+          secureTextEntry={passwordProps.secureTextEntry ?? props.secureTextEntry}
+          spellCheck={passwordProps.spellCheck ?? props.spellCheck}
           textContentType={resolvedTextContentType}
           onBlur={(event) => {
             setIsFocused(false);
@@ -148,4 +165,59 @@ export function Input({
       {errorText ? <Text tone="danger">{errorText}</Text> : helperText ? <Text tone="muted">{helperText}</Text> : null}
     </View>
   );
+}
+
+function resolvePasswordInputProps(passwordMode: PasswordInputMode | undefined): Partial<TextInputProps> {
+  if (!passwordMode) {
+    return {};
+  }
+
+  const sharedPasswordProps: Partial<TextInputProps> = {
+    autoCapitalize: 'none',
+    autoCorrect: false,
+    secureTextEntry: true,
+    spellCheck: false,
+  };
+
+  if (Platform.OS === 'ios') {
+    switch (passwordMode) {
+      case 'current':
+        return {
+          ...sharedPasswordProps,
+          textContentType: 'password',
+        };
+      case 'new':
+        return {
+          ...sharedPasswordProps,
+          passwordRules: 'minlength: 8;',
+          textContentType: 'newPassword',
+        };
+      case 'confirm':
+      case 'off':
+        return {
+          ...sharedPasswordProps,
+          textContentType: 'none',
+        };
+    }
+  }
+
+  switch (passwordMode) {
+    case 'current':
+      return {
+        ...sharedPasswordProps,
+        autoComplete: 'current-password',
+      };
+    case 'new':
+      return {
+        ...sharedPasswordProps,
+        autoComplete: 'new-password',
+      };
+    case 'confirm':
+    case 'off':
+      return {
+        ...sharedPasswordProps,
+        autoComplete: 'off',
+        importantForAutofill: 'no',
+      };
+  }
 }

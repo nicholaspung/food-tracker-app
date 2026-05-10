@@ -227,15 +227,11 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           </View>
 
           <Input
-            autoCapitalize="none"
-            autoComplete="current-password"
-            autoCorrect={false}
             label="Password"
             onChangeText={setPassword}
+            passwordMode="current"
             placeholder="Password"
-            secureTextEntry
             testID="login-password-input"
-            textContentType="password"
             value={password}
           />
 

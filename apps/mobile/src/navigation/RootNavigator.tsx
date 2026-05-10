@@ -486,6 +486,7 @@ export function RootNavigator() {
   const shouldShowVerificationBanner =
     status === 'authenticated' &&
     isAuthenticatedChromeReady &&
+    !requiresFeatureOnboarding &&
     verificationStatus === 'grace_period' &&
     Boolean(verificationGraceEndsAt) &&
     currentRouteName !== 'VerifyEmail';

@@ -305,6 +305,22 @@
       transition: transform 0.15s;
     }
     .store-link:hover { transform: translateY(-1px); }
+    .app-store-badge-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      text-decoration: none;
+      transition: transform 0.15s;
+    }
+    .app-store-badge-link:hover { transform: translateY(-1px); }
+    .app-store-badge {
+      display: block;
+      width: 162px;
+      max-width: 100%;
+      height: auto;
+      aspect-ratio: 135 / 40;
+    }
     .store-link-placeholder {
       background: rgba(255,255,255,0.15);
       color: #fff;
@@ -539,12 +555,9 @@
               <span class="store-name">Open App</span>
             </span>
           </a>
-          <button class="store-link-placeholder" type="button" disabled>
-            <span class="store-copy">
-              <span class="store-kicker">Download on the</span>
-              <span class="store-name">App Store</span>
-            </span>
-          </button>
+          <a class="app-store-badge-link" href="__IOS_APP_STORE_URL__" aria-label="Download Yummy Recs on the App Store">
+            <img class="app-store-badge" src="/app-store-badge.svg" alt="Download on the App Store">
+          </a>
           <button class="store-link-placeholder" type="button" disabled>
             <span class="store-copy">
               <span class="store-kicker">Get it on</span>

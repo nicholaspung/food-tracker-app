@@ -19,6 +19,8 @@ const stagingDir = path.join(repoDir, 'apps/marketing/.dev-dist-staging');
 const backupDir = path.join(repoDir, 'apps/marketing/.dev-dist-backup');
 const port = Number.parseInt(process.env.MARKETING_DEV_PORT ?? '4173', 10);
 const appOpenUrl = process.env.APP_OPEN_URL ?? 'http://localhost:8081/';
+const iosAppStoreUrl =
+  process.env.IOS_APP_STORE_URL ?? 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 const browserSyncServer = browserSync.create('marketing-dev');
 const watchTargets = [
   sourceDir,
@@ -64,6 +66,7 @@ function runPrepare(targetDir) {
         env: {
           ...process.env,
           APP_OPEN_URL: appOpenUrl,
+          IOS_APP_STORE_URL: iosAppStoreUrl,
         },
         stdio: 'inherit',
       },

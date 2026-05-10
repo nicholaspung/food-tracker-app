@@ -34,6 +34,7 @@ func validateStartupConfiguration() (lib.RuntimeResources, error) {
 		{name: "FOOD_TRACKER_ADMIN_URL", value: runtimeResources.AdminURL, disallowLocal: true},
 		{name: "FOOD_TRACKER_API_BASE_URL", value: runtimeResources.APIBaseURL, disallowLocal: true},
 		{name: "FOOD_TRACKER_APP_URL", value: runtimeResources.AppURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_IOS_APP_STORE_URL", value: runtimeResources.IOSAppStoreURL, disallowLocal: true},
 		{name: "FOOD_TRACKER_MARKETING_URL", value: runtimeResources.MarketingURL, disallowLocal: true},
 		{name: "FOOD_TRACKER_POCKETBASE_URL", value: runtimeResources.PocketBaseURL, disallowLocal: true},
 		{name: "FOOD_TRACKER_POSTHOG_HOST", value: runtimeResources.PostHogHost, disallowLocal: true},
@@ -49,6 +50,10 @@ func validateStartupConfiguration() (lib.RuntimeResources, error) {
 
 	if err := validateURLScheme(runtimeResources.MobileAppScheme); err != nil {
 		problems = append(problems, fmt.Sprintf("FOOD_TRACKER_APP_SCHEME %v", err))
+	}
+
+	if runtimeResources.Environment != lib.RuntimeEnvironmentLocal {
+		problems = append(problems, validateNonLocalMailpitConfiguration(runtimeResources.Environment)...)
 	}
 
 	if len(problems) > 0 {
@@ -84,13 +89,38 @@ func validateAbsoluteHTTPURL(raw string) error {
 	return nil
 }
 
+func validateNonLocalMailpitConfiguration(environment lib.RuntimeEnvironment) []string {
+	var problems []string
+
+	for _, envVar := range []string{
+		"FOOD_TRACKER_MAILPIT_SMTP_HOST",
+		"FOOD_TRACKER_MAILPIT_SMTP_PORT",
+		"FOOD_TRACKER_MAILPIT_UI_HOST",
+		"FOOD_TRACKER_MAILPIT_UI_PORT",
+	} {
+		if strings.TrimSpace(os.Getenv(envVar)) != "" {
+			problems = append(problems, fmt.Sprintf("%s is local-development only and must not be set in %s", envVar, environment))
+		}
+	}
+
+	if smtpHost := strings.TrimSpace(os.Getenv("SMTP_HOST")); smtpHost != "" && isLocalHost(smtpHost) {
+		problems = append(problems, fmt.Sprintf("SMTP_HOST must not use local Mailpit host %q in %s", smtpHost, environment))
+	}
+
+	return problems
+}
+
 func isLocalDevelopmentURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return false
 	}
 
-	switch strings.ToLower(parsed.Hostname()) {
+	return isLocalHost(parsed.Hostname())
+}
+
+func isLocalHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
 	case "localhost", "127.0.0.1", "::1":
 		return true
 	default:

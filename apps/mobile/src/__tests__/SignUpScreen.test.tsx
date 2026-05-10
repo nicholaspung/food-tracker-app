@@ -216,17 +216,19 @@ describe('SignUpScreen', () => {
     const passwordInput = renderer.root.findByProps({ testID: 'signup-password-input' });
     const confirmPasswordInput = renderer.root.findByProps({ testID: 'signup-confirm-password-input' });
 
-    expect(passwordInput.props.secureTextEntry).toBe(true);
-    expect(passwordInput.props.autoComplete).toBe('new-password');
-    expect(passwordInput.props.importantForAutofill).not.toBe('no');
-    expect(passwordInput.props.textContentType).toBe('newPassword');
-    expect(passwordInput.props.passwordRules).toBe('minlength: 8;');
+    expect(passwordInput.props.passwordMode).toBe('new');
+    expect(passwordInput.props.autoComplete).toBeUndefined();
+    expect(passwordInput.props.importantForAutofill).toBeUndefined();
+    expect(passwordInput.props.textContentType).toBeUndefined();
+    expect(passwordInput.props.passwordRules).toBeUndefined();
+    expect(passwordInput.props.secureTextEntry).toBeUndefined();
 
-    expect(confirmPasswordInput.props.secureTextEntry).toBe(true);
-    expect(confirmPasswordInput.props.autoComplete).toBe('off');
-    expect(confirmPasswordInput.props.importantForAutofill).toBe('no');
-    expect(confirmPasswordInput.props.textContentType).toBe('none');
+    expect(confirmPasswordInput.props.passwordMode).toBe('confirm');
+    expect(confirmPasswordInput.props.autoComplete).toBeUndefined();
+    expect(confirmPasswordInput.props.importantForAutofill).toBeUndefined();
+    expect(confirmPasswordInput.props.textContentType).toBeUndefined();
     expect(confirmPasswordInput.props.passwordRules).toBeUndefined();
+    expect(confirmPasswordInput.props.secureTextEntry).toBeUndefined();
   });
 
   it('auto signs in immediately after successful signup', async () => {

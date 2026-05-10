@@ -292,6 +292,8 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.14)
 
+  tools/mailpit: {}
+
 packages:
 
   '@0no-co/graphql.web@1.2.0':

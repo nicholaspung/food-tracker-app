@@ -18,6 +18,7 @@ type RuntimeResources struct {
 	APIBaseURL      string
 	AppURL          string
 	Environment     RuntimeEnvironment
+	IOSAppStoreURL  string
 	MarketingURL    string
 	MobileAppScheme string
 	PocketBaseURL   string
@@ -47,6 +48,7 @@ func LoadRuntimeResourcesFromEnv() RuntimeResources {
 		APIBaseURL:      readRuntimeValue("FOOD_TRACKER_API_BASE_URL", defaults.APIBaseURL),
 		AppURL:          readRuntimeValue("FOOD_TRACKER_APP_URL", defaults.AppURL),
 		Environment:     environment,
+		IOSAppStoreURL:  readRuntimeValue("FOOD_TRACKER_IOS_APP_STORE_URL", defaults.IOSAppStoreURL),
 		MarketingURL:    readRuntimeValue("FOOD_TRACKER_MARKETING_URL", defaults.MarketingURL),
 		MobileAppScheme: readRuntimeValue("FOOD_TRACKER_APP_SCHEME", defaults.MobileAppScheme),
 		PocketBaseURL:   readRuntimeValue("FOOD_TRACKER_POCKETBASE_URL", defaults.PocketBaseURL),
@@ -62,6 +64,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			APIBaseURL:      "https://beta.app.yummyrecs.com",
 			AppURL:          "https://beta.app.yummyrecs.com",
 			Environment:     RuntimeEnvironmentBeta,
+			IOSAppStoreURL:  "https://apps.apple.com/us/app/yummy-recs/id6761597807",
 			MarketingURL:    "https://beta.yummyrecs.com",
 			MobileAppScheme: "yummyrecs-preview",
 			PocketBaseURL:   "https://beta.app.yummyrecs.com",
@@ -73,6 +76,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			APIBaseURL:      "https://app.yummyrecs.com",
 			AppURL:          "https://app.yummyrecs.com",
 			Environment:     RuntimeEnvironmentProduction,
+			IOSAppStoreURL:  "https://apps.apple.com/us/app/yummy-recs/id6761597807",
 			MarketingURL:    "https://yummyrecs.com",
 			MobileAppScheme: "yummyrecs",
 			PocketBaseURL:   "https://app.yummyrecs.com",
@@ -84,6 +88,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			APIBaseURL:      "http://127.0.0.1:8090",
 			AppURL:          "http://localhost:8081",
 			Environment:     RuntimeEnvironmentLocal,
+			IOSAppStoreURL:  "https://apps.apple.com/us/app/yummy-recs/id6761597807",
 			MarketingURL:    "http://localhost:4173",
 			MobileAppScheme: "yummyrecs",
 			PocketBaseURL:   "http://127.0.0.1:8090",

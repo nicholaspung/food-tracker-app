@@ -26,6 +26,7 @@ EXPO_PUBLIC_POCKETBASE_URL=http://127.0.0.1:8090
 EXPO_PUBLIC_APP_WEB_URL=http://localhost:8081
 EXPO_PUBLIC_ADMIN_URL=http://localhost:5173
 EXPO_PUBLIC_MARKETING_URL=http://localhost:4173
+EXPO_PUBLIC_IOS_APP_STORE_URL=https://apps.apple.com/us/app/yummy-recs/id6761597807
 EXPO_PUBLIC_POSTHOG_API_KEY=
 EXPO_PUBLIC_POSTHOG_HOST=
 ```
@@ -63,6 +64,7 @@ FOOD_TRACKER_ADMIN_URL=http://localhost:5173
 FOOD_TRACKER_API_BASE_URL=http://127.0.0.1:8090
 FOOD_TRACKER_POCKETBASE_URL=http://127.0.0.1:8090
 FOOD_TRACKER_POSTHOG_HOST=http://127.0.0.1:8090/api/analytics
+FOOD_TRACKER_IOS_APP_STORE_URL=https://apps.apple.com/us/app/yummy-recs/id6761597807
 FOOD_TRACKER_APP_SCHEME=yummyrecs
 GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
@@ -75,6 +77,7 @@ Notes:
 - `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` are required for backend startup today.
 - `POSTHOG_API_KEY` is optional.
 - Waitlist approval signup links use `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`.
+- Waitlist confirmation emails, mobile invite sharing, and the public marketing App Store badge use `FOOD_TRACKER_IOS_APP_STORE_URL` / `EXPO_PUBLIC_IOS_APP_STORE_URL` / `IOS_APP_STORE_URL`. The default is `https://apps.apple.com/us/app/yummy-recs/id6761597807` in local, beta, and production.
 - The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
 - During VPS deploys, `scripts/deploy.sh` writes `backend/.env` as a symlink to `/opt/food-tracker-secrets/{beta|production}/.env`.
 
@@ -100,6 +103,7 @@ Shared runtime URLs exported by the scripts:
 - `FOOD_TRACKER_API_BASE_URL`
 - `FOOD_TRACKER_POCKETBASE_URL`
 - `FOOD_TRACKER_POSTHOG_HOST`
+- `FOOD_TRACKER_IOS_APP_STORE_URL`
 - `FOOD_TRACKER_APP_SCHEME`
 
 ## Public Marketing Site
@@ -248,6 +252,7 @@ EXPO_PUBLIC_POCKETBASE_URL=https://beta.app.yummyrecs.com
 EXPO_PUBLIC_APP_WEB_URL=https://beta.app.yummyrecs.com
 EXPO_PUBLIC_ADMIN_URL=https://beta.admin.yummyrecs.com
 EXPO_PUBLIC_MARKETING_URL=https://beta.yummyrecs.com
+EXPO_PUBLIC_IOS_APP_STORE_URL=https://apps.apple.com/us/app/yummy-recs/id6761597807
 EXPO_PUBLIC_POSTHOG_API_KEY=
 EXPO_PUBLIC_POSTHOG_HOST=https://beta.app.yummyrecs.com/api/analytics
 ```
@@ -275,6 +280,7 @@ EXPO_PUBLIC_POCKETBASE_URL=https://app.yummyrecs.com
 EXPO_PUBLIC_APP_WEB_URL=https://app.yummyrecs.com
 EXPO_PUBLIC_ADMIN_URL=https://admin.yummyrecs.com
 EXPO_PUBLIC_MARKETING_URL=https://yummyrecs.com
+EXPO_PUBLIC_IOS_APP_STORE_URL=https://apps.apple.com/us/app/yummy-recs/id6761597807
 EXPO_PUBLIC_POSTHOG_API_KEY=
 EXPO_PUBLIC_POSTHOG_HOST=https://app.yummyrecs.com/api/analytics
 ```

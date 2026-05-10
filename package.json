@@ -13,6 +13,7 @@
     "dev:app-ios": "bash scripts/mobile-expo.sh local --ios",
     "dev:admin": "pnpm --filter @food-tracker/admin dev",
     "dev:api": "pnpm --filter @food-tracker/api dev",
+    "dev:mailpit": "pnpm --filter @food-tracker/mailpit dev",
     "dev:marketing": "pnpm --filter @food-tracker/marketing dev",
     "dev:web": "concurrently \"pnpm dev:admin\" \"pnpm dev:api\"",
     "install:admin": "pnpm install --filter @food-tracker/admin...",

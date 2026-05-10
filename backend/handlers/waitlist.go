@@ -36,21 +36,28 @@ type waitlistRequest struct {
 	Source string `json:"source"`
 }
 
+type waitlistUpsertResult struct {
+	Record                *core.Record
+	ShouldSendJoinedEmail bool
+}
+
 type WaitlistEntry struct {
-	ID                 string
-	Email              string
-	Status             string
-	Source             string
-	ApprovedAt         string
-	ApprovedBy         string
-	RejectedAt         string
-	RejectedBy         string
-	SignedUpAt         string
-	SignedUpUser       string
-	LoopsContactID     string
-	LastLoopsSyncError string
-	Created            string
-	Updated            string
+	ID                   string
+	Email                string
+	Status               string
+	Source               string
+	ApprovedAt           string
+	ApprovedBy           string
+	RejectedAt           string
+	RejectedBy           string
+	SignedUpAt           string
+	SignedUpUser         string
+	LoopsContactID       string
+	LastLoopsSyncError   string
+	JoinedEmailSentAt    string
+	LastJoinedEmailError string
+	Created              string
+	Updated              string
 }
 
 func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResources lib.RuntimeResources) {
@@ -64,14 +71,31 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
-		record, err := upsertWaitlistEntry(app, requestBody, email)
+		upsertResult, err := upsertWaitlistEntry(app, requestBody, email)
 		if err != nil {
 			log.Printf("Waitlist upsert failed for %s: %v", email, err)
 			return apis.NewApiError(500, "failed to join waitlist", err)
 		}
+		record := upsertResult.Record
 
 		if err := syncWaitlistJoinedToLoops(app, runtimeResources, record); err != nil {
 			log.Printf("Loops waitlist sync failed for %s: %v", email, err)
+		}
+
+		if upsertResult.ShouldSendJoinedEmail {
+			if err := sendWaitlistJoinedEmail(app, runtimeResources, record); err != nil {
+				log.Printf("Waitlist joined email failed for %s: %v", email, err)
+				record.Set("lastJoinedEmailError", err.Error())
+				if saveErr := app.Save(record); saveErr != nil {
+					log.Printf("Waitlist joined email error state save failed for %s: %v", email, saveErr)
+				}
+			} else {
+				record.Set("joinedEmailSentAt", time.Now().UTC())
+				record.Set("lastJoinedEmailError", "")
+				if saveErr := app.Save(record); saveErr != nil {
+					log.Printf("Waitlist joined email sent state save failed for %s: %v", email, saveErr)
+				}
+			}
 		}
 
 		return e.JSON(200, map[string]any{
@@ -226,30 +250,42 @@ func normalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-func upsertWaitlistEntry(app core.App, requestBody waitlistRequest, email string) (*core.Record, error) {
+func upsertWaitlistEntry(app core.App, requestBody waitlistRequest, email string) (waitlistUpsertResult, error) {
 	collection, err := app.FindCollectionByNameOrId("waitlist_entries")
 	if err != nil {
-		return nil, err
+		return waitlistUpsertResult{}, err
 	}
 
 	record, err := findWaitlistRecordByEmail(app, email)
 	if err != nil {
-		return nil, err
+		return waitlistUpsertResult{}, err
 	}
+	shouldSendJoinedEmail := false
 	if record == nil {
 		record = core.NewRecord(collection)
 		record.Set("email", email)
 		record.Set("status", WaitlistStatusPending)
+		shouldSendJoinedEmail = true
 	} else if record.GetString("status") == WaitlistStatusRejected {
 		record.Set("status", WaitlistStatusPending)
 		record.Set("rejectedAt", "")
 		record.Set("rejectedBy", "")
+		shouldSendJoinedEmail = true
+	} else if record.GetString("status") == WaitlistStatusPending && strings.TrimSpace(record.GetString("joinedEmailSentAt")) == "" {
+		shouldSendJoinedEmail = true
 	}
 
 	record.Set("source", waitlistDefaultString(strings.TrimSpace(requestBody.Source), "mobile_signup"))
 	record.Set("lastLoopsSyncError", "")
 
-	return record, app.Save(record)
+	if err := app.Save(record); err != nil {
+		return waitlistUpsertResult{}, err
+	}
+
+	return waitlistUpsertResult{
+		Record:                record,
+		ShouldSendJoinedEmail: shouldSendJoinedEmail,
+	}, nil
 }
 
 func findWaitlistRecordByEmail(app core.App, email string) (*core.Record, error) {
@@ -438,6 +474,52 @@ func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResourc
 	return app.NewMailClient().Send(message)
 }
 
+func sendWaitlistJoinedEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
+	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
+	appStoreURL := strings.TrimSpace(runtimeResources.IOSAppStoreURL)
+	appOpenURL := strings.TrimSpace(runtimeResources.AppURL)
+	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
+	if senderName == "" {
+		senderName = "Yummy Recs"
+	}
+
+	message := &mailer.Message{
+		From: mail.Address{
+			Address: app.Settings().Meta.SenderAddress,
+			Name:    senderName,
+		},
+		To:      []mail.Address{{Address: email}},
+		Subject: "You're on the Yummy Recs waitlist",
+		Text:    buildWaitlistJoinedEmailText(email, appStoreURL),
+		HTML:    buildWaitlistJoinedEmailHTML(email, appStoreURL, appOpenURL, runtimeResources.MarketingURL),
+	}
+
+	return app.NewMailClient().Send(message)
+}
+
+func buildWaitlistJoinedEmailText(email string, appStoreURL string) string {
+	return fmt.Sprintf(
+		"You're on the Yummy Recs waitlist. We received your waitlist request for %s. We'll email you when your account is ready.\n\nDownload Yummy Recs for iPhone if you don't have it already: %s",
+		email,
+		appStoreURL,
+	)
+}
+
+func buildWaitlistJoinedEmailHTML(email string, appStoreURL string, appOpenURL string, marketingURL string) string {
+	return lib.BuildTransactionalEmailHTML(lib.TransactionalEmailInput{
+		AppURL:          strings.TrimSpace(appOpenURL),
+		Body:            fmt.Sprintf("We received your waitlist request for %s. We'll email you when your account is ready.", email),
+		ButtonLabel:     "Download on the App Store",
+		MarketingURL:    marketingURL,
+		Preheader:       "You're on the Yummy Recs waitlist.",
+		SafetyNote:      "If you did not join the Yummy Recs waitlist, you can ignore this email.",
+		SecondaryPrompt: "Already have the app?",
+		SecondaryLabel:  "Open Yummy Recs",
+		Title:           "You're on the waitlist",
+		WebURL:          strings.TrimSpace(appStoreURL),
+	})
+}
+
 func buildWaitlistApprovalEmailHTML(email string, signupURL string, signupAppURL string, marketingURL string) string {
 	return lib.BuildTransactionalEmailHTML(lib.TransactionalEmailInput{
 		AppURL:          signupAppURL,
@@ -446,8 +528,8 @@ func buildWaitlistApprovalEmailHTML(email string, signupURL string, signupAppURL
 		MarketingURL:    marketingURL,
 		Preheader:       "Your Yummy Recs account is ready.",
 		SafetyNote:      "If you did not join the Yummy Recs waitlist, you can ignore this email.",
-		SecondaryPrompt: "Use this link to sign up if you already have the app:",
-		SecondaryLabel:  signupAppURL,
+		SecondaryPrompt: "Already have the app?",
+		SecondaryLabel:  "Open Yummy Recs",
 		Title:           "You're approved!",
 		WebURL:          signupURL,
 	})
@@ -522,20 +604,22 @@ func buildSignupAppURL(appScheme string, email string) string {
 
 func serializeWaitlistRecord(record *core.Record) map[string]any {
 	return map[string]any{
-		"id":                 record.Id,
-		"email":              record.GetString("email"),
-		"status":             record.GetString("status"),
-		"source":             record.GetString("source"),
-		"approvedAt":         record.GetString("approvedAt"),
-		"approvedBy":         record.GetString("approvedBy"),
-		"rejectedAt":         record.GetString("rejectedAt"),
-		"rejectedBy":         record.GetString("rejectedBy"),
-		"signedUpAt":         record.GetString("signedUpAt"),
-		"signedUpUser":       record.GetString("signedUpUser"),
-		"loopsContactId":     record.GetString("loopsContactId"),
-		"lastLoopsSyncError": record.GetString("lastLoopsSyncError"),
-		"created":            record.GetString("created"),
-		"updated":            record.GetString("updated"),
+		"id":                   record.Id,
+		"email":                record.GetString("email"),
+		"status":               record.GetString("status"),
+		"source":               record.GetString("source"),
+		"approvedAt":           record.GetString("approvedAt"),
+		"approvedBy":           record.GetString("approvedBy"),
+		"rejectedAt":           record.GetString("rejectedAt"),
+		"rejectedBy":           record.GetString("rejectedBy"),
+		"signedUpAt":           record.GetString("signedUpAt"),
+		"signedUpUser":         record.GetString("signedUpUser"),
+		"loopsContactId":       record.GetString("loopsContactId"),
+		"lastLoopsSyncError":   record.GetString("lastLoopsSyncError"),
+		"joinedEmailSentAt":    record.GetString("joinedEmailSentAt"),
+		"lastJoinedEmailError": record.GetString("lastJoinedEmailError"),
+		"created":              record.GetString("created"),
+		"updated":              record.GetString("updated"),
 	}
 }
 

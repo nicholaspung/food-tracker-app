@@ -7,7 +7,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="${1:-apps/marketing/dist}"
 TARGET_DIR="${2:-apps/marketing/.prepared-dist}"
 APP_OPEN_URL="${APP_OPEN_URL:-http://localhost:8081/}"
-TOKEN="__APP_OPEN_URL__"
+IOS_APP_STORE_URL="${IOS_APP_STORE_URL:-https://apps.apple.com/us/app/yummy-recs/id6761597807}"
+APP_OPEN_TOKEN="__APP_OPEN_URL__"
+IOS_APP_STORE_TOKEN="__IOS_APP_STORE_URL__"
 MOBILE_LOGO_SOURCE="$REPO_DIR/apps/mobile/assets/brand-logo.svg"
 MOBILE_LOGO_PNG_SOURCE="$REPO_DIR/apps/mobile/assets/brand-logo.png"
 IONICONS_FONT_SOURCE="$REPO_DIR/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
@@ -38,4 +40,4 @@ cp "$MOBILE_LOGO_SOURCE" "$TARGET_DIR/brand-logo.svg"
 cp "$MOBILE_LOGO_PNG_SOURCE" "$TARGET_DIR/brand-logo.png"
 cp "$IONICONS_FONT_SOURCE" "$TARGET_DIR/ionicons.ttf"
 
-find "$TARGET_DIR" -type f -name '*.html' -exec perl -0pi -e "s|$TOKEN|$APP_OPEN_URL|g" {} +
+find "$TARGET_DIR" -type f -name '*.html' -exec perl -0pi -e "s|$APP_OPEN_TOKEN|$APP_OPEN_URL|g; s|$IOS_APP_STORE_TOKEN|$IOS_APP_STORE_URL|g" {} +

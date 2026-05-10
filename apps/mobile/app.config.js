@@ -5,6 +5,7 @@ const MOBILE_ENVIRONMENT_DEFAULTS = {
     adminUrl: 'http://localhost:5173',
     apiBaseUrl: 'http://127.0.0.1:8090',
     appWebUrl: 'http://localhost:8081',
+    iosAppStoreUrl: 'https://apps.apple.com/us/app/yummy-recs/id6761597807',
     marketingUrl: 'http://localhost:4173',
     pocketbaseUrl: 'http://127.0.0.1:8090',
     posthogHost: 'http://127.0.0.1:8090/api/analytics',
@@ -13,6 +14,7 @@ const MOBILE_ENVIRONMENT_DEFAULTS = {
     adminUrl: 'https://beta.admin.yummyrecs.com',
     apiBaseUrl: 'https://beta.app.yummyrecs.com',
     appWebUrl: 'https://beta.app.yummyrecs.com',
+    iosAppStoreUrl: 'https://apps.apple.com/us/app/yummy-recs/id6761597807',
     marketingUrl: 'https://beta.yummyrecs.com',
     pocketbaseUrl: 'https://beta.app.yummyrecs.com',
     posthogHost: 'https://beta.app.yummyrecs.com/api/analytics',
@@ -21,6 +23,7 @@ const MOBILE_ENVIRONMENT_DEFAULTS = {
     adminUrl: 'https://admin.yummyrecs.com',
     apiBaseUrl: 'https://app.yummyrecs.com',
     appWebUrl: 'https://app.yummyrecs.com',
+    iosAppStoreUrl: 'https://apps.apple.com/us/app/yummy-recs/id6761597807',
     marketingUrl: 'https://yummyrecs.com',
     pocketbaseUrl: 'https://app.yummyrecs.com',
     posthogHost: 'https://app.yummyrecs.com/api/analytics',
@@ -135,6 +138,9 @@ function resolveMobileBackendConfiguration(source) {
       readOptionalEnvValue(source?.EXPO_PUBLIC_API_BASE_URL) ?? environmentDefaults.apiBaseUrl,
     appWebUrl: readOptionalEnvValue(source?.EXPO_PUBLIC_APP_WEB_URL) ?? environmentDefaults.appWebUrl,
     environment,
+    iosAppStoreUrl:
+      readOptionalEnvValue(source?.EXPO_PUBLIC_IOS_APP_STORE_URL) ??
+      environmentDefaults.iosAppStoreUrl,
     marketingUrl:
       readOptionalEnvValue(source?.EXPO_PUBLIC_MARKETING_URL) ?? environmentDefaults.marketingUrl,
     pocketbaseUrl:

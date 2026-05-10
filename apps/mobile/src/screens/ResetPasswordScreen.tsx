@@ -182,23 +182,18 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
             {!hasConfirmedReset ? (
               <>
                 <Input
-                  autoCapitalize="none"
-                  autoComplete="new-password"
-                  passwordRules="minlength: 8;"
                   label="New Password"
                   onChangeText={setPassword}
+                  passwordMode="new"
                   placeholder="Create a new password"
-                  secureTextEntry
                   testID="reset-password-new-password-input"
-                  textContentType="newPassword"
                   value={password}
                 />
                 <Input
-                  autoCapitalize="none"
                   label="Confirm Password"
                   onChangeText={setPasswordConfirm}
+                  passwordMode="confirm"
                   placeholder="Repeat your new password"
-                  secureTextEntry
                   testID="reset-password-confirm-password-input"
                   value={passwordConfirm}
                 />

@@ -16,6 +16,7 @@ NC='\033[0m' # No Color
 APP_DIR="/opt/food-tracker-app"
 PUBLIC_SITE_DIR="$APP_DIR/apps/marketing/dist"
 PUBLIC_SITE_APP_URL="https://app.yummyrecs.com/"
+PUBLIC_SITE_IOS_APP_STORE_URL="${PUBLIC_SITE_IOS_APP_STORE_URL:-https://apps.apple.com/us/app/yummy-recs/id6761597807}"
 LOG_FILE="/tmp/food-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
@@ -414,7 +415,9 @@ deploy_public_site() {
 
     # Deploy new build
     rm -rf marketing_build
-    APP_OPEN_URL="$PUBLIC_SITE_APP_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$PUBLIC_SITE_DIR" marketing_build
+    APP_OPEN_URL="$PUBLIC_SITE_APP_URL" \
+        IOS_APP_STORE_URL="$PUBLIC_SITE_IOS_APP_STORE_URL" \
+        bash "$APP_DIR/scripts/prepare-marketing.sh" "$PUBLIC_SITE_DIR" marketing_build
 
     # Verify deployment
     if [ ! -f "marketing_build/index.html" ]; then

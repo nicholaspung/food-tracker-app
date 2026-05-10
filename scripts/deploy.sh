@@ -637,6 +637,7 @@ verify_mobile_web_bundle_environment() {
         "EXPO_PUBLIC_POCKETBASE_URL:\"$FOOD_TRACKER_POCKETBASE_URL\""
         "EXPO_PUBLIC_APP_WEB_URL:\"$FOOD_TRACKER_APP_URL\""
         "EXPO_PUBLIC_ADMIN_URL:\"$FOOD_TRACKER_ADMIN_URL\""
+        "EXPO_PUBLIC_IOS_APP_STORE_URL:\"$FOOD_TRACKER_IOS_APP_STORE_URL\""
     )
 
     local fragment
@@ -693,7 +694,9 @@ deploy_static_sites() {
 
         rm -rf "${build_dir}_new"
         if [ "$site_key" = "marketing" ]; then
-            APP_OPEN_URL="$APP_OPEN_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$source_dir" "${build_dir}_new"
+            APP_OPEN_URL="$APP_OPEN_URL" \
+                IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL" \
+                bash "$APP_DIR/scripts/prepare-marketing.sh" "$source_dir" "${build_dir}_new"
         else
             cp -r "$source_dir" "${build_dir}_new"
         fi
@@ -783,6 +786,7 @@ FOOD_TRACKER_ADMIN_URL=${FOOD_TRACKER_ADMIN_URL}
 FOOD_TRACKER_API_BASE_URL=${FOOD_TRACKER_API_BASE_URL}
 FOOD_TRACKER_POCKETBASE_URL=${FOOD_TRACKER_POCKETBASE_URL}
 FOOD_TRACKER_POSTHOG_HOST=${FOOD_TRACKER_POSTHOG_HOST}
+FOOD_TRACKER_IOS_APP_STORE_URL=${FOOD_TRACKER_IOS_APP_STORE_URL}
 FOOD_TRACKER_APP_SCHEME=${FOOD_TRACKER_APP_SCHEME}
 GEMINI_API_KEY=${gemini_key}
 GOOGLE_PLACES_API_KEY=${places_key}
@@ -800,6 +804,7 @@ EOF
     export FOOD_TRACKER_API_BASE_URL="$FOOD_TRACKER_API_BASE_URL"
     export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
     export FOOD_TRACKER_POSTHOG_HOST="$FOOD_TRACKER_POSTHOG_HOST"
+    export FOOD_TRACKER_IOS_APP_STORE_URL="$FOOD_TRACKER_IOS_APP_STORE_URL"
     export FOOD_TRACKER_APP_SCHEME="$FOOD_TRACKER_APP_SCHEME"
     export FOOD_TRACKER_BACKEND_ENV_FILE="$env_file_storage"
     export GEMINI_API_KEY="$gemini_key"

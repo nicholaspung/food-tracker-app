@@ -472,29 +472,19 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               </>
             ) : null}
             <Input
-              autoCapitalize="none"
-              autoComplete="new-password"
-              autoCorrect={false}
               label="Password"
               onChangeText={setPassword}
-              passwordRules="minlength: 8;"
+              passwordMode="new"
               placeholder="Create password"
-              secureTextEntry
               testID="signup-password-input"
-              textContentType="newPassword"
               value={password}
             />
             <Input
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect={false}
-              importantForAutofill="no"
               label="Confirm Password"
               onChangeText={setPasswordConfirm}
+              passwordMode="confirm"
               placeholder="Repeat password"
-              secureTextEntry
               testID="signup-confirm-password-input"
-              textContentType="none"
               value={passwordConfirm}
             />
 

@@ -52,10 +52,49 @@ func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
 		"https://app.yummyrecs.com/signup?email=user%40example.com&amp;mode=waitlist_approved",
 		"yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved",
 		"user@example.com",
-		"Use this link to sign up if you already have the app:",
+		"Already have the app?",
+		"Open Yummy Recs",
 	} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected waitlist approval email HTML to contain %q, got %s", expected, html)
+		}
+	}
+	if strings.Contains(html, ">yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved</a>") {
+		t.Fatalf("expected waitlist approval app URL not to render as visible link text, got %s", html)
+	}
+}
+
+func TestBuildWaitlistJoinedEmailHTMLUsesBrandedTemplate(t *testing.T) {
+	appStoreURL := `https://apps.apple.com/us/app/yummy-recs/id6761597807?ct="waitlist"`
+	html := buildWaitlistJoinedEmailHTML(`user+waitlist@example.com`, appStoreURL, "https://app.yummyrecs.com", "https://yummyrecs.com")
+
+	for _, expected := range []string{
+		"Yummy Recs",
+		"You&#39;re on the waitlist",
+		"Download on the App Store",
+		"https://apps.apple.com/us/app/yummy-recs/id6761597807?ct=&#34;waitlist&#34;",
+		"https://app.yummyrecs.com",
+		"user+waitlist@example.com",
+		"If you did not join the Yummy Recs waitlist, you can ignore this email.",
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected waitlist joined email HTML to contain %q, got %s", expected, html)
+		}
+	}
+}
+
+func TestBuildWaitlistJoinedEmailTextIncludesAppStoreURL(t *testing.T) {
+	appStoreURL := "https://apps.apple.com/us/app/yummy-recs/id6761597807"
+	text := buildWaitlistJoinedEmailText("user@example.com", appStoreURL)
+
+	for _, expected := range []string{
+		"You're on the Yummy Recs waitlist.",
+		"We'll email you when your account is ready.",
+		"Download Yummy Recs for iPhone",
+		appStoreURL,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected waitlist joined email text to contain %q, got %s", expected, text)
 		}
 	}
 }

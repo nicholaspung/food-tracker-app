@@ -56,6 +56,8 @@ ensure_workspace_deps
 ensure_port_available 5173 "ADMIN"
 ensure_port_available "${FOOD_TRACKER_POCKETBASE_PORT:-8090}" "API"
 ensure_port_available "${MARKETING_DEV_PORT:-4173}" "MARKETING"
+ensure_port_available "${FOOD_TRACKER_MAILPIT_SMTP_PORT:-1025}" "MAILPIT SMTP"
+ensure_port_available "${FOOD_TRACKER_MAILPIT_UI_PORT:-8025}" "MAILPIT UI"
 
 echo ""
 echo "Development services are starting with Turbo ${FOOD_TRACKER_DEV_UI:-tui} UI:"
@@ -63,6 +65,7 @@ echo "  - App URL:      ${FOOD_TRACKER_APP_URL} (press w in Expo to open web)"
 echo "  - Admin:        ${FOOD_TRACKER_ADMIN_URL}"
 echo "  - API:          ${FOOD_TRACKER_API_BASE_URL}"
 echo "  - Marketing:    ${FOOD_TRACKER_MARKETING_URL}"
+echo "  - Mailpit:      http://127.0.0.1:${FOOD_TRACKER_MAILPIT_UI_PORT:-8025}"
 echo ""
 echo "Turbo TUI shortcuts include task selection, log scrolling, and interact mode for Expo."
 echo "Use pnpm dev:stream for normal terminal text selection/copying."
@@ -75,4 +78,5 @@ pnpm exec turbo run dev \
   --filter=@food-tracker/admin \
   --filter=@food-tracker/api \
   --filter=@food-tracker/marketing \
+  --filter=@food-tracker/mailpit \
   "$@"
