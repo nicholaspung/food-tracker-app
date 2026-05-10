@@ -69,6 +69,10 @@ func CloseAnalytics() {
 type LLMGenerationProperties struct {
 	Model          string  // e.g., "gemini-2.5-flash-lite"
 	UseCase        string  // e.g., "menu_parsing", "restaurant_name_extraction", "ocr"
+	RequestID      string  // Correlates mobile request, backend logs, and backend analytics
+	Route          string  // e.g., parse_menu, find_restaurant_name
+	Status         string  // e.g., failed, empty_response, invalid_response
+	HTTPStatusCode int     // HTTP status returned to the client
 	PromptTokens   int     // Number of input tokens
 	OutputTokens   int     // Number of output tokens
 	TotalTokens    int     // Total tokens used
@@ -105,6 +109,18 @@ func TrackLLMGeneration(userID string, props LLMGenerationProperties) {
 	// Add optional properties
 	if props.ErrorType != "" {
 		properties.Set("error_type", props.ErrorType)
+	}
+	if props.RequestID != "" {
+		properties.Set("request_id", props.RequestID)
+	}
+	if props.Route != "" {
+		properties.Set("route", props.Route)
+	}
+	if props.Status != "" {
+		properties.Set("status", props.Status)
+	}
+	if props.HTTPStatusCode > 0 {
+		properties.Set("http_status_code", props.HTTPStatusCode)
 	}
 	if props.Language != "" {
 		properties.Set("language", props.Language)
@@ -169,14 +185,14 @@ func estimatePlacesCost(apiType string) float64 {
 
 // PlacesAPIProperties contains properties for Places API events
 type PlacesAPIProperties struct {
-	APIType      string // "nearby", "search", "geocode"
-	DurationMs   int64  // Duration in milliseconds
-	Success      bool   // Whether the call succeeded
-	ErrorType    string // Error type if failed (empty if success)
-	ResultCount  int    // Number of results returned
+	APIType      string  // "nearby", "search", "geocode"
+	DurationMs   int64   // Duration in milliseconds
+	Success      bool    // Whether the call succeeded
+	ErrorType    string  // Error type if failed (empty if success)
+	ResultCount  int     // Number of results returned
 	CostEstimate float64 // Estimated cost in USD
-	Query        string // Search query (for search endpoint)
-	HasLocation  bool   // Whether location bias was used
+	Query        string  // Search query (for search endpoint)
+	HasLocation  bool    // Whether location bias was used
 }
 
 // TrackPlacesAPICall tracks a Google Places API call

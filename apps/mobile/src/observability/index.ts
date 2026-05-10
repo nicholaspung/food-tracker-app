@@ -104,15 +104,21 @@ export function trackObservabilityEvent(eventName: string, properties?: EventPro
   });
 }
 
-export function captureObservabilityError(error: unknown): void {
+export function captureObservabilityError(error: unknown, properties?: EventProperties): void {
   if (!initialized) {
     return;
+  }
+
+  const { redactedKeys, sanitized } = sanitizeEventProperties(properties);
+  if (__DEV__ && redactedKeys.length > 0) {
+    warnOnRedactedEventProperties('OBSERVABILITY_ERROR_CAPTURED', redactedKeys);
   }
 
   if (posthogClient) {
     posthogClient.captureException(error, {
       ...staticEventProperties,
       ...contextProperties,
+      ...sanitized,
       source: 'capture_observability_error',
     });
     return;
@@ -121,6 +127,7 @@ export function captureObservabilityError(error: unknown): void {
   trackObservabilityEvent('OBSERVABILITY_ERROR_CAPTURED', {
     errorMessage: error instanceof Error ? error.message : String(error),
     errorType: error instanceof Error ? error.name : 'unknown_error',
+    ...sanitized,
   });
 }
 

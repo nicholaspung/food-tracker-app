@@ -22,6 +22,7 @@ export * from './usageQuery';
 export * from './usageLimitsGateway';
 export * from './useQueuedFeatureWrites';
 export * from './useFeatureInfiniteBrowse';
+export * from './useMenuScanFlow';
 export * from './useMonthlyUsage';
 export * from './visitPhotosQuery';
 export * from './visitsQuery';

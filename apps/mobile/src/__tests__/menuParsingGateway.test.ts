@@ -44,6 +44,7 @@ describe('menuParsingGateway', () => {
     await parseMenuImage({
       mimeType: 'image/jpeg',
       name: 'menu.jpg',
+      requestCorrelation: 'mobile-menu-scan-test',
       restaurantId: 'restaurant-1',
       restaurantName: 'Ichiran',
       uri: 'file:///menu.jpg',
@@ -53,11 +54,30 @@ describe('menuParsingGateway', () => {
       '/api/parse-menu',
       expect.objectContaining({
         body: expect.any(FormData),
+        headers: expect.objectContaining({
+          'X-Request-ID': 'mobile-menu-scan-test',
+        }),
         method: 'POST',
       }),
     );
     expect(appendSpy).toHaveBeenCalledWith('restaurantId', 'restaurant-1');
     expect(appendSpy).toHaveBeenCalledWith('restaurantName', 'Ichiran');
+  });
+
+  it('omits blank request correlation headers', async () => {
+    mockedPocketbaseModule.pb.send.mockResolvedValue({
+      csv: 'menu_item,price\nRamen,12',
+    });
+
+    await parseMenuImage({
+      mimeType: 'image/jpeg',
+      name: 'menu.jpg',
+      requestCorrelation: '   ',
+      uri: 'file:///menu.jpg',
+    });
+
+    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
+    expect(options.headers).not.toHaveProperty('X-Request-ID');
   });
 
   it('posts storefront images to restaurant-name extraction', async () => {

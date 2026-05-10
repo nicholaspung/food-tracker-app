@@ -20,6 +20,7 @@ import { CreateVisitAddRestaurantScreen } from '../screens/CreateVisitAddRestaur
 import { MenuScanPhotoProcessingScreen } from '../screens/MenuScanPhotoProcessingScreen';
 
 const mockReact = React;
+const mockUseMenuScanFlow = jest.fn();
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
@@ -35,6 +36,7 @@ jest.mock('../features', () => ({
   formatLimitExceededMessage: jest.fn(() => 'Limit exceeded'),
   parseLimitExceededError: jest.fn(() => null),
   parseMenuImage: jest.fn(),
+  useMenuScanFlow: (...args: unknown[]) => mockUseMenuScanFlow(...args),
   getAuthenticatedUserIdOrNull: jest.fn(),
   resolveDefaultRestaurantVisibilityFromAuth: jest.fn(() => 'friends'),
   upsertRestaurantRecord: jest.fn(),
@@ -165,6 +167,7 @@ describe('create visit flow navigation', () => {
     mockedTrackObservabilityEvent.mockReset();
     mockedUseAuth.mockReset();
     mockedUseConnectivity.mockReset();
+    mockUseMenuScanFlow.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries,
@@ -187,6 +190,18 @@ describe('create visit flow navigation', () => {
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
     mockedGetAuthenticatedUserIdOrNull.mockReturnValue('user_1');
+    mockUseMenuScanFlow.mockReturnValue({
+      createdItemNames: [],
+      errorMessage: null,
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: '',
+      status: 'idle',
+      verification: null,
+    });
   });
 
   it('shows how navigate appends another CreateVisit while popTo unwinds to the existing draft', () => {
@@ -274,6 +289,13 @@ describe('create visit flow navigation', () => {
       returnToStep: 1,
       sourceNoteId: 'note_1',
     });
+    expect(mockUseMenuScanFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analyticsSource: 'CreateVisitMenuScan',
+        restaurantId: 'restaurant_1',
+        restaurantName: 'Cafe Test',
+      }),
+    );
   });
 
   it('uses popTo after adding a restaurant from the create visit flow', async () => {

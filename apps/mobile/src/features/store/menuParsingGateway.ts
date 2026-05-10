@@ -7,6 +7,7 @@ interface ParseMenuImageInput {
   mimeType: string;
   restaurantId?: string;
   restaurantName?: string;
+  requestCorrelation?: string;
 }
 
 interface ParseMenuImageResponse {
@@ -84,9 +85,11 @@ function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
 
 export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseMenuImageResponse> {
   const formData = buildParseMenuFormData(input);
+  const requestCorrelation = input.requestCorrelation?.trim();
   return sendApiRequest<ParseMenuImageResponse>('/api/parse-menu', {
     method: 'POST',
     body: formData,
+    headers: requestCorrelation ? { 'X-Request-ID': requestCorrelation } : undefined,
   });
 }
 
@@ -94,9 +97,11 @@ export async function extractRestaurantNamesFromImage(
   input: ParseMenuImageInput,
 ): Promise<RestaurantNameExtractionResponse> {
   const formData = buildParseMenuFormData(input);
+  const requestCorrelation = input.requestCorrelation?.trim();
   return sendApiRequest<RestaurantNameExtractionResponse>('/api/find-restaurant-name', {
     method: 'POST',
     body: formData,
+    headers: requestCorrelation ? { 'X-Request-ID': requestCorrelation } : undefined,
   });
 }
 

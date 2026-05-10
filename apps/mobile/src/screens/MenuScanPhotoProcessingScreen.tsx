@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
@@ -9,23 +8,10 @@ import {
   PageErrorToast,
   PhotoSourceActionCards,
 } from '../components/shared';
+import { useMenuScanFlow } from '../features';
 import {
-  createMenuItemsFromScan,
-  formatLimitExceededMessage,
-  type MenuItemRecord,
-  parseMenuImage,
-  parseLimitExceededError,
-  type VisitPhotoUploadInput,
-} from '../features';
-import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
-import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
-import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
-import { trackObservabilityEvent } from '../observability';
-import {
-  parseMenuItemNamesFromCsv,
   type MenuScanPhase,
   type PhotoProcessingScreenProps,
-  type ScanSource,
 } from './photoProcessing/shared';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
@@ -81,7 +67,6 @@ export function MenuScanPhotoProcessingScreen({
 }: PhotoProcessingScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const queryClient = useQueryClient();
 
   const mode = route.params?.mode ?? 'general';
   const restaurantId = route.params?.restaurantId;
@@ -90,29 +75,12 @@ export function MenuScanPhotoProcessingScreen({
   const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
   const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
 
-  const [phase, setPhase] = useState<MenuScanPhase>('choose');
-  const [isSelectingSource, setIsSelectingSource] = useState(false);
-  const [selectedImageName, setSelectedImageName] = useState('');
   const [progressValue, setProgressValue] = useState(0);
-  const [createdItemNames, setCreatedItemNames] = useState<string[]>([]);
-  const [existingItemNames, setExistingItemNames] = useState<string[]>([]);
   const [countdownValue, setCountdownValue] = useState(5);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastRequestedSource, setLastRequestedSource] =
-    useState<ScanSource>('gallery');
   const autoPromptedRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
-    cameraBlockedMessage:
-      'Camera permission is blocked. Enable it in device settings.',
-    cameraRequiredMessage: 'Camera permission is required to take a photo.',
-    galleryBlockedMessage:
-      'Photo library permission is blocked. Enable it in device settings.',
-    galleryRequiredMessage:
-      'Photo library permission is required to upload an image.',
-  });
 
   const navigateBackToItems = useCallback(() => {
     if (!restaurantId) {
@@ -150,55 +118,25 @@ export function MenuScanPhotoProcessingScreen({
     }, 1000);
   }, [navigateBackToItems]);
 
-  const createScannedMenuItems = useCallback(
-    async (itemNames: string[], fallbackLabel: string) => {
-      if (!restaurantId) {
-        throw new Error('Restaurant context is missing.');
-      }
+  const menuScanFlow = useMenuScanFlow({
+    analyticsSource: 'CreateVisitMenuScan',
+    restaurantId: restaurantId ?? '',
+    restaurantName,
+    onSuccess: startCountdown,
+  });
 
-      const result = await createMenuItemsFromScan({
-        restaurantId,
-        itemNames,
-        fallbackLabel,
-      });
-      const returnedRecords = [...result.createdItems, ...result.existingItems];
+  const phase: MenuScanPhase =
+    menuScanFlow.status === 'processing'
+      ? 'processing'
+      : menuScanFlow.status === 'success'
+        ? 'success'
+        : menuScanFlow.status === 'error'
+          ? 'error'
+          : 'choose';
 
-      queryClient.setQueryData(
-        menuItemsQueryKeys.restaurant(restaurantId),
-        (currentItems: MenuItemRecord[] | undefined) => {
-          const nextItems = [...(currentItems ?? [])];
-
-          for (const record of returnedRecords) {
-            if (nextItems.some((item) => item.id === record.id)) {
-              continue;
-            }
-
-            nextItems.unshift(record);
-          }
-
-          return nextItems;
-        },
-      );
-      await queryClient.invalidateQueries({
-        queryKey: menuItemsQueryKeys.restaurant(restaurantId),
-      });
-
-      return {
-        createdNames: result.createdItems.map((record) => record.name),
-        existingNames: result.existingItems.map((record) => record.name),
-      };
-    },
-    [queryClient, restaurantId],
-  );
-
-  const processSelectedImage = useCallback(
-    async (imageName: string, imageInput: VisitPhotoUploadInput) => {
-      setPhase('processing');
+  useEffect(() => {
+    if (menuScanFlow.status === 'processing') {
       setProgressValue(0);
-      setErrorMessage(null);
-      setCreatedItemNames([]);
-      setExistingItemNames([]);
-
       const progressInterval = setInterval(() => {
         setProgressValue((currentValue) => {
           if (currentValue >= 0.92) {
@@ -209,116 +147,17 @@ export function MenuScanPhotoProcessingScreen({
         });
       }, 250);
 
-      try {
-        const parseResult = await parseMenuImage(imageInput);
-        const parsedNames = parseMenuItemNamesFromCsv(parseResult.csv);
-        const { createdNames, existingNames } = await createScannedMenuItems(
-          parsedNames,
-          imageName,
-        );
-        setCreatedItemNames(createdNames);
-        setExistingItemNames(existingNames);
-        setProgressValue(1);
-        setPhase('success');
-        startCountdown();
-      } catch (error) {
-        const limitPayload = parseLimitExceededError(error);
-        if (limitPayload) {
-          trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-            enforcement: 'server',
-            limit: limitPayload.limit,
-            metric: limitPayload.metric,
-            monthKey: limitPayload.monthKey,
-            remaining: limitPayload.remaining,
-            source: 'PhotoProcessingScreen',
-            used: limitPayload.used,
-            userTier: limitPayload.userTier ?? null,
-          });
-        }
-        const message = limitPayload
-          ? formatLimitExceededMessage(limitPayload)
-          : error instanceof Error
-            ? error.message
-            : 'Could not process this photo.';
-        setErrorMessage(message);
-        setPhase('error');
-      } finally {
+      return () => {
         clearInterval(progressInterval);
-        void queryClient.invalidateQueries({
-          queryKey: ['feature', 'usage', 'monthly'],
-        });
-      }
-    },
-    [createScannedMenuItems, queryClient, startCountdown],
-  );
+      };
+    }
 
-  const pickImage = useCallback(
-    async (source: ScanSource) => {
-      trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_STARTED', {
-        photoSource: source,
-        source: 'PhotoProcessingScreen',
-      });
-      setIsSelectingSource(true);
-      setErrorMessage(null);
-      setLastRequestedSource(source);
+    if (menuScanFlow.status === 'success') {
+      setProgressValue(1);
+    }
 
-      try {
-        const result = await pickImageAssets({ source });
-        if (result.status === 'permission_denied') {
-          trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PERMISSION_DENIED', {
-            canAskAgain: result.canAskAgain,
-            photoSource: source,
-            source: 'PhotoProcessingScreen',
-          });
-          setErrorMessage(result.message);
-          setPhase('error');
-          return;
-        }
-
-        if (result.status === 'canceled') {
-          trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_CANCELED', {
-            photoSource: source,
-            source: 'PhotoProcessingScreen',
-          });
-          return;
-        }
-
-        const selectedAsset = result.assets[0];
-        const imageInput: VisitPhotoUploadInput | null = await stageLocalPhotoFile(
-          selectedAsset,
-          {
-            fallbackPrefix:
-              source === 'camera' ? 'camera-image' : 'library-image',
-          },
-        );
-        if (!imageInput) {
-          throw new Error('Could not prepare the selected image for upload.');
-        }
-
-        setSelectedImageName(imageInput.name);
-        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICKED', {
-          photoSource: source,
-          source: 'PhotoProcessingScreen',
-        });
-        await processSelectedImage(imageInput.name, imageInput);
-        await cleanupStagedPhotoFiles([imageInput]);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Could not select an image.';
-        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_FAILED', {
-          errorMessage: message,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-          photoSource: source,
-          source: 'PhotoProcessingScreen',
-        });
-        setErrorMessage(message);
-        setPhase('error');
-      } finally {
-        setIsSelectingSource(false);
-      }
-    },
-    [pickImageAssets, processSelectedImage],
-  );
+    return undefined;
+  }, [menuScanFlow.status]);
 
   useEffect(() => {
     if (
@@ -335,13 +174,13 @@ export function MenuScanPhotoProcessingScreen({
       {
         text: 'Take Photo',
         onPress: () => {
-          void pickImage('camera');
+          void menuScanFlow.scanMenu('camera');
         },
       },
       {
         text: 'Upload Image',
         onPress: () => {
-          void pickImage('gallery');
+          void menuScanFlow.scanMenu('gallery');
         },
       },
       {
@@ -349,7 +188,7 @@ export function MenuScanPhotoProcessingScreen({
         style: 'cancel',
       },
     ]);
-  }, [autoStartSourcePicker, isMenuScan, phase, pickImage]);
+  }, [autoStartSourcePicker, isMenuScan, menuScanFlow, phase]);
 
   useEffect(() => {
     return () => {
@@ -393,8 +232,8 @@ export function MenuScanPhotoProcessingScreen({
   const menuScanSubtitle =
     phase === 'processing'
       ? 'Extracting menu items from your uploaded image.'
-      : phase === 'success'
-        ? createdItemNames.length > 0
+        : phase === 'success'
+        ? menuScanFlow.createdItemNames.length > 0
           ? 'New items were added to this restaurant.'
           : 'Existing menu items were matched for this restaurant.'
         : `Capture or upload a menu image for ${restaurantName}.`;
@@ -439,7 +278,7 @@ export function MenuScanPhotoProcessingScreen({
             <Text tone="secondary">
               Take a new photo or upload an existing menu image.
             </Text>
-            {isSelectingSource ? (
+            {menuScanFlow.status === 'selecting' ? (
               <Text tone="secondary" variant="bodySm">
                 Opening source picker...
               </Text>
@@ -447,14 +286,14 @@ export function MenuScanPhotoProcessingScreen({
             <PhotoSourceActionCards
               cameraSubtitle="Camera"
               cameraTitle="Take Photo"
-              disabled={isSelectingSource}
+              disabled={menuScanFlow.status === 'selecting'}
               gallerySubtitle="Photo Library"
               galleryTitle="Upload Image"
               onCameraPress={() => {
-                void pickImage('camera');
+                void menuScanFlow.scanMenu('camera');
               }}
               onGalleryPress={() => {
-                void pickImage('gallery');
+                void menuScanFlow.scanMenu('gallery');
               }}
             />
           </Card>
@@ -467,7 +306,7 @@ export function MenuScanPhotoProcessingScreen({
             <Ionicons color={theme.colors.text.info} name="sync-outline" size={18} />
             <Text tone="secondary">We're processing your image now.</Text>
           </View>
-          <Text variant="label">Processing "{selectedImageName}"</Text>
+          <Text variant="label">Processing "{menuScanFlow.selectedImageName}"</Text>
           <LinearProgressBar progress={progressValue} />
           <Text tone="secondary">{Math.round(progressValue * 100)}% complete</Text>
         </Card>
@@ -485,10 +324,10 @@ export function MenuScanPhotoProcessingScreen({
               Menu scan completed
             </Text>
           </View>
-          {createdItemNames.length > 0 ? (
+          {menuScanFlow.createdItemNames.length > 0 ? (
             <>
               <Text tone="secondary">Added items:</Text>
-              {createdItemNames.map((itemName) => (
+              {menuScanFlow.createdItemNames.map((itemName) => (
                 <View key={itemName} style={styles.addedItemRow}>
                   <Ionicons
                     color={theme.colors.text.success}
@@ -500,12 +339,12 @@ export function MenuScanPhotoProcessingScreen({
               ))}
             </>
           ) : null}
-          {existingItemNames.length > 0 ? (
+          {menuScanFlow.existingItemNames.length > 0 ? (
             <>
               <Text tone="secondary">
-                {createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
+                {menuScanFlow.createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
               </Text>
-              {existingItemNames.map((itemName) => (
+              {menuScanFlow.existingItemNames.map((itemName) => (
                 <View key={itemName} style={styles.addedItemRow}>
                   <Ionicons
                     color={theme.colors.text.info}
@@ -534,17 +373,16 @@ export function MenuScanPhotoProcessingScreen({
       <PageErrorToast
         actionLabel="Try Again"
         errorMessage={
-          phase === 'error' ? errorMessage ?? 'Could not process this photo.' : null
+          phase === 'error' ? menuScanFlow.errorMessage ?? 'Could not process this photo.' : null
         }
         onAction={() => {
-          setPhase('choose');
-          setErrorMessage(null);
-          void pickImage(lastRequestedSource);
+          menuScanFlow.reset();
+          void menuScanFlow.scanMenu(menuScanFlow.lastRequestedSource);
         }}
         title="Menu scan failed"
       />
 
-      {phase === 'error' && permissionNeedsSettings ? (
+      {phase === 'error' && menuScanFlow.permissionNeedsSettings ? (
         <Card style={styles.errorCard}>
           <Text tone="danger">
             Camera or photo library permission is blocked in settings.

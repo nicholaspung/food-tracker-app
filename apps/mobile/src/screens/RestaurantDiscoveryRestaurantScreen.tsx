@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Linking, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -12,32 +12,19 @@ import {
   PhotoSourceActionCards,
   VisitRestaurantOptionTrailing,
 } from '../components/shared';
-import {
-  createMenuItemsFromScan,
-  formatLimitExceededMessage,
-  parseLimitExceededError,
-  parseMenuImage,
-  type MenuItemRecord,
-} from '../features';
+import { type MenuItemRecord, useMenuScanFlow } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
-import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
-import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { buildVisitRestaurantDescription } from '../lib/visitRestaurantSearch';
-import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, ListItem, Text } from '../ui';
-import { parseMenuItemNamesFromCsv } from './photoProcessing/shared';
 
 type RestaurantDiscoveryRestaurantScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'RestaurantDiscoveryRestaurant'
 >;
-type ImageSource = PhotoPickerPermissionSource;
-type MenuScanPhase = 'idle' | 'processing' | 'success' | 'error';
 
 const useStyles = createThemedStyles((theme) => ({
   card: {
@@ -116,18 +103,13 @@ export function RestaurantDiscoveryRestaurantScreen({
     return parts.filter(Boolean).join(' • ');
   }, [restaurant]);
   const [showPhotoSources, setShowPhotoSources] = useState(false);
-  const [menuScanPhase, setMenuScanPhase] = useState<MenuScanPhase>('idle');
-  const [menuScanErrorMessage, setMenuScanErrorMessage] = useState<string | null>(null);
-  const [createdItemNames, setCreatedItemNames] = useState<string[]>([]);
-  const [existingItemNames, setExistingItemNames] = useState<string[]>([]);
-  const [menuVerification, setMenuVerification] =
-    useState<Awaited<ReturnType<typeof parseMenuImage>>['verification'] | null>(null);
-
-  const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
-    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
-    cameraRequiredMessage: 'Camera permission is required to take a photo.',
-    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
-    galleryRequiredMessage: 'Photo library permission is required to upload an image.',
+  const menuScanFlow = useMenuScanFlow({
+    analyticsSource: 'FoodDiscoveryRestaurant',
+    restaurantId: restaurant.id,
+    restaurantName: restaurant.name,
+    onSuccess: () => {
+      setShowPhotoSources(false);
+    },
   });
 
   const menuItemsQuery = useQuery({
@@ -144,116 +126,15 @@ export function RestaurantDiscoveryRestaurantScreen({
     enabled: Boolean(restaurant.id),
   });
 
-  const pickAndStageImage = useCallback(
-    async (source: ImageSource) => {
-      const result = await pickImageAssets({ source });
-      if (result.status === 'permission_denied') {
-        throw new Error(result.message);
-      }
-
-      if (result.status === 'canceled') {
-        return null;
-      }
-
-      const imageInput = await stageLocalPhotoFile(result.assets[0], {
-        fallbackPrefix: source === 'camera' ? 'menu-camera' : 'menu-image',
-      });
-      if (!imageInput) {
-        throw new Error('Could not prepare the selected image.');
-      }
-
-      return imageInput;
-    },
-    [pickImageAssets],
-  );
-
-  const scanMenu = useCallback(
-    async (source: ImageSource) => {
-      if (!isOnline) {
-        setMenuScanErrorMessage('Menu scanning requires internet connection.');
-        return;
-      }
-
-      setMenuScanPhase('processing');
-      setMenuScanErrorMessage(null);
-      setCreatedItemNames([]);
-      setExistingItemNames([]);
-      setMenuVerification(null);
-
-      let imageInput: Awaited<ReturnType<typeof stageLocalPhotoFile>> | null = null;
-      try {
-        imageInput = await pickAndStageImage(source);
-        if (!imageInput) {
-          setMenuScanPhase('idle');
-          return;
-        }
-
-        const parseResult = await parseMenuImage({
-          ...imageInput,
-          restaurantId: restaurant.id,
-          restaurantName: restaurant.name,
-        });
-        const itemNames = parseMenuItemNamesFromCsv(parseResult.csv);
-        const result = await createMenuItemsFromScan({
-          restaurantId: restaurant.id,
-          itemNames,
-          fallbackLabel: imageInput.name,
-        });
-        const returnedRecords = [...result.createdItems, ...result.existingItems];
-
-        queryClient.setQueryData(
-          menuItemsQueryKeys.restaurant(restaurant.id),
-          (currentItems: MenuItemRecord[] | undefined) => {
-            const nextItems = [...(currentItems ?? [])];
-            for (const record of returnedRecords) {
-              if (!nextItems.some((item) => item.id === record.id)) {
-                nextItems.unshift(record);
-              }
-            }
-            return nextItems;
-          },
-        );
-        await queryClient.invalidateQueries({
-          queryKey: menuItemsQueryKeys.restaurant(restaurant.id),
-        });
-
-        setMenuVerification(parseResult.verification ?? null);
-        setCreatedItemNames(result.createdItems.map((item) => item.name));
-        setExistingItemNames(result.existingItems.map((item) => item.name));
-        setMenuScanPhase('success');
-        setShowPhotoSources(false);
-        trackObservabilityEvent('FOOD_DISCOVERY_MENU_SCAN_SUCCEEDED', {
-          source: 'RestaurantDiscoveryRestaurantScreen',
-          restaurantId: restaurant.id,
-          createdCount: result.createdItems.length,
-          existingCount: result.existingItems.length,
-          verificationMatched: parseResult.verification?.matched ?? null,
-        });
-      } catch (error) {
-        const limitPayload = parseLimitExceededError(error);
-        const message = limitPayload
-          ? formatLimitExceededMessage(limitPayload)
-          : error instanceof Error
-            ? error.message
-            : 'Could not scan this menu.';
-        setMenuScanErrorMessage(message);
-        setMenuScanPhase('error');
-      } finally {
-        if (imageInput) {
-          await cleanupStagedPhotoFiles([imageInput]);
-        }
-        void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
-      }
-    },
-    [isOnline, pickAndStageImage, queryClient, restaurant.id, restaurant.name],
-  );
-
   const verificationNeedsAttention =
-    menuVerification?.matched === false ||
-    (menuVerification?.checked === true &&
-      (menuVerification.matched === null ||
-        menuVerification.confidence === 'low' ||
-        menuVerification.confidence === 'unknown'));
+    menuScanFlow.verification?.matched === false ||
+    (menuScanFlow.verification?.checked === true &&
+      (menuScanFlow.verification.matched === null ||
+        menuScanFlow.verification.confidence === 'low' ||
+        menuScanFlow.verification.confidence === 'unknown'));
+
+  const isMenuScanProcessing =
+    menuScanFlow.status === 'selecting' || menuScanFlow.status === 'processing';
 
   return (
     <FeatureDetailScreenScaffold
@@ -271,9 +152,9 @@ export function RestaurantDiscoveryRestaurantScreen({
           <Text variant="label">Menu Items</Text>
         </View>
         <Button
-          disabled={!isOnline || menuScanPhase === 'processing'}
+          disabled={!isOnline || isMenuScanProcessing}
           label="Scan Menu Items"
-          loading={menuScanPhase === 'processing'}
+          loading={isMenuScanProcessing}
           onPress={() => {
             setShowPhotoSources((visible) => !visible);
           }}
@@ -283,18 +164,18 @@ export function RestaurantDiscoveryRestaurantScreen({
           <PhotoSourceActionCards
             cameraSubtitle="Menu"
             cameraTitle="Take Photo"
-            disabled={!isOnline || menuScanPhase === 'processing'}
+            disabled={!isOnline || isMenuScanProcessing}
             gallerySubtitle="Photo Library"
             galleryTitle="Upload"
             onCameraPress={() => {
-              void scanMenu('camera');
+              void menuScanFlow.scanMenu('camera');
             }}
             onGalleryPress={() => {
-              void scanMenu('gallery');
+              void menuScanFlow.scanMenu('gallery');
             }}
           />
         ) : null}
-        {permissionNeedsSettings ? (
+        {menuScanFlow.permissionNeedsSettings ? (
           <Button
             label="Open Settings"
             onPress={() => {
@@ -304,7 +185,7 @@ export function RestaurantDiscoveryRestaurantScreen({
           />
         ) : null}
         <PageErrorToast
-          errorMessage={menuScanPhase === 'error' ? menuScanErrorMessage : null}
+          errorMessage={menuScanFlow.status === 'error' ? menuScanFlow.errorMessage : null}
           title="Menu scan failed"
         />
 
@@ -312,23 +193,23 @@ export function RestaurantDiscoveryRestaurantScreen({
           <View style={styles.warningPanel}>
             <Text tone="warning" variant="label">Check the restaurant match</Text>
             <Text tone="secondary">
-              {menuVerification?.reason ?? 'The menu photo did not clearly match the selected restaurant.'}
+              {menuScanFlow.verification?.reason ?? 'The menu photo did not clearly match the selected restaurant.'}
             </Text>
-            {menuVerification?.observedRestaurantNames.length ? (
+            {menuScanFlow.verification?.observedRestaurantNames.length ? (
               <Text tone="secondary">
-                Seen: {menuVerification.observedRestaurantNames.join(', ')}
+                Seen: {menuScanFlow.verification.observedRestaurantNames.join(', ')}
               </Text>
             ) : null}
           </View>
         ) : null}
 
-        {menuScanPhase === 'success' ? (
+        {menuScanFlow.status === 'success' ? (
           <View style={styles.successPanel}>
             <Text tone="success" variant="label">Menu items processed</Text>
-            {createdItemNames.length > 0 ? (
+            {menuScanFlow.createdItemNames.length > 0 ? (
               <>
                 <Text tone="secondary">Added items:</Text>
-                {createdItemNames.map((itemName) => (
+                {menuScanFlow.createdItemNames.map((itemName) => (
                   <View key={itemName} style={styles.itemRow}>
                     <Ionicons color={theme.colors.text.success} name="checkmark-outline" size={14} />
                     <Text>{itemName}</Text>
@@ -336,12 +217,12 @@ export function RestaurantDiscoveryRestaurantScreen({
                 ))}
               </>
             ) : null}
-            {existingItemNames.length > 0 ? (
+            {menuScanFlow.existingItemNames.length > 0 ? (
               <>
                 <Text tone="secondary">
-                  {createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
+                  {menuScanFlow.createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
                 </Text>
-                {existingItemNames.map((itemName) => (
+                {menuScanFlow.existingItemNames.map((itemName) => (
                   <View key={itemName} style={styles.itemRow}>
                     <Ionicons color={theme.colors.text.info} name="checkmark-done-outline" size={14} />
                     <Text>{itemName}</Text>

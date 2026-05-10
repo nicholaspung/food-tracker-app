@@ -19,6 +19,71 @@ import (
 	"myapp/lib"
 )
 
+const geminiMenuModel = "gemini-2.5-flash-lite"
+
+type aiProcessingFailureInput struct {
+	RequestID      string
+	Route          string
+	UseCase        string
+	Status         string
+	HTTPStatusCode int
+	ErrorType      string
+	ErrorMessage   string
+	DurationMs     int64
+	PromptTokens   int
+	OutputTokens   int
+	TotalTokens    int
+	ImageMimeType  string
+	ImageSizeBytes int
+	RestaurantID   string
+	RestaurantName string
+}
+
+func recordAIProcessingFailure(e *core.RequestEvent, input aiProcessingFailureInput) {
+	userID := ""
+	if e != nil && e.Auth != nil {
+		userID = e.Auth.Id
+	}
+
+	lib.TrackLLMGeneration(userID, lib.LLMGenerationProperties{
+		Model:          geminiMenuModel,
+		UseCase:        input.UseCase,
+		RequestID:      input.RequestID,
+		Route:          input.Route,
+		Status:         input.Status,
+		HTTPStatusCode: input.HTTPStatusCode,
+		PromptTokens:   input.PromptTokens,
+		OutputTokens:   input.OutputTokens,
+		TotalTokens:    input.TotalTokens,
+		DurationMs:     input.DurationMs,
+		Success:        false,
+		ErrorType:      input.ErrorType,
+	})
+
+	if err := lib.CreateAIErrorLog(e.App, lib.AIErrorLogInput{
+		RequestID:      input.RequestID,
+		UserID:         userID,
+		Route:          input.Route,
+		UseCase:        input.UseCase,
+		Provider:       "gemini",
+		Model:          geminiMenuModel,
+		Status:         input.Status,
+		HTTPStatusCode: input.HTTPStatusCode,
+		ErrorType:      input.ErrorType,
+		ErrorMessage:   input.ErrorMessage,
+		DurationMs:     input.DurationMs,
+		PromptTokens:   input.PromptTokens,
+		OutputTokens:   input.OutputTokens,
+		TotalTokens:    input.TotalTokens,
+		ImageMimeType:  input.ImageMimeType,
+		ImageSizeBytes: input.ImageSizeBytes,
+		RestaurantID:   input.RestaurantID,
+		RestaurantName: input.RestaurantName,
+	}); err != nil {
+		log.Printf("Failed to persist AI error log requestId=%s route=%s status=%s: %v", input.RequestID, input.Route, input.Status, err)
+	}
+}
+
 // RegisterMenuParsingHandlers registers all menu parsing and AI-powered image analysis endpoints
 func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 	// Custom API endpoint: Convert HEIC to JPEG
@@ -101,6 +166,8 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		if authRecord == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
+		requestID := resolveRequestID(e)
+		setRequestIDHeader(e, requestID)
 
 		// Check if user is admin for debug mode
 		isAdmin := authRecord.GetBool("isAdmin")
@@ -108,7 +175,16 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		// Get Gemini API key from environment
 		geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 		if geminiAPIKey == "" {
-			log.Printf("ERROR: GEMINI_API_KEY environment variable not set")
+			log.Printf("ERROR: GEMINI_API_KEY environment variable not set requestId=%s", requestID)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "parse_menu",
+				UseCase:        "menu_parsing",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      "configuration_error",
+				ErrorMessage:   "Gemini API key not configured",
+			})
 			return apis.NewApiError(500, "Gemini API key not configured", nil)
 		}
 
@@ -145,25 +221,38 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())
 			}
-			log.Printf("Failed to reserve menu scan usage for user %s: %v", authRecord.Id, err)
+			log.Printf("Failed to reserve menu scan usage for user %s requestId=%s: %v", authRecord.Id, requestID, err)
 			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 		defer usageReservation.ReleaseIfNeeded()
 
-		log.Printf("Parsing menu image with Gemini (size=%d mime=%s)", len(imageData), mimeType)
+		log.Printf("Parsing menu image with Gemini requestId=%s size=%d mime=%s", requestID, len(imageData), mimeType)
 
 		// Initialize Gemini client
 		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
 		defer cancel()
 		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey), option.WithHTTPClient(geminiHTTPClient))
 		if err != nil {
-			log.Printf("Failed to create Gemini client: %v", err)
+			log.Printf("Failed to create Gemini client requestId=%s: %v", requestID, err)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "parse_menu",
+				UseCase:        "menu_parsing",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      fmt.Sprintf("%T", err),
+				ErrorMessage:   err.Error(),
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+				RestaurantID:   selectedRestaurantID,
+				RestaurantName: selectedRestaurantName,
+			})
 			return apis.NewApiError(500, "failed to initialize Gemini API", err)
 		}
 		defer client.Close()
 
 		// Use Gemini 2.5 Flash Lite model (smallest, most cost-effective)
-		model := client.GenerativeModel("gemini-2.5-flash-lite")
+		model := client.GenerativeModel(geminiMenuModel)
 
 		// Configure model
 		model.SetTemperature(0)
@@ -229,18 +318,25 @@ Rules:
 
 		// Handle error case
 		if err != nil {
-			log.Printf("Gemini API error: %v", err)
+			log.Printf("Gemini API error requestId=%s: %v", requestID, err)
 
 			// Track failed generation
-			lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
-				Model:        "gemini-2.5-flash-lite",
-				UseCase:      "menu_parsing",
-				PromptTokens: tokenInput,
-				OutputTokens: tokenOutput,
-				TotalTokens:  tokenTotal,
-				DurationMs:   durationMs,
-				Success:      false,
-				ErrorType:    fmt.Sprintf("%T", err),
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "parse_menu",
+				UseCase:        "menu_parsing",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      fmt.Sprintf("%T", err),
+				ErrorMessage:   err.Error(),
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+				RestaurantID:   selectedRestaurantID,
+				RestaurantName: selectedRestaurantName,
 			})
 
 			return apis.NewApiError(500, "failed to parse menu with Gemini", err)
@@ -248,6 +344,23 @@ Rules:
 
 		// Extract text from response
 		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "parse_menu",
+				UseCase:        "menu_parsing",
+				Status:         "empty_response",
+				HTTPStatusCode: 500,
+				ErrorType:      "empty_response",
+				ErrorMessage:   "no response from Gemini",
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+				RestaurantID:   selectedRestaurantID,
+				RestaurantName: selectedRestaurantName,
+			})
 			return apis.NewApiError(500, "no response from Gemini", nil)
 		}
 
@@ -258,7 +371,7 @@ Rules:
 			}
 		}
 
-		log.Printf("Gemini menu parsing completed (responseChars=%d)", len(responseText))
+		log.Printf("Gemini menu parsing completed requestId=%s responseChars=%d", requestID, len(responseText))
 
 		// Prepare debug data for admin users
 		var debugData map[string]any
@@ -267,7 +380,7 @@ Rules:
 			debugData = map[string]any{
 				"rawResponse":     responseText,
 				"candidatesCount": len(resp.Candidates),
-				"model":           "gemini-2.5-flash-lite",
+				"model":           geminiMenuModel,
 				"prompt":          prompt,
 			}
 
@@ -295,7 +408,24 @@ Rules:
 			structuredResponse, parseErr := parseStructuredMenuGeminiResponse(responseText)
 			if parseErr == nil {
 				if !structuredResponse.IsMenu {
-					log.Printf("Image is not a menu - Gemini returned structured non-menu response")
+					log.Printf("Image is not a menu - Gemini returned structured non-menu response requestId=%s", requestID)
+					recordAIProcessingFailure(e, aiProcessingFailureInput{
+						RequestID:      requestID,
+						Route:          "parse_menu",
+						UseCase:        "menu_parsing",
+						Status:         "not_menu",
+						HTTPStatusCode: 400,
+						ErrorType:      "not_menu",
+						ErrorMessage:   "Image is not a menu",
+						PromptTokens:   tokenInput,
+						OutputTokens:   tokenOutput,
+						TotalTokens:    tokenTotal,
+						DurationMs:     durationMs,
+						ImageMimeType:  mimeType,
+						ImageSizeBytes: len(imageData),
+						RestaurantID:   selectedRestaurantID,
+						RestaurantName: selectedRestaurantName,
+					})
 					usageReservation.Commit()
 					if isAdmin {
 						return e.JSON(400, map[string]any{
@@ -312,7 +442,24 @@ Rules:
 					selectedRestaurantName,
 				)
 			} else {
-				log.Printf("Failed to parse structured Gemini menu response: %v", parseErr)
+				log.Printf("Failed to parse structured Gemini menu response requestId=%s: %v", requestID, parseErr)
+				recordAIProcessingFailure(e, aiProcessingFailureInput{
+					RequestID:      requestID,
+					Route:          "parse_menu",
+					UseCase:        "menu_parsing",
+					Status:         "invalid_response",
+					HTTPStatusCode: 200,
+					ErrorType:      fmt.Sprintf("%T", parseErr),
+					ErrorMessage:   parseErr.Error(),
+					PromptTokens:   tokenInput,
+					OutputTokens:   tokenOutput,
+					TotalTokens:    tokenTotal,
+					DurationMs:     durationMs,
+					ImageMimeType:  mimeType,
+					ImageSizeBytes: len(imageData),
+					RestaurantID:   selectedRestaurantID,
+					RestaurantName: selectedRestaurantName,
+				})
 				verification = &menuParseVerificationResponse{
 					Checked:                 true,
 					Matched:                 nil,
@@ -329,7 +476,24 @@ Rules:
 		trimmedResponse := strings.TrimSpace(responseText)
 		if strings.Contains(trimmedResponse, "statusCode") && strings.Contains(trimmedResponse, "error") {
 			// This looks like an error response
-			log.Printf("Image is not a menu - Gemini returned error response")
+			log.Printf("Image is not a menu - Gemini returned error response requestId=%s", requestID)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "parse_menu",
+				UseCase:        "menu_parsing",
+				Status:         "not_menu",
+				HTTPStatusCode: 400,
+				ErrorType:      "not_menu",
+				ErrorMessage:   "Image is not a menu",
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+				RestaurantID:   selectedRestaurantID,
+				RestaurantName: selectedRestaurantName,
+			})
 
 			// Include debug data in error response for admins
 			usageReservation.Commit()
@@ -352,8 +516,12 @@ Rules:
 
 		// Track successful generation
 		lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
-			Model:          "gemini-2.5-flash-lite",
+			Model:          geminiMenuModel,
 			UseCase:        "menu_parsing",
+			RequestID:      requestID,
+			Route:          "parse_menu",
+			Status:         "success",
+			HTTPStatusCode: 200,
 			PromptTokens:   tokenInput,
 			OutputTokens:   tokenOutput,
 			TotalTokens:    tokenTotal,
@@ -393,11 +561,22 @@ Rules:
 		if authRecord == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
+		requestID := resolveRequestID(e)
+		setRequestIDHeader(e, requestID)
 
 		// Get Gemini API key from environment
 		geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 		if geminiAPIKey == "" {
-			log.Printf("ERROR: GEMINI_API_KEY environment variable not set")
+			log.Printf("ERROR: GEMINI_API_KEY environment variable not set requestId=%s", requestID)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      "configuration_error",
+				ErrorMessage:   "Gemini API key not configured",
+			})
 			return apis.NewApiError(500, "Gemini API key not configured", nil)
 		}
 
@@ -432,25 +611,36 @@ Rules:
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())
 			}
-			log.Printf("Failed to reserve restaurant-name scan usage for user %s: %v", authRecord.Id, err)
+			log.Printf("Failed to reserve restaurant-name scan usage for user %s requestId=%s: %v", authRecord.Id, requestID, err)
 			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 		defer usageReservation.ReleaseIfNeeded()
 
-		log.Printf("Finding restaurant name with Gemini (size=%d mime=%s)", len(imageData), mimeType)
+		log.Printf("Finding restaurant name with Gemini requestId=%s size=%d mime=%s", requestID, len(imageData), mimeType)
 
 		// Initialize Gemini client
 		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
 		defer cancel()
 		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey), option.WithHTTPClient(geminiHTTPClient))
 		if err != nil {
-			log.Printf("Failed to create Gemini client: %v", err)
+			log.Printf("Failed to create Gemini client requestId=%s: %v", requestID, err)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      fmt.Sprintf("%T", err),
+				ErrorMessage:   err.Error(),
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+			})
 			return apis.NewApiError(500, "failed to initialize Gemini API", err)
 		}
 		defer client.Close()
 
 		// Use Gemini 2.5 Flash Lite model (smallest, most cost-effective)
-		model := client.GenerativeModel("gemini-2.5-flash-lite")
+		model := client.GenerativeModel(geminiMenuModel)
 
 		// Configure model for consistent output
 		model.SetTemperature(0)
@@ -541,18 +731,23 @@ Analyze the image now and respond with JSON only.`
 
 		// Handle error case
 		if err != nil {
-			log.Printf("Gemini API error: %v", err)
+			log.Printf("Gemini API error requestId=%s: %v", requestID, err)
 
 			// Track failed generation
-			lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
-				Model:        "gemini-2.5-flash-lite",
-				UseCase:      "restaurant_name_extraction",
-				PromptTokens: tokenInput,
-				OutputTokens: tokenOutput,
-				TotalTokens:  tokenTotal,
-				DurationMs:   durationMs,
-				Success:      false,
-				ErrorType:    fmt.Sprintf("%T", err),
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "failed",
+				HTTPStatusCode: 500,
+				ErrorType:      fmt.Sprintf("%T", err),
+				ErrorMessage:   err.Error(),
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
 			})
 
 			return apis.NewApiError(500, "failed to analyze image with Gemini", err)
@@ -560,6 +755,21 @@ Analyze the image now and respond with JSON only.`
 
 		// Extract text from response
 		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "empty_response",
+				HTTPStatusCode: 500,
+				ErrorType:      "empty_response",
+				ErrorMessage:   "no response from Gemini",
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+			})
 			return apis.NewApiError(500, "no response from Gemini", nil)
 		}
 
@@ -570,7 +780,7 @@ Analyze the image now and respond with JSON only.`
 			}
 		}
 
-		log.Printf("Gemini restaurant-name extraction completed (responseChars=%d)", len(responseText))
+		log.Printf("Gemini restaurant-name extraction completed requestId=%s responseChars=%d", requestID, len(responseText))
 
 		// Clean response - remove markdown code blocks if present
 		responseText = strings.TrimSpace(responseText)
@@ -582,8 +792,42 @@ Analyze the image now and respond with JSON only.`
 		// Try to parse as JSON to validate structure
 		var jsonResponse map[string]any
 		if err := json.Unmarshal([]byte(responseText), &jsonResponse); err != nil {
-			log.Printf("Failed to parse Gemini response as JSON: %v", err)
+			log.Printf("Failed to parse Gemini response as JSON requestId=%s: %v", requestID, err)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "invalid_response",
+				HTTPStatusCode: 500,
+				ErrorType:      fmt.Sprintf("%T", err),
+				ErrorMessage:   err.Error(),
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+			})
 			return apis.NewApiError(500, "invalid response format from AI", nil)
+		}
+
+		if errorCode, ok := jsonResponse["error"].(string); ok && errorCode == "NOT_RESTAURANT" {
+			reason, _ := jsonResponse["reason"].(string)
+			recordAIProcessingFailure(e, aiProcessingFailureInput{
+				RequestID:      requestID,
+				Route:          "find_restaurant_name",
+				UseCase:        "restaurant_name_extraction",
+				Status:         "not_menu",
+				HTTPStatusCode: 200,
+				ErrorType:      "not_restaurant",
+				ErrorMessage:   reason,
+				PromptTokens:   tokenInput,
+				OutputTokens:   tokenOutput,
+				TotalTokens:    tokenTotal,
+				DurationMs:     durationMs,
+				ImageMimeType:  mimeType,
+				ImageSizeBytes: len(imageData),
+			})
 		}
 
 		// Extract language from response for analytics
@@ -593,14 +837,18 @@ Analyze the image now and respond with JSON only.`
 
 		// Track successful generation
 		lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
-			Model:        "gemini-2.5-flash-lite",
-			UseCase:      "restaurant_name_extraction",
-			PromptTokens: tokenInput,
-			OutputTokens: tokenOutput,
-			TotalTokens:  tokenTotal,
-			DurationMs:   durationMs,
-			Success:      true,
-			Language:     detectedLanguage,
+			Model:          geminiMenuModel,
+			UseCase:        "restaurant_name_extraction",
+			RequestID:      requestID,
+			Route:          "find_restaurant_name",
+			Status:         "success",
+			HTTPStatusCode: 200,
+			PromptTokens:   tokenInput,
+			OutputTokens:   tokenOutput,
+			TotalTokens:    tokenTotal,
+			DurationMs:     durationMs,
+			Success:        true,
+			Language:       detectedLanguage,
 		})
 
 		// Return the parsed JSON response
