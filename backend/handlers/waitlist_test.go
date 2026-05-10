@@ -24,17 +24,35 @@ func TestBuildSignupURLFallsBackToAppURL(t *testing.T) {
 	}
 }
 
+func TestBuildSignupAppURLUsesMobileScheme(t *testing.T) {
+	signupAppURL := buildSignupAppURL("yummyrecs-preview", " USER@example.COM ")
+
+	if signupAppURL != "yummyrecs-preview://signup?email=user%40example.com&mode=waitlist_approved" {
+		t.Fatalf("unexpected signup app URL: %s", signupAppURL)
+	}
+}
+
+func TestBuildSignupAppURLFallsBackToProductionScheme(t *testing.T) {
+	signupAppURL := buildSignupAppURL("", "user@example.com")
+
+	if signupAppURL != "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved" {
+		t.Fatalf("unexpected fallback signup app URL: %s", signupAppURL)
+	}
+}
+
 func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
 	signupURL := "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved"
-	html := buildWaitlistApprovalEmailHTML("user@example.com", signupURL, "https://yummyrecs.com")
+	signupAppURL := "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved"
+	html := buildWaitlistApprovalEmailHTML("user@example.com", signupURL, signupAppURL, "https://yummyrecs.com")
 
 	for _, expected := range []string{
 		"Yummy Recs",
 		"You&#39;re approved!",
 		"Create your account",
 		"https://app.yummyrecs.com/signup?email=user%40example.com&amp;mode=waitlist_approved",
+		"yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved",
 		"user@example.com",
-		"Open this in Yummy Recs.",
+		"Use this link to sign up if you already have the app:",
 	} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected waitlist approval email HTML to contain %q, got %s", expected, html)

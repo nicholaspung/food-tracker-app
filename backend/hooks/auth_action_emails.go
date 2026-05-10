@@ -28,8 +28,8 @@ func RegisterAuthActionEmailHooks(app core.App, resources lib.RuntimeResources) 
 			MarketingURL:    links.MarketingURL,
 			Preheader:       "Choose a new password for your Yummy Recs account.",
 			SafetyNote:      "If you did not ask to reset your password, you can ignore this email.",
-			SecondaryPrompt: "Already have the app installed?",
-			SecondaryLabel:  "Open this in Yummy Recs.",
+			SecondaryPrompt: "Use this link to reset your password if you already have the app:",
+			SecondaryLabel:  links.AppURL,
 			Title:           "Reset your password",
 			WebURL:          links.WebURL,
 		})
@@ -56,8 +56,8 @@ func RegisterAuthActionEmailHooks(app core.App, resources lib.RuntimeResources) 
 			MarketingURL:    links.MarketingURL,
 			Preheader:       "Verify your email address for Yummy Recs.",
 			SafetyNote:      "If you did not create a Yummy Recs account, you can ignore this email.",
-			SecondaryPrompt: "Already have the app installed?",
-			SecondaryLabel:  "Open this in Yummy Recs.",
+			SecondaryPrompt: "Use this link to verify your email if you already have the app:",
+			SecondaryLabel:  links.AppURL,
 			Title:           "Verify your email",
 			WebURL:          links.WebURL,
 		})

@@ -414,6 +414,7 @@ func syncWaitlistJoinedToLoops(app core.App, runtimeResources lib.RuntimeResourc
 func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
 	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
 	signupURL := buildSignupURL(runtimeResources.AppURL, email)
+	signupAppURL := buildSignupAppURL(runtimeResources.MobileAppScheme, email)
 	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
 	if senderName == "" {
 		senderName = "Yummy Recs"
@@ -431,22 +432,22 @@ func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResourc
 			email,
 			signupURL,
 		),
-		HTML: buildWaitlistApprovalEmailHTML(email, signupURL, runtimeResources.MarketingURL),
+		HTML: buildWaitlistApprovalEmailHTML(email, signupURL, signupAppURL, runtimeResources.MarketingURL),
 	}
 
 	return app.NewMailClient().Send(message)
 }
 
-func buildWaitlistApprovalEmailHTML(email string, signupURL string, marketingURL string) string {
+func buildWaitlistApprovalEmailHTML(email string, signupURL string, signupAppURL string, marketingURL string) string {
 	return lib.BuildTransactionalEmailHTML(lib.TransactionalEmailInput{
-		AppURL:          signupURL,
+		AppURL:          signupAppURL,
 		Body:            fmt.Sprintf("You can now create your Yummy Recs account with %s.", email),
 		ButtonLabel:     "Create your account",
 		MarketingURL:    marketingURL,
 		Preheader:       "Your Yummy Recs account is ready.",
 		SafetyNote:      "If you did not join the Yummy Recs waitlist, you can ignore this email.",
-		SecondaryPrompt: "Already have the app installed?",
-		SecondaryLabel:  "Open this in Yummy Recs.",
+		SecondaryPrompt: "Use this link to sign up if you already have the app:",
+		SecondaryLabel:  signupAppURL,
 		Title:           "You're approved!",
 		WebURL:          signupURL,
 	})
@@ -504,6 +505,19 @@ func buildSignupURL(appURL string, email string) string {
 	}
 
 	return base + "/signup?email=" + url.QueryEscape(strings.ToLower(strings.TrimSpace(email))) + "&mode=waitlist_approved"
+}
+
+func buildSignupAppURL(appScheme string, email string) string {
+	scheme := strings.TrimSpace(appScheme)
+	if scheme == "" {
+		scheme = "yummyrecs"
+	}
+
+	values := url.Values{}
+	values.Set("email", strings.ToLower(strings.TrimSpace(email)))
+	values.Set("mode", "waitlist_approved")
+
+	return scheme + "://signup?" + values.Encode()
 }
 
 func serializeWaitlistRecord(record *core.Record) map[string]any {

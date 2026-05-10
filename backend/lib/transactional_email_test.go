@@ -13,8 +13,8 @@ func TestBuildTransactionalEmailHTMLRendersBrandTitleAndCTA(t *testing.T) {
 		MarketingURL:    "https://yummyrecs.com",
 		Preheader:       "Choose a new password.",
 		SafetyNote:      "Ignore this email if you did not request it.",
-		SecondaryPrompt: "Already have the app installed?",
-		SecondaryLabel:  "Open this in Yummy Recs.",
+		SecondaryPrompt: "Use this link to reset your password if you already have the app:",
+		SecondaryLabel:  "yummyrecs://reset-password?token=abc",
 		Title:           "Reset your password",
 		WebURL:          "https://app.yummyrecs.com/reset-password?token=abc",
 	})
@@ -25,7 +25,8 @@ func TestBuildTransactionalEmailHTMLRendersBrandTitleAndCTA(t *testing.T) {
 		`href="https://app.yummyrecs.com/reset-password?token=abc"`,
 		"Reset password",
 		`href="yummyrecs://reset-password?token=abc"`,
-		"Open this in Yummy Recs.",
+		"Use this link to reset your password if you already have the app:",
+		"yummyrecs://reset-password?token=abc",
 		`href="https://yummyrecs.com"`,
 	} {
 		if !strings.Contains(html, expected) {
