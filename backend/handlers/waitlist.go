@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
-	"html"
 	"log"
 	"net/mail"
 	"net/url"
@@ -414,7 +413,7 @@ func syncWaitlistJoinedToLoops(app core.App, runtimeResources lib.RuntimeResourc
 
 func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
 	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
-	signupURL := buildSignupURL(runtimeResources.MarketingURL, email)
+	signupURL := buildSignupURL(runtimeResources.AppURL, email)
 	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
 	if senderName == "" {
 		senderName = "Yummy Recs"
@@ -428,20 +427,29 @@ func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResourc
 		To:      []mail.Address{{Address: email}},
 		Subject: "You're approved for Yummy Recs",
 		Text: fmt.Sprintf(
-			"You're approved! You can now create your Yummy Recs account with %s. Sign up here: %s",
+			"You're approved! You can now create your Yummy Recs account with %s. Create your account: %s",
 			email,
 			signupURL,
 		),
-		HTML: fmt.Sprintf(`
-			<p>You're approved!</p>
-			<p>You can now create your Yummy Recs account with <strong>%s</strong>.</p>
-			<p><a href="%s">Create your account</a></p>
-			<p>If the button does not work, copy and paste this link into your browser:</p>
-			<p>%s</p>
-		`, html.EscapeString(email), html.EscapeString(signupURL), html.EscapeString(signupURL)),
+		HTML: buildWaitlistApprovalEmailHTML(email, signupURL, runtimeResources.MarketingURL),
 	}
 
 	return app.NewMailClient().Send(message)
+}
+
+func buildWaitlistApprovalEmailHTML(email string, signupURL string, marketingURL string) string {
+	return lib.BuildTransactionalEmailHTML(lib.TransactionalEmailInput{
+		AppURL:          signupURL,
+		Body:            fmt.Sprintf("You can now create your Yummy Recs account with %s.", email),
+		ButtonLabel:     "Create your account",
+		MarketingURL:    marketingURL,
+		Preheader:       "Your Yummy Recs account is ready.",
+		SafetyNote:      "If you did not join the Yummy Recs waitlist, you can ignore this email.",
+		SecondaryPrompt: "Already have the app installed?",
+		SecondaryLabel:  "Open this in Yummy Recs.",
+		Title:           "You're approved!",
+		WebURL:          signupURL,
+	})
 }
 
 func syncWaitlistRejectedToLoops(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
@@ -489,10 +497,10 @@ func waitlistMailingLists(record *core.Record) map[string]bool {
 	return lists
 }
 
-func buildSignupURL(marketingURL string, email string) string {
-	base := strings.TrimRight(strings.TrimSpace(marketingURL), "/")
+func buildSignupURL(appURL string, email string) string {
+	base := strings.TrimRight(strings.TrimSpace(appURL), "/")
 	if base == "" {
-		base = "https://yummyrecs.com"
+		base = "https://app.yummyrecs.com"
 	}
 
 	return base + "/signup?email=" + url.QueryEscape(strings.ToLower(strings.TrimSpace(email))) + "&mode=waitlist_approved"

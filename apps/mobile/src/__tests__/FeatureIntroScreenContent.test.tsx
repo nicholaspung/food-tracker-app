@@ -173,6 +173,90 @@ describe('FeatureIntroScreenContent', () => {
     expect(renderer.root.findByType(Image).props.resizeMode).toBe('contain');
   });
 
+  it('does not mount image media while inactive', async () => {
+    const onPrimaryPress = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureIntroScreenContent
+          config={{
+            analyticsFeature: 'tip_calculator',
+            description: 'Estimate tips quickly.',
+            destination: 'TipCalculator',
+            iconName: 'calculator-outline',
+            iconTone: 'green',
+            imageSource: 1,
+            primaryLabel: 'Open Tip Calculator',
+            subtitle: 'Tip Calculator',
+            title: 'Calculate tips quickly',
+          }}
+          errorMessage={null}
+          isMediaActive={false}
+          isSubmitting={false}
+          layout="immersive"
+          onPrimaryPress={onPrimaryPress}
+          primaryTestID="primary-button"
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+    expect(renderer.root.findAllByType('Button')).toHaveLength(1);
+  });
+
+  it('mounts image media with the expected source and resize mode when becoming active', async () => {
+    const onPrimaryPress = jest.fn();
+    const config = {
+      analyticsFeature: 'tip_calculator',
+      description: 'Estimate tips quickly.',
+      destination: 'TipCalculator' as const,
+      iconName: 'calculator-outline' as const,
+      iconTone: 'green' as const,
+      imageSource: 1,
+      primaryLabel: 'Open Tip Calculator',
+      subtitle: 'Tip Calculator',
+      title: 'Calculate tips quickly',
+    };
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FeatureIntroScreenContent
+          config={config}
+          errorMessage={null}
+          isMediaActive={false}
+          isSubmitting={false}
+          layout="immersive"
+          mediaPlaybackKey="tipCalculator:replay:profile"
+          onPrimaryPress={onPrimaryPress}
+          primaryTestID="primary-button"
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+
+    await act(async () => {
+      renderer.update(
+        <FeatureIntroScreenContent
+          config={config}
+          errorMessage={null}
+          isMediaActive
+          isSubmitting={false}
+          layout="immersive"
+          mediaPlaybackKey="tipCalculator:replay:profile"
+          onPrimaryPress={onPrimaryPress}
+          primaryTestID="primary-button"
+        />,
+      );
+    });
+
+    const image = renderer.root.findByType(Image);
+    expect(image.props.source).toBe(1);
+    expect(image.props.resizeMode).toBe('contain');
+  });
+
   it('calls the primary action from immersive profile replay content', async () => {
     const onPrimaryPress = jest.fn();
     let renderer: any = null;

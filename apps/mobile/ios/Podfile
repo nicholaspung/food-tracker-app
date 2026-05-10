@@ -78,6 +78,30 @@ target 'YummyRecs' do
       '-fmodule-map-file="${PODS_ROOT}/Headers/Public/ExpoSQLite/ExpoSQLitePrivate.modulemap"',
     ]
 
+    suppress_incomplete_umbrella_warning = lambda do |target|
+      target.build_configurations.each do |config|
+        other_cflags = config.build_settings['OTHER_CFLAGS']
+        other_cflags = other_cflags.is_a?(Array) ? other_cflags : other_cflags.to_s.split(/\s+/)
+        other_cflags = ['$(inherited)'] if other_cflags.empty?
+        unless other_cflags.include?('-Wno-incomplete-umbrella')
+          other_cflags << '-Wno-incomplete-umbrella'
+        end
+        config.build_settings['OTHER_CFLAGS'] = other_cflags
+
+        swift_flags = config.build_settings['OTHER_SWIFT_FLAGS']
+        swift_flags = swift_flags.is_a?(Array) ? swift_flags.join(' ') : swift_flags.to_s
+        swift_flags = '$(inherited)' if swift_flags.empty?
+        unless swift_flags.include?('-Wno-incomplete-umbrella')
+          swift_flags = "#{swift_flags} -Xcc -Wno-incomplete-umbrella"
+        end
+        config.build_settings['OTHER_SWIFT_FLAGS'] = swift_flags
+      end
+    end
+
+    installer.pods_project.targets.each do |target|
+      suppress_incomplete_umbrella_warning.call(target)
+    end
+
     append_private_modulemap_flags = lambda do |target|
       target.build_configurations.each do |config|
         swift_flags = config.build_settings['OTHER_SWIFT_FLAGS']

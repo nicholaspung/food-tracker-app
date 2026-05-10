@@ -219,7 +219,7 @@ module.exports = ({ config }) => {
     appIdentity.scheme === 'yummyrecs-preview'
       ? ['beta.app.yummyrecs.com']
       : ['app.yummyrecs.com'];
-  const authLinkPathPrefixes = ['/reset-password', '/verify-email'];
+  const authLinkPathPrefixes = ['/reset-password', '/verify-email', '/signup'];
 
   return {
     ...config,

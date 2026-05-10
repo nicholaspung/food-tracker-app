@@ -327,8 +327,9 @@ describe('FeatureOnboardingScreen', () => {
     ).toHaveLength(1);
   });
 
-  it('renders configured Getting Started GIF media after the cards are published', async () => {
+  it('only mounts configured Getting Started GIF media for the active card', async () => {
     Object.assign(mockMainOnboardingPublishedAssets, {
+      welcome: true,
       lists_intro: true,
       bills_tips: true,
     });
@@ -337,15 +338,41 @@ describe('FeatureOnboardingScreen', () => {
     const images = renderer.root.findAllByType('Image');
     const imageSources = images.map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-lists-intro' });
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-bills-tips' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-welcome' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-lists-intro' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-bills-tips' });
     expect(imageSources).not.toContainEqual({ uri: 'asset://lists' });
     expect(imageSources).not.toContainEqual({ uri: 'asset://split-bill' });
     expect(
-      images.find((node: any) => node.props.source.uri === 'asset://getting-started-lists-intro')?.props.resizeMode,
+      images.find((node: any) => node.props.source.uri === 'asset://getting-started-welcome')?.props.resizeMode,
     ).toBe('contain');
+  });
+
+  it('mounts the newly active Getting Started GIF after card navigation', async () => {
+    Object.assign(mockMainOnboardingPublishedAssets, {
+      welcome: true,
+      lists_intro: true,
+      bills_tips: true,
+    });
+
+    const renderer = await renderFeatureOnboardingScreen();
+
+    expect(renderer.root.findAllByType('Image').map((node: any) => node.props.source)).toContainEqual({
+      uri: 'asset://getting-started-welcome',
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-lists_intro' }).props.onPress();
+    });
+
+    const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
+
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-lists-intro' });
+    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-welcome' });
     expect(
-      images.find((node: any) => node.props.source.uri === 'asset://getting-started-bills-tips')?.props.resizeMode,
+      renderer.root
+        .findAllByType('Image')
+        .find((node: any) => node.props.source.uri === 'asset://getting-started-lists-intro')?.props.resizeMode,
     ).toBe('contain');
   });
 

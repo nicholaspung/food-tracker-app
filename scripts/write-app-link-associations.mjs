@@ -32,7 +32,7 @@ if (iosTeamId) {
       details: [
         {
           appID: `${iosTeamId}.${bundleIdentifier}`,
-          paths: ['/reset-password*', '/verify-email*'],
+          paths: ['/reset-password*', '/verify-email*', '/signup*'],
         },
       ],
     },

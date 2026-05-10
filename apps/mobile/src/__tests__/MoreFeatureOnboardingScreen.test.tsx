@@ -1,4 +1,5 @@
 import React from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import { act, create } from 'react-test-renderer';
 
 import { MoreFeatureOnboardingScreen } from '../screens/MoreFeatureOnboardingScreen';
@@ -19,6 +20,10 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
+jest.mock('@react-navigation/native', () => ({
+  useIsFocused: jest.fn(),
+}));
+
 jest.mock('react-native', () => ({
   Image: (props: Record<string, unknown>) => mockReact.createElement('Image', props),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -31,15 +36,19 @@ jest.mock('../components/shared', () => ({
   FeatureIntroScreenContent: ({
     config,
     errorMessage,
+    isMediaActive,
     isSubmitting,
     layout,
+    mediaPlaybackKey,
     onPrimaryPress,
     primaryTestID,
   }: Record<string, any>) =>
     mockReact.createElement(
       'FeatureIntroScreenContent',
       {
+        isMediaActive,
         layout,
+        mediaPlaybackKey,
       },
       mockReact.createElement('Image', { resizeMode: layout === 'immersive' ? 'contain' : 'cover', source: config.imageSource }),
       mockReact.createElement('Text', null, config.title),
@@ -142,6 +151,7 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseIsFocused = useIsFocused as jest.MockedFunction<typeof useIsFocused>;
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
@@ -227,6 +237,7 @@ describe('MoreFeatureOnboardingScreen', () => {
     mockSaveOptimisticMobileOnboardingState.mockReset();
     mockTrackObservabilityEvent.mockReset();
     mockCanGoBack.mockReturnValue(false);
+    mockedUseIsFocused.mockReturnValue(true);
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'user_1',
@@ -247,10 +258,24 @@ describe('MoreFeatureOnboardingScreen', () => {
       expect(findTextNodes(renderer, config.description)).toHaveLength(1);
       expect(renderer.root.findByType('Image').props.source).toEqual(config.imageSource);
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('immersive');
+      expect(renderer.root.findByType('FeatureIntroScreenContent').props.isMediaActive).toBe(true);
+      expect(renderer.root.findByType('FeatureIntroScreenContent').props.mediaPlaybackKey).toBe(`${cardId}:firstRun:more`);
       expect(renderer.root.findAllByProps({ testID: 'more-feature-onboarding-back-button' })).toHaveLength(0);
       expect(findPrimaryButton(renderer).props.label).toBe(config.primaryLabel);
     },
   );
+
+  it('passes inactive media state when the tutorial screen is not focused', async () => {
+    mockedUseIsFocused.mockReturnValue(false);
+    const renderer = await renderMoreFeatureOnboardingScreen('splitBill', {
+      mode: 'replay',
+      source: 'profile',
+    });
+
+    const content = renderer.root.findByType('FeatureIntroScreenContent');
+    expect(content.props.isMediaActive).toBe(false);
+    expect(content.props.mediaPlaybackKey).toBe('splitBill:replay:profile');
+  });
 
   it.each(['lists', 'splitBill', 'tipCalculator'] as const)(
     'dismisses %s onboarding and opens the destination',

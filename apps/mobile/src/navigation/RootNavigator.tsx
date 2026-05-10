@@ -252,6 +252,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
   prefixes: [
     'yummyrecs://',
+    'yummyrecs-preview://',
     'https://yummyrecs.com',
     'https://www.yummyrecs.com',
     'https://beta.yummyrecs.com',

@@ -14,6 +14,8 @@ services:
       - ./backend/pb_migrations:/pb/pb_migrations # Migration files
       - ./backend/pb_hooks:/pb/pb_hooks # Custom hooks
       - ./backend/pb_public:/pb/pb_public # Static files
+    env_file:
+      - ${FOOD_TRACKER_BACKEND_ENV_FILE:-./backend/.env}
     environment:
       - TZ=America/Los_Angeles
       - ENCRYPTION_KEY=${ENCRYPTION_KEY_PROD:-}

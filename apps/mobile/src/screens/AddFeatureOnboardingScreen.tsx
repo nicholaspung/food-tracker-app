@@ -1,4 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import { useEffect } from 'react';
 
 import {
@@ -105,6 +106,7 @@ export function AddFeatureOnboardingScreen({ navigation, route }: AddFeatureOnbo
   const mode = route.params.mode ?? 'firstRun';
   const entrySource = route.params.source ?? 'add';
   const config = ADD_FEATURE_ONBOARDING_CONFIG[cardId];
+  const isFocused = useIsFocused();
   const { dismiss, errorMessage, isSubmitting } = useDismissibleOnboardingCard({
     buildOptimisticState: buildAddOnboardingCardDismissedState,
     cardId,
@@ -182,8 +184,10 @@ export function AddFeatureOnboardingScreen({ navigation, route }: AddFeatureOnbo
       <FeatureIntroScreenContent
         config={config}
         errorMessage={errorMessage}
+        isMediaActive={isFocused}
         isSubmitting={isSubmitting}
         layout="immersive"
+        mediaPlaybackKey={`${cardId}:${mode}:${entrySource}`}
         onPrimaryPress={() => {
           void handleContinue();
         }}

@@ -801,6 +801,7 @@ EOF
     export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
     export FOOD_TRACKER_POSTHOG_HOST="$FOOD_TRACKER_POSTHOG_HOST"
     export FOOD_TRACKER_APP_SCHEME="$FOOD_TRACKER_APP_SCHEME"
+    export FOOD_TRACKER_BACKEND_ENV_FILE="$env_file_storage"
     export GEMINI_API_KEY="$gemini_key"
     export GOOGLE_PLACES_API_KEY="$places_key"
     export POSTHOG_API_KEY="$posthog_api_key"

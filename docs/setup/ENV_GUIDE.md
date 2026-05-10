@@ -74,6 +74,7 @@ Notes:
 
 - `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` are required for backend startup today.
 - `POSTHOG_API_KEY` is optional.
+- Waitlist approval signup links use `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`.
 - The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
 - During VPS deploys, `scripts/deploy.sh` writes `backend/.env` as a symlink to `/opt/food-tracker-secrets/{beta|production}/.env`.
 

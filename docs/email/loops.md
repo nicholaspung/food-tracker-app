@@ -47,7 +47,7 @@ Future lifecycle events can include:
 
 ## Waitlist Approval Email
 
-Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email sends the user to the signup page with `mode=waitlist_approved` so the mobile app opens account creation without an invite code field. The backend will allow account creation only for the approved email.
+Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email sends the user to the app web signup page with `mode=waitlist_approved` so the mobile app opens account creation without an invite code field. Beta emails use `https://beta.app.yummyrecs.com/signup`; production emails use `https://app.yummyrecs.com/signup`. When Universal Links/App Links association files are deployed, the same HTTPS link can open the installed mobile app and falls back to web when the app is unavailable. The backend will allow account creation only for the approved email.
 
 ## Local Testing
 

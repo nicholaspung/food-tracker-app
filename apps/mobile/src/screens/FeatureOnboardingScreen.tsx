@@ -6,6 +6,7 @@ import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-n
 
 import { BackHeaderScreenScaffold, Skeleton } from '../components/shared';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { TutorialMedia } from '../components/shared/TutorialMedia';
 import {
   MAIN_ONBOARDING_VERSION,
   buildMainOnboardingCompletedState,
@@ -315,9 +316,13 @@ const useStyles = createThemedStyles((
 
 function FeatureOnboardingCardView({
   card,
+  isActive,
+  playbackKey,
   styles,
 }: {
   card: MainOnboardingCard;
+  isActive: boolean;
+  playbackKey: string;
   styles: ReturnType<typeof useStyles>;
 }) {
   const theme = useTheme();
@@ -329,9 +334,19 @@ function FeatureOnboardingCardView({
   return (
     <Card style={styles.card}>
       {imageSource ? (
-        <View style={styles.imageFrame}>
-          <Image resizeMode="contain" source={imageSource} style={styles.image} />
-        </View>
+        <TutorialMedia
+          iconColor={theme.colors.text.brand}
+          iconName={card.icon}
+          imageResizeMode="contain"
+          imageSource={imageSource}
+          isActive={isActive}
+          playbackKey={playbackKey}
+          styles={{
+            frame: styles.imageFrame,
+            iconFrame: styles.heroIconFrame,
+            image: styles.image,
+          }}
+        />
       ) : (
         <View style={styles.iconVisual}>
           {(card.accentIcons ?? []).map((iconName, index) => (
@@ -515,9 +530,14 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
             scrollEventThrottle={16}
             showsHorizontalScrollIndicator={false}
           >
-            {MAIN_ONBOARDING_CARDS.map((card) => (
+            {MAIN_ONBOARDING_CARDS.map((card, index) => (
               <View key={card.id} style={styles.carouselItem}>
-                <FeatureOnboardingCardView card={card} styles={styles} />
+                <FeatureOnboardingCardView
+                  card={card}
+                  isActive={index === boundedActiveCardIndex}
+                  playbackKey={`${mode}:${card.id}:${index}`}
+                  styles={styles}
+                />
               </View>
             ))}
           </ScrollView>
@@ -582,6 +602,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
       boundedActiveCardIndex,
       carouselCardWidth,
       isFinalCard,
+      mode,
       navigateToCardIndex,
       styles,
       theme.colors.text.primary,

@@ -55,6 +55,7 @@ export * from './StickyActionFooter';
 export * from './TabBrandHeader';
 export * from './TabSectionCard';
 export * from './TabRootScreenScaffold';
+export * from './TutorialMedia';
 export * from './UpgradePromptCard';
 export * from './VisibilityBadge';
 export * from './VisibilityOptionSelector';

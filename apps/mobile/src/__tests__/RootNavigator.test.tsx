@@ -533,6 +533,17 @@ describe('RootNavigator', () => {
     });
   });
 
+  it('registers beta and production auth link prefixes', () => {
+    expect(AUTH_LINKING.prefixes).toEqual(
+      expect.arrayContaining([
+        'yummyrecs://',
+        'yummyrecs-preview://',
+        'https://app.yummyrecs.com',
+        'https://beta.app.yummyrecs.com',
+      ]),
+    );
+  });
+
   it('parses verify email token links', () => {
     const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
     const state = getStateFromPath('/verify-email?token=abc', AUTH_LINKING.config);
@@ -541,6 +552,22 @@ describe('RootNavigator', () => {
       name: 'VerifyEmail',
       params: {
         token: 'abc',
+      },
+    });
+  });
+
+  it('parses waitlist approval signup links', () => {
+    const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
+    const state = getStateFromPath(
+      '/signup?email=approved%40example.com&mode=waitlist_approved',
+      AUTH_LINKING.config,
+    );
+
+    expect(state?.routes[0]).toMatchObject({
+      name: 'SignUp',
+      params: {
+        email: 'approved@example.com',
+        mode: 'waitlist_approved',
       },
     });
   });

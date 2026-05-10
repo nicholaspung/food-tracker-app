@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { Image, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Text } from '../../ui';
 import { PageErrorToast } from './PageErrorToast';
+import { TutorialMedia } from './TutorialMedia';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -27,8 +28,10 @@ export interface FeatureIntroConfig<Destination extends keyof RootStackParamList
 interface FeatureIntroScreenContentProps<Destination extends keyof RootStackParamList> {
   config: FeatureIntroConfig<Destination>;
   errorMessage: string | null;
+  isMediaActive?: boolean;
   isSubmitting: boolean;
   layout?: 'compact' | 'immersive';
+  mediaPlaybackKey?: string;
   onPrimaryPress: () => void;
   primaryTestID: string;
 }
@@ -89,8 +92,10 @@ const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
 export function FeatureIntroScreenContent<Destination extends keyof RootStackParamList>({
   config,
   errorMessage,
+  isMediaActive = true,
   isSubmitting,
   layout = 'compact',
+  mediaPlaybackKey = config.analyticsFeature,
   onPrimaryPress,
   primaryTestID,
 }: FeatureIntroScreenContentProps<Destination>) {
@@ -106,15 +111,19 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
 
   return (
     <View style={[styles.body, isImmersiveLayout ? styles.immersiveBody : null]}>
-      <View style={styles.imageFrame}>
-        {config.imageSource ? (
-          <Image resizeMode={imageResizeMode} source={config.imageSource} style={styles.image} />
-        ) : (
-          <View style={styles.iconFrame}>
-            <Ionicons color={iconColor} name={config.iconName} size={44} />
-          </View>
-        )}
-      </View>
+      <TutorialMedia
+        iconColor={iconColor}
+        iconName={config.iconName}
+        imageResizeMode={imageResizeMode}
+        imageSource={config.imageSource}
+        isActive={isMediaActive}
+        playbackKey={mediaPlaybackKey}
+        styles={{
+          frame: styles.imageFrame,
+          iconFrame: styles.iconFrame,
+          image: styles.image,
+        }}
+      />
       <View style={styles.copyCluster}>
         <View style={styles.titleRow}>
           <Ionicons color={iconColor} name={config.iconName} size={22} />

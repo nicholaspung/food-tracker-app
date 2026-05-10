@@ -27,19 +27,23 @@ func validateStartupConfiguration() (lib.RuntimeResources, error) {
 	}
 
 	for _, field := range []struct {
-		name  string
-		value string
+		name          string
+		value         string
+		disallowLocal bool
 	}{
-		{name: "FOOD_TRACKER_ADMIN_URL", value: runtimeResources.AdminURL},
-		{name: "FOOD_TRACKER_API_BASE_URL", value: runtimeResources.APIBaseURL},
-		{name: "FOOD_TRACKER_APP_URL", value: runtimeResources.AppURL},
-		{name: "FOOD_TRACKER_MARKETING_URL", value: runtimeResources.MarketingURL},
-		{name: "FOOD_TRACKER_POCKETBASE_URL", value: runtimeResources.PocketBaseURL},
-		{name: "FOOD_TRACKER_POSTHOG_HOST", value: runtimeResources.PostHogHost},
+		{name: "FOOD_TRACKER_ADMIN_URL", value: runtimeResources.AdminURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_API_BASE_URL", value: runtimeResources.APIBaseURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_APP_URL", value: runtimeResources.AppURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_MARKETING_URL", value: runtimeResources.MarketingURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_POCKETBASE_URL", value: runtimeResources.PocketBaseURL, disallowLocal: true},
+		{name: "FOOD_TRACKER_POSTHOG_HOST", value: runtimeResources.PostHogHost, disallowLocal: true},
 		{name: "POSTHOG_HOST", value: resolvedPostHogAPIHost()},
 	} {
 		if err := validateAbsoluteHTTPURL(field.value); err != nil {
 			problems = append(problems, fmt.Sprintf("%s %v", field.name, err))
+		}
+		if field.disallowLocal && runtimeResources.Environment != lib.RuntimeEnvironmentLocal && isLocalDevelopmentURL(field.value) {
+			problems = append(problems, fmt.Sprintf("%s must not resolve to a local URL in %s", field.name, runtimeResources.Environment))
 		}
 	}
 
@@ -78,6 +82,20 @@ func validateAbsoluteHTTPURL(raw string) error {
 	}
 
 	return nil
+}
+
+func isLocalDevelopmentURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	switch strings.ToLower(parsed.Hostname()) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateURLScheme(raw string) error {
