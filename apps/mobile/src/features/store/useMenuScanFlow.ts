@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ClientResponseError } from 'pocketbase';
 
 import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPermissions';
 import { useImageSourcePicker } from '../../hooks/useImageSourcePicker';
@@ -14,6 +13,7 @@ import {
 } from './menuParsingGateway';
 import { menuItemsQueryKeys } from './menuItemsQuery';
 import { formatLimitExceededMessage, parseLimitExceededError } from './usageLimitsGateway';
+import { createAIRequestCorrelation, resolveAIImageErrorProperties } from './aiImageObservability';
 
 export type MenuScanSource = PhotoPickerPermissionSource;
 
@@ -47,38 +47,6 @@ export interface MenuScanFlowController {
   selectedImageName: string;
   scanMenu: (source: MenuScanSource) => Promise<MenuScanFlowResult | null>;
   reset: () => void;
-}
-
-function createRequestCorrelation(): string {
-  const randomPart = Math.random().toString(36).slice(2, 10);
-  return `mobile-menu-scan-${Date.now().toString(36)}-${randomPart}`;
-}
-
-function resolveErrorProperties(error: unknown): EventProperties {
-  if (error instanceof ClientResponseError) {
-    return {
-      errorMessage:
-        typeof error.response?.message === 'string' && error.response.message.trim()
-          ? error.response.message
-          : error.message,
-      errorType: 'ClientResponseError',
-      statusCode: Number.isFinite(error.status) && error.status > 0 ? error.status : null,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      errorMessage: error.message,
-      errorType: error.name,
-      statusCode: null,
-    };
-  }
-
-  return {
-    errorMessage: String(error),
-    errorType: 'unknown_error',
-    statusCode: null,
-  };
 }
 
 function buildBaseEventProperties(input: {
@@ -121,7 +89,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
 
   const scanMenu = useCallback(
     async (source: MenuScanSource): Promise<MenuScanFlowResult | null> => {
-      const requestCorrelation = createRequestCorrelation();
+      const requestCorrelation = createAIRequestCorrelation('menu-scan');
       const eventProperties = buildBaseEventProperties({
         analyticsSource: options.analyticsSource,
         requestCorrelation,
@@ -249,7 +217,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
           });
         }
 
-        const resolvedErrorProperties = resolveErrorProperties(error);
+        const resolvedErrorProperties = resolveAIImageErrorProperties(error);
         const message = limitPayload
           ? formatLimitExceededMessage(limitPayload)
           : typeof resolvedErrorProperties.errorMessage === 'string'

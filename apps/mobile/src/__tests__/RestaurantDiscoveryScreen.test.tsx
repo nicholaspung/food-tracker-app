@@ -1,11 +1,14 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
-import { extractRestaurantNamesFromImage } from '../features';
+import { extractRestaurantNamesFromImage, parseLimitExceededError } from '../features';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
-import { stageLocalPhotoFile } from '../lib/photoStaging';
+import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
+import { captureObservabilityError, trackObservabilityEvent } from '../observability';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
@@ -15,6 +18,7 @@ const mockSearchByText = jest.fn();
 const mockSetIsSearchExpanded = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockPickImageAssets = jest.fn();
+const mockInvalidateQueries = jest.fn();
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
@@ -36,7 +40,7 @@ jest.mock('react-native', () => ({
 
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({
-    invalidateQueries: jest.fn(),
+    invalidateQueries: mockInvalidateQueries,
   })),
 }));
 
@@ -87,6 +91,7 @@ jest.mock('../lib/photoStaging', () => ({
 }));
 
 jest.mock('../observability', () => ({
+  captureObservabilityError: jest.fn(),
   trackObservabilityEvent: jest.fn(),
 }));
 
@@ -148,7 +153,15 @@ const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<t
 const mockedExtractRestaurantNamesFromImage = extractRestaurantNamesFromImage as jest.MockedFunction<
   typeof extractRestaurantNamesFromImage
 >;
+const mockedParseLimitExceededError = parseLimitExceededError as jest.MockedFunction<typeof parseLimitExceededError>;
 const mockedStageLocalPhotoFile = stageLocalPhotoFile as jest.MockedFunction<typeof stageLocalPhotoFile>;
+const mockedCleanupStagedPhotoFiles = cleanupStagedPhotoFiles as jest.MockedFunction<typeof cleanupStagedPhotoFiles>;
+const mockedCaptureObservabilityError = captureObservabilityError as jest.MockedFunction<
+  typeof captureObservabilityError
+>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
+const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 
 describe('RestaurantDiscoveryScreen', () => {
   beforeEach(() => {
@@ -163,15 +176,32 @@ describe('RestaurantDiscoveryScreen', () => {
     mockPickImageAssets.mockReset();
     mockPickImageAssets.mockResolvedValue({
       assets: [{ uri: 'file:///storefront.jpg' }],
-      status: 'selected',
+      status: 'success',
     });
+    mockInvalidateQueries.mockReset();
+    mockedUseQueryClient.mockReturnValue({
+      invalidateQueries: mockInvalidateQueries,
+    } as never);
     mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
       pickImageAssets: mockPickImageAssets,
     } as never);
     mockedExtractRestaurantNamesFromImage.mockReset();
+    mockedParseLimitExceededError.mockReset();
+    mockedParseLimitExceededError.mockReturnValue(null);
     mockedStageLocalPhotoFile.mockReset();
-    mockedStageLocalPhotoFile.mockResolvedValue({ uri: 'file:///staged-storefront.jpg' } as never);
+    mockedStageLocalPhotoFile.mockResolvedValue({
+      mimeType: 'image/jpeg',
+      name: 'staged-storefront.jpg',
+      uri: 'file:///staged-storefront.jpg',
+    } as never);
+    mockedCleanupStagedPhotoFiles.mockReset();
+    mockedCleanupStagedPhotoFiles.mockResolvedValue(undefined);
+    mockedCaptureObservabilityError.mockReset();
+    mockedTrackObservabilityEvent.mockReset();
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
+    } as never);
     mockedUseRestaurantSelectionFlow.mockReturnValue({
       clearPlacesSearchState: mockClearPlacesSearchState,
       compactSearchLabel: 'Search',
@@ -240,6 +270,19 @@ describe('RestaurantDiscoveryScreen', () => {
   function switchDiscoveryTab(renderer: any, tab: 'search' | 'scan') {
     act(() => {
       renderer.root.findByType('SegmentedControl').props.onChange(tab);
+    });
+  }
+
+  async function runGalleryStorefrontScan(renderer: any) {
+    switchDiscoveryTab(renderer, 'scan');
+    act(() => {
+      renderer.root
+        .findAllByType('Button')
+        .find((node: any) => node.props.label === 'Read a Storefront')
+        ?.props.onPress();
+    });
+    await act(async () => {
+      await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
     });
   }
 
@@ -343,6 +386,205 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(mockSearchByText).toHaveBeenCalledWith({ queryOverride: 'Sushi Ginza' });
     expect(renderer.root.findByType('SegmentedControl').props.value).toBe('search');
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(1);
+  });
+
+  it('tracks successful storefront extraction with request correlation', async () => {
+    mockedExtractRestaurantNamesFromImage.mockResolvedValueOnce({
+      found: true,
+      language: 'ja',
+      options: [
+        {
+          confidence: 'high',
+          name: 'Sushi Ginza',
+          reason: 'The storefront sign is visible.',
+        },
+      ],
+    } as never);
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(mockedExtractRestaurantNamesFromImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mimeType: 'image/jpeg',
+        name: 'staged-storefront.jpg',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+        uri: 'file:///staged-storefront.jpg',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_EXTRACTION_STARTED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_EXTRACTION_SUCCEEDED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        found: true,
+        language: 'ja',
+        optionCount: 1,
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+        resultType: 'found',
+      }),
+    );
+    expect(mockedCleanupStagedPhotoFiles).toHaveBeenCalledWith([
+      expect.objectContaining({ uri: 'file:///staged-storefront.jpg' }),
+    ]);
+  });
+
+  it('tracks storefront API failures and captures the exception', async () => {
+    const error = new Error('Gemini failed');
+    mockedExtractRestaurantNamesFromImage.mockRejectedValueOnce(error);
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Gemini failed');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_EXTRACTION_FAILED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        errorMessage: 'Gemini failed',
+        errorType: 'Error',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+        statusCode: null,
+      }),
+    );
+    expect(mockedCaptureObservabilityError).toHaveBeenCalledWith(
+      error,
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        errorMessage: 'Gemini failed',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+        source: 'RestaurantDiscoveryStorefront',
+      }),
+    );
+    expect(mockedCleanupStagedPhotoFiles).toHaveBeenCalledWith([
+      expect.objectContaining({ uri: 'file:///staged-storefront.jpg' }),
+    ]);
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'usage', 'monthly'],
+    });
+  });
+
+  it('tracks storefront permission denial without calling the API', async () => {
+    mockPickImageAssets.mockResolvedValueOnce({
+      canAskAgain: false,
+      message: 'Photo library permission is blocked.',
+      status: 'permission_denied',
+    });
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_IMAGE_PERMISSION_DENIED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        canAskAgain: false,
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+      }),
+    );
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Photo library permission is blocked.');
+    expect(mockedExtractRestaurantNamesFromImage).not.toHaveBeenCalled();
+    expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
+  });
+
+  it('tracks storefront picker cancellation without showing an error', async () => {
+    mockPickImageAssets.mockResolvedValueOnce({
+      status: 'canceled',
+    });
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_IMAGE_PICK_CANCELED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+      }),
+    );
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+    expect(mockedExtractRestaurantNamesFromImage).not.toHaveBeenCalled();
+    expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
+  });
+
+  it('tracks storefront usage limits without capturing an exception', async () => {
+    const error = new Error('Limit reached');
+    mockedParseLimitExceededError.mockReturnValueOnce({
+      limit: 5,
+      message: 'You have reached your monthly AI scan limit.',
+      metric: 'aiScansMonthly',
+      monthKey: '2026-05',
+      remaining: 0,
+      used: 5,
+      userTier: 'free',
+    } as never);
+    mockedExtractRestaurantNamesFromImage.mockRejectedValueOnce(error);
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'You have reached your monthly AI scan limit.',
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'USAGE_LIMIT_REACHED',
+      {
+        enforcement: 'server',
+        limit: 5,
+        metric: 'aiScansMonthly',
+        monthKey: '2026-05',
+        remaining: 0,
+        source: 'RestaurantDiscoveryStorefront',
+        used: 5,
+        userTier: 'free',
+      },
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_EXTRACTION_FAILED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        errorMessage: 'You have reached your monthly AI scan limit.',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+      }),
+    );
+    expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
+  });
+
+  it('tracks storefront offline blocking without opening the picker', async () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as never);
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Restaurant name extraction requires internet connection.',
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_STOREFRONT_OFFLINE_BLOCKED',
+      expect.objectContaining({
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        photoSource: 'gallery',
+        requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
+      }),
+    );
+    expect(mockPickImageAssets).not.toHaveBeenCalled();
+    expect(mockedExtractRestaurantNamesFromImage).not.toHaveBeenCalled();
+    expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
   });
 
   it('keeps scan results when search results are cleared', async () => {

@@ -100,4 +100,45 @@ describe('menuParsingGateway', () => {
       }),
     );
   });
+
+  it('passes storefront request correlation headers', async () => {
+    mockedPocketbaseModule.pb.send.mockResolvedValue({
+      found: true,
+      options: [{ confidence: 'high', name: '明洞餃子' }],
+    });
+
+    await extractRestaurantNamesFromImage({
+      mimeType: 'image/jpeg',
+      name: 'storefront.jpg',
+      requestCorrelation: 'mobile-storefront-test',
+      uri: 'file:///storefront.jpg',
+    });
+
+    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
+      '/api/find-restaurant-name',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Request-ID': 'mobile-storefront-test',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('omits blank storefront request correlation headers', async () => {
+    mockedPocketbaseModule.pb.send.mockResolvedValue({
+      found: true,
+      options: [{ confidence: 'high', name: '明洞餃子' }],
+    });
+
+    await extractRestaurantNamesFromImage({
+      mimeType: 'image/jpeg',
+      name: 'storefront.jpg',
+      requestCorrelation: '   ',
+      uri: 'file:///storefront.jpg',
+    });
+
+    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
+    expect(options.headers).not.toHaveProperty('X-Request-ID');
+  });
 });

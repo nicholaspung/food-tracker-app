@@ -10,6 +10,11 @@ const AccessControlsPage = lazy(() =>
     default: AccessControlsPage,
   })),
 );
+const AiImageDebugPage = lazy(() =>
+  import('@/features/ai-image-debug/AiImageDebugPage').then(({ AiImageDebugPage }) => ({
+    default: AiImageDebugPage,
+  })),
+);
 const AuditTrailPage = lazy(() =>
   import('@/features/audit/AuditTrailPage').then(({ AuditTrailPage }) => ({
     default: AuditTrailPage,
@@ -118,6 +123,10 @@ const shellRoutes = {
         {
           path: '/menu-inventory/restaurants/:restaurantId',
           element: withRouteSuspense(<RestaurantInventoryDetailPage />),
+        },
+        {
+          path: '/ai-image-debug',
+          element: withRouteSuspense(<AiImageDebugPage />),
         },
         {
           path: '/menu-reviews/:requestId',

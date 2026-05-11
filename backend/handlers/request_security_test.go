@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"mime/multipart"
 	"strings"
@@ -45,6 +46,25 @@ func TestDetectUploadedImageFormatRejectsExtensionContentMismatch(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "contents do not match") {
 		t.Fatalf("expected mismatch error, got %v", err)
+	}
+}
+
+func TestSanitizeProviderErrorMessageRedactsAPIKey(t *testing.T) {
+	message := `Post "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?$alt=json&key=AIzaSecret123": context deadline exceeded`
+
+	sanitized := sanitizeProviderErrorMessage(message)
+
+	if strings.Contains(sanitized, "AIzaSecret123") {
+		t.Fatalf("expected API key to be redacted, got %q", sanitized)
+	}
+	if !strings.Contains(sanitized, "key=[REDACTED]") {
+		t.Fatalf("expected redacted key marker, got %q", sanitized)
+	}
+}
+
+func TestGeminiFailureHTTPStatusTreatsDeadlineAsGatewayTimeout(t *testing.T) {
+	if got := geminiFailureHTTPStatus(context.DeadlineExceeded); got != 504 {
+		t.Fatalf("expected deadline exceeded to map to 504, got %d", got)
 	}
 }
 

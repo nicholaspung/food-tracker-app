@@ -32,11 +32,15 @@ import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow'
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { trackObservabilityEvent } from '../observability';
+import { captureObservabilityError, trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, ListItem, Text } from '../ui';
+import {
+  createAIRequestCorrelation,
+  resolveAIImageErrorProperties,
+} from '../features/store/aiImageObservability';
 
 type RestaurantDiscoveryScreenProps = NativeStackScreenProps<RootStackParamList, 'RestaurantDiscovery'>;
 type ImageSource = PhotoPickerPermissionSource;
@@ -119,6 +123,33 @@ function getRestaurantNameOptions(response: RestaurantNameExtractionResponse | n
   }
 
   return [];
+}
+
+function getStorefrontExtractionSuccessProperties(result: RestaurantNameExtractionResponse) {
+  if ('error' in result) {
+    return {
+      found: false,
+      language: null,
+      optionCount: 0,
+      resultType: 'not_restaurant',
+    };
+  }
+
+  if (result.found) {
+    return {
+      found: true,
+      language: result.language ?? null,
+      optionCount: result.options.length,
+      resultType: 'found',
+    };
+  }
+
+  return {
+    found: false,
+    language: null,
+    optionCount: 0,
+    resultType: result.allText?.trim() ? 'all_text' : 'not_restaurant',
+  };
 }
 
 export function RestaurantDiscoveryScreen({
@@ -276,33 +307,18 @@ export function RestaurantDiscoveryScreen({
     [searchByText, setIsSearchExpanded, setSearchQuery],
   );
 
-  const pickAndStageImage = useCallback(
-    async (source: ImageSource, fallbackPrefix: string) => {
-      const result = await pickImageAssets({ source });
-      if (result.status === 'permission_denied') {
-        throw new Error(result.message);
-      }
-
-      if (result.status === 'canceled') {
-        return null;
-      }
-
-      const imageInput = await stageLocalPhotoFile(result.assets[0], {
-        fallbackPrefix,
-      });
-      if (!imageInput) {
-        throw new Error('Could not prepare the selected image.');
-      }
-
-      return imageInput;
-    },
-    [pickImageAssets],
-  );
-
   const extractStorefrontName = useCallback(
     async (source: ImageSource) => {
+      const requestCorrelation = createAIRequestCorrelation('storefront');
+      const eventProperties = {
+        analyticsSource: 'RestaurantDiscoveryStorefront',
+        photoSource: source,
+        requestCorrelation,
+      };
+
       if (!isOnline) {
         setStorefrontErrorMessage('Restaurant name extraction requires internet connection.');
+        trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_OFFLINE_BLOCKED', eventProperties);
         return;
       }
 
@@ -310,27 +326,77 @@ export function RestaurantDiscoveryScreen({
       setStorefrontErrorMessage(null);
       setStorefrontResult(null);
       setCopyStatus(null);
+      trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_EXTRACTION_STARTED', eventProperties);
 
       let imageInput: Awaited<ReturnType<typeof stageLocalPhotoFile>> | null = null;
       try {
-        imageInput = await pickAndStageImage(source, source === 'camera' ? 'storefront-camera' : 'storefront-image');
-        if (!imageInput) {
+        const pickResult = await pickImageAssets({ source });
+        if (pickResult.status === 'permission_denied') {
+          trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_IMAGE_PERMISSION_DENIED', {
+            ...eventProperties,
+            canAskAgain: pickResult.canAskAgain,
+          });
+          setStorefrontErrorMessage(pickResult.message);
           return;
         }
 
-        const result = await extractRestaurantNamesFromImage(imageInput);
+        if (pickResult.status === 'canceled') {
+          trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_IMAGE_PICK_CANCELED', eventProperties);
+          return;
+        }
+
+        imageInput = await stageLocalPhotoFile(pickResult.assets[0], {
+          fallbackPrefix: source === 'camera' ? 'storefront-camera' : 'storefront-image',
+        });
+        if (!imageInput) {
+          throw new Error('Could not prepare the selected image.');
+        }
+
+        const result = await extractRestaurantNamesFromImage({
+          ...imageInput,
+          requestCorrelation,
+        });
         setStorefrontResult(result);
         trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_EXTRACTION_SUCCEEDED', {
-          source: 'RestaurantDiscoveryScreen',
-          found: 'found' in result ? result.found : false,
+          ...eventProperties,
+          ...getStorefrontExtractionSuccessProperties(result),
         });
       } catch (error) {
         const limitPayload = parseLimitExceededError(error);
+        if (limitPayload) {
+          trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+            enforcement: 'server',
+            limit: limitPayload.limit,
+            metric: limitPayload.metric,
+            monthKey: limitPayload.monthKey,
+            remaining: limitPayload.remaining,
+            source: 'RestaurantDiscoveryStorefront',
+            used: limitPayload.used,
+            userTier: limitPayload.userTier ?? null,
+          });
+        }
+
+        const resolvedErrorProperties = resolveAIImageErrorProperties(error);
         const message = limitPayload
           ? formatLimitExceededMessage(limitPayload)
-          : error instanceof Error
-            ? error.message
+          : typeof resolvedErrorProperties.errorMessage === 'string'
+            ? resolvedErrorProperties.errorMessage
             : 'Could not extract a restaurant name.';
+
+        trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_EXTRACTION_FAILED', {
+          ...eventProperties,
+          ...resolvedErrorProperties,
+          errorMessage: message,
+        });
+
+        if (!limitPayload) {
+          captureObservabilityError(error, {
+            ...eventProperties,
+            ...resolvedErrorProperties,
+            source: 'RestaurantDiscoveryStorefront',
+          });
+        }
+
         setStorefrontErrorMessage(message);
       } finally {
         setIsExtractingStorefront(false);
@@ -340,7 +406,7 @@ export function RestaurantDiscoveryScreen({
         void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
       }
     },
-    [isOnline, pickAndStageImage, queryClient],
+    [isOnline, pickImageAssets, queryClient],
   );
 
   const handleManualAdd = useCallback((name?: string) => {

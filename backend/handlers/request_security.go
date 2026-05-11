@@ -16,15 +16,16 @@ import (
 )
 
 const (
-	maxImageUploadBytes         int64 = 10 << 20
-	maxPlacesQueryLength              = 120
-	maxPlacesLocationLength           = 200
-	minPlacesRadiusMeters             = 100
-	maxPlacesRadiusMeters             = 20000
-	geminiRequestTimeout              = 30 * time.Second
-	googlePlacesRequestTimeout        = 15 * time.Second
-	googleGeocodeRequestTimeout       = 10 * time.Second
-	postHogProxyTimeout               = 10 * time.Second
+	maxImageUploadBytes          int64 = 10 << 20
+	maxPlacesQueryLength               = 120
+	maxPlacesLocationLength            = 200
+	minPlacesRadiusMeters              = 100
+	maxPlacesRadiusMeters              = 20000
+	geminiRequestTimeout               = 90 * time.Second
+	geminiGenerateAttemptTimeout       = 35 * time.Second
+	googlePlacesRequestTimeout         = 15 * time.Second
+	googleGeocodeRequestTimeout        = 10 * time.Second
+	postHogProxyTimeout                = 10 * time.Second
 )
 
 var (
@@ -49,7 +50,6 @@ var (
 		".png":  {"image/png"},
 		".webp": {"image/webp"},
 	}
-	geminiHTTPClient  = &http.Client{Timeout: geminiRequestTimeout}
 	placesHTTPClient  = &http.Client{Timeout: googlePlacesRequestTimeout}
 	geocodeHTTPClient = &http.Client{Timeout: googleGeocodeRequestTimeout}
 	postHogHTTPClient = &http.Client{Timeout: postHogProxyTimeout}

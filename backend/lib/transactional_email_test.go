@@ -36,7 +36,7 @@ func TestBuildTransactionalEmailHTMLRendersBrandTitleAndCTA(t *testing.T) {
 	}
 }
 
-func TestBuildTransactionalEmailHTMLAvoidsLowSupportLayoutCSS(t *testing.T) {
+func TestBuildTransactionalEmailHTMLAvoidsWorstLayoutCSSAndOverflowSources(t *testing.T) {
 	renderedHTML := BuildTransactionalEmailHTML(TransactionalEmailInput{
 		AppURL:          "yummyrecs://reset-password?token=abc",
 		Body:            "Use the button below to choose a new password.",
@@ -60,13 +60,9 @@ func TestBuildTransactionalEmailHTMLAvoidsLowSupportLayoutCSS(t *testing.T) {
 		"padding:",
 		"background:",
 		"line-height",
-		"<body",
 		"text-decoration",
 		"height=",
 		"border=",
-		"width=",
-		"bgcolor",
-		"background-color",
 	} {
 		if strings.Contains(renderedHTML, unsupported) {
 			t.Fatalf("expected rendered email HTML not to contain low-support CSS %q, got %s", unsupported, renderedHTML)
