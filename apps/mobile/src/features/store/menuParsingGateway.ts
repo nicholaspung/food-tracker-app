@@ -12,6 +12,7 @@ interface ParseMenuImageInput {
 
 interface ParseMenuImageResponse {
   csv: string;
+  sourceImageId?: string;
   verification?: {
     checked: boolean;
     matched: boolean | null;
@@ -60,6 +61,7 @@ interface CreateMenuItemsFromScanInput {
   restaurantId: string;
   itemNames: string[];
   fallbackLabel?: string;
+  sourceImageId?: string;
 }
 
 interface CreateMenuItemsFromScanResponse {

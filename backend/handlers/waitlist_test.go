@@ -40,6 +40,22 @@ func TestBuildSignupAppURLFallsBackToProductionScheme(t *testing.T) {
 	}
 }
 
+func TestBuildAppOpenURLUsesMobileScheme(t *testing.T) {
+	appOpenURL := buildAppOpenURL("yummyrecs-preview")
+
+	if appOpenURL != "yummyrecs-preview://" {
+		t.Fatalf("unexpected app open URL: %s", appOpenURL)
+	}
+}
+
+func TestBuildAppOpenURLFallsBackToProductionScheme(t *testing.T) {
+	appOpenURL := buildAppOpenURL("")
+
+	if appOpenURL != "yummyrecs://" {
+		t.Fatalf("unexpected fallback app open URL: %s", appOpenURL)
+	}
+}
+
 func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
 	signupURL := "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved"
 	signupAppURL := "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved"
@@ -66,14 +82,14 @@ func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
 
 func TestBuildWaitlistJoinedEmailHTMLUsesBrandedTemplate(t *testing.T) {
 	appStoreURL := `https://apps.apple.com/us/app/yummy-recs/id6761597807?ct="waitlist"`
-	html := buildWaitlistJoinedEmailHTML(`user+waitlist@example.com`, appStoreURL, "https://app.yummyrecs.com", "https://yummyrecs.com")
+	html := buildWaitlistJoinedEmailHTML(`user+waitlist@example.com`, appStoreURL, "yummyrecs://", "https://yummyrecs.com")
 
 	for _, expected := range []string{
 		"Yummy Recs",
 		"You&#39;re on the waitlist",
 		"Download on the App Store",
 		"https://apps.apple.com/us/app/yummy-recs/id6761597807?ct=&#34;waitlist&#34;",
-		"https://app.yummyrecs.com",
+		"yummyrecs://",
 		"user+waitlist@example.com",
 		"If you did not join the Yummy Recs waitlist, you can ignore this email.",
 	} {

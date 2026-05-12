@@ -6,6 +6,7 @@ import { confirmUserPasswordReset, requestUserPasswordReset } from '../features'
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
   isAuthRateLimitError,
+  recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
   recordAuthRateLimitSuccess,
   recordServerAuthRateLimit,
@@ -18,6 +19,7 @@ import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ResetPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
+const PASSWORD_RESET_EMAIL_COOLDOWN_MS = 60_000;
 
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
@@ -28,6 +30,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   helperText: {
     marginBottom: theme.spacing.xs,
+  },
+  cooldownText: {
+    color: theme.colors.text.muted,
   },
 }));
 
@@ -55,11 +60,15 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
   } = useAuthRateLimit('password_reset_resend', resetEmail);
   const isResetConfirmRateLimited = !resetConfirmRateLimitDecision.allowed;
   const isResetResendRateLimited = !resetResendRateLimitDecision.allowed;
+  const resetResendRemainingSeconds = Math.max(
+    0,
+    Math.ceil(resetResendRateLimitDecision.remainingMs / 1000),
+  );
   const resetConfirmLabel = isResetConfirmRateLimited
     ? `Try Again in ${Math.max(1, Math.ceil(resetConfirmRateLimitDecision.remainingMs / 1000))}s`
     : 'Reset Password';
   const resetResendLabel = isResetResendRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(resetResendRateLimitDecision.remainingMs / 1000))}s`
+    ? `Resend in ${Math.max(1, resetResendRemainingSeconds)}s`
     : 'Resend Email';
   const styles = useStyles();
 
@@ -240,7 +249,12 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
 
     const rateLimitDecision = await refreshResetResendRateLimit();
     if (!rateLimitDecision.allowed) {
-      setErrorMessage(formatResetResendRateLimitMessage(rateLimitDecision.remainingMs));
+      setErrorMessage(null);
+      setSuccessMessage(
+        `Check ${resetEmail} for the latest reset email. You can request another one in ${Math.ceil(
+          rateLimitDecision.remainingMs / 1000,
+        )} seconds.`,
+      );
       return;
     }
 
@@ -254,8 +268,12 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
 
     try {
       await requestUserPasswordReset(resetEmail);
-      await recordAuthRateLimitSuccess('password_reset_resend', resetEmail);
-      await refreshResetResendRateLimit();
+      const nextDecision = await recordAuthRateLimitCooldown(
+        'password_reset_resend',
+        resetEmail,
+        PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+      );
+      setResetResendRateLimitDecision(nextDecision);
       setSuccessMessage('Reset email sent again.');
       trackObservabilityEvent('AUTH_PASSWORD_RESET_EMAIL_RESEND_SUCCEEDED', {
         source: 'ResetPasswordScreen',
@@ -263,7 +281,11 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not resend reset email.';
       const nextDecision = isAuthRateLimitError(error)
-        ? await recordServerAuthRateLimit('password_reset_resend', resetEmail)
+        ? await recordAuthRateLimitCooldown(
+            'password_reset_resend',
+            resetEmail,
+            PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+          )
         : await recordAuthRateLimitFailure('password_reset_resend', resetEmail);
       setResetResendRateLimitDecision(nextDecision);
       setErrorMessage(
@@ -331,6 +353,12 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
             }}
             variant="secondary"
           />
+
+          {resetResendRemainingSeconds > 0 ? (
+            <Text style={styles.cooldownText} variant="bodySm">
+              You can request another reset email in {resetResendRemainingSeconds} seconds.
+            </Text>
+          ) : null}
         </Card>
       </FormScaffold>
       <LoadingOverlay label="Sending..." visible={isResending} />

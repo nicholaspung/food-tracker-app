@@ -22,7 +22,7 @@ const (
 	minPlacesRadiusMeters              = 100
 	maxPlacesRadiusMeters              = 20000
 	geminiRequestTimeout               = 90 * time.Second
-	geminiGenerateAttemptTimeout       = 35 * time.Second
+	geminiGenerateAttemptTimeout       = 80 * time.Second
 	googlePlacesRequestTimeout         = 15 * time.Second
 	googleGeocodeRequestTimeout        = 10 * time.Second
 	postHogProxyTimeout                = 10 * time.Second

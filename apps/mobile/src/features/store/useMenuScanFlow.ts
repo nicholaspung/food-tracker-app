@@ -154,6 +154,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
           restaurantId: options.restaurantId,
           itemNames,
           fallbackLabel: imageInput.name,
+          sourceImageId: parseResult.sourceImageId,
         });
         const returnedRecords = [...result.createdItems, ...result.existingItems];
 

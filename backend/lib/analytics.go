@@ -67,7 +67,12 @@ func CloseAnalytics() {
 
 // LLMGenerationProperties contains properties for LLM generation events
 type LLMGenerationProperties struct {
+	Provider       string  // e.g., "gemini"
 	Model          string  // e.g., "gemini-2.5-flash-lite"
+	PrimaryModel   string  // First model attempted
+	FallbackModel  string  // Fallback model, when configured
+	AttemptCount   int     // Number of provider attempts made
+	FallbackUsed   bool    // Whether the fallback model was attempted
 	UseCase        string  // e.g., "menu_parsing", "restaurant_name_extraction", "ocr"
 	RequestID      string  // Correlates mobile request, backend logs, and backend analytics
 	Route          string  // e.g., parse_menu, find_restaurant_name
@@ -82,6 +87,26 @@ type LLMGenerationProperties struct {
 	Language       string  // Detected or requested language (optional)
 	ItemsExtracted int     // Number of items extracted (for menu parsing)
 	CostEstimate   float64 // Estimated cost in USD (optional)
+}
+
+// LLMGenerationAttemptProperties contains properties for each provider API call.
+type LLMGenerationAttemptProperties struct {
+	Provider          string
+	Model             string
+	PrimaryModel      string
+	FallbackModel     string
+	UseCase           string
+	RequestID         string
+	Route             string
+	Status            string
+	AttemptIndex      int
+	AttemptCount      int
+	IsFallbackAttempt bool
+	DurationMs        int64
+	Success           bool
+	ErrorType         string
+	ErrorMessage      string
+	CostEstimate      float64
 }
 
 // TrackLLMGeneration tracks an LLM generation event
@@ -99,6 +124,8 @@ func TrackLLMGeneration(userID string, props LLMGenerationProperties) {
 	properties := posthog.NewProperties().
 		Set("model", props.Model).
 		Set("use_case", props.UseCase).
+		Set("attempt_count", props.AttemptCount).
+		Set("fallback_used", props.FallbackUsed).
 		Set("prompt_tokens", props.PromptTokens).
 		Set("output_tokens", props.OutputTokens).
 		Set("total_tokens", props.TotalTokens).
@@ -107,6 +134,15 @@ func TrackLLMGeneration(userID string, props LLMGenerationProperties) {
 		Set("cost_estimate", props.CostEstimate)
 
 	// Add optional properties
+	if props.Provider != "" {
+		properties.Set("provider", props.Provider)
+	}
+	if props.PrimaryModel != "" {
+		properties.Set("primary_model", props.PrimaryModel)
+	}
+	if props.FallbackModel != "" {
+		properties.Set("fallback_model", props.FallbackModel)
+	}
 	if props.ErrorType != "" {
 		properties.Set("error_type", props.ErrorType)
 	}
@@ -141,6 +177,60 @@ func TrackLLMGeneration(userID string, props LLMGenerationProperties) {
 	}
 }
 
+// TrackLLMGenerationAttempt tracks one raw provider generation call.
+func TrackLLMGenerationAttempt(userID string, props LLMGenerationAttemptProperties) {
+	if !AnalyticsEnabled {
+		return
+	}
+
+	if props.CostEstimate == 0 {
+		props.CostEstimate = estimateCost(props.Model, 0, 0)
+	}
+
+	properties := posthog.NewProperties().
+		Set("model", props.Model).
+		Set("use_case", props.UseCase).
+		Set("status", props.Status).
+		Set("attempt_index", props.AttemptIndex).
+		Set("attempt_count", props.AttemptCount).
+		Set("is_fallback_attempt", props.IsFallbackAttempt).
+		Set("duration_ms", props.DurationMs).
+		Set("success", props.Success).
+		Set("cost_estimate", props.CostEstimate)
+
+	if props.Provider != "" {
+		properties.Set("provider", props.Provider)
+	}
+	if props.PrimaryModel != "" {
+		properties.Set("primary_model", props.PrimaryModel)
+	}
+	if props.FallbackModel != "" {
+		properties.Set("fallback_model", props.FallbackModel)
+	}
+	if props.RequestID != "" {
+		properties.Set("request_id", props.RequestID)
+	}
+	if props.Route != "" {
+		properties.Set("route", props.Route)
+	}
+	if props.ErrorType != "" {
+		properties.Set("error_type", props.ErrorType)
+	}
+	if props.ErrorMessage != "" {
+		properties.Set("error_message", props.ErrorMessage)
+	}
+
+	err := PostHogClient.Enqueue(posthog.Capture{
+		DistinctId: posthogDistinctIDBackendLLM,
+		Event:      "LLM Generation Attempt",
+		Properties: properties,
+	})
+
+	if err != nil {
+		log.Printf("[Analytics] Failed to track LLM generation attempt: %v", err)
+	}
+}
+
 // estimateCost estimates the cost of an LLM generation based on model and tokens
 func estimateCost(model string, promptTokens, outputTokens int) float64 {
 	// Gemini pricing (as of 2025-01)
@@ -151,6 +241,10 @@ func estimateCost(model string, promptTokens, outputTokens int) float64 {
 		// Paid tier: $0.025 per 1M input tokens, $0.10 per 1M output tokens
 		inputCost := float64(promptTokens) * 0.025 / 1000000
 		outputCost := float64(outputTokens) * 0.10 / 1000000
+		return inputCost + outputCost
+	case "gemini-2.5-flash":
+		inputCost := float64(promptTokens) * 0.30 / 1000000
+		outputCost := float64(outputTokens) * 2.50 / 1000000
 		return inputCost + outputCost
 	case "gemini-1.5-flash":
 		// $0.075 per 1M input tokens, $0.30 per 1M output tokens

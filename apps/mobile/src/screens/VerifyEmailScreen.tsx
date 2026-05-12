@@ -19,7 +19,6 @@ import {
   isAuthRateLimitError,
   recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
-  recordServerAuthRateLimit,
 } from '../lib/authRateLimiter';
 import { decodeAuthActionTokenPayload } from '../lib/authActionToken';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -42,9 +41,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   helperText: {
     color: theme.colors.text.secondary,
-  },
-  cooldownText: {
-    color: theme.colors.text.muted,
   },
 }));
 
@@ -143,9 +139,9 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
 
   const subtitle = pendingEmail
     ? hasRetainedSession
-      ? `We'll send a verification link to ${pendingEmail}. Open the email, tap Verify, and the app will refresh automatically once your account is updated.`
-      : `We'll send a verification link to ${pendingEmail}. Open the email, tap Verify, then return to sign in.`
-    : 'We can send another verification email to your account. Open the email and tap Verify to continue.';
+      ? `Tap Verify in the email sent to ${pendingEmail}.`
+      : `Tap Verify in the email sent to ${pendingEmail}, then return to sign in.`
+    : 'Tap Verify in the verification email to continue.';
 
   const modeBanner = useMemo(() => {
     if (isExpiredEntry) {
@@ -213,13 +209,17 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
       });
       setSuccessMessage(
         hasRetainedSession
-          ? `Verification email sent to ${pendingEmail}. Tap Verify in your inbox and the banner will clear automatically once PocketBase reports the updated status.`
-          : `Verification email sent to ${pendingEmail}. Tap Verify in your inbox, then return to sign in.`,
+          ? `Verification email sent to ${pendingEmail}.`
+          : `Verification email sent to ${pendingEmail}. Return to sign in after verifying.`,
       );
       return true;
     } catch (error) {
       const nextDecision = isAuthRateLimitError(error)
-        ? await recordServerAuthRateLimit('email_verification_resend', pendingEmail)
+        ? await recordAuthRateLimitCooldown(
+            'email_verification_resend',
+            pendingEmail,
+            EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
+          )
         : await recordAuthRateLimitFailure('email_verification_resend', pendingEmail);
       setResendRateLimitDecision(nextDecision);
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_FAILED', {
@@ -456,11 +456,6 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
         {modeBanner}
 
         <Card style={styles.formCard}>
-          <Text style={styles.helperText}>
-            Keep this screen open after tapping the link if you're already signed in. Otherwise, verify your email and
-            then return to sign in again.
-          </Text>
-
           <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
 
           {!isOnline ? (
@@ -477,13 +472,6 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
               void sendVerificationEmail('manual');
             }}
           />
-
-          {resendRemainingSeconds > 0 ? (
-            <Text style={styles.cooldownText} variant="bodySm">
-              For deliverability and abuse protection, you can request another email in {resendRemainingSeconds}
-              seconds.
-            </Text>
-          ) : null}
 
           <Button
             label={

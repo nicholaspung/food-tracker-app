@@ -4,8 +4,8 @@ import { act, create } from 'react-test-renderer';
 import { requestUserPasswordReset } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
-  recordAuthRateLimitSuccess,
 } from '../lib/authRateLimiter';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 
@@ -21,8 +21,8 @@ jest.mock('../hooks/useAuthRateLimit', () => ({
 
 jest.mock('../lib/authRateLimiter', () => ({
   isAuthRateLimitError: jest.fn(() => false),
+  recordAuthRateLimitCooldown: jest.fn(),
   recordAuthRateLimitFailure: jest.fn(),
-  recordAuthRateLimitSuccess: jest.fn(),
   recordServerAuthRateLimit: jest.fn(),
 }));
 
@@ -41,6 +41,8 @@ jest.mock('../ui', () => ({
   Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Screen', props, children),
+  Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Text', props, children),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -61,8 +63,8 @@ const mockedUseAuthRateLimit = useAuthRateLimit as jest.MockedFunction<typeof us
 const mockedRecordAuthRateLimitFailure = recordAuthRateLimitFailure as jest.MockedFunction<
   typeof recordAuthRateLimitFailure
 >;
-const mockedRecordAuthRateLimitSuccess = recordAuthRateLimitSuccess as jest.MockedFunction<
-  typeof recordAuthRateLimitSuccess
+const mockedRecordAuthRateLimitCooldown = recordAuthRateLimitCooldown as jest.MockedFunction<
+  typeof recordAuthRateLimitCooldown
 >;
 
 function setInputValue(renderer: any, testID: string, value: string) {
@@ -118,8 +120,13 @@ describe('ForgotPasswordScreen', () => {
       message: null,
       remainingMs: 0,
     });
-    mockedRecordAuthRateLimitSuccess.mockReset();
-    mockedRecordAuthRateLimitSuccess.mockResolvedValue(undefined);
+    mockedRecordAuthRateLimitCooldown.mockReset();
+    mockedRecordAuthRateLimitCooldown.mockResolvedValue({
+      allowed: false,
+      failedAttempts: 0,
+      message: 'Too many attempts.',
+      remainingMs: 60_000,
+    });
   });
 
   it('shows a validation error when email is missing', async () => {
@@ -151,9 +158,15 @@ describe('ForgotPasswordScreen', () => {
     });
 
     expect(mockedRequestUserPasswordReset).toHaveBeenCalledWith('user@example.com');
-    expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith(
+    expect(mockedRecordAuthRateLimitCooldown).toHaveBeenCalledWith(
       'password_reset_request',
       'user@example.com',
+      60_000,
+    );
+    expect(mockedRecordAuthRateLimitCooldown).toHaveBeenCalledWith(
+      'password_reset_resend',
+      'user@example.com',
+      60_000,
     );
     expect(navigation.navigate).toHaveBeenCalledWith('ResetPassword', {
       email: 'user@example.com',

@@ -477,7 +477,7 @@ func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResourc
 func sendWaitlistJoinedEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
 	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
 	appStoreURL := strings.TrimSpace(runtimeResources.IOSAppStoreURL)
-	appOpenURL := strings.TrimSpace(runtimeResources.AppURL)
+	appOpenURL := buildAppOpenURL(runtimeResources.MobileAppScheme)
 	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
 	if senderName == "" {
 		senderName = "Yummy Recs"
@@ -600,6 +600,15 @@ func buildSignupAppURL(appScheme string, email string) string {
 	values.Set("mode", "waitlist_approved")
 
 	return scheme + "://signup?" + values.Encode()
+}
+
+func buildAppOpenURL(appScheme string) string {
+	scheme := strings.TrimSpace(appScheme)
+	if scheme == "" {
+		scheme = "yummyrecs"
+	}
+
+	return scheme + "://"
 }
 
 func serializeWaitlistRecord(record *core.Record) map[string]any {

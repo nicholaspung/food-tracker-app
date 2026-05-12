@@ -39,6 +39,7 @@ type createMenuItemsFromScanRequest struct {
 	RestaurantID  string   `json:"restaurantId"`
 	ItemNames     []string `json:"itemNames"`
 	FallbackLabel string   `json:"fallbackLabel"`
+	SourceImageID string   `json:"sourceImageId"`
 }
 
 type menuItemsFromScanResponse struct {
@@ -254,6 +255,16 @@ func createMenuItemsFromScan(
 	if err != nil {
 		return menuItemsFromScanResponse{}, apis.NewApiError(500, "failed to resolve menu items collection", err)
 	}
+	sourceImageID, err := resolveAccessibleMenuSourceImageID(
+		app,
+		strings.TrimSpace(requestBody.SourceImageID),
+		restaurantID,
+		viewerUserID,
+		isAdmin,
+	)
+	if err != nil {
+		return menuItemsFromScanResponse{}, err
+	}
 
 	response := menuItemsFromScanResponse{
 		CreatedItems:  make([]menuItemWorkflowResponse, 0, len(resolvedNames)),
@@ -273,6 +284,9 @@ func createMenuItemsFromScan(
 		record.Set("createdBy", viewerUserID)
 		record.Set("visibility", "friends")
 		record.Set("isFromOCR", true)
+		if sourceImageID != "" {
+			record.Set("sourceImage", sourceImageID)
+		}
 
 		if err := app.Save(record); err != nil {
 			refetchedExisting, lookupErr := findExistingAccessibleMenuItemsByNormalizedName(
@@ -297,6 +311,36 @@ func createMenuItemsFromScan(
 	}
 
 	return response, nil
+}
+
+func resolveAccessibleMenuSourceImageID(
+	app core.App,
+	sourceImageID string,
+	restaurantID string,
+	viewerUserID string,
+	isAdmin bool,
+) (string, error) {
+	if sourceImageID == "" {
+		return "", nil
+	}
+
+	sourceImage, err := app.FindRecordById("menu_images", sourceImageID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", apis.NewBadRequestError("sourceImageId is invalid", nil)
+		}
+		return "", apis.NewApiError(500, "failed to resolve source menu image", err)
+	}
+
+	if sourceImage.GetString("restaurant") != restaurantID {
+		return "", apis.NewBadRequestError("sourceImageId does not belong to this restaurant", nil)
+	}
+
+	if !isAdmin && sourceImage.GetString("uploadedBy") != viewerUserID {
+		return "", apis.NewBadRequestError("sourceImageId is invalid", nil)
+	}
+
+	return sourceImage.Id, nil
 }
 
 func resolveMenuItemNamesFromScan(rawNames []string, fallbackLabel string) ([]string, error) {

@@ -301,6 +301,70 @@ func TestMenuItemsFromScanEndpointBuildsFallbackItems(t *testing.T) {
 	}
 }
 
+func TestMenuItemsFromScanEndpointLinksCreatedItemsToSourceImage(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterMenuWorkflowHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Image Linked Bistro")
+	sourceImageID := insertMenuImageRowRaw(t, server.app, restaurant.Id, user.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/menu-items/from-scan",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"itemNames":["Dan Dan Noodles"],
+			"sourceImageId":"`+sourceImageID+`"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload menuItemsFromScanResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse menu items from scan response: %v", err)
+	}
+	if len(payload.CreatedItems) != 1 {
+		t.Fatalf("expected 1 created item, got %d", len(payload.CreatedItems))
+	}
+
+	record, err := server.app.FindRecordById("menu_items", payload.CreatedItems[0].ID)
+	if err != nil {
+		t.Fatalf("failed to load created menu item: %v", err)
+	}
+	if record.GetString("sourceImage") != sourceImageID {
+		t.Fatalf("expected sourceImage=%s, got %s", sourceImageID, record.GetString("sourceImage"))
+	}
+}
+
+func TestMenuItemsFromScanEndpointRejectsForeignSourceImage(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterMenuWorkflowHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	requester, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, requester.Id, "Requester Bistro")
+	foreignRestaurant := seedRestaurantRecord(t, server.app, owner.Id, "Foreign Bistro")
+	sourceImageID := insertMenuImageRowRaw(t, server.app, foreignRestaurant.Id, owner.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/menu-items/from-scan",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"itemNames":["Hidden Source Item"],
+			"sourceImageId":"`+sourceImageID+`"
+		}`,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestMenuItemsFromScanEndpointIgnoresHiddenForeignItems(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterMenuWorkflowHandlers)
 	owner, _ := createAuthUser(t, server.app, false, true)

@@ -37,6 +37,17 @@ jest.mock('../features', () => ({
   parseLimitExceededError: jest.fn(() => null),
   parseMenuImage: jest.fn(),
   useMenuScanFlow: (...args: unknown[]) => mockUseMenuScanFlow(...args),
+  useMonthlyUsage: jest.fn(() => ({
+    isLoading: false,
+    snapshot: {
+      limits: {
+        menuScansMonthly: 5,
+      },
+      usage: {
+        menuScans: 1,
+      },
+    },
+  })),
   getAuthenticatedUserIdOrNull: jest.fn(),
   resolveDefaultRestaurantVisibilityFromAuth: jest.fn(() => 'friends'),
   upsertRestaurantRecord: jest.fn(),

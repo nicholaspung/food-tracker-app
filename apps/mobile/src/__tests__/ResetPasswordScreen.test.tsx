@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import { confirmUserPasswordReset, requestUserPasswordReset } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
   recordAuthRateLimitSuccess,
 } from '../lib/authRateLimiter';
@@ -23,6 +24,7 @@ jest.mock('../hooks/useAuthRateLimit', () => ({
 
 jest.mock('../lib/authRateLimiter', () => ({
   isAuthRateLimitError: jest.fn(() => false),
+  recordAuthRateLimitCooldown: jest.fn(),
   recordAuthRateLimitFailure: jest.fn(),
   recordAuthRateLimitSuccess: jest.fn(),
   recordServerAuthRateLimit: jest.fn(),
@@ -72,6 +74,9 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 const mockedUseAuthRateLimit = useAuthRateLimit as jest.MockedFunction<typeof useAuthRateLimit>;
 const mockedRecordAuthRateLimitFailure = recordAuthRateLimitFailure as jest.MockedFunction<
   typeof recordAuthRateLimitFailure
+>;
+const mockedRecordAuthRateLimitCooldown = recordAuthRateLimitCooldown as jest.MockedFunction<
+  typeof recordAuthRateLimitCooldown
 >;
 const mockedRecordAuthRateLimitSuccess = recordAuthRateLimitSuccess as jest.MockedFunction<
   typeof recordAuthRateLimitSuccess
@@ -151,6 +156,13 @@ describe('ResetPasswordScreen', () => {
       message: null,
       remainingMs: 0,
     });
+    mockedRecordAuthRateLimitCooldown.mockReset();
+    mockedRecordAuthRateLimitCooldown.mockResolvedValue({
+      allowed: false,
+      failedAttempts: 0,
+      message: 'Too many attempts.',
+      remainingMs: 60_000,
+    });
     mockedRecordAuthRateLimitSuccess.mockReset();
     mockedRecordAuthRateLimitSuccess.mockResolvedValue(undefined);
     mockedUseConnectivity.mockReturnValue({
@@ -215,9 +227,10 @@ describe('ResetPasswordScreen', () => {
     });
 
     expect(mockedRequestUserPasswordReset).toHaveBeenCalledWith('user@example.com');
-    expect(mockedRecordAuthRateLimitSuccess).toHaveBeenCalledWith(
+    expect(mockedRecordAuthRateLimitCooldown).toHaveBeenCalledWith(
       'password_reset_resend',
       'user@example.com',
+      60_000,
     );
     expect(renderer.root.findByType('FormResultBanner').props.message).toBe('Reset email sent again.');
   });
@@ -414,7 +427,7 @@ describe('ResetPasswordScreen', () => {
 
     const resendButton = resendRenderer.root
       .findAllByType('Button')
-      .find((node: any) => node.props.label === 'Try Again in 30s');
+      .find((node: any) => node.props.label === 'Resend in 30s');
     expect(resendButton?.props.disabled).toBe(true);
 
     await act(async () => {
@@ -422,8 +435,9 @@ describe('ResetPasswordScreen', () => {
     });
 
     expect(mockedRequestUserPasswordReset).not.toHaveBeenCalled();
-    expect(resendRenderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
-      'Too many reset email requests. Try again in 30 seconds.',
+    expect(resendRenderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+    expect(resendRenderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Check user@example.com for the latest reset email. You can request another one in 30 seconds.',
     );
 
     let confirmRenderer: any;

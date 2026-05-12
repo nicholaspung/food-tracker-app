@@ -8,13 +8,34 @@ import {
   PageErrorToast,
   PhotoSourceActionCards,
 } from '../components/shared';
-import { useMenuScanFlow } from '../features';
+import { useMenuScanFlow, useMonthlyUsage } from '../features';
 import {
   type MenuScanPhase,
   type PhotoProcessingScreenProps,
 } from './photoProcessing/shared';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
+
+const PROCESSING_PROGRESS_CAP = 0.94;
+const PROCESSING_PROGRESS_INTERVAL_MS = 500;
+
+function getNextProcessingProgress(currentValue: number): number {
+  if (currentValue < 0.35) {
+    return Number(Math.min(0.35, currentValue + 0.07).toFixed(3));
+  }
+
+  const remainingProgress = PROCESSING_PROGRESS_CAP - currentValue;
+  if (remainingProgress <= 0.004) {
+    return PROCESSING_PROGRESS_CAP;
+  }
+
+  return Number(
+    Math.min(
+      PROCESSING_PROGRESS_CAP,
+      currentValue + Math.max(0.004, remainingProgress * 0.12),
+    ).toFixed(3),
+  );
+}
 
 const useStyles = createThemedStyles((theme) => ({
   chooseCard: {
@@ -76,11 +97,14 @@ export function MenuScanPhotoProcessingScreen({
   const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
 
   const [progressValue, setProgressValue] = useState(0);
+  const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
   const [countdownValue, setCountdownValue] = useState(5);
   const autoPromptedRef = useRef(false);
+  const hasTriggeredCountdownNavigationRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const monthlyUsage = useMonthlyUsage();
 
   const navigateBackToItems = useCallback(() => {
     if (!restaurantId) {
@@ -102,6 +126,7 @@ export function MenuScanPhotoProcessingScreen({
     }
 
     setCountdownValue(5);
+    hasTriggeredCountdownNavigationRef.current = false;
     countdownIntervalRef.current = setInterval(() => {
       setCountdownValue((currentValue) => {
         if (currentValue <= 1) {
@@ -109,14 +134,13 @@ export function MenuScanPhotoProcessingScreen({
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
           }
-          navigateBackToItems();
           return 0;
         }
 
         return currentValue - 1;
       });
     }, 1000);
-  }, [navigateBackToItems]);
+  }, []);
 
   const menuScanFlow = useMenuScanFlow({
     analyticsSource: 'CreateVisitMenuScan',
@@ -136,16 +160,12 @@ export function MenuScanPhotoProcessingScreen({
 
   useEffect(() => {
     if (menuScanFlow.status === 'processing') {
-      setProgressValue(0);
+      setProgressValue(0.04);
+      setProcessingElapsedMs(0);
       const progressInterval = setInterval(() => {
-        setProgressValue((currentValue) => {
-          if (currentValue >= 0.92) {
-            return currentValue;
-          }
-
-          return Number((currentValue + 0.08).toFixed(2));
-        });
-      }, 250);
+        setProcessingElapsedMs((currentValue) => currentValue + PROCESSING_PROGRESS_INTERVAL_MS);
+        setProgressValue(getNextProcessingProgress);
+      }, PROCESSING_PROGRESS_INTERVAL_MS);
 
       return () => {
         clearInterval(progressInterval);
@@ -154,6 +174,7 @@ export function MenuScanPhotoProcessingScreen({
 
     if (menuScanFlow.status === 'success') {
       setProgressValue(1);
+      setProcessingElapsedMs(0);
     }
 
     return undefined;
@@ -189,6 +210,19 @@ export function MenuScanPhotoProcessingScreen({
       },
     ]);
   }, [autoStartSourcePicker, isMenuScan, menuScanFlow, phase]);
+
+  useEffect(() => {
+    if (
+      phase !== 'success' ||
+      countdownValue !== 0 ||
+      hasTriggeredCountdownNavigationRef.current
+    ) {
+      return;
+    }
+
+    hasTriggeredCountdownNavigationRef.current = true;
+    navigateBackToItems();
+  }, [countdownValue, navigateBackToItems, phase]);
 
   useEffect(() => {
     return () => {
@@ -237,6 +271,23 @@ export function MenuScanPhotoProcessingScreen({
           ? 'New items were added to this restaurant.'
           : 'Existing menu items were matched for this restaurant.'
         : `Capture or upload a menu image for ${restaurantName}.`;
+  const processingPercent = Math.round(progressValue * 100);
+  const processingDetail =
+    processingElapsedMs >= 12000
+      ? 'Still working. Detailed menus can take a little longer.'
+      : progressValue >= 0.72
+        ? 'Reading item names and matching them to this restaurant.'
+        : 'Uploading and preparing your image.';
+  const menuScanUsageText = monthlyUsage.snapshot
+    ? typeof monthlyUsage.snapshot.limits.menuScansMonthly === 'number'
+      ? `${Math.max(
+          monthlyUsage.snapshot.limits.menuScansMonthly - monthlyUsage.snapshot.usage.menuScans,
+          0,
+        )} of ${monthlyUsage.snapshot.limits.menuScansMonthly} monthly menu scans left.`
+      : 'Monthly menu scans are unlimited for this account.'
+    : monthlyUsage.isLoading
+      ? 'Checking monthly menu scan usage...'
+      : 'Free accounts include 5 menu scans per month. Subscribers include 100.';
 
   return (
     <FeatureFormScreenScaffold
@@ -252,16 +303,6 @@ export function MenuScanPhotoProcessingScreen({
           navigateBackToItems();
         },
       }}
-      secondaryAction={
-        phase === 'choose'
-          ? {
-              label: 'Cancel',
-              onPress: () => {
-                navigateBackToItems();
-              },
-            }
-          : undefined
-      }
       subtitle={menuScanSubtitle}
       title={menuScanTitle}
     >
@@ -270,6 +311,9 @@ export function MenuScanPhotoProcessingScreen({
           <Card style={styles.tipCard}>
             <Text tone="info" variant="bodySm">
               Tip: clear, well-lit menu photos produce better item extraction.
+            </Text>
+            <Text tone="info" variant="bodySm">
+              {menuScanUsageText}
             </Text>
           </Card>
 
@@ -308,7 +352,9 @@ export function MenuScanPhotoProcessingScreen({
           </View>
           <Text variant="label">Processing "{menuScanFlow.selectedImageName}"</Text>
           <LinearProgressBar progress={progressValue} />
-          <Text tone="secondary">{Math.round(progressValue * 100)}% complete</Text>
+          <Text tone="secondary">
+            {processingPercent}% complete. {processingDetail}
+          </Text>
         </Card>
       ) : null}
 

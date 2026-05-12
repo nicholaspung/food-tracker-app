@@ -548,7 +548,7 @@ describe('VerifyEmailScreen', () => {
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
       'Please wait about a minute before requesting another verification email.',
     );
-    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 900s')).toBe(
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 60s')).toBe(
       true,
     );
   });

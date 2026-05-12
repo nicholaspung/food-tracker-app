@@ -6,17 +6,17 @@ import { requestUserPasswordReset } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
   isAuthRateLimitError,
+  recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
-  recordAuthRateLimitSuccess,
-  recordServerAuthRateLimit,
 } from '../lib/authRateLimiter';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles } from '../theme';
-import { Button, Card, Input, Screen } from '../ui';
+import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
+const PASSWORD_RESET_EMAIL_COOLDOWN_MS = 60_000;
 
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
@@ -24,6 +24,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   formCard: {
     gap: theme.spacing.sm,
+  },
+  cooldownText: {
+    color: theme.colors.text.muted,
   },
 }));
 
@@ -38,8 +41,12 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
     setDecision: setResetRequestRateLimitDecision,
   } = useAuthRateLimit('password_reset_request', normalizedEmail);
   const isResetRequestRateLimited = !resetRequestRateLimitDecision.allowed;
+  const resetRequestRemainingSeconds = Math.max(
+    0,
+    Math.ceil(resetRequestRateLimitDecision.remainingMs / 1000),
+  );
   const submitLabel = isResetRequestRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(resetRequestRateLimitDecision.remainingMs / 1000))}s`
+    ? `Try Again in ${Math.max(1, resetRequestRemainingSeconds)}s`
     : 'Send Reset Email';
   const styles = useStyles();
 
@@ -69,8 +76,17 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
 
     try {
       await requestUserPasswordReset(trimmedEmail);
-      await recordAuthRateLimitSuccess('password_reset_request', trimmedEmail);
-      await refreshResetRequestRateLimit();
+      const nextDecision = await recordAuthRateLimitCooldown(
+        'password_reset_request',
+        trimmedEmail,
+        PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+      );
+      await recordAuthRateLimitCooldown(
+        'password_reset_resend',
+        trimmedEmail,
+        PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+      );
+      setResetRequestRateLimitDecision(nextDecision);
       trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_SUCCEEDED', {
         source: 'ForgotPasswordScreen',
       });
@@ -84,8 +100,19 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
       });
       const message = error instanceof Error ? error.message : 'Could not request reset.';
       const nextDecision = isAuthRateLimitError(error)
-        ? await recordServerAuthRateLimit('password_reset_request', trimmedEmail)
+        ? await recordAuthRateLimitCooldown(
+            'password_reset_request',
+            trimmedEmail,
+            PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+          )
         : await recordAuthRateLimitFailure('password_reset_request', trimmedEmail);
+      if (isAuthRateLimitError(error)) {
+        await recordAuthRateLimitCooldown(
+          'password_reset_resend',
+          trimmedEmail,
+          PASSWORD_RESET_EMAIL_COOLDOWN_MS,
+        );
+      }
       setResetRequestRateLimitDecision(nextDecision);
       setErrorMessage(
         nextDecision.allowed ? message : formatPasswordResetRateLimitMessage(nextDecision.remainingMs),
@@ -137,6 +164,12 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
               void handleSubmit();
             }}
           />
+
+          {resetRequestRemainingSeconds > 0 ? (
+            <Text style={styles.cooldownText} variant="bodySm">
+              You can request another reset email in {resetRequestRemainingSeconds} seconds.
+            </Text>
+          ) : null}
         </Card>
 
       </FormScaffold>

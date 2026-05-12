@@ -121,6 +121,7 @@ describe('useMenuScanFlow', () => {
     mockedCleanupStagedPhotoFiles.mockResolvedValue(undefined);
     mockedParseMenuImage.mockResolvedValue({
       csv: 'menu_item,price\nRamen,12',
+      sourceImageId: 'menu-image-1',
       verification: {
         checked: true,
         confidence: 'high',
@@ -161,6 +162,7 @@ describe('useMenuScanFlow', () => {
       fallbackLabel: 'menu.jpg',
       itemNames: ['Ramen'],
       restaurantId: 'restaurant-1',
+      sourceImageId: 'menu-image-1',
     });
     expect(setQueryData).toHaveBeenCalled();
     expect(invalidateQueries).toHaveBeenCalledWith({
