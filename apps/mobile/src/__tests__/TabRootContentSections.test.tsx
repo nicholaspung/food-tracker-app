@@ -3,7 +3,7 @@ import { Share } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { lockInviteCode } from '../features';
+import { lockInviteCode, useMonthlyUsage } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
@@ -92,6 +92,7 @@ jest.mock('../features', () => ({
     profile: ['feature', 'profile'],
   },
   updateProfile: jest.fn(),
+  useMonthlyUsage: jest.fn(),
 }));
 
 jest.mock('../lib/appMetadata', () => ({
@@ -244,6 +245,7 @@ const mockedUseMutation = useMutation as jest.MockedFunction<typeof useMutation>
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
 const mockedLockInviteCode = lockInviteCode as jest.MockedFunction<typeof lockInviteCode>;
 const mockedShare = Share.share as jest.MockedFunction<typeof Share.share>;
 const mockedUseQueuedLogoutConfirmation = useQueuedLogoutConfirmation as jest.MockedFunction<
@@ -284,6 +286,7 @@ describe('tab root content sections', () => {
     mockedUseMutation.mockReset();
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
+    mockedUseMonthlyUsage.mockReset();
     mockedLockInviteCode.mockReset();
     mockedShare.mockReset();
     mockedUseQueuedLogoutConfirmation.mockReset();
@@ -295,6 +298,15 @@ describe('tab root content sections', () => {
       isPending: false,
       mutateAsync: jest.fn(),
     } as never);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: null,
+      cachedAt: null,
+      isUsingCachedSnapshot: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: jest.fn(),
+    });
     mockedLockInviteCode.mockResolvedValue(undefined);
     mockedShare.mockResolvedValue({
       action: Share.sharedAction,
@@ -507,6 +519,57 @@ describe('tab root content sections', () => {
       });
       expect(navigate).toHaveBeenLastCalledWith(routeName);
     }
+  });
+
+  it('disables Process Saved Photos when the free monthly photo limit is exhausted', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+        isBetaUser: false,
+        isSubscriber: false,
+      },
+      user: {
+        id: 'user-1',
+        isBetaUser: false,
+        isSubscriber: false,
+        mobileOnboardingState: {
+          addCards: {
+            processSavedPhotos: { dismissedAt: '2026-04-28T12:03:00.000Z' },
+          },
+        },
+      },
+    } as never);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        remaining: {
+          photoUploadsMonthly: 0,
+        },
+      },
+    } as never);
+    const navigate = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    const processPhotosCard = renderer.root.findByProps({ testID: 'add-option-process-photos' });
+    expect(processPhotosCard.props.disabled).toBe(true);
+    expect(processPhotosCard.props.description).toBe(
+      "You've reached this month's free photo limit. Photo processing unlocks again next month.",
+    );
+    expect(processPhotosCard.props.titleAccessory).toBeTruthy();
+
+    await act(async () => {
+      processPhotosCard.props.onPress();
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('keeps the More tab header fixed and renders an orange scroll body', async () => {

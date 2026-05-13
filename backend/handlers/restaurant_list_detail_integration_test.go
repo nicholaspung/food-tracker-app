@@ -42,7 +42,7 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	restaurantB := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":       "Shared Dumplings",
 		"location":   "Oakland, CA",
-		"visibility": "public",
+		"visibility": "private",
 	})
 
 	sharedList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
@@ -133,12 +133,13 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 			MenuItemCount   int    `json:"menuItemCount"`
 		} `json:"list"`
 		Items []struct {
-			ID              string `json:"id"`
-			RestaurantID    string `json:"restaurantId"`
-			RestaurantName  string `json:"restaurantName"`
-			SourceUserID    string `json:"sourceUserId"`
-			SourceUserName  string `json:"sourceUserName"`
-			BookmarkedItems []struct {
+			ID                   string `json:"id"`
+			RestaurantID         string `json:"restaurantId"`
+			RestaurantName       string `json:"restaurantName"`
+			RestaurantVisibility string `json:"restaurantVisibility"`
+			SourceUserID         string `json:"sourceUserId"`
+			SourceUserName       string `json:"sourceUserName"`
+			BookmarkedItems      []struct {
 				ID             string  `json:"id"`
 				Name           string  `json:"name"`
 				Rating         float64 `json:"rating"`
@@ -182,6 +183,9 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	}
 	if viewerPayload.Items[1].ID != secondListItem.Id || viewerPayload.Items[1].RestaurantID != restaurantB.Id {
 		t.Fatalf("unexpected second list item payload: %#v", viewerPayload.Items[1])
+	}
+	if viewerPayload.Items[0].RestaurantVisibility != "public" || viewerPayload.Items[1].RestaurantVisibility != "private" {
+		t.Fatalf("expected restaurant visibility metadata, got %#v", viewerPayload.Items)
 	}
 	if len(viewerPayload.Items[0].BookmarkedItems) != 1 {
 		t.Fatalf("expected one bookmarked item, got %#v", viewerPayload.Items[0].BookmarkedItems)
@@ -286,7 +290,7 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		"name":        "Sushi Corner",
 		"location":    "San Francisco, CA",
 		"cuisineType": "Japanese",
-		"visibility":  "public",
+		"visibility":  "private",
 	})
 	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":        "Burger Barn",
@@ -409,6 +413,7 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		Items []struct {
 			ID                string                     `json:"id"`
 			Name              string                     `json:"name"`
+			Visibility        string                     `json:"visibility"`
 			ItemCount         int                        `json:"itemCount"`
 			VisitDates        []string                   `json:"visitDates"`
 			AlreadyInList     bool                       `json:"alreadyInList"`
@@ -431,6 +436,9 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 	item := payload.Items[0]
 	if item.ID != annotatedRestaurant.Id || item.Name != "Sushi Corner" {
 		t.Fatalf("expected annotated restaurant first, got %#v", item)
+	}
+	if item.Visibility != "private" {
+		t.Fatalf("expected private restaurant visibility, got %#v", item)
 	}
 	if !item.AlreadyInList || item.ExistingNote != "Already bookmarked" {
 		t.Fatalf("expected list annotation metadata, got %#v", item)

@@ -241,29 +241,29 @@ func TestHookFreeUserSecondPhotoSameItemBlocked(t *testing.T) {
 	}
 }
 
-func TestHookFreeUserSixthMonthlyPhotoBlocked(t *testing.T) {
+func TestHookFreeUserOneHundredFirstMonthlyPhotoBlocked(t *testing.T) {
 	app := newHookTestApp(t)
 	user := createHookUser(t, app, false, false)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100; i++ {
 		foodItemID := fmt.Sprintf("free_food_%d", i)
 		if err := triggerVisitPhotoCreateHook(t, app, user, foodItemID, true, nil); err != nil {
 			t.Fatalf("create %d should succeed: %v", i+1, err)
 		}
 	}
 
-	err := triggerVisitPhotoCreateHook(t, app, user, "free_food_6", false, nil)
+	err := triggerVisitPhotoCreateHook(t, app, user, "free_food_101", false, nil)
 	payload := expectTooManyRequests(t, err)
-	if payload["limit"] != 5 {
-		t.Fatalf("expected limit=5, got %v", payload["limit"])
+	if payload["limit"] != 100 {
+		t.Fatalf("expected limit=100, got %v", payload["limit"])
 	}
 
 	snapshot, snapshotErr := lib.GetMonthlyUsageSnapshot(app, user)
 	if snapshotErr != nil {
 		t.Fatalf("failed to load usage snapshot: %v", snapshotErr)
 	}
-	if snapshot.Usage.PhotoUploads != 5 {
-		t.Fatalf("expected usage=5 after sixth block, got %d", snapshot.Usage.PhotoUploads)
+	if snapshot.Usage.PhotoUploads != 100 {
+		t.Fatalf("expected usage=100 after monthly block, got %d", snapshot.Usage.PhotoUploads)
 	}
 }
 
@@ -295,7 +295,7 @@ func TestHookNotePhotosShareMonthlyQuotaWithVisitPhotos(t *testing.T) {
 	app := newHookTestApp(t)
 	user := createHookUser(t, app, false, false)
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 99; i++ {
 		foodItemID := fmt.Sprintf("shared_food_%d", i)
 		if err := triggerVisitPhotoCreateHook(t, app, user, foodItemID, true, nil); err != nil {
 			t.Fatalf("visit create %d should succeed: %v", i+1, err)
@@ -303,21 +303,21 @@ func TestHookNotePhotosShareMonthlyQuotaWithVisitPhotos(t *testing.T) {
 	}
 
 	if err := triggerNotePhotoCreateHook(t, app, user, "shared_note_1", true, nil); err != nil {
-		t.Fatalf("fifth combined photo should succeed: %v", err)
+		t.Fatalf("one hundredth combined photo should succeed: %v", err)
 	}
 
 	err := triggerNotePhotoCreateHook(t, app, user, "shared_note_2", false, nil)
 	payload := expectTooManyRequests(t, err)
-	if payload["limit"] != 5 {
-		t.Fatalf("expected limit=5, got %v", payload["limit"])
+	if payload["limit"] != 100 {
+		t.Fatalf("expected limit=100, got %v", payload["limit"])
 	}
 
 	snapshot, snapshotErr := lib.GetMonthlyUsageSnapshot(app, user)
 	if snapshotErr != nil {
 		t.Fatalf("failed to load usage snapshot: %v", snapshotErr)
 	}
-	if snapshot.Usage.PhotoUploads != 5 {
-		t.Fatalf("expected shared usage=5 after sixth block, got %d", snapshot.Usage.PhotoUploads)
+	if snapshot.Usage.PhotoUploads != 100 {
+		t.Fatalf("expected shared usage=100 after monthly block, got %d", snapshot.Usage.PhotoUploads)
 	}
 }
 

@@ -54,15 +54,15 @@ func TestUsageMonthlyReflectsSeededUsageData(t *testing.T) {
 	}
 
 	remaining := latestData["remaining"].(map[string]any)
-	if remaining["menuScansMonthly"].(float64) != 4 {
-		t.Fatalf("expected remaining menu scans=4, got %v", remaining["menuScansMonthly"])
+	if remaining["menuScansMonthly"].(float64) != 24 {
+		t.Fatalf("expected remaining menu scans=24, got %v", remaining["menuScansMonthly"])
 	}
 
 	if latestData["userTier"] != "free" {
 		t.Fatalf("expected user tier free, got %v", latestData["userTier"])
 	}
 
-	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 5)
+	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 25)
 	atLimitSnapshot := performJSONRequest(t, server.mux, http.MethodGet, "/api/usage/monthly", token, "")
 	if atLimitSnapshot.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d, body=%s", atLimitSnapshot.Code, atLimitSnapshot.Body.String())

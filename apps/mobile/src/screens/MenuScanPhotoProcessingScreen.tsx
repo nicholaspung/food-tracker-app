@@ -287,7 +287,7 @@ export function MenuScanPhotoProcessingScreen({
       : 'Monthly menu scans are unlimited for this account.'
     : monthlyUsage.isLoading
       ? 'Checking monthly menu scan usage...'
-      : 'Free accounts include 5 menu scans per month. Subscribers include 100.';
+      : 'Free accounts include 25 menu scans per month. Subscribers include 100.';
 
   return (
     <FeatureFormScreenScaffold
@@ -314,6 +314,9 @@ export function MenuScanPhotoProcessingScreen({
             </Text>
             <Text tone="info" variant="bodySm">
               {menuScanUsageText}
+            </Text>
+            <Text tone="info" variant="bodySm">
+              Failed scans still count toward your monthly limit.
             </Text>
           </Card>
 
@@ -425,6 +428,12 @@ export function MenuScanPhotoProcessingScreen({
           menuScanFlow.reset();
           void menuScanFlow.scanMenu(menuScanFlow.lastRequestedSource);
         }}
+        title="Menu scan failed"
+      />
+      <PageErrorToast
+        errorMessage={
+          phase === 'choose' && menuScanFlow.errorMessage ? menuScanFlow.errorMessage : null
+        }
         title="Menu scan failed"
       />
 

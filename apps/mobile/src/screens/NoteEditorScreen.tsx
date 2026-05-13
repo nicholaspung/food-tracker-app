@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
+import type * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Modal, Platform, Pressable, View } from 'react-native';
+import { Linking, Modal, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -27,7 +27,7 @@ import {
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
@@ -71,12 +71,16 @@ type NoteDraftPhotoAsset = {
 } & Partial<ImagePicker.ImagePickerAsset>;
 
 const CONTENT_MAX_LENGTH = 2000;
-const FREE_MONTHLY_PHOTO_LIMIT = 5;
+const FREE_MONTHLY_PHOTO_LIMIT = 100;
 const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
 
 function formatPhotoPerNoteLimitMessage(limit: number): string {
   return `You can add up to ${limit} photo${limit === 1 ? '' : 's'} per note.`;
+}
+
+function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
+  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -164,9 +168,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
-    requestPermission: requestPhotoPickerPermission,
+    pickImageAssets,
+    requestSourcePermission,
     resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
-  } = usePhotoPickerPermissions({
+  } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
     cameraRequiredMessage: 'Camera permission is required to add photos.',
     galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
@@ -222,6 +227,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       }),
     [perNotePhotoLimit, remainingEstimatedMonthlySlots, totalPhotoCount],
   );
+  const shouldHidePhotoSourceActions =
+    isDisplayFreeUser &&
+    shouldEnforceUsageLimitsClientSide &&
+    typeof remainingEstimatedMonthlySlots === 'number' &&
+    remainingEstimatedMonthlySlots <= 0;
+  const photoQuotaStatusMessage = shouldHidePhotoSourceActions
+    ? formatFreeMonthlyPhotoLimitStatus(remainingEstimatedMonthlySlots)
+    : null;
   const librarySelectionLimit = Math.max(photoQuotaUi.maxSelectableNow, 1);
   const photoAttachments = useMemo<NotePhotoAttachment[]>(
     () => [
@@ -399,9 +412,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         source: 'NoteEditorScreen',
         used: estimatedUsedWithDraftUploads,
       });
-      setErrorMessage(
-        `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remainingEstimatedMonthlySlots}.`,
-      );
+      setErrorMessage(formatFreeMonthlyPhotoLimitStatus(remainingEstimatedMonthlySlots));
       return false;
     }
 
@@ -437,7 +448,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
       nextPhotos.push({
         id: `draft_photo_${batchId}_${index}`,
-        label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+        label: formatPhotoAttachmentDateLabel(captureDate),
         capturedAt: captureDate?.toISOString(),
         ...nextPhoto,
       });
@@ -463,7 +474,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     resetPhotoPermissionNeedsSettings();
-    const permission = await requestPhotoPickerPermission('camera');
+    const permission = await requestSourcePermission('camera');
     if (!permission.granted) {
       trackObservabilityEvent('NOTE_CAMERA_PERMISSION_DENIED', {
         canAskAgain: permission.canAskAgain,
@@ -477,7 +488,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       source: 'NoteEditorScreen',
     });
     setIsCameraOpen(true);
-  }, [ensureCanAddPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
+  }, [ensureCanAddPhoto, requestSourcePermission, resetPhotoPermissionNeedsSettings]);
 
   const handlePickFromPhotoLibrary = useCallback(async () => {
     trackObservabilityEvent('NOTE_LIBRARY_PICK_STARTED', {
@@ -491,38 +502,31 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     try {
-      resetPhotoPermissionNeedsSettings();
-      const permission = await requestPhotoPickerPermission('gallery');
-      if (!permission.granted) {
+      const pickerResult = await pickImageAssets({
+        source: 'gallery',
+        allowsMultipleSelection: librarySelectionLimit > 1,
+        selectionLimit: librarySelectionLimit,
+        exif: true,
+        quality: 0.7,
+      });
+
+      if (pickerResult.status === 'permission_denied') {
         trackObservabilityEvent('NOTE_LIBRARY_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
+          canAskAgain: pickerResult.canAskAgain,
           source: 'NoteEditorScreen',
         });
-        setErrorMessage(permission.message);
+        setErrorMessage(pickerResult.message);
         return;
       }
 
-      const pickerResult = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: false,
-        quality: 0.8,
-        allowsMultipleSelection: librarySelectionLimit > 1,
-        selectionLimit: librarySelectionLimit,
-        mediaTypes: ['images'],
-        exif: true,
-        preferredAssetRepresentationMode:
-          Platform.OS === 'ios'
-            ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
-            : undefined,
-      });
-
-      if (pickerResult.canceled) {
+      if (pickerResult.status === 'canceled') {
         trackObservabilityEvent('NOTE_LIBRARY_PICK_CANCELED', {
           source: 'NoteEditorScreen',
         });
         return;
       }
 
-      const selectedAssets = pickerResult.assets ?? [];
+      const selectedAssets = pickerResult.assets;
       if (selectedAssets.length === 0) {
         setErrorMessage('Could not read selected photo.');
         return;
@@ -547,8 +551,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     addDraftPhotos,
     ensureCanAddPhoto,
     librarySelectionLimit,
-    requestPhotoPickerPermission,
-    resetPhotoPermissionNeedsSettings,
+    pickImageAssets,
   ]);
 
   const handleCapturePhoto = useCallback(async () => {
@@ -589,7 +592,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       uri: photo.uri,
       name: photo.name,
       mimeType: photo.mimeType,
-      capturedAt: photo.capturedAt,
+      ...(photo.capturedAt ? { capturedAt: photo.capturedAt } : {}),
     }));
     const noteCreateInput = {
       title: '',
@@ -960,10 +963,18 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             attachments={photoInputAttachments}
             cameraSubtitle="Camera"
             cameraTitle="Take Photo"
-            countLabel={`${totalPhotoCount}/${perNotePhotoLimit}`}
+            countLabel={
+              shouldHidePhotoSourceActions && totalPhotoCount === 0
+                ? null
+                : `${totalPhotoCount}/${perNotePhotoLimit}`
+            }
             disabled={isSubmitting}
             footerAction={
-              photoPermissionNeedsSettings ? (
+              photoQuotaStatusMessage ? (
+                <Text tone="secondary" variant="bodySm">
+                  {photoQuotaStatusMessage}
+                </Text>
+              ) : photoPermissionNeedsSettings ? (
                 <Button
                   label="Open Settings"
                   onPress={() => {
@@ -975,6 +986,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             }
             gallerySubtitle="Photo Library"
             galleryTitle="Upload Image"
+            hideSourceActions={shouldHidePhotoSourceActions}
             iconColor={theme.colors.text.primary}
             iconName="camera-outline"
             label="Photos (Optional)"

@@ -269,6 +269,8 @@ interface RestaurantMetaRowProps {
   primaryMetaLabel: string;
   secondaryMetaLabel: string | null;
   iconColor: string;
+  isLocked?: boolean;
+  lockTestID?: string;
   styles: ListDetailStyles;
 }
 
@@ -276,6 +278,8 @@ function RestaurantMetaRow({
   primaryMetaLabel,
   secondaryMetaLabel,
   iconColor,
+  isLocked = false,
+  lockTestID,
   styles,
 }: RestaurantMetaRowProps) {
   const metadataLabel = secondaryMetaLabel
@@ -284,6 +288,16 @@ function RestaurantMetaRow({
 
   return (
     <View style={styles.locationRow}>
+      {isLocked ? (
+        <Ionicons
+          accessibilityLabel="Private restaurant"
+          color={iconColor}
+          name="lock-closed-outline"
+          size={14}
+          style={styles.locationIcon}
+          testID={lockTestID}
+        />
+      ) : null}
       <Ionicons color={iconColor} name="location-outline" size={14} style={styles.locationIcon} />
       <Text style={styles.locationPrimaryText}>{metadataLabel}</Text>
     </View>
@@ -300,6 +314,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
+  const [isRedirectingAfterListDelete, setIsRedirectingAfterListDelete] = useState(false);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteListItem | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState(false);
@@ -401,6 +416,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           restaurantName: listItem.restaurantName,
           restaurantCity: listItem.restaurantCity,
           restaurantCuisineType: listItem.restaurantCuisineType,
+          restaurantVisibility: listItem.restaurantVisibility,
           notes: [],
           firstPosition: listItem.position,
           items: [],
@@ -410,6 +426,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       group.restaurantName = listItem.restaurantName;
       group.restaurantCity = listItem.restaurantCity;
       group.restaurantCuisineType = listItem.restaurantCuisineType;
+      group.restaurantVisibility = listItem.restaurantVisibility;
 
       if (listItem.note && !group.notes.includes(listItem.note)) {
         group.notes.push(listItem.note);
@@ -515,6 +532,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     await invalidateRestaurantListContentQueries(queryClient, listId);
   }, [listId, queryClient]);
 
+  const invalidateCurrentListMembershipQueries = useCallback(async () => {
+    await invalidateRestaurantListContentQueries(queryClient, listId, {
+      includeCandidateRestaurants: true,
+    });
+  }, [listId, queryClient]);
+
   const invalidateSaveTargetQueries = useCallback(async () => {
     await invalidateRestaurantListSaveTargetQueries(queryClient, listId);
   }, [listId, queryClient]);
@@ -541,12 +564,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         await invalidateRestaurantListCollectionQueries(queryClient);
         removeRestaurantListQueries(queryClient, list.id);
         setIsDeleteConfirmVisible(false);
+        setIsRedirectingAfterListDelete(true);
         trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
           ...listAnalyticsContext,
           queued: true,
         });
         showQueuedOfflineAlert('List delete');
-        navigation.navigate('Lists');
+        navigation.replace('Lists');
         return;
       }
 
@@ -555,11 +579,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await invalidateRestaurantListCollectionQueries(queryClient);
       removeRestaurantListQueries(queryClient, list.id);
       setIsDeleteConfirmVisible(false);
+      setIsRedirectingAfterListDelete(true);
       trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
         queued: false,
       });
-      navigation.navigate('Lists');
+      navigation.replace('Lists');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete list.';
       trackObservabilityEvent('LIST_DETAIL_DELETE_FAILED', {
@@ -677,7 +702,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           listItemId: input.listItemId,
           foodItemId: input.foodItemId,
         });
-        await invalidateCurrentListDetailQueries();
+        await invalidateCurrentListMembershipQueries();
         trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
           ...listAnalyticsContext,
           itemKind,
@@ -693,7 +718,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         listItemId: input.listItemId,
         foodItemId: input.foodItemId,
       });
-      await invalidateCurrentListDetailQueries();
+      await invalidateCurrentListMembershipQueries();
       trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
         itemKind,
@@ -733,7 +758,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     try {
       if (!isOnline) {
         await queueFeatureOutbox('list.restaurant.remove.user', { listId, listItemId });
-        await invalidateCurrentListDetailQueries();
+        await invalidateCurrentListMembershipQueries();
         trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
           ...listAnalyticsContext,
           itemKind: 'user_linked',
@@ -745,7 +770,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       await trackWriteTelemetry('list.restaurant.remove.user');
       await removeRestaurantListUserRating(listId, listItemId);
-      await invalidateCurrentListDetailQueries();
+      await invalidateCurrentListMembershipQueries();
       trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
         itemKind: 'user_linked',
@@ -1092,6 +1117,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     );
   }
 
+  if (isRedirectingAfterListDelete) {
+    return (
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
+        <Skeleton height={20} />
+        <Skeleton height={20} />
+      </FeatureDetailScreenScaffold>
+    );
+  }
+
   if (hasBlockingListItemsError) {
     return (
       <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
@@ -1213,6 +1247,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               group.restaurantCity && group.restaurantCuisineType
                 ? group.restaurantCuisineType
                 : null;
+            const isRestaurantLocked = group.restaurantVisibility === 'private';
             const ownerDisplayItems = isOwner ? buildOwnerDisplayItems(group.items) : [];
 
             return (
@@ -1258,6 +1293,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
                 <RestaurantMetaRow
                   iconColor={theme.colors.text.muted}
+                  isLocked={isRestaurantLocked}
+                  lockTestID={`locked-restaurant-${group.restaurantId}`}
                   primaryMetaLabel={primaryMetaLabel}
                   secondaryMetaLabel={secondaryMetaLabel}
                   styles={styles}
@@ -1276,6 +1313,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
                       return (
                         <ListDetailOwnerItemCard
+                          canCreateVisitFromRestaurant={!isRestaurantLocked}
                           groupIndex={groupIndex}
                           item={item}
                           itemIndex={itemIndex}
@@ -1298,6 +1336,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
                       return (
                         <ListDetailBookmarkedItemRow
+                          canSave={!isRestaurantLocked}
                           groupIndex={groupIndex}
                           isSaved={isSaved}
                           item={item}

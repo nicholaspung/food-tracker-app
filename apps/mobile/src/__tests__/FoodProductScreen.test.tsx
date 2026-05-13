@@ -163,6 +163,8 @@ describe('FoodProductScreen', () => {
     mockedAsyncStorage.getItem.mockResolvedValue(null);
     mockedAsyncStorage.setItem.mockReset();
     mockedAsyncStorage.setItem.mockResolvedValue(undefined);
+    (ImagePicker.launchCameraAsync as jest.Mock).mockReset();
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockReset();
     mockedUseQuery.mockReset();
     mockedUseQuery.mockReturnValue(buildQueryResult(null));
     mockedUseQueryClient.mockReturnValue({
@@ -315,6 +317,67 @@ describe('FoodProductScreen', () => {
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
       photoSource: 'gallery',
       source: 'FoodProductScreen',
+    });
+  });
+
+  it('hides photo source actions and blocks picker launch at the free monthly photo limit', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+      },
+      user: {
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        remaining: {
+          photoUploadsMonthly: 0,
+        },
+        usage: {
+          photoUploads: 100,
+        },
+      },
+    } as never);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    const photoInputField = renderer.root.findByType('PhotoInputField');
+    expect(photoInputField.props.hideSourceActions).toBe(true);
+    expect(photoInputField.props.countLabel).toBeNull();
+    expect(photoInputField.props.footerAction.props.children).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
+    expect(renderer.root.findAllByType('UpgradePromptCard')).toHaveLength(0);
+
+    await act(async () => {
+      await photoInputField.props.onGalleryPress();
+    });
+
+    expect(ImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('USAGE_LIMIT_REACHED', {
+      enforcement: 'client_estimate',
+      limit: 100,
+      metric: 'photo_uploads',
+      remaining: 0,
+      source: 'FoodProductScreen',
+      used: 100,
     });
   });
 

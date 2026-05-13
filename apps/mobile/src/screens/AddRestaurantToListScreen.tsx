@@ -79,8 +79,14 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 2,
     paddingRight: theme.spacing.sm,
   },
+  restaurantTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
   restaurantTitle: {
     color: theme.colors.text.primary,
+    flexShrink: 1,
   },
   restaurantSubtitle: {
     color: theme.colors.text.secondary,
@@ -847,6 +853,7 @@ export function AddRestaurantToListScreen({
                   const allItemsAdded =
                     restaurant.foodItems.length > 0 && availableItemCount === 0;
                   const alreadyAdded = restaurant.alreadyInList === true;
+                  const isRestaurantLocked = restaurant.visibility === 'private';
 
                   const metadataLabel = `${restaurant.itemCount} ${restaurant.itemCount === 1 ? "rated item" : "rated items"}`;
 
@@ -869,9 +876,20 @@ export function AddRestaurantToListScreen({
                       >
                         <View style={styles.restaurantHeaderRow}>
                           <View style={styles.restaurantTitleWrap}>
-                            <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
-                              {restaurant.name}
-                            </Text>
+                            <View style={styles.restaurantTitleRow}>
+                              {isRestaurantLocked ? (
+                                <Ionicons
+                                  accessibilityLabel="Private restaurant"
+                                  color={theme.colors.text.muted}
+                                  name="lock-closed-outline"
+                                  size={14}
+                                  testID={`locked-candidate-restaurant-${restaurant.id}`}
+                                />
+                              ) : null}
+                              <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
+                                {restaurant.name}
+                              </Text>
+                            </View>
                             <Text style={styles.restaurantSubtitle} variant="metaRegular">
                               {[restaurant.location, restaurant.cuisineType]
                                 .filter(Boolean)
@@ -906,9 +924,20 @@ export function AddRestaurantToListScreen({
           <>
             <Card style={styles.selectedCard} tone="default">
               <View style={styles.selectedRestaurantMeta}>
-                <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
-                  {selectedRestaurant.name}
-                </Text>
+                <View style={styles.restaurantTitleRow}>
+                  {selectedRestaurant.visibility === 'private' ? (
+                    <Ionicons
+                      accessibilityLabel="Private restaurant"
+                      color={theme.colors.text.muted}
+                      name="lock-closed-outline"
+                      size={14}
+                      testID={`locked-selected-restaurant-${selectedRestaurant.id}`}
+                    />
+                  ) : null}
+                  <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
+                    {selectedRestaurant.name}
+                  </Text>
+                </View>
                 <Text style={styles.restaurantSubtitle} variant="metaRegular">
                   {[selectedRestaurant.location, selectedRestaurant.cuisineType]
                     .filter(Boolean)

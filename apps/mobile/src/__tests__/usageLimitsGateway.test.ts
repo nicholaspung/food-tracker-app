@@ -7,8 +7,8 @@ describe('usageLimitsGateway helpers', () => {
         code: 'LIMIT_EXCEEDED',
         message: 'Monthly menu scan limit reached.',
         metric: 'menu_scans',
-        limit: 5,
-        used: 5,
+        limit: 25,
+        used: 25,
         remaining: 0,
         monthKey: '2026-02',
       },
@@ -16,7 +16,7 @@ describe('usageLimitsGateway helpers', () => {
 
     expect(payload).not.toBeNull();
     expect(payload?.metric).toBe('menu_scans');
-    expect(payload?.limit).toBe(5);
+    expect(payload?.limit).toBe(25);
   });
 
   it('parses limit payload from JSON-string error message', () => {

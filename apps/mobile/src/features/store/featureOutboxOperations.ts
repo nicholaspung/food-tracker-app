@@ -354,6 +354,7 @@ export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueM
     body: {
       restaurantId: payload.restaurantId,
       restaurantName: payload.restaurantName,
+      sourceListItemId: payload.sourceListItemId,
       items: payload.items,
       visitedAt: payload.visitedAt,
       visitedOn: payload.visitedOn,

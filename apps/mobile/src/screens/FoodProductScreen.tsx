@@ -12,7 +12,6 @@ import {
   PhotoInputField,
   PhotoViewerModal,
   FoodProductFormFields,
-  UpgradePromptCard,
 } from '../components/shared';
 import {
   createFoodProduct,
@@ -61,9 +60,12 @@ interface DraftFoodProductPhoto {
 }
 
 const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
-const FREE_MONTHLY_PHOTO_LIMIT = 5;
-const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
+const FREE_MONTHLY_PHOTO_LIMIT = 100;
 type PhotoSource = 'camera' | 'gallery';
+
+function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
+  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
+}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -103,10 +105,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const estimatedFreePhotoRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
     : null;
-  const shouldShowPhotoUpgradePrompt =
+  const shouldHidePhotoSourceActions =
     isDisplayFreeUser &&
+    shouldEnforceUsageLimitsClientSide &&
     typeof estimatedFreePhotoRemaining === 'number' &&
-    estimatedFreePhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
+    estimatedFreePhotoRemaining <= 0;
+  const photoQuotaStatusMessage = shouldHidePhotoSourceActions
+    ? formatFreeMonthlyPhotoLimitStatus(estimatedFreePhotoRemaining)
+    : null;
 
   const linkedNoteQuery = useQuery({
     queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),
@@ -252,7 +258,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           source: 'FoodProductScreen',
           used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
         });
-      setErrorMessage('Free users can upload up to 5 photos per month.');
+      setErrorMessage(formatFreeMonthlyPhotoLimitStatus(estimatedFreePhotoRemaining));
       return;
     }
 
@@ -625,30 +631,6 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           </Card>
         ) : null}
 
-        {isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="secondary">
-              Monthly photo estimate:{' '}
-              {estimatedFreePhotoRemaining === null ? 'unknown' : `${estimatedFreePhotoRemaining} left`}.
-            </Text>
-          </Card>
-        ) : null}
-
-        {shouldShowPhotoUpgradePrompt ? (
-          <UpgradePromptCard
-            description={
-              estimatedFreePhotoRemaining === 0
-                ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
-                : `Only ${estimatedFreePhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
-            }
-            title={
-              estimatedFreePhotoRemaining === 0
-                ? 'Free limit reached'
-                : 'You are close to your free limit'
-            }
-          />
-        ) : null}
-
         {sourceNoteId ? (
           <LinkedNoteCard
             isLoading={linkedNoteQuery.isLoading}
@@ -670,10 +652,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
               attachments={photoInputAttachments}
               cameraSubtitle="Camera"
               cameraTitle="Take Photo"
-              countLabel={photo ? '1/1' : '0/1'}
+              countLabel={shouldHidePhotoSourceActions && !photo ? null : photo ? '1/1' : '0/1'}
               disabled={isSubmitting}
               footerAction={
-                photoPermissionNeedsSettings ? (
+                photoQuotaStatusMessage ? (
+                  <Text tone="secondary" variant="bodySm">
+                    {photoQuotaStatusMessage}
+                  </Text>
+                ) : photoPermissionNeedsSettings ? (
                   <Button
                     label="Open Settings"
                     onPress={() => {
@@ -685,6 +671,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
               }
               gallerySubtitle="Photo Library"
               galleryTitle="Upload Image"
+              hideSourceActions={shouldHidePhotoSourceActions}
               label="Photo (Optional)"
               onCameraPress={() => {
                 void handlePhotoPick('camera');

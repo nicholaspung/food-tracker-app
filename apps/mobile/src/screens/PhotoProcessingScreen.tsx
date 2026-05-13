@@ -27,7 +27,6 @@ import {
   SegmentedControl,
   StatusPill,
   StepProgressBar,
-  UpgradePromptCard,
   VisitMenuItemOptionRow,
   VisitMetadataCard,
   VisitRestaurantOptionTrailing,
@@ -71,7 +70,6 @@ import {
   collapseRestaurantOptionsToSelection,
   formatCoordinatesForDisplay,
   FREE_MONTHLY_PHOTO_LIMIT,
-  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
   normalizeSelectionLabel,
   resolveDraftPhotoDetectedDateValue,
   resolveProgressSteps,
@@ -727,9 +725,18 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     FREE_MONTHLY_PHOTO_LIMIT - estimatedFreeMonthlyPhotoTotal,
     0,
   );
-  const shouldShowPhotoUpgradePrompt =
+  const shouldHidePhotoSourceActions =
     isDisplayFreeUser &&
-    estimatedFreeMonthlyPhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
+    shouldEnforceUsageLimitsClientSide &&
+    Boolean(monthlyUsage.snapshot) &&
+    estimatedFreeMonthlyPhotoRemaining <= 0;
+  const photoQuotaStatusMessage = shouldHidePhotoSourceActions
+    ? `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${estimatedFreeMonthlyPhotoRemaining}.`
+    : null;
+  const monthlyPhotoSelectionLimit =
+    monthlyUsage.snapshot && isDisplayFreeUser
+      ? estimatedFreeMonthlyPhotoRemaining
+      : null;
   const ratedCount = useMemo(() => {
     if (processType === 'restaurant') {
       return Object.values(restaurantForms).filter(
@@ -1049,15 +1056,34 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         photoSource: source,
         source: 'PhotoProcessingScreen',
       });
+      if (shouldHidePhotoSourceActions) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining: estimatedFreeMonthlyPhotoRemaining,
+          source: 'PhotoProcessingScreen',
+          used: estimatedFreeMonthlyPhotoTotal,
+        });
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${estimatedFreeMonthlyPhotoRemaining}.`,
+        );
+        return;
+      }
+
       setIsSelectingSource(true);
       setErrorMessage(null);
       setLastRequestedSource(source);
 
       try {
+        const selectionLimit =
+          source === 'gallery' && typeof monthlyPhotoSelectionLimit === 'number'
+            ? Math.max(monthlyPhotoSelectionLimit, 1)
+            : 20;
         const result = await pickImageAssets({
           source,
           allowsMultipleSelection: source === 'gallery',
-          selectionLimit: 20,
+          selectionLimit,
           exif: true,
           quality: source === 'gallery' ? 0.7 : 0.8,
         });
@@ -1084,7 +1110,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           photoSource: source,
           source: 'PhotoProcessingScreen',
         });
-        await appendAssets(result.assets);
+        const selectedAssets =
+          source === 'gallery'
+            ? result.assets.slice(0, selectionLimit)
+            : result.assets;
+        await appendAssets(selectedAssets);
+        if (selectedAssets.length < result.assets.length) {
+          setErrorMessage(`Only ${selectionLimit} photo upload${selectionLimit === 1 ? '' : 's'} left this month.`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not select images.';
         trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_FAILED', {
@@ -1098,7 +1131,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         setIsSelectingSource(false);
       }
     },
-    [appendAssets, pickImageAssets],
+    [
+      appendAssets,
+      estimatedFreeMonthlyPhotoRemaining,
+      estimatedFreeMonthlyPhotoTotal,
+      monthlyPhotoSelectionLimit,
+      pickImageAssets,
+      shouldHidePhotoSourceActions,
+    ],
   );
 
   const handleCreateMenuItem = async () => {
@@ -1404,20 +1444,27 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
             ? 'Take another photo or upload more saved photos.'
             : 'Take a new photo or upload multiple saved photos.'}
         </Text>
-        <PhotoSourceActionCards
-          cameraSubtitle="Camera"
-          cameraTitle="Take Photo"
-          disabled={isSelectingSource}
-          gallerySubtitle="Photo Library"
-          galleryTitle="Upload Images"
-          onCameraPress={() => {
-            void pickPhotos('camera');
-          }}
-          onGalleryPress={() => {
-            void pickPhotos('gallery');
-          }}
-          tone={hasSelectedPhotos ? 'muted' : 'default'}
-        />
+        {!shouldHidePhotoSourceActions ? (
+          <PhotoSourceActionCards
+            cameraSubtitle="Camera"
+            cameraTitle="Take Photo"
+            disabled={isSelectingSource}
+            gallerySubtitle="Photo Library"
+            galleryTitle="Upload Images"
+            onCameraPress={() => {
+              void pickPhotos('camera');
+            }}
+            onGalleryPress={() => {
+              void pickPhotos('gallery');
+            }}
+            tone={hasSelectedPhotos ? 'muted' : 'default'}
+          />
+        ) : null}
+        {photoQuotaStatusMessage ? (
+          <Text tone="secondary" variant="bodySm">
+            {photoQuotaStatusMessage}
+          </Text>
+        ) : null}
         {isSelectingSource ? <Text tone="secondary">Opening source picker...</Text> : null}
       </Card>
     );
@@ -1518,32 +1565,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
               Offline estimate may be stale. Backend limits are enforced when sync runs.
             </Text>
           </Card>
-        ) : null}
-
-        {isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="secondary">
-              Monthly photo estimate:{' '}
-              {monthlyUsage.snapshot
-                ? `${estimatedFreeMonthlyPhotoRemaining} left`
-                : 'unknown'}.
-            </Text>
-          </Card>
-        ) : null}
-
-        {shouldShowPhotoUpgradePrompt ? (
-          <UpgradePromptCard
-            description={
-              estimatedFreeMonthlyPhotoRemaining <= 0
-                ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
-                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
-            }
-            title={
-              estimatedFreeMonthlyPhotoRemaining <= 0
-                ? 'Free limit reached'
-                : 'You are close to your free limit'
-            }
-          />
         ) : null}
 
         {hasSelectedPhotos ? photoSelectionCard : photoSourceCard}
@@ -1990,21 +2011,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         {linkedNoteCard}
         <PhotoProcessingReviewStep
           errorMessage={errorMessage}
-          estimatedFreeMonthlyPhotoRemaining={estimatedFreeMonthlyPhotoRemaining}
           processType={processType}
           reviewFoodProductCards={reviewFoodProductCards}
           reviewVisitCards={reviewVisitCards}
-          shouldShowPhotoUpgradePrompt={shouldShowPhotoUpgradePrompt}
           showOfflineUsageWarning={shouldShowOfflineUsageWarning(
             isOnline,
             isDisplayFreeUser,
           )}
-          showUsageEstimate={isDisplayFreeUser}
-          usageEstimateLabel={
-            monthlyUsage.snapshot
-              ? `${estimatedFreeMonthlyPhotoRemaining} left`
-              : 'unknown'
-          }
           visitVisibility={visitVisibility}
         />
       </FeatureFormScreenScaffold>

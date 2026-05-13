@@ -350,6 +350,7 @@ describe('PhotoProcessingScreen', () => {
         assets: [],
         permissionDenied: false,
       }),
+      requestSourcePermission: jest.fn(),
       resetPermissionNeedsSettings: jest.fn(),
     } as ReturnType<typeof useImageSourcePicker>);
     mockedUseRestaurantSelectionFlow.mockReturnValue({
@@ -463,6 +464,141 @@ describe('PhotoProcessingScreen', () => {
     expect(collectText(cards[1])).toContain('Take another photo or upload more saved photos.');
     expect(cards[1].props.tone).toBe('muted');
     expect(sourceActions.props.tone).toBe('muted');
+  });
+
+  it('hides upload source actions at the free monthly photo limit while keeping selected drafts', async () => {
+    const pickImageAssets = jest.fn();
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+      },
+      user: {
+        isAdmin: false,
+        isSubscriber: false,
+        name: 'Test User',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        remaining: {
+          placesQueriesMonthly: 5,
+        },
+        usage: {
+          photoUploads: 98,
+        },
+      },
+    } as never);
+    mockedUseImageSourcePicker.mockReturnValue({
+      permissionNeedsSettings: false,
+      pickImageAssets,
+      requestSourcePermission: jest.fn(),
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof useImageSourcePicker>);
+
+    const renderer = await renderPhotoProcessingScreen();
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[1].props.onPress();
+    });
+
+    expect(renderer.root.findAllByType('PhotoSourceActionCards')).toHaveLength(0);
+    const cardText: string[] = renderer.root.findAllByType('Card').map(collectText);
+    expect(cardText.some((text) => text.includes('2 photos selected'))).toBe(true);
+    expect(cardText.some((text) =>
+      text.includes('Free users can upload up to 100 photos per month. Remaining estimate: 0.'),
+    )).toBe(true);
+    expect(cardText.some((text) => text.includes('Monthly photo estimate'))).toBe(false);
+    expect(renderer.root.findAllByType('UpgradePromptCard')).toHaveLength(0);
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.disabled).toBe(false);
+    expect(pickImageAssets).not.toHaveBeenCalled();
+  });
+
+  it('limits added gallery photos to the remaining monthly free slots', async () => {
+    const appendAssets = jest.fn();
+    const pickImageAssets = jest.fn().mockResolvedValue({
+      status: 'success',
+      assets: [
+        { uri: 'file:///third.jpg' },
+        { uri: 'file:///fourth.jpg' },
+      ],
+    });
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+      },
+      user: {
+        isAdmin: false,
+        isSubscriber: false,
+        name: 'Test User',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        remaining: {
+          placesQueriesMonthly: 5,
+        },
+        usage: {
+          photoUploads: 97,
+        },
+      },
+    } as never);
+    mockedUseImageSourcePicker.mockReturnValue({
+      permissionNeedsSettings: false,
+      pickImageAssets,
+      requestSourcePermission: jest.fn(),
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof useImageSourcePicker>);
+    mockedUsePhotoProcessingDraftState.mockReturnValue({
+      appendAssets,
+      currentPhoto: null,
+      currentPhotoIndex: 0,
+      currentFoodProductForm: null,
+      currentRestaurantForm: null,
+      dismissCurrentPhotoLocationHint: jest.fn(),
+      locationMetadataHintDismissedByPhotoId: {},
+      photos: [
+        {
+          id: 'photo-1',
+          name: 'first.jpg',
+          uri: 'file:///first.jpg',
+        },
+        {
+          id: 'photo-2',
+          name: 'second.jpg',
+          uri: 'file:///second.jpg',
+        },
+      ],
+      foodProductForms: {},
+      removePhoto: jest.fn(),
+      replacePhotos: jest.fn(),
+      resetDraftState: jest.fn(),
+      resetProcessingForms: jest.fn(),
+      restaurantForms: {},
+      setCurrentPhotoIndex: jest.fn(),
+      setFoodProductForms: jest.fn(),
+      setRestaurantForms: jest.fn(),
+      updateCurrentFoodProductForm: jest.fn(),
+      updateCurrentRestaurantForm: jest.fn(),
+    } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
+
+    const renderer = await renderPhotoProcessingScreen();
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[1].props.onPress();
+    });
+    await act(async () => {
+      await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
+    });
+
+    expect(pickImageAssets).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectionLimit: 1,
+      }),
+    );
+    expect(appendAssets).toHaveBeenCalledWith([{ uri: 'file:///third.jpg' }]);
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Only 1 photo upload left this month.',
+    );
   });
 
   it.each([

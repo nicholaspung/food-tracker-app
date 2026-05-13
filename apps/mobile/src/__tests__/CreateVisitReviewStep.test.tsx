@@ -26,8 +26,6 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('RatingLegend', props),
   RatingSelector: (props: Record<string, unknown>) =>
     mockReact.createElement('RatingSelector', props),
-  UpgradePromptCard: (props: Record<string, unknown>) =>
-    mockReact.createElement('UpgradePromptCard', props),
   VisitMetadataCard: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitMetadataCard', props),
 }));
@@ -55,16 +53,13 @@ describe('CreateVisitReviewStep', () => {
   const baseProps = {
     detectedVisitDateValue: null,
     displayMaxPhotosPerItem: 1,
-    estimatedFreeMonthlyPhotosRemaining: 3,
     onAttachPhoto: jest.fn(),
     onRemoveDraftItemPhoto: jest.fn(),
     onUpdateDraftItem: jest.fn(),
     onVisitDateChange: jest.fn(),
     onVisitVisibilityChange: jest.fn(),
     photoLoadWarningMessage: null,
-    shouldShowPhotoUpgradePrompt: false,
     showOfflineUsageWarning: false,
-    showUsageEstimate: false,
     visitDate: '2026-04-20',
     visitVisibility: 'friends' as const,
   };
@@ -230,5 +225,74 @@ describe('CreateVisitReviewStep', () => {
       description: 'Add at least one item before saving this visit.',
       title: 'No items selected',
     });
+  });
+
+  it('hides photo source actions while preserving existing draft photo attachments', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          draftItems={[
+            {
+              ...draftItem,
+              photos: [
+                {
+                  kind: 'new',
+                  id: 'draft-photo-1',
+                  upload: {
+                    uri: 'file:///draft-photo-1.jpg',
+                    name: 'draft-photo-1.jpg',
+                    mimeType: 'image/jpeg',
+                  },
+                  thumbnailUri: 'file:///draft-photo-1.jpg',
+                  viewerUri: 'file:///draft-photo-1.jpg',
+                  labelDate: 'Apr 20, 2026',
+                },
+              ],
+            },
+          ]}
+          photoActionsHidden
+          photoQuotaStatusMessage="Free users can upload up to 100 photos per month. Remaining estimate: 0."
+        />,
+      );
+    });
+
+    const photoInputField = renderer.root.findByType('PhotoInputField');
+    expect(photoInputField.props.hideSourceActions).toBe(true);
+    expect(photoInputField.props.countLabel).toBe('1/1');
+    expect(photoInputField.props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'draft-photo-1',
+        label: 'Apr 20, 2026',
+        uri: 'file:///draft-photo-1.jpg',
+      }),
+    ]);
+    expect(photoInputField.props.footerAction.props.children).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
+  });
+
+  it('hides the zero photo count when photo actions are hidden', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitReviewStep
+          {...baseProps}
+          draftItems={[draftItem]}
+          photoActionsHidden
+          photoQuotaStatusMessage="Free users can upload up to 100 photos per month. Remaining estimate: 0."
+        />,
+      );
+    });
+
+    const photoInputField = renderer.root.findByType('PhotoInputField');
+    expect(photoInputField.props.hideSourceActions).toBe(true);
+    expect(photoInputField.props.countLabel).toBeNull();
+    expect(photoInputField.props.footerAction.props.children).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
   });
 });

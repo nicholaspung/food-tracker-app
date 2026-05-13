@@ -57,6 +57,7 @@ type restaurantListDetailItemResponse struct {
 	RestaurantName        string                                       `json:"restaurantName"`
 	RestaurantCity        string                                       `json:"restaurantCity,omitempty"`
 	RestaurantCuisineType string                                       `json:"restaurantCuisineType,omitempty"`
+	RestaurantVisibility  string                                       `json:"restaurantVisibility,omitempty"`
 	SourceUserID          string                                       `json:"sourceUserId,omitempty"`
 	SourceUserName        string                                       `json:"sourceUserName,omitempty"`
 	Position              int                                          `json:"position"`
@@ -129,6 +130,7 @@ type restaurantListVisitedRestaurantCandidateResponse struct {
 	Name              string                                                     `json:"name"`
 	Location          string                                                     `json:"location,omitempty"`
 	CuisineType       string                                                     `json:"cuisineType,omitempty"`
+	Visibility        string                                                     `json:"visibility,omitempty"`
 	ItemCount         int                                                        `json:"itemCount"`
 	VisitDates        []string                                                   `json:"visitDates"`
 	FoodItems         []restaurantListVisitedRestaurantCandidateFoodItemResponse `json:"foodItems"`
@@ -156,6 +158,7 @@ type restaurantListVisitedRestaurantCandidateRow struct {
 	Name          string `db:"name"`
 	Location      string `db:"location"`
 	CuisineType   string `db:"cuisineType"`
+	Visibility    string `db:"visibility"`
 	LatestVisitAt string `db:"latestVisitAt"`
 }
 
@@ -684,13 +687,15 @@ func getRestaurantListDetailResponse(
 	photoFoodItemIDSet := map[string]struct{}{}
 
 	for _, listItem := range listItemRecords {
+		restaurantRecord := restaurantsByID[listItem.GetString("restaurant")]
 		itemResponse := restaurantListDetailItemResponse{
 			ID:                    listItem.Id,
 			ListID:                listItem.GetString("list"),
 			RestaurantID:          listItem.GetString("restaurant"),
-			RestaurantName:        defaultString(resolveRestaurantName(restaurantsByID[listItem.GetString("restaurant")]), "Unknown restaurant"),
-			RestaurantCity:        resolveRestaurantLocation(restaurantsByID[listItem.GetString("restaurant")]),
-			RestaurantCuisineType: resolveRestaurantCuisine(restaurantsByID[listItem.GetString("restaurant")]),
+			RestaurantName:        defaultString(resolveRestaurantName(restaurantRecord), "Unknown restaurant"),
+			RestaurantCity:        resolveRestaurantLocation(restaurantRecord),
+			RestaurantCuisineType: resolveRestaurantCuisine(restaurantRecord),
+			RestaurantVisibility:  normalizeRestaurantVisibilityForListDetail(restaurantRecord),
 			SourceUserID:          strings.TrimSpace(listItem.GetString("sourceUser")),
 			Position:              listItem.GetInt("position"),
 			BookmarkedItems:       []restaurantListDetailBookmarkedItemResponse{},
@@ -879,6 +884,7 @@ func getRestaurantListVisitedRestaurantsPageResponse(
 			Name:              defaultString(strings.TrimSpace(row.Name), "Unknown restaurant"),
 			Location:          strings.TrimSpace(row.Location),
 			CuisineType:       strings.TrimSpace(row.CuisineType),
+			Visibility:        normalizeRestaurantVisibilityValue(row.Visibility),
 			VisitDates:        []string{},
 			FoodItems:         []restaurantListVisitedRestaurantCandidateFoodItemResponse{},
 			LinkedFoodItemIDs: []string{},
@@ -1073,6 +1079,7 @@ func listRestaurantListVisitedRestaurantCandidateRows(
 			restaurants.name AS [[name]],
 			restaurants.location AS [[location]],
 			restaurants.cuisineType AS [[cuisineType]],
+			restaurants.visibility AS [[visibility]],
 			candidate_restaurants.latestVisitAt AS [[latestVisitAt]]
 		FROM candidate_restaurants
 		LEFT JOIN restaurants ON restaurants.id = candidate_restaurants.restaurantId
@@ -1512,6 +1519,25 @@ func resolveFoodItemVisitedAt(record *core.Record, visitsByID map[string]*core.R
 func normalizeRestaurantListDetailVisibility(value string) string {
 	switch strings.TrimSpace(value) {
 	case "friends", "public":
+		return "friends"
+	default:
+		return "private"
+	}
+}
+
+func normalizeRestaurantVisibilityForListDetail(record *core.Record) string {
+	if record == nil {
+		return "private"
+	}
+
+	return normalizeRestaurantVisibilityValue(record.GetString("visibility"))
+}
+
+func normalizeRestaurantVisibilityValue(value string) string {
+	switch strings.TrimSpace(value) {
+	case "public":
+		return "public"
+	case "friends":
 		return "friends"
 	default:
 		return "private"

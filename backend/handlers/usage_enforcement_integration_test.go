@@ -125,7 +125,7 @@ func TestParseMenuBlocksUsersAtMonthlyLimitAfterValidation(t *testing.T) {
 	jpegData := decodeUsageFixture(t, onePixelJPEGBase64)
 
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
-	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 5)
+	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 25)
 
 	freeResponse := performMultipartRequest(
 		t,
@@ -194,7 +194,7 @@ func TestFindRestaurantNameBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
 
 	jpegData := decodeUsageFixture(t, onePixelJPEGBase64)
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
-	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 5)
+	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 25)
 
 	response := performMultipartRequest(
 		t,

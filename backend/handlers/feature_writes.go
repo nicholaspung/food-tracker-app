@@ -21,12 +21,13 @@ const (
 )
 
 type visitCreateRequest struct {
-	RestaurantID   string                  `json:"restaurantId"`
-	RestaurantName string                  `json:"restaurantName"`
-	Items          []visitItemWriteRequest `json:"items"`
-	VisitedAt      string                  `json:"visitedAt"`
-	VisitedOn      string                  `json:"visitedOn"`
-	Visibility     string                  `json:"visibility"`
+	RestaurantID     string                  `json:"restaurantId"`
+	RestaurantName   string                  `json:"restaurantName"`
+	SourceListItemID string                  `json:"sourceListItemId"`
+	Items            []visitItemWriteRequest `json:"items"`
+	VisitedAt        string                  `json:"visitedAt"`
+	VisitedOn        string                  `json:"visitedOn"`
+	Visibility       string                  `json:"visibility"`
 }
 
 type visitUpdateRequest struct {
@@ -493,10 +494,7 @@ func createVisitTransaction(
 		return result, apis.NewBadRequestError("at least one item is required", nil)
 	}
 
-	restaurantRecord, err := resolveRestaurantForWrite(app, authRecord, restaurantResolveInput{
-		RestaurantID:   requestBody.RestaurantID,
-		RestaurantName: requestBody.RestaurantName,
-	})
+	restaurantRecord, err := resolveVisitCreateRestaurant(app, authRecord, requestBody)
 	if err != nil {
 		return result, wrapRestaurantResolveError(err)
 	}
@@ -545,6 +543,79 @@ func createVisitTransaction(
 	result.VisitRecord = visitRecord
 	result.PrioritizedItemIDs = createdItemIDs
 	return result, nil
+}
+
+func resolveVisitCreateRestaurant(
+	app core.App,
+	authRecord *core.Record,
+	requestBody visitCreateRequest,
+) (*core.Record, error) {
+	sourceListItemID := strings.TrimSpace(requestBody.SourceListItemID)
+	if sourceListItemID == "" {
+		return resolveRestaurantForWrite(app, authRecord, restaurantResolveInput{
+			RestaurantID:   requestBody.RestaurantID,
+			RestaurantName: requestBody.RestaurantName,
+		})
+	}
+
+	listItemRecord, err := app.FindRecordById("list_items", sourceListItemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("list item not found", err)
+		}
+		return nil, apis.NewApiError(500, "failed to load restaurant list item", err)
+	}
+
+	listID := strings.TrimSpace(listItemRecord.GetString("list"))
+	listRecord, err := app.FindRecordById("restaurant_lists", listID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("restaurant list not found", err)
+		}
+		return nil, apis.NewApiError(500, "failed to load restaurant list", err)
+	}
+
+	isListOwner := strings.TrimSpace(listRecord.GetString("user")) == authRecord.Id
+	isItemAdder := strings.TrimSpace(listItemRecord.GetString("addedBy")) == authRecord.Id
+	if !isListOwner && !isItemAdder {
+		return nil, apis.NewForbiddenError("you can only create visits from bookmarks in your own lists", nil)
+	}
+
+	restaurantID := strings.TrimSpace(listItemRecord.GetString("restaurant"))
+	if restaurantID == "" {
+		return nil, apis.NewNotFoundError("restaurant not found", nil)
+	}
+
+	requestRestaurantID := strings.TrimSpace(requestBody.RestaurantID)
+	if requestRestaurantID != "" && requestRestaurantID != restaurantID {
+		return nil, apis.NewBadRequestError("restaurant does not match source list item", nil)
+	}
+
+	sourceFoodItemID := strings.TrimSpace(listItemRecord.GetString("foodItem"))
+	if sourceFoodItemID == "" {
+		return nil, apis.NewBadRequestError("source list item does not have a bookmarked food item", nil)
+	}
+
+	sourceFoodItemRecord, sourceVisitRecord, err := findFoodItemWithVisit(app, sourceFoodItemID)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureFoodItemVisibleToUser(app, authRecord, sourceFoodItemRecord, sourceVisitRecord); err != nil {
+		return nil, err
+	}
+	if err := ensureFoodItemMatchesRestaurant(sourceFoodItemRecord, sourceVisitRecord, restaurantID, true); err != nil {
+		return nil, err
+	}
+
+	restaurantRecord, err := app.FindRecordById("restaurants", restaurantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("restaurant not found", err)
+		}
+		return nil, apis.NewApiError(500, "failed to load restaurant", err)
+	}
+
+	return restaurantRecord, nil
 }
 
 func updateVisitTransaction(

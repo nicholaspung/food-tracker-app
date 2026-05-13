@@ -91,6 +91,7 @@ interface RestaurantListDetailApiItemRecord {
   restaurantName: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
+  restaurantVisibility?: 'private' | 'friends' | 'public';
   sourceUserId?: string;
   sourceUserName?: string;
   position: number;
@@ -130,6 +131,7 @@ interface RestaurantListVisitedRestaurantCandidateApiRecord {
   name: string;
   location?: string;
   cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
   itemCount: number;
   visitDates?: string[];
   foodItems?: {
@@ -180,6 +182,14 @@ interface RestaurantListsPageApiResponse {
 
 function normalizeListVisibility(value: unknown): 'private' | 'friends' {
   return value === 'friends' || value === 'public' ? 'friends' : 'private';
+}
+
+function normalizeRestaurantVisibility(value: unknown): 'private' | 'friends' | 'public' | undefined {
+  if (value === 'private' || value === 'friends' || value === 'public') {
+    return value;
+  }
+
+  return undefined;
 }
 
 function normalizeOptionalCount(value: unknown): number | undefined {
@@ -250,6 +260,7 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     restaurantName: record.restaurantName.trim() || 'Unknown restaurant',
     restaurantCity: record.restaurantCity?.trim() || undefined,
     restaurantCuisineType: record.restaurantCuisineType?.trim() || undefined,
+    restaurantVisibility: normalizeRestaurantVisibility(record.restaurantVisibility),
     sourceUserId: record.sourceUserId?.trim() || undefined,
     sourceUserName: record.sourceUserName?.trim() || undefined,
     position: record.position,
@@ -286,6 +297,7 @@ function mapRestaurantListVisitedRestaurantCandidateRecord(
     name: record.name.trim(),
     location: record.location?.trim() || undefined,
     cuisineType: record.cuisineType?.trim() || undefined,
+    visibility: normalizeRestaurantVisibility(record.visibility),
     itemCount:
       typeof record.itemCount === 'number' && Number.isFinite(record.itemCount) && record.itemCount >= 0
         ? Math.floor(record.itemCount)

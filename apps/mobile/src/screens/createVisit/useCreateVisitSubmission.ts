@@ -178,6 +178,7 @@ export function useCreateVisitSubmission({
     const visitInput = {
       restaurantId: restaurantId?.trim() || undefined,
       restaurantName: trimmedRestaurant,
+      sourceListItemId: sourceListItemId?.trim() || undefined,
       items: parsedItems.map((item) => ({
         name: item.name,
         rating: item.rating,

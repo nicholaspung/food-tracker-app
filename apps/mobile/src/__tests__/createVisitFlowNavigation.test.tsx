@@ -188,6 +188,7 @@ describe('create visit flow navigation', () => {
     mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
       pickImageAssets: jest.fn(),
+      requestSourcePermission: jest.fn(),
       resetPermissionNeedsSettings: jest.fn(),
     } as unknown as ReturnType<typeof useImageSourcePicker>);
     mockedUseAuth.mockReturnValue({
@@ -307,6 +308,49 @@ describe('create visit flow navigation', () => {
         restaurantName: 'Cafe Test',
       }),
     );
+  });
+
+  it('keeps the photo source picker visible after a non-menu scan rejection', async () => {
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    mockUseMenuScanFlow.mockReturnValue({
+      createdItemNames: [],
+      errorMessage: 'Image is not a menu',
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: '',
+      status: 'idle',
+      verification: null,
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <MenuScanPhotoProcessingScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              mode: 'menu_scan',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Cafe Test',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer!.root.findAllByType('PhotoSourceActionCards')).toHaveLength(1);
+    expect(
+      renderer!.root.findAllByType('PageErrorToast').some((toast: any) =>
+        toast.props.errorMessage === 'Image is not a menu' && toast.props.title === 'Menu scan failed',
+      ),
+    ).toBe(true);
   });
 
   it('uses popTo after adding a restaurant from the create visit flow', async () => {

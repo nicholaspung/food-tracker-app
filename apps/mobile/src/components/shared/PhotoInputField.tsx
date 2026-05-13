@@ -26,6 +26,7 @@ interface PhotoInputFieldProps {
   galleryTitle?: string;
   gallerySubtitle?: string;
   disabled?: boolean;
+  hideSourceActions?: boolean;
   onCameraPress: () => void;
   onGalleryPress: () => void;
   attachments?: PhotoInputFieldAttachment[];
@@ -62,6 +63,7 @@ export function PhotoInputField({
   galleryTitle = 'Upload Image',
   gallerySubtitle = 'Photo Library',
   disabled = false,
+  hideSourceActions = false,
   onCameraPress,
   onGalleryPress,
   attachments = [],
@@ -108,16 +110,18 @@ export function PhotoInputField({
 
       {hasAttachments ? attachmentList : null}
 
-      <PhotoSourceActionCards
-        cameraSubtitle={cameraSubtitle}
-        cameraTitle={cameraTitle}
-        disabled={disabled}
-        gallerySubtitle={gallerySubtitle}
-        galleryTitle={galleryTitle}
-        onCameraPress={onCameraPress}
-        onGalleryPress={onGalleryPress}
-        tone={hasAttachments ? 'muted' : 'default'}
-      />
+      {!hideSourceActions ? (
+        <PhotoSourceActionCards
+          cameraSubtitle={cameraSubtitle}
+          cameraTitle={cameraTitle}
+          disabled={disabled}
+          gallerySubtitle={gallerySubtitle}
+          galleryTitle={galleryTitle}
+          onCameraPress={onCameraPress}
+          onGalleryPress={onGalleryPress}
+          tone={hasAttachments ? 'muted' : 'default'}
+        />
+      ) : null}
 
       {!hasAttachments ? attachmentList : null}
 

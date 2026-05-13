@@ -170,6 +170,7 @@ describe('useCreateVisitSubmission', () => {
         },
       ],
       source: 'visit',
+      sourceListItemId: undefined,
       sourceNoteId: undefined,
       visibility: 'friends',
       visitedAt: '2026-04-20T00:00:00.000Z',
@@ -197,6 +198,39 @@ describe('useCreateVisitSubmission', () => {
     expect(navigation.navigate).toHaveBeenCalledWith(
       'Home',
       buildVisitCreatedHomeParams('visit-123'),
+    );
+
+    await hook.unmount();
+  });
+
+  it('passes source list item context through visit create payloads', async () => {
+    const hook = renderSubmissionHook({
+      sourceListItemId: 'list-item-1',
+    });
+
+    await hook.mount();
+
+    await act(async () => {
+      await hook.getResult()?.submitVisit();
+    });
+
+    expect(mockedCreateVisitApiMutationInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceListItemId: 'list-item-1',
+      }),
+    );
+    expect(hook.writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'visit.create',
+        offline: {
+          strategy: 'api',
+          input: expect.objectContaining({
+            body: expect.objectContaining({
+              sourceListItemId: 'list-item-1',
+            }),
+          }),
+        },
+      }),
     );
 
     await hook.unmount();

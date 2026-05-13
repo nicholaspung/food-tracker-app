@@ -65,7 +65,7 @@ export const WIZARD_STEPS = [
   { label: 'Rate & Save' },
 ];
 
-export const FREE_MONTHLY_PHOTO_LIMIT = 5;
+export const FREE_MONTHLY_PHOTO_LIMIT = 100;
 export const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 
 export function resolveDefaultVisitVisibility(): VisitVisibility {

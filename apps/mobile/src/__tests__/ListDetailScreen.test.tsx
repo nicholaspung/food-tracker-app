@@ -2,7 +2,16 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { buildPocketBaseFileUrl, getRestaurantListDetail } from '../features';
+import {
+  buildPocketBaseFileUrl,
+  deleteRestaurantList,
+  getRestaurantListDetail,
+  invalidateRestaurantListCollectionQueries,
+  invalidateRestaurantListContentQueries,
+  removeRestaurantListQueries,
+  removeRestaurantListSourceRating,
+  removeRestaurantListUserRating,
+} from '../features';
 import type { RestaurantListDetailRecord } from '../features/store/featureStore';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
@@ -171,7 +180,23 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
+const mockedDeleteRestaurantList = deleteRestaurantList as jest.MockedFunction<typeof deleteRestaurantList>;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<typeof getRestaurantListDetail>;
+const mockedInvalidateRestaurantListCollectionQueries = invalidateRestaurantListCollectionQueries as jest.MockedFunction<
+  typeof invalidateRestaurantListCollectionQueries
+>;
+const mockedInvalidateRestaurantListContentQueries = invalidateRestaurantListContentQueries as jest.MockedFunction<
+  typeof invalidateRestaurantListContentQueries
+>;
+const mockedRemoveRestaurantListQueries = removeRestaurantListQueries as jest.MockedFunction<
+  typeof removeRestaurantListQueries
+>;
+const mockedRemoveRestaurantListSourceRating = removeRestaurantListSourceRating as jest.MockedFunction<
+  typeof removeRestaurantListSourceRating
+>;
+const mockedRemoveRestaurantListUserRating = removeRestaurantListUserRating as jest.MockedFunction<
+  typeof removeRestaurantListUserRating
+>;
 const mockedUseFeatureOutboxQueue = useFeatureOutboxQueue as jest.MockedFunction<typeof useFeatureOutboxQueue>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
@@ -201,6 +226,7 @@ function buildListItem(overrides: Partial<RestaurantListItemRecord> = {}): Resta
     restaurantName: 'Test Restaurant',
     restaurantCity: 'San Francisco',
     restaurantCuisineType: 'Fire',
+    restaurantVisibility: 'friends',
     position: 0,
     bookmarkedItems: [],
     createdAt: '2026-01-03T00:00:00.000Z',
@@ -271,12 +297,45 @@ function flattenStyle(style: any): Record<string, unknown> {
   return style;
 }
 
+function findRightAccessoryElementByTestID(root: any, testID: string): any {
+  const scaffold = root.findByType('FeatureDetailScreenScaffold');
+
+  function visit(element: React.ReactNode): any {
+    if (!React.isValidElement(element)) {
+      return null;
+    }
+
+    if ((element.props as { testID?: string }).testID === testID) {
+      return element;
+    }
+
+    const children = React.Children.toArray((element.props as { children?: React.ReactNode }).children);
+    for (const child of children) {
+      const match = visit(child);
+      if (match) {
+        return match;
+      }
+    }
+
+    return null;
+  }
+
+  const match = visit(scaffold.props.rightAccessory);
+  if (!match) {
+    throw new Error(`No right accessory found with testID ${testID}`);
+  }
+
+  return match;
+}
+
 describe('ListDetailScreen', () => {
   const navigation = {
     canGoBack: jest.fn(() => true),
     goBack: jest.fn(),
     navigate: jest.fn(),
+    replace: jest.fn(),
   };
+  const queryClient = {};
 
   const route = {
     key: 'ListDetail-list_1',
@@ -289,9 +348,15 @@ describe('ListDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedBuildPocketBaseFileUrl.mockReturnValue('photo-url');
+    mockedDeleteRestaurantList.mockResolvedValue(undefined);
     mockedUseQuery.mockReturnValue(buildQueryResult());
-    mockedUseQueryClient.mockReturnValue({} as ReturnType<typeof useQueryClient>);
+    mockedUseQueryClient.mockReturnValue(queryClient as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
+    mockedInvalidateRestaurantListCollectionQueries.mockResolvedValue(undefined);
+    mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
+    mockedRemoveRestaurantListQueries.mockImplementation(() => undefined);
+    mockedRemoveRestaurantListSourceRating.mockResolvedValue([]);
+    mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
     mockedUseFeatureOutboxQueue.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseAuth.mockReturnValue({
@@ -517,6 +582,285 @@ describe('ListDetailScreen', () => {
     expect(modal.props.description).toBe('Delete "Spicy Ramen" from this list?');
   });
 
+  it('replaces the deleted list detail route after online owner list deletion', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    const queryResult = buildQueryResult();
+    mockedUseQuery.mockReturnValue(queryResult);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      findRightAccessoryElementByTestID(renderer.root, 'list-detail-delete-button').props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(mockedDeleteRestaurantList).toHaveBeenCalledWith('list_1');
+    expect(mockedInvalidateRestaurantListCollectionQueries).toHaveBeenCalledWith(queryClient);
+    expect(mockedRemoveRestaurantListQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(navigation.replace).toHaveBeenCalledWith('Lists');
+    expect(navigation.navigate).not.toHaveBeenCalledWith('Lists');
+  });
+
+  it('does not render list not found while redirecting after online list deletion', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    const queryResult = buildQueryResult();
+    mockedUseQuery.mockReturnValue(queryResult);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      findRightAccessoryElementByTestID(renderer.root, 'list-detail-delete-button').props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-confirmation-modal' }).props.onConfirm();
+    });
+
+    queryResult.data = undefined;
+
+    await act(async () => {
+      renderer.update(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const notFoundStates = renderer.root.findAll(
+      (node: any) => node.type === 'EmptyState' && node.props.title === 'List not found',
+    );
+
+    expect(notFoundStates).toHaveLength(0);
+  });
+
+  it('queues offline list deletion and replaces the deleted list detail route without showing not found', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    const queueFeatureOutbox = jest.fn().mockResolvedValue(undefined);
+    mockedUseFeatureOutboxQueue.mockReturnValue(queueFeatureOutbox);
+    const queryResult = buildQueryResult();
+    mockedUseQuery.mockReturnValue(queryResult);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      findRightAccessoryElementByTestID(renderer.root, 'list-detail-delete-button').props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-confirmation-modal' }).props.onConfirm();
+    });
+
+    queryResult.data = undefined;
+
+    await act(async () => {
+      renderer.update(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const notFoundStates = renderer.root.findAll(
+      (node: any) => node.type === 'EmptyState' && node.props.title === 'List not found',
+    );
+
+    expect(queueFeatureOutbox).toHaveBeenCalledWith('list.delete', { listId: 'list_1' });
+    expect(mockedInvalidateRestaurantListCollectionQueries).toHaveBeenCalledWith(queryClient);
+    expect(mockedRemoveRestaurantListQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(navigation.replace).toHaveBeenCalledWith('Lists');
+    expect(notFoundStates).toHaveLength(0);
+  });
+
+  it('invalidates candidate restaurant caches after confirming source rating deletion', async () => {
+    const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
+    mockedUseQueryClient.mockReturnValue(queryClient);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-source-rating-item_1-food_item_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(mockedRemoveRestaurantListSourceRating).toHaveBeenCalledWith({
+      listId: 'list_1',
+      listItemId: 'item_1',
+      foodItemId: 'food_item_1',
+    });
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
+      includeCandidateRestaurants: true,
+    });
+  });
+
+  it('invalidates candidate restaurant caches after confirming linked user rating deletion', async () => {
+    const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
+    mockedUseQueryClient.mockReturnValue(queryClient);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  userFoodItemId: 'user_food_item_1',
+                  userFoodItemName: 'Spicy Ramen',
+                  userFoodItemRating: 4,
+                  userFoodItemVisitedAt: '2026-01-04T00:00:00.000Z',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-user-rating-item_1-user_food_item_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(mockedRemoveRestaurantListUserRating).toHaveBeenCalledWith('list_1', 'item_1');
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
+      includeCandidateRestaurants: true,
+    });
+  });
+
+  it('invalidates candidate restaurant caches after queueing offline source rating deletion', async () => {
+    const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
+    const queueFeatureOutbox = jest.fn().mockResolvedValue(undefined);
+    mockedUseQueryClient.mockReturnValue(queryClient);
+    mockedUseFeatureOutboxQueue.mockReturnValue(queueFeatureOutbox);
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-source-rating-item_1-food_item_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(queueFeatureOutbox).toHaveBeenCalledWith('list.restaurant.remove.source', {
+      listId: 'list_1',
+      listItemId: 'item_1',
+      foodItemId: 'food_item_1',
+    });
+    expect(mockedRemoveRestaurantListSourceRating).not.toHaveBeenCalled();
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
+      includeCandidateRestaurants: true,
+    });
+  });
+
   it('keeps friend bookmark rows without photos on the existing save-only path', async () => {
     mockedUseQuery.mockReturnValue(
       buildQueryResult(
@@ -649,5 +993,116 @@ describe('ListDetailScreen', () => {
       sourceListItemId: 'list_item_1',
       returnToStep: 2,
     });
+  });
+
+  it('renders a locked restaurant icon for private restaurants', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              restaurantId: 'restaurant_private',
+              restaurantVisibility: 'private',
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findByProps({ testID: 'locked-restaurant-restaurant_private' })).toBeTruthy();
+    expect(renderer.root.findAll((node: any) => node.props.children === 'San Francisco • Fire').length).toBeGreaterThan(0);
+  });
+
+  it('hides I went for private bookmarked restaurants but keeps deletion available', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'bookmark_1',
+                  listItemId: 'source_list_item_1',
+                  name: 'Noodles',
+                  rating: 4,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+              id: 'list_item_1',
+              restaurantId: 'restaurant_private',
+              restaurantVisibility: 'private',
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(() => renderer.root.findByProps({ testID: 'i-went-list-item-list_item_1' })).toThrow();
+    expect(renderer.root.findByProps({ testID: 'remove-source-rating-list_item_1-bookmark_1' })).toBeTruthy();
+  });
+
+  it('hides friend bookmark save action for private restaurants', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'viewer_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            userId: 'owner_1',
+          }),
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'bookmark_1',
+                  listItemId: 'source_list_item_1',
+                  name: 'Noodles',
+                  rating: 4,
+                  sourceUserId: 'owner_1',
+                  sourceUserName: 'Owner',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+              id: 'list_item_1',
+              restaurantId: 'restaurant_private',
+              restaurantVisibility: 'private',
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findByProps({ testID: 'locked-restaurant-restaurant_private' })).toBeTruthy();
+    expect(() => renderer.root.findByProps({ testID: 'save-list-item-list_item_1' })).toThrow();
   });
 });

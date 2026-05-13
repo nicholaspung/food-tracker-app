@@ -13,6 +13,7 @@ interface AddOptionCardProps {
   iconColor: string;
   iconBackground: string;
   onPress: () => void;
+  disabled?: boolean;
   testID?: string;
   titleAccessory?: ReactNode;
 }
@@ -30,6 +31,7 @@ export function AddOptionCard({
   iconColor,
   iconBackground,
   onPress,
+  disabled = false,
   testID,
   titleAccessory,
 }: AddOptionCardProps) {
@@ -42,11 +44,16 @@ export function AddOptionCard({
       iconBackground={iconBackground}
       iconColor={iconColor}
       iconName={icon}
+      disabled={disabled}
       onPress={onPress}
       testID={testID}
       title={title}
       titleAccessory={titleAccessory}
-      trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={18} style={styles.chevron} />}
+      trailing={
+        disabled
+          ? <Ionicons color={theme.colors.text.muted} name="lock-closed-outline" size={18} style={styles.chevron} />
+          : <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={18} style={styles.chevron} />
+      }
     />
   );
 }

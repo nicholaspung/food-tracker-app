@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 
 import {
   usePhotoPickerPermissions,
+  type PhotoPickerPermissionResult,
   type PhotoPickerPermissionSource,
 } from './usePhotoPickerPermissions';
 
@@ -51,6 +52,12 @@ export function useImageSourcePicker({
     galleryBlockedMessage,
     galleryRequiredMessage,
   });
+
+  const requestSourcePermission = useCallback(
+    async (source: PhotoPickerPermissionSource): Promise<PhotoPickerPermissionResult> =>
+      requestPermission(source),
+    [requestPermission],
+  );
 
   const pickImageAssets = useCallback(
     async ({
@@ -105,6 +112,7 @@ export function useImageSourcePicker({
   return {
     permissionNeedsSettings,
     pickImageAssets,
+    requestSourcePermission,
     resetPermissionNeedsSettings,
   };
 }

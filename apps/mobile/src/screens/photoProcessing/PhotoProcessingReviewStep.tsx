@@ -6,7 +6,6 @@ import {
   HomeFoodProductEntryCard,
   PageErrorToast,
   PhotoViewerModal,
-  UpgradePromptCard,
   type HomeFeedPhotoRecord,
 } from '../../components/shared';
 import { createThemedStyles } from '../../theme';
@@ -19,14 +18,10 @@ import type {
 
 interface PhotoProcessingReviewStepProps {
   errorMessage: string | null;
-  estimatedFreeMonthlyPhotoRemaining: number;
   processType: ProcessType;
   reviewFoodProductCards: ReviewFoodProductCardData[];
   reviewVisitCards: ReviewVisitCardData[];
-  shouldShowPhotoUpgradePrompt: boolean;
   showOfflineUsageWarning: boolean;
-  showUsageEstimate: boolean;
-  usageEstimateLabel: string;
   visitVisibility: 'friends' | 'private';
 }
 
@@ -44,14 +39,10 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function PhotoProcessingReviewStep({
   errorMessage,
-  estimatedFreeMonthlyPhotoRemaining,
   processType,
   reviewFoodProductCards,
   reviewVisitCards,
-  shouldShowPhotoUpgradePrompt,
   showOfflineUsageWarning,
-  showUsageEstimate,
-  usageEstimateLabel,
   visitVisibility,
 }: PhotoProcessingReviewStepProps) {
   const styles = useStyles();
@@ -97,29 +88,6 @@ export function PhotoProcessingReviewStep({
             runs.
           </Text>
         </Card>
-      ) : null}
-
-      {showUsageEstimate ? (
-        <Card style={styles.sectionCard} tone="muted">
-          <Text tone="secondary">
-            Monthly photo estimate: {usageEstimateLabel}.
-          </Text>
-        </Card>
-      ) : null}
-
-      {shouldShowPhotoUpgradePrompt ? (
-        <UpgradePromptCard
-          description={
-            estimatedFreeMonthlyPhotoRemaining <= 0
-              ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
-              : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
-          }
-          title={
-            estimatedFreeMonthlyPhotoRemaining <= 0
-              ? 'Free limit reached'
-              : 'You are close to your free limit'
-          }
-        />
       ) : null}
 
       {processType === 'restaurant' ? (

@@ -51,14 +51,14 @@ func TestResolveEffectiveLimits(t *testing.T) {
 	if freeLimits.PhotoUploadsPerRecord == nil || *freeLimits.PhotoUploadsPerRecord != 1 {
 		t.Fatalf("expected free per-record photo limit 1")
 	}
-	if freeLimits.PhotoUploadsMonthly == nil || *freeLimits.PhotoUploadsMonthly != 5 {
-		t.Fatalf("expected free monthly photo limit 5")
+	if freeLimits.PhotoUploadsMonthly == nil || *freeLimits.PhotoUploadsMonthly != 100 {
+		t.Fatalf("expected free monthly photo limit 100")
 	}
 	if freeLimits.PlacesQueriesMonthly == nil || *freeLimits.PlacesQueriesMonthly != 100 {
 		t.Fatalf("expected free monthly places limit 100")
 	}
-	if freeLimits.MenuScansMonthly == nil || *freeLimits.MenuScansMonthly != 5 {
-		t.Fatalf("expected free monthly menu scan limit 5")
+	if freeLimits.MenuScansMonthly == nil || *freeLimits.MenuScansMonthly != 25 {
+		t.Fatalf("expected free monthly menu scan limit 25")
 	}
 }
 

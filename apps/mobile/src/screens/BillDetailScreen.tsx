@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -360,6 +361,29 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     ]);
   };
 
+  const navigateToBillsAfterDelete = useCallback(() => {
+    setIsDeleteConfirmVisible(false);
+
+    navigation.dispatch((state) => {
+      const billsRoute = { name: 'Bills' as const };
+      const currentRouteIndex = state.routes.findIndex((stackRoute) => stackRoute.key === route.key);
+      const routesBeforeCurrent =
+        currentRouteIndex >= 0 ? state.routes.slice(0, currentRouteIndex) : state.routes;
+      const hasBillsRoute = routesBeforeCurrent.some((stackRoute) => stackRoute.name === 'Bills');
+      const resetRoutes = routesBeforeCurrent.map((stackRoute) => ({
+        name: stackRoute.name,
+        params: stackRoute.params,
+      }));
+      const nextRoutes = hasBillsRoute ? resetRoutes : [billsRoute];
+      const normalizedRoutes = nextRoutes.length > 0 ? nextRoutes : [billsRoute];
+
+      return CommonActions.reset({
+        index: normalizedRoutes.length - 1,
+        routes: normalizedRoutes,
+      });
+    });
+  }, [navigation, route.key]);
+
   const changeBillStatus = async (nextStatus: BillRecord['status']) => {
     if (!bill || !isCreator) {
       return;
@@ -521,7 +545,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
           billId: bill.id,
           queued: true,
         });
-        navigation.navigate('Bills');
+        navigateToBillsAfterDelete();
         return;
       }
 
@@ -530,7 +554,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         billId: bill.id,
         queued: false,
       });
-      navigation.navigate('Bills');
+      navigateToBillsAfterDelete();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete bill.';
       setErrorMessage(message);

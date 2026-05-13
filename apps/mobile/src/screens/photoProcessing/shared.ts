@@ -68,7 +68,7 @@ const PROGRESS_FLOW_TAIL: { label: string }[] = [
   { label: 'Review' },
 ];
 
-export const FREE_MONTHLY_PHOTO_LIMIT = 5;
+export const FREE_MONTHLY_PHOTO_LIMIT = 100;
 export const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
   weekday: 'short',

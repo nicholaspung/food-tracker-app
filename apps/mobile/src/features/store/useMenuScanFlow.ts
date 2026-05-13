@@ -61,6 +61,22 @@ function buildBaseEventProperties(input: {
   };
 }
 
+function isNotMenuImageError(input: {
+  message: string;
+  statusCode: unknown;
+}): boolean {
+  if (input.statusCode !== 400) {
+    return false;
+  }
+
+  const normalizedMessage = input.message.toLowerCase();
+  return (
+    normalizedMessage.includes('not a menu') ||
+    normalizedMessage.includes('not a menu image') ||
+    normalizedMessage.includes('image is not a menu')
+  );
+}
+
 export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowController {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<MenuScanFlowStatus>('idle');
@@ -240,7 +256,14 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         }
 
         setErrorMessage(message);
-        setStatus('error');
+        setStatus(
+          isNotMenuImageError({
+            message,
+            statusCode: resolvedErrorProperties.statusCode,
+          })
+            ? 'idle'
+            : 'error',
+        );
         return null;
       } finally {
         if (imageInput) {

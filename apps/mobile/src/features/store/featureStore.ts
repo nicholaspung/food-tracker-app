@@ -13,6 +13,7 @@ import type {
 export interface CreateVisitInput {
   restaurantId?: string;
   restaurantName: string;
+  sourceListItemId?: string;
   items: {
     name: string;
     rating: number;
@@ -143,6 +144,7 @@ export interface RestaurantListVisitedRestaurantCandidate {
   name: string;
   location?: string;
   cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
   itemCount: number;
   visitDates: string[];
   foodItems: RestaurantListVisitedRestaurantFoodItem[];

@@ -69,7 +69,6 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateVisitReviewStep } from './createVisit/CreateVisitReviewStep';
 import {
   FREE_MONTHLY_PHOTO_LIMIT,
-  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
   WIZARD_STEPS,
   buildDraftVisitItem,
   resolveDefaultVisitVisibility,
@@ -90,6 +89,10 @@ type CreateVisitExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
+
+function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
+  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
+}
 
 function resolveCreateVisitEntrySource(options: {
   editVisitId?: string;
@@ -574,6 +577,25 @@ export function CreateVisitScreen({
   } = useCreateVisitDraftItems({
     menuItems: menuItemsQuery.data,
   });
+  const estimatedUsedWithDraftPhotos =
+    shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot
+      ? monthlyUsage.snapshot.usage.photoUploads + draftPhotoCount
+      : null;
+  const estimatedMonthlyPhotoTotal =
+    estimatedUsedWithDraftPhotos ?? draftPhotoCount;
+  const estimatedFreeMonthlyPhotosRemaining = Math.max(
+    FREE_MONTHLY_PHOTO_LIMIT - estimatedMonthlyPhotoTotal,
+    0,
+  );
+  const shouldHidePhotoSourceActions =
+    !isEditMode &&
+    isDisplayFreeUser &&
+    shouldEnforceUsageLimitsClientSide &&
+    typeof estimatedUsedWithDraftPhotos === 'number' &&
+    estimatedFreeMonthlyPhotosRemaining <= 0;
+  const photoQuotaStatusMessage = shouldHidePhotoSourceActions
+    ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining)
+    : null;
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
   const restaurantMetadataById = useMemo(() => {
     const metadata = new Map<
@@ -1151,6 +1173,22 @@ export function CreateVisitScreen({
       return;
     }
 
+    if (
+      shouldHidePhotoSourceActions &&
+      typeof estimatedUsedWithDraftPhotos === 'number'
+    ) {
+      trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+        enforcement: "client_estimate",
+        limit: FREE_MONTHLY_PHOTO_LIMIT,
+        metric: "photo_uploads",
+        remaining: estimatedFreeMonthlyPhotosRemaining,
+        source: "CreateVisitScreen",
+        used: estimatedUsedWithDraftPhotos,
+      });
+      setErrorMessage(formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining));
+      return;
+    }
+
     const permission = await requestPhotoPickerPermission(source);
     if (!permission.granted) {
       trackObservabilityEvent("CREATE_VISIT_PHOTO_PERMISSION_DENIED", {
@@ -1579,16 +1617,6 @@ export function CreateVisitScreen({
   const firstUnselectedMenuItemIndex = displayedMenuItems.findIndex(
     (item) => !isMenuItemSelected(item),
   );
-  const estimatedMonthlyPhotoTotal =
-    (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + draftPhotoCount;
-  const estimatedFreeMonthlyPhotosRemaining = Math.max(
-    FREE_MONTHLY_PHOTO_LIMIT - estimatedMonthlyPhotoTotal,
-    0,
-  );
-  const shouldShowPhotoUpgradePrompt =
-    isDisplayFreeUser &&
-    draftPhotoCount > 0 &&
-    estimatedFreeMonthlyPhotosRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
   const editVisitPhotoLoadWarningMessage =
     isEditMode &&
     hydratedEditVisitId === editVisitId &&
@@ -2361,12 +2389,11 @@ export function CreateVisitScreen({
           detectedVisitDateValue={detectedVisitDateValue}
           draftItems={draftItems}
           displayMaxPhotosPerItem={displayMaxPhotosPerItem}
-          estimatedFreeMonthlyPhotosRemaining={
-            estimatedFreeMonthlyPhotosRemaining
-          }
           onAttachPhoto={(itemId, source) => {
             void attachPhotoToDraftItem(itemId, source);
           }}
+          photoActionsHidden={shouldHidePhotoSourceActions}
+          photoQuotaStatusMessage={photoQuotaStatusMessage}
           photoLoadWarningMessage={editVisitPhotoLoadWarningMessage}
           onRemoveDraftItem={(itemId) => {
             removeDraftItem(itemId);
@@ -2376,12 +2403,10 @@ export function CreateVisitScreen({
           onUpdateDraftItem={updateDraftItem}
           onVisitDateChange={handleVisitDateChange}
           onVisitVisibilityChange={handleVisitVisibilityChange}
-          shouldShowPhotoUpgradePrompt={!isEditMode && shouldShowPhotoUpgradePrompt}
           showOfflineUsageWarning={
             !isEditMode &&
             shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser)
           }
-          showUsageEstimate={!isEditMode && isDisplayFreeUser && draftPhotoCount > 0}
           visitDate={visitDate}
           visitVisibility={visitVisibility}
         />

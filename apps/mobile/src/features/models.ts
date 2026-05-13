@@ -130,6 +130,7 @@ export interface RestaurantListItemRecord {
   restaurantName: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
+  restaurantVisibility?: 'private' | 'friends' | 'public';
   sourceUserId?: string;
   sourceUserName?: string;
   position: number;

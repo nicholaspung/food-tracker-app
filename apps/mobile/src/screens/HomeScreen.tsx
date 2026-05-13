@@ -184,7 +184,6 @@ const useStyles = createThemedStyles((theme) => {
   },
   listFooter: {
     paddingHorizontal: theme.spacing.sm,
-    paddingTop: theme.spacing.sm,
   },
   listItemRow: {
     paddingHorizontal: theme.spacing.sm,
@@ -1318,11 +1317,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   const homeListFooter =
     !isLoading && !hasBlockingFeedError && browseState.hasNextPage ? (
-      <FeatureListFooter
-        isFetchingNextPage={browseState.isFetchingNextPage}
-        label="Load more activity"
-        onLoadMore={browseState.onEndReached}
-      />
+      <View style={styles.listFooter}>
+        <FeatureListFooter
+          isFetchingNextPage={browseState.isFetchingNextPage}
+          label="Load more activity"
+          onLoadMore={browseState.onEndReached}
+        />
+      </View>
     ) : null;
 
   return (

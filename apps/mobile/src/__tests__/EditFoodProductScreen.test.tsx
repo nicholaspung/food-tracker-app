@@ -232,6 +232,8 @@ describe('EditFoodProductScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
+    (ImagePicker.launchCameraAsync as jest.Mock).mockReset();
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockReset();
     (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue(null);
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
       canceled: false,
@@ -339,6 +341,76 @@ describe('EditFoodProductScreen', () => {
     ]);
     expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBeNull();
     expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-12');
+  });
+
+  it('hides replacement photo actions and blocks picker launch at the free monthly photo limit', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+      },
+      user: {
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        remaining: {
+          photoUploadsMonthly: 0,
+        },
+        usage: {
+          photoUploads: 100,
+        },
+      },
+    } as never);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const photoInputField = renderer.root.findByType('PhotoInputField');
+    expect(photoInputField.props.hideSourceActions).toBe(true);
+    expect(photoInputField.props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'photo-1',
+        label: 'Apr 12, 2026',
+        uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
+      }),
+    ]);
+    expect(photoInputField.props.countLabel).toBe('1/1');
+    expect(photoInputField.props.footerAction.props.children).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
+    expect(renderer.root.findAllByType('UpgradePromptCard')).toHaveLength(0);
+
+    await act(async () => {
+      await photoInputField.props.onGalleryPress();
+    });
+
+    expect(ImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('USAGE_LIMIT_REACHED', {
+      enforcement: 'client_estimate',
+      limit: 100,
+      metric: 'photo_uploads',
+      remaining: 0,
+      source: 'EditFoodProductScreen',
+      used: 100,
+    });
   });
 
   it('tracks the renamed edit food product validation failure event', async () => {

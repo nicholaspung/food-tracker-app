@@ -16,6 +16,7 @@ import type {
 } from './listDetailTypes';
 
 interface ListDetailOwnerItemCardProps {
+  canCreateVisitFromRestaurant: boolean;
   groupIndex: number;
   item: OwnerDisplayItem;
   itemIndex: number;
@@ -137,6 +138,7 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function ListDetailOwnerItemCard({
+  canCreateVisitFromRestaurant,
   groupIndex,
   item,
   itemIndex,
@@ -152,7 +154,7 @@ export function ListDetailOwnerItemCard({
   const sourceMonthYearLabel = formatMonthYearLabel(sourceRating?.visitedAt);
   const userDisplayDateLabel =
     formatFullDateLabel(userRating?.visitedAt) ?? formatMonthYearLabel(userRating?.visitedAt);
-  const canShowIWent = Boolean(sourceRating && !userRating);
+  const canShowIWent = Boolean(sourceRating && !userRating && canCreateVisitFromRestaurant);
 
   return (
     <View style={styles.card}>

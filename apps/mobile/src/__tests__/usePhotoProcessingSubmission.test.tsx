@@ -64,7 +64,7 @@ jest.mock('../screens/photoProcessing/shared', () => ({
     name: 'photo.jpg',
     uri: 'file:///photo.jpg',
   })),
-  FREE_MONTHLY_PHOTO_LIMIT: 5,
+  FREE_MONTHLY_PHOTO_LIMIT: 100,
   resolveDraftPhotoDetectedDateValue: jest.fn(() => null),
 }));
 

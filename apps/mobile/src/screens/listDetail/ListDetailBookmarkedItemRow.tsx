@@ -12,6 +12,7 @@ import type {
 } from './listDetailTypes';
 
 interface ListDetailBookmarkedItemRowProps {
+  canSave: boolean;
   groupIndex: number;
   isSaved: boolean;
   item: GroupedBookmarkedItem;
@@ -80,6 +81,7 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function ListDetailBookmarkedItemRow({
+  canSave,
   groupIndex,
   isSaved,
   item,
@@ -128,21 +130,23 @@ export function ListDetailBookmarkedItemRow({
             testID={`list-detail-friend-photo-button-${groupIndex}-${itemIndex}`}
           />
         ) : null}
-        <Pressable
-          accessibilityLabel={`Save ${item.name} to my lists`}
-          accessibilityRole="button"
-          onPress={() => {
-            onSave(item);
-          }}
-          style={({ pressed }) => [styles.bookmarkButton, pressed && styles.bookmarkButtonPressed]}
-          testID={`save-list-item-${item.listItemId}`}
-        >
-          <Ionicons
-            color={isSaved ? theme.colors.text.info : theme.colors.text.muted}
-            name={isSaved ? 'bookmark' : 'bookmark-outline'}
-            size={18}
-          />
-        </Pressable>
+        {canSave ? (
+          <Pressable
+            accessibilityLabel={`Save ${item.name} to my lists`}
+            accessibilityRole="button"
+            onPress={() => {
+              onSave(item);
+            }}
+            style={({ pressed }) => [styles.bookmarkButton, pressed && styles.bookmarkButtonPressed]}
+            testID={`save-list-item-${item.listItemId}`}
+          >
+            <Ionicons
+              color={isSaved ? theme.colors.text.info : theme.colors.text.muted}
+              name={isSaved ? 'bookmark' : 'bookmark-outline'}
+              size={18}
+            />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

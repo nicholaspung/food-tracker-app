@@ -58,6 +58,7 @@ export interface GroupedRestaurant {
   restaurantName: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
+  restaurantVisibility?: 'private' | 'friends' | 'public';
   notes: string[];
   firstPosition: number;
   items: GroupedBookmarkedItem[];

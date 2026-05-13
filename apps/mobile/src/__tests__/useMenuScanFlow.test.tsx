@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
+import { ClientResponseError } from 'pocketbase';
 
 import { useMenuScanFlow, type MenuScanFlowController } from '../features/store/useMenuScanFlow';
 import {
@@ -69,6 +70,20 @@ const mockedParseLimitExceededError = parseLimitExceededError as jest.MockedFunc
 const mockedFormatLimitExceededMessage = formatLimitExceededMessage as jest.MockedFunction<
   typeof formatLimitExceededMessage
 >;
+
+function buildClientResponseError(input: {
+  message: string;
+  status: number;
+}): ClientResponseError {
+  return new ClientResponseError({
+    response: {
+      data: {},
+      message: input.message,
+    },
+    status: input.status,
+    url: 'https://app.yummyrecs.com/api/parse-menu',
+  });
+}
 
 function renderHookProbe(onController: (controller: MenuScanFlowController) => void) {
   function Probe() {
@@ -212,6 +227,31 @@ describe('useMenuScanFlow', () => {
     expect(mockedCleanupStagedPhotoFiles).toHaveBeenCalled();
   });
 
+  it('returns to the picker state when the scan rejects a non-menu image', async () => {
+    pickImageAssets.mockResolvedValue({
+      assets: [{ uri: 'file:///picked.jpg' }],
+      status: 'picked',
+    });
+    mockedParseMenuImage.mockRejectedValue(
+      buildClientResponseError({
+        message: 'Image is not a menu',
+        status: 400,
+      }),
+    );
+
+    renderHookProbe((nextController) => {
+      controller = nextController;
+    });
+
+    await act(async () => {
+      await controller.scanMenu('gallery');
+    });
+
+    expect(mockedCreateMenuItemsFromScan).not.toHaveBeenCalled();
+    expect(controller.status).toBe('idle');
+    expect(controller.errorMessage).toBe('Image is not a menu');
+  });
+
   it('tracks permission denial without parsing or exception capture', async () => {
     pickImageAssets.mockResolvedValue({
       canAskAgain: false,
@@ -258,13 +298,13 @@ describe('useMenuScanFlow', () => {
     const error = new Error('limit');
     const limitPayload = {
       code: 'LIMIT_EXCEEDED',
-      limit: 5,
-      message: 'Menu scan limit reached for this month (5).',
+      limit: 25,
+      message: 'Menu scan limit reached for this month (25).',
       metric: 'menu_scans',
       monthKey: '2026-05',
       remaining: 0,
       success: false,
-      used: 5,
+      used: 25,
       userTier: 'free',
     } as const;
     pickImageAssets.mockResolvedValue({

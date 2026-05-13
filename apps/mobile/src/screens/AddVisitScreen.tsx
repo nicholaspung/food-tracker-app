@@ -9,7 +9,7 @@ import {
   TabBrandHeader,
   TabRootScreenScaffold,
 } from '../components/shared';
-import { isAddOnboardingCardDismissed } from '../features';
+import { isAddOnboardingCardDismissed, useMonthlyUsage } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -34,6 +34,7 @@ interface AddOptionConfig {
   iconBackground: string;
   iconColor: string;
   titleAccessory?: ComponentProps<typeof AddOptionCard>['titleAccessory'];
+  disabled?: boolean;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -61,6 +62,21 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const styles = useStyles();
   const { actualUser, user } = useAuth();
   const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
+  const isActualAdmin = actualUser?.isAdmin === true;
+  const isDisplayAdminUser = user?.isAdmin === true;
+  const isDisplaySubscriberUser = user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
+    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+    : null;
+  const monthlyUsage = useMonthlyUsage({
+    viewAsTier: usagePreviewTier,
+  });
+  const shouldDisableProcessPhotos =
+    !isActualAdmin &&
+    isDisplayFreeUser &&
+    typeof monthlyUsage.snapshot?.remaining.photoUploadsMonthly === 'number' &&
+    monthlyUsage.snapshot.remaining.photoUploadsMonthly <= 0;
 
   const optionColors = {
     restaurant: theme.colors.text.info,
@@ -115,10 +131,16 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       id: 'process-photos',
       onboardingCardId: 'processSavedPhotos',
       title: 'Process Saved Photos',
-      description: 'Upload multiple photos and rate each one',
+      description: shouldDisableProcessPhotos
+        ? "You've reached this month's free photo limit. Photo processing unlocks again next month."
+        : 'Upload multiple photos and rate each one',
       icon: 'images-outline',
       iconBackground: optionColors.processPhotos,
       iconColor: optionColors.iconOnColor,
+      disabled: shouldDisableProcessPhotos,
+      titleAccessory: shouldDisableProcessPhotos
+        ? <StatusPill label="Limit reached" tone="warning" uppercase />
+        : undefined,
     },
     {
       id: 'manage-notes',
@@ -133,6 +155,15 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
 
   const handleOptionPress = (optionId: AddOptionId) => {
     const selectedOption = options.find((option) => option.id === optionId);
+    if (selectedOption?.disabled) {
+      trackObservabilityEvent('ADD_VISIT_OPTION_DISABLED_SELECTED', {
+        source: 'AddVisitScreen',
+        option: optionId,
+        reason: optionId === 'process-photos' ? 'photo_upload_limit_reached' : 'disabled',
+      });
+      return;
+    }
+
     const normalizedOption =
       optionId === 'restaurant-visit'
         ? 'restaurant_visit'
@@ -217,6 +248,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
           {options.map((option) => (
             <AddOptionCard
               description={option.description}
+              disabled={option.disabled}
               icon={option.icon}
               iconBackground={option.iconBackground}
               iconColor={option.iconColor}

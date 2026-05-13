@@ -9,7 +9,6 @@ import {
   PhotoViewerModal,
   RatingLegend,
   RatingSelector,
-  UpgradePromptCard,
   VisitMetadataCard,
   type VisibilityOptionValue,
 } from '../../components/shared';
@@ -25,21 +24,20 @@ interface CreateVisitReviewStepProps {
   detectedVisitDateValue: string | null;
   draftItems: DraftVisitItem[];
   displayMaxPhotosPerItem: number | null;
-  estimatedFreeMonthlyPhotosRemaining: number;
   allowItemRemoval?: boolean;
   onAttachPhoto: (itemId: string, source: 'camera' | 'gallery') => void;
   onRemoveDraftItem?: (itemId: string) => void;
   onRemoveDraftItemPhoto: (itemId: string, photoId: string) => void;
+  photoActionsHidden?: boolean;
   onUpdateDraftItem: (
     itemId: string,
     updates: DraftVisitItemUpdates,
   ) => void;
   onVisitDateChange: (value: string) => void;
   onVisitVisibilityChange: (value: VisibilityOptionValue) => void;
-  shouldShowPhotoUpgradePrompt: boolean;
   showOfflineUsageWarning: boolean;
-  showUsageEstimate: boolean;
   photoLoadWarningMessage?: string | null;
+  photoQuotaStatusMessage?: string | null;
   visitDate: string;
   visitVisibility: 'friends' | 'private';
 }
@@ -72,18 +70,17 @@ export function CreateVisitReviewStep({
   detectedVisitDateValue,
   draftItems,
   displayMaxPhotosPerItem,
-  estimatedFreeMonthlyPhotosRemaining,
   allowItemRemoval = false,
   onAttachPhoto,
   onRemoveDraftItem,
   onRemoveDraftItemPhoto,
+  photoActionsHidden = false,
   onUpdateDraftItem,
   onVisitDateChange,
   onVisitVisibilityChange,
-  shouldShowPhotoUpgradePrompt,
   showOfflineUsageWarning,
-  showUsageEstimate,
   photoLoadWarningMessage = null,
+  photoQuotaStatusMessage = null,
   visitDate,
   visitVisibility,
 }: CreateVisitReviewStepProps) {
@@ -134,33 +131,10 @@ export function CreateVisitReviewStep({
         </Card>
       ) : null}
 
-      {showUsageEstimate ? (
-        <Card style={styles.statusCard} tone="muted">
-          <Text tone="secondary">
-            Monthly photo estimate: {estimatedFreeMonthlyPhotosRemaining} left.
-          </Text>
-        </Card>
-      ) : null}
-
       {photoLoadWarningMessage ? (
         <Card style={styles.statusCard} tone="muted">
           <Text tone="warning">{photoLoadWarningMessage}</Text>
         </Card>
-      ) : null}
-
-      {shouldShowPhotoUpgradePrompt ? (
-        <UpgradePromptCard
-          description={
-            estimatedFreeMonthlyPhotosRemaining <= 0
-              ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly photo limits."
-              : `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. Subscriber accounts have higher monthly photo limits.`
-          }
-          title={
-            estimatedFreeMonthlyPhotosRemaining <= 0
-              ? 'Free limit reached'
-              : 'You are close to your free limit'
-          }
-        />
       ) : null}
 
       <VisitMetadataCard
@@ -239,14 +213,23 @@ export function CreateVisitReviewStep({
             cameraSubtitle="Camera"
             cameraTitle="Capture"
             countLabel={
-              displayMaxPhotosPerItem === null
+              displayMaxPhotosPerItem === null ||
+              (photoActionsHidden && item.photos.length === 0)
                 ? null
                 : `${item.photos.length}/${displayMaxPhotosPerItem}`
             }
             gallerySubtitle="Photo Library"
             galleryTitle="Upload"
+            hideSourceActions={photoActionsHidden}
             iconName="images-outline"
             label="Add photos"
+            footerAction={
+              photoQuotaStatusMessage ? (
+                <Text tone="secondary" variant="bodySm">
+                  {photoQuotaStatusMessage}
+                </Text>
+              ) : null
+            }
             onCameraPress={() => {
               onAttachPhoto(item.id, 'camera');
             }}

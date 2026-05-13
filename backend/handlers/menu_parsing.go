@@ -103,29 +103,6 @@ func recordAIProcessingFailure(e *core.RequestEvent, input aiProcessingFailureIn
 		Success:        false,
 		ErrorType:      input.ErrorType,
 	})
-
-	if err := lib.CreateAIErrorLog(e.App, lib.AIErrorLogInput{
-		RequestID:      input.RequestID,
-		UserID:         userID,
-		Route:          input.Route,
-		UseCase:        input.UseCase,
-		Provider:       "gemini",
-		Model:          model,
-		Status:         input.Status,
-		HTTPStatusCode: input.HTTPStatusCode,
-		ErrorType:      input.ErrorType,
-		ErrorMessage:   input.ErrorMessage,
-		DurationMs:     input.DurationMs,
-		PromptTokens:   input.PromptTokens,
-		OutputTokens:   input.OutputTokens,
-		TotalTokens:    input.TotalTokens,
-		ImageMimeType:  input.ImageMimeType,
-		ImageSizeBytes: input.ImageSizeBytes,
-		RestaurantID:   input.RestaurantID,
-		RestaurantName: input.RestaurantName,
-	}); err != nil {
-		log.Printf("Failed to persist AI error log requestId=%s route=%s status=%s: %v", input.RequestID, input.Route, input.Status, err)
-	}
 }
 
 func trackGeminiGenerationAttempts(

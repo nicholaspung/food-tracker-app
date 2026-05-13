@@ -1172,13 +1172,15 @@ func buildRestaurantListDetailItemResponses(
 
 	items := make([]restaurantListDetailItemResponse, 0, len(listItemRecords))
 	for _, listItem := range listItemRecords {
+		restaurantRecord := restaurantsByID[listItem.GetString("restaurant")]
 		itemResponse := restaurantListDetailItemResponse{
 			ID:                    listItem.Id,
 			ListID:                listItem.GetString("list"),
 			RestaurantID:          listItem.GetString("restaurant"),
-			RestaurantName:        defaultString(resolveRestaurantName(restaurantsByID[listItem.GetString("restaurant")]), "Unknown restaurant"),
-			RestaurantCity:        resolveRestaurantLocation(restaurantsByID[listItem.GetString("restaurant")]),
-			RestaurantCuisineType: resolveRestaurantCuisine(restaurantsByID[listItem.GetString("restaurant")]),
+			RestaurantName:        defaultString(resolveRestaurantName(restaurantRecord), "Unknown restaurant"),
+			RestaurantCity:        resolveRestaurantLocation(restaurantRecord),
+			RestaurantCuisineType: resolveRestaurantCuisine(restaurantRecord),
+			RestaurantVisibility:  normalizeRestaurantVisibilityForListDetail(restaurantRecord),
 			SourceUserID:          strings.TrimSpace(listItem.GetString("sourceUser")),
 			Position:              listItem.GetInt("position"),
 			BookmarkedItems:       []restaurantListDetailBookmarkedItemResponse{},

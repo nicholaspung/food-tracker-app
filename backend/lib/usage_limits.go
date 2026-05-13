@@ -142,9 +142,9 @@ func ResolveEffectiveLimits(userTier UserTier) UsageLimits {
 	default:
 		return UsageLimits{
 			PhotoUploadsPerRecord:  intPointer(1),
-			PhotoUploadsMonthly:    intPointer(5),
+			PhotoUploadsMonthly:    intPointer(100),
 			PlacesQueriesMonthly:   intPointer(100),
-			MenuScansMonthly:       intPointer(5),
+			MenuScansMonthly:       intPointer(25),
 			HEICConversionsMonthly: intPointer(100),
 		}
 	}

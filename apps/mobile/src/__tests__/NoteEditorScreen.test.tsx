@@ -1,11 +1,10 @@
-import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { createNote, useMonthlyUsage } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { useAuth } from '../providers/AuthProvider';
@@ -20,13 +19,6 @@ jest.mock('@expo/vector-icons', () => ({
 
 jest.mock('expo-camera', () => ({
   CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
-}));
-
-jest.mock('expo-image-picker', () => ({
-  launchImageLibraryAsync: jest.fn(),
-  UIImagePickerPreferredAssetRepresentationMode: {
-    Current: 'current',
-  },
 }));
 
 jest.mock('@tanstack/react-query', () => ({
@@ -48,8 +40,8 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
 }));
 
-jest.mock('../hooks/usePhotoPickerPermissions', () => ({
-  usePhotoPickerPermissions: jest.fn(),
+jest.mock('../hooks/useImageSourcePicker', () => ({
+  useImageSourcePicker: jest.fn(),
 }));
 
 jest.mock('../lib/offlineAlerts', () => ({
@@ -140,9 +132,7 @@ const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useM
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
-const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
-  typeof usePhotoPickerPermissions
->;
+const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
 const mockedBuildLocalPhotoFile = buildLocalPhotoFile as jest.MockedFunction<typeof buildLocalPhotoFile>;
 const mockedResolvePhotoCaptureDate = resolvePhotoCaptureDate as jest.MockedFunction<typeof resolvePhotoCaptureDate>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
@@ -174,10 +164,16 @@ function renderNoteEditor(routeParams: Record<string, unknown> = {}): any {
 
 describe('NoteEditorScreen photo capture dates', () => {
   let writeFeature: jest.Mock;
+  let pickImageAssets: jest.Mock;
+  let requestSourcePermission: jest.Mock;
+  let resetPermissionNeedsSettings: jest.Mock;
   const invalidateQueries = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    pickImageAssets = jest.fn();
+    requestSourcePermission = jest.fn().mockResolvedValue({ granted: true });
+    resetPermissionNeedsSettings = jest.fn();
     mockedUseQueryClient.mockReturnValue({ invalidateQueries } as never);
     mockedUseQuery.mockReturnValue(buildQueryResult(null));
     mockedUseAuth.mockReturnValue({
@@ -198,11 +194,12 @@ describe('NoteEditorScreen photo capture dates', () => {
         },
       },
     } as never);
-    mockedUsePhotoPickerPermissions.mockReturnValue({
+    mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
-      requestPermission: jest.fn().mockResolvedValue({ granted: true }),
-      resetPermissionNeedsSettings: jest.fn(),
-    });
+      pickImageAssets,
+      requestSourcePermission,
+      resetPermissionNeedsSettings,
+    } as ReturnType<typeof useImageSourcePicker>);
     mockedBuildLocalPhotoFile.mockImplementation((asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => ({
       uri: asset.uri,
       name: asset.fileName ?? 'photo.jpg',
@@ -225,8 +222,8 @@ describe('NoteEditorScreen photo capture dates', () => {
 
   it('uses EXIF-enabled gallery picking and submits capturedAt for new note photos', async () => {
     mockedResolvePhotoCaptureDate.mockResolvedValue(new Date('2024-09-15T12:34:56.000Z'));
-    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
-      canceled: false,
+    pickImageAssets.mockResolvedValue({
+      status: 'success',
       assets: [
         {
           uri: 'file:///note-photo.jpg',
@@ -248,12 +245,13 @@ describe('NoteEditorScreen photo capture dates', () => {
       await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
     });
 
-    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        exif: true,
-        preferredAssetRepresentationMode: 'current',
-      }),
-    );
+    expect(pickImageAssets).toHaveBeenCalledWith({
+      source: 'gallery',
+      allowsMultipleSelection: true,
+      selectionLimit: 20,
+      exif: true,
+      quality: 0.7,
+    });
     expect(renderer.root.findByType('PhotoInputField').props.attachments[0].label).toBe('Sep 15, 2024');
 
     await act(async () => {
@@ -268,6 +266,49 @@ describe('NoteEditorScreen photo capture dates', () => {
         photos: [
           expect.objectContaining({
             capturedAt: '2024-09-15T12:34:56.000Z',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('labels selected note photos with unknown date when photo metadata is unavailable', async () => {
+    mockedResolvePhotoCaptureDate.mockResolvedValue(null);
+    pickImageAssets.mockResolvedValue({
+      status: 'success',
+      assets: [
+        {
+          uri: 'file:///note-photo.jpg',
+          fileName: 'note-photo.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer!: ReturnType<typeof renderNoteEditor>;
+    await act(async () => {
+      renderer = renderNoteEditor();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'note-content-input' }).props.onChangeText('Test note');
+    });
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments[0].label).toBe('Unknown date');
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    expect(writeFeature.mock.calls[0][0].offline.payload.photos[0]).not.toHaveProperty('capturedAt');
+    expect(mockedCreateNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        photos: [
+          expect.not.objectContaining({
+            capturedAt: expect.any(String),
           }),
         ],
       }),
@@ -311,6 +352,63 @@ describe('NoteEditorScreen photo capture dates', () => {
         expect.objectContaining({ label: 'Sep 15, 2024' }),
         expect.objectContaining({ label: 'Apr 27, 2026' }),
       ]),
+    );
+  });
+
+  it('hides note photo actions at the free monthly limit but still allows text-only note save', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { id: 'user-1', isAdmin: false },
+      user: { id: 'user-1', isSubscriber: false, isAdmin: false },
+    } as never);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: {
+          photoUploadsPerRecord: 1,
+        },
+        remaining: {
+          photoUploadsMonthly: 0,
+        },
+        usage: {
+          photoUploads: 100,
+        },
+      },
+    } as never);
+
+    let renderer!: ReturnType<typeof renderNoteEditor>;
+    await act(async () => {
+      renderer = renderNoteEditor();
+    });
+
+    const photoInputField = renderer.root.findByType('PhotoInputField');
+    expect(photoInputField.props.hideSourceActions).toBe(true);
+    expect(photoInputField.props.countLabel).toBeNull();
+    expect(photoInputField.props.footerAction.props.children).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'note-content-input' }).props.onChangeText('Text-only note');
+    });
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'note.create',
+        offline: expect.objectContaining({
+          payload: expect.objectContaining({
+            content: 'Text-only note',
+            photos: [],
+          }),
+        }),
+      }),
+    );
+    expect(mockedCreateNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Text-only note',
+        photos: [],
+      }),
     );
   });
 });
