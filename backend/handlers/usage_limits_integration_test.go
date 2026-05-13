@@ -149,14 +149,14 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 	}
 
 	initialRemaining := initialData["remaining"].(map[string]any)
-	if initialRemaining["photoUploadsMonthly"].(float64) != 1 {
-		t.Fatalf("expected preview remaining photoUploadsMonthly=1, got %v", initialRemaining["photoUploadsMonthly"])
+	if initialRemaining["photoUploadsMonthly"].(float64) != 96 {
+		t.Fatalf("expected preview remaining photoUploadsMonthly=96, got %v", initialRemaining["photoUploadsMonthly"])
 	}
 	if initialRemaining["placesQueriesMonthly"].(float64) != 5 {
 		t.Fatalf("expected preview remaining placesQueriesMonthly=5, got %v", initialRemaining["placesQueriesMonthly"])
 	}
-	if initialRemaining["menuScansMonthly"].(float64) != 1 {
-		t.Fatalf("expected preview remaining menuScansMonthly=1, got %v", initialRemaining["menuScansMonthly"])
+	if initialRemaining["menuScansMonthly"].(float64) != 21 {
+		t.Fatalf("expected preview remaining menuScansMonthly=21, got %v", initialRemaining["menuScansMonthly"])
 	}
 
 	seedMonthlyUsage(t, server.app, adminUser.Id, 4, 95, 6)
@@ -180,7 +180,7 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 	}
 
 	afterRemaining := afterData["remaining"].(map[string]any)
-	if afterRemaining["menuScansMonthly"].(float64) != 0 {
-		t.Fatalf("expected preview remaining menuScansMonthly=0, got %v", afterRemaining["menuScansMonthly"])
+	if afterRemaining["menuScansMonthly"].(float64) != 19 {
+		t.Fatalf("expected preview remaining menuScansMonthly=19, got %v", afterRemaining["menuScansMonthly"])
 	}
 }
