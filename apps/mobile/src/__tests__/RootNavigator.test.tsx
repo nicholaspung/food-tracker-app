@@ -1,20 +1,26 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
+import { trackObservabilityEvent, trackWebPageLeave, trackWebPageView } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { AUTH_LINKING, RootNavigator } from '../navigation/RootNavigator';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
 let mockCurrentRouteName = 'Home';
+let mockAppStateChange: ((nextState: string) => void) | undefined;
+let mockNavigationStateChange: (() => void) | undefined;
 
 jest.mock('react-native', () => {
   return {
     AppState: {
       currentState: 'active',
-      addEventListener: jest.fn(() => ({
-        remove: jest.fn(),
-      })),
+      addEventListener: jest.fn((_event: string, handler: (nextState: string) => void) => {
+        mockAppStateChange = handler;
+        return {
+          remove: jest.fn(),
+        };
+      }),
     },
     Platform: {
       OS: 'ios',
@@ -35,10 +41,13 @@ jest.mock('@react-navigation/native', () => ({
   NavigationContainer: ({
     children,
     onReady,
+    onStateChange,
   }: {
     children?: React.ReactNode;
     onReady?: () => void;
+    onStateChange?: () => void;
   }) => {
+    mockNavigationStateChange = onStateChange;
     mockReact.useEffect(() => {
       onReady?.();
     }, [onReady]);
@@ -99,6 +108,12 @@ jest.mock('../providers/AuthProvider', () => ({
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
+  trackWebPageLeave: jest.fn(),
+  trackWebPageView: jest.fn(),
+}));
+
+jest.mock('../observability/productAnalytics', () => ({
+  trackProductEvent: jest.fn(),
 }));
 
 jest.mock('../theme', () => ({
@@ -199,6 +214,11 @@ jest.mock('../screens', () => {
 });
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
+const mockedTrackWebPageLeave = trackWebPageLeave as jest.MockedFunction<typeof trackWebPageLeave>;
+const mockedTrackWebPageView = trackWebPageView as jest.MockedFunction<typeof trackWebPageView>;
 const completedMobileOnboardingState = {
   main: {
     completedVersion: 1,
@@ -208,8 +228,126 @@ const completedMobileOnboardingState = {
 describe('RootNavigator', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
+    mockedTrackObservabilityEvent.mockReset();
+    mockedTrackWebPageLeave.mockReset();
+    mockedTrackWebPageView.mockReset();
     mockedUseAuth.mockReset();
+    mockAppStateChange = undefined;
     mockCurrentRouteName = 'Home';
+    mockNavigationStateChange = undefined;
+  });
+
+  it('tracks the initial route with product and web page analytics', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    await act(async () => {
+      create(<RootNavigator />);
+    });
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('SCREEN_VIEW', {
+      previousScreenName: null,
+      screenName: 'Home',
+    });
+    expect(mockedTrackWebPageView).toHaveBeenCalledTimes(1);
+    expect(mockedTrackWebPageView).toHaveBeenCalledWith({
+      previousScreenName: null,
+      screenName: 'Home',
+    });
+  });
+
+  it('tracks web pageleave and pageview on route transitions without duplicating same-route updates', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    await act(async () => {
+      create(<RootNavigator />);
+    });
+
+    await act(async () => {
+      mockNavigationStateChange?.();
+    });
+
+    expect(mockedTrackWebPageView).toHaveBeenCalledTimes(1);
+    expect(mockedTrackWebPageLeave).not.toHaveBeenCalled();
+
+    mockCurrentRouteName = 'Friends';
+    await act(async () => {
+      mockNavigationStateChange?.();
+    });
+
+    expect(mockedTrackWebPageLeave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextScreenName: 'Friends',
+        reason: 'navigation',
+        screenName: 'Home',
+      }),
+    );
+    expect(mockedTrackWebPageView).toHaveBeenCalledTimes(2);
+    expect(mockedTrackWebPageView).toHaveBeenLastCalledWith({
+      previousScreenName: 'Home',
+      screenName: 'Friends',
+    });
+  });
+
+  it('tracks web pageleave when the app backgrounds', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    await act(async () => {
+      create(<RootNavigator />);
+    });
+
+    await act(async () => {
+      mockAppStateChange?.('background');
+    });
+
+    expect(mockedTrackWebPageLeave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextScreenName: null,
+        reason: 'app_background',
+        screenName: 'Home',
+      }),
+    );
   });
 
   it('renders the grace-period banner for authenticated unverified users', async () => {

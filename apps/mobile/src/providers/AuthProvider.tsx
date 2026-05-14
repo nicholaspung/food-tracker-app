@@ -36,6 +36,11 @@ import {
   trackObservabilityEvent,
 } from '../observability';
 import {
+  clearProductAnalyticsUser,
+  identifyProductAnalyticsUser,
+  setProductAnalyticsAuthContext,
+} from '../observability/productAnalytics';
+import {
   buildAuthErrorObservabilityProperties,
   formatAuthErrorMessage,
 } from './authErrorMessages';
@@ -149,6 +154,11 @@ function resolveAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'f
   }
 
   return 'free';
+}
+
+function resolveProductAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'free' | null {
+  const tier = resolveAuthUserTier(user);
+  return tier === 'anonymous' ? null : tier;
 }
 
 interface AuthProviderProps {
@@ -460,6 +470,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       userTier: resolveAuthUserTier(user),
       verificationStatus,
     });
+    setProductAnalyticsAuthContext({
+      authStatus: status,
+      userTier: resolveProductAuthUserTier(user),
+    });
   }, [
     actualUser,
     canUseRolePreview,
@@ -469,6 +483,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     verificationStatus,
   ]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !actualUser) {
+      clearProductAnalyticsUser();
+      return;
+    }
+
+    identifyProductAnalyticsUser(actualUser);
+  }, [actualUser, status]);
 
   useEffect(() => {
     if (status === 'bootstrapping') {
@@ -593,6 +616,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     trackObservabilityEvent('LOGOUT', {
       source: 'mobile_auth_shell',
     });
+    clearProductAnalyticsUser();
     resetObservabilityIdentity();
   }, [actualUser?.id, resetAuthenticatedLocalState]);
 

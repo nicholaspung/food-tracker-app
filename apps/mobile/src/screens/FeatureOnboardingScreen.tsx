@@ -19,6 +19,7 @@ import { MAIN_ONBOARDING_PUBLISHED_ASSETS } from '../lib/onboardingPublishedAsse
 import { BRAND_LOGO } from '../lib/branding';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
@@ -408,6 +409,11 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
       source: 'FeatureOnboardingScreen',
       version: MAIN_ONBOARDING_VERSION,
     });
+    trackProductEvent('activation.onboarding_started', {
+      mode,
+      source: 'FeatureOnboardingScreen',
+      version: MAIN_ONBOARDING_VERSION,
+    });
   }, [mode]);
 
   const trackCardViewed = useCallback((index: number, trigger: CardViewTrigger) => {
@@ -492,6 +498,11 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
       }
 
       trackObservabilityEvent('FEATURE_ONBOARDING_COMPLETED', {
+        queued: saveResult.status === 'queued',
+        source: 'FeatureOnboardingScreen',
+        version: MAIN_ONBOARDING_VERSION,
+      });
+      trackProductEvent('activation.onboarding_completed', {
         queued: saveResult.status === 'queued',
         source: 'FeatureOnboardingScreen',
         version: MAIN_ONBOARDING_VERSION,

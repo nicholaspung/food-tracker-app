@@ -1,4 +1,5 @@
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { computeRetryDelayMs } from './retryPolicy';
 import type {
   EnqueueMutationInput,
@@ -75,6 +76,12 @@ export class MutationReplayService {
       await this.refreshSnapshot();
       trackObservabilityEvent('MUTATION_ENQUEUED', {
         mutationId: mutation.id,
+        method: mutation.method,
+        mutationTarget: resolveMutationTarget(mutation.url),
+        operationName,
+        queueDepth: this.snapshot.queueDepth,
+      });
+      trackProductEvent('quality.offline_write_queued', {
         method: mutation.method,
         mutationTarget: resolveMutationTarget(mutation.url),
         operationName,
@@ -193,6 +200,14 @@ export class MutationReplayService {
             attempt: nextAttempt,
             maxAttempts: nextMutation.maxAttempts,
             mutationId: nextMutation.id,
+            mutationTarget: resolveMutationTarget(nextMutation.url),
+            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+            queueDepth: this.snapshot.queueDepth,
+            statusCode: sendResult.statusCode,
+            trigger,
+          });
+          trackProductEvent('quality.offline_write_replayed', {
+            attempt: nextAttempt,
             mutationTarget: resolveMutationTarget(nextMutation.url),
             operationName: resolveOperationNameFromQueuedMutation(nextMutation),
             queueDepth: this.snapshot.queueDepth,

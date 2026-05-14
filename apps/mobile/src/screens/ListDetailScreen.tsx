@@ -36,6 +36,7 @@ import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
@@ -844,6 +845,19 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       source: 'ListDetailScreen',
       restaurantId: group.restaurantId,
     });
+    trackProductEvent('social.i_went_there_started', {
+      source: 'ListDetailScreen',
+      entryType: 'restaurant_visit',
+      hasRating: true,
+    });
+    trackProductEvent('tracking.entry_started', {
+      entryType: 'restaurant_visit',
+      source: 'list',
+      hasPhoto: false,
+      itemCount: 1,
+      ratingCount: 1,
+      completed: false,
+    });
     navigation.navigate('CreateVisit', {
       preselectedRestaurantId: group.restaurantId,
       preselectedRestaurantName: group.restaurantName,
@@ -938,6 +952,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           createdDefaultList: trackingContext.createdDefaultList,
           isOnline,
         });
+        trackProductEvent('social.recommendation_saved', {
+          source: 'ListDetailScreen',
+          entryMethod: trackingContext.entryMethod,
+          queued: true,
+          targetListCount: targetListIds.length,
+          createdDefaultList: trackingContext.createdDefaultList,
+        });
 
         setSaveBookmarkTarget(null);
         setSelectedSaveListIds(new Set());
@@ -966,6 +987,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         targetListCount: targetListIds.length,
         createdDefaultList: trackingContext.createdDefaultList,
         isOnline,
+      });
+      trackProductEvent('social.recommendation_saved', {
+        source: 'ListDetailScreen',
+        entryMethod: trackingContext.entryMethod,
+        queued: false,
+        targetListCount: targetListIds.length,
+        createdDefaultList: trackingContext.createdDefaultList,
       });
 
       setSaveBookmarkTarget(null);
@@ -1018,6 +1046,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             targetListCount: 1,
             createdDefaultList: true,
             isOnline,
+          });
+          trackProductEvent('social.recommendation_saved', {
+            source: 'ListDetailScreen',
+            entryMethod: 'quick_default',
+            queued: true,
+            targetListCount: 1,
+            createdDefaultList: true,
           });
           setSaveBookmarkTarget(null);
           setSelectedSaveListIds(new Set());

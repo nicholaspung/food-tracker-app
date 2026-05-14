@@ -79,6 +79,7 @@ Notes:
 - Waitlist approval signup links use `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`.
 - Waitlist confirmation emails, mobile invite sharing, and the public marketing App Store badge use `FOOD_TRACKER_IOS_APP_STORE_URL` / `EXPO_PUBLIC_IOS_APP_STORE_URL` / `IOS_APP_STORE_URL`. The default is `https://apps.apple.com/us/app/yummy-recs/id6761597807` in local, beta, and production.
 - The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
+- PostHog Web Analytics Authorized URLs must be configured in the PostHog dashboard for deployed web origins. Add `https://app.yummyrecs.com`, `https://beta.app.yummyrecs.com`, and any local Expo web origin you want to inspect, such as `http://localhost:19000`.
 - During VPS deploys, `scripts/deploy.sh` writes `backend/.env` as a symlink to `/opt/food-tracker-secrets/{beta|production}/.env`.
 
 ## Shared Environment Modes

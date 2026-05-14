@@ -51,6 +51,7 @@ import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
@@ -464,6 +465,26 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   );
 
   useEffect(() => {
+    trackProductEvent('social.feed_viewed', {
+      feedMode,
+      typeFilter,
+      sortFilter,
+      queryLength: debouncedTrimmedSearchQuery.length,
+      resultCount: loadedFeed.length,
+      source: 'HomeScreen',
+      trigger: debouncedTrimmedSearchQuery.length > 0 ? 'search_or_filter' : 'browse',
+      viewMode,
+    });
+  }, [
+    debouncedTrimmedSearchQuery.length,
+    feedMode,
+    loadedFeed.length,
+    sortFilter,
+    typeFilter,
+    viewMode,
+  ]);
+
+  useEffect(() => {
     if (!route.params?.initialView) {
       return;
     }
@@ -786,6 +807,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         itemCount: 1,
         source: 'HomeScreen',
       });
+      trackProductEvent('social.invite_shared', {
+        contentType: 'visit_photo',
+        itemCount: 1,
+        source: 'HomeScreen',
+      });
       navigation.navigate('VisitShareCustomization', {
         restaurantName,
         visitDate,
@@ -839,6 +865,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         itemCount: shareItems.length,
         source: 'HomeScreen',
       });
+      trackProductEvent('social.invite_shared', {
+        contentType: 'visit',
+        itemCount: shareItems.length,
+        source: 'HomeScreen',
+      });
       navigation.navigate('VisitShareCustomization', {
         restaurantName: visit.restaurantName,
         visitDate: visit.visitedAt || visit.createdAt,
@@ -864,6 +895,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       feedMode: nextMode,
       source: 'HomeScreen',
     });
+    trackProductEvent('social.feed_viewed', {
+      feedMode: nextMode,
+      source: 'HomeScreen',
+      trigger: 'feed_mode_change',
+    });
     setFeedMode(nextMode);
   }, []);
 
@@ -872,14 +908,26 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       filter: nextFilter,
       source: 'HomeScreen',
     });
+    trackProductEvent('social.feed_viewed', {
+      feedMode,
+      typeFilter: nextFilter,
+      source: 'HomeScreen',
+      trigger: 'type_filter_change',
+    });
     setTypeFilter(nextFilter);
-  }, []);
+  }, [feedMode]);
 
   const handleSortFilterChange = useCallback((nextSort: SortFilter) => {
     trackObservabilityEvent('HOME_SORT_FILTER_SELECTED', {
       feedMode,
       sort: nextSort,
       source: 'HomeScreen',
+    });
+    trackProductEvent('social.feed_viewed', {
+      feedMode,
+      sort: nextSort,
+      source: 'HomeScreen',
+      trigger: 'sort_change',
     });
     setSortByMode((previous) => ({
       ...previous,
@@ -918,6 +966,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       await invalidateHomeFeedQueries(queryClient);
       trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_SUCCEEDED', {
         source: 'HomeScreen',
+      });
+      trackProductEvent('social.invite_accepted', {
+        source: 'HomeScreen',
+      });
+      trackProductEvent('social.friend_added', {
+        source: 'HomeScreen',
+        entryMethod: 'invite_suggestion',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add this friend.';
@@ -992,6 +1047,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             onMoreActions={
               feedItem.isFriend
                 ? () => {
+                    trackProductEvent('social.feed_item_opened', {
+                      contentType: 'visit',
+                      feedMode,
+                      source: 'HomeScreen',
+                      surface: 'more_actions',
+                    });
                     homeFeedActions.promptReportMenuTarget({
                       id: visit.id,
                       itemName: visit.restaurantName,
@@ -1046,6 +1107,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           onMoreActions={
             feedItem.isFriend
               ? () => {
+                    trackProductEvent('social.feed_item_opened', {
+                      contentType: 'food_product',
+                      feedMode,
+                      source: 'HomeScreen',
+                      surface: 'more_actions',
+                    });
                     homeFeedActions.promptReportMenuTarget({
                       id: foodProduct.id,
                       itemName: foodProduct.itemName,
@@ -1070,6 +1137,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       handleShareVisit,
       highlightedVisitId,
       homeFeedActions,
+      feedMode,
       navigation,
       photosByFoodItem,
     ],
@@ -1438,6 +1506,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             <HomeFeedMapView
               currentUserId={currentUserId}
               errorMessage={homeFeedMapBlockingErrorMessage}
+              feedMode={feedMode}
               loading={homeFeedMapQuery.isLoading}
               omittedWithoutCoordinates={homeFeedMapQuery.data?.omittedWithoutCoordinates ?? 0}
               onRetry={() => {

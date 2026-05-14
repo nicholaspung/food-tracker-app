@@ -5,6 +5,7 @@ import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPerm
 import { useImageSourcePicker } from '../../hooks/useImageSourcePicker';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../../lib/photoStaging';
 import { captureObservabilityError, trackObservabilityEvent, type EventProperties } from '../../observability';
+import { trackProductEvent } from '../../observability/productAnalytics';
 import { parseMenuItemNamesFromCsv } from '../../screens/photoProcessing/shared';
 import type { MenuItemRecord } from './featureStore';
 import {
@@ -223,6 +224,16 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         const limitPayload = parseLimitExceededError(error);
         if (limitPayload) {
           trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+            enforcement: 'server',
+            limit: limitPayload.limit,
+            metric: limitPayload.metric,
+            monthKey: limitPayload.monthKey,
+            remaining: limitPayload.remaining,
+            source: options.analyticsSource,
+            used: limitPayload.used,
+            userTier: limitPayload.userTier ?? null,
+          });
+          trackProductEvent('quality.usage_limit_reached', {
             enforcement: 'server',
             limit: limitPayload.limit,
             metric: limitPayload.metric,

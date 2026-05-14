@@ -35,6 +35,7 @@ import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStagin
 import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
@@ -307,7 +308,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
     hasTrackedEditorOpenRef.current = true;
     trackObservabilityEvent('NOTE_EDITOR_OPENED', buildEditorAnalyticsPayload());
-  }, [buildEditorAnalyticsPayload]);
+    if (!isEditing) {
+      trackProductEvent('tracking.entry_started', {
+        entryType: 'note',
+        source: 'add_tab',
+        hasPhoto: newPhotos.length > 0,
+        itemCount: 1,
+        completed: false,
+      });
+    }
+  }, [buildEditorAnalyticsPayload, isEditing, newPhotos.length]);
 
   useEffect(
     () => () => {
@@ -326,8 +336,18 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
         }),
       );
+      if (!isEditing) {
+        trackProductEvent('tracking.entry_abandoned', {
+          entryType: 'note',
+          source: 'add_tab',
+          hasPhoto: newPhotos.length > 0,
+          itemCount: content.trim() ? 1 : 0,
+          completed: false,
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        });
+      }
     },
-    [buildEditorAnalyticsPayload],
+    [buildEditorAnalyticsPayload, content, isEditing, newPhotos.length],
   );
 
   const closeEditor = useCallback(() => {
@@ -394,6 +414,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         source: 'NoteEditorScreen',
         used: totalPhotoCount,
       });
+      trackProductEvent('quality.usage_limit_reached', {
+        enforcement: 'client_estimate',
+        limit: perNotePhotoLimit,
+        metric: 'photo_uploads_per_record',
+        remaining: photoQuotaUi.remainingPerRecord,
+        source: 'NoteEditorScreen',
+        used: totalPhotoCount,
+      });
       setErrorMessage(formatPhotoPerNoteLimitMessage(perNotePhotoLimit));
       return false;
     }
@@ -405,6 +433,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       typeof estimatedUsedWithDraftUploads === 'number'
     ) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: FREE_MONTHLY_PHOTO_LIMIT,
+        metric: 'photo_uploads',
+        remaining: remainingEstimatedMonthlySlots,
+        source: 'NoteEditorScreen',
+        used: estimatedUsedWithDraftUploads,
+      });
+      trackProductEvent('quality.usage_limit_reached', {
         enforcement: 'client_estimate',
         limit: FREE_MONTHLY_PHOTO_LIMIT,
         metric: 'photo_uploads',
@@ -460,6 +496,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     setNewPhotos((current) => [...current, ...nextPhotos]);
+    trackProductEvent('tracking.photo_added', {
+      entryType: 'note',
+      source: 'add_tab',
+      hasPhoto: true,
+      itemCount: 1,
+      completed: false,
+      photoCount: nextPhotos.length,
+    });
     setErrorMessage(nextPhotos.length === assets.length ? null : 'Some selected photos could not be read.');
     resetPhotoPermissionNeedsSettings();
   }, [resetPhotoPermissionNeedsSettings]);
@@ -634,6 +678,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           source: 'NoteEditorScreen',
           used: monthlyUsage.snapshot.usage.photoUploads,
         });
+        trackProductEvent('quality.usage_limit_reached', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'NoteEditorScreen',
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -685,6 +737,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           newPhotoCount: uploadPhotos.length,
           totalPhotoCount,
         });
+        if (!isEditing) {
+          trackProductEvent('tracking.entry_completed', {
+            entryType: 'note',
+            source: 'add_tab',
+            hasPhoto: uploadPhotos.length > 0,
+            itemCount: 1,
+            completed: true,
+            queued: true,
+          });
+        }
         hasCompletedEditorFlowRef.current = true;
         showQueuedOfflineAlert({
           analyticsSource: 'NoteEditorScreen',
@@ -716,6 +778,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         newPhotoCount: uploadPhotos.length,
         totalPhotoCount,
       });
+      if (!isEditing) {
+        trackProductEvent('tracking.entry_completed', {
+          entryType: 'note',
+          source: 'add_tab',
+          hasPhoto: uploadPhotos.length > 0,
+          itemCount: 1,
+          completed: true,
+          queued: false,
+        });
+      }
 
       hasCompletedEditorFlowRef.current = true;
       navigation.navigate('Notes');
@@ -723,6 +795,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
         trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'NoteEditorScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+        trackProductEvent('quality.usage_limit_reached', {
           enforcement: 'server',
           limit: limitPayload.limit,
           metric: limitPayload.metric,
@@ -749,6 +831,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         deletePhotoCount: photosToDelete.length,
         totalPhotoCount,
       });
+      if (!isEditing) {
+        trackProductEvent('tracking.entry_failed', {
+          entryType: 'note',
+          source: 'add_tab',
+          hasPhoto: uploadPhotos.length > 0,
+          itemCount: 1,
+          completed: false,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        });
+      }
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);

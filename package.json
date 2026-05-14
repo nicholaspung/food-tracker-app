@@ -60,7 +60,7 @@
     "turbo": "^2.9.10"
   },
   "dependencies": {
-    "expo": "~55.0.23",
+    "expo": "~55.0.24",
     "react": "19.2.0",
     "react-native": "0.83.6"
   },
@@ -84,7 +84,7 @@
       "yaml": "2.8.3"
     },
     "patchedDependencies": {
-      "expo-sqlite@55.0.15": "patches/expo-sqlite@55.0.15.patch"
+      "expo-sqlite@55.0.16": "patches/expo-sqlite@55.0.16.patch"
     }
   }
 }

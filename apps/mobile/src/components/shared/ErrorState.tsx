@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 import { trackObservabilityEvent, type JsonValue } from '../../observability';
+import { trackProductEvent } from '../../observability/productAnalytics';
 import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 
@@ -40,6 +41,15 @@ export function ErrorState({
 
     lastShownKeyRef.current = shownKey;
     trackObservabilityEvent('ERROR_STATE_SHOWN', {
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
+      hasDescription: Boolean(description),
+      hasRetry: Boolean(onRetry),
+      retryLabel: onRetry ? retryLabel : null,
+      source: 'ErrorState',
+      title,
+    });
+    trackProductEvent('quality.error_shown', {
       ...analyticsProps,
       analyticsSource: analyticsSource ?? null,
       hasDescription: Boolean(description),

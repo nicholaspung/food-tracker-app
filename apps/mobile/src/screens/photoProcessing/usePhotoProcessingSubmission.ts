@@ -26,6 +26,11 @@ import {
 import { buildFoodProductCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
 import {
+  trackFirstFoodLogged,
+  trackProductEvent,
+  type TrackingEntryProperties,
+} from '../../observability/productAnalytics';
+import {
   buildDefaultRestaurantForm,
   buildPhotoUploadInput,
   resolveDraftPhotoDetectedDateValue,
@@ -281,6 +286,26 @@ export function usePhotoProcessingSubmission({
       photoCount: photos.length,
       visitCount: groupedVisits.size,
     });
+    trackProductEvent('tracking.entry_completed', {
+      entryType: 'restaurant_visit',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: true,
+      itemCount: photos.length,
+      ratingCount: photos.length,
+      visibility: visitVisibility,
+      completed: true,
+      queued,
+      visitCount: groupedVisits.size,
+    });
+    trackFirstFoodLogged({
+      entryType: 'restaurant_visit',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: true,
+      itemCount: photos.length,
+      ratingCount: photos.length,
+      visibility: visitVisibility,
+      completed: true,
+    });
     return { queued };
   }, [
     photos,
@@ -340,6 +365,23 @@ export function usePhotoProcessingSubmission({
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
+    trackProductEvent('tracking.entry_completed', {
+      entryType: 'food_product',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: true,
+      itemCount: photos.length,
+      ratingCount: photos.length,
+      completed: true,
+      queued,
+    });
+    trackFirstFoodLogged({
+      entryType: 'food_product',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: true,
+      itemCount: photos.length,
+      ratingCount: photos.length,
+      completed: true,
+    });
     return { queued };
   }, [photos, foodProductForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
 
@@ -368,6 +410,14 @@ export function usePhotoProcessingSubmission({
           source: 'PhotoProcessingScreen',
           used: monthlyUsageSnapshot.usage.photoUploads,
         });
+        trackProductEvent('quality.usage_limit_reached', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'PhotoProcessingScreen',
+          used: monthlyUsageSnapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -376,6 +426,20 @@ export function usePhotoProcessingSubmission({
     }
 
     setErrorMessage(null);
+    const trackingProperties: TrackingEntryProperties = {
+      entryType: processType === 'restaurant' ? 'restaurant_visit' : 'food_product',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: photos.length > 0,
+      itemCount: photos.length,
+      ratingCount: photos.length,
+      visibility: processType === 'restaurant' ? visitVisibility : undefined,
+      completed: false,
+    };
+    trackProductEvent('tracking.rating_added', trackingProperties);
+    trackProductEvent('tracking.photo_added', trackingProperties);
+    if (processType === 'restaurant') {
+      trackProductEvent('tracking.visibility_selected', trackingProperties);
+    }
     trackObservabilityEvent('PHOTO_PROCESSING_SUBMIT_STARTED', {
       source: 'PhotoProcessingScreen',
       processType,
@@ -451,6 +515,16 @@ export function usePhotoProcessingSubmission({
           used: limitPayload.used,
           userTier: limitPayload.userTier ?? null,
         });
+        trackProductEvent('quality.usage_limit_reached', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'PhotoProcessingScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
       }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
@@ -465,6 +539,11 @@ export function usePhotoProcessingSubmission({
         errorType: error instanceof Error ? error.name : 'unknown_error',
         photoCount: photos.length,
         sourceNoteAttached: Boolean(sourceNoteId),
+      });
+      trackProductEvent('tracking.entry_failed', {
+        ...trackingProperties,
+        completed: false,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
       });
       trackObservabilityEvent('Photo Processing Failed', {
         errorMessage: message,
@@ -488,6 +567,7 @@ export function usePhotoProcessingSubmission({
     onSubmitSucceeded,
     submitFoodProductItems,
     submitRestaurantVisits,
+    visitVisibility,
   ]);
 
   return {

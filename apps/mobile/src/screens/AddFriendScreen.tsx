@@ -9,6 +9,7 @@ import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFe
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
@@ -124,6 +125,11 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
           entryMethod: 'manual_code',
           queued: true,
         });
+        trackProductEvent('social.friend_request_sent', {
+          source: 'AddFriendScreen',
+          entryMethod: 'manual_code',
+          queued: true,
+        });
         showQueuedOfflineAlert('Friend request');
         handleRequestComplete();
         return;
@@ -131,6 +137,11 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
 
       await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
       trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
+        source: 'AddFriendScreen',
+        entryMethod: 'manual_code',
+        queued: false,
+      });
+      trackProductEvent('social.friend_request_sent', {
         source: 'AddFriendScreen',
         entryMethod: 'manual_code',
         queued: false,

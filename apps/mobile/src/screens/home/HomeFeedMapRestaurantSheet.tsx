@@ -6,18 +6,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CachedRemoteImage } from '../../components/shared';
-import { formatDisplayDate } from '../../lib/dateFormatting';
 import { buildPhotoThumbnailUrl } from '../../lib/photoUrls';
 import { getRatingColor } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { formatMapItemDate } from './homeFeedMapDateFormatting';
 import type {
   HomeFeedMapRestaurantGroup,
   HomeFeedMapRestaurantItem,
 } from './homeFeedMapGrouping';
+import type { FeedMode } from './homeFeedTypes';
 import type { VisitPhotoRecord } from './shared';
 
 interface HomeFeedMapRestaurantSheetProps {
+  feedMode: FeedMode;
   group: HomeFeedMapRestaurantGroup | null;
   onClose: () => void;
   onOpenPhotoViewer?: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
@@ -162,29 +164,20 @@ function buildSummary(group: HomeFeedMapRestaurantGroup): string {
   return `${ratings} • ${visits}${foodProducts}`;
 }
 
-function formatItemDate(value: string): string {
-  return formatDisplayDate(value, {
-    fallback: '',
-    options: {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    },
-  });
-}
-
 function RestaurantItemRow({
+  feedMode,
   item,
   onOpenPhotoViewer,
   showNotes,
 }: {
+  feedMode: FeedMode;
   item: HomeFeedMapRestaurantItem;
   onOpenPhotoViewer?: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
   showNotes: boolean;
 }) {
   const theme = useTheme();
   const styles = useStyles();
-  const itemDateLabel = formatItemDate(item.eventAt);
+  const itemDateLabel = formatMapItemDate(item.eventAt, feedMode);
   const primaryPhoto = item.photoPreviews[0] ?? null;
   const thumbnailUrl = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
 
@@ -250,6 +243,7 @@ function RestaurantItemRow({
 }
 
 export function HomeFeedMapRestaurantSheet({
+  feedMode,
   group,
   onClose,
   onOpenPhotoViewer,
@@ -317,6 +311,7 @@ export function HomeFeedMapRestaurantSheet({
 
             {topItems.map((item) => (
               <RestaurantItemRow
+                feedMode={feedMode}
                 item={item}
                 key={`top-${item.id}`}
                 onOpenPhotoViewer={onOpenPhotoViewer}
@@ -338,7 +333,12 @@ export function HomeFeedMapRestaurantSheet({
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.content}>
-            <RestaurantItemRow item={item} onOpenPhotoViewer={onOpenPhotoViewer} showNotes />
+            <RestaurantItemRow
+              feedMode={feedMode}
+              item={item}
+              onOpenPhotoViewer={onOpenPhotoViewer}
+              showNotes
+            />
           </View>
         )}
       />

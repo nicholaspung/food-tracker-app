@@ -43,6 +43,7 @@ import { getErrorMessage } from '../lib/errorUtils';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
@@ -406,6 +407,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_COMPLETED", {
         codeId,
         source: "ProfileScreen",
+      });
+      trackProductEvent('social.invite_shared', {
+        source: 'ProfileScreen',
+        shareMethod: 'invite_code',
       });
     } catch (error) {
       trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_FAILED", {

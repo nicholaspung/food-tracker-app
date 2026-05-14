@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { trackObservabilityEvent, type JsonValue } from '../../observability';
+import { trackProductEvent } from '../../observability/productAnalytics';
 import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 import type { CardProps } from '../../ui';
@@ -63,6 +64,15 @@ export function EmptyState({
 
     lastShownKeyRef.current = shownKey;
     trackObservabilityEvent('EMPTY_STATE_SHOWN', {
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
+      hasAction,
+      hasDescription: Boolean(description),
+      source: 'EmptyState',
+      title,
+      variant: fill ? 'fill' : 'inline',
+    });
+    trackProductEvent('quality.empty_state_shown', {
       ...analyticsProps,
       analyticsSource: analyticsSource ?? null,
       hasAction,

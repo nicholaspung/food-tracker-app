@@ -1,10 +1,15 @@
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { logger } from '../lib/logger';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
+import {
+  setProductAnalyticsAnonymousId,
+  trackProductEvent,
+} from '../observability/productAnalytics';
 import { SplashScreen } from '../screens/SplashScreen';
 import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './queryPersistence';
 import { AuthProvider } from './AuthProvider';
@@ -21,6 +26,7 @@ const queryClient = new QueryClient({
     },
   },
 });
+const PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY = 'analytics.product.anonymousId';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -35,12 +41,20 @@ export function AppProviders({ children }: AppProvidersProps) {
 
   useEffect(() => {
     initializeObservability();
+    void resolveProductAnalyticsAnonymousId().then(setProductAnalyticsAnonymousId).catch((error) => {
+      logger.warn('[AppProviders] Failed to resolve product analytics anonymous id:', error);
+    });
     focusManager.setFocused(appStateRef.current === 'active');
     setObservabilityContext({
       appState: appStateRef.current,
       sessionActive: true,
     });
     trackObservabilityEvent('SESSION_STARTED', {
+      appState: appStateRef.current,
+      source: 'AppProviders',
+      trigger: 'cold_start',
+    });
+    trackProductEvent('retention.session_started', {
       appState: appStateRef.current,
       source: 'AppProviders',
       trigger: 'cold_start',
@@ -126,6 +140,11 @@ export function AppProviders({ children }: AppProvidersProps) {
           source: 'AppProviders',
           trigger: 'foreground',
         });
+        trackProductEvent('retention.session_started', {
+          previousAppState: previousState,
+          source: 'AppProviders',
+          trigger: 'foreground',
+        });
         return;
       }
 
@@ -140,6 +159,11 @@ export function AppProviders({ children }: AppProvidersProps) {
           source: 'AppProviders',
         });
         trackObservabilityEvent('SESSION_ENDED', {
+          reason: 'background',
+          sessionDurationMs,
+          source: 'AppProviders',
+        });
+        trackProductEvent('retention.session_ended', {
           reason: 'background',
           sessionDurationMs,
           source: 'AppProviders',
@@ -169,4 +193,15 @@ export function AppProviders({ children }: AppProvidersProps) {
       </QueryClientProvider>
     </ConnectivityProvider>
   );
+}
+
+async function resolveProductAnalyticsAnonymousId(): Promise<string> {
+  const existingAnonymousId = await AsyncStorage.getItem(PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY);
+  if (existingAnonymousId?.trim()) {
+    return existingAnonymousId;
+  }
+
+  const nextAnonymousId = `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  await AsyncStorage.setItem(PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY, nextAnonymousId);
+  return nextAnonymousId;
 }

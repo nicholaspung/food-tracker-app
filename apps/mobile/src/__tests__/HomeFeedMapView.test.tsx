@@ -157,6 +157,7 @@ function renderMapView(
     renderer = create(
       <HomeFeedMapView
         errorMessage={null}
+        feedMode="mine"
         loading={false}
         omittedWithoutCoordinates={0}
         onRetry={jest.fn()}
@@ -241,6 +242,16 @@ describe('HomeFeedMapView', () => {
     expect(sheet.props.onOpenPhotoViewer).toBe(onOpenPhotoViewer);
   });
 
+  it('passes the active feed mode to the bottom sheet', () => {
+    const renderer = renderMapView({
+      feedMode: 'friends',
+      selectedGroupId: 'restaurant-1',
+    });
+
+    const sheet = renderer.root.findByType('HomeFeedMapRestaurantSheet');
+    expect(sheet.props.feedMode).toBe('friends');
+  });
+
   it('resets the map camera to the initial region when reset signal changes', () => {
     const renderer = renderMapView({
       resetSignal: 0,
@@ -251,6 +262,7 @@ describe('HomeFeedMapView', () => {
       renderer.update(
         <HomeFeedMapView
           errorMessage={null}
+          feedMode="mine"
           loading={false}
           omittedWithoutCoordinates={0}
           onRetry={jest.fn()}

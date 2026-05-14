@@ -34,6 +34,7 @@ import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites
 import { notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -565,6 +566,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           trackObservabilityEvent('NOTE_USE_TAPPED', {
             source: 'NotesScreen',
             noteStatus: targetNote.status,
+          });
+          trackProductEvent('tracking.entry_started', {
+            entryType: 'photo_batch',
+            source: 'note',
+            hasPhoto: (targetNote.photoPreview?.count ?? 0) > 0,
+            itemCount: targetNote.photoPreview?.count ?? 0,
+            completed: false,
           });
           navigation.navigate('ProcessPhotos', { sourceNoteId: targetNote.id });
         }}

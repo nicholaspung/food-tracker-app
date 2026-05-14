@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { PostHog } from 'posthog-react-native';
 import { Platform } from 'react-native';
 
@@ -15,24 +14,34 @@ export type JsonValue =
 
 export type EventProperties = Record<string, JsonValue>;
 type ContextPropertiesInput = Record<string, JsonValue | undefined>;
+type ExpoConstants = typeof import('expo-constants')['default'];
+export type WebPageAnalyticsProperties = {
+  durationMs?: number;
+  nextScreenName?: string | null;
+  previousScreenName?: string | null;
+  reason?: 'navigation' | 'app_background' | null;
+  screenName: string;
+};
 
 let initialized = false;
 let posthogClient: PostHog | null = null;
 let contextProperties: EventProperties = {};
 const warnedRedactionKeys = new Set<string>();
+const expoConstants = readExpoConstants();
+const platformOS = readPlatformOS();
 
 const staticEventProperties: EventProperties = {
   appEnvironment: __DEV__ ? 'development' : 'production',
-  appVersion: Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? null,
+  appVersion: expoConstants?.expoConfig?.version ?? expoConstants?.nativeAppVersion ?? null,
   buildVersion:
-    Constants.nativeBuildVersion ??
-    (Platform.OS === 'ios'
-      ? (Constants.expoConfig?.ios?.buildNumber ?? null)
-      : (typeof Constants.expoConfig?.android?.versionCode === 'number'
-          ? String(Constants.expoConfig.android.versionCode)
+    expoConstants?.nativeBuildVersion ??
+    (platformOS === 'ios'
+      ? (expoConstants?.expoConfig?.ios?.buildNumber ?? null)
+      : (typeof expoConstants?.expoConfig?.android?.versionCode === 'number'
+          ? String(expoConstants.expoConfig.android.versionCode)
           : null)),
-  executionEnvironment: Constants.executionEnvironment ?? null,
-  platform: Platform.OS,
+  executionEnvironment: expoConstants?.executionEnvironment ?? null,
+  platform: platformOS,
 };
 
 export function initializeObservability(): void {
@@ -64,6 +73,19 @@ export function resetObservabilityIdentity(): void {
   }
 
   posthogClient?.reset();
+}
+
+export function identifyObservabilityUser(userKey: string, traits?: EventProperties): void {
+  if (!initialized) {
+    return;
+  }
+
+  const { redactedKeys, sanitized } = sanitizeEventProperties(traits);
+  if (__DEV__ && redactedKeys.length > 0) {
+    warnOnRedactedEventProperties('OBSERVABILITY_USER_IDENTIFIED', redactedKeys);
+  }
+
+  posthogClient?.identify(userKey, sanitized);
 }
 
 export function setObservabilityContext(properties: ContextPropertiesInput): void {
@@ -104,6 +126,22 @@ export function trackObservabilityEvent(eventName: string, properties?: EventPro
   });
 }
 
+export function trackWebPageView(properties: WebPageAnalyticsProperties): void {
+  if (!canCaptureWebPageAnalytics()) {
+    return;
+  }
+
+  posthogClient?.capture('$pageview', buildWebPageAnalyticsProperties(properties));
+}
+
+export function trackWebPageLeave(properties: WebPageAnalyticsProperties): void {
+  if (!canCaptureWebPageAnalytics()) {
+    return;
+  }
+
+  posthogClient?.capture('$pageleave', buildWebPageAnalyticsProperties(properties));
+}
+
 export function captureObservabilityError(error: unknown, properties?: EventProperties): void {
   if (!initialized) {
     return;
@@ -131,6 +169,47 @@ export function captureObservabilityError(error: unknown, properties?: EventProp
   });
 }
 
+function canCaptureWebPageAnalytics(): boolean {
+  return initialized && posthogClient !== null && readPlatformOS() === 'web' && typeof window !== 'undefined';
+}
+
+function readPlatformOS(): string {
+  return Platform?.OS ?? 'unknown';
+}
+
+function readExpoConstants(): ExpoConstants | null {
+  if (process.env.NODE_ENV === 'test' && Platform?.OS === undefined) {
+    return null;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const constantsModule = require('expo-constants') as { default?: ExpoConstants };
+    return constantsModule.default ?? (constantsModule as ExpoConstants);
+  } catch {
+    return null;
+  }
+}
+
+function buildWebPageAnalyticsProperties(properties: WebPageAnalyticsProperties): EventProperties {
+  const location = window.location;
+  const currentUrl = `${location.origin}${location.pathname}`;
+  const referrer = typeof document !== 'undefined' && document.referrer ? document.referrer : null;
+
+  return {
+    ...staticEventProperties,
+    $current_url: currentUrl,
+    $host: location.host,
+    $pathname: location.pathname,
+    $referrer: referrer,
+    durationMs: properties.durationMs ?? null,
+    nextScreenName: properties.nextScreenName ?? null,
+    previousScreenName: properties.previousScreenName ?? null,
+    reason: properties.reason ?? null,
+    screenName: properties.screenName,
+  };
+}
+
 function sanitizeEventProperties(
   properties?: EventProperties,
 ): { sanitized: EventProperties; redactedKeys: string[] } {
@@ -150,7 +229,7 @@ function sanitizeEventProperties(
       return;
     }
 
-    const sanitizedValue = sanitizeJsonValue(value);
+    const sanitizedValue = sanitizeJsonValue(value, redactedKeys, key);
     if (sanitizedValue !== undefined) {
       sanitized[key] = sanitizedValue;
     }
@@ -184,11 +263,31 @@ function shouldRedactObservabilityKey(key: string): boolean {
     normalizedKey === 'name' ||
     normalizedKey === 'query' ||
     normalizedKey === 'location' ||
+    normalizedKey === 'searchtext' ||
+    normalizedKey === 'searchquery' ||
+    normalizedKey === 'notes' ||
+    normalizedKey === 'note' ||
+    normalizedKey === 'freetext' ||
+    normalizedKey === 'restaurantname' ||
+    normalizedKey === 'itemname' ||
+    normalizedKey === 'foodname' ||
+    normalizedKey === 'friendname' ||
+    normalizedKey === 'username' ||
+    normalizedKey === 'placename' ||
+    normalizedKey === 'placeid' ||
+    normalizedKey === 'latitude' ||
+    normalizedKey === 'longitude' ||
+    normalizedKey === 'lat' ||
+    normalizedKey === 'lng' ||
     normalizedKey.endsWith('id')
   );
 }
 
-function sanitizeJsonValue(value: JsonValue): JsonValue | undefined {
+function sanitizeJsonValue(
+  value: JsonValue,
+  redactedKeys?: string[],
+  path?: string,
+): JsonValue | undefined {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return value;
   }
@@ -199,7 +298,7 @@ function sanitizeJsonValue(value: JsonValue): JsonValue | undefined {
 
   if (Array.isArray(value)) {
     const nextArray = value
-      .map((item) => sanitizeJsonValue(item))
+      .map((item) => sanitizeJsonValue(item, redactedKeys, path))
       .filter((item): item is JsonValue => item !== undefined);
     return nextArray;
   }
@@ -207,7 +306,13 @@ function sanitizeJsonValue(value: JsonValue): JsonValue | undefined {
   if (typeof value === 'object') {
     const nextObject: Record<string, JsonValue> = {};
     Object.entries(value).forEach(([key, item]) => {
-      const sanitizedItem = sanitizeJsonValue(item);
+      const nextPath = path ? `${path}.${key}` : key;
+      if (shouldRedactObservabilityKey(key)) {
+        redactedKeys?.push(nextPath);
+        return;
+      }
+
+      const sanitizedItem = sanitizeJsonValue(item, redactedKeys, nextPath);
       if (sanitizedItem !== undefined) {
         nextObject[key] = sanitizedItem;
       }

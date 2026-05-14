@@ -24,9 +24,11 @@ import {
   buildInitialMapRegion,
   buildSelectedRestaurantRegion,
 } from './homeFeedMapRegion';
+import type { FeedMode } from './homeFeedTypes';
 import type { VisitPhotoRecord } from './shared';
 
 interface HomeFeedMapViewProps {
+  feedMode: FeedMode;
   points: HomeFeedMapPoint[];
   photoPreviews?: HomeFeedPhotoPreviewRecord[];
   currentUserId?: string | null;
@@ -181,6 +183,7 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function HomeFeedMapView({
+  feedMode,
   points,
   photoPreviews = [],
   currentUserId,
@@ -398,6 +401,7 @@ export function HomeFeedMapView({
       ) : null}
 
       <HomeFeedMapRestaurantSheet
+        feedMode={feedMode}
         group={selectedGroup}
         onClose={() => {
           onSelectedGroupChange(null);

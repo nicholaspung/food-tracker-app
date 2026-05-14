@@ -25,6 +25,11 @@ import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import { buildVisitCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
 import {
+  trackFirstFoodLogged,
+  trackProductEvent,
+  type TrackingEntryProperties,
+} from '../../observability/productAnalytics';
+import {
   FREE_MONTHLY_PHOTO_LIMIT,
   type CreateVisitNavigationProp,
   type DraftVisitItem,
@@ -137,6 +142,15 @@ export function useCreateVisitSubmission({
     const itemCount = parsedItems.length;
     const hasNotes = parsedItems.some((item) => Boolean(item.notes));
     const hasPhotos = parsedItems.some((item) => item.newPhotos.length > 0);
+    const productTrackingProperties: TrackingEntryProperties = {
+      entryType: 'restaurant_visit',
+      source: sourceListItemAttached ? 'list' : sourceNoteAttached ? 'note' : 'add_tab',
+      hasPhoto: hasPhotos,
+      itemCount,
+      ratingCount: parsedItems.filter((item) => item.rating >= 1 && item.rating <= 5).length,
+      visibility: visitVisibility,
+      completed: false,
+    };
 
     if (parsedItems.some((item) => item.rating < 1 || item.rating > 5)) {
       trackSubmitValidationFailed('invalid_ratings');
@@ -161,6 +175,14 @@ export function useCreateVisitSubmission({
           0,
         );
         trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'CreateVisitScreen',
+          used: monthlyUsageSnapshot.usage.photoUploads,
+        });
+        trackProductEvent('quality.usage_limit_reached', {
           enforcement: 'client_estimate',
           limit: FREE_MONTHLY_PHOTO_LIMIT,
           metric: 'photo_uploads',
@@ -195,6 +217,20 @@ export function useCreateVisitSubmission({
     const hasPhotoUploads = hasPhotos;
 
     setErrorMessage(null);
+    trackProductEvent('tracking.rating_added', {
+      ...productTrackingProperties,
+      completed: false,
+    });
+    if (hasPhotos) {
+      trackProductEvent('tracking.photo_added', {
+        ...productTrackingProperties,
+        completed: false,
+      });
+    }
+    trackProductEvent('tracking.visibility_selected', {
+      ...productTrackingProperties,
+      completed: false,
+    });
     trackObservabilityEvent('CREATE_VISIT_SUBMIT_STARTED', {
       source: 'CreateVisitScreen',
       mode,
@@ -264,6 +300,11 @@ export function useCreateVisitSubmission({
             sourceNoteAttached,
             sourceListItemAttached,
           });
+          trackProductEvent('tracking.entry_completed', {
+            ...productTrackingProperties,
+            completed: true,
+            queued: true,
+          });
           showQueuedOfflineAlert({
             analyticsSource: 'CreateVisitScreen',
             subject: 'Visit update',
@@ -289,6 +330,11 @@ export function useCreateVisitSubmission({
           visitVisibility,
           sourceNoteAttached,
           sourceListItemAttached,
+        });
+        trackProductEvent('tracking.entry_completed', {
+          ...productTrackingProperties,
+          completed: true,
+          queued: false,
         });
         navigateAfterEdit();
         return;
@@ -353,6 +399,21 @@ export function useCreateVisitSubmission({
           sourceNoteAttached,
           sourceListItemAttached,
         });
+        trackProductEvent('tracking.entry_completed', {
+          ...productTrackingProperties,
+          completed: true,
+          queued: true,
+        });
+        if (sourceListItemAttached) {
+          trackProductEvent('social.i_went_there_completed', {
+            source: 'CreateVisitScreen',
+            queued: true,
+          });
+        }
+        trackFirstFoodLogged({
+          ...productTrackingProperties,
+          completed: true,
+        });
         showQueuedOfflineAlert({
           analyticsSource: 'CreateVisitScreen',
           subject: 'Visit',
@@ -406,6 +467,21 @@ export function useCreateVisitSubmission({
         sourceNoteAttached,
         sourceListItemAttached,
       });
+      trackProductEvent('tracking.entry_completed', {
+        ...productTrackingProperties,
+        completed: true,
+        queued: false,
+      });
+      if (sourceListItemAttached) {
+        trackProductEvent('social.i_went_there_completed', {
+          source: 'CreateVisitScreen',
+          queued: false,
+        });
+      }
+      trackFirstFoodLogged({
+        ...productTrackingProperties,
+        completed: true,
+      });
 
       if (sourceNoteId && noteUsedAt) {
         promoteCachedNoteToUsed(queryClient, {
@@ -435,6 +511,16 @@ export function useCreateVisitSubmission({
           used: limitPayload.used,
           userTier: limitPayload.userTier ?? null,
         });
+        trackProductEvent('quality.usage_limit_reached', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'CreateVisitScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
       }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
@@ -453,6 +539,11 @@ export function useCreateVisitSubmission({
         visitVisibility,
         sourceNoteAttached,
         sourceListItemAttached,
+      });
+      trackProductEvent('tracking.entry_failed', {
+        ...productTrackingProperties,
+        completed: false,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
       });
       trackObservabilityEvent('Visit Creation Failed', {
         errorMessage: message,

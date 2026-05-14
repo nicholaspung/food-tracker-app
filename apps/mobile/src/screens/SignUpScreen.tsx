@@ -15,6 +15,7 @@ import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
@@ -211,6 +212,12 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       inviteCodeLength: trimmedInviteCode.length,
       accessMode,
     });
+    trackProductEvent('activation.signup_started', {
+      source: 'SignUpScreen',
+      hasInviteCode: Boolean(trimmedInviteCode),
+      inviteCodeLength: trimmedInviteCode.length,
+      accessMode,
+    });
 
     try {
       let pendingFriendSuggestion: PendingFriendSuggestion | null = null;
@@ -271,6 +278,11 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       }
 
       trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_SUCCEEDED', {
+        source: 'SignUpScreen',
+        hasInviter: Boolean(pendingFriendSuggestion),
+        accessMode,
+      });
+      trackProductEvent('activation.signup_completed', {
         source: 'SignUpScreen',
         hasInviter: Boolean(pendingFriendSuggestion),
         accessMode,

@@ -103,6 +103,7 @@ jest.mock('../lib/rolePreview', () => ({
 
 jest.mock('../observability', () => ({
   captureObservabilityError: jest.fn(),
+  identifyObservabilityUser: jest.fn(),
   resetObservabilityIdentity: jest.fn(),
   setObservabilityContext: jest.fn(),
   trackObservabilityEvent: jest.fn(),

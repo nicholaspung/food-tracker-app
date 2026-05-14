@@ -40,6 +40,7 @@ import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
@@ -338,6 +339,28 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     resultCount: visibleFriends.length,
   });
 
+  useEffect(() => {
+    if (mainTab !== 'friends-list') {
+      return;
+    }
+
+    trackProductEvent('social.feed_viewed', {
+      source: 'FriendsScreen',
+      friendsSubTab,
+      resultCount: visibleFriends.length,
+    });
+  }, [friendsSubTab, mainTab, visibleFriends.length]);
+
+  useEffect(() => {
+    if (mainTab !== 'my-code') {
+      return;
+    }
+
+    trackProductEvent('social.friend_code_viewed', {
+      source: 'FriendsScreen',
+    });
+  }, [mainTab]);
+
   const invalidateFriends = async () => {
     await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
   };
@@ -395,6 +418,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           queued: true,
           subTab: friendsSubTab,
         });
+        trackProductEvent('social.friend_added', {
+          source: 'FriendsScreen',
+          queued: true,
+        });
         showQueuedOfflineAlert({
           analyticsSource: 'FriendsScreen',
           subject: 'Friend action',
@@ -408,6 +435,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         action: 'accept',
         queued: false,
         subTab: friendsSubTab,
+      });
+      trackProductEvent('social.friend_added', {
+        source: 'FriendsScreen',
+        queued: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not accept friend request.';
@@ -541,6 +572,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       await Clipboard.setStringAsync(myFriendCode);
       trackObservabilityEvent('FRIEND_CODE_COPIED', {
         source: 'FriendsScreen',
+      });
+      trackProductEvent('social.invite_shared', {
+        source: 'FriendsScreen',
+        shareMethod: 'friend_code_copy',
       });
       Alert.alert('Copied', 'Friend code copied to clipboard.');
     } catch (error) {

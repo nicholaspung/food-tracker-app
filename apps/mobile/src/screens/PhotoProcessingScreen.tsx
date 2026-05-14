@@ -60,6 +60,7 @@ import {
 } from '../lib/visitRestaurantSearch';
 import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { MenuScanPhotoProcessingScreen } from './MenuScanPhotoProcessingScreen';
@@ -803,7 +804,15 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
     hasTrackedFlowOpenRef.current = true;
     trackObservabilityEvent('PHOTO_PROCESSING_FLOW_OPENED', buildFlowAnalyticsPayload());
-  }, [buildFlowAnalyticsPayload]);
+    trackProductEvent('tracking.entry_started', {
+      entryType: 'photo_batch',
+      source: sourceNoteId ? 'note' : 'photo_processing',
+      hasPhoto: photos.length > 0,
+      itemCount: photos.length,
+      completed: false,
+      processType: processType ?? 'unselected',
+    });
+  }, [buildFlowAnalyticsPayload, photos.length, processType, sourceNoteId]);
 
   useEffect(() => {
     if (lastTrackedStepRef.current === step) {
@@ -831,8 +840,18 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
         }),
       );
+      trackProductEvent('tracking.entry_abandoned', {
+        entryType: 'photo_batch',
+        source: sourceNoteId ? 'note' : 'photo_processing',
+        hasPhoto: photos.length > 0,
+        itemCount: photos.length,
+        ratingCount: ratedCount,
+        completed: false,
+        exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        processType: processType ?? 'unselected',
+      });
     },
-    [buildFlowAnalyticsPayload],
+    [buildFlowAnalyticsPayload, photos.length, processType, ratedCount, sourceNoteId],
   );
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
@@ -850,11 +869,29 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         source: 'PhotoProcessingScreen',
         used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
       });
+      trackProductEvent('quality.usage_limit_reached', {
+        enforcement: 'client_estimate',
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: 'places_queries',
+        remaining: placesQueriesRemaining,
+        source: 'PhotoProcessingScreen',
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
       return;
     }
 
     if (result.status === 'error' && result.limitPayload) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'server',
+        limit: result.limitPayload.limit,
+        metric: result.limitPayload.metric,
+        monthKey: result.limitPayload.monthKey,
+        remaining: result.limitPayload.remaining,
+        source: 'PhotoProcessingScreen',
+        used: result.limitPayload.used,
+        userTier: result.limitPayload.userTier ?? null,
+      });
+      trackProductEvent('quality.usage_limit_reached', {
         enforcement: 'server',
         limit: result.limitPayload.limit,
         metric: result.limitPayload.metric,
@@ -880,11 +917,29 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         source: 'PhotoProcessingScreen',
         used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
       });
+      trackProductEvent('quality.usage_limit_reached', {
+        enforcement: 'client_estimate',
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: 'places_queries',
+        remaining: placesQueriesRemaining,
+        source: 'PhotoProcessingScreen',
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
       return;
     }
 
     if (result.status === 'error' && result.limitPayload) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'server',
+        limit: result.limitPayload.limit,
+        metric: result.limitPayload.metric,
+        monthKey: result.limitPayload.monthKey,
+        remaining: result.limitPayload.remaining,
+        source: 'PhotoProcessingScreen',
+        used: result.limitPayload.used,
+        userTier: result.limitPayload.userTier ?? null,
+      });
+      trackProductEvent('quality.usage_limit_reached', {
         enforcement: 'server',
         limit: result.limitPayload.limit,
         metric: result.limitPayload.metric,
@@ -1058,6 +1113,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       });
       if (shouldHidePhotoSourceActions) {
         trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining: estimatedFreeMonthlyPhotoRemaining,
+          source: 'PhotoProcessingScreen',
+          used: estimatedFreeMonthlyPhotoTotal,
+        });
+        trackProductEvent('quality.usage_limit_reached', {
           enforcement: 'client_estimate',
           limit: FREE_MONTHLY_PHOTO_LIMIT,
           metric: 'photo_uploads',

@@ -8,11 +8,12 @@ require (
 	cloud.google.com/go/maps v1.25.0
 	github.com/gabriel-vasile/mimetype v1.4.10
 	github.com/google/generative-ai-go v0.20.1
+	github.com/google/uuid v1.6.0
 	github.com/jdeng/goheif v0.0.0-20251001174315-babb64285736
 	github.com/joho/godotenv v1.5.1
 	github.com/pocketbase/dbx v1.11.0
 	github.com/pocketbase/pocketbase v0.30.4
-	github.com/posthog/posthog-go v1.6.13
+	github.com/posthog/posthog-go v1.12.5
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	google.golang.org/api v0.254.0
 	google.golang.org/genproto v0.0.0-20251029180050-ab9386a59fda
@@ -37,9 +38,9 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect

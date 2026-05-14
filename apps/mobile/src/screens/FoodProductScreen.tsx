@@ -43,6 +43,11 @@ import {
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import {
+  trackFirstFoodLogged,
+  trackProductEvent,
+  type TrackingEntryProperties,
+} from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
@@ -224,6 +229,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           restoredPendingResult: true,
           source: 'FoodProductScreen',
         });
+        trackProductEvent('tracking.photo_added', {
+          entryType: 'food_product',
+          source: sourceNoteId ? 'note' : 'add_tab',
+          hasPhoto: true,
+          itemCount: 1,
+          ratingCount: form.rating > 0 ? 1 : 0,
+          visibility: form.visibility,
+          completed: false,
+        });
       } catch (error) {
         trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
           errorMessage: error instanceof Error ? error.message : String(error),
@@ -239,7 +253,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     return () => {
       isMounted = false;
     };
-  }, [applyPhotoCaptureDate]);
+  }, [applyPhotoCaptureDate, form.rating, form.visibility, sourceNoteId]);
 
   const handlePhotoPick = async (source: PhotoSource) => {
     trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
@@ -251,6 +265,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
     if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
         trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining: estimatedFreePhotoRemaining,
+          source: 'FoodProductScreen',
+          used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
+        });
+        trackProductEvent('quality.usage_limit_reached', {
           enforcement: 'client_estimate',
           limit: FREE_MONTHLY_PHOTO_LIMIT,
           metric: 'photo_uploads',
@@ -328,6 +350,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         photoSource: source,
         source: 'FoodProductScreen',
       });
+      trackProductEvent('tracking.photo_added', {
+        entryType: 'food_product',
+        source: sourceNoteId ? 'note' : 'add_tab',
+        hasPhoto: true,
+        itemCount: 1,
+        ratingCount: form.rating > 0 ? 1 : 0,
+        visibility: form.visibility,
+        completed: false,
+      });
       resetPhotoPermissionNeedsSettings();
     } catch (error) {
       trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
@@ -369,6 +400,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           source: 'FoodProductScreen',
           used: monthlyUsage.snapshot.usage.photoUploads,
         });
+        trackProductEvent('quality.usage_limit_reached', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'FoodProductScreen',
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -377,6 +416,17 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     }
 
     setErrorMessage(null);
+    const productTrackingProperties: TrackingEntryProperties = {
+      entryType: 'food_product',
+      source: sourceNoteId ? 'note' : 'add_tab',
+      hasPhoto: Boolean(photo),
+      itemCount: 1,
+      ratingCount: form.rating > 0 ? 1 : 0,
+      visibility: form.visibility,
+      completed: false,
+    };
+    trackProductEvent('tracking.rating_added', productTrackingProperties);
+    trackProductEvent('tracking.visibility_selected', productTrackingProperties);
     trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_STARTED', {
       source: 'FoodProductScreen',
       isOnline,
@@ -439,6 +489,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           sourceNoteAttached: Boolean(sourceNoteId),
           visibility: form.visibility,
         });
+        trackProductEvent('tracking.entry_completed', {
+          ...productTrackingProperties,
+          completed: true,
+          queued: true,
+        });
+        trackFirstFoodLogged({
+          ...productTrackingProperties,
+          completed: true,
+        });
         hasCompletedEditorFlowRef.current = true;
         showQueuedOfflineAlert({
           analyticsSource: 'FoodProductScreen',
@@ -471,12 +530,31 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         sourceNoteAttached: Boolean(sourceNoteId),
         visibility: form.visibility,
       });
+      trackProductEvent('tracking.entry_completed', {
+        ...productTrackingProperties,
+        completed: true,
+        queued: false,
+      });
+      trackFirstFoodLogged({
+        ...productTrackingProperties,
+        completed: true,
+      });
       hasCompletedEditorFlowRef.current = true;
       navigation.navigate('Home', buildFoodProductCreatedHomeParams());
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
         trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'FoodProductScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+        trackProductEvent('quality.usage_limit_reached', {
           enforcement: 'server',
           limit: limitPayload.limit,
           metric: limitPayload.metric,
@@ -500,6 +578,11 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         isOnline,
         sourceNoteAttached: Boolean(sourceNoteId),
         visibility: form.visibility,
+      });
+      trackProductEvent('tracking.entry_failed', {
+        ...productTrackingProperties,
+        completed: false,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
       });
       setErrorMessage(message);
     } finally {
@@ -584,8 +667,18 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
         }),
       );
+      trackProductEvent('tracking.entry_abandoned', {
+        entryType: 'food_product',
+        source: sourceNoteId ? 'note' : 'add_tab',
+        hasPhoto: Boolean(photo),
+        itemCount: Boolean(form.itemName.trim()) ? 1 : 0,
+        ratingCount: form.rating > 0 ? 1 : 0,
+        visibility: form.visibility,
+        completed: false,
+        exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+      });
     },
-    [buildEditorAnalyticsPayload],
+    [buildEditorAnalyticsPayload, form.itemName, form.rating, form.visibility, photo, sourceNoteId],
   );
 
   return (

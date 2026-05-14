@@ -22,7 +22,8 @@ import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
 import type { MainOnboardingCardId } from '../types/onboarding';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
-import { trackObservabilityEvent } from '../observability';
+import { trackObservabilityEvent, trackWebPageLeave, trackWebPageView } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import {
   AddRestaurantToListScreen,
   AddFeatureOnboardingScreen,
@@ -416,7 +417,7 @@ export function RootNavigator() {
 
   const trackScreenDwellCompleted = useCallback((options: {
     nextScreenName?: keyof RootStackParamList;
-    reason?: 'app_background';
+    reason?: 'app_background' | 'navigation';
   }) => {
     const activeRouteName = activeRouteNameRef.current;
     const routeStartedAt = routeStartedAtRef.current;
@@ -424,8 +425,21 @@ export function RootNavigator() {
       return;
     }
 
+    const durationMs = Math.max(0, Date.now() - routeStartedAt);
     trackObservabilityEvent('SCREEN_DWELL_COMPLETED', {
-      durationMs: Math.max(0, Date.now() - routeStartedAt),
+      durationMs,
+      nextScreenName: options.nextScreenName ?? null,
+      reason: options.reason ?? null,
+      screenName: activeRouteName,
+    });
+    trackProductEvent('retention.screen_dwell_completed', {
+      durationMs,
+      nextScreenName: options.nextScreenName ?? null,
+      reason: options.reason ?? null,
+      screenName: activeRouteName,
+    });
+    trackWebPageLeave({
+      durationMs,
       nextScreenName: options.nextScreenName ?? null,
       reason: options.reason ?? null,
       screenName: activeRouteName,
@@ -452,6 +466,14 @@ export function RootNavigator() {
         screenName: typedRouteName,
         previousScreenName: null,
       });
+      trackProductEvent('retention.screen_viewed', {
+        screenName: typedRouteName,
+        previousScreenName: null,
+      });
+      trackWebPageView({
+        screenName: typedRouteName,
+        previousScreenName: null,
+      });
       previousRouteNameRef.current = typedRouteName;
       return;
     }
@@ -464,8 +486,16 @@ export function RootNavigator() {
       return;
     }
 
-    trackScreenDwellCompleted({ nextScreenName: typedRouteName });
+    trackScreenDwellCompleted({ nextScreenName: typedRouteName, reason: 'navigation' });
     trackObservabilityEvent('SCREEN_VIEW', {
+      screenName: typedRouteName,
+      previousScreenName: previousRouteName,
+    });
+    trackProductEvent('retention.screen_viewed', {
+      screenName: typedRouteName,
+      previousScreenName: previousRouteName,
+    });
+    trackWebPageView({
       screenName: typedRouteName,
       previousScreenName: previousRouteName,
     });

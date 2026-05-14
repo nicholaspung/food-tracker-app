@@ -12,6 +12,7 @@ import {
 import { isAddOnboardingCardDismissed, useMonthlyUsage } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import type { AddOnboardingCardId } from '../types/auth';
@@ -192,6 +193,12 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
 
     if (optionId === 'restaurant-visit') {
       trackObservabilityEvent('Visit Creation Started', { source: 'AddVisitScreen' });
+      trackProductEvent('tracking.entry_started', {
+        entryType: 'restaurant_visit',
+        source: 'add_tab',
+        hasPhoto: false,
+        completed: false,
+      });
       navigation.navigate('CreateVisit');
       return;
     }
@@ -204,18 +211,36 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
 
     if (optionId === 'food-product') {
       trackObservabilityEvent('Food Product Started', { source: 'AddVisitScreen' });
+      trackProductEvent('tracking.entry_started', {
+        entryType: 'food_product',
+        source: 'add_tab',
+        hasPhoto: false,
+        completed: false,
+      });
       navigation.navigate('FoodProduct');
       return;
     }
 
     if (optionId === 'process-photos') {
       trackObservabilityEvent('Photo Processing Started', { source: 'AddVisitScreen' });
+      trackProductEvent('tracking.entry_started', {
+        entryType: 'photo_batch',
+        source: 'add_tab',
+        hasPhoto: true,
+        completed: false,
+      });
       navigation.navigate('ProcessPhotos');
       return;
     }
 
     if (optionId === 'log-note') {
       trackObservabilityEvent('Note Creation Started', { source: 'AddVisitScreen' });
+      trackProductEvent('tracking.entry_started', {
+        entryType: 'note',
+        source: 'add_tab',
+        hasPhoto: false,
+        completed: false,
+      });
       navigation.navigate('NoteEditor');
       return;
     }

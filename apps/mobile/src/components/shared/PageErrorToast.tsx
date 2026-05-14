@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { trackObservabilityEvent, type JsonValue } from '../../observability';
+import { trackProductEvent } from '../../observability/productAnalytics';
 import { useErrorToast } from '../../providers/ErrorToastProvider';
 
 export interface PageErrorToastProps {
@@ -53,6 +54,14 @@ export function PageErrorToast({
 
     lastShownKeyRef.current = dedupeKey;
     trackObservabilityEvent('PAGE_ERROR_TOAST_SHOWN', {
+      hasAction: Boolean(actionLabel && onAction),
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
+      messageLength: normalizedMessage.length,
+      source: 'PageErrorToast',
+      title,
+    });
+    trackProductEvent('quality.error_shown', {
       hasAction: Boolean(actionLabel && onAction),
       ...analyticsProps,
       analyticsSource: analyticsSource ?? null,
