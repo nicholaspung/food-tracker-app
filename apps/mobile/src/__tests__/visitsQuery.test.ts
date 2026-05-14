@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 import type { VisitRecord } from '../features/models';
+import { homeFeedMapQueryKeys } from '../features/store/homeFeedMapQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { usageQueryKeys } from '../features/store/usageQuery';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { syncVisitMutationCaches, visitsQueryKeys } from '../features/store/visitsQuery';
@@ -46,10 +48,13 @@ describe('visitsQuery', () => {
       queryKey: homeFeedQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: homeFeedMapQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: visitsQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'restaurants', 'visitStats'],
+      queryKey: restaurantsQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: visitPhotosQueryKeys.visit(visit.id),

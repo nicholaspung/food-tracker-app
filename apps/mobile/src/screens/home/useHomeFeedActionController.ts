@@ -8,6 +8,7 @@ import {
   invalidateHomeFeedQueries,
   moveVisitItem,
   reportContent,
+  syncVisitMutationCaches,
   type ContentReportReasonCode,
   type HomeFeedInfiniteData,
   type VisitRecord,
@@ -244,7 +245,10 @@ export function useHomeFeedActionController({
       });
 
       if (deleteResult.status === 'queued') {
-        await invalidateHomeFeed();
+        await syncVisitMutationCaches(queryClient, {
+          visitId,
+          includeVisitPhotos: true,
+        });
         trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
           source: 'HomeFeedActionController',
           contentType: 'visit',
@@ -254,14 +258,17 @@ export function useHomeFeedActionController({
         return;
       }
 
-      await invalidateHomeFeed();
+      await syncVisitMutationCaches(queryClient, {
+        visitId,
+        includeVisitPhotos: true,
+      });
       trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
         source: 'HomeFeedActionController',
         contentType: 'visit',
         queued: false,
       });
     },
-    [invalidateHomeFeed, writeFeature],
+    [queryClient, writeFeature],
   );
 
   const promptDeleteFoodProduct = useCallback(

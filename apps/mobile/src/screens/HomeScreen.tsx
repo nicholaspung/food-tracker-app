@@ -6,10 +6,16 @@ import {
   SectionList,
   View,
 } from 'react-native';
-import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import {
   EmptyState,
+  type FeedViewModeValue,
   FeatureListFooter,
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
@@ -22,8 +28,10 @@ import {
   createFriendSuggestionAcceptance,
   friendsQueryKeys,
   homeFeedQueryKeys,
+  homeFeedMapQueryKeys,
   invalidateHomeFeedQueries,
   HOME_FEED_DEFAULT_SORTS,
+  listHomeFeedMapPoints,
   mapHomeFeedDefaultsFromRecord,
   type HomeFeedCursor,
   type HomeFeedPageResult,
@@ -60,6 +68,7 @@ import {
   formatMineEntryFooterLabel,
   getFriendEntryMonthInfo,
 } from './home/homeFeedGrouping';
+import { HomeFeedMapView } from './home/HomeFeedMapView';
 import type {
   FeedItem,
   FeedMode,
@@ -274,6 +283,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { isOnline } = useConnectivity();
   const initialHomeFeedDefaults = useMemo(() => mapHomeFeedDefaultsFromRecord(user), [user]);
   const [feedMode, setFeedMode] = useState<FeedMode>(initialHomeFeedDefaults.homeFeedMode);
+  const [viewMode, setViewMode] = useState<FeedViewModeValue>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialHomeFeedDefaults.homeFeedTypeFilter);
@@ -294,6 +304,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [pendingFocusVisitId, setPendingFocusVisitId] = useState<string | null>(null);
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
+  const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
+  const [mapResetSignal, setMapResetSignal] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
     queryClient,
@@ -338,6 +350,24 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       }),
     getNextPageParam: (lastPage) => lastPage.cursor,
   });
+  const homeFeedMapQuery = useQuery({
+    queryKey: homeFeedMapQueryKeys.points(
+      authenticatedUserId,
+      feedScope,
+      typeFilter,
+      sortFilter,
+      debouncedTrimmedSearchQuery,
+    ),
+    enabled: Boolean(authenticatedUserId) && viewMode === 'map',
+    queryFn: ({ signal }) =>
+      listHomeFeedMapPoints({
+        scope: feedScope,
+        search: debouncedTrimmedSearchQuery || undefined,
+        signal,
+        sort: sortFilter,
+        typeFilter,
+      }),
+  });
   const homeFeedState = usePaginatedQueryState({
     data: homeFeedQuery.data,
     isError: homeFeedQuery.isError,
@@ -345,6 +375,31 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     isLoading: homeFeedQuery.isLoading,
     isSuccess: homeFeedQuery.isSuccess,
   });
+
+  const resetMapState = useCallback(() => {
+    setSelectedMapGroupId(null);
+    setMapResetSignal((value) => value + 1);
+  }, []);
+
+  const handleViewModeChange = useCallback(
+    (nextViewMode: FeedViewModeValue) => {
+      setViewMode(nextViewMode);
+      if (nextViewMode === 'list') {
+        resetMapState();
+      }
+    },
+    [resetMapState],
+  );
+
+  useEffect(
+    () => {
+      const unsubscribe = navigation.addListener?.('blur', () => {
+        resetMapState();
+      });
+      return unsubscribe;
+    },
+    [navigation, resetMapState],
+  );
   const {
     fetchNextPage: fetchNextHomeFeedPage,
     hasNextPage: hasNextHomeFeedPage,
@@ -389,6 +444,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     () => homeFeedQuery.data?.pages.flatMap((page) => page.photoPreviews ?? []) ?? [],
     [homeFeedQuery.data],
   );
+  const mapPoints = homeFeedMapQuery.data?.points ?? [];
+  const mapPhotoPreviews = homeFeedMapQuery.data?.photoPreviews ?? [];
 
   const isLoading = homeFeedQuery.isLoading;
   const hasBlockingFeedError = homeFeedState.hasBlockingError;
@@ -1057,9 +1114,19 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     : hasFeedRefreshError
       ? 'Could not refresh your feed. Showing saved data.'
       : null;
+  const hasCachedMapPoints = mapPoints.length > 0;
+  const homeFeedMapBlockingErrorMessage =
+    viewMode === 'map' && homeFeedMapQuery.isError && !hasCachedMapPoints
+      ? 'Could not load your map locations.'
+      : null;
+  const homeFeedMapRefreshErrorMessage =
+    viewMode === 'map' && homeFeedMapQuery.isError && hasCachedMapPoints
+      ? 'Could not refresh map. Showing saved locations.'
+      : null;
   const deleteErrorMessage = homeFeedActions.deleteErrorMessage;
   const showHomeListBody =
-    homeFeedErrorMessage !== null ||
+    (viewMode === 'list' && homeFeedErrorMessage !== null) ||
+    homeFeedMapRefreshErrorMessage !== null ||
     deleteErrorMessage !== null ||
     friendSuggestionErrorMessage !== null ||
     friendSuggestion !== null;
@@ -1157,10 +1224,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           onSortFilterChange={handleSortFilterChange}
           onToggleFilters={handleToggleFilters}
           onTypeFilterChange={handleTypeFilterChange}
+          onViewModeChange={handleViewModeChange}
           searchQuery={searchQuery}
           sortFilter={sortFilter}
           summaryText={summaryText}
           typeFilter={typeFilter}
+          viewMode={viewMode}
         />
       </View>
 
@@ -1169,11 +1238,21 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           <PageErrorToast
             analyticsProps={buildBrowseAnalyticsPayload()}
             analyticsSource="HomeScreen"
-            errorMessage={homeFeedErrorMessage}
+            errorMessage={viewMode === 'list' ? homeFeedErrorMessage : null}
             title="Feed unavailable"
             actionLabel="Retry"
             onAction={() => {
               void homeFeedQuery.refetch();
+            }}
+          />
+          <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
+            errorMessage={homeFeedMapRefreshErrorMessage}
+            title="Map unavailable"
+            actionLabel="Retry"
+            onAction={() => {
+              void homeFeedMapQuery.refetch();
             }}
           />
           <PageErrorToast
@@ -1353,7 +1432,26 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         }}
         testID="home-screen-records-section"
       >
-        {feedMode === 'mine' ? (
+        {viewMode === 'map' ? (
+          <>
+            {homeListHeader}
+            <HomeFeedMapView
+              currentUserId={currentUserId}
+              errorMessage={homeFeedMapBlockingErrorMessage}
+              loading={homeFeedMapQuery.isLoading}
+              omittedWithoutCoordinates={homeFeedMapQuery.data?.omittedWithoutCoordinates ?? 0}
+              onRetry={() => {
+                void homeFeedMapQuery.refetch();
+              }}
+              onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
+              photoPreviews={mapPhotoPreviews}
+              onSelectedGroupChange={setSelectedMapGroupId}
+              points={mapPoints}
+              resetSignal={mapResetSignal}
+              selectedGroupId={selectedMapGroupId}
+            />
+          </>
+        ) : feedMode === 'mine' ? (
           <FlatList
             ref={mineFeedListRef}
             contentContainerStyle={styles.listContent}

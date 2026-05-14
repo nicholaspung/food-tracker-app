@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
@@ -126,6 +126,7 @@ jest.mock('react-native', () => {
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
+  useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
 
@@ -175,11 +176,32 @@ jest.mock('../features', () => ({
     ]),
     root: ['feature', 'homeFeed'],
   },
+  homeFeedMapQueryKeys: {
+    points: jest.fn((
+      userId: string | null | undefined,
+      scope: string,
+      typeFilter: string,
+      sort: string,
+      search: string,
+    ) => [
+      'feature',
+      'homeFeedMap',
+      'user',
+      userId ?? 'anonymous',
+      'points',
+      scope,
+      typeFilter,
+      sort,
+      search,
+    ]),
+    root: ['feature', 'homeFeedMap'],
+  },
   HOME_FEED_DEFAULT_SORTS: {
     friends: 'created',
     mine: 'created',
   },
   invalidateHomeFeedQueries: jest.fn(),
+  listHomeFeedMapPoints: jest.fn(),
   listHomeFeedPage: jest.fn(),
   mapHomeFeedDefaultsFromRecord: (record: Record<string, unknown> | null | undefined) => ({
     homeFeedMode: record?.defaultHomeFeedMode === 'friends' ? 'friends' : 'mine',
@@ -226,6 +248,10 @@ jest.mock('../providers/ConnectivityProvider', () => ({
 
 jest.mock('../screens/home/HomeFeedActionModals', () => ({
   HomeFeedActionModals: (props: Record<string, unknown>) => mockReact.createElement('HomeFeedActionModals', props),
+}));
+
+jest.mock('../screens/home/HomeFeedMapView', () => ({
+  HomeFeedMapView: (props: Record<string, unknown>) => mockReact.createElement('HomeFeedMapView', props),
 }));
 
 jest.mock('../screens/home/useHomeFeedActionController', () => ({
@@ -278,6 +304,7 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
@@ -294,6 +321,9 @@ const mockedUseHomeFeedActionController = useHomeFeedActionController as jest.Mo
 >;
 const mockedHomeFeedQueryKeys = jest.requireMock('../features').homeFeedQueryKeys as {
   paginated: jest.Mock;
+};
+const mockedHomeFeedMapQueryKeys = jest.requireMock('../features').homeFeedMapQueryKeys as {
+  points: jest.Mock;
 };
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -330,6 +360,7 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     mockFlatListScrollToIndex.mockClear();
     mockedHomeFeedQueryKeys.paginated.mockClear();
+    mockedHomeFeedMapQueryKeys.points.mockClear();
     mockedUseInfiniteQuery.mockReset();
     mockedUseInfiniteQuery.mockReturnValue({
       data: {
@@ -352,6 +383,17 @@ describe('HomeScreen', () => {
       isLoading: false,
       isRefetching: false,
       isSuccess: true,
+      refetch: jest.fn(),
+    } as never);
+    mockedUseQuery.mockReset();
+    mockedUseQuery.mockReturnValue({
+      data: {
+        omittedWithoutCoordinates: 0,
+        points: [],
+        totalEntries: 0,
+      },
+      isError: false,
+      isLoading: false,
       refetch: jest.fn(),
     } as never);
     mockedUseQueryClient.mockReset();
@@ -1270,5 +1312,74 @@ describe('HomeScreen', () => {
     });
 
     expect(findRefreshableList().props.refreshing).toBe(false);
+  });
+
+  it('keeps the map points query disabled while list mode is active', async () => {
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            params: undefined,
+          } as never}
+        />,
+      );
+    });
+
+    expect(mockedHomeFeedMapQueryKeys.points).toHaveBeenCalledWith(
+      'user-1',
+      'mine',
+      'visits',
+      'created',
+      '',
+    );
+    expect(mockedUseQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: false,
+        queryKey: [
+          'feature',
+          'homeFeedMap',
+          'user',
+          'user-1',
+          'points',
+          'mine',
+          'visits',
+          'created',
+          '',
+        ],
+      }),
+    );
+  });
+
+  it('switches from the list feed to the map view', async () => {
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            params: undefined,
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer?.root.findAllByType('FlatList')).toHaveLength(1);
+
+    await act(async () => {
+      renderer?.root.findByType('FeedHeaderControls').props.onViewModeChange('map');
+    });
+
+    expect(renderer?.root.findAllByType('FlatList')).toHaveLength(0);
+    expect(renderer?.root.findAllByType('HomeFeedMapView')).toHaveLength(1);
+    expect(renderer?.root.findByType('HomeFeedMapView').props.points).toEqual([]);
   });
 });

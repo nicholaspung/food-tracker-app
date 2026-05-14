@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
+import { restaurantsQueryKeys } from '../features';
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import { usePhotoProcessingSubmission } from '../screens/photoProcessing/usePhotoProcessingSubmission';
 
@@ -8,12 +9,18 @@ jest.mock('../features', () => ({
   createFoodProduct: jest.fn(),
   createVisit: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
+  homeFeedMapQueryKeys: {
+    root: ['feature', 'homeFeedMap'],
+  },
   homeFeedQueryKeys: {
     root: ['feature', 'homeFeed'],
   },
   markNoteUsed: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
   promoteCachedNoteToUsed: jest.fn(),
+  restaurantsQueryKeys: {
+    root: ['feature', 'restaurants'],
+  },
 }));
 
 jest.mock('../features/store/notesQuery', () => ({
@@ -200,6 +207,12 @@ describe('usePhotoProcessingSubmission', () => {
     });
 
     expect(navigate).toHaveBeenCalledWith('Home', buildFoodProductCreatedHomeParams());
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'homeFeedMap'],
+    });
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: restaurantsQueryKeys.root,
+    });
 
     await hook.unmount();
   });
@@ -248,6 +261,12 @@ describe('usePhotoProcessingSubmission', () => {
       },
     });
     expect(navigate).toHaveBeenCalledWith('Home');
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'homeFeedMap'],
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantsQueryKeys.root,
+    });
 
     await hook.unmount();
   });

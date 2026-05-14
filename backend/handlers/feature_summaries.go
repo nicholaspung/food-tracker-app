@@ -28,6 +28,7 @@ const defaultRestaurantSearchPageSize = 20
 const maxRestaurantSearchPageSize = 50
 const defaultHomeFeedPageSize = 20
 const maxHomeFeedPageSize = 50
+const maxHomeFeedMapPoints = 500
 const defaultNotesPageSize = 20
 const maxNotesPageSize = 50
 const defaultVisitsPageSize = 20
@@ -196,6 +197,20 @@ type homeFeedCountsRow struct {
 	TotalFoodProducts int `db:"totalFoodProducts"`
 }
 
+type homeFeedMapCountsRow struct {
+	TotalEntries      int `db:"totalEntries"`
+	EntriesWithCoords int `db:"entriesWithCoords"`
+}
+
+type homeFeedMapEntryRow struct {
+	Source    string          `db:"source"`
+	RecordID  string          `db:"recordId"`
+	EventAt   string          `db:"eventAt"`
+	CreatedAt string          `db:"createdAt"`
+	Latitude  sql.NullFloat64 `db:"latitude"`
+	Longitude sql.NullFloat64 `db:"longitude"`
+}
+
 type homeFeedCursorResponse struct {
 	Page int `json:"page"`
 }
@@ -240,6 +255,28 @@ type homeFeedResponse struct {
 	HasNextPage       bool                           `json:"hasNextPage"`
 	TotalFoodProducts *int                           `json:"totalFoodProducts,omitempty"`
 	TotalVisits       *int                           `json:"totalVisits,omitempty"`
+}
+
+type homeFeedMapPointResponse struct {
+	ID                 string                       `json:"id"`
+	Source             string                       `json:"source"`
+	EventAt            string                       `json:"eventAt"`
+	Latitude           float64                      `json:"latitude"`
+	Longitude          float64                      `json:"longitude"`
+	RestaurantID       string                       `json:"restaurantId,omitempty"`
+	RestaurantName     string                       `json:"restaurantName"`
+	RestaurantLocation string                       `json:"restaurantLocation,omitempty"`
+	LocationText       string                       `json:"locationText,omitempty"`
+	RatingSummaryLabel string                       `json:"ratingSummaryLabel"`
+	Visit              *visitResponse               `json:"visit,omitempty"`
+	FoodProduct        *homeFeedFoodProductResponse `json:"foodProduct,omitempty"`
+}
+
+type homeFeedMapPointsResponse struct {
+	Points                    []homeFeedMapPointResponse     `json:"points"`
+	PhotoPreviews             []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
+	OmittedWithoutCoordinates int                            `json:"omittedWithoutCoordinates"`
+	TotalEntries              int                            `json:"totalEntries"`
 }
 
 type visitsPageResponse struct {
@@ -490,6 +527,43 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, response)
 	})
+
+	se.Router.GET("/api/home-feed/map-points", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		scope, err := normalizeHomeFeedScope(e.Request.URL.Query().Get("scope"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		typeFilter, err := normalizeHomeFeedTypeFilter(e.Request.URL.Query().Get("typeFilter"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		sort, err := normalizeHomeFeedSort(scope, e.Request.URL.Query().Get("sort"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getHomeFeedMapPointsResponse(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			scope,
+			e.Request.URL.Query().Get("search"),
+			sort,
+			typeFilter,
+		)
+		if err != nil {
+			log.Printf("Failed to load home feed map points for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load home feed map points", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
 
 	se.Router.GET("/api/restaurants/recent", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -1632,6 +1706,262 @@ func getHomeFeedResponse(
 	return response, nil
 }
 
+func getHomeFeedMapPointsResponse(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	search string,
+	sort string,
+	typeFilter string,
+) (homeFeedMapPointsResponse, error) {
+	response := homeFeedMapPointsResponse{
+		PhotoPreviews: []homeFeedPhotoPreviewResponse{},
+		Points:        []homeFeedMapPointResponse{},
+	}
+
+	counts, err := countHomeFeedMapEntries(app, userID, isAdmin, scope, search, typeFilter)
+	if err != nil {
+		return response, err
+	}
+	response.TotalEntries = counts.TotalEntries
+	response.OmittedWithoutCoordinates = counts.TotalEntries - counts.EntriesWithCoords
+	if response.OmittedWithoutCoordinates < 0 {
+		response.OmittedWithoutCoordinates = 0
+	}
+
+	rows, err := listHomeFeedMapEntryRows(app, userID, isAdmin, scope, search, sort, typeFilter)
+	if err != nil {
+		return response, err
+	}
+	if len(rows) == 0 {
+		return response, nil
+	}
+
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && strings.TrimSpace(userID) != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, userID)
+		if err != nil {
+			return response, err
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	visitIDs := make([]string, 0, len(rows))
+	quickTrackIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		switch row.Source {
+		case "visit":
+			visitIDs = append(visitIDs, row.RecordID)
+		case "food-product":
+			quickTrackIDs = append(quickTrackIDs, row.RecordID)
+		}
+	}
+
+	visitRecords, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return response, err
+	}
+	quickTrackRecords, err := findRecordsByIDs(app, "food_items", quickTrackIDs)
+	if err != nil {
+		return response, err
+	}
+
+	visitRecordsByID := mapRecordsByID(visitRecords)
+	quickTrackRecordsByID := mapRecordsByID(quickTrackRecords)
+
+	visitItemRecords, err := findRecordsByRelationValues(app, "food_items", "visit", visitIDs, "-created")
+	if err != nil {
+		return response, err
+	}
+	filteredVisitItems := make([]*core.Record, 0, len(visitItemRecords))
+	for _, record := range visitItemRecords {
+		if !isVisitItemRecord(record) {
+			continue
+		}
+		filteredVisitItems = append(filteredVisitItems, record)
+	}
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+
+	photoFoodItemIDs := make([]string, 0, len(filteredVisitItems)+len(quickTrackRecords))
+	for _, item := range filteredVisitItems {
+		photoFoodItemIDs = append(photoFoodItemIDs, item.Id)
+	}
+	for _, quickTrack := range quickTrackRecords {
+		photoFoodItemIDs = append(photoFoodItemIDs, quickTrack.Id)
+	}
+
+	linkedVisitIDs := make([]string, 0, len(quickTrackRecords))
+	restaurantIDs := make([]string, 0, len(visitRecords)+len(quickTrackRecords))
+	userIDs := make([]string, 0, len(visitRecords)+len(quickTrackRecords))
+	for _, visit := range visitRecords {
+		restaurantIDs = append(restaurantIDs, visit.GetString("restaurant"))
+		userIDs = append(userIDs, visit.GetString("user"))
+	}
+	for _, quickTrack := range quickTrackRecords {
+		linkedVisitIDs = append(linkedVisitIDs, quickTrack.GetString("visit"))
+		userIDs = append(userIDs, quickTrack.GetString("user"))
+	}
+
+	linkedVisitRecords, err := findRecordsByIDs(app, "visits", linkedVisitIDs)
+	if err != nil {
+		return response, err
+	}
+	linkedVisitsByID := mapRecordsByID(linkedVisitRecords)
+	for _, visit := range linkedVisitRecords {
+		restaurantIDs = append(restaurantIDs, visit.GetString("restaurant"))
+	}
+
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	userRecords, err := findRecordsByIDs(app, "users", userIDs)
+	if err != nil {
+		return response, err
+	}
+
+	restaurantsByID := mapRecordsByID(restaurantRecords)
+	usersByID := mapRecordsByID(userRecords)
+	foodItemsByID := make(map[string]*core.Record, len(filteredVisitItems)+len(quickTrackRecords))
+	for _, item := range filteredVisitItems {
+		foodItemsByID[item.Id] = item
+	}
+	for _, item := range quickTrackRecords {
+		foodItemsByID[item.Id] = item
+	}
+	visitsByID := make(map[string]*core.Record, len(visitRecords)+len(linkedVisitRecords))
+	for _, visit := range visitRecords {
+		visitsByID[visit.Id] = visit
+	}
+	for _, visit := range linkedVisitRecords {
+		visitsByID[visit.Id] = visit
+	}
+
+	photoRecords, err := findRecordsByRelationValues(app, "visit_photos", "food_item", photoFoodItemIDs, "-created")
+	if err != nil {
+		return response, err
+	}
+	photoPreviews := make([]homeFeedPhotoPreviewResponse, 0, len(photoRecords))
+	for _, photo := range photoRecords {
+		if !canAccessVisitPhotoRecord(photo, foodItemsByID, visitsByID, userID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
+		photoPreviews = append(photoPreviews, mapHomeFeedPhotoPreview(photo))
+	}
+	response.PhotoPreviews = photoPreviews
+
+	points := make([]homeFeedMapPointResponse, 0, len(rows))
+	for _, row := range rows {
+		if !row.Latitude.Valid || !row.Longitude.Valid {
+			continue
+		}
+
+		switch row.Source {
+		case "visit":
+			visit := visitRecordsByID[row.RecordID]
+			if visit == nil {
+				continue
+			}
+
+			restaurant := restaurantsByID[visit.GetString("restaurant")]
+			user := usersByID[visit.GetString("user")]
+			entryItems := visitItemsByVisitID[visit.Id]
+			restaurantName := defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant")
+			restaurantLocation := resolveRestaurantLocation(restaurant)
+			points = append(points, homeFeedMapPointResponse{
+				ID:                 "visit_" + visit.Id,
+				Source:             "visit",
+				EventAt:            row.EventAt,
+				Latitude:           row.Latitude.Float64,
+				Longitude:          row.Longitude.Float64,
+				RestaurantID:       visit.GetString("restaurant"),
+				RestaurantName:     restaurantName,
+				RestaurantLocation: restaurantLocation,
+				RatingSummaryLabel: formatHomeFeedVisitRatingSummary(entryItems),
+				Visit: &visitResponse{
+					ID:                    visit.Id,
+					RestaurantID:          visit.GetString("restaurant"),
+					RestaurantName:        restaurantName,
+					RestaurantLocation:    restaurantLocation,
+					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
+					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
+					Items:                 mapHomeFeedVisitItems(entryItems),
+					Source:                "visit",
+					UserID:                visit.GetString("user"),
+					UserName:              resolveHomeFeedUserName(user),
+					Visibility:            strings.TrimSpace(visit.GetString("visibility")),
+					ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
+					CreatedAt:             visit.GetString("created"),
+					UpdatedAt:             visit.GetString("updated"),
+				},
+			})
+		case "food-product":
+			quickTrack := quickTrackRecordsByID[row.RecordID]
+			if quickTrack == nil {
+				continue
+			}
+
+			user := usersByID[quickTrack.GetString("user")]
+			linkedVisit := linkedVisitsByID[quickTrack.GetString("visit")]
+			linkedRestaurant := (*core.Record)(nil)
+			if linkedVisit != nil {
+				linkedRestaurant = restaurantsByID[linkedVisit.GetString("restaurant")]
+			}
+
+			restaurantName := strings.TrimSpace(quickTrack.GetString("location_text"))
+			if restaurantName == "" {
+				restaurantName = resolveRestaurantName(linkedRestaurant)
+			}
+			if restaurantName == "" {
+				restaurantName = "Food Product"
+			}
+
+			restaurantID := ""
+			if linkedVisit != nil {
+				restaurantID = linkedVisit.GetString("restaurant")
+			}
+			ratingSummaryLabel := formatHomeFeedSingleRatingSummary(quickTrack.GetFloat("rating"))
+			foodProduct := &homeFeedFoodProductResponse{
+				ID:               quickTrack.Id,
+				RestaurantName:   restaurantName,
+				LocationText:     strings.TrimSpace(quickTrack.GetString("location_text")),
+				ItemCategory:     strings.TrimSpace(quickTrack.GetString("itemCategory")),
+				ItemName:         quickTrack.GetString("name"),
+				Rating:           quickTrack.GetFloat("rating"),
+				Notes:            strings.TrimSpace(quickTrack.GetString("notes")),
+				UserID:           quickTrack.GetString("user"),
+				UserName:         resolveHomeFeedUserName(user),
+				Visibility:       strings.TrimSpace(quickTrack.GetString("visibility")),
+				ModerationStatus: strings.TrimSpace(quickTrack.GetString("moderationStatus")),
+				ItemDate:         strings.TrimSpace(quickTrack.GetString("itemDate")),
+				CreatedAt:        quickTrack.GetString("created"),
+				UpdatedAt:        quickTrack.GetString("updated"),
+			}
+			points = append(points, homeFeedMapPointResponse{
+				ID:                 "food_product_" + quickTrack.Id,
+				Source:             "food-product",
+				EventAt:            row.EventAt,
+				Latitude:           row.Latitude.Float64,
+				Longitude:          row.Longitude.Float64,
+				RestaurantID:       restaurantID,
+				RestaurantName:     restaurantName,
+				RestaurantLocation: resolveRestaurantLocation(linkedRestaurant),
+				LocationText:       foodProduct.LocationText,
+				RatingSummaryLabel: ratingSummaryLabel,
+				FoodProduct:        foodProduct,
+			})
+		}
+	}
+
+	response.Points = points
+	if scope == "friends" {
+		redactFriendHomeFeedMapTimestamps(&response)
+	}
+
+	return response, nil
+}
+
 func countVisitsPageEntries(
 	app core.App,
 	userID string,
@@ -1849,6 +2179,170 @@ func listHomeFeedEntryRows(
 	return rows, err
 }
 
+func countHomeFeedMapEntries(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	search string,
+	typeFilter string,
+) (homeFeedMapCountsRow, error) {
+	params := dbx.Params{
+		"userId":     userID,
+		"searchLike": buildHomeFeedSearchLike(search),
+	}
+
+	selects := make([]string, 0, 2)
+	if typeFilter != "food-products" {
+		selects = append(selects, `
+			SELECT
+				visits.id AS recordId,
+				restaurants.latitude AS latitude,
+				restaurants.longitude AS longitude
+			FROM visits
+			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search))
+	}
+	if typeFilter != "visits" {
+		selects = append(selects, `
+			SELECT
+				food_items.id AS recordId,
+				linked_restaurants.latitude AS latitude,
+				linked_restaurants.longitude AS longitude
+			FROM food_items
+			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
+			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
+			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search))
+	}
+
+	if len(selects) == 0 {
+		return homeFeedMapCountsRow{}, nil
+	}
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		filtered_entries AS (
+			` + strings.Join(selects, `
+			UNION ALL
+			`) + `
+		)
+		SELECT
+			COUNT(*) AS [[totalEntries]],
+			COALESCE(SUM(CASE
+				WHEN latitude IS NOT NULL
+					AND longitude IS NOT NULL
+					AND NOT (latitude = 0 AND longitude = 0)
+				THEN 1
+				ELSE 0
+			END), 0) AS [[entriesWithCoords]]
+		FROM filtered_entries
+	`
+
+	row := homeFeedMapCountsRow{}
+	err := app.DB().NewQuery(query).Bind(params).One(&row)
+	return row, err
+}
+
+func listHomeFeedMapEntryRows(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	search string,
+	sort string,
+	typeFilter string,
+) ([]homeFeedMapEntryRow, error) {
+	params := dbx.Params{
+		"userId":     userID,
+		"searchLike": buildHomeFeedSearchLike(search),
+		"limit":      maxHomeFeedMapPoints,
+	}
+	visitEventAtExpression := "COALESCE(NULLIF(visits.visitDate, ''), visits.created)"
+	quickTrackEventAtExpression := "COALESCE(NULLIF(food_items.itemDate, ''), food_items.created)"
+	if sort == "created" {
+		visitEventAtExpression = "visits.created"
+		quickTrackEventAtExpression = "food_items.created"
+	}
+
+	selects := make([]string, 0, 2)
+	if typeFilter != "food-products" {
+		selects = append(selects, `
+			SELECT
+				'visit' AS source,
+				visits.id AS recordId,
+				`+visitEventAtExpression+` AS eventAt,
+				visits.created AS createdAt,
+				restaurants.latitude AS latitude,
+				restaurants.longitude AS longitude
+			FROM visits
+			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search)+`
+				AND restaurants.latitude IS NOT NULL
+				AND restaurants.longitude IS NOT NULL
+				AND NOT (restaurants.latitude = 0 AND restaurants.longitude = 0)`)
+	}
+	if typeFilter != "visits" {
+		selects = append(selects, `
+			SELECT
+				'food-product' AS source,
+				food_items.id AS recordId,
+				`+quickTrackEventAtExpression+` AS eventAt,
+				food_items.created AS createdAt,
+				linked_restaurants.latitude AS latitude,
+				linked_restaurants.longitude AS longitude
+			FROM food_items
+			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
+			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
+			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search)+`
+				AND linked_restaurants.latitude IS NOT NULL
+				AND linked_restaurants.longitude IS NOT NULL
+				AND NOT (linked_restaurants.latitude = 0 AND linked_restaurants.longitude = 0)`)
+	}
+
+	if len(selects) == 0 {
+		return []homeFeedMapEntryRow{}, nil
+	}
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		filtered_entries AS (
+			` + strings.Join(selects, `
+			UNION ALL
+			`) + `
+		)
+		SELECT
+			filtered_entries.source AS [[source]],
+			filtered_entries.recordId AS [[recordId]],
+			filtered_entries.eventAt AS [[eventAt]],
+			filtered_entries.createdAt AS [[createdAt]],
+			filtered_entries.latitude AS [[latitude]],
+			filtered_entries.longitude AS [[longitude]]
+		FROM filtered_entries
+		ORDER BY filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC
+		LIMIT {:limit}
+	`
+
+	rows := []homeFeedMapEntryRow{}
+	err := app.DB().NewQuery(query).Bind(params).All(&rows)
+	return rows, err
+}
+
 func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
 	if isAdmin {
 		switch scope {
@@ -1985,6 +2479,36 @@ func mapHomeFeedVisitItems(records []*core.Record) []visitItemResponse {
 	return items
 }
 
+func formatHomeFeedSingleRatingSummary(rating float64) string {
+	if rating <= 0 {
+		return "Unrated"
+	}
+
+	return fmt.Sprintf("%.1f rating", rating)
+}
+
+func formatHomeFeedVisitRatingSummary(records []*core.Record) string {
+	if len(records) == 0 {
+		return "No items"
+	}
+
+	total := 0.0
+	ratedCount := 0
+	for _, record := range records {
+		rating := record.GetFloat("rating")
+		if rating <= 0 {
+			continue
+		}
+		total += rating
+		ratedCount += 1
+	}
+	if ratedCount == 0 {
+		return "Unrated"
+	}
+
+	return fmt.Sprintf("%.1f avg", total/float64(ratedCount))
+}
+
 func mapHomeFeedPhotoPreview(record *core.Record) homeFeedPhotoPreviewResponse {
 	collectionName := ""
 	collectionID := ""
@@ -2033,6 +2557,23 @@ func redactFriendHomeFeedTimestamps(response *homeFeedResponse) {
 			response.Items[index].FoodProduct.ItemDate = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.ItemDate)
 			response.Items[index].FoodProduct.CreatedAt = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.CreatedAt)
 			response.Items[index].FoodProduct.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.UpdatedAt)
+		}
+	}
+}
+
+func redactFriendHomeFeedMapTimestamps(response *homeFeedMapPointsResponse) {
+	for index := range response.Points {
+		response.Points[index].EventAt = redactFriendHomeFeedTimestamp(response.Points[index].EventAt)
+		if response.Points[index].Visit != nil {
+			response.Points[index].Visit.VisitedAt = redactFriendHomeFeedTimestamp(response.Points[index].Visit.VisitedAt)
+			response.Points[index].Visit.CreatedAt = redactFriendHomeFeedTimestamp(response.Points[index].Visit.CreatedAt)
+			response.Points[index].Visit.UpdatedAt = redactFriendHomeFeedTimestamp(response.Points[index].Visit.UpdatedAt)
+		}
+
+		if response.Points[index].FoodProduct != nil {
+			response.Points[index].FoodProduct.ItemDate = redactFriendHomeFeedTimestamp(response.Points[index].FoodProduct.ItemDate)
+			response.Points[index].FoodProduct.CreatedAt = redactFriendHomeFeedTimestamp(response.Points[index].FoodProduct.CreatedAt)
+			response.Points[index].FoodProduct.UpdatedAt = redactFriendHomeFeedTimestamp(response.Points[index].FoodProduct.UpdatedAt)
 		}
 	}
 }

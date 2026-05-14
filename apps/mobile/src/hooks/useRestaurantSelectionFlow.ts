@@ -26,6 +26,7 @@ import {
   type MenuItemRecord,
   type RestaurantRecord,
 } from '../features';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { useForegroundLocationCapture } from './useForegroundLocationCapture';
 import {
   searchAndCacheNearbyRestaurants,
@@ -187,7 +188,7 @@ function buildRecentRestaurantsQueryOptions({
         search: normalizedSearch || undefined,
         signal,
       }),
-    queryKey: ['feature', 'restaurants', 'suggestions', limit, normalizedSearch] as const,
+    queryKey: restaurantsQueryKeys.suggestions(limit, normalizedSearch),
   };
 }
 

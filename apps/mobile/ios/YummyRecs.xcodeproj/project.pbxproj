@@ -373,12 +373,15 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-incomplete-umbrella",
+				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_CFLAGS = "$(inherited) -Wno-incomplete-umbrella";
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG -Xcc -Wno-incomplete-umbrella";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile;
 				PRODUCT_NAME = YummyRecs;
@@ -406,12 +409,15 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-incomplete-umbrella",
+				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_CFLAGS = "$(inherited) -Wno-incomplete-umbrella";
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile;
 				PRODUCT_NAME = YummyRecs;
@@ -438,12 +444,15 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wno-incomplete-umbrella",
+				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_CFLAGS = "$(inherited) -Wno-incomplete-umbrella";
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile.preview;
 				PRODUCT_NAME = YummyRecs;

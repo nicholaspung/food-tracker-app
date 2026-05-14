@@ -14,6 +14,7 @@ import {
   useRestaurantSelectionFlow,
   useSavedRestaurantSuggestions,
 } from '../hooks/useRestaurantSelectionFlow';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { searchAndCacheRestaurantsByText } from '../lib/googlePlaces';
 
 jest.mock('../features', () => ({
@@ -256,6 +257,11 @@ describe('useRestaurantSelectionFlow', () => {
       search: 'ramen',
       signal: expect.any(AbortSignal),
     });
+    expect(
+      queryClient.getQueryCache().find({
+        queryKey: restaurantsQueryKeys.suggestions(50, 'ramen'),
+      }),
+    ).toBeDefined();
     expect(getLatestResult().savedRestaurantRecords.map((restaurant) => restaurant.id)).toEqual([
       'restaurant-ramen',
     ]);

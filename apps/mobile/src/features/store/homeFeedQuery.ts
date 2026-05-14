@@ -11,6 +11,7 @@ import {
   type HomeFeedSort,
   type HomeFeedTypeFilter,
 } from './homeFeedPagination';
+import { homeFeedMapQueryKeys } from './homeFeedMapQuery';
 
 const HOME_FEED_SCOPES = ['all', 'mine', 'friends'] as const;
 const HOME_FEED_SORTS = ['created', 'tracked'] as const;
@@ -68,5 +69,8 @@ export function getHomeFeedScopeFromQueryKey(queryKey: QueryKey): HomeFeedScope 
 }
 
 export async function invalidateHomeFeedQueries(queryClient: QueryClient): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: homeFeedMapQueryKeys.root }),
+  ]);
 }

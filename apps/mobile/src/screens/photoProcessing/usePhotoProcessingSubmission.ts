@@ -5,10 +5,12 @@ import {
   createFoodProduct,
   createVisit,
   formatLimitExceededMessage,
+  homeFeedMapQueryKeys,
   homeFeedQueryKeys,
   markNoteUsed,
   parseLimitExceededError,
   promoteCachedNoteToUsed,
+  restaurantsQueryKeys,
   type MonthlyUsageSnapshot,
 } from '../../features';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
@@ -391,7 +393,15 @@ export function usePhotoProcessingSubmission({
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
+        queryClient.invalidateQueries({ queryKey: homeFeedMapQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
+        ...(processType === 'restaurant'
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: restaurantsQueryKeys.root,
+              }),
+            ]
+          : []),
         queryClient.invalidateQueries({ queryKey: ['feature', 'foodProducts'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({

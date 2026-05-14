@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { VisitRecord } from '../models';
 import { invalidateHomeFeedQueries } from './homeFeedQuery';
 import { notesQueryKeys } from './notesQuery';
+import { restaurantsQueryKeys } from './restaurantsQuery';
 import { invalidateMonthlyUsageQueries } from './usageQuery';
 import { invalidateVisitPhotoQuery, visitPhotosQueryKeys } from './visitPhotosQuery';
 import type { ListVisitsPageInput } from './featureStore';
@@ -27,10 +28,6 @@ export const visitsQueryKeys = {
 
     return ['feature', 'visits', 'paginated', scope, trimmedSearchQuery] as const;
   },
-};
-
-const visitStatsQueryKeys = {
-  root: ['feature', 'restaurants', 'visitStats'] as const,
 };
 
 function setCachedVisitDetail(
@@ -61,7 +58,7 @@ export async function syncVisitMutationCaches(
   const invalidations: Promise<unknown>[] = [
     invalidateHomeFeedQueries(queryClient),
     queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
-    queryClient.invalidateQueries({ queryKey: visitStatsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: restaurantsQueryKeys.root }),
   ];
 
   if (!options.visit && visitId) {

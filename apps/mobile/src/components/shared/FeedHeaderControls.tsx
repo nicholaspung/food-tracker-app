@@ -7,12 +7,18 @@ import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
 
 export type FeedModeValue = 'mine' | 'friends';
+export type FeedViewModeValue = 'list' | 'map';
 export type FeedTypeFilterValue = 'all' | 'visits' | 'food-products';
 export type HomeFeedSortValue = 'created' | 'tracked';
 
 const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
   { label: 'Mine', value: 'mine' },
   { label: 'Friends', value: 'friends' },
+];
+
+const VIEW_MODE_OPTIONS: readonly SegmentedControlOption<FeedViewModeValue>[] = [
+  { label: 'List', value: 'list' },
+  { label: 'Map', value: 'map' },
 ];
 
 const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
@@ -71,6 +77,34 @@ const useStyles = createThemedStyles((theme) => ({
   },
   summaryText: {
     color: theme.colors.text.muted,
+  },
+  viewModeControl: {
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 2,
+  },
+  viewModeSegment: {
+    borderRadius: 8,
+    minHeight: 38,
+  },
+  viewModeSegmentActive: {
+    backgroundColor: theme.colors.background.surface,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  viewModeLabel: {
+    color: theme.colors.text.muted,
+  },
+  viewModeLabelActive: {
+    color: theme.colors.text.primary,
   },
   searchRow: {
     alignItems: 'center',
@@ -165,6 +199,8 @@ interface FeedHeaderControlsProps {
   summaryText: string;
   feedMode: FeedModeValue;
   onFeedModeChange: (value: FeedModeValue) => void;
+  viewMode: FeedViewModeValue;
+  onViewModeChange: (value: FeedViewModeValue) => void;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onClearSearch: () => void;
@@ -180,6 +216,8 @@ export function FeedHeaderControls({
   summaryText,
   feedMode,
   onFeedModeChange,
+  viewMode,
+  onViewModeChange,
   searchQuery,
   onSearchQueryChange,
   onClearSearch,
@@ -213,6 +251,18 @@ export function FeedHeaderControls({
       </View>
 
       <Text style={styles.summaryText} variant="bodyMd">{summaryText}</Text>
+
+      <SegmentedControl
+        activeLabelStyle={styles.viewModeLabelActive}
+        activeSegmentStyle={styles.viewModeSegmentActive}
+        containerStyle={styles.viewModeControl}
+        getOptionTestID={(value) => `home-view-mode-${value}`}
+        labelStyle={styles.viewModeLabel}
+        onChange={onViewModeChange}
+        options={VIEW_MODE_OPTIONS}
+        segmentStyle={styles.viewModeSegment}
+        value={viewMode}
+      />
 
       <View style={styles.searchRow}>
         <View style={styles.searchField}>

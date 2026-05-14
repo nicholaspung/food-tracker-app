@@ -5,6 +5,7 @@ import {
   buildPocketBaseFileUrl,
   invalidateHomeFeedQueries,
   moveVisitItem,
+  syncVisitMutationCaches,
 } from '../features';
 import { moveVisitItemApiMutationInput } from '../features/store/featureOutboxOperations';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -23,6 +24,7 @@ jest.mock('../features', () => ({
   invalidateHomeFeedQueries: jest.fn(),
   moveVisitItem: jest.fn(),
   reportContent: jest.fn(),
+  syncVisitMutationCaches: jest.fn(),
   visitsQueryKeys: {
     root: ['feature', 'visits'],
   },
@@ -47,6 +49,9 @@ const mockedInvalidateHomeFeedQueries = invalidateHomeFeedQueries as jest.Mocked
   typeof invalidateHomeFeedQueries
 >;
 const mockedMoveVisitItem = moveVisitItem as jest.MockedFunction<typeof moveVisitItem>;
+const mockedSyncVisitMutationCaches = syncVisitMutationCaches as jest.MockedFunction<
+  typeof syncVisitMutationCaches
+>;
 const mockedMoveVisitItemApiMutationInput =
   moveVisitItemApiMutationInput as jest.MockedFunction<
     typeof moveVisitItemApiMutationInput
@@ -98,12 +103,14 @@ describe('useHomeFeedActionController', () => {
     mockedBuildPocketBaseFileUrl.mockReset();
     mockedInvalidateHomeFeedQueries.mockReset();
     mockedMoveVisitItem.mockReset();
+    mockedSyncVisitMutationCaches.mockReset();
     mockedMoveVisitItemApiMutationInput.mockReset();
     mockedShowQueuedOfflineAlert.mockReset();
     mockedBuildPocketBaseFileUrl.mockImplementation(({ recordId, filename, thumb }) =>
       `pb://${recordId}/${filename}${thumb ? `?thumb=${thumb}` : ''}`,
     );
     mockedInvalidateHomeFeedQueries.mockResolvedValue();
+    mockedSyncVisitMutationCaches.mockResolvedValue();
     mockedMoveVisitItemApiMutationInput.mockReturnValue({
       body: {
         destinationVisitId: 'visit-destination',
@@ -166,6 +173,89 @@ describe('useHomeFeedActionController', () => {
     ]);
     expect(getControllerOrThrow(controller).photoViewerInitialIndex).toBe(1);
     expect(getControllerOrThrow(controller).isPhotoViewerVisible).toBe(true);
+
+    await act(async () => {
+      renderer?.unmount();
+    });
+  });
+
+  it('syncs visit mutation caches after deleting a visit', async () => {
+    let controller: HomeFeedActionController | null = null;
+    let renderer: ReactTestRenderer | null = null;
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed' as const,
+    });
+    const queryClient = {} as never;
+
+    function TestComponent() {
+      controller = useHomeFeedActionController({
+        isOnline: true,
+        queryClient,
+        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
+        writeFeature: writeFeature as never,
+      });
+      return null;
+    }
+
+    await act(async () => {
+      renderer = create(React.createElement(TestComponent));
+    });
+
+    await act(async () => {
+      getControllerOrThrow(controller).promptDeleteVisit('visit-1', 'Noodle House');
+    });
+
+    await act(async () => {
+      await getControllerOrThrow(controller).confirmDeleteTarget();
+    });
+
+    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
+      visitId: 'visit-1',
+      includeVisitPhotos: true,
+    });
+    expect(mockedInvalidateHomeFeedQueries).not.toHaveBeenCalled();
+    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalledWith('Visit delete');
+
+    await act(async () => {
+      renderer?.unmount();
+    });
+  });
+
+  it('syncs visit mutation caches after queueing a visit delete', async () => {
+    let controller: HomeFeedActionController | null = null;
+    let renderer: ReactTestRenderer | null = null;
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'queued' as const,
+    });
+    const queryClient = {} as never;
+
+    function TestComponent() {
+      controller = useHomeFeedActionController({
+        isOnline: false,
+        queryClient,
+        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
+        writeFeature: writeFeature as never,
+      });
+      return null;
+    }
+
+    await act(async () => {
+      renderer = create(React.createElement(TestComponent));
+    });
+
+    await act(async () => {
+      getControllerOrThrow(controller).promptDeleteVisit('visit-queued', 'Noodle House');
+    });
+
+    await act(async () => {
+      await getControllerOrThrow(controller).confirmDeleteTarget();
+    });
+
+    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
+      visitId: 'visit-queued',
+      includeVisitPhotos: true,
+    });
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Visit delete');
 
     await act(async () => {
       renderer?.unmount();
