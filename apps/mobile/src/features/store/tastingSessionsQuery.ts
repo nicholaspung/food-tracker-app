@@ -3,8 +3,9 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import type { TastingSessionRecord } from '../models';
 
 export const tastingSessionsQueryKeys = {
-  root: ['feature', 'tastingSessions'] as const,
-  detail: (sessionId: string) => ['feature', 'tastingSession', sessionId.trim()] as const,
+  root: ['feature', 'tasting-sessions'] as const,
+  detail: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim()] as const,
+  friends: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim(), 'friends'] as const,
 };
 
 export function isTastingSessionsListQueryKey(queryKey: QueryKey): boolean {
@@ -20,7 +21,7 @@ export function isTastingSessionDetailQueryKey(queryKey: QueryKey): boolean {
     Array.isArray(queryKey) &&
     queryKey.length === 3 &&
     queryKey[0] === 'feature' &&
-    queryKey[1] === 'tastingSession' &&
+    queryKey[1] === 'tasting-sessions' &&
     typeof queryKey[2] === 'string' &&
     queryKey[2].trim().length > 0
   );
@@ -43,4 +44,3 @@ export function getCachedTastingSessionDetail(
       ?.find((session) => session.id === sessionId) ?? null
   );
 }
-

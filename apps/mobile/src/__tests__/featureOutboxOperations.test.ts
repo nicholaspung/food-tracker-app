@@ -2,10 +2,6 @@ import {
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
 import {
-  addTastingItem,
-  submitTastingRating,
-} from '../features/store/tastingSessionsApiStore';
-import {
   getCollectionRecord,
   saveAuthRecord,
   updateCollectionRecord,
@@ -56,13 +52,9 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
 }));
 
 jest.mock('../features/store/tastingSessionsApiStore', () => ({
-  addTastingItem: jest.fn(),
   createTastingSession: jest.fn(),
-  deleteTastingItem: jest.fn(),
   joinTastingSession: jest.fn(),
-  regenerateTastingInviteCode: jest.fn(),
   setTastingSessionStatus: jest.fn(),
-  submitTastingRating: jest.fn(),
 }));
 
 const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>;
@@ -72,8 +64,6 @@ const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jes
 const mockedGetCollectionRecord = getCollectionRecord as jest.MockedFunction<typeof getCollectionRecord>;
 const mockedSaveAuthRecord = saveAuthRecord as jest.MockedFunction<typeof saveAuthRecord>;
 const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
-const mockedAddTastingItem = addTastingItem as jest.MockedFunction<typeof addTastingItem>;
-const mockedSubmitTastingRating = submitTastingRating as jest.MockedFunction<typeof submitTastingRating>;
 
 function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMutation {
   return {
@@ -112,8 +102,6 @@ describe('featureOutboxOperations', () => {
     mockedGetCollectionRecord.mockReset();
     mockedSaveAuthRecord.mockReset();
     mockedUpdateCollectionRecord.mockReset();
-    mockedAddTastingItem.mockReset();
-    mockedSubmitTastingRating.mockReset();
   });
 
   it('passes queued idempotency headers into replayed local feature writes', async () => {
@@ -192,20 +180,7 @@ describe('featureOutboxOperations', () => {
     );
   });
 
-  it('replays tasting session item adds through local feature writes', async () => {
-    mockedAddTastingItem.mockResolvedValue({
-      id: 'session-1',
-      name: 'Coffee',
-      restaurantName: 'Cafe',
-      inviteCode: 'ABC123',
-      createdByUserId: 'user-1',
-      status: 'adding_items',
-      participants: [],
-      items: [],
-      createdAt: '2026-04-29T12:00:00.000Z',
-      updatedAt: '2026-04-29T12:00:00.000Z',
-    });
-
+  it('does not replay legacy tasting session item adds', async () => {
     const handled = await replayFeatureOutboxMutation(
       createQueuedMutation({
         url: 'local://feature/tasting-session.item.add',
@@ -222,37 +197,10 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
-    expect(mockedAddTastingItem).toHaveBeenCalledWith(
-      'session-1',
-      {
-        name: 'Espresso',
-        description: 'Bright',
-      },
-      {
-        headers: {
-          'X-Mobile-Write-Operation': 'tasting-session.item.add',
-          'Idempotency-Key': 'idem_123',
-          'X-Idempotency-Key': 'idem_123',
-        },
-      },
-    );
+    expect(handled).toBe(false);
   });
 
-  it('replays tasting session rating submissions through local feature writes', async () => {
-    mockedSubmitTastingRating.mockResolvedValue({
-      id: 'session-1',
-      name: 'Coffee',
-      restaurantName: 'Cafe',
-      inviteCode: 'ABC123',
-      createdByUserId: 'user-1',
-      status: 'rating',
-      participants: [],
-      items: [],
-      createdAt: '2026-04-29T12:00:00.000Z',
-      updatedAt: '2026-04-29T12:00:00.000Z',
-    });
-
+  it('does not replay legacy tasting session rating submissions', async () => {
     const handled = await replayFeatureOutboxMutation(
       createQueuedMutation({
         url: 'local://feature/tasting-session.rating.submit',
@@ -270,22 +218,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
-    expect(mockedSubmitTastingRating).toHaveBeenCalledWith(
-      'session-1',
-      'item-1',
-      {
-        rating: 4,
-        note: 'Balanced',
-      },
-      {
-        headers: {
-          'X-Mobile-Write-Operation': 'tasting-session.rating.submit',
-          'Idempotency-Key': 'idem_123',
-          'X-Idempotency-Key': 'idem_123',
-        },
-      },
-    );
+    expect(handled).toBe(false);
   });
 
   it('replays main onboarding completion while preserving existing onboarding state', async () => {

@@ -71,17 +71,11 @@ import {
   type UpdateNoteInput,
 } from './featureStore';
 import {
-  addTastingItem,
   createTastingSession,
-  deleteTastingItem,
   joinTastingSession,
-  regenerateTastingInviteCode,
   setTastingSessionStatus,
-  submitTastingRating,
-  type AddTastingItemInput,
   type CreateTastingSessionInput,
   type JoinTastingSessionInput,
-  type SubmitTastingRatingInput,
 } from './tastingSessionsApiStore';
 
 const FEATURE_OUTBOX_URL_PREFIX = 'local://feature/';
@@ -171,26 +165,6 @@ interface FriendRemoveOperationPayload {
 type TastingSessionCreateOperationPayload = CreateTastingSessionInput;
 type TastingSessionJoinOperationPayload = JoinTastingSessionInput;
 
-interface TastingSessionInviteCodeRegenerateOperationPayload {
-  sessionId: string;
-}
-
-interface TastingSessionItemAddOperationPayload {
-  sessionId: string;
-  input: AddTastingItemInput;
-}
-
-interface TastingSessionItemDeleteOperationPayload {
-  sessionId: string;
-  itemId: string;
-}
-
-interface TastingSessionRatingSubmitOperationPayload {
-  sessionId: string;
-  itemId: string;
-  input: SubmitTastingRatingInput;
-}
-
 interface TastingSessionStatusUpdateOperationPayload {
   sessionId: string;
   status: TastingSessionStatus;
@@ -255,10 +229,6 @@ export interface FeatureOutboxOperationPayloadMap {
   'friend.request.cancel': FriendRemoveOperationPayload;
   'tasting-session.create': TastingSessionCreateOperationPayload;
   'tasting-session.join': TastingSessionJoinOperationPayload;
-  'tasting-session.invite-code.regenerate': TastingSessionInviteCodeRegenerateOperationPayload;
-  'tasting-session.item.add': TastingSessionItemAddOperationPayload;
-  'tasting-session.item.delete': TastingSessionItemDeleteOperationPayload;
-  'tasting-session.rating.submit': TastingSessionRatingSubmitOperationPayload;
   'tasting-session.status.update': TastingSessionStatusUpdateOperationPayload;
 }
 
@@ -306,10 +276,6 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'friend.request.cancel',
   'tasting-session.create',
   'tasting-session.join',
-  'tasting-session.invite-code.regenerate',
-  'tasting-session.item.add',
-  'tasting-session.item.delete',
-  'tasting-session.rating.submit',
   'tasting-session.status.update',
 ]);
 
@@ -715,31 +681,6 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
     case 'tasting-session.join':
       await joinTastingSession(payload as TastingSessionJoinOperationPayload, requestOptions);
       return true;
-    case 'tasting-session.invite-code.regenerate': {
-      const regeneratePayload = payload as TastingSessionInviteCodeRegenerateOperationPayload;
-      await regenerateTastingInviteCode(regeneratePayload.sessionId, requestOptions);
-      return true;
-    }
-    case 'tasting-session.item.add': {
-      const addItemPayload = payload as TastingSessionItemAddOperationPayload;
-      await addTastingItem(addItemPayload.sessionId, addItemPayload.input, requestOptions);
-      return true;
-    }
-    case 'tasting-session.item.delete': {
-      const deleteItemPayload = payload as TastingSessionItemDeleteOperationPayload;
-      await deleteTastingItem(deleteItemPayload.sessionId, deleteItemPayload.itemId, requestOptions);
-      return true;
-    }
-    case 'tasting-session.rating.submit': {
-      const ratingPayload = payload as TastingSessionRatingSubmitOperationPayload;
-      await submitTastingRating(
-        ratingPayload.sessionId,
-        ratingPayload.itemId,
-        ratingPayload.input,
-        requestOptions,
-      );
-      return true;
-    }
     case 'tasting-session.status.update': {
       const statusPayload = payload as TastingSessionStatusUpdateOperationPayload;
       await setTastingSessionStatus(statusPayload.sessionId, statusPayload.status, requestOptions);
