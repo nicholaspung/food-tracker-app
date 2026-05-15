@@ -68,6 +68,7 @@ jest.mock('../theme', () => ({
           muted: 'muted-text',
           primary: 'primary-text',
           secondary: 'secondary-text',
+          warning: 'warning-text',
         },
       },
       radii: {
@@ -91,6 +92,7 @@ jest.mock('../theme', () => ({
 }));
 
 jest.mock('../ui', () => ({
+  Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -123,14 +125,27 @@ function buildGroup(): RestaurantMapGroup {
   };
 }
 
-function renderSheet() {
+function renderSheet({
+  directionsErrorMessage = null,
+  directionsLoading = false,
+  group = buildGroup(),
+  onOpenDirections = jest.fn().mockResolvedValue(undefined),
+}: {
+  directionsErrorMessage?: string | null;
+  directionsLoading?: boolean;
+  group?: RestaurantMapGroup;
+  onOpenDirections?: jest.Mock;
+} = {}) {
   let renderer: any = null;
 
   act(() => {
     renderer = create(
       <RestaurantMapSheet
-        group={buildGroup()}
+        directionsErrorMessage={directionsErrorMessage}
+        directionsLoading={directionsLoading}
+        group={group}
         onClose={jest.fn()}
+        onOpenDirections={onOpenDirections}
       />,
     );
   });
@@ -139,7 +154,11 @@ function renderSheet() {
     throw new Error('RestaurantMapSheet did not render.');
   }
 
-  return renderer;
+  return {
+    group,
+    onOpenDirections,
+    renderer,
+  };
 }
 
 function findTextNodes(renderer: any, text: string) {
@@ -155,7 +174,7 @@ describe('RestaurantMapSheet', () => {
   });
 
   it('renders only the first two items and a show-more action while collapsed', () => {
-    const renderer = renderSheet();
+    const { renderer } = renderSheet();
 
     expect(findTextNodes(renderer, 'First drink')).toHaveLength(1);
     expect(findTextNodes(renderer, 'Second drink')).toHaveLength(1);
@@ -164,7 +183,7 @@ describe('RestaurantMapSheet', () => {
   });
 
   it('snaps to the middle point when show-more is pressed', () => {
-    const renderer = renderSheet();
+    const { renderer } = renderSheet();
 
     act(() => {
       renderer.root.findByProps({
@@ -176,7 +195,7 @@ describe('RestaurantMapSheet', () => {
   });
 
   it('renders all items and hides show-more when expanded', () => {
-    const renderer = renderSheet();
+    const { renderer } = renderSheet();
 
     act(() => {
       renderer.root.findByType('BottomSheet').props.onChange(1);
@@ -189,11 +208,53 @@ describe('RestaurantMapSheet', () => {
   });
 
   it('uses a single scrollable content child inside the bottom sheet', () => {
-    const renderer = renderSheet();
+    const { renderer } = renderSheet();
     const bottomSheet = renderer.root.findByType('BottomSheet');
 
     expect(bottomSheet.findAllByType('BottomSheetScrollView')).toHaveLength(1);
     expect(bottomSheet.findAllByType('BottomSheetFlatList')).toHaveLength(0);
     expect(bottomSheet.findAllByType('BottomSheetView')).toHaveLength(0);
+  });
+
+  it('renders a directions button for the selected restaurant', () => {
+    const { renderer } = renderSheet();
+
+    const button = renderer.root.findByProps({
+      testID: 'restaurant-map-directions-button',
+    });
+
+    expect(button.props.accessibilityLabel).toBe('Get directions to Test Restaurant');
+    expect(button.props.label).toBe('Directions');
+    expect(button.props.variant).toBe('secondary');
+  });
+
+  it('opens directions for the selected restaurant when the directions button is pressed', () => {
+    const { group, onOpenDirections, renderer } = renderSheet();
+
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-map-directions-button',
+      }).props.onPress();
+    });
+
+    expect(onOpenDirections).toHaveBeenCalledWith(group);
+  });
+
+  it('shows a directions error message', () => {
+    const { renderer } = renderSheet({
+      directionsErrorMessage: 'Could not open directions. Try again from your maps app.',
+    });
+
+    expect(findTextNodes(renderer, 'Could not open directions. Try again from your maps app.')).toHaveLength(1);
+  });
+
+  it('passes the directions loading state to the button', () => {
+    const { renderer } = renderSheet({
+      directionsLoading: true,
+    });
+
+    expect(renderer.root.findByProps({
+      testID: 'restaurant-map-directions-button',
+    }).props.loading).toBe(true);
   });
 });

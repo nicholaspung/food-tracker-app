@@ -258,6 +258,10 @@ function warnOnRedactedEventProperties(eventName: string, redactedKeys: string[]
 function shouldRedactObservabilityKey(key: string): boolean {
   const normalizedKey = key.trim().toLowerCase();
 
+  if (normalizedKey === 'anonymousid') {
+    return false;
+  }
+
   return (
     normalizedKey === 'email' ||
     normalizedKey === 'name' ||

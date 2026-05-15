@@ -1,7 +1,7 @@
 import type { ComponentType, ForwardRefExoticComponent, RefAttributes } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { MapMarkerProps, MapViewProps } from 'react-native-maps';
 
@@ -21,6 +21,7 @@ import {
   buildInitialMapRegion,
   buildSelectedRestaurantRegion,
 } from './restaurantMapRegion';
+import { buildRestaurantDirectionsUrl } from './restaurantDirectionsLink';
 import type { RestaurantMapGroup } from './restaurantMapTypes';
 
 interface RestaurantMapViewProps {
@@ -204,6 +205,8 @@ export function RestaurantMapView({
   const theme = useTheme();
   const mapRef = useRef<MapViewHandle | null>(null);
   const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
+  const [directionsErrorMessage, setDirectionsErrorMessage] = useState<string | null>(null);
+  const [directionsLoading, setDirectionsLoading] = useState(false);
   const [hiddenLocationBannerDismissed, setHiddenLocationBannerDismissed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null);
   const maps = loadMapsComponents();
@@ -228,6 +231,10 @@ export function RestaurantMapView({
       onSelectedGroupChange(null);
     }
   }, [onSelectedGroupChange, selectedGroup, selectedGroupId]);
+
+  useEffect(() => {
+    setDirectionsErrorMessage(null);
+  }, [selectedGroupId]);
 
   useEffect(() => {
     if (!maps || groups.length === 0) {
@@ -315,6 +322,18 @@ export function RestaurantMapView({
     onSelectedGroupChange(null);
     mapRef.current?.animateToRegion?.(initialRegion, 300);
   };
+  const handleOpenDirections = async (group: RestaurantMapGroup) => {
+    setDirectionsErrorMessage(null);
+    setDirectionsLoading(true);
+
+    try {
+      await Linking.openURL(buildRestaurantDirectionsUrl(group));
+    } catch {
+      setDirectionsErrorMessage('Could not open directions. Try again from your maps app.');
+    } finally {
+      setDirectionsLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.container, style]} testID={testID}>
@@ -398,10 +417,13 @@ export function RestaurantMapView({
       ) : null}
 
       <RestaurantMapSheet
+        directionsErrorMessage={directionsErrorMessage}
+        directionsLoading={directionsLoading}
         group={selectedGroup}
         onClose={() => {
           onSelectedGroupChange(null);
         }}
+        onOpenDirections={handleOpenDirections}
       />
     </View>
   );

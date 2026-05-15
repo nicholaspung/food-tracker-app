@@ -6,15 +6,18 @@ import { Pressable, View } from 'react-native';
 
 import { CachedRemoteImage, RatingPill } from '../shared';
 import { createThemedStyles, useTheme } from '../../theme';
-import { Text } from '../../ui';
+import { Button, Text } from '../../ui';
 import type { RestaurantMapGroup, RestaurantMapItem } from './restaurantMapTypes';
 
 interface RestaurantMapSheetProps {
+  directionsErrorMessage: string | null;
+  directionsLoading: boolean;
   group: RestaurantMapGroup | null;
   onClose: () => void;
+  onOpenDirections: (group: RestaurantMapGroup) => Promise<void>;
 }
 
-const COLLAPSED_SNAP = 220;
+const COLLAPSED_SNAP = 260;
 const SNAP_POINTS = [COLLAPSED_SNAP, '42%', '76%'] as const;
 
 const useStyles = createThemedStyles((theme) => ({
@@ -54,6 +57,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   summary: {
     color: theme.colors.text.muted,
+  },
+  actions: {
+    gap: theme.spacing.xxs,
   },
   itemRow: {
     alignItems: 'flex-start',
@@ -122,6 +128,9 @@ const useStyles = createThemedStyles((theme) => ({
   groupNoteText: {
     color: theme.colors.text.secondary,
     fontStyle: 'italic',
+  },
+  directionsError: {
+    color: theme.colors.text.warning,
   },
   showMoreButton: {
     alignItems: 'center',
@@ -217,8 +226,11 @@ function RestaurantItemRow({
 }
 
 export function RestaurantMapSheet({
+  directionsErrorMessage,
+  directionsLoading,
   group,
   onClose,
+  onOpenDirections,
 }: RestaurantMapSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const previousGroupIdRef = useRef<string | null>(null);
@@ -278,6 +290,24 @@ export function RestaurantMapSheet({
           <Text style={styles.summary} variant="bodySmTightMedium">
             {group.summary}
           </Text>
+        </View>
+
+        <View style={styles.actions}>
+          <Button
+            accessibilityLabel={`Get directions to ${group.restaurantName}`}
+            label="Directions"
+            loading={directionsLoading}
+            onPress={() => {
+              void onOpenDirections(group);
+            }}
+            testID="restaurant-map-directions-button"
+            variant="secondary"
+          />
+          {directionsErrorMessage ? (
+            <Text style={styles.directionsError} variant="bodySmTightSemiBold">
+              {directionsErrorMessage}
+            </Text>
+          ) : null}
         </View>
 
         {visibleItems.map((item) => (
