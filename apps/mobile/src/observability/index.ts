@@ -27,6 +27,11 @@ let initialized = false;
 let posthogClient: PostHog | null = null;
 let contextProperties: EventProperties = {};
 const warnedRedactionKeys = new Set<string>();
+const allowedIdentifierAnalyticsKeys = new Set([
+  'anonymousid',
+  'currentupdateid',
+  'updateid',
+]);
 const expoConstants = readExpoConstants();
 const platformOS = readPlatformOS();
 
@@ -258,7 +263,7 @@ function warnOnRedactedEventProperties(eventName: string, redactedKeys: string[]
 function shouldRedactObservabilityKey(key: string): boolean {
   const normalizedKey = key.trim().toLowerCase();
 
-  if (normalizedKey === 'anonymousid') {
+  if (allowedIdentifierAnalyticsKeys.has(normalizedKey)) {
     return false;
   }
 
