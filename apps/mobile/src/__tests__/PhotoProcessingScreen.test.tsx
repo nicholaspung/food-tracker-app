@@ -245,7 +245,6 @@ jest.mock('../screens/photoProcessing/shared', () => ({
   formatCoordinatesForDisplay: jest.fn(() => '37.7749, -122.4194'),
   formatDraftPhotoMetadataLabel: jest.fn((photo: { name: string }) => photo.name),
   FREE_MONTHLY_PHOTO_LIMIT: 100,
-  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD: 10,
   normalizeSelectionLabel: jest.fn((value: string) => value.trim().toLowerCase()),
   resolveDraftPhotoDetectedDateValue: jest.fn(() => null),
   resolveProgressSteps: jest.fn(() => []),

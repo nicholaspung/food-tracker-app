@@ -133,7 +133,7 @@ export function setProductAnalyticsAnonymousId(anonymousId: string): void {
   });
 }
 
-export function resolveProductAnalyticsUserKey(user: AuthUser): string {
+function resolveProductAnalyticsUserKey(user: AuthUser): string {
   const record = user as AuthUser & {
     analyticsId?: string;
     analyticsKey?: string;
@@ -212,7 +212,7 @@ export function trackFirstFoodLogged(properties: TrackingEntryProperties): void 
   void trackFirstFoodLoggedOnce(storageKey, properties);
 }
 
-export function buildAnalyticsContext(): AnalyticsContext {
+function buildAnalyticsContext(): AnalyticsContext {
   return {
     anonymousId: currentAnonymousId,
     ...(currentUserKey ? { userKey: currentUserKey } : {}),

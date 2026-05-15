@@ -2,7 +2,7 @@ export type AppEnvironment = 'local' | 'beta' | 'production';
 
 export type EnvSource = Record<string, string | undefined>;
 
-export const DEFAULT_IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
+const DEFAULT_IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 
 interface MobileEnvironmentDefaults {
   adminUrl: string;
