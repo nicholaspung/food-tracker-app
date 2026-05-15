@@ -23,6 +23,24 @@ func RegisterEmailVerificationHooks(app core.App) {
 		return e.Next()
 	})
 
+	app.OnRecordUpdate("users").BindFunc(func(e *core.RecordEvent) error {
+		wasVerified := false
+		if original := e.Record.Original(); original != nil {
+			wasVerified = original.GetBool("verified")
+		}
+
+		isVerified := e.Record.GetBool("verified")
+		if err := e.Next(); err != nil {
+			return err
+		}
+
+		if !wasVerified && isVerified {
+			lib.TrackActivationEmailVerified(e.Record.Id, "backend_email_verification")
+		}
+
+		return nil
+	})
+
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.BindFunc(func(e *core.RequestEvent) error {
 			if shouldBypassEmailVerificationMiddleware(e) {

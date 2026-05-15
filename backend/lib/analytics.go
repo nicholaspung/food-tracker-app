@@ -20,6 +20,10 @@ const (
 	posthogDistinctIDBackendPlaces = "backend:places-api"
 )
 
+var enqueuePostHogCapture = func(capture posthog.Capture) error {
+	return PostHogClient.Enqueue(capture)
+}
+
 // InitAnalytics initializes the PostHog client
 func InitAnalytics() error {
 	apiKey := os.Getenv("POSTHOG_API_KEY")
@@ -62,6 +66,40 @@ func CloseAnalytics() {
 	if AnalyticsEnabled && PostHogClient != nil {
 		log.Println("[Analytics] Closing PostHog client...")
 		PostHogClient.Close()
+	}
+}
+
+// UserAnalyticsKey returns the privacy-safe user key shared by product analytics.
+func UserAnalyticsKey(userID string) string {
+	return "usr_" + hashString("yummy-recs-mobile:"+userID)
+}
+
+// TrackActivationEmailVerified tracks verified email completions from backend
+// confirmation paths, including web verification links.
+func TrackActivationEmailVerified(userID string, source string) {
+	if !AnalyticsEnabled || userID == "" {
+		return
+	}
+
+	userKey := UserAnalyticsKey(userID)
+	properties := posthog.NewProperties().
+		Set("source", source).
+		Set("userKey", userKey).
+		Set("authStatus", "authenticated").
+		Set("verified", true)
+
+	if environment := os.Getenv("APP_ENV"); environment != "" {
+		properties.Set("environment", environment)
+	}
+
+	err := enqueuePostHogCapture(posthog.Capture{
+		DistinctId: userKey,
+		Event:      "activation.email_verified",
+		Properties: properties,
+	})
+
+	if err != nil {
+		log.Printf("[Analytics] Failed to track email verification: %v", err)
 	}
 }
 
@@ -260,6 +298,27 @@ func estimateCost(model string, promptTokens, outputTokens int) float64 {
 		// Unknown model
 		return 0
 	}
+}
+
+func hashString(value string) string {
+	var hash uint32 = 2166136261
+	for _, char := range value {
+		hash ^= uint32(char)
+		hash *= 16777619
+	}
+
+	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+	if hash == 0 {
+		return "0"
+	}
+
+	result := make([]byte, 0, 7)
+	for hash > 0 {
+		result = append([]byte{alphabet[hash%36]}, result...)
+		hash /= 36
+	}
+
+	return string(result)
 }
 
 // Google Places API pricing estimates (as of 2025-01)

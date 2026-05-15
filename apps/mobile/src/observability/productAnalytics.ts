@@ -44,7 +44,8 @@ export type AnalyticsEventName =
   | 'quality.empty_state_shown'
   | 'quality.offline_write_queued'
   | 'quality.offline_write_replayed'
-  | 'quality.usage_limit_reached';
+  | 'quality.usage_limit_reached'
+  | 'trust.content_report_started';
 
 export type AnalyticsContext = {
   anonymousId: string;
@@ -89,7 +90,7 @@ let currentUserKey: string | undefined;
 let currentAuthStatus = 'unknown';
 let currentUserTier: UserTier = null;
 let lastIdentifiedUserKey: string | null = null;
-let hasTrackedFirstFoodLogged = false;
+const trackedFirstFoodLoggedKeys = new Set<string>();
 const expoConstants = readExpoConstants();
 const platformOS = readPlatformOS();
 
@@ -203,11 +204,12 @@ export function trackProductEvent(
 }
 
 export function trackFirstFoodLogged(properties: TrackingEntryProperties): void {
-  if (hasTrackedFirstFoodLogged) {
+  const storageKey = getFirstFoodLoggedStorageKey();
+  if (trackedFirstFoodLoggedKeys.has(storageKey)) {
     return;
   }
 
-  void trackFirstFoodLoggedOnce(properties);
+  void trackFirstFoodLoggedOnce(storageKey, properties);
 }
 
 export function buildAnalyticsContext(): AnalyticsContext {
@@ -249,19 +251,27 @@ function hashString(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-async function trackFirstFoodLoggedOnce(properties: TrackingEntryProperties): Promise<void> {
+function getFirstFoodLoggedStorageKey(): string {
+  const identityKey = currentUserKey ?? currentAnonymousId;
+  return `${FIRST_FOOD_LOGGED_KEY}.${identityKey}`;
+}
+
+async function trackFirstFoodLoggedOnce(
+  storageKey: string,
+  properties: TrackingEntryProperties,
+): Promise<void> {
   try {
-    const existingValue = await AsyncStorage.getItem(FIRST_FOOD_LOGGED_KEY);
+    const existingValue = await AsyncStorage.getItem(storageKey);
     if (existingValue === '1') {
-      hasTrackedFirstFoodLogged = true;
+      trackedFirstFoodLoggedKeys.add(storageKey);
       return;
     }
 
-    hasTrackedFirstFoodLogged = true;
-    await AsyncStorage.setItem(FIRST_FOOD_LOGGED_KEY, '1');
+    trackedFirstFoodLoggedKeys.add(storageKey);
+    await AsyncStorage.setItem(storageKey, '1');
     trackProductEvent('activation.first_food_logged', properties);
   } catch {
-    hasTrackedFirstFoodLogged = true;
+    trackedFirstFoodLoggedKeys.add(storageKey);
     trackProductEvent('activation.first_food_logged', properties);
   }
 }

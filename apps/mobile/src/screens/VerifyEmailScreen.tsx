@@ -23,7 +23,6 @@ import {
 import { decodeAuthActionTokenPayload } from '../lib/authActionToken';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { trackProductEvent } from '../observability/productAnalytics';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
@@ -272,11 +271,6 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
         );
         trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_SUCCEEDED', {
           source: 'VerifyEmailScreen',
-        });
-        trackProductEvent('activation.email_verified', {
-          source: 'VerifyEmailScreen',
-          hasRetainedSession,
-          verificationMethod: 'token',
         });
 
         if (hasRetainedSession) {

@@ -64,6 +64,10 @@ import {
   shouldShowOfflineUsageWarning,
 } from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
+import {
+  trackProductEvent,
+  type TrackingEntryProperties,
+} from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateVisitReviewStep } from './createVisit/CreateVisitReviewStep';
@@ -124,6 +128,24 @@ function resolveCreateVisitStepName(step: VisitWizardStep): 'restaurant' | 'menu
   }
 
   return 'review';
+}
+
+function resolveTrackingEntrySource(
+  entrySource: CreateVisitEntrySource,
+): TrackingEntryProperties['source'] | null {
+  if (entrySource === 'source_note') {
+    return 'note';
+  }
+
+  if (entrySource === 'source_list') {
+    return 'list';
+  }
+
+  if (entrySource === 'add_visit') {
+    return 'add_tab';
+  }
+
+  return null;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -483,6 +505,8 @@ export function CreateVisitScreen({
   const lastTrackedStepRef = useRef<VisitWizardStep | null>(null);
   const hasCompletedFlowRef = useRef(false);
   const hasTrackedFlowExitRef = useRef(false);
+  const hasTrackedItemsSelectedRef = useRef(false);
+  const hasTrackedRestaurantSelectedRef = useRef(false);
   const exitMethodRef = useRef<CreateVisitExitMethod | null>(null);
   const hasTrackedEditLoadFailureRef = useRef(false);
   const hasTrackedEditNotFoundRef = useRef(false);
@@ -1716,18 +1740,52 @@ export function CreateVisitScreen({
       step,
     ],
   );
+  const buildTrackingEntryProperties = useCallback(
+    (completed: boolean): TrackingEntryProperties | null => {
+      const trackingSource = resolveTrackingEntrySource(entrySourceRef.current);
+      if (!trackingSource) {
+        return null;
+      }
+
+      return {
+        entryType: 'restaurant_visit',
+        source: trackingSource,
+        hasPhoto: draftPhotoCount > 0,
+        itemCount: draftItems.length,
+        ratingCount: draftItems.filter((item) => item.rating >= 1 && item.rating <= 5).length,
+        visibility: visitVisibility,
+        completed,
+      };
+    },
+    [draftItems, draftPhotoCount, visitVisibility],
+  );
   const trackFlowExited = useCallback(
     (exitMethod: CreateVisitExitMethod) => {
-      if (hasCompletedFlowRef.current || hasTrackedFlowExitRef.current || !hasTrackedFlowOpenRef.current) {
+      if (
+        hasCompletedFlowRef.current ||
+        hasTrackedFlowExitRef.current ||
+        !hasTrackedFlowOpenRef.current
+      ) {
         return;
       }
 
       hasTrackedFlowExitRef.current = true;
-      trackObservabilityEvent('CREATE_VISIT_FLOW_EXITED', buildFlowAnalyticsPayload({
-        exitMethod,
-      }));
+      trackObservabilityEvent(
+        'CREATE_VISIT_FLOW_EXITED',
+        buildFlowAnalyticsPayload({
+          exitMethod,
+        }),
+      );
+      const trackingProperties = buildTrackingEntryProperties(false);
+      if (trackingProperties && hasUnsavedChanges) {
+        trackProductEvent('tracking.entry_abandoned', {
+          ...trackingProperties,
+          exitMethod,
+          step: resolveCreateVisitStepName(step),
+        });
+      }
     },
-    [buildFlowAnalyticsPayload],
+    [buildFlowAnalyticsPayload, buildTrackingEntryProperties, hasUnsavedChanges, step],
   );
 
   useEffect(() => {
@@ -1749,6 +1807,50 @@ export function CreateVisitScreen({
     lastTrackedStepRef.current = step;
     trackObservabilityEvent('CREATE_VISIT_STEP_VIEWED', buildFlowAnalyticsPayload());
   }, [buildFlowAnalyticsPayload, editVisitId, hydratedEditVisitId, isEditMode, step]);
+
+  useEffect(() => {
+    if (
+      isEditMode ||
+      !selectedRestaurantId ||
+      !restaurantName.trim() ||
+      hasTrackedRestaurantSelectedRef.current
+    ) {
+      return;
+    }
+
+    const trackingProperties = buildTrackingEntryProperties(false);
+    if (!trackingProperties) {
+      return;
+    }
+
+    hasTrackedRestaurantSelectedRef.current = true;
+    trackProductEvent('tracking.restaurant_selected', {
+      ...trackingProperties,
+      step: 'restaurant',
+    });
+  }, [
+    buildTrackingEntryProperties,
+    isEditMode,
+    restaurantName,
+    selectedRestaurantId,
+  ]);
+
+  useEffect(() => {
+    if (isEditMode || draftItems.length === 0 || hasTrackedItemsSelectedRef.current) {
+      return;
+    }
+
+    const trackingProperties = buildTrackingEntryProperties(false);
+    if (!trackingProperties) {
+      return;
+    }
+
+    hasTrackedItemsSelectedRef.current = true;
+    trackProductEvent('tracking.items_selected', {
+      ...trackingProperties,
+      step: 'menu_items',
+    });
+  }, [buildTrackingEntryProperties, draftItems.length, isEditMode]);
 
   useEffect(() => {
     if (!isEditMode || hydratedEditVisitId === editVisitId || !editVisitQuery.isError || hasTrackedEditLoadFailureRef.current) {

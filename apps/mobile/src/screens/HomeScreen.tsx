@@ -1047,7 +1047,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             onMoreActions={
               feedItem.isFriend
                 ? () => {
-                    trackProductEvent('social.feed_item_opened', {
+                    trackProductEvent('trust.content_report_started', {
                       contentType: 'visit',
                       feedMode,
                       source: 'HomeScreen',
@@ -1107,7 +1107,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           onMoreActions={
             feedItem.isFriend
               ? () => {
-                    trackProductEvent('social.feed_item_opened', {
+                    trackProductEvent('trust.content_report_started', {
                       contentType: 'food_product',
                       feedMode,
                       source: 'HomeScreen',
