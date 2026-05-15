@@ -263,7 +263,7 @@ function warnOnRedactedEventProperties(eventName: string, redactedKeys: string[]
 function shouldRedactObservabilityKey(key: string): boolean {
   const normalizedKey = key.trim().toLowerCase();
 
-  if (allowedIdentifierAnalyticsKeys.has(normalizedKey)) {
+  if (allowedIdentifierAnalyticsKeys.has(normalizedKey) || normalizedKey === 'cardid') {
     return false;
   }
 

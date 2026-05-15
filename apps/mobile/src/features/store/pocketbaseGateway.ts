@@ -162,14 +162,12 @@ export async function updateCollectionRecord<T>(
     trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
       collectionName,
       operation: 'updateCollectionRecord',
-      recordId,
     });
     return record;
   } catch (error) {
     trackObservabilityEvent('DIRECT_WRITE_FAILED', {
       collectionName,
       operation: 'updateCollectionRecord',
-      recordId,
       ...resolveErrorProperties(error),
     });
     throw error;

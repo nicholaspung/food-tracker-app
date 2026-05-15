@@ -102,6 +102,7 @@ describe('observability', () => {
           debug: jest.fn(),
           error: jest.fn(),
           info: jest.fn(),
+          log: jest.fn(),
           warn,
         },
       }));
@@ -169,6 +170,57 @@ describe('observability', () => {
         expect.objectContaining({
           currentUpdateId: 'update-123',
           updateId: 'update-456',
+        }),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  it('keeps onboarding card IDs because they are finite analytics dimensions', () => {
+    jest.isolateModules(() => {
+      const capture = jest.fn();
+      const warn = jest.fn();
+
+      jest.doMock('posthog-react-native', () => ({
+        PostHog: jest.fn().mockImplementation(() => ({
+          capture,
+          identify: jest.fn(),
+          screen: jest.fn(),
+          shutdown: jest.fn(),
+        })),
+      }));
+      jest.doMock('../config/env', () => ({
+        env: {
+          appEnv: 'test',
+          posthogApiKey: 'phc_test_key',
+          posthogHost: 'https://app.posthog.com',
+        },
+      }));
+      jest.doMock('../lib/logger', () => ({
+        logger: {
+          debug: jest.fn(),
+          error: jest.fn(),
+          info: jest.fn(),
+          log: jest.fn(),
+          warn,
+        },
+      }));
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const observabilityModule = require('../observability') as typeof import('../observability');
+      const { initializeObservability, trackObservabilityEvent } = observabilityModule;
+
+      initializeObservability();
+      trackObservabilityEvent('MORE_ONBOARDING_CARD_CTA_TAPPED', {
+        cardId: 'tipCalculator',
+        source: 'MoreFeatureOnboardingScreen',
+      });
+
+      expect(capture).toHaveBeenCalledWith(
+        'MORE_ONBOARDING_CARD_CTA_TAPPED',
+        expect.objectContaining({
+          cardId: 'tipCalculator',
+          source: 'MoreFeatureOnboardingScreen',
         }),
       );
       expect(warn).not.toHaveBeenCalled();
