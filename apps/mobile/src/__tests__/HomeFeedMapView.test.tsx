@@ -56,9 +56,13 @@ jest.mock('../hooks/useForegroundLocationCapture', () => ({
   useForegroundLocationCapture: jest.fn(),
 }));
 
-jest.mock('../screens/home/HomeFeedMapRestaurantSheet', () => ({
-  HomeFeedMapRestaurantSheet: (props: Record<string, unknown>) =>
-    mockReact.createElement('HomeFeedMapRestaurantSheet', props),
+jest.mock('../lib/photoUrls', () => ({
+  buildPhotoThumbnailUrl: () => 'photo-thumbnail-url',
+}));
+
+jest.mock('../components/maps/RestaurantMapSheet', () => ({
+  RestaurantMapSheet: (props: Record<string, unknown>) =>
+    mockReact.createElement('RestaurantMapSheet', props),
 }));
 
 jest.mock('../theme', () => ({
@@ -234,22 +238,22 @@ describe('HomeFeedMapView', () => {
       selectedGroupId: 'restaurant-1',
     });
 
-    const sheet = renderer.root.findByType('HomeFeedMapRestaurantSheet');
+    const sheet = renderer.root.findByType('RestaurantMapSheet');
     expect(sheet.props.group).toMatchObject({
       id: 'restaurant-1',
       restaurantName: 'CCB Snack Bar',
     });
-    expect(sheet.props.onOpenPhotoViewer).toBe(onOpenPhotoViewer);
+    expect(sheet.props.group.items[0].onOpenPhotos).toBeUndefined();
   });
 
-  it('passes the active feed mode to the bottom sheet', () => {
+  it('formats selected restaurant item dates from the active feed mode', () => {
     const renderer = renderMapView({
       feedMode: 'friends',
       selectedGroupId: 'restaurant-1',
     });
 
-    const sheet = renderer.root.findByType('HomeFeedMapRestaurantSheet');
-    expect(sheet.props.feedMode).toBe('friends');
+    const sheet = renderer.root.findByType('RestaurantMapSheet');
+    expect(sheet.props.group.items[0].meta[0].dateLabel).toBe('May 2026');
   });
 
   it('resets the map camera to the initial region when reset signal changes', () => {

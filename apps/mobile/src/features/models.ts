@@ -128,9 +128,12 @@ export interface RestaurantListItemRecord {
   listId: string;
   restaurantId: string;
   restaurantName: string;
+  restaurantLocation?: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
   restaurantVisibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
   sourceUserId?: string;
   sourceUserName?: string;
   position: number;

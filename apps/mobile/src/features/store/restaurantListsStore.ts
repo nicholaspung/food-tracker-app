@@ -89,9 +89,12 @@ interface RestaurantListDetailApiItemRecord {
   listId: string;
   restaurantId: string;
   restaurantName: string;
+  restaurantLocation?: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
   restaurantVisibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
   sourceUserId?: string;
   sourceUserName?: string;
   position: number;
@@ -258,9 +261,12 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     listId: record.listId,
     restaurantId: record.restaurantId,
     restaurantName: record.restaurantName.trim() || 'Unknown restaurant',
+    restaurantLocation: record.restaurantLocation?.trim() || undefined,
     restaurantCity: record.restaurantCity?.trim() || undefined,
     restaurantCuisineType: record.restaurantCuisineType?.trim() || undefined,
     restaurantVisibility: normalizeRestaurantVisibility(record.restaurantVisibility),
+    latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
+    longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
     sourceUserId: record.sourceUserId?.trim() || undefined,
     sourceUserName: record.sourceUserName?.trim() || undefined,
     position: record.position,

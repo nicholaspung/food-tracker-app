@@ -13,8 +13,11 @@ import {
   PhotoViewerModal,
   RatingPill,
   SectionHeader,
+  SegmentedControl,
+  type SegmentedControlOption,
   Skeleton,
 } from '../components/shared';
+import { RestaurantMapView, type RestaurantMapGroup } from '../components/maps';
 import {
   createDefaultRestaurantList,
   deleteRestaurantList,
@@ -44,6 +47,7 @@ import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
   buildBookmarkLookupIds,
+  formatFullDateLabel,
   formatMonthYearLabel,
 } from './listDetail/listDetailFormatters';
 import { buildOwnerDisplayItems } from './listDetail/listDetailDisplayItems';
@@ -65,6 +69,12 @@ import type {
 } from './listDetail/listDetailTypes';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
+type ListDetailViewMode = 'list' | 'map';
+
+const LIST_DETAIL_VIEW_OPTIONS: readonly SegmentedControlOption<ListDetailViewMode>[] = [
+  { label: 'List', value: 'list' },
+  { label: 'Map', value: 'map' },
+];
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -262,6 +272,40 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.danger,
     ...theme.typography.bodySm,
   },
+  viewModeControl: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 2,
+  },
+  viewModeSegment: {
+    borderRadius: 8,
+    minHeight: 38,
+  },
+  viewModeSegmentActive: {
+    backgroundColor: theme.colors.background.surface,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  viewModeLabel: {
+    color: theme.colors.text.muted,
+  },
+  viewModeLabelActive: {
+    color: theme.colors.text.primary,
+  },
+  mapWrap: {
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    height: 560,
+    overflow: 'hidden',
+  },
 }));
 
 type ListDetailStyles = ReturnType<typeof useStyles>;
@@ -273,6 +317,27 @@ interface RestaurantMetaRowProps {
   isLocked?: boolean;
   lockTestID?: string;
   styles: ListDetailStyles;
+}
+
+function hasUsableCoordinates(group: GroupedRestaurant): group is GroupedRestaurant & {
+  latitude: number;
+  longitude: number;
+} {
+  return (
+    typeof group.latitude === 'number' &&
+    typeof group.longitude === 'number' &&
+    Number.isFinite(group.latitude) &&
+    Number.isFinite(group.longitude) &&
+    group.latitude >= -90 &&
+    group.latitude <= 90 &&
+    group.longitude >= -180 &&
+    group.longitude <= 180 &&
+    !(group.latitude === 0 && group.longitude === 0)
+  );
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function RestaurantMetaRow({
@@ -331,6 +396,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   );
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<ListDetailViewMode>('list');
+  const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
@@ -415,9 +482,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         {
           restaurantId: listItem.restaurantId,
           restaurantName: listItem.restaurantName,
+          restaurantLocation: listItem.restaurantLocation,
           restaurantCity: listItem.restaurantCity,
           restaurantCuisineType: listItem.restaurantCuisineType,
           restaurantVisibility: listItem.restaurantVisibility,
+          latitude: listItem.latitude,
+          longitude: listItem.longitude,
           notes: [],
           firstPosition: listItem.position,
           items: [],
@@ -425,9 +495,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       group.firstPosition = Math.min(group.firstPosition, listItem.position);
       group.restaurantName = listItem.restaurantName;
+      group.restaurantLocation = listItem.restaurantLocation;
       group.restaurantCity = listItem.restaurantCity;
       group.restaurantCuisineType = listItem.restaurantCuisineType;
       group.restaurantVisibility = listItem.restaurantVisibility;
+      group.latitude = listItem.latitude;
+      group.longitude = listItem.longitude;
 
       if (listItem.note && !group.notes.includes(listItem.note)) {
         group.notes.push(listItem.note);
@@ -490,6 +563,83 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const closePhotoViewer = useCallback(() => {
     setPhotoViewerVisible(false);
   }, []);
+
+  const listDetailMapGroups = useMemo<RestaurantMapGroup[]>(() => {
+    return groupedRestaurants.filter(hasUsableCoordinates).map((group, groupIndex) => {
+      const items = isOwner
+        ? buildOwnerDisplayItems(group.items).map((item) => {
+            const photoEntries = buildOwnerPhotoEntries(item, photosByFoodItemId);
+            const sourceDateLabel = formatMonthYearLabel(item.source?.visitedAt);
+            const userDateLabel =
+              formatFullDateLabel(item.user?.visitedAt) ?? formatMonthYearLabel(item.user?.visitedAt);
+            const primaryPhoto = photoEntries[0] ?? null;
+
+            return {
+              id: item.key,
+              meta: [
+                {
+                  dateLabel: sourceDateLabel,
+                  label: item.source?.sourceUserName,
+                  rating: item.source?.rating,
+                },
+                {
+                  dateLabel: userDateLabel,
+                  label: item.user ? 'You' : undefined,
+                  rating: item.user?.rating,
+                },
+              ],
+              name: item.name,
+              onOpenPhotos:
+                photoEntries.length > 0
+                  ? () => {
+                      openPhotoViewer(photoEntries);
+                    }
+                  : undefined,
+              photoCount: photoEntries.length,
+              photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
+            };
+          })
+        : group.items.map((item) => {
+            const photoEntries = buildBookmarkedPhotoEntries(item, photosByFoodItemId);
+            const primaryPhoto = photoEntries[0] ?? null;
+            const sourceUserDisplayName = item.sourceUserName?.trim() || (item.sourceUserId ? 'Friend' : undefined);
+
+            return {
+              id: item.key,
+              meta: [
+                {
+                  dateLabel: formatMonthYearLabel(item.visitedAt),
+                  label: sourceUserDisplayName,
+                  rating: item.rating,
+                },
+              ],
+              name: item.name,
+              notes: item.sourceNote,
+              onOpenPhotos:
+                photoEntries.length > 0
+                  ? () => {
+                      openPhotoViewer(photoEntries);
+                    }
+                  : undefined,
+              photoCount: photoEntries.length,
+              photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
+            };
+          });
+
+      return {
+        id: group.restaurantId,
+        items,
+        latitude: group.latitude,
+        longitude: group.longitude,
+        notes: group.notes,
+        restaurantLocation: group.restaurantLocation ?? group.restaurantCity,
+        restaurantName: group.restaurantName,
+        summary: `${groupIndex + 1}. ${pluralize(items.length, isOwner ? 'bookmarked item' : 'recommended item', isOwner ? 'bookmarked items' : 'recommended items')}`,
+      };
+    });
+  }, [groupedRestaurants, isOwner, openPhotoViewer, photosByFoodItemId]);
+
+  const omittedListMapRestaurants = groupedRestaurants.length - listDetailMapGroups.length;
 
   const styles = useStyles();
 
@@ -1246,36 +1396,73 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           title="Lists unavailable"
         />
 
-        {isOwner ? (
-          <Pressable
-            accessibilityLabel="Add restaurant to list"
-            accessibilityRole="button"
-            onPress={() => {
-              trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
-                source: 'ListDetailScreen',
-              });
-              navigation.navigate('AddRestaurantToList', { listId });
-            }}
-            style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
-            testID="add-restaurant-banner"
-          >
-            <Ionicons color={theme.colors.button.primaryText} name="add-outline" size={20} />
-            <Text style={styles.addBannerLabel}>Add Visit Ratings to List</Text>
-          </Pressable>
-        ) : null}
+        <SegmentedControl
+          activeLabelStyle={styles.viewModeLabelActive}
+          activeSegmentStyle={styles.viewModeSegmentActive}
+          containerStyle={styles.viewModeControl}
+          getOptionTestID={(value) => `list-detail-view-mode-${value}`}
+          labelStyle={styles.viewModeLabel}
+          onChange={(nextViewMode) => {
+            setViewMode(nextViewMode);
+            setSelectedMapGroupId(null);
+          }}
+          options={LIST_DETAIL_VIEW_OPTIONS}
+          segmentStyle={styles.viewModeSegment}
+          value={viewMode}
+        />
 
-        {groupedRestaurants.length === 0 ? (
-          <EmptyState
-            description={
-              isOwner
-                ? 'Use Add Visit Ratings to List to save your first restaurant.'
-                : 'No restaurants have been added to this list yet.'
-            }
-            tone="default"
-            title="No restaurants yet"
+        {viewMode === 'map' ? (
+          <RestaurantMapView
+            analyticsSource="ListDetailMapView"
+            emptyDescription="Restaurants need a saved location before they can appear here."
+            emptyTitle="No map locations yet"
+            errorMessage={null}
+            groups={listDetailMapGroups}
+            hiddenLocationPluralLabel="restaurants"
+            hiddenLocationSingularLabel="restaurant"
+            loading={false}
+            mapTestID="list-detail-map"
+            omittedWithoutCoordinates={omittedListMapRestaurants}
+            onRetry={() => {
+              void detailQuery.refetch();
+            }}
+            onSelectedGroupChange={setSelectedMapGroupId}
+            selectedGroupId={selectedMapGroupId}
+            style={styles.mapWrap}
+            testID="list-detail-map-view"
           />
         ) : (
-          groupedRestaurants.map((group, groupIndex) => {
+          <>
+            {isOwner ? (
+              <Pressable
+                accessibilityLabel="Add restaurant to list"
+                accessibilityRole="button"
+                onPress={() => {
+                  trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
+                    source: 'ListDetailScreen',
+                  });
+                  navigation.navigate('AddRestaurantToList', { listId });
+                }}
+                style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
+                testID="add-restaurant-banner"
+              >
+                <Ionicons color={theme.colors.button.primaryText} name="add-outline" size={20} />
+                <Text style={styles.addBannerLabel}>Add Visit Ratings to List</Text>
+              </Pressable>
+            ) : null}
+
+            {groupedRestaurants.length === 0 ? (
+              <EmptyState
+                description={
+                  isOwner
+                    ? 'Use Add Visit Ratings to List to save your first restaurant.'
+                    : 'No restaurants have been added to this list yet.'
+                }
+                tone="default"
+                title="No restaurants yet"
+              />
+            ) : (
+              groupedRestaurants.map((group, groupIndex) => {
             const primaryMetaLabel =
               group.restaurantCity || group.restaurantCuisineType || 'Location not set';
             const secondaryMetaLabel =
@@ -1401,6 +1588,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               </Card>
             );
           })
+            )}
+          </>
         )}
 
       </View>

@@ -55,9 +55,12 @@ type restaurantListDetailItemResponse struct {
 	ListID                string                                       `json:"listId"`
 	RestaurantID          string                                       `json:"restaurantId"`
 	RestaurantName        string                                       `json:"restaurantName"`
+	RestaurantLocation    string                                       `json:"restaurantLocation,omitempty"`
 	RestaurantCity        string                                       `json:"restaurantCity,omitempty"`
 	RestaurantCuisineType string                                       `json:"restaurantCuisineType,omitempty"`
 	RestaurantVisibility  string                                       `json:"restaurantVisibility,omitempty"`
+	Latitude              *float64                                     `json:"latitude,omitempty"`
+	Longitude             *float64                                     `json:"longitude,omitempty"`
 	SourceUserID          string                                       `json:"sourceUserId,omitempty"`
 	SourceUserName        string                                       `json:"sourceUserName,omitempty"`
 	Position              int                                          `json:"position"`
@@ -688,14 +691,27 @@ func getRestaurantListDetailResponse(
 
 	for _, listItem := range listItemRecords {
 		restaurantRecord := restaurantsByID[listItem.GetString("restaurant")]
+		var latitude *float64
+		var longitude *float64
+		if restaurantRecord != nil {
+			restaurantLatitude := restaurantRecord.GetFloat("latitude")
+			restaurantLongitude := restaurantRecord.GetFloat("longitude")
+			if restaurantLatitude != 0 || restaurantLongitude != 0 {
+				latitude = &restaurantLatitude
+				longitude = &restaurantLongitude
+			}
+		}
 		itemResponse := restaurantListDetailItemResponse{
 			ID:                    listItem.Id,
 			ListID:                listItem.GetString("list"),
 			RestaurantID:          listItem.GetString("restaurant"),
 			RestaurantName:        defaultString(resolveRestaurantName(restaurantRecord), "Unknown restaurant"),
+			RestaurantLocation:    resolveRestaurantLocation(restaurantRecord),
 			RestaurantCity:        resolveRestaurantLocation(restaurantRecord),
 			RestaurantCuisineType: resolveRestaurantCuisine(restaurantRecord),
 			RestaurantVisibility:  normalizeRestaurantVisibilityForListDetail(restaurantRecord),
+			Latitude:              latitude,
+			Longitude:             longitude,
 			SourceUserID:          strings.TrimSpace(listItem.GetString("sourceUser")),
 			Position:              listItem.GetInt("position"),
 			BookmarkedItems:       []restaurantListDetailBookmarkedItemResponse{},

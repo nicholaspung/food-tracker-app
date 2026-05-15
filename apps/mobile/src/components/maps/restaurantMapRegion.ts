@@ -1,7 +1,7 @@
 import type { Region } from 'react-native-maps';
 
 import type { Coordinates } from '../../lib/coordinates';
-import type { HomeFeedMapRestaurantGroup } from './homeFeedMapGrouping';
+import type { RestaurantMapGroup } from './restaurantMapTypes';
 
 const DEFAULT_REGION: Region = {
   latitude: 39.8283,
@@ -18,7 +18,7 @@ const GPS_RADIUS_MILES = 50;
 const MILES_PER_LATITUDE_DEGREE = 69;
 const GPS_REGION_PADDING_MULTIPLIER = 1.15;
 
-export function buildInitialMapRegion(groups: readonly HomeFeedMapRestaurantGroup[]): Region {
+export function buildInitialMapRegion(groups: readonly RestaurantMapGroup[]): Region {
   if (groups.length === 0) {
     return DEFAULT_REGION;
   }
@@ -60,7 +60,7 @@ export function buildCurrentLocationRegion(coordinates: Coordinates): Region {
   };
 }
 
-export function buildSelectedRestaurantRegion(group: HomeFeedMapRestaurantGroup): Region {
+export function buildSelectedRestaurantRegion(group: RestaurantMapGroup): Region {
   return {
     latitude: group.latitude,
     latitudeDelta: SELECTED_RESTAURANT_DELTA,

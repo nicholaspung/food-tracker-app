@@ -5,24 +5,14 @@ import BottomSheet, {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { CachedRemoteImage } from '../../components/shared';
-import { buildPhotoThumbnailUrl } from '../../lib/photoUrls';
-import { getRatingColor } from '../../lib/ratingConstants';
+import { CachedRemoteImage, RatingPill } from '../shared';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
-import { formatMapItemDate } from './homeFeedMapDateFormatting';
-import type {
-  HomeFeedMapRestaurantGroup,
-  HomeFeedMapRestaurantItem,
-} from './homeFeedMapGrouping';
-import type { FeedMode } from './homeFeedTypes';
-import type { VisitPhotoRecord } from './shared';
+import type { RestaurantMapGroup, RestaurantMapItem } from './restaurantMapTypes';
 
-interface HomeFeedMapRestaurantSheetProps {
-  feedMode: FeedMode;
-  group: HomeFeedMapRestaurantGroup | null;
+interface RestaurantMapSheetProps {
+  group: RestaurantMapGroup | null;
   onClose: () => void;
-  onOpenPhotoViewer?: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
 }
 
 const COLLAPSED_SNAP = 220;
@@ -111,25 +101,28 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.primary,
     flex: 1,
   },
-  itemRating: {
+  itemMetaRow: {
     alignItems: 'center',
+    columnGap: theme.spacing.xxs,
     flexDirection: 'row',
-    flexShrink: 0,
-    gap: 5,
+    flexWrap: 'wrap',
+    rowGap: 3,
   },
-  itemRatingDot: {
-    borderRadius: theme.radii.pill,
-    height: 8,
-    width: 8,
+  itemMetaLabel: {
+    color: theme.colors.text.info,
   },
-  itemRatingLabel: {
-    color: theme.colors.text.secondary,
-  },
-  itemMeta: {
+  itemMetaDate: {
     color: theme.colors.text.secondary,
   },
   itemNotes: {
     color: theme.colors.text.muted,
+  },
+  groupNotes: {
+    gap: 2,
+  },
+  groupNoteText: {
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
   },
   showMoreButton: {
     alignItems: 'center',
@@ -149,59 +142,33 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function pluralize(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function buildSummary(group: HomeFeedMapRestaurantGroup): string {
-  const ratings = pluralize(group.items.length, 'rating', 'ratings');
-  const visits = pluralize(group.visitCount, 'visit', 'visits');
-  const foodProducts =
-    group.foodProductCount > 0
-      ? ` • ${pluralize(group.foodProductCount, 'food product', 'food products')}`
-      : '';
-
-  return `${ratings} • ${visits}${foodProducts}`;
-}
-
 function RestaurantItemRow({
-  feedMode,
   item,
-  onOpenPhotoViewer,
-  showNotes,
 }: {
-  feedMode: FeedMode;
-  item: HomeFeedMapRestaurantItem;
-  onOpenPhotoViewer?: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
-  showNotes: boolean;
+  item: RestaurantMapItem;
 }) {
-  const theme = useTheme();
   const styles = useStyles();
-  const itemDateLabel = formatMapItemDate(item.eventAt, feedMode);
-  const primaryPhoto = item.photoPreviews[0] ?? null;
-  const thumbnailUrl = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
+  const photoCount = item.photoCount ?? 0;
 
   return (
     <View style={styles.itemRow}>
-      {thumbnailUrl ? (
-        onOpenPhotoViewer ? (
+      {item.photoThumbnailUrl ? (
+        item.onOpenPhotos ? (
           <Pressable
             accessibilityLabel={`View photos for ${item.name}`}
-            onPress={() => {
-              onOpenPhotoViewer(item.photoPreviews);
-            }}
+            onPress={item.onOpenPhotos}
             style={styles.itemPhotoWrap}
           >
             <CachedRemoteImage
               accessibilityLabel={`${item.name} photo`}
               resizeMode="cover"
               style={styles.itemPhoto}
-              uri={thumbnailUrl}
+              uri={item.photoThumbnailUrl}
             />
-            {item.photoPreviews.length > 1 ? (
+            {photoCount > 1 ? (
               <View style={styles.photoCountBadge}>
                 <Text style={styles.photoCountText} variant="bodySmTightBold">
-                  +{item.photoPreviews.length - 1}
+                  +{photoCount - 1}
                 </Text>
               </View>
             ) : null}
@@ -211,7 +178,7 @@ function RestaurantItemRow({
             accessibilityLabel={`${item.name} photo`}
             resizeMode="cover"
             style={styles.itemPhoto}
-            uri={thumbnailUrl}
+            uri={item.photoThumbnailUrl}
           />
         )
       ) : null}
@@ -220,19 +187,30 @@ function RestaurantItemRow({
           <Text numberOfLines={1} style={styles.itemName} variant="bodyMdSemiBold">
             {item.name}
           </Text>
-          <View style={styles.itemRating}>
-            <View style={[styles.itemRatingDot, { backgroundColor: getRatingColor(theme, item.rating) }]} />
-            <Text numberOfLines={1} style={styles.itemRatingLabel} variant="bodySmTightMedium">
-              {item.ratingLabel}
-            </Text>
-          </View>
         </View>
-        <Text numberOfLines={1} style={styles.itemMeta} variant="bodySmTightMedium">
-          {itemDateLabel}
-          {itemDateLabel && item.ownerName ? ' • ' : ''}
-          {item.ownerName ?? ''}
-        </Text>
-        {showNotes && item.notes ? (
+        {item.meta.map((meta, index) => {
+          const hasMeta = Boolean(meta.label || meta.rating || meta.dateLabel);
+          if (!hasMeta) {
+            return null;
+          }
+
+          return (
+            <View key={`${item.id}-meta-${index}`} style={styles.itemMetaRow}>
+              {meta.label ? (
+                <Text style={styles.itemMetaLabel} variant="bodySmTightSemiBold">
+                  {meta.label}
+                </Text>
+              ) : null}
+              {meta.rating && meta.rating > 0 ? <RatingPill rating={meta.rating} /> : null}
+              {meta.dateLabel ? (
+                <Text numberOfLines={1} style={styles.itemMetaDate} variant="bodySmTightMedium">
+                  {meta.dateLabel}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })}
+        {item.notes ? (
           <Text numberOfLines={2} style={styles.itemNotes} variant="bodySmTight">
             {item.notes}
           </Text>
@@ -242,16 +220,15 @@ function RestaurantItemRow({
   );
 }
 
-export function HomeFeedMapRestaurantSheet({
-  feedMode,
+export function RestaurantMapSheet({
   group,
   onClose,
-  onOpenPhotoViewer,
-}: HomeFeedMapRestaurantSheetProps) {
+}: RestaurantMapSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const previousGroupIdRef = useRef<string | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
   const styles = useStyles();
+  const theme = useTheme();
   const snapPoints = useMemo(() => [...SNAP_POINTS], []);
 
   useEffect(() => {
@@ -290,58 +267,62 @@ export function HomeFeedMapRestaurantSheet({
       ref={sheetRef}
       snapPoints={snapPoints}
     >
-      <BottomSheetFlatList
-        ListHeaderComponent={
-          <BottomSheetView style={styles.content}>
-            <View style={styles.header}>
-              <View style={styles.titleRow}>
-                <Text numberOfLines={1} style={styles.title} variant="titleSm">
-                  {group.restaurantName}
-                </Text>
-              </View>
-              {group.restaurantLocation ? (
-                <Text numberOfLines={1} style={styles.location} variant="bodySmTightMedium">
-                  {group.restaurantLocation}
-                </Text>
-              ) : null}
-              <Text style={styles.summary} variant="bodySmTightSemiBold">
-                {buildSummary(group)}
-              </Text>
-            </View>
-
-            {topItems.map((item) => (
-              <RestaurantItemRow
-                feedMode={feedMode}
-                item={item}
-                key={`top-${item.id}`}
-                onOpenPhotoViewer={onOpenPhotoViewer}
-                showNotes={false}
-              />
-            ))}
-
-            {showMore ? (
-              <Pressable onPress={expandSheet} style={styles.showMoreButton}>
-                <Text style={styles.showMoreLabel} variant="labelMd">
-                  Show more
-                </Text>
-              </Pressable>
-            ) : null}
-          </BottomSheetView>
-        }
-        contentContainerStyle={styles.listContent}
-        data={remainingItems}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.content}>
-            <RestaurantItemRow
-              feedMode={feedMode}
-              item={item}
-              onOpenPhotoViewer={onOpenPhotoViewer}
-              showNotes
-            />
+      <BottomSheetView style={styles.content}>
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text numberOfLines={1} style={styles.title} variant="sectionTitleTight">
+              {group.restaurantName}
+            </Text>
           </View>
-        )}
-      />
+          {group.restaurantLocation ? (
+            <Text numberOfLines={1} style={styles.location} variant="bodySmTightMedium">
+              {group.restaurantLocation}
+            </Text>
+          ) : null}
+          <Text style={styles.summary} variant="bodySmTightMedium">
+            {group.summary}
+          </Text>
+        </View>
+
+        {topItems.map((item) => (
+          <RestaurantItemRow item={item} key={item.id} />
+        ))}
+
+        {group.notes?.length ? (
+          <View style={styles.groupNotes}>
+            {group.notes.map((note, index) => (
+              <Text key={`${group.id}-note-${index}`} numberOfLines={2} style={styles.groupNoteText} variant="bodySm">
+                "{note}"
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {showMore ? (
+          <Pressable
+            accessibilityLabel={`Show all ${group.items.length} items for ${group.restaurantName}`}
+            accessibilityRole="button"
+            onPress={expandSheet}
+            style={({ pressed }) => [
+              styles.showMoreButton,
+              pressed ? { backgroundColor: theme.colors.background.muted } : null,
+            ]}
+          >
+            <Text style={styles.showMoreLabel} variant="bodySmTightSemiBold">
+              Show {remainingItems.length} more
+            </Text>
+          </Pressable>
+        ) : null}
+      </BottomSheetView>
+
+      {sheetIndex > 0 ? (
+        <BottomSheetFlatList
+          contentContainerStyle={styles.listContent}
+          data={remainingItems}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <RestaurantItemRow item={item} />}
+        />
+      ) : null}
     </BottomSheet>
   );
 }

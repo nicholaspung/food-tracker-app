@@ -1,7 +1,7 @@
 import {
   buildCurrentLocationRegion,
   buildSelectedRestaurantRegion,
-} from '../screens/home/homeFeedMapRegion';
+} from '../components/maps/restaurantMapRegion';
 
 describe('buildCurrentLocationRegion', () => {
   it('builds a viewport around a 50 mile radius from the current location', () => {
@@ -20,15 +20,12 @@ describe('buildCurrentLocationRegion', () => {
 describe('buildSelectedRestaurantRegion', () => {
   it('builds a focused viewport around the selected restaurant', () => {
     const region = buildSelectedRestaurantRegion({
-      foodProductCount: 0,
       id: 'restaurant-1',
       items: [],
       latitude: 34.05,
       longitude: -118.24,
-      points: [],
-      ratingAverage: null,
       restaurantName: 'CCB Snack Bar',
-      visitCount: 1,
+      summary: '1 visit',
     });
 
     expect(region).toEqual({

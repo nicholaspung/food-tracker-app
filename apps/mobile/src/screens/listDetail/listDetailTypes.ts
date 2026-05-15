@@ -56,9 +56,12 @@ export interface OwnerItemPhotoEntry {
 export interface GroupedRestaurant {
   restaurantId: string;
   restaurantName: string;
+  restaurantLocation?: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
   restaurantVisibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
   notes: string[];
   firstPosition: number;
   items: GroupedBookmarkedItem[];
