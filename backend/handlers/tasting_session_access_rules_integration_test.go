@@ -12,7 +12,7 @@ import (
 func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 
-	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, true, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
 	_, strangerToken := createAuthUser(t, server.app, false, false)
 
@@ -55,7 +55,7 @@ func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 		participantToken,
 		"",
 	)
-	requireListItemCount(t, participantSessions.Code, participantSessions.Body.Bytes(), 1)
+	requireListItemCount(t, participantSessions.Code, participantSessions.Body.Bytes(), 0)
 
 	strangerSessions := performJSONRequest(
 		t,
@@ -71,7 +71,7 @@ func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 func TestTastingSessionInviteListRuleRequiresLeader(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 
-	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, true, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
 	_, strangerToken := createAuthUser(t, server.app, false, false)
 
@@ -139,9 +139,9 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, _ := createAuthUser(t, server.app, false, false)
-	firstJoiner, firstJoinerToken := createAuthUser(t, server.app, false, false)
-	_, secondJoinerToken := createAuthUser(t, server.app, false, false)
+	leader, _ := createAuthUser(t, server.app, true, false)
+	firstJoiner, firstJoinerToken := createAuthUser(t, server.app, true, false)
+	_, secondJoinerToken := createAuthUser(t, server.app, true, false)
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":        "Code Consumption Tasting",
@@ -152,18 +152,18 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 	})
 
 	session := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
-		"name":       "Single Use Code",
-		"restaurant": restaurant.Id,
-		"leader":     leader.Id,
-		"status":     "adding_items",
-		"locked":     false,
+		"name":            "Single Use Code",
+		"restaurant":      restaurant.Id,
+		"leader":          leader.Id,
+		"status":          "lobby",
+		"invite_code":     "TASTE1",
+		"join_expires_at": "2099-01-01 00:00:00.000Z",
 	})
 
-	invite := createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
-		"session":    session.Id,
-		"code":       "TASTE1",
-		"created_by": leader.Id,
-		"expires_at": "2099-01-01 00:00:00.000Z",
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": session.Id,
+		"user":    leader.Id,
+		"role":    "leader",
 	})
 
 	firstJoinResponse := performJSONRequest(
@@ -186,8 +186,8 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 		secondJoinerToken,
 		`{"code":"TASTE1"}`,
 	)
-	if secondJoinResponse.Code != http.StatusNotFound {
-		t.Fatalf("expected second join attempt to fail, got %d: %s", secondJoinResponse.Code, secondJoinResponse.Body.String())
+	if secondJoinResponse.Code != http.StatusOK {
+		t.Fatalf("expected reusable code to allow second join, got %d: %s", secondJoinResponse.Code, secondJoinResponse.Body.String())
 	}
 
 	participants, err := server.app.FindRecordsByFilter(
@@ -201,19 +201,17 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load tasting session participants: %v", err)
 	}
-	if len(participants) != 1 {
-		t.Fatalf("expected exactly 1 participant, got %d", len(participants))
+	if len(participants) != 3 {
+		t.Fatalf("expected leader plus 2 joined participants, got %d", len(participants))
 	}
-	if participants[0].GetString("user") != firstJoiner.Id {
-		t.Fatalf("expected invite to be consumed by first joiner, got %s", participants[0].GetString("user"))
+	joinedFirst := false
+	for _, participant := range participants {
+		if participant.GetString("user") == firstJoiner.Id {
+			joinedFirst = true
+		}
 	}
-
-	inviteRecord, err := server.app.FindRecordById("tasting_session_invites", invite.Id)
-	if err != nil {
-		t.Fatalf("failed to reload tasting session invite: %v", err)
-	}
-	if inviteRecord.GetString("used_by") != firstJoiner.Id {
-		t.Fatalf("expected invite used_by to be %s, got %s", firstJoiner.Id, inviteRecord.GetString("used_by"))
+	if !joinedFirst {
+		t.Fatalf("expected first joiner to be present, got %#v", participants)
 	}
 }
 
@@ -264,7 +262,7 @@ func TestTastingSessionJoinRouteRateLimitBlocksBurstRequests(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, authToken := createAuthUser(t, server.app, false, false)
+	_, authToken := createAuthUser(t, server.app, true, false)
 
 	server.app.Settings().RateLimits.Enabled = true
 	server.app.Settings().RateLimits.Rules = []core.RateLimitRule{

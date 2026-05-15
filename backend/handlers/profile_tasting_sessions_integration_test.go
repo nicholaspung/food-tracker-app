@@ -19,14 +19,21 @@ type profileResponse struct {
 }
 
 type tastingSessionResponse struct {
-	ID              string                           `json:"id"`
-	Name            string                           `json:"name"`
-	RestaurantName  string                           `json:"restaurantName"`
-	InviteCode      string                           `json:"inviteCode"`
-	CreatedByUserID string                           `json:"createdByUserId"`
-	Status          string                           `json:"status"`
-	Participants    []tastingSessionParticipantEntry `json:"participants"`
-	Items           []tastingSessionItemEntry        `json:"items"`
+	ID           string                           `json:"id"`
+	Name         string                           `json:"name"`
+	InviteCode   string                           `json:"inviteCode"`
+	LeaderUserID string                           `json:"leaderUserId"`
+	Status       string                           `json:"status"`
+	Participants []tastingSessionParticipantEntry `json:"participants"`
+	Restaurants  []tastingSessionRestaurantEntry  `json:"restaurants"`
+}
+
+type tastingSessionRestaurantEntry struct {
+	ID             string                    `json:"id"`
+	RestaurantID   string                    `json:"restaurantId"`
+	RestaurantName string                    `json:"restaurantName"`
+	Status         string                    `json:"status"`
+	Items          []tastingSessionItemEntry `json:"items"`
 }
 
 type tastingSessionParticipantEntry struct {
@@ -39,8 +46,7 @@ type tastingSessionParticipantEntry struct {
 type tastingSessionItemEntry struct {
 	ID                     string                      `json:"id"`
 	Name                   string                      `json:"name"`
-	Description            string                      `json:"description"`
-	CreatedByParticipantID string                      `json:"createdByParticipantId"`
+	RestaurantSuggestionID string                      `json:"restaurantSuggestionId"`
 	Ratings                []tastingSessionRatingEntry `json:"ratings"`
 }
 
@@ -146,7 +152,7 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, authToken := createAuthUser(t, server.app, false, false)
+	leader, authToken := createAuthUser(t, server.app, true, false)
 
 	createResponse := performJSONRequest(
 		t,
@@ -154,7 +160,7 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 		http.MethodPost,
 		"/api/tasting-sessions",
 		authToken,
-		`{"name":"Friday Flight","restaurantName":"Tasting Counter"}`,
+		`{"name":"Friday Flight","joinDurationMinutes":60}`,
 	)
 	if createResponse.Code != http.StatusOK {
 		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
@@ -164,13 +170,10 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 	if createdSession.Name != "Friday Flight" {
 		t.Fatalf("expected session name to round-trip, got %#v", createdSession)
 	}
-	if createdSession.RestaurantName != "Tasting Counter" {
-		t.Fatalf("expected restaurant name to round-trip, got %#v", createdSession)
+	if createdSession.Status != "lobby" {
+		t.Fatalf("expected session status lobby, got %#v", createdSession)
 	}
-	if createdSession.Status != "adding_items" {
-		t.Fatalf("expected session status adding_items, got %#v", createdSession)
-	}
-	if createdSession.CreatedByUserID != leader.Id {
+	if createdSession.LeaderUserID != leader.Id {
 		t.Fatalf("expected leader id %q, got %#v", leader.Id, createdSession)
 	}
 	if len(createdSession.Participants) != 1 || createdSession.Participants[0].UserID != leader.Id {
@@ -206,7 +209,7 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, authToken := createAuthUser(t, server.app, false, false)
+	_, authToken := createAuthUser(t, server.app, true, false)
 
 	createResponse := performJSONRequest(
 		t,
@@ -214,36 +217,97 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 		http.MethodPost,
 		"/api/tasting-sessions",
 		authToken,
-		`{"name":"Crunch Test","restaurantName":"Snack Lab"}`,
+		`{"name":"Crunch Test","joinDurationMinutes":60}`,
 	)
 	if createResponse.Code != http.StatusOK {
 		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
 	}
 	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
 
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		authToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock membership to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	suggestRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		authToken,
+		`{"restaurantName":"Snack Lab"}`,
+	)
+	if suggestRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected suggest restaurant to succeed, got %d: %s", suggestRestaurantResponse.Code, suggestRestaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, suggestRestaurantResponse.Body.Bytes())
+	if len(sessionWithRestaurant.Restaurants) != 1 {
+		t.Fatalf("expected 1 restaurant after suggest, got %#v", sessionWithRestaurant)
+	}
+	restaurantSuggestionID := sessionWithRestaurant.Restaurants[0].ID
+	restaurantID := sessionWithRestaurant.Restaurants[0].RestaurantID
+
+	approveRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/status",
+		authToken,
+		`{"status":"approved"}`,
+	)
+	if approveRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected approve restaurant to succeed, got %d: %s", approveRestaurantResponse.Code, approveRestaurantResponse.Body.String())
+	}
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Sea Salt Chips",
+		"createdBy":  sessionWithRestaurant.LeaderUserID,
+		"visibility": "friends",
+	})
+
 	addItemResponse := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodPost,
-		"/api/tasting-sessions/"+createdSession.ID+"/items",
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/items",
 		authToken,
-		`{"name":"Sea Salt Chips","description":"Ridged cut"}`,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
 	)
 	if addItemResponse.Code != http.StatusOK {
 		t.Fatalf("expected add item to succeed, got %d: %s", addItemResponse.Code, addItemResponse.Body.String())
 	}
 	sessionWithItem := parseJSONResponse[tastingSessionResponse](t, addItemResponse.Body.Bytes())
-	if len(sessionWithItem.Items) != 1 {
+	if len(sessionWithItem.Restaurants) != 1 || len(sessionWithItem.Restaurants[0].Items) != 1 {
 		t.Fatalf("expected 1 item after add, got %#v", sessionWithItem)
+	}
+	itemID := sessionWithItem.Restaurants[0].Items[0].ID
+
+	approveItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/tasting-sessions/"+createdSession.ID+"/items/"+itemID+"/status",
+		authToken,
+		`{"status":"approved"}`,
+	)
+	if approveItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected approve item to succeed, got %d: %s", approveItemResponse.Code, approveItemResponse.Body.String())
 	}
 
 	startRatingResponse := performJSONRequest(
 		t,
 		server.mux,
-		http.MethodPatch,
-		"/api/tasting-sessions/"+createdSession.ID+"/status",
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/start",
 		authToken,
-		`{"status":"rating"}`,
+		`{}`,
 	)
 	if startRatingResponse.Code != http.StatusOK {
 		t.Fatalf("expected start rating to succeed, got %d: %s", startRatingResponse.Code, startRatingResponse.Body.String())
@@ -252,10 +316,10 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	rateResponse := performJSONRequest(
 		t,
 		server.mux,
-		http.MethodPut,
-		"/api/tasting-sessions/"+createdSession.ID+"/items/"+sessionWithItem.Items[0].ID+"/rating",
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
 		authToken,
-		`{"rating":4,"note":"Crisp finish"}`,
+		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+itemID+`","rating":4,"note":"Crisp finish"}]}]}`,
 	)
 	if rateResponse.Code != http.StatusOK {
 		t.Fatalf("expected rate item to succeed, got %d: %s", rateResponse.Code, rateResponse.Body.String())
@@ -264,10 +328,10 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	completeResponse := performJSONRequest(
 		t,
 		server.mux,
-		http.MethodPatch,
-		"/api/tasting-sessions/"+createdSession.ID+"/status",
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/complete",
 		authToken,
-		`{"status":"completed"}`,
+		`{}`,
 	)
 	if completeResponse.Code != http.StatusOK {
 		t.Fatalf("expected complete session to succeed, got %d: %s", completeResponse.Code, completeResponse.Body.String())
@@ -277,14 +341,14 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	if completedSession.Status != "completed" {
 		t.Fatalf("expected completed status, got %#v", completedSession)
 	}
-	if len(completedSession.Items) != 1 || len(completedSession.Items[0].Ratings) != 1 {
+	if len(completedSession.Restaurants) != 1 || len(completedSession.Restaurants[0].Items) != 1 || len(completedSession.Restaurants[0].Items[0].Ratings) != 1 {
 		t.Fatalf("expected completed session to include persisted rating, got %#v", completedSession)
 	}
-	if completedSession.Items[0].Ratings[0].Rating != 4 {
-		t.Fatalf("expected persisted rating value 4, got %#v", completedSession.Items[0].Ratings)
+	if completedSession.Restaurants[0].Items[0].Ratings[0].Rating != 4 {
+		t.Fatalf("expected persisted rating value 4, got %#v", completedSession.Restaurants[0].Items[0].Ratings)
 	}
-	if completedSession.Items[0].Ratings[0].Note != "Crisp finish" {
-		t.Fatalf("expected persisted rating note, got %#v", completedSession.Items[0].Ratings)
+	if completedSession.Restaurants[0].Items[0].Ratings[0].Note != "Crisp finish" {
+		t.Fatalf("expected persisted rating note, got %#v", completedSession.Restaurants[0].Items[0].Ratings)
 	}
 }
 
@@ -293,8 +357,8 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, leaderToken := createAuthUser(t, server.app, false, false)
-	participant, participantToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, true, false)
+	participant, participantToken := createAuthUser(t, server.app, true, false)
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":        "Reveal Counter",
@@ -308,38 +372,56 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		"name":       "Blind Ratings",
 		"restaurant": restaurant.Id,
 		"leader":     leader.Id,
-		"status":     "rating",
-		"locked":     true,
+		"status":     "tasting",
 	})
 
 	leaderParticipant := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
 		"session": session.Id,
 		"user":    leader.Id,
+		"role":    "leader",
 	})
 	participantRecord := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
 		"session": session.Id,
 		"user":    participant.Id,
+		"role":    "participant",
+	})
+	restaurantSuggestion := createCollectionRecord(t, server.app, "tasting_session_restaurants", map[string]any{
+		"session":                  session.Id,
+		"restaurant":               restaurant.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Sesame Mochi",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
 	})
 	item := createCollectionRecord(t, server.app, "tasting_session_items", map[string]any{
-		"session":     session.Id,
-		"name":        "Sesame Mochi",
-		"added_by":    leader.Id,
-		"description": "Nutty finish",
+		"session":                  session.Id,
+		"restaurant_suggestion":    restaurantSuggestion.Id,
+		"menu_item":                menuItem.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
 	})
 
 	createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
-		"session": session.Id,
-		"item":    item.Id,
-		"user":    leader.Id,
-		"rating":  5,
-		"notes":   "Leader note",
+		"session":               session.Id,
+		"restaurant_suggestion": restaurantSuggestion.Id,
+		"item":                  item.Id,
+		"participant":           leaderParticipant.Id,
+		"user":                  leader.Id,
+		"rating":                5,
+		"note":                  "Leader note",
 	})
 	createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
-		"session": session.Id,
-		"item":    item.Id,
-		"user":    participant.Id,
-		"rating":  2,
-		"notes":   "Participant note",
+		"session":               session.Id,
+		"restaurant_suggestion": restaurantSuggestion.Id,
+		"item":                  item.Id,
+		"participant":           participantRecord.Id,
+		"user":                  participant.Id,
+		"rating":                2,
+		"note":                  "Participant note",
 	})
 
 	inProgressLeaderResponse := performJSONRequest(
@@ -354,11 +436,11 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		t.Fatalf("expected leader detail fetch to succeed, got %d: %s", inProgressLeaderResponse.Code, inProgressLeaderResponse.Body.String())
 	}
 	inProgressLeaderSession := parseJSONResponse[tastingSessionResponse](t, inProgressLeaderResponse.Body.Bytes())
-	if len(inProgressLeaderSession.Items) != 1 || len(inProgressLeaderSession.Items[0].Ratings) != 1 {
+	if len(inProgressLeaderSession.Restaurants) != 1 || len(inProgressLeaderSession.Restaurants[0].Items) != 1 || len(inProgressLeaderSession.Restaurants[0].Items[0].Ratings) != 1 {
 		t.Fatalf("expected in-progress session to expose only the viewer's rating, got %#v", inProgressLeaderSession)
 	}
-	if inProgressLeaderSession.Items[0].Ratings[0].ParticipantID != leaderParticipant.Id {
-		t.Fatalf("expected leader rating to remain visible to leader, got %#v", inProgressLeaderSession.Items[0].Ratings)
+	if inProgressLeaderSession.Restaurants[0].Items[0].Ratings[0].ParticipantID != leaderParticipant.Id {
+		t.Fatalf("expected leader rating to remain visible to leader, got %#v", inProgressLeaderSession.Restaurants[0].Items[0].Ratings)
 	}
 
 	inProgressParticipantResponse := performJSONRequest(
@@ -373,15 +455,14 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		t.Fatalf("expected participant detail fetch to succeed, got %d: %s", inProgressParticipantResponse.Code, inProgressParticipantResponse.Body.String())
 	}
 	inProgressParticipantSession := parseJSONResponse[tastingSessionResponse](t, inProgressParticipantResponse.Body.Bytes())
-	if len(inProgressParticipantSession.Items) != 1 || len(inProgressParticipantSession.Items[0].Ratings) != 1 {
+	if len(inProgressParticipantSession.Restaurants) != 1 || len(inProgressParticipantSession.Restaurants[0].Items) != 1 || len(inProgressParticipantSession.Restaurants[0].Items[0].Ratings) != 1 {
 		t.Fatalf("expected in-progress session to expose only participant's own rating, got %#v", inProgressParticipantSession)
 	}
-	if inProgressParticipantSession.Items[0].Ratings[0].ParticipantID != participantRecord.Id {
-		t.Fatalf("expected participant rating to remain visible to participant, got %#v", inProgressParticipantSession.Items[0].Ratings)
+	if inProgressParticipantSession.Restaurants[0].Items[0].Ratings[0].ParticipantID != participantRecord.Id {
+		t.Fatalf("expected participant rating to remain visible to participant, got %#v", inProgressParticipantSession.Restaurants[0].Items[0].Ratings)
 	}
 
 	session.Set("status", "completed")
-	session.Set("locked", true)
 	if err := server.app.Save(session); err != nil {
 		t.Fatalf("failed to mark session completed: %v", err)
 	}
@@ -398,7 +479,7 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		t.Fatalf("expected completed detail fetch to succeed, got %d: %s", completedResponse.Code, completedResponse.Body.String())
 	}
 	completedSession := parseJSONResponse[tastingSessionResponse](t, completedResponse.Body.Bytes())
-	if len(completedSession.Items) != 1 || len(completedSession.Items[0].Ratings) != 2 {
+	if len(completedSession.Restaurants) != 1 || len(completedSession.Restaurants[0].Items) != 1 || len(completedSession.Restaurants[0].Items[0].Ratings) != 2 {
 		t.Fatalf("expected completed session to expose all ratings, got %#v", completedSession)
 	}
 }

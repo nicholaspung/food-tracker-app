@@ -205,39 +205,76 @@ export interface FeedbackMessageRecord {
   createdAt: string;
 }
 
-export interface TastingSessionParticipant {
+export type TastingSessionStatus = 'lobby' | 'planning' | 'tasting' | 'completed' | 'adding_items' | 'rating';
+export type TastingSuggestionStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TastingParticipantRecord {
   id: string;
-  userId?: string;
+  userId: string;
   name: string;
+  role: 'leader' | 'participant';
   joinedAt: string;
+  submittedAt?: string;
 }
 
-export interface TastingSessionRating {
-  participantId: string;
-  rating: number;
-  note?: string;
-}
-
-export interface TastingSessionItem {
+export interface TastingInviteRecord {
   id: string;
-  name: string;
-  description?: string;
-  createdByParticipantId: string;
-  ratings: TastingSessionRating[];
+  invitedUserId: string;
+  invitedUserName: string;
+  status: 'pending' | 'accepted' | 'dismissed' | 'revoked';
   createdAt: string;
 }
 
-export type TastingSessionStatus = 'adding_items' | 'rating' | 'completed';
+export interface TastingItemRatingRecord {
+  id: string;
+  participantId: string;
+  userId: string;
+  rating: number;
+  note?: string;
+  generatedVisitId?: string;
+  generatedFoodItemId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TastingMenuItemRecord {
+  id: string;
+  restaurantSuggestionId: string;
+  menuItemId: string;
+  name: string;
+  suggestedByParticipantId: string;
+  status: TastingSuggestionStatus;
+  ratings: TastingItemRatingRecord[];
+  createdAt: string;
+}
+
+export interface TastingRestaurantRecord {
+  id: string;
+  restaurantId: string;
+  restaurantName: string;
+  suggestedByParticipantId: string;
+  status: TastingSuggestionStatus;
+  items: TastingMenuItemRecord[];
+  createdAt: string;
+}
 
 export interface TastingSessionRecord {
   id: string;
   name: string;
-  restaurantName: string;
-  inviteCode: string;
-  createdByUserId: string;
+  leaderUserId: string;
+  createdByUserId?: string;
+  restaurantName?: string;
   status: TastingSessionStatus;
-  participants: TastingSessionParticipant[];
-  items: TastingSessionItem[];
+  inviteCode?: string;
+  joinExpiresAt: string;
+  joinedCount: number;
+  maxParticipants: number;
+  maxRestaurants: number;
+  maxApprovedItems: number;
+  participants: TastingParticipantRecord[];
+  invites: TastingInviteRecord[];
+  restaurants: TastingRestaurantRecord[];
+  items?: unknown[];
   createdAt: string;
   updatedAt: string;
 }

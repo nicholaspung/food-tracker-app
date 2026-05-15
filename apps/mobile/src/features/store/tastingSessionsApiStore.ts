@@ -1,9 +1,10 @@
-import type { TastingSessionRecord, TastingSessionStatus } from '../models';
+import type { TastingSessionRecord, TastingSessionStatus, TastingSuggestionStatus } from '../models';
 import type {
-  AddTastingItemInput,
   CreateTastingSessionInput,
   JoinTastingSessionInput,
-  SubmitTastingRatingInput,
+  SubmitTastingRatingsInput,
+  SuggestTastingMenuItemInput,
+  SuggestTastingRestaurantInput,
 } from './featureStore';
 import {
   isNotFoundError,
@@ -14,11 +15,22 @@ import {
 import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
-  AddTastingItemInput,
   CreateTastingSessionInput,
   JoinTastingSessionInput,
-  SubmitTastingRatingInput,
+  SubmitTastingRatingsInput,
+  SuggestTastingMenuItemInput,
+  SuggestTastingRestaurantInput,
 } from './featureStore';
+
+export interface AddTastingItemInput {
+  name: string;
+  description?: string;
+}
+
+export interface SubmitTastingRatingInput {
+  rating: number;
+  note?: string;
+}
 
 interface ReadRequestOptions {
   signal?: AbortSignal;
@@ -48,7 +60,6 @@ export async function getTastingSessionById(
     if (isNotFoundError(error)) {
       return null;
     }
-
     throw error;
   }
 }
@@ -62,15 +73,16 @@ export async function createTastingSession(
     () =>
       sendApiRequest<TastingSessionRecord>('/api/tasting-sessions', {
         body: {
+          invitedUserIds: input.invitedUserIds ?? [],
+          joinDurationMinutes: input.joinDurationMinutes,
           name: input.name.trim(),
-          restaurantName: input.restaurantName.trim(),
         },
         headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
       }),
     {
-      hasRestaurantName: Boolean(input.restaurantName.trim()),
-      hasSessionName: Boolean(input.name.trim()),
+      inviteCount: input.invitedUserIds?.length ?? 0,
+      joinDurationMinutes: input.joinDurationMinutes,
     },
   );
 }
@@ -83,25 +95,21 @@ export async function joinTastingSession(
     'tasting_session.join',
     () =>
       sendApiRequest<TastingSessionRecord>('/api/tasting-sessions/join', {
-        body: {
-          code: input.inviteCode.trim().toUpperCase(),
-        },
+        body: { code: input.inviteCode.trim().toUpperCase() },
         headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
       }),
-    {
-      inviteCodeLength: input.inviteCode.trim().length,
-    },
+    { inviteCodeLength: input.inviteCode.trim().length },
   );
 }
 
-export async function regenerateTastingInviteCode(
+export async function acceptTastingInvite(
   sessionId: string,
   requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
-  return trackFeatureMutation('tasting_session.invite_code.regenerate', () =>
+  return trackFeatureMutation('tasting_session.invite.accept', () =>
     sendApiRequest<TastingSessionRecord>(
-      `/api/tasting-sessions/${encodePathSegment(sessionId)}/invite-code`,
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/accept-invite`,
       {
         headers: resolveFeatureWriteHeaders(requestOptions),
         method: 'POST',
@@ -110,84 +118,86 @@ export async function regenerateTastingInviteCode(
   );
 }
 
-export async function addTastingItem(
+export async function dismissTastingInvite(
   sessionId: string,
-  input: AddTastingItemInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<{ success: boolean }> {
+  return trackFeatureMutation('tasting_session.invite.dismiss', () =>
+    sendApiRequest<{ success: boolean }>(
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/dismiss-invite`,
+      {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        method: 'POST',
+      },
+    ),
+  );
+}
+
+export async function kickTastingParticipant(
+  sessionId: string,
+  participantId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation('tasting_session.participant.kick', () =>
+    sendApiRequest<TastingSessionRecord>(
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/participants/${encodePathSegment(participantId)}/kick`,
+      {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        method: 'POST',
+      },
+    ),
+  );
+}
+
+export async function lockTastingSessionMembership(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation('tasting_session.membership.lock', () =>
+    sendApiRequest<TastingSessionRecord>(
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/lock-membership`,
+      {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        method: 'POST',
+      },
+    ),
+  );
+}
+
+export async function suggestTastingRestaurant(
+  sessionId: string,
+  input: SuggestTastingRestaurantInput,
   requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
-    'tasting_session.item.add',
+    'tasting_session.restaurant.suggest',
     () =>
       sendApiRequest<TastingSessionRecord>(
-        `/api/tasting-sessions/${encodePathSegment(sessionId)}/items`,
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/restaurants`,
         {
           body: {
-            description: input.description?.trim() || undefined,
-            name: input.name.trim(),
+            restaurantId: input.restaurantId?.trim() || undefined,
+            restaurantName: input.restaurantName.trim(),
           },
           headers: resolveFeatureWriteHeaders(requestOptions),
           method: 'POST',
         },
       ),
-    {
-      hasDescription: Boolean(input.description?.trim()),
-    },
+    { hasRestaurantId: Boolean(input.restaurantId?.trim()) },
   );
 }
 
-export async function deleteTastingItem(
+export async function setTastingRestaurantSuggestionStatus(
   sessionId: string,
-  itemId: string,
-  requestOptions?: FeatureWriteRequestOptions,
-): Promise<TastingSessionRecord> {
-  return trackFeatureMutation('tasting_session.item.delete', () =>
-    sendApiRequest<TastingSessionRecord>(
-      `/api/tasting-sessions/${encodePathSegment(sessionId)}/items/${encodePathSegment(itemId)}`,
-      {
-        headers: resolveFeatureWriteHeaders(requestOptions),
-        method: 'DELETE',
-      },
-    ),
-  );
-}
-
-export async function submitTastingRating(
-  sessionId: string,
-  itemId: string,
-  input: SubmitTastingRatingInput,
+  restaurantSuggestionId: string,
+  status: TastingSuggestionStatus,
   requestOptions?: FeatureWriteRequestOptions,
 ): Promise<TastingSessionRecord> {
   return trackFeatureMutation(
-    'tasting_session.rating.submit',
+    'tasting_session.restaurant.status',
     () =>
       sendApiRequest<TastingSessionRecord>(
-        `/api/tasting-sessions/${encodePathSegment(sessionId)}/items/${encodePathSegment(itemId)}/rating`,
-        {
-          body: {
-            note: input.note?.trim() || undefined,
-            rating: input.rating,
-          },
-          headers: resolveFeatureWriteHeaders(requestOptions),
-          method: 'PUT',
-        },
-      ),
-    {
-      hasNote: Boolean(input.note?.trim()),
-      rating: input.rating,
-    },
-  );
-}
-
-export async function setTastingSessionStatus(
-  sessionId: string,
-  status: TastingSessionStatus,
-  requestOptions?: FeatureWriteRequestOptions,
-): Promise<TastingSessionRecord> {
-  return trackFeatureMutation(
-    'tasting_session.status.update',
-    () =>
-      sendApiRequest<TastingSessionRecord>(
-        `/api/tasting-sessions/${encodePathSegment(sessionId)}/status`,
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/restaurants/${encodePathSegment(restaurantSuggestionId)}/status`,
         {
           body: { status },
           headers: resolveFeatureWriteHeaders(requestOptions),
@@ -196,4 +206,129 @@ export async function setTastingSessionStatus(
       ),
     { status },
   );
+}
+
+export async function suggestTastingMenuItem(
+  sessionId: string,
+  restaurantSuggestionId: string,
+  input: SuggestTastingMenuItemInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation(
+    'tasting_session.item.suggest',
+    () =>
+      sendApiRequest<TastingSessionRecord>(
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/restaurants/${encodePathSegment(restaurantSuggestionId)}/items`,
+        {
+          body: {
+            menuItemId: input.menuItemId?.trim() || undefined,
+            name: input.name.trim(),
+          },
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          method: 'POST',
+        },
+      ),
+    { hasMenuItemId: Boolean(input.menuItemId?.trim()) },
+  );
+}
+
+export async function setTastingMenuItemSuggestionStatus(
+  sessionId: string,
+  itemSuggestionId: string,
+  status: TastingSuggestionStatus,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation(
+    'tasting_session.item.status',
+    () =>
+      sendApiRequest<TastingSessionRecord>(
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/items/${encodePathSegment(itemSuggestionId)}/status`,
+        {
+          body: { status },
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          method: 'PATCH',
+        },
+      ),
+    { status },
+  );
+}
+
+export async function startTastingSession(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation('tasting_session.start', () =>
+    sendApiRequest<TastingSessionRecord>(`/api/tasting-sessions/${encodePathSegment(sessionId)}/start`, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      method: 'POST',
+    }),
+  );
+}
+
+export async function submitTastingRatings(
+  sessionId: string,
+  input: SubmitTastingRatingsInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation(
+    'tasting_session.ratings.submit',
+    () =>
+      sendApiRequest<TastingSessionRecord>(
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/ratings`,
+        {
+          body: input,
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          method: 'POST',
+        },
+      ),
+    {
+      restaurantCount: input.restaurants.length,
+      itemCount: input.restaurants.reduce((count, restaurant) => count + restaurant.items.length, 0),
+    },
+  );
+}
+
+export async function completeTastingSession(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation('tasting_session.complete', () =>
+    sendApiRequest<TastingSessionRecord>(`/api/tasting-sessions/${encodePathSegment(sessionId)}/complete`, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      method: 'POST',
+    }),
+  );
+}
+
+export async function setTastingSessionStatus(
+  sessionId: string,
+  status: TastingSessionStatus,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  if (status === 'planning' || status === 'adding_items') {
+    return lockTastingSessionMembership(sessionId, requestOptions);
+  }
+  if (status === 'tasting' || status === 'rating') {
+    return startTastingSession(sessionId, requestOptions);
+  }
+  if (status === 'completed') {
+    return completeTastingSession(sessionId, requestOptions);
+  }
+  throw new Error('Unsupported tasting session status transition.');
+}
+
+export async function addTastingItem(): Promise<unknown> {
+  throw new Error('Legacy tasting item queue operations are no longer supported.');
+}
+
+export async function deleteTastingItem(): Promise<unknown> {
+  throw new Error('Legacy tasting item queue operations are no longer supported.');
+}
+
+export async function regenerateTastingInviteCode(): Promise<unknown> {
+  throw new Error('Legacy tasting invite-code operations are no longer supported.');
+}
+
+export async function submitTastingRating(): Promise<unknown> {
+  throw new Error('Legacy tasting rating queue operations are no longer supported.');
 }

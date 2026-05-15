@@ -10,15 +10,14 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
   return {
     id: 'mut_1',
     method: 'POST',
-    url: 'local://feature/tasting-session.item.add',
+    url: 'local://feature/tasting-session.create',
     body: JSON.stringify({
-      sessionId: 'session_1',
-      input: {
-        name: 'Noodles',
-      },
+      name: 'Friday noodles',
+      joinDurationMinutes: 60,
+      invitedUserIds: ['user_2'],
     }),
     headers: {
-      'X-Mobile-Write-Operation': 'tasting-session.item.add',
+      'X-Mobile-Write-Operation': 'tasting-session.create',
     },
     status: 'pending',
     idempotencyKey: 'idem_1',
@@ -39,12 +38,11 @@ describe('queuedFeatureWrites', () => {
 
     expect(parsed).toEqual({
       id: 'mut_1',
-      operationName: 'tasting-session.item.add',
+      operationName: 'tasting-session.create',
       payload: {
-        sessionId: 'session_1',
-        input: {
-          name: 'Noodles',
-        },
+        name: 'Friday noodles',
+        joinDurationMinutes: 60,
+        invitedUserIds: ['user_2'],
       },
       status: 'pending',
       createdAt: 1000,
@@ -58,10 +56,10 @@ describe('queuedFeatureWrites', () => {
       getQueuedMutationOperationName(
         createQueuedMutation({
           headers: {},
-          url: 'local://feature/tasting-session.rating.submit',
+          url: 'local://feature/tasting-session.join',
         }),
       ),
-    ).toBe('tasting-session.rating.submit');
+    ).toBe('tasting-session.join');
   });
 
   it('excludes unknown and malformed queue rows from feature UI parsing', () => {

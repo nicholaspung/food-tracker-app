@@ -447,21 +447,33 @@ export interface SendFeedbackMessageInput {
 
 export interface CreateTastingSessionInput {
   name: string;
-  restaurantName: string;
+  joinDurationMinutes: number;
+  invitedUserIds?: string[];
 }
 
 export interface JoinTastingSessionInput {
   inviteCode: string;
 }
 
-export interface AddTastingItemInput {
-  name: string;
-  description?: string;
+export interface SuggestTastingRestaurantInput {
+  restaurantId?: string;
+  restaurantName: string;
 }
 
-export interface SubmitTastingRatingInput {
-  rating: number;
-  note?: string;
+export interface SuggestTastingMenuItemInput {
+  menuItemId?: string;
+  name: string;
+}
+
+export interface SubmitTastingRatingsInput {
+  restaurants: {
+    restaurantSuggestionId: string;
+    items: {
+      itemId: string;
+      rating: number;
+      note?: string;
+    }[];
+  }[];
 }
 
 export interface CreateBillInput {
@@ -495,15 +507,22 @@ export {
 } from './featureStoreRuntime';
 export { getProfile, updateProfile } from './profileApiStore';
 export {
-  addTastingItem,
+  acceptTastingInvite,
+  completeTastingSession,
   createTastingSession,
-  deleteTastingItem,
+  dismissTastingInvite,
   getTastingSessionById,
   joinTastingSession,
+  kickTastingParticipant,
   listTastingSessions,
-  regenerateTastingInviteCode,
+  lockTastingSessionMembership,
   setTastingSessionStatus,
-  submitTastingRating,
+  setTastingMenuItemSuggestionStatus,
+  setTastingRestaurantSuggestionStatus,
+  startTastingSession,
+  submitTastingRatings,
+  suggestTastingMenuItem,
+  suggestTastingRestaurant,
 } from './tastingSessionsApiStore';
 export {
   deleteAccount,

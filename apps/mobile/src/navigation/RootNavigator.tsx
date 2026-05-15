@@ -70,7 +70,13 @@ import {
   TermsOfServiceScreen,
   TipCalculatorScreen,
   TutorialsScreen,
+  CreateTastingSessionScreen,
+  JoinTastingSessionScreen,
   TastingSessionDetailScreen,
+  TastingSessionLobbyScreen,
+  TastingSessionPlanningScreen,
+  TastingSessionResultsScreen,
+  TastingSessionTastingScreen,
   TastingSessionsScreen,
   VisitShareCustomizationScreen,
   VerifyEmailScreen,
@@ -242,7 +248,13 @@ export type RootStackParamList = {
     source?: 'more' | 'profile';
   };
   TastingSessions: undefined;
+  CreateTastingSession: undefined;
+  JoinTastingSession: undefined;
   TastingSessionDetail: { sessionId: string };
+  TastingSessionLobby: { sessionId: string };
+  TastingSessionPlanning: { sessionId: string };
+  TastingSessionTasting: { sessionId: string };
+  TastingSessionResults: { sessionId: string };
   Bills: undefined;
   CreateBill: { billId?: string } | undefined;
   BillDetail: { billId: string };
@@ -317,6 +329,10 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'TipCalculator',
   'TastingSessions',
   'TastingSessionDetail',
+  'TastingSessionLobby',
+  'TastingSessionPlanning',
+  'TastingSessionTasting',
+  'TastingSessionResults',
 ];
 
 const WEB_TAB_TITLE_BY_ROUTE: Record<BottomTabRoute, string> = {
@@ -777,8 +793,38 @@ export function RootNavigator() {
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
+                    component={user?.isAdmin ? CreateTastingSessionScreen : AdminOnlyRouteGuard}
+                    name="CreateTastingSession"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? JoinTastingSessionScreen : AdminOnlyRouteGuard}
+                    name="JoinTastingSession"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
                     component={user?.isAdmin ? TastingSessionDetailScreen : AdminOnlyRouteGuard}
                     name="TastingSessionDetail"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionLobbyScreen : AdminOnlyRouteGuard}
+                    name="TastingSessionLobby"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionPlanningScreen : AdminOnlyRouteGuard}
+                    name="TastingSessionPlanning"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionTastingScreen : AdminOnlyRouteGuard}
+                    name="TastingSessionTasting"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionResultsScreen : AdminOnlyRouteGuard}
+                    name="TastingSessionResults"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
