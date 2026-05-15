@@ -1,6 +1,5 @@
 import BottomSheet, {
-  BottomSheetFlatList,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -32,7 +31,7 @@ const useStyles = createThemedStyles((theme) => ({
     paddingBottom: theme.spacing.xxs,
     paddingTop: theme.spacing.xs,
   },
-  content: {
+  scrollContent: {
     gap: theme.spacing.xs,
     paddingBottom: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
@@ -136,9 +135,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   showMoreLabel: {
     color: theme.colors.text.primary,
-  },
-  listContent: {
-    paddingBottom: theme.spacing.lg,
   },
 }));
 
@@ -247,8 +243,8 @@ export function RestaurantMapSheet({
     return null;
   }
 
-  const topItems = group.items.slice(0, 2);
-  const remainingItems = group.items.slice(2);
+  const visibleItems = sheetIndex === 0 ? group.items.slice(0, 2) : group.items;
+  const remainingItemCount = Math.max(group.items.length - 2, 0);
   const showMore = group.items.length > 2 && sheetIndex === 0;
 
   const expandSheet = () => {
@@ -267,7 +263,7 @@ export function RestaurantMapSheet({
       ref={sheetRef}
       snapPoints={snapPoints}
     >
-      <BottomSheetView style={styles.content}>
+      <BottomSheetScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <Text numberOfLines={1} style={styles.title} variant="sectionTitleTight">
@@ -284,7 +280,7 @@ export function RestaurantMapSheet({
           </Text>
         </View>
 
-        {topItems.map((item) => (
+        {visibleItems.map((item) => (
           <RestaurantItemRow item={item} key={item.id} />
         ))}
 
@@ -309,20 +305,11 @@ export function RestaurantMapSheet({
             ]}
           >
             <Text style={styles.showMoreLabel} variant="bodySmTightSemiBold">
-              Show {remainingItems.length} more
+              Show {remainingItemCount} more
             </Text>
           </Pressable>
         ) : null}
-      </BottomSheetView>
-
-      {sheetIndex > 0 ? (
-        <BottomSheetFlatList
-          contentContainerStyle={styles.listContent}
-          data={remainingItems}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <RestaurantItemRow item={item} />}
-        />
-      ) : null}
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 }
