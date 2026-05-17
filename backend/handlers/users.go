@@ -1755,40 +1755,34 @@ func extractRelationFieldValues(records []*core.Record, fieldName string) []stri
 }
 
 func findRecordsByIDs(app core.App, collectionName string, ids []string) ([]*core.Record, error) {
-	if len(ids) == 0 {
+	uniqueIDs := uniqueTrimmedValues(ids)
+	if len(uniqueIDs) == 0 {
 		return nil, nil
 	}
 
-	params := dbx.Params{}
-	clauses := make([]string, 0, len(ids))
-	seen := map[string]struct{}{}
-	index := 0
-	for _, id := range ids {
-		trimmedID := strings.TrimSpace(id)
-		if trimmedID == "" {
-			continue
+	records := make([]*core.Record, 0, len(uniqueIDs))
+	for _, chunk := range chunkStrings(uniqueIDs, recordLookupFilterChunkSize) {
+		params := dbx.Params{}
+		clauses := make([]string, 0, len(chunk))
+		for index, id := range chunk {
+			paramKey := fmt.Sprintf("id%d", index)
+			clauses = append(clauses, fmt.Sprintf("id = {:%s}", paramKey))
+			params[paramKey] = id
 		}
-		if _, ok := seen[trimmedID]; ok {
-			continue
+
+		filter := strings.Join(clauses, " || ")
+		if len(clauses) > 1 {
+			filter = "(" + filter + ")"
 		}
-		seen[trimmedID] = struct{}{}
 
-		paramKey := fmt.Sprintf("id%d", index)
-		clauses = append(clauses, fmt.Sprintf("id = {:%s}", paramKey))
-		params[paramKey] = trimmedID
-		index++
+		chunkRecords, err := app.FindRecordsByFilter(collectionName, filter, "", len(clauses), 0, params)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, chunkRecords...)
 	}
 
-	if len(clauses) == 0 {
-		return nil, nil
-	}
-
-	filter := strings.Join(clauses, " || ")
-	if len(clauses) > 1 {
-		filter = "(" + filter + ")"
-	}
-
-	return app.FindRecordsByFilter(collectionName, filter, "", len(clauses), 0, params)
+	return records, nil
 }
 
 func findRecordsByRelationValues(
@@ -1798,14 +1792,45 @@ func findRecordsByRelationValues(
 	values []string,
 	sortExpr string,
 ) ([]*core.Record, error) {
-	if len(values) == 0 {
+	uniqueValues := uniqueTrimmedValues(values)
+	if len(uniqueValues) == 0 {
 		return nil, nil
 	}
 
-	params := dbx.Params{}
-	clauses := make([]string, 0, len(values))
+	records := make([]*core.Record, 0)
+	for _, chunk := range chunkStrings(uniqueValues, recordLookupFilterChunkSize) {
+		params := dbx.Params{}
+		clauses := make([]string, 0, len(chunk))
+		for index, value := range chunk {
+			paramKey := fmt.Sprintf("value%d", index)
+			clauses = append(clauses, fmt.Sprintf("%s = {:%s}", fieldName, paramKey))
+			params[paramKey] = value
+		}
+
+		filter := strings.Join(clauses, " || ")
+		if len(clauses) > 1 {
+			filter = "(" + filter + ")"
+		}
+
+		chunkRecords, err := app.FindRecordsByFilter(collectionName, filter, sortExpr, 2000, 0, params)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, chunkRecords...)
+	}
+
+	return records, nil
+}
+
+const recordLookupFilterChunkSize = 100
+
+func uniqueTrimmedValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	uniqueValues := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
-	index := 0
 	for _, value := range values {
 		trimmedValue := strings.TrimSpace(value)
 		if trimmedValue == "" {
@@ -1815,23 +1840,30 @@ func findRecordsByRelationValues(
 			continue
 		}
 		seen[trimmedValue] = struct{}{}
-
-		paramKey := fmt.Sprintf("value%d", index)
-		clauses = append(clauses, fmt.Sprintf("%s = {:%s}", fieldName, paramKey))
-		params[paramKey] = trimmedValue
-		index++
+		uniqueValues = append(uniqueValues, trimmedValue)
 	}
 
-	if len(clauses) == 0 {
-		return nil, nil
+	return uniqueValues
+}
+
+func chunkStrings(values []string, chunkSize int) [][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	if chunkSize <= 0 {
+		return [][]string{values}
 	}
 
-	filter := strings.Join(clauses, " || ")
-	if len(clauses) > 1 {
-		filter = "(" + filter + ")"
+	chunks := make([][]string, 0, (len(values)+chunkSize-1)/chunkSize)
+	for start := 0; start < len(values); start += chunkSize {
+		end := start + chunkSize
+		if end > len(values) {
+			end = len(values)
+		}
+		chunks = append(chunks, values[start:end])
 	}
 
-	return app.FindRecordsByFilter(collectionName, filter, sortExpr, 2000, 0, params)
+	return chunks
 }
 
 func groupRecordsByField(records []*core.Record, fieldName string) map[string][]*core.Record {

@@ -1,0 +1,128 @@
+# Mobile Production Release Checklist
+
+Use this checklist when shipping a production mobile app update that depends on backend or web deployment changes.
+
+The release rule is: production backend must stay compatible with the currently live App Store and Play Store builds, plus the new build being submitted. Backend deploys are immediate; app store releases are reviewed, staggered, and can be delayed.
+
+## Release Record
+
+- Release name/version:
+- Mobile commit:
+- Backend commit:
+- iOS build number:
+- Android version code:
+- EAS build links:
+- App Store Connect link:
+- Play Console release link:
+- Release owner:
+- Planned release date:
+
+## 1. Compatibility Check
+
+- Confirm backend changes are backward-compatible with the currently live mobile app versions.
+- Confirm any schema migrations are safe to run before the new mobile app is released.
+- Confirm removed or renamed API fields are still tolerated by old app versions.
+- Confirm new mobile behavior is protected by feature flags when backend/app timing is risky.
+- Confirm production defaults keep unfinished or unreleased features disabled.
+- Confirm rollback plan for backend deploy is known before release starts.
+
+## 2. Pre-Release Validation
+
+Run from the repo root:
+
+```sh
+pnpm mobile:lint
+pnpm mobile:typecheck
+pnpm mobile:doctor
+```
+
+- Confirm staging/beta backend has been deployed and smoke tested.
+- Confirm login, signup, core browse screens, core writes, and offline-sensitive flows work against staging/beta.
+- Confirm the app handles offline/refetch failures with cached data where expected.
+- Confirm destructive actions still show confirmation modals before deletion.
+- Confirm online-only actions are disabled or clearly labeled while offline.
+- Review `docs/mobile-store-readiness.md` for store metadata, privacy, credentials, and policy checks.
+
+## 3. Backend Production Deploy
+
+- Deploy backend/web production changes.
+- Confirm migrations completed successfully.
+- Confirm PocketBase health check passes.
+- Smoke test production API with the currently live app version if practical.
+- Smoke test production API with the release candidate build.
+- Confirm monitoring/logs do not show new errors after deploy.
+
+Reference:
+
+```sh
+bash scripts/deploy.sh production
+```
+
+## 4. Mobile Release Candidate
+
+- Confirm the release candidate commit is final.
+- Confirm mobile version/build numbers are correct.
+- Confirm production environment variables/config point at production services.
+- Confirm EAS production profile is being used.
+- Build both platforms from the same commit unless a split release is intentional.
+
+```sh
+npx eas-cli@latest build --profile production
+```
+
+- Record the EAS build links in the release record.
+- Install or distribute the builds for final smoke testing.
+
+## 5. Store Submission
+
+- Submit iOS production build to App Store Connect.
+- Submit Android production build to the intended Play Console track.
+- Confirm release notes match the shipped behavior.
+- Confirm store review answers, privacy details, and data safety details are still accurate.
+- Record App Store Connect and Play Console links in the release record.
+
+Common commands:
+
+```sh
+npx eas-cli@latest submit -p ios --profile production
+npx eas-cli@latest submit -p android --profile production
+```
+
+## 6. Final Production Smoke Test
+
+Test the submitted/release-candidate app against production:
+
+- Authentication: login, logout, signup or account entry path.
+- Home/feed browse path.
+- Notes, lists, bills, friends, feedback, or any touched release area.
+- Create/update/delete for touched user-authored flows.
+- Offline launch with cached data for core browse surfaces.
+- Reconnect/sync behavior for queued writes.
+- Deep links or auth links if touched.
+- Account/profile basics.
+
+Do not proceed with rollout if a production-only issue requires a backend or mobile rebuild and affects core usage.
+
+## 7. Rollout
+
+- Release iOS after App Store approval.
+- Release Android to the intended track.
+- Prefer staged rollout for risky changes.
+- Enable feature flags only after the approved build is available to users.
+- Monitor crash rate, backend errors, sync failures, auth failures, and support reports.
+- Keep the backend compatible with older app versions during the rollout window.
+
+## 8. Post-Release
+
+- Confirm the released store versions match the intended build numbers.
+- Confirm production metrics look healthy after rollout starts.
+- Confirm no backend rollback is needed.
+- Update any release notes, issue tracker items, or changelog entries.
+- Keep this release record attached to the relevant issue, PRD, or release notes.
+
+## Emergency Notes
+
+- If backend breaks old app versions, roll back or hotfix backend first.
+- If the mobile app build is bad but backend is compatible, stop rollout in App Store Connect/Play Console and submit a fixed build.
+- If a feature flag caused the issue, disable the flag before rebuilding.
+- If offline sync is affected, preserve user data first and avoid destructive cleanup until the queue state is understood.
