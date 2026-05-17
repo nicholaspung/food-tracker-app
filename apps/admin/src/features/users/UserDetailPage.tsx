@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { PaginationControls } from '@/components/shared/PaginationControls';
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
-import type { UserModerationProfile } from '@/features/users/api';
+import type { ReassignVisitRestaurantResult, UserModerationProfile } from '@/features/users/api';
 import {
   getUserModerationProfile,
   reassignUserVisitRestaurant,
   searchAdminRestaurants,
+  searchUserVisits,
 } from '@/features/users/api';
 import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
@@ -86,7 +88,7 @@ function ReassignVisitRestaurantModal({
   visit,
 }: {
   onClose: () => void;
-  onReassigned: () => void;
+  onReassigned: (result: ReassignVisitRestaurantResult) => void;
   userId: string;
   visit: VisitSummary;
 }) {
@@ -111,8 +113,8 @@ function ReassignVisitRestaurantModal({
         userId,
         visitId: visit.id,
       }),
-    onSuccess: () => {
-      onReassigned();
+    onSuccess: (result) => {
+      onReassigned(result);
     },
   });
 
@@ -271,9 +273,24 @@ function UserDetailTabPanel({
   profile: UserModerationProfile;
   userId: string;
 }) {
+  const VISITS_PER_PAGE = 25;
   const queryClient = useQueryClient();
   const [visitToRepair, setVisitToRepair] = useState<VisitSummary | null>(null);
   const [repairSuccessMessage, setRepairSuccessMessage] = useState<string | null>(null);
+  const [visitSearchTerm, setVisitSearchTerm] = useState('');
+  const [visitPage, setVisitPage] = useState(1);
+  const trimmedVisitSearchTerm = visitSearchTerm.trim();
+  const visitsQuery = useQuery({
+    enabled: activeTab === 'visits',
+    queryKey: ['admin', 'user-visits', userId, trimmedVisitSearchTerm, visitPage],
+    queryFn: () =>
+      searchUserVisits({
+        page: visitPage,
+        perPage: VISITS_PER_PAGE,
+        search: trimmedVisitSearchTerm,
+        userId,
+      }),
+  });
   const totalRecordCount =
     profile.recentFoodItems.length +
     profile.recentFoodProducts.length +
@@ -612,13 +629,36 @@ function UserDetailTabPanel({
   }
 
   if (activeTab === 'visits') {
+    const visitItems = visitsQuery.data?.items ?? [];
+    const visitSummaryText = trimmedVisitSearchTerm
+      ? `Search results for "${trimmedVisitSearchTerm}".`
+      : 'Showing visits recorded by this user.';
+    const visitEmptyText = trimmedVisitSearchTerm
+      ? 'No visits matched that search.'
+      : 'No visits found for this user.';
+    const shouldShowVisitResults =
+      !visitsQuery.isLoading && !visitsQuery.isError && visitItems.length > 0;
+
     return (
       <div className="tab-panel">
         <div className="tab-panel-heading">
           <h3>Visits</h3>
-          <span className="text-muted">
-            {profile.recentVisits.length} recent visits recorded by this user.
-          </span>
+          <span className="text-muted">{visitSummaryText}</span>
+        </div>
+
+        <div className="field">
+          <label htmlFor="admin-user-visits-search">Search visits</label>
+          <input
+            className="input"
+            id="admin-user-visits-search"
+            onChange={(event) => {
+              setVisitSearchTerm(event.target.value);
+              setVisitPage(1);
+            }}
+            placeholder="Search by restaurant, location, or place id"
+            type="search"
+            value={visitSearchTerm}
+          />
         </div>
 
         {repairSuccessMessage ? (
@@ -627,48 +667,117 @@ function UserDetailTabPanel({
           </div>
         ) : null}
 
-        {profile.recentVisits.length === 0 ? (
-          <span className="text-muted">No recent visits found for this user.</span>
-        ) : (
-          <PaginatedCollection items={profile.recentVisits} itemsPerPage={12}>
-            {(pageVisits) => (
-              <div className="inline-list">
-                {pageVisits.map((visit) => (
-                  <div className="list-item" key={visit.id}>
-                    <div className="summary-row">
-                      <strong>{getVisitRestaurantName(visit)}</strong>
-                      <button
-                        className="button reverse"
-                        onClick={() => {
-                          setRepairSuccessMessage(null);
-                          setVisitToRepair(visit);
-                        }}
-                        type="button"
-                      >
-                        Reassign restaurant
-                      </button>
-                    </div>
-                    <span className="text-muted">Visit id: {visit.id}</span>
-                    {getVisitRestaurantLocation(visit) ? (
-                      <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
-                    ) : null}
-                    <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+        {visitsQuery.isLoading ? (
+          <div className="state-panel">
+            <strong>Loading visits...</strong>
+          </div>
+        ) : null}
+
+        {visitsQuery.isError ? (
+          <div className="state-panel error">
+            <strong>Could not load visits</strong>
+            <span className="text-muted">
+              {visitsQuery.error instanceof Error ? visitsQuery.error.message : 'Try again.'}
+            </span>
+            <button className="button reverse" onClick={() => void visitsQuery.refetch()} type="button">
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {!visitsQuery.isLoading && !visitsQuery.isError && visitItems.length === 0 ? (
+          <span className="text-muted">{visitEmptyText}</span>
+        ) : null}
+
+        {shouldShowVisitResults ? (
+          <>
+            {visitsQuery.data ? (
+              <PaginationControls
+                currentPage={visitsQuery.data.page}
+                endItem={
+                  visitsQuery.data.totalItems === 0
+                    ? 0
+                    : Math.min(visitsQuery.data.page * visitsQuery.data.perPage, visitsQuery.data.totalItems)
+                }
+                position="top"
+                setCurrentPage={setVisitPage}
+                startItem={
+                  visitsQuery.data.totalItems === 0
+                    ? 0
+                    : (visitsQuery.data.page - 1) * visitsQuery.data.perPage + 1
+                }
+                totalItems={visitsQuery.data.totalItems}
+                totalPages={Math.max(1, visitsQuery.data.totalPages)}
+              />
+            ) : null}
+
+            <div className="inline-list">
+              {visitItems.map((visit) => (
+                <div className="list-item" key={visit.id}>
+                  <div className="summary-row">
+                    <strong>{getVisitRestaurantName(visit)}</strong>
+                    <button
+                      className="button reverse"
+                      onClick={() => {
+                        setRepairSuccessMessage(null);
+                        setVisitToRepair(visit);
+                      }}
+                      type="button"
+                    >
+                      Reassign restaurant
+                    </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </PaginatedCollection>
-        )}
+                  <span className="text-muted">Visit id: {visit.id}</span>
+                  {getVisitRestaurantLocation(visit) ? (
+                    <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
+                  ) : null}
+                  <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+                </div>
+              ))}
+            </div>
+
+            {visitsQuery.data ? (
+              <PaginationControls
+                currentPage={visitsQuery.data.page}
+                endItem={
+                  visitsQuery.data.totalItems === 0
+                    ? 0
+                    : Math.min(visitsQuery.data.page * visitsQuery.data.perPage, visitsQuery.data.totalItems)
+                }
+                setCurrentPage={setVisitPage}
+                startItem={
+                  visitsQuery.data.totalItems === 0
+                    ? 0
+                    : (visitsQuery.data.page - 1) * visitsQuery.data.perPage + 1
+                }
+                totalItems={visitsQuery.data.totalItems}
+                totalPages={Math.max(1, visitsQuery.data.totalPages)}
+              />
+            ) : null}
+          </>
+        ) : null}
 
         {visitToRepair ? (
           <ReassignVisitRestaurantModal
             onClose={() => setVisitToRepair(null)}
-            onReassigned={() => {
+            onReassigned={(result) => {
               const repairedVisit = visitToRepair;
               setVisitToRepair(null);
-              setRepairSuccessMessage(`Visit ${repairedVisit.id} was reassigned.`);
+              setRepairSuccessMessage(
+                `Visit ${repairedVisit.id} was reassigned. Moved ${result.menuItemRepair.movedMenuItemIds.length} menu item(s), created ${result.menuItemRepair.createdMenuItemIds.length} menu item(s), deleted ${result.menuItemRepair.deletedDuplicateMenuItemIds.length} duplicate(s).`,
+              );
               void queryClient.invalidateQueries({
                 queryKey: ['admin', 'user-profile', userId],
+              });
+              void queryClient.invalidateQueries({
+                predicate: (query) =>
+                  Array.isArray(query.queryKey) &&
+                  query.queryKey[0] === 'admin' &&
+                  query.queryKey[1] === 'user-visits' &&
+                  query.queryKey[2] === userId,
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ['admin', 'restaurants'],
               });
             }}
             userId={userId}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,21 @@ type adminContentModerationInput struct {
 type adminVisitRestaurantRepairInput struct {
 	Reason       string `json:"reason"`
 	RestaurantID string `json:"restaurantId"`
+}
+
+type adminVisitRestaurantRepairResult struct {
+	CreatedMenuItemIDs          []string
+	DeletedDuplicateMenuItemIDs []string
+	MatchedVisitItemNames       []string
+	MovedMenuItemIDs            []string
+	SkippedMenuItemIDs          []string
+	Visit                       *core.Record
+}
+
+type adminVisitSearchQuery struct {
+	Page    int
+	PerPage int
+	Search  string
 }
 
 // RegisterUserHandlers registers all user management endpoints.
@@ -170,6 +186,26 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, profile)
 	})
 
+	se.Router.GET("/api/admin/users/{userId}/visits", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		userID := strings.TrimSpace(e.Request.PathValue("userId"))
+		if userID == "" {
+			return apis.NewBadRequestError("userId is required", nil)
+		}
+
+		query := parseAdminVisitSearchQuery(e.Request.URL.Query().Get("search"), e.Request.URL.Query().Get("page"), e.Request.URL.Query().Get("perPage"))
+		responsePayload, err := loadAdminUserVisitsPage(app, userID, query)
+		if err != nil {
+			log.Printf("Admin user visits load failed for %q: %v", userID, err)
+			return apis.NewApiError(500, "failed to load user visits", err)
+		}
+
+		return e.JSON(200, responsePayload)
+	})
+
 	se.Router.PATCH("/api/admin/users/{userId}/visits/{visitId}/restaurant", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {
 			return err
@@ -188,22 +224,29 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 
 		var responsePayload map[string]any
 		if err := app.RunInTransaction(func(txApp core.App) error {
-			visit, err := reassignAdminVisitRestaurant(txApp, e, userID, visitID, data)
+			repairResult, err := reassignAdminVisitRestaurant(txApp, e, userID, visitID, data)
 			if err != nil {
 				return err
 			}
 
-			restaurantDetails, detailErr := resolveRestaurantDetails(txApp, []*core.Record{visit})
+			restaurantDetails, detailErr := resolveRestaurantDetails(txApp, []*core.Record{repairResult.Visit})
 			if detailErr != nil {
 				return apis.NewApiError(500, "failed to load repaired visit", detailErr)
 			}
-			serializedVisits := serializeVisits(append([]*core.Record{}, visit), restaurantDetails)
+			serializedVisits := serializeVisits(append([]*core.Record{}, repairResult.Visit), restaurantDetails)
 			serializedVisit := map[string]any{}
 			if len(serializedVisits) > 0 {
 				serializedVisit = serializedVisits[0]
 			}
 
 			responsePayload = map[string]any{
+				"menuItemRepair": map[string]any{
+					"createdMenuItemIds":          repairResult.CreatedMenuItemIDs,
+					"deletedDuplicateMenuItemIds": repairResult.DeletedDuplicateMenuItemIDs,
+					"matchedVisitItemNames":       repairResult.MatchedVisitItemNames,
+					"movedMenuItemIds":            repairResult.MovedMenuItemIDs,
+					"skippedMenuItemIds":          repairResult.SkippedMenuItemIDs,
+				},
 				"success": true,
 				"visit":   serializedVisit,
 			}
@@ -734,42 +777,62 @@ func reassignAdminVisitRestaurant(
 	userID string,
 	visitID string,
 	input adminVisitRestaurantRepairInput,
-) (*core.Record, error) {
+) (adminVisitRestaurantRepairResult, error) {
+	result := adminVisitRestaurantRepairResult{
+		CreatedMenuItemIDs:          []string{},
+		DeletedDuplicateMenuItemIDs: []string{},
+		MatchedVisitItemNames:       []string{},
+		MovedMenuItemIDs:            []string{},
+		SkippedMenuItemIDs:          []string{},
+	}
+
 	restaurantID := strings.TrimSpace(input.RestaurantID)
 	if restaurantID == "" {
-		return nil, apis.NewBadRequestError("restaurantId is required", nil)
+		return result, apis.NewBadRequestError("restaurantId is required", nil)
 	}
 
 	visit, err := app.FindRecordById("visits", visitID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apis.NewNotFoundError("visit not found", nil)
+			return result, apis.NewNotFoundError("visit not found", nil)
 		}
-		return nil, apis.NewApiError(500, "failed to load visit", err)
+		return result, apis.NewApiError(500, "failed to load visit", err)
 	}
+	result.Visit = visit
 
 	if strings.TrimSpace(visit.GetString("user")) != strings.TrimSpace(userID) {
-		return nil, apis.NewNotFoundError("visit not found for user", nil)
+		return result, apis.NewNotFoundError("visit not found for user", nil)
 	}
 
 	targetRestaurant, err := app.FindRecordById("restaurants", restaurantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apis.NewNotFoundError("restaurant not found", nil)
+			return result, apis.NewNotFoundError("restaurant not found", nil)
 		}
-		return nil, apis.NewApiError(500, "failed to load restaurant", err)
+		return result, apis.NewApiError(500, "failed to load restaurant", err)
 	}
 
 	previousRestaurantID := strings.TrimSpace(visit.GetString("restaurant"))
 	if previousRestaurantID == restaurantID {
-		return visit, nil
+		return result, nil
 	}
+
+	menuItemRepair, err := repairAdminVisitMenuItems(app, userID, visitID, previousRestaurantID, restaurantID)
+	if err != nil {
+		return result, err
+	}
+	result.CreatedMenuItemIDs = menuItemRepair.CreatedMenuItemIDs
+	result.DeletedDuplicateMenuItemIDs = menuItemRepair.DeletedDuplicateMenuItemIDs
+	result.MatchedVisitItemNames = menuItemRepair.MatchedVisitItemNames
+	result.MovedMenuItemIDs = menuItemRepair.MovedMenuItemIDs
+	result.SkippedMenuItemIDs = menuItemRepair.SkippedMenuItemIDs
 
 	beforeSnapshot := lib.RecordAuditSnapshot(visit)
 	visit.Set("restaurant", restaurantID)
 	if err := app.Save(visit); err != nil {
-		return nil, apis.NewApiError(500, "failed to update visit restaurant", err)
+		return result, apis.NewApiError(500, "failed to update visit restaurant", err)
 	}
+	result.Visit = visit
 
 	if err := lib.CreateAuditLog(app, lib.AuditLogInput{
 		Action: core.ModelEventTypeUpdate,
@@ -777,11 +840,16 @@ func reassignAdminVisitRestaurant(
 		Before: beforeSnapshot,
 		After:  lib.RecordAuditSnapshot(visit),
 		Metadata: map[string]any{
-			"nextRestaurantId":     restaurantID,
-			"previousRestaurantId": previousRestaurantID,
-			"reason":               strings.TrimSpace(input.Reason),
-			"source":               "admin_visit_restaurant_repair",
-			"userId":               userID,
+			"createdMenuItemIds":          result.CreatedMenuItemIDs,
+			"deletedDuplicateMenuItemIds": result.DeletedDuplicateMenuItemIDs,
+			"matchedVisitItemNames":       result.MatchedVisitItemNames,
+			"movedMenuItemIds":            result.MovedMenuItemIDs,
+			"nextRestaurantId":            restaurantID,
+			"previousRestaurantId":        previousRestaurantID,
+			"reason":                      strings.TrimSpace(input.Reason),
+			"skippedMenuItemIds":          result.SkippedMenuItemIDs,
+			"source":                      "admin_visit_restaurant_repair",
+			"userId":                      userID,
 		},
 		RequestIP:        requestEvent.RealIP(),
 		RequestMethod:    requestEvent.Request.Method,
@@ -792,10 +860,161 @@ func reassignAdminVisitRestaurant(
 		TargetRecordID:   visit.Id,
 		UserAgent:        requestEvent.Request.UserAgent(),
 	}); err != nil {
-		return nil, apis.NewApiError(500, "failed to audit visit restaurant repair", err)
+		return result, apis.NewApiError(500, "failed to audit visit restaurant repair", err)
 	}
 
-	return visit, nil
+	return result, nil
+}
+
+func repairAdminVisitMenuItems(
+	app core.App,
+	userID string,
+	visitID string,
+	previousRestaurantID string,
+	nextRestaurantID string,
+) (adminVisitRestaurantRepairResult, error) {
+	result := adminVisitRestaurantRepairResult{
+		CreatedMenuItemIDs:          []string{},
+		DeletedDuplicateMenuItemIDs: []string{},
+		MatchedVisitItemNames:       []string{},
+		MovedMenuItemIDs:            []string{},
+		SkippedMenuItemIDs:          []string{},
+	}
+
+	if previousRestaurantID == "" || nextRestaurantID == "" {
+		return result, nil
+	}
+
+	visitItems, err := listFoodItemsForVisit(app, visitID)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load visit items", err)
+	}
+
+	nameSet := map[string]string{}
+	for _, item := range visitItems {
+		if !isVisitItemRecord(item) {
+			continue
+		}
+		name := strings.TrimSpace(item.GetString("name"))
+		normalizedName := normalizeMenuItemName(name)
+		if normalizedName == "" {
+			continue
+		}
+		if _, exists := nameSet[normalizedName]; exists {
+			continue
+		}
+		nameSet[normalizedName] = name
+		result.MatchedVisitItemNames = append(result.MatchedVisitItemNames, name)
+	}
+	sort.Strings(result.MatchedVisitItemNames)
+	if len(nameSet) == 0 {
+		return result, nil
+	}
+
+	processedNames := map[string]struct{}{}
+	candidates, err := app.FindRecordsByFilter(
+		"menu_items",
+		"createdBy = {:userId} && restaurant = {:restaurantId}",
+		"created",
+		500,
+		0,
+		dbx.Params{
+			"restaurantId": previousRestaurantID,
+			"userId":       userID,
+		},
+	)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load matching menu items", err)
+	}
+
+	for _, candidate := range candidates {
+		normalizedName := normalizeMenuItemName(candidate.GetString("name"))
+		if normalizedName == "" {
+			continue
+		}
+		if _, matchesVisitItem := nameSet[normalizedName]; !matchesVisitItem {
+			continue
+		}
+
+		duplicate, err := findAdminUserMenuItemByNormalizedName(app, userID, nextRestaurantID, normalizedName)
+		if err != nil {
+			return result, apis.NewApiError(500, "failed to load destination menu item duplicate", err)
+		}
+		if duplicate != nil {
+			if err := app.Delete(candidate); err != nil {
+				return result, apis.NewApiError(500, "failed to delete old duplicate menu item", err)
+			}
+			result.DeletedDuplicateMenuItemIDs = append(result.DeletedDuplicateMenuItemIDs, candidate.Id)
+			processedNames[normalizedName] = struct{}{}
+			continue
+		}
+
+		candidate.Set("restaurant", nextRestaurantID)
+		if err := app.Save(candidate); err != nil {
+			return result, apis.NewApiError(500, "failed to move menu item", err)
+		}
+		result.MovedMenuItemIDs = append(result.MovedMenuItemIDs, candidate.Id)
+		processedNames[normalizedName] = struct{}{}
+	}
+
+	menuItemsCollection, err := app.FindCollectionByNameOrId("menu_items")
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to resolve menu items collection", err)
+	}
+
+	for normalizedName, itemName := range nameSet {
+		if _, processed := processedNames[normalizedName]; processed {
+			continue
+		}
+		duplicate, err := findAdminUserMenuItemByNormalizedName(app, userID, nextRestaurantID, normalizedName)
+		if err != nil {
+			return result, apis.NewApiError(500, "failed to load destination menu item duplicate", err)
+		}
+		if duplicate != nil {
+			continue
+		}
+
+		createdItem := core.NewRecord(menuItemsCollection)
+		createdItem.Set("createdBy", userID)
+		createdItem.Set("isFromOCR", false)
+		createdItem.Set("name", itemName)
+		createdItem.Set("restaurant", nextRestaurantID)
+		createdItem.Set("visibility", "friends")
+		if err := app.Save(createdItem); err != nil {
+			return result, apis.NewApiError(500, "failed to create repaired menu item", err)
+		}
+		result.CreatedMenuItemIDs = append(result.CreatedMenuItemIDs, createdItem.Id)
+	}
+
+	return result, nil
+}
+
+func findAdminUserMenuItemByNormalizedName(
+	app core.App,
+	userID string,
+	restaurantID string,
+	normalizedName string,
+) (*core.Record, error) {
+	records, err := app.FindRecordsByFilter(
+		"menu_items",
+		"createdBy = {:userId} && restaurant = {:restaurantId}",
+		"updated",
+		500,
+		0,
+		dbx.Params{
+			"restaurantId": restaurantID,
+			"userId":       userID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if normalizeMenuItemName(record.GetString("name")) == normalizedName {
+			return record, nil
+		}
+	}
+	return nil, nil
 }
 
 func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[string]any, error) {
@@ -989,6 +1208,127 @@ func resolveRestaurantNames(
 	}
 
 	return restaurantNames, nil
+}
+
+func parseAdminVisitSearchQuery(search string, pageValue string, perPageValue string) adminVisitSearchQuery {
+	page := 1
+	if parsedPage, err := strconv.Atoi(strings.TrimSpace(pageValue)); err == nil && parsedPage > 0 {
+		page = parsedPage
+	}
+
+	perPage := 25
+	if parsedPerPage, err := strconv.Atoi(strings.TrimSpace(perPageValue)); err == nil {
+		switch {
+		case parsedPerPage < 1:
+			perPage = 1
+		case parsedPerPage > 50:
+			perPage = 50
+		default:
+			perPage = parsedPerPage
+		}
+	}
+
+	return adminVisitSearchQuery{
+		Page:    page,
+		PerPage: perPage,
+		Search:  strings.TrimSpace(search),
+	}
+}
+
+func loadAdminUserVisitsPage(app core.App, userID string, query adminVisitSearchQuery) (map[string]any, error) {
+	type visitIDRow struct {
+		ID string `db:"id"`
+	}
+	type visitCountRow struct {
+		Total int `db:"total"`
+	}
+
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	perPage := query.PerPage
+	if perPage < 1 {
+		perPage = 25
+	}
+	if perPage > 50 {
+		perPage = 50
+	}
+
+	params := dbx.Params{
+		"limit":  perPage,
+		"offset": (page - 1) * perPage,
+		"userId": userID,
+	}
+	whereClauses := []string{"visits.user = {:userId}"}
+	normalizedSearch := strings.ToLower(strings.TrimSpace(query.Search))
+	if normalizedSearch != "" {
+		params["search"] = "%" + escapeFriendsSearchValue(normalizedSearch) + "%"
+		whereClauses = append(whereClauses, `(
+			LOWER(TRIM(COALESCE(restaurants.name, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(restaurants.location, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(restaurants.placeId, ''))) LIKE {:search} ESCAPE '\'
+		)`)
+	}
+	whereClause := strings.Join(whereClauses, " AND ")
+
+	countRow := visitCountRow{}
+	if err := app.DB().NewQuery(`
+		SELECT COUNT(*) AS [[total]]
+		FROM visits
+		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		WHERE ` + whereClause + `
+	`).Bind(params).One(&countRow); err != nil {
+		return nil, err
+	}
+
+	rows := []visitIDRow{}
+	if err := app.DB().NewQuery(`
+		SELECT visits.id AS [[id]]
+		FROM visits
+		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		WHERE ` + whereClause + `
+		ORDER BY visits.visitDate DESC, visits.created DESC
+		LIMIT {:limit}
+		OFFSET {:offset}
+	`).Bind(params).All(&rows); err != nil {
+		return nil, err
+	}
+
+	visitIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		visitIDs = append(visitIDs, row.ID)
+	}
+
+	visits, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return nil, err
+	}
+	visitsByID := mapRecordsByID(visits)
+	orderedVisits := make([]*core.Record, 0, len(visitIDs))
+	for _, visitID := range visitIDs {
+		if visit := visitsByID[visitID]; visit != nil {
+			orderedVisits = append(orderedVisits, visit)
+		}
+	}
+
+	restaurantDetails, err := resolveRestaurantDetails(app, orderedVisits)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPages := 0
+	if countRow.Total > 0 {
+		totalPages = (countRow.Total + perPage - 1) / perPage
+	}
+
+	return map[string]any{
+		"items":      serializeVisits(orderedVisits, restaurantDetails),
+		"page":       page,
+		"perPage":    perPage,
+		"totalItems": countRow.Total,
+		"totalPages": totalPages,
+	}, nil
 }
 
 func loadModerationFeedEntries(app core.App, userID string) ([]map[string]any, error) {

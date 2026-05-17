@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -63,6 +64,19 @@ func createCollectionRecord(t *testing.T, app core.App, collectionName string, d
 	}
 
 	return record
+}
+
+func jsonStringSliceContains(values any, expected string) bool {
+	items, ok := values.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		if item == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAdminUsersSearchReturnsOtherUsers(t *testing.T) {
@@ -366,6 +380,272 @@ func TestAdminCanReassignVisitRestaurantWithAuditLog(t *testing.T) {
 	}
 }
 
+func TestAdminVisitRestaurantRepairMovesMatchingUserCreatedMenuItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Old Pho",
+		"location":   "Old City",
+		"visibility": "public",
+	})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "New Pho",
+		"location":   "New City",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "Pho",
+		"rating": 5,
+		"user":   targetUser.Id,
+		"visit":  visit.Id,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "Spring Rolls",
+		"rating": 4,
+		"user":   targetUser.Id,
+		"visit":  visit.Id,
+	})
+	phoMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy":  targetUser.Id,
+		"name":       "Pho",
+		"restaurant": originalRestaurant.Id,
+		"visibility": "friends",
+	})
+	rollsMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy":  targetUser.Id,
+		"name":       "Spring Rolls",
+		"restaurant": originalRestaurant.Id,
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant",
+		adminToken,
+		`{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct restaurant"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	for _, menuItem := range []*core.Record{phoMenuItem, rollsMenuItem} {
+		reloaded, err := server.app.FindRecordById("menu_items", menuItem.Id)
+		if err != nil {
+			t.Fatalf("failed to reload moved menu item: %v", err)
+		}
+		if reloaded.GetString("restaurant") != correctRestaurant.Id {
+			t.Fatalf("expected menu item %s restaurant=%s, got %s", menuItem.Id, correctRestaurant.Id, reloaded.GetString("restaurant"))
+		}
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	menuItemRepair, ok := body["menuItemRepair"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected menuItemRepair map, got %#v", body["menuItemRepair"])
+	}
+	if !jsonStringSliceContains(menuItemRepair["movedMenuItemIds"], phoMenuItem.Id) ||
+		!jsonStringSliceContains(menuItemRepair["movedMenuItemIds"], rollsMenuItem.Id) {
+		t.Fatalf("expected moved menu item ids in response, got %#v", menuItemRepair)
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "visits",
+			"targetRecordId": visit.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load audit logs: %v", err)
+	}
+	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if !jsonStringSliceContains(metadataMap["movedMenuItemIds"], phoMenuItem.Id) ||
+		!jsonStringSliceContains(metadataMap["movedMenuItemIds"], rollsMenuItem.Id) {
+		t.Fatalf("expected moved menu item ids in audit metadata, got %#v", metadataMap)
+	}
+}
+
+func TestAdminVisitRestaurantRepairDoesNotMoveNonMatchingMenuItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "Old City", "name": "Old", "visibility": "public"})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "New City", "name": "New", "visibility": "public"})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name": "Pho", "rating": 5, "user": targetUser.Id, "visit": visit.Id,
+	})
+	unratedMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy": targetUser.Id, "name": "Unrated Item", "restaurant": originalRestaurant.Id, "visibility": "friends",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodPatch, "/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant", adminToken, `{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct restaurant"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	reloaded, err := server.app.FindRecordById("menu_items", unratedMenuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload menu item: %v", err)
+	}
+	if reloaded.GetString("restaurant") != originalRestaurant.Id {
+		t.Fatalf("expected nonmatching menu item to stay on old restaurant, got %s", reloaded.GetString("restaurant"))
+	}
+}
+
+func TestAdminVisitRestaurantRepairCreatesMissingTargetMenuItemsFromVisitItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "Old City", "name": "Old", "visibility": "public"})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "New City", "name": "New", "visibility": "public"})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name": "Visit Only Item", "rating": 5, "user": targetUser.Id, "visit": visit.Id,
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodPatch, "/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant", adminToken, `{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct restaurant"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	createdItems, err := server.app.FindRecordsByFilter(
+		"menu_items",
+		"createdBy = {:userId} && restaurant = {:restaurantId} && name = {:name}",
+		"",
+		10,
+		0,
+		map[string]any{
+			"name":         "Visit Only Item",
+			"restaurantId": correctRestaurant.Id,
+			"userId":       targetUser.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load created menu items: %v", err)
+	}
+	if len(createdItems) != 1 {
+		t.Fatalf("expected one created menu item on target restaurant, got %d", len(createdItems))
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	menuItemRepair := body["menuItemRepair"].(map[string]any)
+	if !jsonStringSliceContains(menuItemRepair["createdMenuItemIds"], createdItems[0].Id) {
+		t.Fatalf("expected created menu item id in response, got %#v", menuItemRepair)
+	}
+}
+
+func TestAdminVisitRestaurantRepairDoesNotMoveOtherUsersMenuItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "Old City", "name": "Old", "visibility": "public"})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "New City", "name": "New", "visibility": "public"})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name": "Pho", "rating": 5, "user": targetUser.Id, "visit": visit.Id,
+	})
+	otherMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy": otherUser.Id, "name": "Pho", "restaurant": originalRestaurant.Id, "visibility": "friends",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodPatch, "/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant", adminToken, `{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct restaurant"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	reloaded, err := server.app.FindRecordById("menu_items", otherMenuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload menu item: %v", err)
+	}
+	if reloaded.GetString("restaurant") != originalRestaurant.Id {
+		t.Fatalf("expected other user's menu item to stay on old restaurant, got %s", reloaded.GetString("restaurant"))
+	}
+}
+
+func TestAdminVisitRestaurantRepairDeletesOldDuplicateWhenDestinationHasUserCreatedMatch(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	originalRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "Old City", "name": "Old", "visibility": "public"})
+	correctRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{"location": "New City", "name": "New", "visibility": "public"})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": originalRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name": "Pho", "rating": 5, "user": targetUser.Id, "visit": visit.Id,
+	})
+	oldDuplicate := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy": targetUser.Id, "name": "Pho", "restaurant": originalRestaurant.Id, "visibility": "friends",
+	})
+	newDuplicate := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy": targetUser.Id, "name": "Pho", "restaurant": correctRestaurant.Id, "visibility": "friends",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodPatch, "/api/admin/users/"+targetUser.Id+"/visits/"+visit.Id+"/restaurant", adminToken, `{"restaurantId":"`+correctRestaurant.Id+`","reason":"Correct restaurant"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if _, err := server.app.FindRecordById("menu_items", oldDuplicate.Id); err == nil {
+		t.Fatalf("expected old duplicate menu item to be deleted")
+	}
+	if _, err := server.app.FindRecordById("menu_items", newDuplicate.Id); err != nil {
+		t.Fatalf("expected destination duplicate menu item to remain: %v", err)
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	menuItemRepair := body["menuItemRepair"].(map[string]any)
+	if !jsonStringSliceContains(menuItemRepair["deletedDuplicateMenuItemIds"], oldDuplicate.Id) {
+		t.Fatalf("expected deleted duplicate id in response, got %#v", menuItemRepair)
+	}
+}
+
 func TestAdminVisitRestaurantRepairRejectsWrongUserAndUnknownRestaurant(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUserHandlers(se, app)
@@ -541,6 +821,108 @@ func TestAdminUserProfileViewCreatesAuditLog(t *testing.T) {
 	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
 	if metadataMap["source"] != "admin_user_profile" {
 		t.Fatalf("expected audit source admin_user_profile, got %#v", metadataMap["source"])
+	}
+}
+
+func TestAdminUserVisitsSearchReturnsOlderVisitsWithPagination(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"location":   "Page City",
+		"name":       "Pagination Cafe",
+		"visibility": "public",
+	})
+	for index := 1; index <= 30; index++ {
+		createCollectionRecord(t, server.app, "visits", map[string]any{
+			"restaurant": restaurant.Id,
+			"user":       targetUser.Id,
+			"visitDate":  fmt.Sprintf("2026-03-%02dT18:00:00Z", index),
+			"visibility": "friends",
+		})
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/"+targetUser.Id+"/visits?page=2&perPage=25",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	if body["totalItems"] != float64(30) || body["totalPages"] != float64(2) || body["page"] != float64(2) {
+		t.Fatalf("unexpected pagination metadata: %#v", body)
+	}
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 5 {
+		t.Fatalf("expected 5 visits on page 2, got %#v", body["items"])
+	}
+	firstItem := items[0].(map[string]any)
+	if !strings.Contains(fmt.Sprint(firstItem["visitDate"]), "2026-03-05") {
+		t.Fatalf("expected first page 2 item to be March 5, got %#v", firstItem["visitDate"])
+	}
+}
+
+func TestAdminUserVisitsSearchFiltersByRestaurant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	matchingRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"location":   "San Diego, CA",
+		"name":       "Correct Tacos",
+		"placeId":    "correct-place-id",
+		"visibility": "public",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"location":   "Austin, TX",
+		"name":       "Wrong BBQ",
+		"placeId":    "wrong-place-id",
+		"visibility": "public",
+	})
+	matchingVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": matchingRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-02T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/"+targetUser.Id+"/visits?search=correct-place",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one matching visit, got %#v", body["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["id"] != matchingVisit.Id {
+		t.Fatalf("expected matching visit %s, got %#v", matchingVisit.Id, item)
 	}
 }
 

@@ -128,14 +128,58 @@ export async function searchAdminRestaurants(searchTerm: string): Promise<UserRe
   }
 }
 
+export interface MenuItemRepairResult {
+  createdMenuItemIds: string[];
+  deletedDuplicateMenuItemIds: string[];
+  matchedVisitItemNames: string[];
+  movedMenuItemIds: string[];
+  skippedMenuItemIds: string[];
+}
+
+export interface ReassignVisitRestaurantResult {
+  success: true;
+  visit: VisitSummary;
+  menuItemRepair: MenuItemRepairResult;
+}
+
+export interface AdminVisitSearchResponse {
+  items: VisitSummary[];
+  page: number;
+  perPage: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+export async function searchUserVisits(input: {
+  userId: string;
+  search?: string;
+  page: number;
+  perPage?: number;
+}): Promise<AdminVisitSearchResponse> {
+  try {
+    return await pb.send<AdminVisitSearchResponse>(
+      `/api/admin/users/${encodeURIComponent(input.userId)}/visits`,
+      {
+        query: {
+          page: input.page,
+          perPage: input.perPage ?? 25,
+          search: input.search?.trim() || undefined,
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load user visits.'));
+  }
+}
+
 export async function reassignUserVisitRestaurant(input: {
   userId: string;
   visitId: string;
   restaurantId: string;
   reason?: string;
-}): Promise<{ success: true; visit: VisitSummary }> {
+}): Promise<ReassignVisitRestaurantResult> {
   try {
-    return await pb.send<{ success: true; visit: VisitSummary }>(
+    return await pb.send<ReassignVisitRestaurantResult>(
       `/api/admin/users/${encodeURIComponent(input.userId)}/visits/${encodeURIComponent(input.visitId)}/restaurant`,
       {
         method: 'PATCH',
