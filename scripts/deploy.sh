@@ -624,7 +624,7 @@ install_workspace_dependencies() {
     step "Installing workspace dependencies..."
 
     cd "$APP_DIR"
-    run_pnpm install --frozen-lockfile
+    CI=true run_pnpm install --frozen-lockfile
 
     log "Workspace dependencies installed ✓"
 }
