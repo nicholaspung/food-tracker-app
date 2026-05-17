@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +57,14 @@ type adminVisitSearchQuery struct {
 	Search  string
 }
 
+type adminGoogleRestaurantSearchInput struct {
+	Latitude     *float64 `json:"latitude"`
+	LocationText string   `json:"locationText"`
+	Longitude    *float64 `json:"longitude"`
+	Query        string   `json:"query"`
+	Radius       int      `json:"radius"`
+}
+
 // RegisterUserHandlers registers all user management endpoints.
 func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 	registerAccountDeletionHandler(se, app)
@@ -101,6 +110,71 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, map[string]any{
 			"items": serializeRestaurants(restaurants),
+		})
+	})
+
+	se.Router.POST("/api/admin/restaurants/google-search", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		placesAPIKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+		if placesAPIKey == "" {
+			log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+			return apis.NewApiError(500, "Google Places API key not configured", nil)
+		}
+
+		var requestData adminGoogleRestaurantSearchInput
+		if err := e.BindBody(&requestData); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		query, err := normalizeBoundedString(requestData.Query, "query", maxPlacesQueryLength)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		locationText := strings.TrimSpace(requestData.LocationText)
+		if locationText != "" {
+			normalizedLocation, err := normalizeBoundedString(locationText, "locationText", maxPlacesLocationLength)
+			if err != nil {
+				return apis.NewBadRequestError(err.Error(), nil)
+			}
+			locationText = normalizedLocation
+		}
+
+		radius, err := normalizePlacesRadius(requestData.Radius, 5000)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		latitude, longitude := normalizePlacesCoordinateBias(requestData.Latitude, requestData.Longitude)
+		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
+		defer cancel()
+
+		searchOutput, err := searchGooglePlacesByText(ctx, e.Auth, placesAPIKey, googlePlacesTextSearchInput{
+			APIType:         "admin_restaurant_search",
+			Latitude:        latitude,
+			LocationText:    locationText,
+			Longitude:       longitude,
+			Query:           query,
+			Radius:          radius,
+			UseShortAddress: false,
+		})
+		if err != nil {
+			log.Printf("Admin Google restaurant search failed for %q: %v", query, err)
+			return apis.NewApiError(500, "failed to search Google Places", err)
+		}
+
+		restaurants, err := syncGooglePlaceRestaurantRecords(app, searchOutput.Places)
+		if err != nil {
+			log.Printf("Admin Google restaurant cache failed for %q: %v", query, err)
+			return apis.NewApiError(500, "failed to cache Google Places restaurants", err)
+		}
+
+		return e.JSON(200, map[string]any{
+			"items":            serializeRestaurants(restaurants),
+			"resolvedLocation": searchOutput.ResolvedLocation,
 		})
 	})
 
@@ -699,6 +773,18 @@ func searchAdminRestaurants(app core.App, searchTerm string) ([]*core.Record, er
 	}
 
 	return records, nil
+}
+
+func normalizePlacesCoordinateBias(latitude *float64, longitude *float64) (*float64, *float64) {
+	if latitude == nil || longitude == nil {
+		return nil, nil
+	}
+
+	if *latitude < -90 || *latitude > 90 || *longitude < -180 || *longitude > 180 {
+		return nil, nil
+	}
+
+	return latitude, longitude
 }
 
 func findUsersByOrderedIDs(app core.App, ids []string) ([]*core.Record, error) {

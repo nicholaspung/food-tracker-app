@@ -63,6 +63,24 @@ type placesSearchResponse struct {
 	Usage            *lib.MonthlyUsageSnapshot `json:"usage,omitempty"`
 }
 
+type googlePlacesTextSearchInput struct {
+	APIType         string
+	LocationText    string
+	Latitude        *float64
+	Longitude       *float64
+	Query           string
+	Radius          int
+	RequireLocation bool
+	UseShortAddress bool
+}
+
+type googlePlacesTextSearchOutput struct {
+	Places           []placeResult
+	ResolvedLocation *placeLocation
+}
+
+var searchGooglePlacesByText = searchGooglePlacesByTextDefault
+
 func newPlacesAPIClient(ctx context.Context, apiKey string) (*places.Client, error) {
 	return places.NewClient(ctx, option.WithAPIKey(apiKey))
 }
@@ -151,9 +169,26 @@ func syncGooglePlaceRestaurants(
 		return nil, apis.NewUnauthorizedError("authentication required", nil)
 	}
 
+	records, err := syncGooglePlaceRestaurantRecords(app, places)
+	if err != nil {
+		return nil, err
+	}
+
+	resultIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		resultIDs = append(resultIDs, record.Id)
+	}
+
+	return buildRestaurantSelectionSummaries(app, authRecord.Id, authRecord.GetBool("isAdmin"), resultIDs)
+}
+
+func syncGooglePlaceRestaurantRecords(
+	app core.App,
+	places []placeResult,
+) ([]*core.Record, error) {
 	dedupedPlaces := dedupePlacesByID(places)
 	if len(dedupedPlaces) == 0 {
-		return []restaurantSearchResult{}, nil
+		return []*core.Record{}, nil
 	}
 
 	restaurantsCollection, err := app.FindCollectionByNameOrId("restaurants")
@@ -167,7 +202,7 @@ func syncGooglePlaceRestaurants(
 	}
 
 	now := time.Now().UTC()
-	resultIDs := make([]string, 0, len(dedupedPlaces))
+	records := make([]*core.Record, 0, len(dedupedPlaces))
 
 	for _, place := range dedupedPlaces {
 		existing := existingByPlaceID[place.PlaceID]
@@ -179,7 +214,7 @@ func syncGooglePlaceRestaurants(
 				}
 			}
 
-			resultIDs = append(resultIDs, existing.Id)
+			records = append(records, existing)
 			continue
 		}
 
@@ -193,7 +228,7 @@ func syncGooglePlaceRestaurants(
 			if isUniqueConstraintError(err) {
 				refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
 				if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
-					resultIDs = append(resultIDs, refetchedByPlaceID[place.PlaceID].Id)
+					records = append(records, refetchedByPlaceID[place.PlaceID])
 					continue
 				}
 			}
@@ -203,10 +238,10 @@ func syncGooglePlaceRestaurants(
 		}
 
 		existingByPlaceID[place.PlaceID] = record
-		resultIDs = append(resultIDs, record.Id)
+		records = append(records, record)
 	}
 
-	return buildRestaurantSelectionSummaries(app, authRecord.Id, authRecord.GetBool("isAdmin"), resultIDs)
+	return records, nil
 }
 
 func dedupePlacesByID(places []placeResult) []placeResult {
@@ -365,6 +400,113 @@ func getCuisineFromTypes(types []string) string {
 	}
 
 	return ""
+}
+
+func searchGooglePlacesByTextDefault(
+	ctx context.Context,
+	authRecord *core.Record,
+	apiKey string,
+	input googlePlacesTextSearchInput,
+) (googlePlacesTextSearchOutput, error) {
+	placesClient, err := newPlacesAPIClient(ctx, apiKey)
+	if err != nil {
+		return googlePlacesTextSearchOutput{}, fmt.Errorf("initialize Google Places API: %w", err)
+	}
+	defer placesClient.Close()
+
+	searchReq := &placespb.SearchTextRequest{
+		TextQuery: input.Query,
+	}
+
+	var resolvedLocation *placeLocation
+	if input.Latitude != nil && input.Longitude != nil {
+		resolvedLocation = &placeLocation{
+			Lat: *input.Latitude,
+			Lng: *input.Longitude,
+		}
+		searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
+			Type: &placespb.SearchTextRequest_LocationBias_Circle{
+				Circle: &placespb.Circle{
+					Center: &latlng.LatLng{
+						Latitude:  resolvedLocation.Lat,
+						Longitude: resolvedLocation.Lng,
+					},
+					Radius: float64(input.Radius),
+				},
+			},
+		}
+	} else if strings.TrimSpace(input.LocationText) != "" {
+		mapsClient, err := maps.NewClient(maps.WithAPIKey(apiKey), maps.WithHTTPClient(geocodeHTTPClient))
+		if err == nil {
+			geocodeReq := &maps.GeocodingRequest{
+				Address: input.LocationText,
+			}
+			geocodeResp, err := mapsClient.Geocode(ctx, geocodeReq)
+			if err == nil && len(geocodeResp) > 0 {
+				location := geocodeResp[0].Geometry.Location
+				resolvedLocation = &placeLocation{
+					Lat: location.Lat,
+					Lng: location.Lng,
+				}
+				searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
+					Type: &placespb.SearchTextRequest_LocationBias_Circle{
+						Circle: &placespb.Circle{
+							Center: &latlng.LatLng{
+								Latitude:  resolvedLocation.Lat,
+								Longitude: resolvedLocation.Lng,
+							},
+							Radius: float64(input.Radius),
+						},
+					},
+				}
+			} else if err != nil {
+				log.Printf("Failed to geocode location bias for text search: %v", err)
+			}
+		} else {
+			log.Printf("Failed to create Google Maps client for text search bias: %v", err)
+		}
+	}
+
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		"x-goog-fieldmask", "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.types,places.location")
+
+	startTime := time.Now()
+	resp, err := placesClient.SearchText(ctx, searchReq)
+	durationMs := time.Since(startTime).Milliseconds()
+	hasLocation := resolvedLocation != nil || strings.TrimSpace(input.LocationText) != ""
+
+	if err != nil {
+		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+			APIType:     input.APIType,
+			DurationMs:  durationMs,
+			Success:     false,
+			ErrorType:   fmt.Sprintf("%T", err),
+			ResultCount: 0,
+			HasLocation: hasLocation,
+		})
+		return googlePlacesTextSearchOutput{}, err
+	}
+
+	lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+		APIType:     input.APIType,
+		DurationMs:  durationMs,
+		Success:     true,
+		ResultCount: len(resp.Places),
+		HasLocation: hasLocation,
+	})
+
+	placesResult := make([]placeResult, 0, len(resp.Places))
+	for _, place := range resp.Places {
+		if place == nil {
+			continue
+		}
+		placesResult = append(placesResult, mapGooglePlaceResult(place, input.UseShortAddress))
+	}
+
+	return googlePlacesTextSearchOutput{
+		Places:           placesResult,
+		ResolvedLocation: resolvedLocation,
+	}, nil
 }
 
 // RegisterPlacesHandlers registers all Google Places API endpoints

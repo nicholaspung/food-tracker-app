@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 import { PaginationControls } from '@/components/shared/PaginationControls';
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
@@ -8,6 +10,7 @@ import type { ReassignVisitRestaurantResult, UserModerationProfile } from '@/fea
 import {
   getUserModerationProfile,
   reassignUserVisitRestaurant,
+  searchAndCacheAdminGoogleRestaurants,
   searchAdminRestaurants,
   searchUserVisits,
 } from '@/features/users/api';
@@ -81,6 +84,176 @@ function getFoodProductSubtitle(product: FoodProductSummary) {
   return parts.join(' • ');
 }
 
+type RestaurantRepairSource = 'current' | 'cached' | 'google';
+
+type RestaurantRepairMapEntry = UserRestaurantRecord & {
+  repairSource: RestaurantRepairSource;
+};
+
+function isMappableRestaurant(restaurant: UserRestaurantRecord) {
+  return typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number';
+}
+
+function getRestaurantSourceLabel(source: RestaurantRepairSource) {
+  switch (source) {
+    case 'current':
+      return 'current';
+    case 'google':
+      return 'Google';
+    default:
+      return 'cached';
+  }
+}
+
+function createRestaurantMarkerIcon(source: RestaurantRepairSource, isSelected: boolean) {
+  const classNames = [
+    'restaurant-map-dot',
+    `restaurant-map-dot-${source}`,
+    isSelected ? 'restaurant-map-dot-selected' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return L.divIcon({
+    className: 'restaurant-map-dot-wrapper',
+    html: `<span class="${classNames}"></span>`,
+    iconAnchor: [9, 9],
+    iconSize: [18, 18],
+    popupAnchor: [0, -10],
+  });
+}
+
+function RestaurantRepairMap({
+  currentRestaurantId,
+  onSelectRestaurant,
+  restaurants,
+  selectedRestaurantId,
+}: {
+  currentRestaurantId: string;
+  onSelectRestaurant: (restaurant: RestaurantRepairMapEntry) => void;
+  restaurants: RestaurantRepairMapEntry[];
+  selectedRestaurantId?: string;
+}) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const mappableRestaurants = useMemo(
+    () => restaurants.filter(isMappableRestaurant),
+    [restaurants],
+  );
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) {
+      return;
+    }
+
+    const map = L.map(mapContainerRef.current, {
+      attributionControl: true,
+      zoomControl: true,
+    }).setView([39.8283, -98.5795], 4);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const markersLayer = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    markersLayerRef.current = markersLayer;
+    window.setTimeout(() => map.invalidateSize(), 0);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersLayerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const markersLayer = markersLayerRef.current;
+    if (!map || !markersLayer) {
+      return;
+    }
+
+    markersLayer.clearLayers();
+
+    const bounds = L.latLngBounds([]);
+    mappableRestaurants.forEach((restaurant) => {
+      const lat = restaurant.latitude;
+      const lng = restaurant.longitude;
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        return;
+      }
+
+      const isCurrent = restaurant.id === currentRestaurantId;
+      const isSelected = restaurant.id === selectedRestaurantId;
+      const marker = L.marker([lat, lng], {
+        icon: createRestaurantMarkerIcon(restaurant.repairSource, isSelected),
+        keyboard: true,
+        title: restaurant.name,
+      });
+
+      const popup = document.createElement('div');
+      popup.className = 'restaurant-map-popup';
+      const title = document.createElement('strong');
+      title.textContent = restaurant.name;
+      popup.append(title);
+
+      const location = document.createElement('span');
+      location.textContent = restaurant.location?.trim() || 'No address provided';
+      popup.append(location);
+
+      if (restaurant.placeId) {
+        const placeId = document.createElement('span');
+        placeId.className = 'text-muted';
+        placeId.textContent = `Place id: ${restaurant.placeId}`;
+        popup.append(placeId);
+      }
+
+      const source = document.createElement('span');
+      source.className = 'tag';
+      source.textContent = getRestaurantSourceLabel(restaurant.repairSource);
+      popup.append(source);
+
+      if (!isCurrent) {
+        const selectButton = document.createElement('button');
+        selectButton.className = 'button reverse restaurant-map-popup-button';
+        selectButton.type = 'button';
+        selectButton.textContent = isSelected ? 'Selected' : 'Select restaurant';
+        selectButton.addEventListener('click', () => onSelectRestaurant(restaurant));
+        popup.append(selectButton);
+      }
+
+      marker.bindPopup(popup);
+      marker.on('click', () => {
+        marker.openPopup();
+      });
+      marker.addTo(markersLayer);
+      bounds.extend([lat, lng]);
+    });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        maxZoom: 15,
+        padding: [28, 28],
+      });
+    }
+  }, [currentRestaurantId, mappableRestaurants, onSelectRestaurant, selectedRestaurantId]);
+
+  return (
+    <div className="restaurant-repair-map-shell">
+      <div className="restaurant-repair-map" ref={mapContainerRef} />
+      {mappableRestaurants.length === 0 ? (
+        <div className="restaurant-repair-map-empty">
+          <strong>No mapped locations yet</strong>
+          <span className="text-muted">Search results with coordinates will appear here.</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ReassignVisitRestaurantModal({
   onClose,
   onReassigned,
@@ -94,15 +267,55 @@ function ReassignVisitRestaurantModal({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurantRecord | null>(null);
+  const [googleRestaurants, setGoogleRestaurants] = useState<UserRestaurantRecord[]>([]);
+  const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
+  const [locationBias, setLocationBias] = useState(getVisitRestaurantLocation(visit));
   const [reason, setReason] = useState('');
   const trimmedSearchTerm = searchTerm.trim();
   const trimmedReason = reason.trim();
   const currentRestaurantId = visit.restaurant?.trim() || '';
+  const currentRestaurant = visit.expand?.restaurant;
+  const currentRestaurantEntry: RestaurantRepairMapEntry | null =
+    currentRestaurantId && currentRestaurant
+      ? {
+          created: currentRestaurant.created ?? '',
+          id: currentRestaurantId,
+          isGooglePlace: currentRestaurant.isGooglePlace,
+          latitude: currentRestaurant.latitude,
+          location: currentRestaurant.location,
+          longitude: currentRestaurant.longitude,
+          name: currentRestaurant.name?.trim() || 'Current restaurant',
+          placeId: currentRestaurant.placeId,
+          repairSource: 'current',
+          updated: currentRestaurant.updated ?? '',
+          visibility: currentRestaurant.visibility,
+        }
+      : null;
 
   const restaurantsQuery = useQuery({
     enabled: trimmedSearchTerm.length > 0,
     queryKey: ['admin', 'restaurants', 'search', trimmedSearchTerm],
     queryFn: () => searchAdminRestaurants(trimmedSearchTerm),
+  });
+
+  const googleSearchMutation = useMutation({
+    mutationFn: () =>
+      searchAndCacheAdminGoogleRestaurants({
+        latitude: currentRestaurant?.latitude,
+        locationText: locationBias,
+        longitude: currentRestaurant?.longitude,
+        query: trimmedSearchTerm,
+        radius: 5000,
+      }),
+    onError: (error) => {
+      setGoogleSearchError(
+        error instanceof Error ? error.message : 'Could not search Google Places.',
+      );
+    },
+    onSuccess: (result) => {
+      setGoogleSearchError(null);
+      setGoogleRestaurants(result.items);
+    },
   });
 
   const reassignMutation = useMutation({
@@ -118,6 +331,38 @@ function ReassignVisitRestaurantModal({
     },
   });
 
+  const localRestaurants = restaurantsQuery.data ?? [];
+  const mapRestaurants = useMemo(() => {
+    const merged = new Map<string, RestaurantRepairMapEntry>();
+    if (currentRestaurantEntry) {
+      merged.set(currentRestaurantEntry.id, currentRestaurantEntry);
+    }
+
+    for (const restaurant of localRestaurants) {
+      merged.set(restaurant.id, {
+        ...restaurant,
+        repairSource: restaurant.id === currentRestaurantId ? 'current' : 'cached',
+      });
+    }
+
+    for (const restaurant of googleRestaurants) {
+      const existing = merged.get(restaurant.id);
+      merged.set(restaurant.id, {
+        ...restaurant,
+        repairSource:
+          restaurant.id === currentRestaurantId
+            ? 'current'
+            : existing?.repairSource === 'cached'
+              ? 'cached'
+              : 'google',
+      });
+    }
+
+    return Array.from(merged.values());
+  }, [currentRestaurantEntry, currentRestaurantId, googleRestaurants, localRestaurants]);
+
+  const searchResults = mapRestaurants.filter((restaurant) => restaurant.id !== currentRestaurantId);
+  const canSearchGoogle = trimmedSearchTerm.length > 0 && !googleSearchMutation.isPending;
   const canSubmit =
     Boolean(selectedRestaurant) &&
     selectedRestaurant?.id !== currentRestaurantId &&
@@ -165,6 +410,8 @@ function ReassignVisitRestaurantModal({
             onChange={(event) => {
               setSearchTerm(event.target.value);
               setSelectedRestaurant(null);
+              setGoogleRestaurants([]);
+              setGoogleSearchError(null);
             }}
             placeholder="Search by name, location, or place id"
             type="search"
@@ -172,60 +419,105 @@ function ReassignVisitRestaurantModal({
           />
         </div>
 
-        {restaurantsQuery.isError ? (
-          <div className="state-panel error">
-            <strong>Could not search restaurants</strong>
-            <span className="text-muted">
-              {restaurantsQuery.error instanceof Error
-                ? restaurantsQuery.error.message
-                : 'Try another search.'}
-            </span>
-          </div>
-        ) : null}
+        <div className="field">
+          <label htmlFor="restaurant-repair-location-bias">Search near</label>
+          <input
+            className="input"
+            id="restaurant-repair-location-bias"
+            onChange={(event) => setLocationBias(event.target.value)}
+            placeholder="City, address, or neighborhood"
+            type="text"
+            value={locationBias}
+          />
+        </div>
 
-        {trimmedSearchTerm && restaurantsQuery.isLoading ? (
-          <div className="state-panel">
-            <strong>Searching restaurants...</strong>
-          </div>
-        ) : null}
+        <div className="restaurant-repair-map-layout">
+          <RestaurantRepairMap
+            currentRestaurantId={currentRestaurantId}
+            onSelectRestaurant={(restaurant) => {
+              if (restaurant.id !== currentRestaurantId) {
+                setSelectedRestaurant(restaurant);
+              }
+            }}
+            restaurants={mapRestaurants}
+            selectedRestaurantId={selectedRestaurant?.id}
+          />
 
-        {trimmedSearchTerm && restaurantsQuery.data?.length === 0 ? (
-          <div className="state-panel">
-            <span className="text-muted">No restaurants matched that search.</span>
-          </div>
-        ) : null}
+          <div className="restaurant-repair-results-panel">
+            <div className="summary-row">
+              <strong>Restaurant matches</strong>
+              <button
+                className="button reverse"
+                disabled={!canSearchGoogle}
+                onClick={() => googleSearchMutation.mutate()}
+                type="button"
+              >
+                {googleSearchMutation.isPending ? 'Searching Google...' : 'Search Google Places'}
+              </button>
+            </div>
 
-        {restaurantsQuery.data && restaurantsQuery.data.length > 0 ? (
-          <div className="inline-list">
-            {restaurantsQuery.data.map((restaurant) => {
-              const isCurrent = restaurant.id === currentRestaurantId;
-              const isSelected = selectedRestaurant?.id === restaurant.id;
+            {restaurantsQuery.isError ? (
+              <div className="state-panel error">
+                <strong>Could not search cached restaurants</strong>
+                <span className="text-muted">
+                  {restaurantsQuery.error instanceof Error
+                    ? restaurantsQuery.error.message
+                    : 'Try another search.'}
+                </span>
+              </div>
+            ) : null}
 
-              return (
-                <button
-                  className={`list-item restaurant-repair-result ${isSelected ? 'selected' : ''}`}
-                  disabled={isCurrent}
-                  key={restaurant.id}
-                  onClick={() => setSelectedRestaurant(restaurant)}
-                  type="button"
-                >
-                  <div className="summary-row">
-                    <strong>{restaurant.name}</strong>
-                    <div className="tag-row">
-                      {isCurrent ? <span className="tag">current</span> : null}
-                      {restaurant.isGooglePlace ? <span className="tag">Google</span> : null}
-                      {restaurant.visibility ? <span className="tag">{restaurant.visibility}</span> : null}
-                    </div>
-                  </div>
-                  <span className="text-muted">{restaurant.location || 'No location provided'}</span>
-                  {restaurant.placeId ? (
-                    <span className="text-muted">Place id: {restaurant.placeId}</span>
-                  ) : null}
-                </button>
-              );
-            })}
+            {googleSearchError ? (
+              <div className="state-panel error">
+                <strong>Could not search Google Places</strong>
+                <span className="text-muted">{googleSearchError}</span>
+              </div>
+            ) : null}
+
+            {trimmedSearchTerm && restaurantsQuery.isLoading ? (
+              <div className="state-panel">
+                <strong>Searching cached restaurants...</strong>
+              </div>
+            ) : null}
+
+            {trimmedSearchTerm && !restaurantsQuery.isLoading && searchResults.length === 0 ? (
+              <div className="state-panel">
+                <span className="text-muted">No cached restaurants matched. Try Google Places.</span>
+              </div>
+            ) : null}
+
+            {searchResults.length > 0 ? (
+              <div className="inline-list restaurant-repair-results-list">
+                {searchResults.map((restaurant) => {
+                  const isSelected = selectedRestaurant?.id === restaurant.id;
+
+                  return (
+                    <button
+                      className={`list-item restaurant-repair-result ${isSelected ? 'selected' : ''}`}
+                      key={restaurant.id}
+                      onClick={() => setSelectedRestaurant(restaurant)}
+                      type="button"
+                    >
+                      <div className="summary-row">
+                        <strong>{restaurant.name}</strong>
+                        <div className="tag-row">
+                          <span className="tag">{getRestaurantSourceLabel(restaurant.repairSource)}</span>
+                          {restaurant.isGooglePlace ? <span className="tag">Google place</span> : null}
+                          {restaurant.visibility ? <span className="tag">{restaurant.visibility}</span> : null}
+                          {isMappableRestaurant(restaurant) ? <span className="tag">mapped</span> : null}
+                        </div>
+                      </div>
+                      <span className="text-muted">{restaurant.location || 'No location provided'}</span>
+                      {restaurant.placeId ? (
+                        <span className="text-muted">Place id: {restaurant.placeId}</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
 
         <div className="field">
           <label htmlFor="restaurant-repair-reason">Repair reason</label>

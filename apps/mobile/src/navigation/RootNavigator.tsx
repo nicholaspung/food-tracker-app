@@ -129,6 +129,7 @@ export type RootStackParamList = {
   Home:
     | {
         initialView?: HomeInitialViewParams;
+        scrollToTopSignal?: number;
       }
     | undefined;
   VisitShareCustomization: {
@@ -564,6 +565,14 @@ export function RootNavigator() {
       currentScreenName: currentRouteName ?? null,
       tabRoute: route,
     });
+
+    if (route === 'Home' && getBottomTabRouteForScreen(currentRouteName, currentRouteParams) === 'Home') {
+      navigationRef.navigate('Home', {
+        scrollToTopSignal: Date.now(),
+      });
+      return;
+    }
+
     navigationRef.navigate(route);
   };
 

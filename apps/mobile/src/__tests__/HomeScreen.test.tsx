@@ -20,6 +20,8 @@ import { useHomeFeedActionController } from '../screens/home/useHomeFeedActionCo
 
 const mockReact = React;
 const mockFlatListScrollToIndex = jest.fn();
+const mockFlatListScrollToOffset = jest.fn();
+const mockSectionListScrollTo = jest.fn();
 
 jest.mock('react-native', () => {
   const react = jest.requireActual<typeof import('react')>('react');
@@ -49,10 +51,11 @@ jest.mock('react-native', () => {
         renderItem,
         ...props
       }: Record<string, unknown>,
-      ref: React.ForwardedRef<{ scrollToIndex: () => void }>,
+      ref: React.ForwardedRef<{ scrollToIndex: () => void; scrollToOffset: () => void }>,
     ) {
       react.useImperativeHandle(ref, () => ({
         scrollToIndex: mockFlatListScrollToIndex,
+        scrollToOffset: mockFlatListScrollToOffset,
       }));
 
       return react.createElement(
@@ -73,15 +76,23 @@ jest.mock('react-native', () => {
     }),
     Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       react.createElement('Pressable', props, children),
-    SectionList: ({
-      ListEmptyComponent,
-      ListFooterComponent,
-      ListHeaderComponent,
-      renderItem,
-      renderSectionHeader,
-      sections = [],
-      ...props
-    }: Record<string, unknown>) => {
+    SectionList: react.forwardRef(function MockSectionList(
+      {
+        ListEmptyComponent,
+        ListFooterComponent,
+        ListHeaderComponent,
+        renderItem,
+        renderSectionHeader,
+        sections = [],
+        ...props
+      }: Record<string, unknown>,
+      ref: React.ForwardedRef<{ getScrollResponder: () => { scrollTo: () => void } }>,
+    ) {
+      react.useImperativeHandle(ref, () => ({
+        getScrollResponder: () => ({
+          scrollTo: mockSectionListScrollTo,
+        }),
+      }));
       const typedSections = Array.isArray(sections)
         ? (sections as { data?: unknown[] }[])
         : [];
@@ -118,7 +129,7 @@ jest.mock('react-native', () => {
           : renderListElement(ListEmptyComponent),
         renderListElement(ListFooterComponent),
       );
-    },
+    }),
     View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       react.createElement('View', props, children),
   };
@@ -359,6 +370,8 @@ function createDeferred<T>() {
 describe('HomeScreen', () => {
   beforeEach(() => {
     mockFlatListScrollToIndex.mockClear();
+    mockFlatListScrollToOffset.mockClear();
+    mockSectionListScrollTo.mockClear();
     mockedHomeFeedQueryKeys.paginated.mockClear();
     mockedHomeFeedMapQueryKeys.points.mockClear();
     mockedUseInfiniteQuery.mockReset();
@@ -491,6 +504,70 @@ describe('HomeScreen', () => {
         queryKey: ['feature', 'homeFeed', 'user', 'user-1', 'paginated', 'mine', 'visits', 'created', ''],
       }),
     );
+  });
+
+  it('scrolls the mine list to the top when the home tab sends a scroll signal', async () => {
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+            params: {
+              scrollToTopSignal: 1,
+            },
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockFlatListScrollToOffset).toHaveBeenCalledWith({
+      animated: true,
+      offset: 0,
+    });
+    expect(mockSectionListScrollTo).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the friends section list to the top when the home tab sends a scroll signal', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+            params: {
+              scrollToTopSignal: 1,
+            },
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockSectionListScrollTo).toHaveBeenCalledWith({
+      animated: true,
+      y: 0,
+    });
+    expect(mockFlatListScrollToOffset).not.toHaveBeenCalled();
   });
 
   it('uses saved home feed defaults for the initial query key', async () => {

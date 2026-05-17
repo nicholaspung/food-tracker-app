@@ -1124,6 +1124,98 @@ select.input {
   opacity: 0.64;
 }
 
+.restaurant-repair-map-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  min-height: 360px;
+}
+
+.restaurant-repair-map-shell {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 360px;
+  overflow: hidden;
+  position: relative;
+}
+
+.restaurant-repair-map {
+  height: 100%;
+  min-height: 360px;
+  width: 100%;
+}
+
+.restaurant-repair-map-empty {
+  align-items: center;
+  background: rgba(248, 250, 252, 0.88);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  z-index: 400;
+}
+
+.restaurant-repair-results-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.restaurant-repair-results-list {
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.restaurant-map-dot-wrapper {
+  background: transparent;
+  border: 0;
+}
+
+.restaurant-map-dot {
+  border: 2px solid var(--bg-card);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.26);
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+.restaurant-map-dot-current {
+  background: #1d4ed8;
+}
+
+.restaurant-map-dot-cached {
+  background: #0891b2;
+}
+
+.restaurant-map-dot-google {
+  background: #16a34a;
+}
+
+.restaurant-map-dot-selected {
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.34), 0 2px 8px rgba(15, 23, 42, 0.26);
+  outline: 2px solid #f59e0b;
+}
+
+.restaurant-map-popup {
+  display: grid;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.restaurant-map-popup-button {
+  justify-content: center;
+  margin-top: 4px;
+  width: 100%;
+}
+
 .tab-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1495,8 +1587,8 @@ select.input {
 }
 
 .moderation-action-modal {
-  max-width: min(720px, 100%);
-  width: min(720px, 100%);
+  max-width: min(1120px, 100%);
+  width: min(1120px, 100%);
 }
 
 .moderation-carousel-stage {
@@ -2069,6 +2161,14 @@ select.input {
   .ai-debug-raw-grid,
   .ai-debug-metadata-grid {
     grid-template-columns: 1fr;
+  }
+
+  .restaurant-repair-map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .restaurant-repair-results-list {
+    max-height: none;
   }
 
   .ai-debug-image-preview-wrap {

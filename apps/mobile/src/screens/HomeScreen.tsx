@@ -270,6 +270,7 @@ const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
   const mineFeedListRef = useRef<FlatList<FeedItem> | null>(null);
+  const friendFeedSectionListRef = useRef<SectionList<FeedItem, FriendFeedSection> | null>(null);
   const highlightedVisitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousDefaultsUserIdRef = useRef<string | null | undefined>(undefined);
   const { topOverlayHeight } = useLayoutChrome();
@@ -382,6 +383,25 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     setMapResetSignal((value) => value + 1);
   }, []);
 
+  const scrollHomeListToTop = useCallback(() => {
+    if (viewMode !== 'list') {
+      return;
+    }
+
+    if (feedMode === 'mine') {
+      mineFeedListRef.current?.scrollToOffset({
+        animated: true,
+        offset: 0,
+      });
+      return;
+    }
+
+    friendFeedSectionListRef.current?.getScrollResponder()?.scrollTo({
+      animated: true,
+      y: 0,
+    });
+  }, [feedMode, viewMode]);
+
   const handleViewModeChange = useCallback(
     (nextViewMode: FeedViewModeValue) => {
       setViewMode(nextViewMode);
@@ -401,6 +421,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     },
     [navigation, resetMapState],
   );
+
+  useEffect(() => {
+    if (route.params?.scrollToTopSignal === undefined) {
+      return;
+    }
+
+    scrollHomeListToTop();
+  }, [route.params?.scrollToTopSignal, scrollHomeListToTop]);
+
   const {
     fetchNextPage: fetchNextHomeFeedPage,
     hasNextPage: hasNextHomeFeedPage,
@@ -1548,6 +1577,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           />
         ) : (
           <SectionList
+            ref={friendFeedSectionListRef}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
             keyExtractor={(item) => item.id}

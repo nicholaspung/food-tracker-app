@@ -128,6 +128,37 @@ export async function searchAdminRestaurants(searchTerm: string): Promise<UserRe
   }
 }
 
+export interface AdminGoogleRestaurantSearchResponse {
+  items: UserRestaurantRecord[];
+  resolvedLocation?: {
+    lat: number;
+    lng: number;
+  };
+}
+
+export async function searchAndCacheAdminGoogleRestaurants(input: {
+  query: string;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+}): Promise<AdminGoogleRestaurantSearchResponse> {
+  try {
+    return await pb.send<AdminGoogleRestaurantSearchResponse>('/api/admin/restaurants/google-search', {
+      method: 'POST',
+      body: {
+        latitude: input.latitude,
+        locationText: input.locationText?.trim() || undefined,
+        longitude: input.longitude,
+        query: input.query.trim(),
+        radius: input.radius ?? 5000,
+      },
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not search Google Places.'));
+  }
+}
+
 export interface MenuItemRepairResult {
   createdMenuItemIds: string[];
   deletedDuplicateMenuItemIds: string[];
