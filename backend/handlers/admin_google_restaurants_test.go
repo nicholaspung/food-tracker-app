@@ -267,7 +267,7 @@ func TestAdminGoogleRestaurantSearchReusesExistingCachedRestaurant(t *testing.T)
 	}
 }
 
-func TestAdminGoogleRestaurantSearchPrefersCoordinateBias(t *testing.T) {
+func TestAdminGoogleRestaurantSearchPrefersLocationTextBias(t *testing.T) {
 	server := newAdminGoogleRestaurantTestServer(t)
 	_, adminToken := createAdminGoogleRestaurantTestUser(t, server.app, true)
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-key")
@@ -279,11 +279,11 @@ func TestAdminGoogleRestaurantSearchPrefersCoordinateBias(t *testing.T) {
 		_ string,
 		input googlePlacesTextSearchInput,
 	) (googlePlacesTextSearchOutput, error) {
-		if input.Latitude == nil || input.Longitude == nil {
-			t.Fatalf("expected coordinate bias, got nil coordinates")
+		if input.Latitude != nil || input.Longitude != nil {
+			t.Fatalf("expected location text bias to clear coordinates, got %v,%v", input.Latitude, input.Longitude)
 		}
-		if *input.Latitude != 34.0501 || *input.Longitude != -118.2501 {
-			t.Fatalf("expected coordinate bias 34.0501,-118.2501 got %v,%v", *input.Latitude, *input.Longitude)
+		if input.LocationText != "This should not be geocoded first" {
+			t.Fatalf("expected location text bias, got %q", input.LocationText)
 		}
 		return googlePlacesTextSearchOutput{}, nil
 	}

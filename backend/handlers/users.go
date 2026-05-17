@@ -150,6 +150,10 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		latitude, longitude := normalizePlacesCoordinateBias(requestData.Latitude, requestData.Longitude)
+		if locationText != "" {
+			latitude = nil
+			longitude = nil
+		}
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
 		defer cancel()
 
