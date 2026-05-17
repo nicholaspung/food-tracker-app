@@ -193,6 +193,8 @@ ensure_live_caddy_config() {
 
 configure_package_manager() {
     local detected_package_manager=""
+    local package_manager_version="${DEFAULT_PNPM_PACKAGE_MANAGER#pnpm@}"
+    local installed_pnpm_version=""
 
     if [ -f "$APP_DIR/package.json" ]; then
         detected_package_manager=$(node -p "require('$APP_DIR/package.json').packageManager || ''" 2>/dev/null || true)
@@ -204,21 +206,38 @@ configure_package_manager() {
         PNPM_PACKAGE_MANAGER="$DEFAULT_PNPM_PACKAGE_MANAGER"
     fi
 
+    if [[ "$PNPM_PACKAGE_MANAGER" == pnpm@* ]]; then
+        package_manager_version="${PNPM_PACKAGE_MANAGER#pnpm@}"
+    fi
+
     if command -v pnpm &> /dev/null; then
+        installed_pnpm_version=$(pnpm --version 2>/dev/null || true)
+        if [ "$installed_pnpm_version" = "$package_manager_version" ]; then
+            PNPM_CMD=(pnpm)
+            return
+        fi
+
+        warn "Found pnpm $installed_pnpm_version, but this deploy requires $package_manager_version"
+    fi
+
+    if ! command -v corepack &> /dev/null; then
+        error "pnpm $package_manager_version is required, but Corepack is not installed"
+        error "Install a Node.js build that includes Corepack, then run: corepack enable && corepack prepare $PNPM_PACKAGE_MANAGER --activate"
+        exit 1
+    fi
+
+    if ! corepack enable > /dev/null 2>&1; then
+        warn "Could not enable Corepack globally; attempting pnpm activation anyway"
+    fi
+
+    if corepack prepare "$PNPM_PACKAGE_MANAGER" --activate > /dev/null 2>&1; then
         PNPM_CMD=(pnpm)
         return
     fi
 
-    if ! command -v corepack &> /dev/null; then
-        error "pnpm is unavailable and Corepack is not installed"
-        exit 1
-    fi
-
-    if ! corepack prepare "$PNPM_PACKAGE_MANAGER" --activate > /dev/null 2>&1; then
-        warn "Could not activate $PNPM_PACKAGE_MANAGER globally; using Corepack shim for this deploy"
-    fi
-
-    PNPM_CMD=(corepack pnpm)
+    error "Failed to activate $PNPM_PACKAGE_MANAGER via Corepack"
+    error "Run this on the VPS, then rerun deploy: corepack enable && corepack prepare $PNPM_PACKAGE_MANAGER --activate"
+    exit 1
 }
 
 run_pnpm() {
@@ -466,7 +485,7 @@ preflight_checks() {
     configure_package_manager
     local pnpm_version
     if ! pnpm_version=$(run_pnpm --version 2>/dev/null); then
-        error "Failed to initialize $PNPM_PACKAGE_MANAGER via Corepack"
+        error "Failed to initialize $PNPM_PACKAGE_MANAGER"
         exit 1
     fi
     log "Package manager ready ✓ ($pnpm_version)"
