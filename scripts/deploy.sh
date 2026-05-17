@@ -542,16 +542,18 @@ create_backup() {
     backup_path="$BACKUP_DIR/$backup_timestamp"
 
     if [ ! -d "$BACKUP_DIR" ]; then
-        run_sudo mkdir -p "$BACKUP_DIR"
-        run_sudo chown -R "$USER:$USER" /opt/food-tracker-backups
-        run_sudo chmod 755 /opt/food-tracker-backups
+        run_sudo /bin/mkdir -p "$BACKUP_DIR"
+        run_sudo /bin/chown -R "$USER:$USER" /opt/food-tracker-backups
+        run_sudo /bin/chmod 755 /opt/food-tracker-backups
     fi
 
     # Older deploys/backups may have been created by root or copied with
     # root-owned files from containers. Normalize ownership before pruning so
     # retention cleanup doesn't fail the deployment before any app mutation.
     if ! [ -w "$BACKUP_DIR" ] || find "$BACKUP_DIR" -mindepth 1 -maxdepth 2 ! -user "$USER" -print -quit | grep -q .; then
-        run_sudo chown -R "$USER:$USER" "$BACKUP_DIR"
+        if ! run_sudo /bin/chown -R "$USER:$USER" "$BACKUP_DIR"; then
+            warn "Could not normalize backup ownership; old backup cleanup will be best-effort"
+        fi
     fi
 
     mkdir -p "$backup_path"
@@ -584,12 +586,26 @@ create_backup() {
     if [ "$backup_count" -gt "$MAX_BACKUPS" ]; then
         log "Cleaning up old backups (keeping latest $MAX_BACKUPS)..."
         ls -1t "$BACKUP_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | tail -n +$((MAX_BACKUPS + 1)) | while read -r old_backup; do
-            if ! rm -rf "$BACKUP_DIR/$old_backup"; then
-                warn "Could not remove old backup $old_backup as $USER; retrying after ownership repair"
-                run_sudo chown -R "$USER:$USER" "$BACKUP_DIR/$old_backup"
-                rm -rf "$BACKUP_DIR/$old_backup"
+            local cleanup_error
+            cleanup_error=$(mktemp)
+            if rm -rf "$BACKUP_DIR/$old_backup" 2>"$cleanup_error"; then
+                log "Removed old backup: $old_backup"
+                rm -f "$cleanup_error"
+                continue
             fi
-            log "Removed old backup: $old_backup"
+
+            warn "Could not remove old backup $old_backup as $USER; retrying after ownership repair"
+            if run_sudo /bin/chown -R "$USER:$USER" "$BACKUP_DIR/$old_backup"; then
+                if rm -rf "$BACKUP_DIR/$old_backup" 2>"$cleanup_error"; then
+                    log "Removed old backup: $old_backup"
+                    rm -f "$cleanup_error"
+                    continue
+                fi
+            fi
+
+            warn "Skipping old backup $old_backup because it is not removable by this deploy user"
+            sed 's/^/  /' "$cleanup_error" | while read -r line; do warn "$line"; done
+            rm -f "$cleanup_error"
         done
     fi
 
