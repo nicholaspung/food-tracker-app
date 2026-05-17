@@ -12,7 +12,21 @@ APP_OPEN_TOKEN="__APP_OPEN_URL__"
 IOS_APP_STORE_TOKEN="__IOS_APP_STORE_URL__"
 MOBILE_LOGO_SOURCE="$REPO_DIR/apps/mobile/assets/brand-logo.svg"
 MOBILE_LOGO_PNG_SOURCE="$REPO_DIR/apps/mobile/assets/brand-logo.png"
-IONICONS_FONT_SOURCE="$REPO_DIR/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
+IONICONS_FONT_SOURCE="$(
+    node -e "
+const path = require('node:path');
+const repoDir = process.argv[1];
+const packageJsonPath = require.resolve('@expo/vector-icons/package.json', {
+  paths: [repoDir, path.join(repoDir, 'apps/mobile')],
+});
+process.stdout.write(
+  path.join(
+    path.dirname(packageJsonPath),
+    'build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
+  ),
+);
+" "$REPO_DIR"
+)"
 
 if [ ! -d "$SOURCE_DIR" ]; then
     echo "Source directory not found: $SOURCE_DIR" >&2

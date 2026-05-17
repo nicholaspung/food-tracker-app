@@ -2,3 +2,8 @@ packages:
   - apps/*
   - tools/*
   - backend
+allowBuilds:
+  '@posthog/cli': true
+  dtrace-provider: false
+  esbuild: true
+  unrs-resolver: true

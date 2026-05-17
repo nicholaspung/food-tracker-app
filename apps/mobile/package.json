@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "UNLICENSED",
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@11.1.2",
   "expo": {
     "doctor": {
       "appConfigFieldsNotSyncedCheck": {
@@ -60,6 +60,7 @@
     "expo-status-bar": "~55.0.6",
     "expo-system-ui": "~55.0.18",
     "expo-updates": "~55.0.22",
+    "expo-video": "~55.0.17",
     "pocketbase": "^0.26.8",
     "posthog-react-native": "4.45.5",
     "react": "19.2.0",

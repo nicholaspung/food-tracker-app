@@ -183,7 +183,7 @@ export async function suggestTastingRestaurant(
           method: 'POST',
         },
       ),
-    { hasRestaurantId: Boolean(input.restaurantId?.trim()) },
+    { hasLinkedRestaurant: Boolean(input.restaurantId?.trim()) },
   );
 }
 

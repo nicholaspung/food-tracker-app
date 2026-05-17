@@ -1,21 +1,62 @@
 import type { ImageSourcePropType } from 'react-native';
 
+import { env } from '../config/env';
+
+export interface TutorialMediaAsset {
+  posterSource: ImageSourcePropType;
+  videoUri: string;
+}
+
+function buildTutorialVideoUri(slug: string): string {
+  return `${env.marketingUrl.replace(/\/+$/, '')}/tutorials/${slug}.mp4`;
+}
+
+function buildTutorialMediaAsset(slug: string, posterSource: ImageSourcePropType): TutorialMediaAsset {
+  return {
+    posterSource,
+    videoUri: buildTutorialVideoUri(slug),
+  };
+}
+
 export const FEATURE_ONBOARDING_ASSETS = {
-  gettingStartedWelcome: require('../../assets/onboarding/getting-started-welcome.gif') as ImageSourcePropType,
-  gettingStartedMonthPrivacy: require('../../assets/onboarding/getting-started-month-privacy.gif') as ImageSourcePropType,
-  gettingStartedTutorials: require('../../assets/onboarding/getting-started-tutorials.gif') as ImageSourcePropType,
-  gettingStartedFriends: require('../../assets/onboarding/getting-started-friends.gif') as ImageSourcePropType,
-  gettingStartedMoreTools: require('../../assets/onboarding/getting-started-more-tools.gif') as ImageSourcePropType,
-  gettingStartedListsIntro: require('../../assets/onboarding/getting-started-lists-intro.gif') as ImageSourcePropType,
-  gettingStartedBillsTips: require('../../assets/onboarding/getting-started-bills-tips.gif') as ImageSourcePropType,
-  gettingStartedSettings: require('../../assets/onboarding/getting-started-settings.gif') as ImageSourcePropType,
-  gettingStartedSupportInvites: require('../../assets/onboarding/getting-started-support-invites.gif') as ImageSourcePropType,
-  trackRestaurantVisit: require('../../assets/onboarding/track-restaurant-visit.gif') as ImageSourcePropType,
-  trackFoodProduct: require('../../assets/onboarding/track-food-product.gif') as ImageSourcePropType,
-  logNote: require('../../assets/onboarding/log-note.gif') as ImageSourcePropType,
-  processSavedPhotos: require('../../assets/onboarding/process-saved-photos.gif') as ImageSourcePropType,
-  manageNotes: require('../../assets/onboarding/manage-notes.gif') as ImageSourcePropType,
-  lists: require('../../assets/onboarding/lists.gif') as ImageSourcePropType,
-  splitBill: require('../../assets/onboarding/split-bill.gif') as ImageSourcePropType,
-  tipCalculator: require('../../assets/onboarding/tip-calculator.gif') as ImageSourcePropType,
+  gettingStartedSettings: buildTutorialMediaAsset(
+    'settings',
+    require('../../assets/onboarding/posters/settings.jpg') as ImageSourcePropType,
+  ),
+  gettingStartedSupportInvites: buildTutorialMediaAsset(
+    'support-invites',
+    require('../../assets/onboarding/posters/support-invites.jpg') as ImageSourcePropType,
+  ),
+  trackRestaurantVisit: buildTutorialMediaAsset(
+    'track-restaurant-visit',
+    require('../../assets/onboarding/posters/track-restaurant-visit.jpg') as ImageSourcePropType,
+  ),
+  trackFoodProduct: buildTutorialMediaAsset(
+    'track-food-product',
+    require('../../assets/onboarding/posters/track-food-product.jpg') as ImageSourcePropType,
+  ),
+  logNote: buildTutorialMediaAsset(
+    'log-note',
+    require('../../assets/onboarding/posters/log-note.jpg') as ImageSourcePropType,
+  ),
+  processSavedPhotos: buildTutorialMediaAsset(
+    'process-saved-photos',
+    require('../../assets/onboarding/posters/process-saved-photos.jpg') as ImageSourcePropType,
+  ),
+  manageNotes: buildTutorialMediaAsset(
+    'manage-notes',
+    require('../../assets/onboarding/posters/manage-notes.jpg') as ImageSourcePropType,
+  ),
+  lists: buildTutorialMediaAsset(
+    'lists',
+    require('../../assets/onboarding/posters/lists.jpg') as ImageSourcePropType,
+  ),
+  splitBill: buildTutorialMediaAsset(
+    'split-bill',
+    require('../../assets/onboarding/posters/split-bill.jpg') as ImageSourcePropType,
+  ),
+  tipCalculator: buildTutorialMediaAsset(
+    'tip-calculator',
+    require('../../assets/onboarding/posters/tip-calculator.jpg') as ImageSourcePropType,
+  ),
 } as const;

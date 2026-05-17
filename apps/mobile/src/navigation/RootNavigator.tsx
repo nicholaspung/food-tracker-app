@@ -328,6 +328,8 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'BillDetail',
   'TipCalculator',
   'TastingSessions',
+  'CreateTastingSession',
+  'JoinTastingSession',
   'TastingSessionDetail',
   'TastingSessionLobby',
   'TastingSessionPlanning',

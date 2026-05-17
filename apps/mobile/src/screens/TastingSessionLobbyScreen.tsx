@@ -15,6 +15,7 @@ import {
   kickTastingParticipant,
   lockTastingSessionMembership,
   tastingSessionsQueryKeys,
+  type TastingInviteRecord,
   type TastingParticipantRecord,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -35,7 +36,32 @@ const useStyles = createThemedStyles((theme) => ({
   action: {
     flex: 1,
   },
+  statusBadge: {
+    alignSelf: 'flex-start',
+  },
 }));
+
+function getParticipantRoleBadge(participant: TastingParticipantRecord) {
+  return participant.role === 'leader'
+    ? { label: 'Leader', tone: 'brand' as const }
+    : { label: 'Joined', tone: 'success' as const };
+}
+
+function getInviteStatusBadge(status: TastingInviteRecord['status']) {
+  if (status === 'accepted') {
+    return { label: 'Accepted', tone: 'success' as const };
+  }
+
+  if (status === 'dismissed') {
+    return { label: 'Dismissed', tone: 'muted' as const };
+  }
+
+  if (status === 'revoked') {
+    return { label: 'Revoked', tone: 'danger' as const };
+  }
+
+  return { label: 'Pending', tone: 'warning' as const };
+}
 
 export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionLobbyScreenProps) {
   const styles = useStyles();
@@ -133,26 +159,38 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
 
       <Card>
         <Text variant="label">Participants</Text>
-        {session.participants.map((participant) => (
-          <ListItem
-            key={participant.id}
-            description={participant.role === 'leader' ? 'Leader' : 'Joined'}
-            title={participant.name}
-            trailing={
-              isLeader && participant.role !== 'leader' ? (
-                <Button disabled={!isOnline} label="Remove" onPress={() => setPendingKick(participant)} variant="secondary" />
-              ) : null
-            }
-          />
-        ))}
+        {session.participants.map((participant) => {
+          const roleBadge = getParticipantRoleBadge(participant);
+
+          return (
+            <ListItem
+              key={participant.id}
+              title={participant.name}
+              titleAccessory={<StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />}
+              trailing={
+                isLeader && participant.role !== 'leader' ? (
+                  <Button disabled={!isOnline} label="Remove" onPress={() => setPendingKick(participant)} variant="secondary" />
+                ) : null
+              }
+            />
+          );
+        })}
       </Card>
 
       {isLeader && session.invites.length > 0 ? (
         <Card>
           <Text variant="label">Invites</Text>
-          {session.invites.map((invite) => (
-            <ListItem key={invite.id} description={invite.status} title={invite.invitedUserName} />
-          ))}
+          {session.invites.map((invite) => {
+            const statusBadge = getInviteStatusBadge(invite.status);
+
+            return (
+              <ListItem
+                key={invite.id}
+                title={invite.invitedUserName}
+                titleAccessory={<StatusPill label={statusBadge.label} style={styles.statusBadge} tone={statusBadge.tone} />}
+              />
+            );
+          })}
         </Card>
       ) : null}
 

@@ -47,7 +47,7 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
             .map((restaurant) => (
               <Card key={restaurant.id}>
                 <Text variant="label">{restaurant.restaurantName}</Text>
-                {restaurant.items
+                {(restaurant.items ?? [])
                   .filter((item) => item.status === 'approved')
                   .map((item) => {
                     const average = averageRating(item.ratings);

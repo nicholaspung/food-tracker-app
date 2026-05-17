@@ -34,12 +34,12 @@ interface MainOnboardingCard {
   title: string;
   description: string;
   icon: IoniconName;
-  imageAssetKey?: keyof typeof FEATURE_ONBOARDING_ASSETS;
+  mediaAssetKey?: keyof typeof FEATURE_ONBOARDING_ASSETS;
   heroLogo?: boolean;
   accentIcons?: IoniconName[];
 }
 
-function resolvePublishedMainOnboardingImageSource(
+function resolvePublishedMainOnboardingMedia(
   cardId: MainOnboardingCardId,
   key: keyof typeof FEATURE_ONBOARDING_ASSETS,
 ) {
@@ -53,7 +53,6 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Track restaurant visits, food products, and notes so you can remember what you liked and share useful recommendations with friends.',
     icon: 'restaurant-outline',
-    imageAssetKey: 'gettingStartedWelcome',
     heroLogo: true,
     accentIcons: ['fast-food-outline', 'people-outline', 'star-outline'],
   },
@@ -63,16 +62,14 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Tracked items show the month they were added, so recommendations stay useful without making every meal feel watched in real time.',
     icon: 'calendar-outline',
-    imageAssetKey: 'gettingStartedMonthPrivacy',
     accentIcons: ['calendar-number-outline', 'eye-off-outline', 'time-outline'],
   },
   {
     id: 'tutorials',
     title: 'Watch feature tutorials',
     description:
-      'Some sections include short tutorial GIFs before you use them. Watching the full tutorial first will make the feature easier to use.',
+      'Some sections include short tutorials before you use them. Watching the full tutorial first will make the feature easier to use.',
     icon: 'play-circle-outline',
-    imageAssetKey: 'gettingStartedTutorials',
     accentIcons: ['phone-portrait-outline', 'play-outline', 'sparkles-outline'],
   },
   {
@@ -81,7 +78,6 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'There is no contact-list import. Add friends with codes when you are together, ideally over food or drinks.',
     icon: 'people-outline',
-    imageAssetKey: 'gettingStartedFriends',
     accentIcons: ['qr-code-outline', 'person-add-outline', 'restaurant-outline'],
   },
   {
@@ -90,7 +86,6 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'You can organize restaurants into lists, split bills with friends, and use the tip calculator when you do not want to do the math.',
     icon: 'apps-outline',
-    imageAssetKey: 'gettingStartedMoreTools',
     accentIcons: ['list-outline', 'cash-outline', 'calculator-outline'],
   },
   {
@@ -99,7 +94,6 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Lists can group restaurants, show your ratings and recommended menu items, or bookmark food your friends shared for later.',
     icon: 'list-outline',
-    imageAssetKey: 'gettingStartedListsIntro',
   },
   {
     id: 'bills_tips',
@@ -107,7 +101,6 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Bills help one person organize the split and keep payment details remembered. The tip calculator is there for quick totals.',
     icon: 'cash-outline',
-    imageAssetKey: 'gettingStartedBillsTips',
   },
   {
     id: 'settings',
@@ -115,7 +108,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'Settings let you choose appearance, default visibility, and Home feed preferences so Yummy Recs fits how you track and share food.',
     icon: 'settings-outline',
-    imageAssetKey: 'gettingStartedSettings',
+    mediaAssetKey: 'gettingStartedSettings',
     accentIcons: ['color-palette-outline', 'eye-outline', 'options-outline'],
   },
   {
@@ -124,7 +117,7 @@ const MAIN_ONBOARDING_CARDS: MainOnboardingCard[] = [
     description:
       'The app is invite-only. Each user has 5 invite links, and can automatically add the inviter as a friend. For help, go to Feedback and Support.',
     icon: 'restaurant-outline',
-    imageAssetKey: 'gettingStartedSupportInvites',
+    mediaAssetKey: 'gettingStartedSupportInvites',
     accentIcons: ['ticket-outline', 'help-circle-outline', 'chatbubble-ellipses-outline'],
   },
 ];
@@ -189,6 +182,13 @@ const useStyles = createThemedStyles((
   },
   image: {
     height: '100%',
+    width: '100%',
+  },
+  video: {
+    height: '100%',
+    left: 0,
+    position: 'absolute',
+    top: 0,
     width: '100%',
   },
   iconVisual: {
@@ -328,24 +328,25 @@ function FeatureOnboardingCardView({
 }) {
   const theme = useTheme();
   const accentPositions = [styles.accentIconTopLeft, styles.accentIconTopRight, styles.accentIconBottom];
-  const imageSource = card.imageAssetKey
-    ? resolvePublishedMainOnboardingImageSource(card.id, card.imageAssetKey)
+  const media = card.mediaAssetKey
+    ? resolvePublishedMainOnboardingMedia(card.id, card.mediaAssetKey)
     : undefined;
 
   return (
     <Card style={styles.card}>
-      {imageSource ? (
+      {media ? (
         <TutorialMedia
           iconColor={theme.colors.text.brand}
           iconName={card.icon}
           imageResizeMode="contain"
-          imageSource={imageSource}
           isActive={isActive}
+          media={media}
           playbackKey={playbackKey}
           styles={{
             frame: styles.imageFrame,
             iconFrame: styles.heroIconFrame,
             image: styles.image,
+            video: styles.video,
           }}
         />
       ) : (

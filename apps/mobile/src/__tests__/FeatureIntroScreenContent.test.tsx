@@ -48,6 +48,15 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
+jest.mock('expo-video', () => ({
+  VideoView: (props: Record<string, unknown>) => mockReact.createElement('VideoView', props),
+  useVideoPlayer: (source: string, setup?: (player: Record<string, unknown> & { play: jest.Mock }) => void) => {
+    const player = { play: jest.fn() };
+    setup?.(player);
+    return { ...player, source };
+  },
+}));
+
 jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -73,7 +82,7 @@ describe('FeatureIntroScreenContent', () => {
             destination: 'Bills',
             iconName: 'cash-outline',
             iconTone: 'green',
-            imageSource: 1,
+            media: { posterSource: 1, videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4' },
             primaryLabel: 'Open Bills',
             subtitle: 'Bills',
             title: 'Split a bill',
@@ -126,6 +135,7 @@ describe('FeatureIntroScreenContent', () => {
     });
 
     expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
     expect(
       renderer.root.findAll(
         (node: any) =>
@@ -154,7 +164,7 @@ describe('FeatureIntroScreenContent', () => {
             destination: 'TipCalculator',
             iconName: 'calculator-outline',
             iconTone: 'green',
-            imageSource: 1,
+            media: { posterSource: 1, videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4' },
             primaryLabel: 'Open Tip Calculator',
             subtitle: 'Tip Calculator',
             title: 'Calculate tips quickly',
@@ -173,7 +183,7 @@ describe('FeatureIntroScreenContent', () => {
     expect(renderer.root.findByType(Image).props.resizeMode).toBe('contain');
   });
 
-  it('does not mount image media while inactive', async () => {
+  it('renders poster media without mounting video while inactive', async () => {
     const onPrimaryPress = jest.fn();
     let renderer: any = null;
 
@@ -186,7 +196,7 @@ describe('FeatureIntroScreenContent', () => {
             destination: 'TipCalculator',
             iconName: 'calculator-outline',
             iconTone: 'green',
-            imageSource: 1,
+            media: { posterSource: 1, videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4' },
             primaryLabel: 'Open Tip Calculator',
             subtitle: 'Tip Calculator',
             title: 'Calculate tips quickly',
@@ -201,7 +211,8 @@ describe('FeatureIntroScreenContent', () => {
       );
     });
 
-    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+    expect(renderer.root.findByType(Image).props.source).toBe(1);
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
     expect(renderer.root.findAllByType('Button')).toHaveLength(1);
   });
 
@@ -213,7 +224,7 @@ describe('FeatureIntroScreenContent', () => {
       destination: 'TipCalculator' as const,
       iconName: 'calculator-outline' as const,
       iconTone: 'green' as const,
-      imageSource: 1,
+      media: { posterSource: 1, videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4' },
       primaryLabel: 'Open Tip Calculator',
       subtitle: 'Tip Calculator',
       title: 'Calculate tips quickly',
@@ -235,7 +246,8 @@ describe('FeatureIntroScreenContent', () => {
       );
     });
 
-    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
+    expect(renderer.root.findByType(Image).props.source).toBe(1);
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
 
     await act(async () => {
       renderer.update(
@@ -255,6 +267,8 @@ describe('FeatureIntroScreenContent', () => {
     const image = renderer.root.findByType(Image);
     expect(image.props.source).toBe(1);
     expect(image.props.resizeMode).toBe('contain');
+    expect(renderer.root.findByType('VideoView').props.nativeControls).toBe(false);
+    expect(renderer.root.findByType('VideoView').props.contentFit).toBe('contain');
   });
 
   it('calls the primary action from immersive profile replay content', async () => {
@@ -270,7 +284,7 @@ describe('FeatureIntroScreenContent', () => {
             destination: 'TipCalculator',
             iconName: 'calculator-outline',
             iconTone: 'green',
-            imageSource: 1,
+            media: { posterSource: 1, videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4' },
             primaryLabel: 'Open Tip Calculator',
             subtitle: 'Tip Calculator',
             title: 'Calculate tips quickly',

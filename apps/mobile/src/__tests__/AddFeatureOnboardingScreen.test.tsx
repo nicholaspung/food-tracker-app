@@ -50,7 +50,10 @@ jest.mock('../components/shared', () => ({
         layout,
         mediaPlaybackKey,
       },
-      mockReact.createElement('Image', { resizeMode: layout === 'immersive' ? 'contain' : 'cover', source: config.imageSource }),
+      mockReact.createElement('Image', {
+        resizeMode: layout === 'immersive' ? 'contain' : 'cover',
+        source: config.media.posterSource,
+      }),
       mockReact.createElement('Text', null, config.title),
       mockReact.createElement('Text', null, config.description),
       mockReact.createElement('PageErrorToast', {
@@ -92,11 +95,26 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
-    trackRestaurantVisit: { uri: 'asset://track-restaurant-visit' },
-    trackFoodProduct: { uri: 'asset://track-food-product' },
-    logNote: { uri: 'asset://log-note' },
-    processSavedPhotos: { uri: 'asset://process-saved-photos' },
-    manageNotes: { uri: 'asset://manage-notes' },
+    trackRestaurantVisit: {
+      posterSource: { uri: 'asset://track-restaurant-visit' },
+      videoUri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.mp4',
+    },
+    trackFoodProduct: {
+      posterSource: { uri: 'asset://track-food-product' },
+      videoUri: 'https://yummyrecs.com/tutorials/track-food-product.mp4',
+    },
+    logNote: {
+      posterSource: { uri: 'asset://log-note' },
+      videoUri: 'https://yummyrecs.com/tutorials/log-note.mp4',
+    },
+    processSavedPhotos: {
+      posterSource: { uri: 'asset://process-saved-photos' },
+      videoUri: 'https://yummyrecs.com/tutorials/process-saved-photos.mp4',
+    },
+    manageNotes: {
+      posterSource: { uri: 'asset://manage-notes' },
+      videoUri: 'https://yummyrecs.com/tutorials/manage-notes.mp4',
+    },
   },
 }));
 
@@ -168,7 +186,7 @@ const expectedConfig: Record<
   {
     title: string;
     description: string;
-    imageSource: { uri: string };
+    media: { posterSource: { uri: string }; videoUri: string };
     primaryLabel: string;
     destination: 'CreateVisit' | 'FoodProduct' | 'NoteEditor' | 'ProcessPhotos' | 'Notes';
   }
@@ -176,35 +194,50 @@ const expectedConfig: Record<
   trackRestaurantVisit: {
     title: 'Track a restaurant visit',
     description: 'Add the restaurant, rate what you ordered, attach photos, and keep the visit ready for your feed.',
-    imageSource: { uri: 'asset://track-restaurant-visit' },
+    media: {
+      posterSource: { uri: 'asset://track-restaurant-visit' },
+      videoUri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.mp4',
+    },
     primaryLabel: 'Start Visit',
     destination: 'CreateVisit',
   },
   trackFoodProduct: {
     title: 'Track a food product',
     description: 'Save groceries, market finds, snacks, and drinks without creating a full restaurant visit.',
-    imageSource: { uri: 'asset://track-food-product' },
+    media: {
+      posterSource: { uri: 'asset://track-food-product' },
+      videoUri: 'https://yummyrecs.com/tutorials/track-food-product.mp4',
+    },
     primaryLabel: 'Track Product',
     destination: 'FoodProduct',
   },
   logNote: {
     title: 'Log a note',
     description: 'Capture food ideas, places, recipes, and reminders before turning them into entries later.',
-    imageSource: { uri: 'asset://log-note' },
+    media: {
+      posterSource: { uri: 'asset://log-note' },
+      videoUri: 'https://yummyrecs.com/tutorials/log-note.mp4',
+    },
     primaryLabel: 'Write Note',
     destination: 'NoteEditor',
   },
   processSavedPhotos: {
     title: 'Process saved photos',
     description: 'Review saved food photos and decide whether each one should become a visit or food product.',
-    imageSource: { uri: 'asset://process-saved-photos' },
+    media: {
+      posterSource: { uri: 'asset://process-saved-photos' },
+      videoUri: 'https://yummyrecs.com/tutorials/process-saved-photos.mp4',
+    },
     primaryLabel: 'Process Photos',
     destination: 'ProcessPhotos',
   },
   manageNotes: {
     title: 'Manage notes',
     description: 'Search, edit, delete, and convert your notes when you are ready to track what they describe.',
-    imageSource: { uri: 'asset://manage-notes' },
+    media: {
+      posterSource: { uri: 'asset://manage-notes' },
+      videoUri: 'https://yummyrecs.com/tutorials/manage-notes.mp4',
+    },
     primaryLabel: 'View Notes',
     destination: 'Notes',
   },
@@ -280,7 +313,7 @@ describe('AddFeatureOnboardingScreen', () => {
 
       expect(findTextNodes(renderer, config.title)).toHaveLength(1);
       expect(findTextNodes(renderer, config.description)).toHaveLength(1);
-      expect(renderer.root.findByType('Image').props.source).toEqual(config.imageSource);
+      expect(renderer.root.findByType('Image').props.source).toEqual(config.media.posterSource);
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('immersive');
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.isMediaActive).toBe(true);
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.mediaPlaybackKey).toBe(`${cardId}:firstRun:add`);

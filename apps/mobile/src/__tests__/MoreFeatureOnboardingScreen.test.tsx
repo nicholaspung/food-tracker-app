@@ -50,7 +50,10 @@ jest.mock('../components/shared', () => ({
         layout,
         mediaPlaybackKey,
       },
-      mockReact.createElement('Image', { resizeMode: layout === 'immersive' ? 'contain' : 'cover', source: config.imageSource }),
+      mockReact.createElement('Image', {
+        resizeMode: layout === 'immersive' ? 'contain' : 'cover',
+        source: config.media.posterSource,
+      }),
       mockReact.createElement('Text', null, config.title),
       mockReact.createElement('Text', null, config.description),
       mockReact.createElement('PageErrorToast', {
@@ -92,9 +95,18 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
-    lists: { uri: 'asset://lists' },
-    splitBill: { uri: 'asset://split-bill' },
-    tipCalculator: { uri: 'asset://tip-calculator' },
+    lists: {
+      posterSource: { uri: 'asset://lists' },
+      videoUri: 'https://yummyrecs.com/tutorials/lists.mp4',
+    },
+    splitBill: {
+      posterSource: { uri: 'asset://split-bill' },
+      videoUri: 'https://yummyrecs.com/tutorials/split-bill.mp4',
+    },
+    tipCalculator: {
+      posterSource: { uri: 'asset://tip-calculator' },
+      videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4',
+    },
   },
 }));
 
@@ -159,28 +171,37 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
 const expectedConfig: Record<MoreOnboardingCardId, {
   title: string;
   description: string;
-  imageSource: { uri: string };
+  media: { posterSource: { uri: string }; videoUri: string };
   primaryLabel: string;
   destination: 'Lists' | 'Bills' | 'TipCalculator';
 }> = {
   lists: {
     title: 'Organize restaurants with lists',
     description: 'See how lists help you save restaurants, organize favorites, and keep ideas ready for later.',
-    imageSource: { uri: 'asset://lists' },
+    media: {
+      posterSource: { uri: 'asset://lists' },
+      videoUri: 'https://yummyrecs.com/tutorials/lists.mp4',
+    },
     primaryLabel: 'View My Lists',
     destination: 'Lists',
   },
   splitBill: {
     title: 'Split a bill',
     description: 'See how to create a bill, assign items to friends, and track who has paid.',
-    imageSource: { uri: 'asset://split-bill' },
+    media: {
+      posterSource: { uri: 'asset://split-bill' },
+      videoUri: 'https://yummyrecs.com/tutorials/split-bill.mp4',
+    },
     primaryLabel: 'Open Bills',
     destination: 'Bills',
   },
   tipCalculator: {
     title: 'Calculate tips quickly',
     description: 'Enter the bill details, choose a tip style, and see the total before you split or pay.',
-    imageSource: { uri: 'asset://tip-calculator' },
+    media: {
+      posterSource: { uri: 'asset://tip-calculator' },
+      videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4',
+    },
     primaryLabel: 'Open Tip Calculator',
     destination: 'TipCalculator',
   },
@@ -256,7 +277,7 @@ describe('MoreFeatureOnboardingScreen', () => {
 
       expect(findTextNodes(renderer, config.title)).toHaveLength(1);
       expect(findTextNodes(renderer, config.description)).toHaveLength(1);
-      expect(renderer.root.findByType('Image').props.source).toEqual(config.imageSource);
+      expect(renderer.root.findByType('Image').props.source).toEqual(config.media.posterSource);
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.layout).toBe('immersive');
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.isMediaActive).toBe(true);
       expect(renderer.root.findByType('FeatureIntroScreenContent').props.mediaPlaybackKey).toBe(`${cardId}:firstRun:more`);

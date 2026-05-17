@@ -516,7 +516,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/react-native";
+				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/.pnpm/react-native@0.83.6_@babel+core@7.29.0_@react-native+metro-config@0.84.1_@babel+core@7._120ea09f1565eea6737e9fd12be31f60/node_modules/react-native";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
@@ -582,7 +582,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/react-native";
+				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/.pnpm/react-native@0.83.6_@babel+core@7.29.0_@react-native+metro-config@0.84.1_@babel+core@7._120ea09f1565eea6737e9fd12be31f60/node_modules/react-native";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
@@ -640,7 +640,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/react-native";
+				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../node_modules/.pnpm/react-native@0.83.6_@babel+core@7.29.0_@react-native+metro-config@0.84.1_@babel+core@7._120ea09f1565eea6737e9fd12be31f60/node_modules/react-native";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_ENABLE_EXPLICIT_MODULES = NO;

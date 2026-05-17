@@ -296,7 +296,7 @@ install_node_tooling() {
     fi
 
     sudo corepack enable
-    corepack prepare pnpm@10.32.1 --activate
+    corepack prepare pnpm@11.1.2 --activate
     log "pnpm installed ✓ ($(pnpm --version))"
 }
 

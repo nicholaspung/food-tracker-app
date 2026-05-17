@@ -116,6 +116,10 @@ jest.mock('../observability/productAnalytics', () => ({
   trackProductEvent: jest.fn(),
 }));
 
+jest.mock('../features/store/onboardingStore', () => ({
+  MAIN_ONBOARDING_VERSION: 1,
+}));
+
 jest.mock('../theme', () => ({
   createThemedStyles: () => () => ({}),
   useTheme: () => ({
@@ -199,7 +203,13 @@ jest.mock('../screens', () => {
     'SplashScreen',
     'TermsOfServiceScreen',
     'TipCalculatorScreen',
+    'CreateTastingSessionScreen',
+    'JoinTastingSessionScreen',
     'TastingSessionDetailScreen',
+    'TastingSessionLobbyScreen',
+    'TastingSessionPlanningScreen',
+    'TastingSessionResultsScreen',
+    'TastingSessionTastingScreen',
     'TastingSessionsScreen',
     'VisitShareCustomizationScreen',
     'VerifyEmailScreen',
@@ -479,6 +489,35 @@ describe('RootNavigator', () => {
 
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
   });
+
+  it.each(['CreateTastingSession', 'JoinTastingSession'] as const)(
+    'renders bottom tabs on the %s route',
+    async (routeName) => {
+      mockCurrentRouteName = routeName;
+      mockedUseAuth.mockReturnValue({
+        status: 'authenticated',
+        actualUser: {
+          id: 'user_1',
+          isAdmin: true,
+        },
+        user: {
+          id: 'user_1',
+          isAdmin: true,
+          mobileOnboardingState: completedMobileOnboardingState,
+        },
+        isSubmitting: false,
+        verificationStatus: 'verified',
+        verificationGraceEndsAt: null,
+      } as unknown as ReturnType<typeof useAuth>);
+
+      let renderer: any;
+      await act(async () => {
+        renderer = create(<RootNavigator />);
+      });
+
+      expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+    },
+  );
 
   it('puts required feature onboarding before Home for incomplete authenticated users', async () => {
     mockedUseAuth.mockReturnValue({

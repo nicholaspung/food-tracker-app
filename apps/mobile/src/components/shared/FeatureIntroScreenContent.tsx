@@ -1,13 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import type { ImageSourcePropType } from 'react-native';
 
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Text } from '../../ui';
 import { PageErrorToast } from './PageErrorToast';
-import { TutorialMedia } from './TutorialMedia';
+import { TutorialMedia, type TutorialMediaSource } from './TutorialMedia';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -17,7 +16,7 @@ export interface FeatureIntroConfig<Destination extends keyof RootStackParamList
   title: string;
   subtitle: string;
   description: string;
-  imageSource?: ImageSourcePropType;
+  media?: TutorialMediaSource;
   iconName: IoniconName;
   iconTone: FeatureIntroIconTone;
   destination: Destination;
@@ -58,6 +57,13 @@ const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
   },
   image: {
     height: '100%',
+    width: '100%',
+  },
+  video: {
+    height: '100%',
+    left: 0,
+    position: 'absolute',
+    top: 0,
     width: '100%',
   },
   iconFrame: {
@@ -115,13 +121,14 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
         iconColor={iconColor}
         iconName={config.iconName}
         imageResizeMode={imageResizeMode}
-        imageSource={config.imageSource}
         isActive={isMediaActive}
+        media={config.media}
         playbackKey={mediaPlaybackKey}
         styles={{
           frame: styles.imageFrame,
           iconFrame: styles.iconFrame,
           image: styles.image,
+          video: styles.video,
         }}
       />
       <View style={styles.copyCluster}>

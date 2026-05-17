@@ -89,6 +89,17 @@ describe('getBottomTabRouteForScreen', () => {
     expect(getBottomTabRouteForScreen('TipCalculator')).toBe('Misc');
   });
 
+  it('maps group tasting session routes to the More tab', () => {
+    expect(getBottomTabRouteForScreen('TastingSessions')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('CreateTastingSession')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('JoinTastingSession')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('TastingSessionDetail')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('TastingSessionLobby')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('TastingSessionPlanning')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('TastingSessionTasting')).toBe('Misc');
+    expect(getBottomTabRouteForScreen('TastingSessionResults')).toBe('Misc');
+  });
+
   it('maps note management routes to the Add tab', () => {
     expect(getBottomTabRouteForScreen('Notes')).toBe('AddVisit');
     expect(getBottomTabRouteForScreen('NoteEditor')).toBe('AddVisit');

@@ -27,6 +27,15 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
+jest.mock('expo-video', () => ({
+  VideoView: (props: Record<string, unknown>) => mockReact.createElement('VideoView', props),
+  useVideoPlayer: (source: string, setup?: (player: Record<string, unknown> & { play: jest.Mock }) => void) => {
+    const player = { play: jest.fn() };
+    setup?.(player);
+    return { ...player, source };
+  },
+}));
+
 jest.mock('react-native', () => {
   return {
     Image: (props: Record<string, unknown>) => mockReact.createElement('Image', props),
@@ -72,17 +81,14 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
-    gettingStartedWelcome: { uri: 'asset://getting-started-welcome' },
-    gettingStartedMonthPrivacy: { uri: 'asset://getting-started-month-privacy' },
-    gettingStartedTutorials: { uri: 'asset://getting-started-tutorials' },
-    gettingStartedFriends: { uri: 'asset://getting-started-friends' },
-    gettingStartedMoreTools: { uri: 'asset://getting-started-more-tools' },
-    gettingStartedListsIntro: { uri: 'asset://getting-started-lists-intro' },
-    gettingStartedBillsTips: { uri: 'asset://getting-started-bills-tips' },
-    gettingStartedSettings: { uri: 'asset://getting-started-settings' },
-    gettingStartedSupportInvites: { uri: 'asset://getting-started-support-invites' },
-    lists: { uri: 'asset://lists' },
-    splitBill: { uri: 'asset://split-bill' },
+    gettingStartedSettings: {
+      posterSource: { uri: 'asset://getting-started-settings' },
+      videoUri: 'https://yummyrecs.com/tutorials/settings.mp4',
+    },
+    gettingStartedSupportInvites: {
+      posterSource: { uri: 'asset://getting-started-support-invites' },
+      videoUri: 'https://yummyrecs.com/tutorials/support-invites.mp4',
+    },
   },
 }));
 
@@ -302,7 +308,7 @@ describe('FeatureOnboardingScreen', () => {
     expect(descriptionText?.props.ellipsizeMode).toBe('tail');
   });
 
-  it('renders icon fallback media until Getting Started GIFs are published', async () => {
+  it('renders icon fallback media until Getting Started tutorials are published', async () => {
     const renderer = await renderFeatureOnboardingScreen();
     const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
 
@@ -327,52 +333,56 @@ describe('FeatureOnboardingScreen', () => {
     ).toHaveLength(1);
   });
 
-  it('only mounts configured Getting Started GIF media for the active card', async () => {
+  it('only mounts configured Getting Started tutorial media for the active card', async () => {
     Object.assign(mockMainOnboardingPublishedAssets, {
-      welcome: true,
-      lists_intro: true,
-      bills_tips: true,
+      settings: true,
+      support_invites: true,
     });
 
-    const renderer = await renderFeatureOnboardingScreen();
+    const renderer = await renderFeatureOnboardingScreen({
+      initialCardId: 'settings',
+      mode: 'required',
+    });
     const images = renderer.root.findAllByType('Image');
     const imageSources = images.map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-welcome' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-lists-intro' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-bills-tips' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://lists' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://split-bill' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-settings' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-support-invites' });
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(1);
+    expect(renderer.root.findByType('VideoView').props.contentFit).toBe('contain');
     expect(
-      images.find((node: any) => node.props.source.uri === 'asset://getting-started-welcome')?.props.resizeMode,
+      images.find((node: any) => node.props.source.uri === 'asset://getting-started-settings')?.props.resizeMode,
     ).toBe('contain');
   });
 
-  it('mounts the newly active Getting Started GIF after card navigation', async () => {
+  it('mounts the newly active Getting Started tutorial after card navigation', async () => {
     Object.assign(mockMainOnboardingPublishedAssets, {
-      welcome: true,
-      lists_intro: true,
-      bills_tips: true,
+      settings: true,
+      support_invites: true,
     });
 
-    const renderer = await renderFeatureOnboardingScreen();
+    const renderer = await renderFeatureOnboardingScreen({
+      initialCardId: 'settings',
+      mode: 'required',
+    });
 
     expect(renderer.root.findAllByType('Image').map((node: any) => node.props.source)).toContainEqual({
-      uri: 'asset://getting-started-welcome',
+      uri: 'asset://getting-started-settings',
     });
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-lists_intro' }).props.onPress();
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
     });
 
     const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-lists-intro' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-welcome' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-support-invites' });
+    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-settings' });
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(1);
     expect(
       renderer.root
         .findAllByType('Image')
-        .find((node: any) => node.props.source.uri === 'asset://getting-started-lists-intro')?.props.resizeMode,
+        .find((node: any) => node.props.source.uri === 'asset://getting-started-support-invites')?.props.resizeMode,
     ).toBe('contain');
   });
 

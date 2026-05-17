@@ -3,6 +3,7 @@
 import browserSync from 'browser-sync';
 import chokidar from 'chokidar';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { rename, rm } from 'node:fs/promises';
@@ -12,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoDir = path.resolve(scriptDir, '..');
+const require = createRequire(import.meta.url);
 const prepareScript = path.join(repoDir, 'scripts/prepare-marketing.sh');
 const sourceDir = path.join(repoDir, 'apps/marketing/dist');
 const liveDir = path.join(repoDir, 'apps/marketing/.dev-dist');
@@ -22,14 +24,19 @@ const appOpenUrl = process.env.APP_OPEN_URL ?? 'http://localhost:8081/';
 const iosAppStoreUrl =
   process.env.IOS_APP_STORE_URL ?? 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 const browserSyncServer = browserSync.create('marketing-dev');
+const ioniconsFontPath = path.join(
+  path.dirname(
+    require.resolve('@expo/vector-icons/package.json', {
+      paths: [repoDir, path.join(repoDir, 'apps/mobile')],
+    }),
+  ),
+  'build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
+);
 const watchTargets = [
   sourceDir,
   path.join(repoDir, 'apps/mobile/assets/brand-logo.svg'),
   path.join(repoDir, 'apps/mobile/assets/brand-logo.png'),
-  path.join(
-    repoDir,
-    'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
-  ),
+  ioniconsFontPath,
 ];
 
 let watcher;

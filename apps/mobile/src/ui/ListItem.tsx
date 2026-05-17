@@ -9,6 +9,7 @@ type ListItemTone = 'default' | 'muted';
 
 export interface ListItemProps {
   title: string;
+  titleAccessory?: ReactNode;
   description?: ReactNode;
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -23,6 +24,7 @@ export interface ListItemProps {
 
 export function ListItem({
   title,
+  titleAccessory,
   description,
   leading,
   trailing,
@@ -52,6 +54,12 @@ export function ListItem({
       flex: 1,
       gap: theme.spacing.xxs,
     },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+    },
     disabled: {
       opacity: 0.6,
     },
@@ -64,7 +72,10 @@ export function ListItem({
     <>
       {leading ? <View>{leading}</View> : null}
       <View style={[styles.content, contentStyle]}>
-        <Text variant="label">{title}</Text>
+        <View style={styles.titleRow}>
+          <Text variant="label">{title}</Text>
+          {titleAccessory}
+        </View>
         {typeof description === 'string' ? <Text tone="secondary">{description}</Text> : description ?? null}
       </View>
       {trailing ? <View>{trailing}</View> : null}

@@ -55,7 +55,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     [session?.restaurants],
   );
   const approvedItems = approvedRestaurants.flatMap((restaurant) =>
-    restaurant.items.filter((item) => item.status === 'approved'),
+    (restaurant.items ?? []).filter((item) => item.status === 'approved'),
   );
 
   const resolveDraft = (item: TastingMenuItemRecord): RatingDraft => {
@@ -81,7 +81,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       const restaurants = approvedRestaurants
         .map((restaurant) => ({
           restaurantSuggestionId: restaurant.id,
-          items: restaurant.items
+          items: (restaurant.items ?? [])
             .filter((item) => item.status === 'approved')
             .map((item) => ({ item, draft: resolveDraft(item) }))
             .filter(({ draft }) => draft.included)
@@ -152,7 +152,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       {approvedRestaurants.map((restaurant) => (
         <Card key={restaurant.id}>
           <Text variant="label">{restaurant.restaurantName}</Text>
-          {restaurant.items.filter((item) => item.status === 'approved').map((item) => {
+          {(restaurant.items ?? []).filter((item) => item.status === 'approved').map((item) => {
             const draft = resolveDraft(item);
             return (
               <Card key={item.id} tone="muted">
