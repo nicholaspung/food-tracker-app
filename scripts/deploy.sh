@@ -547,6 +547,13 @@ create_backup() {
         run_sudo chmod 755 /opt/food-tracker-backups
     fi
 
+    # Older deploys/backups may have been created by root or copied with
+    # root-owned files from containers. Normalize ownership before pruning so
+    # retention cleanup doesn't fail the deployment before any app mutation.
+    if ! [ -w "$BACKUP_DIR" ] || find "$BACKUP_DIR" -mindepth 1 -maxdepth 2 ! -user "$USER" -print -quit | grep -q .; then
+        run_sudo chown -R "$USER:$USER" "$BACKUP_DIR"
+    fi
+
     mkdir -p "$backup_path"
 
     local site_key
@@ -577,7 +584,11 @@ create_backup() {
     if [ "$backup_count" -gt "$MAX_BACKUPS" ]; then
         log "Cleaning up old backups (keeping latest $MAX_BACKUPS)..."
         ls -1t "$BACKUP_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | tail -n +$((MAX_BACKUPS + 1)) | while read -r old_backup; do
-            rm -rf "$BACKUP_DIR/$old_backup"
+            if ! rm -rf "$BACKUP_DIR/$old_backup"; then
+                warn "Could not remove old backup $old_backup as $USER; retrying after ownership repair"
+                run_sudo chown -R "$USER:$USER" "$BACKUP_DIR/$old_backup"
+                rm -rf "$BACKUP_DIR/$old_backup"
+            fi
             log "Removed old backup: $old_backup"
         done
     fi
