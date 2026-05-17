@@ -52,9 +52,10 @@ type adminVisitRestaurantRepairResult struct {
 }
 
 type adminVisitSearchQuery struct {
-	Page    int
-	PerPage int
-	Search  string
+	MappedOnly bool
+	Page       int
+	PerPage    int
+	Search     string
 }
 
 type adminGoogleRestaurantSearchInput struct {
@@ -270,7 +271,12 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("userId is required", nil)
 		}
 
-		query := parseAdminVisitSearchQuery(e.Request.URL.Query().Get("search"), e.Request.URL.Query().Get("page"), e.Request.URL.Query().Get("perPage"))
+		query := parseAdminVisitSearchQuery(
+			e.Request.URL.Query().Get("search"),
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("perPage"),
+			e.Request.URL.Query().Get("mappedOnly"),
+		)
 		responsePayload, err := loadAdminUserVisitsPage(app, userID, query)
 		if err != nil {
 			log.Printf("Admin user visits load failed for %q: %v", userID, err)
@@ -1212,8 +1218,10 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 }
 
 type adminRestaurantDetail struct {
-	Location string
-	Name     string
+	Latitude  *float64
+	Location  string
+	Longitude *float64
+	Name      string
 }
 
 func resolveRestaurantDetails(
@@ -1240,8 +1248,10 @@ func resolveRestaurantDetails(
 		}
 
 		result[restaurantID] = adminRestaurantDetail{
-			Location: strings.TrimSpace(restaurant.GetString("location")),
-			Name:     strings.TrimSpace(restaurant.GetString("name")),
+			Latitude:  optionalRecordFloat(restaurant, "latitude"),
+			Location:  strings.TrimSpace(restaurant.GetString("location")),
+			Longitude: optionalRecordFloat(restaurant, "longitude"),
+			Name:      strings.TrimSpace(restaurant.GetString("name")),
 		}
 	}
 
@@ -1296,7 +1306,7 @@ func resolveRestaurantNames(
 	return restaurantNames, nil
 }
 
-func parseAdminVisitSearchQuery(search string, pageValue string, perPageValue string) adminVisitSearchQuery {
+func parseAdminVisitSearchQuery(search string, pageValue string, perPageValue string, mappedOnlyValue string) adminVisitSearchQuery {
 	page := 1
 	if parsedPage, err := strconv.Atoi(strings.TrimSpace(pageValue)); err == nil && parsedPage > 0 {
 		page = parsedPage
@@ -1315,9 +1325,19 @@ func parseAdminVisitSearchQuery(search string, pageValue string, perPageValue st
 	}
 
 	return adminVisitSearchQuery{
-		Page:    page,
-		PerPage: perPage,
-		Search:  strings.TrimSpace(search),
+		MappedOnly: parseAdminBoolQueryValue(mappedOnlyValue),
+		Page:       page,
+		PerPage:    perPage,
+		Search:     strings.TrimSpace(search),
+	}
+}
+
+func parseAdminBoolQueryValue(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "y":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1347,6 +1367,16 @@ func loadAdminUserVisitsPage(app core.App, userID string, query adminVisitSearch
 		"userId": userID,
 	}
 	whereClauses := []string{"visits.user = {:userId}"}
+	if query.MappedOnly {
+		whereClauses = append(whereClauses, `
+			restaurants.latitude IS NOT NULL AND
+			restaurants.longitude IS NOT NULL AND
+			restaurants.latitude BETWEEN -90 AND 90 AND
+			restaurants.longitude BETWEEN -180 AND 180 AND
+			restaurants.latitude != 0 AND
+			restaurants.longitude != 0
+		`)
+	}
 	normalizedSearch := strings.ToLower(strings.TrimSpace(query.Search))
 	if normalizedSearch != "" {
 		params["search"] = "%" + escapeFriendsSearchValue(normalizedSearch) + "%"
@@ -2367,12 +2397,20 @@ func serializeVisits(records []*core.Record, restaurantDetails map[string]adminR
 		}
 
 		if restaurantDetail := restaurantDetails[record.GetString("restaurant")]; restaurantDetail.Name != "" {
+			restaurantPayload := map[string]any{
+				"id":       record.GetString("restaurant"),
+				"location": restaurantDetail.Location,
+				"name":     restaurantDetail.Name,
+			}
+			if restaurantDetail.Latitude != nil {
+				restaurantPayload["latitude"] = *restaurantDetail.Latitude
+			}
+			if restaurantDetail.Longitude != nil {
+				restaurantPayload["longitude"] = *restaurantDetail.Longitude
+			}
+
 			entry["expand"] = map[string]any{
-				"restaurant": map[string]any{
-					"id":       record.GetString("restaurant"),
-					"location": restaurantDetail.Location,
-					"name":     restaurantDetail.Name,
-				},
+				"restaurant": restaurantPayload,
 			}
 		}
 

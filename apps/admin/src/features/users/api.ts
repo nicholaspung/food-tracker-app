@@ -186,6 +186,7 @@ export async function searchUserVisits(input: {
   search?: string;
   page: number;
   perPage?: number;
+  mappedOnly?: boolean;
 }): Promise<AdminVisitSearchResponse> {
   try {
     return await pb.send<AdminVisitSearchResponse>(
@@ -194,6 +195,7 @@ export async function searchUserVisits(input: {
         query: {
           page: input.page,
           perPage: input.perPage ?? 25,
+          mappedOnly: input.mappedOnly ? true : undefined,
           search: input.search?.trim() || undefined,
         },
       },

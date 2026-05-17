@@ -254,6 +254,194 @@ function RestaurantRepairMap({
   );
 }
 
+function getVisitRestaurantLatitude(visit: VisitSummary) {
+  return visit.expand?.restaurant?.latitude;
+}
+
+function getVisitRestaurantLongitude(visit: VisitSummary) {
+  return visit.expand?.restaurant?.longitude;
+}
+
+function isMappableVisit(visit: VisitSummary) {
+  const latitude = getVisitRestaurantLatitude(visit);
+  const longitude = getVisitRestaurantLongitude(visit);
+  return typeof latitude === 'number' && typeof longitude === 'number';
+}
+
+function buildVisitCoordinateKey(visit: VisitSummary) {
+  const latitude = getVisitRestaurantLatitude(visit);
+  const longitude = getVisitRestaurantLongitude(visit);
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return '';
+  }
+
+  return `${latitude.toFixed(6)}:${longitude.toFixed(6)}`;
+}
+
+function UserVisitRepairMap({
+  onReassignVisit,
+  onSelectVisit,
+  selectedVisitId,
+  visits,
+}: {
+  onReassignVisit: (visit: VisitSummary) => void;
+  onSelectVisit: (visit: VisitSummary) => void;
+  selectedVisitId?: string;
+  visits: VisitSummary[];
+}) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const visitGroups = useMemo(() => {
+    const groupsByCoordinate = new Map<
+      string,
+      {
+        latitude: number;
+        longitude: number;
+        visits: VisitSummary[];
+      }
+    >();
+
+    for (const visit of visits) {
+      const latitude = getVisitRestaurantLatitude(visit);
+      const longitude = getVisitRestaurantLongitude(visit);
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        continue;
+      }
+
+      const key = buildVisitCoordinateKey(visit);
+      const existingGroup = groupsByCoordinate.get(key);
+      if (existingGroup) {
+        existingGroup.visits.push(visit);
+      } else {
+        groupsByCoordinate.set(key, {
+          latitude,
+          longitude,
+          visits: [visit],
+        });
+      }
+    }
+
+    return Array.from(groupsByCoordinate.values());
+  }, [visits]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) {
+      return;
+    }
+
+    const map = L.map(mapContainerRef.current, {
+      attributionControl: true,
+      zoomControl: true,
+    }).setView([39.8283, -98.5795], 4);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const markersLayer = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    markersLayerRef.current = markersLayer;
+    window.setTimeout(() => map.invalidateSize(), 0);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersLayerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const markersLayer = markersLayerRef.current;
+    if (!map || !markersLayer) {
+      return;
+    }
+
+    markersLayer.clearLayers();
+
+    const bounds = L.latLngBounds([]);
+    for (const group of visitGroups) {
+      const selectedVisit = group.visits.find((visit) => visit.id === selectedVisitId);
+      const primaryVisit = selectedVisit ?? group.visits[0];
+      const marker = L.marker([group.latitude, group.longitude], {
+        icon: createRestaurantMarkerIcon('cached', Boolean(selectedVisit)),
+        keyboard: true,
+        title: getVisitRestaurantName(primaryVisit),
+      });
+
+      const popup = document.createElement('div');
+      popup.className = 'restaurant-map-popup visit-repair-map-popup';
+
+      const title = document.createElement('strong');
+      title.textContent = getVisitRestaurantName(primaryVisit);
+      popup.append(title);
+
+      const location = document.createElement('span');
+      location.textContent = getVisitRestaurantLocation(primaryVisit) || 'No address provided';
+      popup.append(location);
+
+      for (const visit of group.visits.slice(0, 4)) {
+        const visitWrap = document.createElement('div');
+        visitWrap.className = 'visit-repair-popup-item';
+
+        const visitDate = document.createElement('span');
+        visitDate.textContent = formatDateTime(visit.visitDate ?? visit.created);
+        visitWrap.append(visitDate);
+
+        const visitId = document.createElement('span');
+        visitId.className = 'text-muted';
+        visitId.textContent = `Visit id: ${visit.id}`;
+        visitWrap.append(visitId);
+
+        const repairButton = document.createElement('button');
+        repairButton.className = 'button reverse restaurant-map-popup-button';
+        repairButton.type = 'button';
+        repairButton.textContent = 'Reassign restaurant';
+        repairButton.addEventListener('click', () => onReassignVisit(visit));
+        visitWrap.append(repairButton);
+
+        popup.append(visitWrap);
+      }
+
+      if (group.visits.length > 4) {
+        const overflow = document.createElement('span');
+        overflow.className = 'text-muted';
+        overflow.textContent = `${group.visits.length - 4} more visit(s) at this location`;
+        popup.append(overflow);
+      }
+
+      marker.bindPopup(popup);
+      marker.on('click', () => {
+        onSelectVisit(primaryVisit);
+        marker.openPopup();
+      });
+      marker.addTo(markersLayer);
+      bounds.extend([group.latitude, group.longitude]);
+    }
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        maxZoom: 15,
+        padding: [28, 28],
+      });
+    }
+  }, [onReassignVisit, onSelectVisit, selectedVisitId, visitGroups]);
+
+  return (
+    <div className="visit-repair-map-shell">
+      <div className="visit-repair-map" ref={mapContainerRef} />
+      {visitGroups.length === 0 ? (
+        <div className="restaurant-repair-map-empty">
+          <strong>No mapped visits yet</strong>
+          <span className="text-muted">Mapped visit records will appear here.</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ReassignVisitRestaurantModal({
   onClose,
   onReassigned,
@@ -566,23 +754,47 @@ function UserDetailTabPanel({
   userId: string;
 }) {
   const VISITS_PER_PAGE = 25;
+  const VISITS_MAP_PER_PAGE = 50;
   const queryClient = useQueryClient();
   const [visitToRepair, setVisitToRepair] = useState<VisitSummary | null>(null);
   const [repairSuccessMessage, setRepairSuccessMessage] = useState<string | null>(null);
   const [visitSearchTerm, setVisitSearchTerm] = useState('');
+  const [visitViewMode, setVisitViewMode] = useState<'list' | 'map'>('list');
   const [visitPage, setVisitPage] = useState(1);
+  const [selectedMapVisitId, setSelectedMapVisitId] = useState<string | undefined>();
+  const visitMapRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const trimmedVisitSearchTerm = visitSearchTerm.trim();
+  const visitPageSize = visitViewMode === 'map' ? VISITS_MAP_PER_PAGE : VISITS_PER_PAGE;
   const visitsQuery = useQuery({
     enabled: activeTab === 'visits',
-    queryKey: ['admin', 'user-visits', userId, trimmedVisitSearchTerm, visitPage],
+    queryKey: [
+      'admin',
+      visitViewMode === 'map' ? 'user-visits-map' : 'user-visits',
+      userId,
+      trimmedVisitSearchTerm,
+      visitPage,
+    ],
     queryFn: () =>
       searchUserVisits({
         page: visitPage,
-        perPage: VISITS_PER_PAGE,
+        perPage: visitPageSize,
+        mappedOnly: visitViewMode === 'map',
         search: trimmedVisitSearchTerm,
         userId,
       }),
   });
+
+  useEffect(() => {
+    if (activeTab !== 'visits' || visitViewMode !== 'map' || !selectedMapVisitId) {
+      return;
+    }
+
+    visitMapRowRefs.current[selectedMapVisitId]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
+  }, [activeTab, selectedMapVisitId, visitViewMode]);
+
   const totalRecordCount =
     profile.recentFoodItems.length +
     profile.recentFoodProducts.length +
@@ -924,10 +1136,16 @@ function UserDetailTabPanel({
     const visitItems = visitsQuery.data?.items ?? [];
     const visitSummaryText = trimmedVisitSearchTerm
       ? `Search results for "${trimmedVisitSearchTerm}".`
-      : 'Showing visits recorded by this user.';
+      : visitViewMode === 'map'
+        ? 'Showing mapped visits recorded by this user.'
+        : 'Showing visits recorded by this user.';
     const visitEmptyText = trimmedVisitSearchTerm
-      ? 'No visits matched that search.'
-      : 'No visits found for this user.';
+      ? visitViewMode === 'map'
+        ? 'No mapped visits matched that search.'
+        : 'No visits matched that search.'
+      : visitViewMode === 'map'
+        ? 'No mapped visits found for this user.'
+        : 'No visits found for this user.';
     const shouldShowVisitResults =
       !visitsQuery.isLoading && !visitsQuery.isError && visitItems.length > 0;
 
@@ -938,6 +1156,31 @@ function UserDetailTabPanel({
           <span className="text-muted">{visitSummaryText}</span>
         </div>
 
+        <div className="segmented-control visit-view-toggle" aria-label="Visit view mode">
+          <button
+            className={`segmented-control-option ${visitViewMode === 'list' ? 'active' : ''}`}
+            onClick={() => {
+              setVisitViewMode('list');
+              setVisitPage(1);
+              setSelectedMapVisitId(undefined);
+            }}
+            type="button"
+          >
+            List
+          </button>
+          <button
+            className={`segmented-control-option ${visitViewMode === 'map' ? 'active' : ''}`}
+            onClick={() => {
+              setVisitViewMode('map');
+              setVisitPage(1);
+              setSelectedMapVisitId(undefined);
+            }}
+            type="button"
+          >
+            Map
+          </button>
+        </div>
+
         <div className="field">
           <label htmlFor="admin-user-visits-search">Search visits</label>
           <input
@@ -946,6 +1189,7 @@ function UserDetailTabPanel({
             onChange={(event) => {
               setVisitSearchTerm(event.target.value);
               setVisitPage(1);
+              setSelectedMapVisitId(undefined);
             }}
             placeholder="Search by restaurant, location, or place id"
             type="search"
@@ -1003,30 +1247,89 @@ function UserDetailTabPanel({
               />
             ) : null}
 
-            <div className="inline-list">
-              {visitItems.map((visit) => (
-                <div className="list-item" key={visit.id}>
-                  <div className="summary-row">
-                    <strong>{getVisitRestaurantName(visit)}</strong>
-                    <button
-                      className="button reverse"
-                      onClick={() => {
-                        setRepairSuccessMessage(null);
-                        setVisitToRepair(visit);
-                      }}
-                      type="button"
-                    >
-                      Reassign restaurant
-                    </button>
-                  </div>
-                  <span className="text-muted">Visit id: {visit.id}</span>
-                  {getVisitRestaurantLocation(visit) ? (
-                    <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
-                  ) : null}
-                  <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+            {visitViewMode === 'map' ? (
+              <div className="visit-repair-map-layout">
+                <UserVisitRepairMap
+                  onReassignVisit={(visit) => {
+                    setRepairSuccessMessage(null);
+                    setVisitToRepair(visit);
+                  }}
+                  onSelectVisit={(visit) => setSelectedMapVisitId(visit.id)}
+                  selectedVisitId={selectedMapVisitId}
+                  visits={visitItems}
+                />
+                <div className="visit-repair-map-results">
+                  {visitItems.map((visit) => {
+                    const isSelected = selectedMapVisitId === visit.id;
+
+                    return (
+                      <div
+                        className={`list-item restaurant-repair-result ${isSelected ? 'selected' : ''}`}
+                        key={visit.id}
+                        onClick={() => setSelectedMapVisitId(visit.id)}
+                        ref={(element) => {
+                          visitMapRowRefs.current[visit.id] = element;
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedMapVisitId(visit.id);
+                          }
+                        }}
+                      >
+                        <div className="summary-row">
+                          <strong>{getVisitRestaurantName(visit)}</strong>
+                          {isMappableVisit(visit) ? <span className="tag">mapped</span> : null}
+                        </div>
+                        <span className="text-muted">Visit id: {visit.id}</span>
+                        {getVisitRestaurantLocation(visit) ? (
+                          <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
+                        ) : null}
+                        <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+                        <button
+                          className="button reverse visit-repair-map-row-action"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setRepairSuccessMessage(null);
+                            setVisitToRepair(visit);
+                          }}
+                          type="button"
+                        >
+                          Reassign restaurant
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="inline-list">
+                {visitItems.map((visit) => (
+                  <div className="list-item" key={visit.id}>
+                    <div className="summary-row">
+                      <strong>{getVisitRestaurantName(visit)}</strong>
+                      <button
+                        className="button reverse"
+                        onClick={() => {
+                          setRepairSuccessMessage(null);
+                          setVisitToRepair(visit);
+                        }}
+                        type="button"
+                      >
+                        Reassign restaurant
+                      </button>
+                    </div>
+                    <span className="text-muted">Visit id: {visit.id}</span>
+                    {getVisitRestaurantLocation(visit) ? (
+                      <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
+                    ) : null}
+                    <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {visitsQuery.data ? (
               <PaginationControls
@@ -1065,7 +1368,7 @@ function UserDetailTabPanel({
                 predicate: (query) =>
                   Array.isArray(query.queryKey) &&
                   query.queryKey[0] === 'admin' &&
-                  query.queryKey[1] === 'user-visits' &&
+                  (query.queryKey[1] === 'user-visits' || query.queryKey[1] === 'user-visits-map') &&
                   query.queryKey[2] === userId,
               });
               void queryClient.invalidateQueries({

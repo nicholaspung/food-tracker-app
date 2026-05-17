@@ -926,6 +926,140 @@ func TestAdminUserVisitsSearchFiltersByRestaurant(t *testing.T) {
 	}
 }
 
+func TestAdminUserVisitsSearchMappedOnlyReturnsOnlyVisitsWithCoordinates(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	mappedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   34.0501,
+		"location":   "Los Angeles, CA",
+		"longitude":  -118.2501,
+		"name":       "Mapped Cafe",
+		"visibility": "public",
+	})
+	unmappedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"location":   "Unknown",
+		"name":       "Unmapped Cafe",
+		"visibility": "public",
+	})
+	partialCoordinateRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   34.0501,
+		"location":   "Partial Coordinates",
+		"name":       "Partial Coordinate Cafe",
+		"visibility": "public",
+	})
+	mappedVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": mappedRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": unmappedRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-02T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": partialCoordinateRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-03T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/"+targetUser.Id+"/visits?mappedOnly=true",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	if body["totalItems"] != float64(1) {
+		t.Fatalf("expected one mapped visit, got metadata %#v", body)
+	}
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one mapped visit item, got %#v", body["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["id"] != mappedVisit.Id {
+		t.Fatalf("expected mapped visit %s, got %#v", mappedVisit.Id, item)
+	}
+	expand := item["expand"].(map[string]any)
+	restaurant := expand["restaurant"].(map[string]any)
+	if restaurant["latitude"] != float64(34.0501) || restaurant["longitude"] != float64(-118.2501) {
+		t.Fatalf("expected serialized restaurant coordinates, got %#v", restaurant)
+	}
+}
+
+func TestAdminUserVisitsSearchMappedOnlyStillFiltersByRestaurantSearch(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	matchingRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   32.7157,
+		"location":   "San Diego, CA",
+		"longitude":  -117.1611,
+		"name":       "Mapped Correct Tacos",
+		"placeId":    "mapped-correct-place",
+		"visibility": "public",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   30.2672,
+		"location":   "Austin, TX",
+		"longitude":  -97.7431,
+		"name":       "Mapped Wrong BBQ",
+		"placeId":    "mapped-wrong-place",
+		"visibility": "public",
+	})
+	matchingVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": matchingRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-01T18:00:00Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"user":       targetUser.Id,
+		"visitDate":  "2026-03-02T18:00:00Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/"+targetUser.Id+"/visits?mappedOnly=true&search=mapped-correct-place",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := parseJSONMap(t, response.Body.Bytes())
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one mapped matching visit, got %#v", body["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["id"] != matchingVisit.Id {
+		t.Fatalf("expected matching mapped visit %s, got %#v", matchingVisit.Id, item)
+	}
+}
+
 func TestAdminUserProfileIncludesCreatedRestaurantsAndMenuItems(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUserHandlers(se, app)

@@ -1216,6 +1216,87 @@ select.input {
   width: 100%;
 }
 
+.segmented-control {
+  align-items: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  width: fit-content;
+}
+
+.segmented-control-option {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+}
+
+.segmented-control-option.active {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.visit-view-toggle {
+  margin-top: -4px;
+}
+
+.visit-repair-map-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  min-height: 420px;
+}
+
+.visit-repair-map-shell {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 420px;
+  overflow: hidden;
+  position: relative;
+}
+
+.visit-repair-map {
+  height: 100%;
+  min-height: 420px;
+  width: 100%;
+}
+
+.visit-repair-map-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.visit-repair-map-row-action {
+  justify-content: center;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.visit-repair-map-popup {
+  max-width: 280px;
+}
+
+.visit-repair-popup-item {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+
 .tab-bar {
   display: flex;
   flex-wrap: wrap;
@@ -2167,7 +2248,15 @@ select.input {
     grid-template-columns: 1fr;
   }
 
+  .visit-repair-map-layout {
+    grid-template-columns: 1fr;
+  }
+
   .restaurant-repair-results-list {
+    max-height: none;
+  }
+
+  .visit-repair-map-results {
     max-height: none;
   }
 
