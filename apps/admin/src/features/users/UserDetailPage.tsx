@@ -292,6 +292,8 @@ function UserVisitRepairMap({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const markerByVisitIdRef = useRef<Record<string, L.Marker>>({});
+  const previousGroupKeysRef = useRef('');
   const visitGroups = useMemo(() => {
     const groupsByCoordinate = new Map<
       string,
@@ -360,8 +362,12 @@ function UserVisitRepairMap({
     }
 
     markersLayer.clearLayers();
+    markerByVisitIdRef.current = {};
 
     const bounds = L.latLngBounds([]);
+    const groupKeys = visitGroups
+      .map((group) => `${group.latitude.toFixed(6)}:${group.longitude.toFixed(6)}:${group.visits.map((visit) => visit.id).join(',')}`)
+      .join('|');
     for (const group of visitGroups) {
       const selectedVisit = group.visits.find((visit) => visit.id === selectedVisitId);
       const primaryVisit = selectedVisit ?? group.visits[0];
@@ -417,17 +423,40 @@ function UserVisitRepairMap({
         onSelectVisit(primaryVisit);
         marker.openPopup();
       });
+      for (const visit of group.visits) {
+        markerByVisitIdRef.current[visit.id] = marker;
+      }
       marker.addTo(markersLayer);
       bounds.extend([group.latitude, group.longitude]);
     }
 
-    if (bounds.isValid()) {
+    if (bounds.isValid() && previousGroupKeysRef.current !== groupKeys) {
       map.fitBounds(bounds, {
         maxZoom: 15,
         padding: [28, 28],
       });
     }
+    previousGroupKeysRef.current = groupKeys;
   }, [onReassignVisit, onSelectVisit, selectedVisitId, visitGroups]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedVisitId) {
+      return;
+    }
+
+    const marker = markerByVisitIdRef.current[selectedVisitId];
+    if (!marker) {
+      return;
+    }
+
+    const target = marker.getLatLng();
+    const targetZoom = Math.max(map.getZoom(), 15);
+    map.flyTo(target, targetZoom, {
+      duration: 0.45,
+    });
+    marker.openPopup();
+  }, [selectedVisitId]);
 
   return (
     <div className="visit-repair-map-shell">

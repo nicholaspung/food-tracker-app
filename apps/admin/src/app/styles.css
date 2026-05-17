@@ -1143,6 +1143,7 @@ select.input {
 .restaurant-repair-map {
   height: 100%;
   min-height: 360px;
+  z-index: 0;
   width: 100%;
 }
 
@@ -1268,6 +1269,7 @@ select.input {
 .visit-repair-map {
   height: 100%;
   min-height: 420px;
+  z-index: 0;
   width: 100%;
 }
 
@@ -1649,7 +1651,7 @@ select.input {
   justify-content: center;
   padding: 24px;
   position: fixed;
-  z-index: 40;
+  z-index: 3000;
 }
 
 .moderation-action-modal,
