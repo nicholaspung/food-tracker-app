@@ -148,23 +148,6 @@ func cleanupForAccountDeletion(app core.App, user *core.Record) (*accountDeleteC
 		}
 	}
 
-	if collectionHasField(app, "bill_invites", "used_by") {
-		if count, err := updateMatchingRecords(
-			app,
-			"bill_invites",
-			"used_by = {:userId}",
-			dbx.Params{"userId": userID},
-			func(record *core.Record) error {
-				record.Set("used_by", "")
-				return app.Save(record)
-			},
-		); err != nil {
-			return nil, err
-		} else {
-			summary.addUpdated("bill_invites", count)
-		}
-	}
-
 	if collectionHasField(app, "tasting_session_invites", "used_by") {
 		if count, err := updateMatchingRecords(
 			app,

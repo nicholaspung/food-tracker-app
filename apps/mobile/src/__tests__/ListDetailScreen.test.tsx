@@ -373,8 +373,11 @@ describe('ListDetailScreen', () => {
   const queryClient = {};
   const restaurantListWrites = {
     deleteRestaurantList: jest.fn(),
+    reorderRestaurant: jest.fn(),
     removeRestaurantListSourceRating: jest.fn(),
     removeRestaurantListUserRating: jest.fn(),
+    saveBookmarkToDefaultList: jest.fn(),
+    saveBookmarkToLists: jest.fn(),
   };
 
   const route = {
@@ -393,11 +396,23 @@ describe('ListDetailScreen', () => {
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
     mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
     restaurantListWrites.deleteRestaurantList.mockResolvedValue({ status: 'completed' });
+    restaurantListWrites.reorderRestaurant.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
     restaurantListWrites.removeRestaurantListSourceRating.mockResolvedValue({
       result: [],
       status: 'completed',
     });
     restaurantListWrites.removeRestaurantListUserRating.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.saveBookmarkToDefaultList.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.saveBookmarkToLists.mockResolvedValue({
       result: [],
       status: 'completed',
     });

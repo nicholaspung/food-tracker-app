@@ -3,11 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, create } from 'react-test-renderer';
 
 import {
+  type RestaurantRecord,
+} from '../features';
+import {
   listMenuItemsForRestaurant,
   listRestaurantSuggestions,
   searchRestaurantsPage,
-  type RestaurantRecord,
-} from '../features';
+} from '../features/store/featureStore';
 import {
   buildRestaurantMenuItemsQueryOptions,
   buildRestaurantSearchQueryOptions,
@@ -19,9 +21,12 @@ import { searchAndCacheRestaurantsByText } from '../lib/googlePlaces';
 
 jest.mock('../features', () => ({
   formatLimitExceededMessage: jest.fn(),
+  parseLimitExceededError: jest.fn(),
+}));
+
+jest.mock('../features/store/featureStore', () => ({
   listMenuItemsForRestaurant: jest.fn(),
   listRestaurantSuggestions: jest.fn(),
-  parseLimitExceededError: jest.fn(),
   searchRestaurantsPage: jest.fn(),
 }));
 

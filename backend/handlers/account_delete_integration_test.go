@@ -153,14 +153,6 @@ func TestDeleteAccountDeletesUserAndCleansSharedReferences(t *testing.T) {
 		"amount_owed": 60,
 		"paid_status": "pending",
 	})
-	usedBillInvite := createCollectionRecordWithKnownFields(t, server.app, "bill_invites", map[string]any{
-		"bill":       otherUsersBill.Id,
-		"code":       "BILL99",
-		"created_by": otherUser.Id,
-		"expires_at": "2099-01-01 00:00:00.000Z",
-		"used_by":    targetUser.Id,
-	})
-
 	tastingSession := createCollectionRecordWithKnownFields(t, server.app, "tasting_sessions", map[string]any{
 		"name":       "Flight Night",
 		"restaurant": sharedRestaurant.Id,
@@ -244,14 +236,6 @@ func TestDeleteAccountDeletesUserAndCleansSharedReferences(t *testing.T) {
 		t.Fatal("expected bill participant name to be preserved")
 	}
 
-	reloadedBillInvite, err := server.app.FindRecordById("bill_invites", usedBillInvite.Id)
-	if err != nil {
-		t.Fatalf("expected bill invite to remain, got error: %v", err)
-	}
-	if got := strings.TrimSpace(reloadedBillInvite.GetString("used_by")); got != "" {
-		t.Fatalf("expected bill invite used_by to be cleared, got %q", got)
-	}
-
 	reloadedSessionInvite, err := server.app.FindRecordById("tasting_session_invites", usedSessionInvite.Id)
 	if err != nil {
 		t.Fatalf("expected tasting session invite to remain, got error: %v", err)
@@ -296,7 +280,7 @@ func TestDeleteAccountDeletesUserAndCleansSharedReferences(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected cleanupUpdated metadata map, got %#v", metadataMap["cleanupUpdated"])
 	}
-	for _, key := range []string{"bill_participants", "bill_invites", "invite_codes", "restaurants", "menu_items"} {
+	for _, key := range []string{"bill_participants", "invite_codes", "restaurants", "menu_items"} {
 		if cleanupUpdated[key] == nil {
 			t.Fatalf("expected cleanupUpdated to include %s, got %#v", key, cleanupUpdated)
 		}

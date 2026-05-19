@@ -4,13 +4,17 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
+  createDefaultRestaurantList,
   deleteRestaurantList,
+  moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
+  saveRestaurantFoodItemToList,
 } from '../features/store/restaurantListsStore';
 import {
   invalidateRestaurantListCollectionQueries,
   invalidateRestaurantListContentQueries,
+  invalidateRestaurantListSaveTargetQueries,
   removeRestaurantListQueries,
 } from '../features/store/restaurantListQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -21,14 +25,18 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 jest.mock('../features/store/restaurantListsStore', () => ({
+  createDefaultRestaurantList: jest.fn(),
   deleteRestaurantList: jest.fn(),
+  moveRestaurantListRestaurant: jest.fn(),
   removeRestaurantListSourceRating: jest.fn(),
   removeRestaurantListUserRating: jest.fn(),
+  saveRestaurantFoodItemToList: jest.fn(),
 }));
 
 jest.mock('../features/store/restaurantListQuery', () => ({
   invalidateRestaurantListCollectionQueries: jest.fn(),
   invalidateRestaurantListContentQueries: jest.fn(),
+  invalidateRestaurantListSaveTargetQueries: jest.fn(),
   removeRestaurantListQueries: jest.fn(),
 }));
 
@@ -41,15 +49,23 @@ jest.mock('../lib/offlineAlerts', () => ({
 }));
 
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedCreateDefaultRestaurantList =
+  createDefaultRestaurantList as jest.MockedFunction<typeof createDefaultRestaurantList>;
 const mockedDeleteRestaurantList = deleteRestaurantList as jest.MockedFunction<typeof deleteRestaurantList>;
+const mockedMoveRestaurantListRestaurant =
+  moveRestaurantListRestaurant as jest.MockedFunction<typeof moveRestaurantListRestaurant>;
 const mockedRemoveRestaurantListSourceRating =
   removeRestaurantListSourceRating as jest.MockedFunction<typeof removeRestaurantListSourceRating>;
 const mockedRemoveRestaurantListUserRating =
   removeRestaurantListUserRating as jest.MockedFunction<typeof removeRestaurantListUserRating>;
+const mockedSaveRestaurantFoodItemToList =
+  saveRestaurantFoodItemToList as jest.MockedFunction<typeof saveRestaurantFoodItemToList>;
 const mockedInvalidateRestaurantListCollectionQueries =
   invalidateRestaurantListCollectionQueries as jest.MockedFunction<typeof invalidateRestaurantListCollectionQueries>;
 const mockedInvalidateRestaurantListContentQueries =
   invalidateRestaurantListContentQueries as jest.MockedFunction<typeof invalidateRestaurantListContentQueries>;
+const mockedInvalidateRestaurantListSaveTargetQueries =
+  invalidateRestaurantListSaveTargetQueries as jest.MockedFunction<typeof invalidateRestaurantListSaveTargetQueries>;
 const mockedRemoveRestaurantListQueries =
   removeRestaurantListQueries as jest.MockedFunction<typeof removeRestaurantListQueries>;
 const mockedUseOfflineAwareFeatureWrite =
@@ -67,11 +83,15 @@ describe('useRestaurantListWrites', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
+    mockedCreateDefaultRestaurantList.mockResolvedValue({ id: 'default_list_1' } as never);
     mockedDeleteRestaurantList.mockResolvedValue(undefined);
+    mockedMoveRestaurantListRestaurant.mockResolvedValue([]);
     mockedRemoveRestaurantListSourceRating.mockResolvedValue([]);
     mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
+    mockedSaveRestaurantFoodItemToList.mockResolvedValue([]);
     mockedInvalidateRestaurantListCollectionQueries.mockResolvedValue(undefined);
     mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
+    mockedInvalidateRestaurantListSaveTargetQueries.mockResolvedValue(undefined);
     mockedRemoveRestaurantListQueries.mockImplementation(() => undefined);
   });
 
@@ -214,6 +234,55 @@ describe('useRestaurantListWrites', () => {
     });
   });
 
+  it('runs restaurant reorder online and invalidates membership caches', async () => {
+    const updatedItems = [{ id: 'item_1' }];
+    mockedMoveRestaurantListRestaurant.mockResolvedValue(updatedItems as never);
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.reorderRestaurant>> | undefined;
+    await act(async () => {
+      result = await hook.reorderRestaurant({
+        listId: 'list_1',
+        restaurantId: 'restaurant_1',
+        direction: 'up',
+      });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.restaurant.reorder',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId: 'list_1',
+            restaurantId: 'restaurant_1',
+            direction: 'up',
+          },
+        },
+      }),
+    );
+    expect(mockedMoveRestaurantListRestaurant).toHaveBeenCalledWith({
+      listId: 'list_1',
+      restaurantId: 'restaurant_1',
+      direction: 'up',
+    });
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
+      includeCandidateRestaurants: true,
+    });
+    expect(result).toEqual({ status: 'completed', result: updatedItems });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
   it('queues user rating removal through the feature outbox payload', async () => {
     const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(
@@ -247,6 +316,131 @@ describe('useRestaurantListWrites', () => {
     });
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('List update');
     expect(result).toEqual({ status: 'queued' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues bookmark saves for each target list and invalidates save target caches once', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.saveBookmarkToLists>> | undefined;
+    await act(async () => {
+      result = await hook.saveBookmarkToLists({
+        sourceListId: 'source_list_1',
+        listIds: ['target_list_1', 'target_list_2'],
+        bookmark: {
+          restaurantId: 'restaurant_1',
+          foodItemId: 'food_item_1',
+          note: 'Try the noodles',
+          sourceUserId: 'source_user_1',
+        },
+      });
+    });
+
+    expect(writeFeature).toHaveBeenCalledTimes(2);
+    expect(writeFeature).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        operationName: 'list.bookmark.save',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId: 'target_list_1',
+            restaurantId: 'restaurant_1',
+            foodItemId: 'food_item_1',
+            note: 'Try the noodles',
+            sourceUserId: 'source_user_1',
+          },
+        },
+      }),
+    );
+    expect(writeFeature).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        operationName: 'list.bookmark.save',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId: 'target_list_2',
+            restaurantId: 'restaurant_1',
+            foodItemId: 'food_item_1',
+            note: 'Try the noodles',
+            sourceUserId: 'source_user_1',
+          },
+        },
+      }),
+    );
+    expect(mockedSaveRestaurantFoodItemToList).not.toHaveBeenCalled();
+    expect(mockedInvalidateRestaurantListSaveTargetQueries).toHaveBeenCalledWith(
+      queryClient,
+      'source_list_1',
+    );
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Bookmark save');
+    expect(result).toEqual({ status: 'queued' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('creates the default list online before saving a quick bookmark when no default exists', async () => {
+    const savedItems = [{ id: 'saved_item_1' }];
+    mockedSaveRestaurantFoodItemToList.mockResolvedValue(savedItems as never);
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.saveBookmarkToDefaultList>> | undefined;
+    await act(async () => {
+      result = await hook.saveBookmarkToDefaultList({
+        sourceListId: 'source_list_1',
+        bookmark: {
+          restaurantId: 'restaurant_1',
+          foodItemId: 'food_item_1',
+          note: 'Try the noodles',
+          sourceUserId: 'source_user_1',
+        },
+      });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.default.bookmark.save',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            restaurantId: 'restaurant_1',
+            foodItemId: 'food_item_1',
+            note: 'Try the noodles',
+            sourceUserId: 'source_user_1',
+          },
+        },
+      }),
+    );
+    expect(mockedCreateDefaultRestaurantList).toHaveBeenCalledTimes(1);
+    expect(mockedSaveRestaurantFoodItemToList).toHaveBeenCalledWith({
+      listId: 'default_list_1',
+      restaurantId: 'restaurant_1',
+      foodItemId: 'food_item_1',
+      note: 'Try the noodles',
+      sourceUserId: 'source_user_1',
+    });
+    expect(mockedInvalidateRestaurantListSaveTargetQueries).toHaveBeenCalledWith(
+      queryClient,
+      'source_list_1',
+    );
+    expect(result).toEqual({ status: 'completed', result: [savedItems] });
 
     await act(async () => {
       renderer.unmount();

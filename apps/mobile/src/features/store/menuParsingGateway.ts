@@ -69,6 +69,37 @@ interface CreateMenuItemsFromScanResponse {
   existingItems: MenuItemRecord[];
 }
 
+const PARSE_MENU_IMAGE_TIMEOUT_MS = 120_000;
+const CREATE_MENU_ITEMS_FROM_SCAN_TIMEOUT_MS = 30_000;
+
+async function sendApiRequestWithTimeout<T>(
+  path: string,
+  init: Parameters<typeof sendApiRequest>[1],
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await sendApiRequest<T>(path, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (didTimeout) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
   const formData = new FormData();
   formData.append('image', {
@@ -88,11 +119,16 @@ function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
 export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseMenuImageResponse> {
   const formData = buildParseMenuFormData(input);
   const requestCorrelation = input.requestCorrelation?.trim();
-  return sendApiRequest<ParseMenuImageResponse>('/api/parse-menu', {
-    method: 'POST',
-    body: formData,
-    headers: requestCorrelation ? { 'X-Request-ID': requestCorrelation } : undefined,
-  });
+  return sendApiRequestWithTimeout<ParseMenuImageResponse>(
+    '/api/parse-menu',
+    {
+      method: 'POST',
+      body: formData,
+      headers: requestCorrelation ? { 'X-Request-ID': requestCorrelation } : undefined,
+    },
+    PARSE_MENU_IMAGE_TIMEOUT_MS,
+    'Menu scanning took too long. Try again with a clearer or smaller photo.',
+  );
 }
 
 export async function extractRestaurantNamesFromImage(
@@ -119,8 +155,13 @@ export async function createMenuReviewRequest(
 export async function createMenuItemsFromScan(
   input: CreateMenuItemsFromScanInput,
 ): Promise<CreateMenuItemsFromScanResponse> {
-  return sendApiRequest<CreateMenuItemsFromScanResponse>('/api/menu-items/from-scan', {
-    method: 'POST',
-    body: input,
-  });
+  return sendApiRequestWithTimeout<CreateMenuItemsFromScanResponse>(
+    '/api/menu-items/from-scan',
+    {
+      method: 'POST',
+      body: input,
+    },
+    CREATE_MENU_ITEMS_FROM_SCAN_TIMEOUT_MS,
+    'Menu items could not be saved before the request timed out. Try scanning again.',
+  );
 }

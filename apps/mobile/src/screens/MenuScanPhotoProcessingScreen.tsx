@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, Animated, Easing, Linking, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
@@ -37,6 +37,10 @@ function getNextProcessingProgress(currentValue: number): number {
   );
 }
 
+function formatElapsedSeconds(elapsedMs: number): string {
+  return `${Math.max(0, Math.floor(elapsedMs / 1000))}s elapsed`;
+}
+
 const useStyles = createThemedStyles((theme) => ({
   chooseCard: {
     gap: theme.spacing.sm,
@@ -53,6 +57,25 @@ const useStyles = createThemedStyles((theme) => ({
   processingHint: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  processingMotionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  processingSpinner: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  processingTextBlock: {
+    flex: 1,
     gap: theme.spacing.xs,
   },
   successCard: {
@@ -101,6 +124,7 @@ export function MenuScanPhotoProcessingScreen({
   const [progressValue, setProgressValue] = useState(0);
   const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
   const [countdownValue, setCountdownValue] = useState(5);
+  const processingSpinValue = useRef(new Animated.Value(0)).current;
   const autoPromptedRef = useRef(false);
   const hasTriggeredCountdownNavigationRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -171,12 +195,23 @@ export function MenuScanPhotoProcessingScreen({
     if (menuScanFlow.status === 'processing') {
       setProgressValue(0.04);
       setProcessingElapsedMs(0);
+      processingSpinValue.setValue(0);
+      const spinAnimation = Animated.loop(
+        Animated.timing(processingSpinValue, {
+          duration: 1200,
+          easing: Easing.linear,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+      );
+      spinAnimation.start();
       const progressInterval = setInterval(() => {
         setProcessingElapsedMs((currentValue) => currentValue + PROCESSING_PROGRESS_INTERVAL_MS);
         setProgressValue(getNextProcessingProgress);
       }, PROCESSING_PROGRESS_INTERVAL_MS);
 
       return () => {
+        spinAnimation.stop();
         clearInterval(progressInterval);
       };
     }
@@ -187,7 +222,7 @@ export function MenuScanPhotoProcessingScreen({
     }
 
     return undefined;
-  }, [menuScanFlow.status]);
+  }, [menuScanFlow.status, processingSpinValue]);
 
   useEffect(() => {
     if (
@@ -244,7 +279,6 @@ export function MenuScanPhotoProcessingScreen({
   if (!isMenuScan) {
     return (
       <FeatureFormScreenScaffold
-        keyboardAware={false}
         onBackPress={() => {
           navigation.goBack();
         }}
@@ -281,6 +315,10 @@ export function MenuScanPhotoProcessingScreen({
           : 'Existing menu items were matched for this restaurant.'
         : `Capture or upload a menu image for ${restaurantName}.`;
   const processingPercent = Math.round(progressValue * 100);
+  const processingSpin = processingSpinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
   const processingDetail =
     processingElapsedMs >= 12000
       ? 'Still working. Detailed menus can take a little longer.'
@@ -300,7 +338,6 @@ export function MenuScanPhotoProcessingScreen({
 
   return (
     <FeatureFormScreenScaffold
-      keyboardAware={false}
       onBackPress={() => {
         navigateBackToItems();
       }}
@@ -358,9 +395,23 @@ export function MenuScanPhotoProcessingScreen({
 
       {phase === 'processing' ? (
         <Card style={styles.processingCard}>
-          <View style={styles.processingHint}>
-            <Ionicons color={theme.colors.text.info} name="sync-outline" size={18} />
-            <Text tone="secondary">We're processing your image now.</Text>
+          <View style={styles.processingMotionRow}>
+            <Animated.View
+              style={[
+                styles.processingSpinner,
+                {
+                  transform: [{ rotate: processingSpin }],
+                },
+              ]}
+            >
+              <Ionicons color={theme.colors.text.info} name="sync-outline" size={22} />
+            </Animated.View>
+            <View style={styles.processingTextBlock}>
+              <Text tone="secondary">We're processing your image now.</Text>
+              <Text tone="secondary" variant="bodySm">
+                {formatElapsedSeconds(processingElapsedMs)}
+              </Text>
+            </View>
           </View>
           <Text variant="label">Processing "{menuScanFlow.selectedImageName}"</Text>
           <LinearProgressBar progress={progressValue} />

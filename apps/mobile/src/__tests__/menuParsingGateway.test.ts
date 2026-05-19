@@ -1,5 +1,6 @@
 import * as pocketbaseModule from '../lib/pocketbase';
 import {
+  createMenuItemsFromScan,
   extractRestaurantNamesFromImage,
   parseMenuImage,
 } from '../features/store/menuParsingGateway';
@@ -58,6 +59,7 @@ describe('menuParsingGateway', () => {
           'X-Request-ID': 'mobile-menu-scan-test',
         }),
         method: 'POST',
+        signal: expect.any(AbortSignal),
       }),
     );
     expect(appendSpy).toHaveBeenCalledWith('restaurantId', 'restaurant-1');
@@ -140,5 +142,63 @@ describe('menuParsingGateway', () => {
 
     const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
     expect(options.headers).not.toHaveProperty('X-Request-ID');
+  });
+
+  it('aborts menu image parsing if the API does not resolve', async () => {
+    jest.useFakeTimers();
+    mockedPocketbaseModule.pb.send.mockImplementation((_path: string, options: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          reject(new Error('aborted'));
+        });
+      }),
+    );
+
+    const request = parseMenuImage({
+      mimeType: 'image/jpeg',
+      name: 'large-menu.jpg',
+      uri: 'file:///large-menu.jpg',
+    });
+    const expectation = expect(request).rejects.toThrow(
+      'Menu scanning took too long. Try again with a clearer or smaller photo.',
+    );
+
+    await jest.advanceTimersByTimeAsync(120_000);
+
+    await expectation;
+    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
+    expect(options.signal.aborted).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it('aborts scanned menu item creation if saving does not resolve', async () => {
+    jest.useFakeTimers();
+    mockedPocketbaseModule.pb.send.mockImplementation((_path: string, options: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          reject(new Error('aborted'));
+        });
+      }),
+    );
+
+    const request = createMenuItemsFromScan({
+      itemNames: ['Ramen'],
+      restaurantId: 'restaurant-1',
+    });
+    const expectation = expect(request).rejects.toThrow(
+      'Menu items could not be saved before the request timed out. Try scanning again.',
+    );
+
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
+      '/api/menu-items/from-scan',
+      expect.objectContaining({
+        method: 'POST',
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    jest.useRealTimers();
   });
 });

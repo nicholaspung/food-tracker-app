@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -19,20 +19,12 @@ import {
 } from '../components/shared';
 import { RestaurantMapView, type RestaurantMapGroup } from '../components/maps';
 import {
-  createDefaultRestaurantList,
   getRestaurantListDetail,
-  invalidateRestaurantListContentQueries,
-  invalidateRestaurantListSaveTargetQueries,
-  moveRestaurantListRestaurant,
   restaurantListQueryKeys,
-  saveRestaurantFoodItemToList,
   useRestaurantListWrites,
 } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -370,9 +362,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
   const theme = useTheme();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const trackWriteTelemetry = useWriteTelemetry();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
   const restaurantListWrites = useRestaurantListWrites();
   const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -676,14 +665,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     navigation.navigate('Lists');
   };
 
-  const invalidateCurrentListDetailQueries = useCallback(async () => {
-    await invalidateRestaurantListContentQueries(queryClient, listId);
-  }, [listId, queryClient]);
-
-  const invalidateSaveTargetQueries = useCallback(async () => {
-    await invalidateRestaurantListSaveTargetQueries(queryClient, listId);
-  }, [listId, queryClient]);
-
   const deleteList = useCallback(async () => {
     if (!list || !isOwner || list.isDefault) {
       return;
@@ -762,25 +743,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setMovingRestaurantId(restaurantId);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('list.restaurant.reorder', { listId, restaurantId, direction });
-        await invalidateCurrentListDetailQueries();
-        trackObservabilityEvent('LIST_DETAIL_REORDER_SUCCEEDED', {
-          ...listAnalyticsContext,
-          direction,
-          queued: true,
-        });
-        showQueuedOfflineAlert('List reorder');
-        return;
-      }
-
-      await trackWriteTelemetry('list.restaurant.reorder');
-      await moveRestaurantListRestaurant({ listId, restaurantId, direction });
-      await invalidateCurrentListDetailQueries();
+      const result = await restaurantListWrites.reorderRestaurant({
+        listId,
+        restaurantId,
+        direction,
+      });
       trackObservabilityEvent('LIST_DETAIL_REORDER_SUCCEEDED', {
         ...listAnalyticsContext,
         direction,
-        queued: false,
+        queued: result.status === 'queued',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not reorder restaurant.';
@@ -1023,58 +994,20 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsSavingBookmark(true);
 
     try {
-      if (!isOnline) {
-        for (const targetListId of targetListIds) {
-          await queueFeatureOutbox('list.bookmark.save', {
-            listId: targetListId,
-            restaurantId: saveBookmarkTarget.restaurantId,
-            foodItemId: saveBookmarkTarget.foodItemId,
-            note: saveBookmarkTarget.sourceNote,
-            sourceUserId: list.userId,
-          });
-        }
-
-        await invalidateSaveTargetQueries();
-        trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
-          source: 'ListDetailScreen',
-          entryMethod: trackingContext.entryMethod,
-          queued: true,
-          targetListCount: targetListIds.length,
-          createdDefaultList: trackingContext.createdDefaultList,
-          isOnline,
-        });
-        trackProductEvent('social.recommendation_saved', {
-          source: 'ListDetailScreen',
-          entryMethod: trackingContext.entryMethod,
-          queued: true,
-          targetListCount: targetListIds.length,
-          createdDefaultList: trackingContext.createdDefaultList,
-        });
-
-        setSaveBookmarkTarget(null);
-        setSelectedSaveListIds(new Set());
-        setSaveModalError(null);
-        showQueuedOfflineAlert('Bookmark save');
-        return;
-      }
-
-      await trackWriteTelemetry('list.bookmark.save');
-
-      for (const targetListId of targetListIds) {
-        await saveRestaurantFoodItemToList({
-          listId: targetListId,
+      const result = await restaurantListWrites.saveBookmarkToLists({
+        listIds: targetListIds,
+        sourceListId: listId,
+        bookmark: {
           restaurantId: saveBookmarkTarget.restaurantId,
           foodItemId: saveBookmarkTarget.foodItemId,
           note: saveBookmarkTarget.sourceNote,
           sourceUserId: list.userId,
-        });
-      }
-
-      await invalidateSaveTargetQueries();
+        },
+      });
       trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
         source: 'ListDetailScreen',
         entryMethod: trackingContext.entryMethod,
-        queued: false,
+        queued: result.status === 'queued',
         targetListCount: targetListIds.length,
         createdDefaultList: trackingContext.createdDefaultList,
         isOnline,
@@ -1082,7 +1015,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       trackProductEvent('social.recommendation_saved', {
         source: 'ListDetailScreen',
         entryMethod: trackingContext.entryMethod,
-        queued: false,
+        queued: result.status === 'queued',
         targetListCount: targetListIds.length,
         createdDefaultList: trackingContext.createdDefaultList,
       });
@@ -1118,61 +1051,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       isOnline,
       hasDefaultList: Boolean(defaultList?.id),
     });
-    let targetDefaultListId = defaultList?.id;
-    if (!targetDefaultListId) {
-      try {
-        if (!isOnline) {
-          await queueFeatureOutbox('list.default.bookmark.save', {
-            restaurantId: saveBookmarkTarget.restaurantId,
-            foodItemId: saveBookmarkTarget.foodItemId,
-            note: saveBookmarkTarget.sourceNote,
-            sourceUserId: list?.userId,
-          });
+    const targetDefaultListId = defaultList?.id;
 
-          await invalidateSaveTargetQueries();
-          trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
-            source: 'ListDetailScreen',
-            entryMethod: 'quick_default',
-            queued: true,
-            targetListCount: 1,
-            createdDefaultList: true,
-            isOnline,
-          });
-          trackProductEvent('social.recommendation_saved', {
-            source: 'ListDetailScreen',
-            entryMethod: 'quick_default',
-            queued: true,
-            targetListCount: 1,
-            createdDefaultList: true,
-          });
-          setSaveBookmarkTarget(null);
-          setSelectedSaveListIds(new Set());
-          setSaveModalError(null);
-          showQueuedOfflineAlert('Saved list + bookmark');
-          return;
-        }
-
-        await trackWriteTelemetry('list.default.create');
-        const createdDefaultList = await createDefaultRestaurantList();
-        targetDefaultListId = createdDefaultList.id;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not create your Saved list.';
-        trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
-          source: 'ListDetailScreen',
-          entryMethod: 'quick_default',
-          stage: 'default_list_create',
-          errorMessage: message,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-          targetListCount: 1,
-          createdDefaultList: true,
-          isOnline,
-        });
-        setSaveModalError(message);
-        return;
-      }
-    }
-
-    if (!targetDefaultListId) {
+    if (!targetDefaultListId && !list?.userId) {
       trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
         source: 'ListDetailScreen',
         entryMethod: 'quick_default',
@@ -1185,7 +1066,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
-    if (alreadySavedListIdsForTarget.has(targetDefaultListId)) {
+    if (targetDefaultListId && alreadySavedListIdsForTarget.has(targetDefaultListId)) {
       trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
         source: 'ListDetailScreen',
         entryMethod: 'quick_default',
@@ -1198,10 +1079,60 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
-    await saveBookmarkToLists([targetDefaultListId], {
-      entryMethod: 'quick_default',
-      createdDefaultList: !defaultList?.id,
+    trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {
+      source: 'ListDetailScreen',
+      targetListCount: 1,
+      isOnline,
     });
+    setSaveModalError(null);
+    setIsSavingBookmark(true);
+
+    try {
+      const result = await restaurantListWrites.saveBookmarkToDefaultList({
+        defaultListId: targetDefaultListId,
+        sourceListId: listId,
+        bookmark: {
+          restaurantId: saveBookmarkTarget.restaurantId,
+          foodItemId: saveBookmarkTarget.foodItemId,
+          note: saveBookmarkTarget.sourceNote,
+          sourceUserId: list?.userId,
+        },
+      });
+
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
+        source: 'ListDetailScreen',
+        entryMethod: 'quick_default',
+        queued: result.status === 'queued',
+        targetListCount: 1,
+        createdDefaultList: !defaultList?.id,
+        isOnline,
+      });
+      trackProductEvent('social.recommendation_saved', {
+        source: 'ListDetailScreen',
+        entryMethod: 'quick_default',
+        queued: result.status === 'queued',
+        targetListCount: 1,
+        createdDefaultList: !defaultList?.id,
+      });
+      setSaveBookmarkTarget(null);
+      setSelectedSaveListIds(new Set());
+      setSaveModalError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
+        source: 'ListDetailScreen',
+        entryMethod: 'quick_default',
+        stage: targetDefaultListId ? 'bookmark_save' : 'default_list_create',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        targetListCount: 1,
+        createdDefaultList: !defaultList?.id,
+        isOnline,
+      });
+      setSaveModalError(message);
+    } finally {
+      setIsSavingBookmark(false);
+    }
   };
 
   const handleSaveToSelectedLists = async () => {

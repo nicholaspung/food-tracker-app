@@ -14,9 +14,6 @@ import {
 } from '../components/shared';
 import {
   createEntityId,
-  type BillItemRecord,
-  type BillItemSplitConfig,
-  type BillParticipantRecord,
   type FriendRecord,
 } from '../features';
 import {
@@ -34,6 +31,7 @@ import { BillParticipantPickerSection } from './createBill/BillParticipantPicker
 import { BillPayerAndTotalsSection } from './createBill/BillPayerAndTotalsSection';
 import {
   areStringArraysEqual,
+  buildBillDraftSubmission,
   buildDefaultAdvancedSplits,
   calculateSuggestedBillAmounts,
   formatPercentageDisplay,
@@ -1342,14 +1340,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     return `Simple split • assigned to ${assignedCount} participants`;
   };
 
-  const resolveParticipantRecordId = (draftParticipantId: string): string | null => {
-    if (!isEditMode) {
-      return draftParticipantId;
-    }
-
-    return participantRecordIdByDraftId[draftParticipantId] ?? null;
-  };
-
   const existingEvenModeItemId = isEditMode
     ? (billQuery.data?.items.find((item) => item.splitMode !== 'advanced')?.id ?? billQuery.data?.items[0]?.id)
     : undefined;
@@ -1482,283 +1472,63 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    if (isEditMode && !isEditHydrated) {
-      trackSubmitValidationFailed('edit_bill_not_hydrated');
-      setErrorMessage('Bill details are still loading. Please wait a moment and try again.');
-      return;
-    }
-
-    if (isEqualSplitMode || isManualSplitMode) {
-      if (!Number.isFinite(parsedEqualTotal) || parsedEqualTotal <= 0) {
-        trackSubmitValidationFailed('invalid_equal_total');
-        setErrorMessage('Enter a valid total bill price.');
-        return;
-      }
-    } else {
-      if (items.length === 0) {
-        trackSubmitValidationFailed('missing_items');
-        setErrorMessage('Add at least one item.');
-        return;
-      }
-
-      if (
-        !Number.isFinite(parsedTax) ||
-        parsedTax < 0 ||
-        !Number.isFinite(parsedTip) ||
-        parsedTip < 0 ||
-        !Number.isFinite(parsedFees) ||
-        parsedFees < 0
-      ) {
-        trackSubmitValidationFailed('invalid_tax_tip_fees');
-        setErrorMessage('Tax, tip, and fees must be valid non-negative values.');
-        return;
-      }
-
-      if (hasFinalTotalOverride && (!Number.isFinite(parsedFinalTotal) || parsedFinalTotal <= 0)) {
-        trackSubmitValidationFailed('invalid_final_total');
-        setErrorMessage('Final price must be a valid amount greater than zero.');
-        return;
-      }
-
-      if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
-        trackSubmitValidationFailed('custom_tip_unbalanced');
-        setErrorMessage('Custom tip split must match the tip total.');
-        return;
-      }
-    }
-
-    if (!Number.isFinite(previewTotal) || previewTotal <= 0) {
-      trackSubmitValidationFailed('invalid_total_amount');
-      setErrorMessage('Total bill amount must be greater than zero.');
-      return;
-    }
-
     if (owedAmountEntries.some((entry) => entry.amount < 0)) {
       trackSubmitValidationFailed('negative_participant_amount');
       setErrorMessage('Final price cannot reduce any participant below $0.00.');
       return;
     }
 
-    if (!payerParticipantId) {
-      trackSubmitValidationFailed('missing_payer');
-      setErrorMessage('Select who paid the bill.');
-      return;
-    }
-
-    if (isEditMode && !editBillId) {
-      trackSubmitValidationFailed('missing_edit_bill_id');
-      setErrorMessage('Bill could not be loaded for editing.');
-      return;
-    }
-
-    if (isEditMode && !billQuery.data) {
-      trackSubmitValidationFailed('missing_edit_bill');
-      setErrorMessage('Bill could not be loaded for editing.');
-      return;
-    }
-
-    const participantRecordIdLookup = new Map<string, string>();
-    participants.forEach((participant) => {
-      const existingParticipantRecordId = resolveParticipantRecordId(participant.id);
-      participantRecordIdLookup.set(
-        participant.id,
-        existingParticipantRecordId ?? createEntityId('bill_participant'),
-      );
+    const submission = buildBillDraftSubmission({
+      billTitle,
+      createEntityId,
+      customTipContributionMap,
+      customTipSplitBalanced: isCustomTipSplitBalanced,
+      editBill: billQuery.data,
+      editBillId,
+      existingEvenModeItemId,
+      extrasSplitMode,
+      hasFinalTotalOverride,
+      isCustomSplitMode,
+      isCustomTipEnabled,
+      isEditHydrated,
+      isEditMode,
+      isEqualSplitMode,
+      isManualSplitMode,
+      items,
+      owedAmountOverrides,
+      participantIds,
+      participantRecordIdByDraftId,
+      participants,
+      payerParticipantId,
+      parsedEqualTotal,
+      parsedFees,
+      parsedFinalTotal,
+      parsedTax,
+      parsedTip,
+      previewTotal,
+      suggestedAmounts,
     });
 
-    const resolveMappedParticipantId = (draftParticipantId: string): string | null =>
-      participantRecordIdLookup.get(draftParticipantId) ?? null;
-
-    const itemRecords: BillItemRecord[] = [];
-
-    if (isEqualSplitMode || isManualSplitMode) {
-      const mappedAssignedParticipantIds = participantIds
-        .map((participantId) => resolveMappedParticipantId(participantId))
-        .filter((participantId): participantId is string => Boolean(participantId));
-      if (mappedAssignedParticipantIds.length === 0) {
-        trackSubmitValidationFailed('missing_mapped_participants');
-        setErrorMessage('Could not resolve bill participants.');
-        return;
-      }
-
-      itemRecords.push({
-        id: isEditMode ? (existingEvenModeItemId ?? createEntityId('bill_item')) : createEntityId('bill_item'),
-        itemName: billTitle.trim(),
-        price: roundToCurrency(previewTotal),
-        assignedToParticipantIds: mappedAssignedParticipantIds,
-        splitMode: 'simple',
-        splitConfig: null,
-      });
-    } else {
-      for (const [itemIndex, item] of items.entries()) {
-        const parsedPrice = Number(item.price);
-        if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-          trackSubmitValidationFailed('invalid_item_price');
-          setErrorMessage(`Item price is invalid for ${item.name}.`);
-          return;
-        }
-
-        const normalizedItemName = item.name.trim() || `Item ${itemIndex + 1}`;
-
-        if (!normalizedItemName) {
-          trackSubmitValidationFailed('missing_item_name');
-          setErrorMessage('Each item needs a name.');
-          return;
-        }
-
-        if (item.splitMode === 'advanced') {
-          if (item.advancedSplits.length === 0) {
-            trackSubmitValidationFailed('missing_advanced_split_participants');
-            setErrorMessage(`Add participants for complex split on ${normalizedItemName}.`);
-            return;
-          }
-
-          const parsedSplitConfig: BillItemSplitConfig[] = [];
-          for (const split of item.advancedSplits) {
-            const mappedSplitParticipantId = resolveMappedParticipantId(split.participantId);
-            if (!mappedSplitParticipantId) {
-              continue;
-            }
-
-            const splitValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
-            if (!Number.isFinite(splitValue) || splitValue <= 0) {
-              trackSubmitValidationFailed('invalid_advanced_split_value');
-              setErrorMessage(`Split value is invalid for ${normalizedItemName}.`);
-              return;
-            }
-
-            parsedSplitConfig.push({
-              participantId: mappedSplitParticipantId,
-              type: item.advancedSplitType,
-              value: roundToCurrency(splitValue),
-            });
-          }
-
-          if (parsedSplitConfig.length === 0) {
-            trackSubmitValidationFailed('missing_advanced_split_config');
-            setErrorMessage(`Add participants for complex split on ${normalizedItemName}.`);
-            return;
-          }
-
-          const splitTotal = roundToCurrency(
-            parsedSplitConfig.reduce((sum, split) => sum + split.value, 0),
-          );
-          if (item.advancedSplitType === 'percentage' && Math.abs(splitTotal - 100) > 0.01) {
-            trackSubmitValidationFailed('advanced_percentage_mismatch');
-            setErrorMessage(`${normalizedItemName} percentages must total 100%.`);
-            return;
-          }
-
-          if (item.advancedSplitType === 'amount' && Math.abs(splitTotal - roundToCurrency(parsedPrice)) > 0.01) {
-            trackSubmitValidationFailed('advanced_amount_mismatch');
-            setErrorMessage(`${normalizedItemName} amount splits must equal item price.`);
-            return;
-          }
-
-          itemRecords.push({
-            id: isEditMode ? item.id : createEntityId('bill_item'),
-            itemName: normalizedItemName,
-            price: roundToCurrency(parsedPrice),
-            assignedToParticipantIds: parsedSplitConfig.map((split) => split.participantId),
-            splitMode: 'advanced',
-            splitConfig: parsedSplitConfig,
-          });
-          continue;
-        }
-
-        const normalizedAssignedParticipantIds = item.assignedParticipantIds
-          .map((participantId) => resolveMappedParticipantId(participantId))
-          .filter(
-            (participantId, index, collection): participantId is string =>
-              Boolean(participantId) && collection.indexOf(participantId) === index,
-        );
-
-        if (normalizedAssignedParticipantIds.length === 0) {
-          trackSubmitValidationFailed('missing_simple_split_participants');
-          setErrorMessage(`Assign at least one participant for ${normalizedItemName}.`);
-          return;
-        }
-
-        itemRecords.push({
-          id: isEditMode ? item.id : createEntityId('bill_item'),
-          itemName: normalizedItemName,
-          price: roundToCurrency(parsedPrice),
-          assignedToParticipantIds: normalizedAssignedParticipantIds,
-          splitMode: 'simple',
-          splitConfig: null,
-        });
-      }
-    }
-
-    const participantRecords: BillParticipantRecord[] = [];
-
-    const invalidAmounts: string[] = [];
-
-    participants.forEach((participant) => {
-      const suggestedAmount = suggestedAmounts.get(participant.id) ?? 0;
-      const rawAmount = isManualSplitMode
-        ? owedAmountOverrides[participant.id] ?? ''
-        : toCurrencyInput(suggestedAmount);
-      const parsedAmount = Number(rawAmount);
-      const hasManualInput = !isManualSplitMode || rawAmount.trim().length > 0;
-      if (!hasManualInput || !Number.isFinite(parsedAmount) || parsedAmount < 0) {
-        invalidAmounts.push(participant.name);
-      }
-
-      const mappedParticipantId = resolveMappedParticipantId(participant.id);
-      if (!mappedParticipantId) {
-        invalidAmounts.push(participant.name);
-        return;
-      }
-
-      participantRecords.push({
-        id: mappedParticipantId,
-        name: participant.name,
-        userId: participant.userId,
-        amountOwed: Number.isFinite(parsedAmount) ? roundToCurrency(parsedAmount) : 0,
-        customTipContribution: isCustomSplitMode && isCustomTipEnabled
-          ? roundToCurrency(customTipContributionMap.get(participant.id) ?? 0)
-          : undefined,
-        paidStatus: participant.id === payerParticipantId ? 'paid' : 'pending',
-      });
-    });
-
-    if (invalidAmounts.length > 0) {
-      trackSubmitValidationFailed('invalid_participant_amount');
-      setErrorMessage(`Amount owed is invalid for ${invalidAmounts[0]}.`);
+    if (!submission.ok) {
+      trackSubmitValidationFailed(submission.reason);
+      setErrorMessage(submission.message);
       return;
     }
 
-    if (!validateBillTotal(participantRecords, previewTotal)) {
-      trackSubmitValidationFailed('bill_total_mismatch');
-      setErrorMessage('Amounts owed must match the total bill amount.');
-      return;
-    }
+    const billPayload = submission.payload;
 
     setErrorMessage(null);
     trackObservabilityEvent('CREATE_BILL_SUBMIT_STARTED', {
       source: 'CreateBillScreen',
       isEditMode,
       splitMode,
-      itemCount: itemRecords.length,
-      participantCount: participantRecords.length,
+      itemCount: billPayload.items?.length ?? 0,
+      participantCount: billPayload.participants?.length ?? 0,
       isOnline,
     });
     setIsCreating(true);
 
     try {
-      const billPayload = {
-        title: billTitle.trim(),
-        restaurantName: billTitle.trim(),
-        items: itemRecords,
-        participants: participantRecords,
-        totalAmount: roundToCurrency(previewTotal),
-        tax: isCustomSplitMode ? roundToCurrency(parsedTax) : 0,
-        tip: isCustomSplitMode ? roundToCurrency(parsedTip) : 0,
-        fees: isCustomSplitMode ? roundToCurrency(parsedFees) : 0,
-        extrasSplitMode,
-      };
-
       const writeResult = isEditMode && editBillId
         ? await billWrites.updateBill({
             billId: editBillId,
