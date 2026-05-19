@@ -1,14 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, View } from 'react-native';
+import { Pressable } from 'react-native';
 
-import { RatingPill } from '../../components/shared';
+import { FoodItemRatingRecordCard, type FoodItemRatingRecordRow } from '../../components/shared';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import {
   formatFullDateLabel,
   formatMonthYearLabel,
 } from './listDetailFormatters';
-import { ListDetailItemPhotoButton } from './ListDetailItemPhotoButton';
 import type {
   OwnerDisplayItem,
   OwnerItemPhotoEntry,
@@ -27,64 +26,6 @@ interface ListDetailOwnerItemCardProps {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  card: {
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    gap: theme.spacing.xxs,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  headerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  itemName: {
-    color: theme.colors.text.primary,
-    flex: 1,
-    ...theme.typography.titleSm,
-  },
-  sourceUserRow: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.border.info,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: theme.spacing.xs,
-    paddingVertical: 1,
-  },
-  sourceUserText: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySmTightBold,
-  },
-  sourceRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  sourceMeta: {
-    alignItems: 'center',
-    columnGap: theme.spacing.xxs,
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 4,
-  },
-  sourceDate: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  actions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-  },
   iWentButton: {
     alignItems: 'center',
     borderRadius: theme.radii.sm,
@@ -110,31 +51,6 @@ const useStyles = createThemedStyles((theme) => ({
   deleteButtonPressed: {
     backgroundColor: theme.colors.status.dangerBg,
   },
-  userRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'space-between',
-  },
-  userReviewRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xxs,
-    marginTop: 1,
-  },
-  userReviewArrow: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySm,
-  },
-  userReviewText: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySmTightSemiBold,
-  },
-  userReviewDate: {
-    color: theme.colors.text.info,
-    ...theme.typography.bodySm,
-  },
 }));
 
 export function ListDetailOwnerItemCard({
@@ -155,37 +71,17 @@ export function ListDetailOwnerItemCard({
   const userDisplayDateLabel =
     formatFullDateLabel(userRating?.visitedAt) ?? formatMonthYearLabel(userRating?.visitedAt);
   const canShowIWent = Boolean(sourceRating && !userRating && canCreateVisitFromRestaurant);
+  const rows: FoodItemRatingRecordRow[] = [];
 
-  return (
-    <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <Text numberOfLines={1} style={styles.itemName}>
-          {item.name}
-        </Text>
-        {photoEntries.length > 0 ? (
-          <ListDetailItemPhotoButton
-            accessibilityLabel={`View photos for ${item.name}`}
-            entries={photoEntries}
-            onOpen={onOpenPhotos}
-            testID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
-          />
-        ) : null}
-      </View>
-
-      {sourceRating ? (
-        <View style={styles.sourceRow}>
-          <View style={styles.sourceMeta}>
-            <View style={styles.sourceUserRow}>
-              <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
-              <Text style={styles.sourceUserText}>{sourceRating.sourceUserName}</Text>
-            </View>
-            {sourceRating.rating > 0 ? <RatingPill rating={sourceRating.rating} /> : null}
-            {sourceMonthYearLabel ? (
-              <Text style={styles.sourceDate}>{sourceMonthYearLabel}</Text>
-            ) : null}
-          </View>
-
-          <View style={styles.actions}>
+  if (sourceRating) {
+    rows.push({
+      id: `source-${sourceRating.listItemId}-${sourceRating.foodItemId}`,
+      dateLabel: sourceMonthYearLabel,
+      label: sourceRating.sourceUserName,
+      rating: sourceRating.rating,
+      type: 'source',
+      actions: (
+        <>
             {canShowIWent ? (
               <Pressable
                 accessibilityLabel={`I went for ${item.name}`}
@@ -219,18 +115,22 @@ export function ListDetailOwnerItemCard({
             >
               <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
             </Pressable>
-          </View>
-        </View>
-      ) : null}
+        </>
+      ),
+    });
+  }
 
-      {userRating ? (
-        <View style={styles.userRow}>
-          <View style={styles.userReviewRow}>
-            <Text style={styles.userReviewArrow}>{'\u21b3'}</Text>
-            <Text style={styles.userReviewText}>You</Text>
-            <RatingPill rating={userRating.rating} />
-            {userDisplayDateLabel ? <Text style={styles.userReviewDate}>{userDisplayDateLabel}</Text> : null}
-          </View>
+  if (userRating) {
+    rows.push({
+      id:
+        userRating.kind === 'linked'
+          ? `user-${userRating.listItemId}-${userRating.userFoodItemId}`
+          : `user-${userRating.listItemId}-${userRating.foodItemId}`,
+      dateLabel: userDisplayDateLabel,
+      label: 'You',
+      rating: userRating.rating,
+      type: 'user',
+      actions: (
           <Pressable
             accessibilityLabel={`Remove your rating for ${item.name}`}
             accessibilityRole="button"
@@ -260,8 +160,18 @@ export function ListDetailOwnerItemCard({
           >
             <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
           </Pressable>
-        </View>
-      ) : null}
-    </View>
+      ),
+    });
+  }
+
+  return (
+    <FoodItemRatingRecordCard
+      itemName={item.name}
+      onOpenPhotos={onOpenPhotos}
+      photoAccessibilityLabel={`View photos for ${item.name}`}
+      photoEntries={photoEntries}
+      photoTestID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
+      rows={rows}
+    />
   );
 }

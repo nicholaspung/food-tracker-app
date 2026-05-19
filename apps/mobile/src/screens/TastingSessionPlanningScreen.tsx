@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { Linking, View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Pressable, View } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   EmptyState,
   FeatureDetailScreenScaffold,
   PageErrorToast,
-  StatusPill,
+  RestaurantMenuItemPicker,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchHeaderToggle,
   VisitRestaurantSearchOptionDescription,
@@ -15,41 +15,88 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
+  createMenuReviewRequest,
+  menuItemsQueryKeys,
   setTastingMenuItemSuggestionStatus,
   setTastingRestaurantSuggestionStatus,
   startTastingSession,
   suggestTastingMenuItem,
   suggestTastingRestaurant,
   tastingSessionsQueryKeys,
+  type MenuItemRecord,
   type RestaurantRecord,
-  type TastingSuggestionStatus,
   useMonthlyUsage,
 } from '../features';
+import { listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Button, Card, Input, ListItem, Text } from '../ui';
-import { getApprovedItemCount, hasPendingSuggestions } from './tastingSessions/shared';
+import { Button, Card, Text } from '../ui';
+import { getApprovedItemCount } from './tastingSessions/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
+type PlanningPhase = 'restaurants' | 'items';
 
 const useStyles = createThemedStyles((theme) => ({
+  headerDescription: {
+    gap: theme.spacing.xs,
+  },
+  card: {
+    gap: theme.spacing.sm,
+  },
+  compactPlanCard: {
+    gap: theme.spacing.xs,
+  },
+  planHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  planMetricsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  compactRestaurantRow: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  compactRestaurantContent: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  compactRemoveButton: {
+    borderColor: theme.colors.button.secondaryBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
   row: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.sm,
   },
-  action: {
+  grow: {
     flex: 1,
   },
+  switcherRow: {
+    gap: theme.spacing.xs,
+  },
 }));
-
-function statusTone(status: TastingSuggestionStatus): 'info' | 'success' | 'danger' {
-  return status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'info';
-}
 
 export function TastingSessionPlanningScreen({ navigation, route }: TastingSessionPlanningScreenProps) {
   const styles = useStyles();
@@ -57,11 +104,16 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const { actualUser, user } = useAuth();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
+  const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const sessionQuery = useTastingSessionDetail(sessionId, true);
   const session = sessionQuery.data;
-  const [selectedRestaurant, setSelectedRestaurant] = useState<RestaurantRecord | null>(null);
-  const [itemDrafts, setItemDrafts] = useState<Record<string, string>>({});
+  const [phase, setPhase] = useState<PlanningPhase>('restaurants');
+  const [activeRestaurantSuggestionId, setActiveRestaurantSuggestionId] = useState<string | null>(null);
+  const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
+  const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
+  const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
   const isLeader = Boolean(session && user?.id === session.leaderUserId);
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
@@ -75,6 +127,46 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
+
+  const selectedRestaurants = useMemo(
+    () => session?.restaurants.filter((restaurant) => restaurant.status === 'approved') ?? [],
+    [session?.restaurants],
+  );
+  const selectedRestaurantIds = useMemo(
+    () => new Set(selectedRestaurants.map((restaurant) => restaurant.restaurantId)),
+    [selectedRestaurants],
+  );
+  const activeRestaurant = useMemo(
+    () =>
+      selectedRestaurants.find((restaurant) => restaurant.id === activeRestaurantSuggestionId) ??
+      selectedRestaurants[0] ??
+      null,
+    [activeRestaurantSuggestionId, selectedRestaurants],
+  );
+  const selectedItemIds = useMemo(
+    () => new Set((activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').map((item) => item.menuItemId)),
+    [activeRestaurant?.items],
+  );
+  const selectedItemCount = session ? getApprovedItemCount(session) : 0;
+  const canStart = isLeader && selectedRestaurants.length > 0 && selectedItemCount > 0;
+  const activeSelectedItemCount = (activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').length;
+
+  useEffect(() => {
+    if (selectedRestaurants.length === 0 && phase === 'items') {
+      setPhase('restaurants');
+    }
+  }, [phase, selectedRestaurants.length]);
+
+  useEffect(() => {
+    if (!activeRestaurant && selectedRestaurants[0]) {
+      setActiveRestaurantSuggestionId(selectedRestaurants[0].id);
+      return;
+    }
+    if (activeRestaurant && activeRestaurant.id !== activeRestaurantSuggestionId) {
+      setActiveRestaurantSuggestionId(activeRestaurant.id);
+    }
+  }, [activeRestaurant, activeRestaurantSuggestionId, selectedRestaurants]);
+
   const {
     clearPlacesSearchState,
     compactSearchLabel,
@@ -109,14 +201,41 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     autoCaptureReferenceLocation: true,
     isOnline,
     menuItemsEnabled: false,
-    savedRestaurantsEnabled: true,
-    selectedRestaurantId: selectedRestaurant?.id ?? null,
+    savedRestaurantsEnabled: isLeader,
+    selectedRestaurantId: null,
     usage: {
       enforceQuota: shouldEnforceUsageLimitsClientSide,
       isFreeTier: isDisplayFreeUser,
       placesQueriesRemaining,
     },
   });
+
+  const menuItemsQuery = useQuery({
+    queryKey: menuItemsQueryKeys.restaurant(activeRestaurant?.restaurantId ?? ''),
+    queryFn: ({ signal }) => {
+      if (!activeRestaurant) {
+        return Promise.resolve([]);
+      }
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<MenuItemRecord[]>(menuItemsQueryKeys.restaurant(activeRestaurant.restaurantId)) ?? [],
+        );
+      }
+      return listMenuItemsForRestaurant(activeRestaurant.restaurantId, { signal });
+    },
+    enabled: phase === 'items' && Boolean(activeRestaurant),
+  });
+
+  useEffect(() => {
+    const activeRestaurantId = activeRestaurant?.restaurantId ?? null;
+    if (previousActiveRestaurantIdRef.current === activeRestaurantId) {
+      return;
+    }
+    previousActiveRestaurantIdRef.current = activeRestaurantId;
+    setMenuItemSearchQuery('');
+    setMenuReviewSubmitted(false);
+    setIsTipPopoverVisible(false);
+  }, [activeRestaurant?.restaurantId]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
@@ -136,12 +255,109 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     }
   };
 
+  const handleStartTasting = async () => {
+    await runAction(async () => {
+      const nextSession = await startTastingSession(sessionId);
+      navigation.replace('TastingSessionTasting', { sessionId: nextSession.id });
+    });
+  };
+
+  const handleAddRestaurant = async (restaurant: RestaurantRecord) => {
+    if (selectedRestaurantIds.has(restaurant.id) || addingRestaurantId) {
+      return;
+    }
+
+    setAddingRestaurantId(restaurant.id);
+    await runAction(async () => {
+      await suggestTastingRestaurant(sessionId, {
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
+      setSearchQuery('');
+      clearPlacesSearchState();
+    });
+    setAddingRestaurantId(null);
+  };
+
+  const handleRemoveRestaurant = async (restaurantSuggestionId: string) => {
+    await runAction(async () => {
+      await setTastingRestaurantSuggestionStatus(sessionId, restaurantSuggestionId, 'rejected');
+      if (activeRestaurantSuggestionId === restaurantSuggestionId) {
+        setActiveRestaurantSuggestionId(null);
+      }
+    });
+  };
+
+  const handleToggleMenuItem = async (menuItem: MenuItemRecord) => {
+    if (!activeRestaurant) {
+      return;
+    }
+
+    const existingSuggestion = (activeRestaurant.items ?? []).find((item) => item.menuItemId === menuItem.id);
+
+    if (existingSuggestion?.status === 'approved') {
+      await runAction(() => setTastingMenuItemSuggestionStatus(sessionId, existingSuggestion.id, 'rejected'));
+      return;
+    }
+
+    await runAction(async () => {
+      if (existingSuggestion) {
+        await setTastingMenuItemSuggestionStatus(sessionId, existingSuggestion.id, 'approved');
+        return;
+      }
+      await suggestTastingMenuItem(sessionId, activeRestaurant.id, {
+        menuItemId: menuItem.id,
+        name: menuItem.name,
+      });
+    });
+  };
+
+  const handleRequestMenuReview = async () => {
+    if (!activeRestaurant || !isOnline || menuReviewSubmitted) {
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      await createMenuReviewRequest({
+        restaurantId: activeRestaurant.restaurantId,
+        reason: 'User reported incorrect menu items',
+      });
+      setMenuReviewSubmitted(true);
+      queryClient.setQueryData(
+        ['feature', 'menuReview', 'pending', activeRestaurant.restaurantId],
+        true,
+      );
+      setTimeout(() => {
+        setMenuReviewSubmitted(false);
+      }, 3000);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not submit review request.');
+    }
+  };
+
+  const handleScanMenuPhoto = () => {
+    if (!activeRestaurant || !isOnline) {
+      return;
+    }
+
+    navigation.navigate('ProcessPhotos', {
+      autoStartSourcePicker: false,
+      mode: 'menu_scan',
+      restaurantId: activeRestaurant.restaurantId,
+      restaurantName: activeRestaurant.restaurantName,
+      returnTo: 'TastingSessionPlanning',
+      tastingSessionId: sessionId,
+    });
+  };
+
   const buildRestaurantOption = (
     { restaurant, distance }: VisitRestaurantWithDistance,
     index: number,
     source: 'saved' | 'search',
   ): VisitRestaurantSearchOption => {
-    const selected = selectedRestaurant?.id === restaurant.id;
+    const selected = selectedRestaurantIds.has(restaurant.id);
+    const isAdding = addingRestaurantId === restaurant.id;
 
     return {
       description: (
@@ -152,37 +368,18 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       ),
       key: restaurant.id,
       onPress: () => {
-        setSelectedRestaurant(restaurant);
-        setIsSearchExpanded(true);
-        setErrorMessage(null);
+        void handleAddRestaurant(restaurant);
       },
-      selected,
+      selected: selected || isAdding,
       testID: `tasting-planning-${source}-restaurant-option-${index}`,
       title: restaurant.name,
       trailing: (
         <VisitRestaurantOptionTrailing
           restaurant={restaurant}
-          selected={selected}
+          selected={selected || isAdding}
         />
       ),
     };
-  };
-
-  const handleSuggestSelectedRestaurant = async () => {
-    if (!selectedRestaurant) {
-      return;
-    }
-
-    await runAction(async () => {
-      await suggestTastingRestaurant(sessionId, {
-        restaurantId: selectedRestaurant.id,
-        restaurantName: selectedRestaurant.name,
-      });
-
-      setSelectedRestaurant(null);
-      setSearchQuery('');
-      clearPlacesSearchState();
-    });
   };
 
   if (!session) {
@@ -193,209 +390,275 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     );
   }
 
-  const approvedItems = getApprovedItemCount(session);
-  const canStart = isLeader && !hasPendingSuggestions(session) && approvedItems > 0;
+  const headerDescription = isLeader ? (
+    <View style={styles.headerDescription}>
+      <Text tone="muted">
+        {phase === 'restaurants'
+          ? selectedRestaurants.length > 0
+            ? `${selectedRestaurants.length} selected. Add menu items to start.`
+            : 'Select restaurants for this tasting.'
+          : `${selectedRestaurants.length} selected restaurants, ${selectedItemCount} selected items.`}
+      </Text>
+    </View>
+  ) : (
+    'Waiting for the leader to finalize the tasting plan.'
+  );
 
   return (
-    <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} subtitle="Suggest and finalize the plan." title={session.name}>
+    <FeatureDetailScreenScaffold
+      headerScrollMode="fixed"
+      onBackPress={() => navigation.navigate('TastingSessions')}
+      primaryAction={
+        isLeader
+          ? phase === 'restaurants'
+            ? {
+                disabled: selectedRestaurants.length === 0,
+                label: 'Next',
+                onPress: () => {
+                  setPhase('items');
+                },
+              }
+            : {
+                disabled: !canStart || !isOnline,
+                label: 'Start Tasting',
+                onPress: () => {
+                  void handleStartTasting();
+                },
+              }
+          : undefined
+      }
+      secondaryAction={
+        isLeader && phase === 'items'
+          ? {
+              label: 'Back',
+              onPress: () => {
+                setPhase('restaurants');
+              },
+            }
+          : undefined
+      }
+      subtitle={headerDescription}
+      title={session.name}
+    >
       {!isOnline ? <Text tone="warning">Planning actions require a connection.</Text> : null}
       <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
 
-      <Card>
-        <Text variant="label">Readiness</Text>
-        <Text tone={hasPendingSuggestions(session) ? 'warning' : 'success'}>
-          {hasPendingSuggestions(session) ? 'Resolve all pending suggestions.' : 'All suggestions resolved.'}
-        </Text>
-        <Text tone={approvedItems > 0 ? 'success' : 'warning'}>{approvedItems} approved items</Text>
-        {isLeader ? (
-          <Button
-            disabled={!canStart || !isOnline}
-            label="Start Tasting"
-            onPress={() =>
-              void runAction(async () => {
-                const nextSession = await startTastingSession(sessionId);
-                navigation.replace('TastingSessionTasting', { sessionId: nextSession.id });
-              })
+      {phase === 'restaurants' ? (
+        <Card style={styles.compactPlanCard}>
+          <View style={styles.planHeaderRow}>
+            <Text variant="label">Tasting Plan</Text>
+            <View style={styles.planMetricsRow}>
+              <Text tone={selectedRestaurants.length > 0 ? 'success' : 'warning'}>
+                {selectedRestaurants.length} {selectedRestaurants.length === 1 ? 'restaurant' : 'restaurants'}
+              </Text>
+              <Text tone={selectedItemCount > 0 ? 'success' : 'warning'}>
+                {selectedItemCount} {selectedItemCount === 1 ? 'item' : 'items'}
+              </Text>
+            </View>
+          </View>
+          {selectedRestaurants.length > 0 ? (
+            selectedRestaurants.map((restaurant) => {
+              const restaurantSelectedItems = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
+
+              return (
+                <View key={restaurant.id} style={styles.compactRestaurantRow}>
+                  <View style={styles.compactRestaurantContent}>
+                    <Text variant="label">{restaurant.restaurantName}</Text>
+                    <Text tone="secondary">
+                      {restaurantSelectedItems} selected {restaurantSelectedItems === 1 ? 'item' : 'items'}
+                    </Text>
+                  </View>
+                  {isLeader && session.status === 'planning' ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={!isOnline}
+                      onPress={() => {
+                        void handleRemoveRestaurant(restaurant.id);
+                      }}
+                      style={styles.compactRemoveButton}
+                    >
+                      <Text variant="button">Remove</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })
+          ) : (
+            <Text tone="secondary">Selected restaurants will appear here.</Text>
+          )}
+        </Card>
+      ) : null}
+
+      {isLeader && phase === 'restaurants' ? (
+        <>
+          <VisitRestaurantSearchSection
+            connectivityWarningMessage={!isOnline ? 'Restaurant search requires internet connection.' : null}
+            currentLocationDisabled={
+              !isOnline ||
+              isGettingLocation ||
+              isSearchingNearbyRestaurants ||
+              (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+            }
+            currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+            headerAccessory={
+              <VisitRestaurantSearchHeaderToggle
+                expanded={isSearchExpanded}
+                onPress={() => {
+                  setIsSearchExpanded((current) => !current);
+                }}
+                testID="tasting-planning-search-toggle"
+              />
+            }
+            isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
+            locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+            manualLocation={manualLocation}
+            onClearSearchResults={() => {
+              clearPlacesSearchState();
+            }}
+            onManualLocationChange={setManualLocation}
+            onOpenLocationSettings={() => {
+              void Linking.openSettings();
+            }}
+            onRetrySavedResults={() => {
+              void triggerSavedRestaurantsRefetch();
+            }}
+            onSearchPress={() => {
+              void searchByText();
+            }}
+            onSearchQueryChange={setSearchQuery}
+            onUseCurrentLocationPress={() => {
+              void searchNearby();
+            }}
+            quotaWarningMessage={
+              isOnline && isPlacesQuotaReached
+                ? shouldEnforceUsageLimitsClientSide
+                  ? 'Monthly food place search limit reached.'
+                  : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
+                : null
+            }
+            savedEmptyDescription={savedEmptyDescription}
+            savedEmptyTitle={savedEmptyTitle}
+            savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, 'saved'),
+            )}
+            savedResultsErrorMessage={savedRestaurantsErrorMessage}
+            savedResultsLoading={savedRestaurantsLoading}
+            savedResultsTitle={savedRestaurantsTitle}
+            searchButtonDisabled={searchButtonDisabled}
+            searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+            searchButtonLoading={isSearchingRestaurants}
+            searchErrorMessage={searchErrorMessage}
+            searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
+            searchQuery={searchQuery}
+            searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, 'search'),
+            )}
+            showSearchResults={showNearbyPlaces}
+            upgradePromptDescription={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                  : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+                : null
+            }
+            upgradePromptTitle={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? 'Free limit reached'
+                  : 'You are close to your free limit'
+                : null
             }
           />
-        ) : (
-          <Text tone="secondary">The leader starts tasting when the plan is finalized.</Text>
-        )}
-      </Card>
+        </>
+      ) : null}
 
-      <VisitRestaurantSearchSection
-        connectivityWarningMessage={!isOnline ? 'Restaurant search requires internet connection.' : null}
-        currentLocationDisabled={
-          !isOnline ||
-          isGettingLocation ||
-          isSearchingNearbyRestaurants ||
-          (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
-        }
-        currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
-        footerContent={
-          selectedRestaurant ? (
-            <Button
-              disabled={!isOnline}
-              label="Suggest Restaurant"
-              onPress={() => {
-                void handleSuggestSelectedRestaurant();
-              }}
-              variant="secondary"
-            />
-          ) : null
-        }
-        headerAccessory={
-          <VisitRestaurantSearchHeaderToggle
-            expanded={isSearchExpanded}
-            onPress={() => {
-              setIsSearchExpanded((current) => !current);
-            }}
-            testID="tasting-planning-search-toggle"
-          />
-        }
-        isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
-        locationPermissionNeedsSettings={locationPermissionNeedsSettings}
-        manualLocation={manualLocation}
-        onClearSearchResults={() => {
-          clearPlacesSearchState();
-          setSelectedRestaurant(null);
-        }}
-        onManualLocationChange={setManualLocation}
-        onOpenLocationSettings={() => {
-          void Linking.openSettings();
-        }}
-        onRetrySavedResults={() => {
-          void triggerSavedRestaurantsRefetch();
-        }}
-        onSearchPress={() => {
-          void searchByText();
-        }}
-        onSearchQueryChange={(value) => {
-          setSearchQuery(value);
-          setSelectedRestaurant(null);
-        }}
-        onUseCurrentLocationPress={() => {
-          void searchNearby();
-        }}
-        quotaWarningMessage={
-          isOnline && isPlacesQuotaReached
-            ? shouldEnforceUsageLimitsClientSide
-              ? 'Monthly food place search limit reached.'
-              : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
-            : null
-        }
-        savedEmptyDescription={savedEmptyDescription}
-        savedEmptyTitle={savedEmptyTitle}
-        savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
-          buildRestaurantOption(restaurant, index, 'saved'),
-        )}
-        savedResultsErrorMessage={savedRestaurantsErrorMessage}
-        savedResultsLoading={savedRestaurantsLoading}
-        savedResultsTitle={savedRestaurantsTitle}
-        searchButtonDisabled={searchButtonDisabled}
-        searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
-        searchButtonLoading={isSearchingRestaurants}
-        searchErrorMessage={searchErrorMessage}
-        searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
-        searchQuery={searchQuery}
-        searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
-          buildRestaurantOption(restaurant, index, 'search'),
-        )}
-        showSearchResults={showNearbyPlaces}
-        upgradePromptDescription={
-          shouldShowPlacesUpgradePrompt
-            ? isPlacesQuotaReached
-              ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
-              : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
-            : null
-        }
-        upgradePromptTitle={
-          shouldShowPlacesUpgradePrompt
-            ? isPlacesQuotaReached
-              ? 'Free limit reached'
-              : 'You are close to your free limit'
-            : null
-        }
-      />
-
-      {session.restaurants.length === 0 ? <EmptyState description="Suggest restaurants to build the tasting plan." title="No suggestions" /> : null}
-
-      {session.restaurants.map((restaurant) => {
-        const restaurantItems = restaurant.items ?? [];
-
-        return (
-          <Card key={restaurant.id}>
-            <ListItem
-              description={`${restaurantItems.length} suggested items`}
-              title={restaurant.restaurantName}
-              trailing={<StatusPill label={restaurant.status} tone={statusTone(restaurant.status)} />}
-            />
-            {isLeader && restaurant.status === 'pending' ? (
-              <View style={styles.row}>
-                <Button
-                  disabled={!isOnline}
-                  label="Approve"
-                  onPress={() => void runAction(() => setTastingRestaurantSuggestionStatus(sessionId, restaurant.id, 'approved'))}
-                  style={styles.action}
-                />
-                <Button
-                  disabled={!isOnline}
-                  label="Reject"
-                  onPress={() => void runAction(() => setTastingRestaurantSuggestionStatus(sessionId, restaurant.id, 'rejected'))}
-                  style={styles.action}
-                  variant="secondary"
-                />
-              </View>
-            ) : null}
-            {restaurant.status !== 'rejected' ? (
-              <>
-                <Input
-                  label="Suggest menu item"
-                  onChangeText={(value) => setItemDrafts((current) => ({ ...current, [restaurant.id]: value }))}
-                  placeholder="Menu item"
-                  value={itemDrafts[restaurant.id] ?? ''}
-                />
-                <Button
-                  disabled={!itemDrafts[restaurant.id]?.trim() || !isOnline}
-                  label="Suggest Item"
-                  onPress={() =>
-                    void runAction(async () => {
-                      await suggestTastingMenuItem(sessionId, restaurant.id, { name: itemDrafts[restaurant.id] ?? '' });
-                      setItemDrafts((current) => ({ ...current, [restaurant.id]: '' }));
-                    })
-                  }
-                  variant="secondary"
-                />
-              </>
-            ) : null}
-            {restaurantItems.map((item) => (
-              <ListItem
-                key={item.id}
-                description={item.status}
-                title={item.name}
-                trailing={
-                  isLeader && item.status === 'pending' ? (
-                    <View style={styles.row}>
-                      <Button
-                        disabled={!isOnline}
-                        label="Approve"
-                        onPress={() => void runAction(() => setTastingMenuItemSuggestionStatus(sessionId, item.id, 'approved'))}
-                        variant="secondary"
-                      />
-                      <Button
-                        disabled={!isOnline}
-                        label="Reject"
-                        onPress={() => void runAction(() => setTastingMenuItemSuggestionStatus(sessionId, item.id, 'rejected'))}
-                        variant="secondary"
-                      />
-                    </View>
-                  ) : null
-                }
-              />
-            ))}
+      {isLeader && phase === 'items' ? (
+        <>
+          <Card style={styles.card}>
+            <Text variant="label">Select menu items</Text>
+            <Text tone="secondary">Choose one restaurant, then select items for the tasting plan.</Text>
+            <View style={styles.switcherRow}>
+              {selectedRestaurants.map((restaurant) => {
+                const itemCount = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
+                const active = activeRestaurant?.id === restaurant.id;
+                return (
+                  <Button
+                    key={restaurant.id}
+                    label={`${restaurant.restaurantName} (${itemCount})`}
+                    onPress={() => {
+                      setActiveRestaurantSuggestionId(restaurant.id);
+                    }}
+                    variant={active ? 'primary' : 'secondary'}
+                  />
+                );
+              })}
+            </View>
           </Card>
-        );
-      })}
+
+          {activeRestaurant ? (
+            <>
+              <RestaurantMenuItemPicker
+                addManualDisabled={!isOnline}
+                currentUserId={user?.id ?? ''}
+                hasError={menuItemsQuery.isError}
+                isItemSelected={(item) => selectedItemIds.has(item.id)}
+                isLoading={menuItemsQuery.isLoading}
+                isOnline={isOnline}
+                isReviewDisabled={!isOnline || menuReviewSubmitted}
+                isReviewSubmitted={menuReviewSubmitted}
+                isTipVisible={isTipPopoverVisible}
+                items={menuItemsQuery.data ?? []}
+                label={
+                  menuItemSearchQuery.trim()
+                    ? `Search results (${menuItemsQuery.data?.length ?? 0})`
+                    : `All menu items (${menuItemsQuery.data?.length ?? 0})`
+                }
+                onAddManual={() => {
+                  navigation.navigate('CreateVisitAddMenuItem', {
+                    restaurantId: activeRestaurant.restaurantId,
+                    restaurantName: activeRestaurant.restaurantName,
+                    returnTo: 'TastingSessionPlanning',
+                    tastingRestaurantSuggestionId: activeRestaurant.id,
+                    tastingSessionId: sessionId,
+                  });
+                }}
+                onEditItem={(item) => {
+                  navigation.navigate('CreateVisitEditMenuItem', {
+                    initialName: item.name,
+                    initialVisibility: item.visibility,
+                    menuItemId: item.id,
+                    restaurantId: item.restaurant,
+                  });
+                }}
+                onRequestMenuReview={() => {
+                  void handleRequestMenuReview();
+                }}
+                onRetry={() => {
+                  void menuItemsQuery.refetch();
+                }}
+                onScanMenuPhoto={handleScanMenuPhoto}
+                onSearchQueryChange={setMenuItemSearchQuery}
+                onTipVisibilityChange={setIsTipPopoverVisible}
+                onToggleItem={(item) => {
+                  void handleToggleMenuItem(item);
+                }}
+                scanDisabled={!isOnline}
+                searchQuery={menuItemSearchQuery}
+                selectedCount={activeSelectedItemCount}
+                testIDPrefix="tasting-planning"
+              />
+            </>
+          ) : (
+            <EmptyState description="Go back and select at least one restaurant first." title="No restaurant selected" />
+          )}
+        </>
+      ) : null}
+
+      {!isLeader ? (
+        <Card>
+          <Text tone="secondary">The leader is building the tasting plan.</Text>
+        </Card>
+      ) : null}
     </FeatureDetailScreenScaffold>
   );
 }

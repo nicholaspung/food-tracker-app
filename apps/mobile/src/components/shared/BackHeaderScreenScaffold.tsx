@@ -20,7 +20,7 @@ type HeaderScrollMode = 'attached' | 'fixed';
  */
 export interface BackHeaderScreenScaffoldProps {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   onBackPress: () => void;
   rightAccessory?: ReactNode;
   backAccessibilityLabel?: string;

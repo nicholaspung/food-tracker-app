@@ -1,9 +1,10 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { suggestTastingRestaurant } from '../features';
+import { suggestTastingMenuItem, suggestTastingRestaurant } from '../features';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionPlanningScreen } from '../screens/TastingSessionPlanningScreen';
 import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSessionDetail';
@@ -24,11 +25,14 @@ jest.mock('react-native', () => ({
   Linking: {
     openSettings: jest.fn(),
   },
+  Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Pressable', props, children),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
 
@@ -38,6 +42,8 @@ jest.mock('../components/shared', () => ({
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+  RestaurantMenuItemPicker: (props: Record<string, unknown>) =>
+    mockReact.createElement('RestaurantMenuItemPicker', props),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
@@ -50,6 +56,9 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
+  menuItemsQueryKeys: {
+    restaurant: jest.fn((restaurantId: string) => ['feature', 'menuItems', restaurantId]),
+  },
   setTastingMenuItemSuggestionStatus: jest.fn(),
   setTastingRestaurantSuggestionStatus: jest.fn(),
   startTastingSession: jest.fn(),
@@ -65,6 +74,22 @@ jest.mock('../features', () => ({
       },
     },
   })),
+  useMenuScanFlow: jest.fn(() => ({
+    createdItemNames: [],
+    errorMessage: null,
+    existingItemNames: [],
+    lastRequestedSource: 'gallery',
+    permissionNeedsSettings: false,
+    reset: jest.fn(),
+    scanMenu: jest.fn(),
+    selectedImageName: '',
+    status: 'idle',
+    verification: null,
+  })),
+}));
+
+jest.mock('../features/store/restaurantsStore', () => ({
+  listMenuItemsForRestaurant: jest.fn(),
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
@@ -92,8 +117,30 @@ jest.mock('../theme', () => ({
     (...args: unknown[]) =>
       factory(
         {
+          colors: {
+            border: {
+              subtle: '#borderSubtle',
+            },
+            button: {
+              secondaryBorder: '#secondaryBorder',
+            },
+            status: {
+              successBg: '#successBg',
+              successBorder: '#successBorder',
+              warningBg: '#warningBg',
+              warningBorder: '#warningBorder',
+            },
+          },
+          radii: {
+            md: 8,
+          },
+          sizes: {
+            secondaryButtonHeight: 36,
+          },
           spacing: {
+            md: 16,
             sm: 8,
+            xs: 4,
           },
         },
         ...args,
@@ -117,6 +164,11 @@ jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
 const mockedSuggestTastingRestaurant = suggestTastingRestaurant as jest.MockedFunction<
   typeof suggestTastingRestaurant
 >;
+const mockedSuggestTastingMenuItem = suggestTastingMenuItem as jest.MockedFunction<
+  typeof suggestTastingMenuItem
+>;
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
@@ -152,6 +204,31 @@ const planningSession = {
   restaurants: [],
   status: 'planning',
   updatedAt: '2026-05-16T10:00:00.000Z',
+};
+
+const sessionWithRestaurant = {
+  ...planningSession,
+  restaurants: [
+    {
+      createdAt: '2026-05-16T10:05:00.000Z',
+      id: 'suggestion-1',
+      items: [
+        {
+          id: 'item-1',
+          menuItemId: 'menu-item-1',
+          name: 'Shoyu Ramen',
+          ratings: [],
+          restaurantSuggestionId: 'suggestion-1',
+          status: 'approved',
+          suggestedByParticipantId: 'participant-1',
+        },
+      ],
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Corner Ramen',
+      status: 'approved',
+      suggestedByParticipantId: 'participant-1',
+    },
+  ],
 };
 
 function buildRestaurantSelectionFlowResult(
@@ -214,9 +291,26 @@ describe('TastingSessionPlanningScreen', () => {
     mockTriggerSavedRestaurantsRefetch.mockReset();
     mockedSuggestTastingRestaurant.mockReset();
     mockedSuggestTastingRestaurant.mockResolvedValue(planningSession as never);
+    mockedSuggestTastingMenuItem.mockReset();
+    mockedSuggestTastingMenuItem.mockResolvedValue(sessionWithRestaurant as never);
+    mockedUseAuth.mockReturnValue({
+      actualUser: { isAdmin: false },
+      user: {
+        id: 'user-1',
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as never);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as never);
     mockedUseQueryClient.mockReturnValue({
+      getQueryData: jest.fn(() => []),
       invalidateQueries: mockInvalidateQueries,
+    } as never);
+    mockedUseQuery.mockReturnValue({
+      data: [],
+      isError: false,
+      isLoading: false,
+      refetch: jest.fn(),
     } as never);
     mockedUseTastingSessionDetail.mockReturnValue({
       data: planningSession,
@@ -242,7 +336,7 @@ describe('TastingSessionPlanningScreen', () => {
     return renderer;
   }
 
-  it('renders the shared restaurant search section instead of a restaurant name input', () => {
+  it('renders the shared restaurant search section for the leader instead of a restaurant name input', () => {
     const renderer = renderScreen();
 
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(1);
@@ -251,24 +345,15 @@ describe('TastingSessionPlanningScreen', () => {
     ).toBe(false);
   });
 
-  it('selects a saved restaurant and submits it with the restaurant id', async () => {
+  it('adds a saved restaurant immediately with the restaurant id', async () => {
     const renderer = renderScreen();
 
-    act(() => {
-      renderer.root.findByType('VisitRestaurantSearchSection').props.savedOptions[0].onPress();
+    await act(async () => {
+      await renderer.root.findByType('VisitRestaurantSearchSection').props.savedOptions[0].onPress();
     });
 
     const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
-    expect(searchSection.props.savedOptions[0].selected).toBe(true);
-
-    let footerRenderer: any;
-    act(() => {
-      footerRenderer = create(searchSection.props.footerContent);
-    });
-
-    await act(async () => {
-      await footerRenderer.root.findByType('Button').props.onPress();
-    });
+    expect(searchSection.props.footerContent).toBeUndefined();
 
     expect(mockedSuggestTastingRestaurant).toHaveBeenCalledWith('session-1', {
       restaurantId: 'restaurant-1',
@@ -295,7 +380,7 @@ describe('TastingSessionPlanningScreen', () => {
     expect(searchSection.props.searchErrorMessage).toBe('Could not search restaurants.');
   });
 
-  it('renders newly suggested restaurants when the API returns null items', () => {
+  it('renders newly added restaurants when the API returns null items', () => {
     mockedUseTastingSessionDetail.mockReturnValue({
       data: {
         ...planningSession,
@@ -306,7 +391,7 @@ describe('TastingSessionPlanningScreen', () => {
             items: null,
             restaurantId: 'restaurant-1',
             restaurantName: 'Corner Ramen',
-            status: 'pending',
+            status: 'approved',
             suggestedByParticipantId: 'participant-1',
           },
         ],
@@ -315,6 +400,83 @@ describe('TastingSessionPlanningScreen', () => {
 
     const renderer = renderScreen();
 
-    expect(renderer.root.findByProps({ title: 'Corner Ramen' }).props.description).toBe('0 suggested items');
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Corner Ramen')).toBe(true);
+    expect(
+      renderer.root.findAllByType('Text').some((node: any) => node.props.children?.join?.('') === '0 selected items'),
+    ).toBe(true);
+  });
+
+  it('renders add item controls for leaders on non-rejected restaurants', async () => {
+    mockedUseTastingSessionDetail.mockReturnValue({
+      data: sessionWithRestaurant,
+    } as never);
+    mockedUseQuery.mockReturnValue({
+      data: [
+        {
+          id: 'menu-item-2',
+          name: 'Tonkotsu Ramen',
+          restaurant: 'restaurant-1',
+        },
+      ],
+      isError: false,
+      isLoading: false,
+      refetch: jest.fn(),
+    } as never);
+
+    const renderer = renderScreen();
+
+    act(() => {
+      renderer.root.findByType('FeatureDetailScreenScaffold').props.primaryAction.onPress();
+    });
+
+    const picker = renderer.root.findByType('RestaurantMenuItemPicker');
+    expect(picker.props.selectedCount).toBe(1);
+
+    act(() => {
+      picker.props.onScanMenuPhoto();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('ProcessPhotos', {
+      autoStartSourcePicker: false,
+      mode: 'menu_scan',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Corner Ramen',
+      returnTo: 'TastingSessionPlanning',
+      tastingSessionId: 'session-1',
+    });
+
+    await act(async () => {
+      await picker.props.onToggleItem({
+        id: 'menu-item-2',
+        name: 'Tonkotsu Ramen',
+        restaurant: 'restaurant-1',
+      });
+    });
+
+    expect(mockedSuggestTastingMenuItem).toHaveBeenCalledWith('session-1', 'suggestion-1', {
+      menuItemId: 'menu-item-2',
+      name: 'Tonkotsu Ramen',
+    });
+  });
+
+  it('renders the plan read-only for non-leaders', () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { isAdmin: false },
+      user: {
+        id: 'user-2',
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as never);
+    mockedUseTastingSessionDetail.mockReturnValue({
+      data: sessionWithRestaurant,
+    } as never);
+
+    const renderer = renderScreen();
+
+    expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(0);
+    expect(renderer.root.findAllByType('Input').some((node: any) => node.props.label === 'New menu item')).toBe(false);
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Add New Item')).toBe(false);
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Corner Ramen')).toBe(true);
   });
 });

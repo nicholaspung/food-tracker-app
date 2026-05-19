@@ -47,6 +47,7 @@ type tastingSessionItemEntry struct {
 	ID                     string                      `json:"id"`
 	Name                   string                      `json:"name"`
 	RestaurantSuggestionID string                      `json:"restaurantSuggestionId"`
+	Status                 string                      `json:"status"`
 	Ratings                []tastingSessionRatingEntry `json:"ratings"`
 }
 
@@ -251,6 +252,9 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	if len(sessionWithRestaurant.Restaurants) != 1 {
 		t.Fatalf("expected 1 restaurant after suggest, got %#v", sessionWithRestaurant)
 	}
+	if sessionWithRestaurant.Restaurants[0].Status != "approved" {
+		t.Fatalf("expected leader restaurant add to be approved, got %#v", sessionWithRestaurant.Restaurants[0])
+	}
 	restaurantSuggestionID := sessionWithRestaurant.Restaurants[0].ID
 	restaurantID := sessionWithRestaurant.Restaurants[0].RestaurantID
 
@@ -286,6 +290,9 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	sessionWithItem := parseJSONResponse[tastingSessionResponse](t, addItemResponse.Body.Bytes())
 	if len(sessionWithItem.Restaurants) != 1 || len(sessionWithItem.Restaurants[0].Items) != 1 {
 		t.Fatalf("expected 1 item after add, got %#v", sessionWithItem)
+	}
+	if sessionWithItem.Restaurants[0].Items[0].Status != "approved" {
+		t.Fatalf("expected leader item add to be approved, got %#v", sessionWithItem.Restaurants[0].Items[0])
 	}
 	itemID := sessionWithItem.Restaurants[0].Items[0].ID
 
@@ -349,6 +356,118 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	}
 	if completedSession.Restaurants[0].Items[0].Ratings[0].Note != "Crisp finish" {
 		t.Fatalf("expected persisted rating note, got %#v", completedSession.Restaurants[0].Items[0].Ratings)
+	}
+}
+
+func TestTastingSessionPlanningAddEndpointsRequireLeader(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, true, false)
+	_, participantToken := createAuthUser(t, server.app, true, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Leader Picks","joinDurationMinutes":60}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+
+	joinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		participantToken,
+		`{"code":"`+createdSession.InviteCode+`"}`,
+	)
+	if joinResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant join to succeed, got %d: %s", joinResponse.Code, joinResponse.Body.String())
+	}
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		leaderToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock membership to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	participantRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		participantToken,
+		`{"restaurantName":"Participant Pick"}`,
+	)
+	if participantRestaurantResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected participant restaurant add to be forbidden, got %d: %s", participantRestaurantResponse.Code, participantRestaurantResponse.Body.String())
+	}
+
+	leaderRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		leaderToken,
+		`{"restaurantName":"Leader Pick"}`,
+	)
+	if leaderRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected leader restaurant add to succeed, got %d: %s", leaderRestaurantResponse.Code, leaderRestaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, leaderRestaurantResponse.Body.Bytes())
+	if len(sessionWithRestaurant.Restaurants) != 1 || sessionWithRestaurant.Restaurants[0].Status != "approved" {
+		t.Fatalf("expected leader restaurant add to be approved, got %#v", sessionWithRestaurant.Restaurants)
+	}
+	restaurantSuggestionID := sessionWithRestaurant.Restaurants[0].ID
+	restaurantID := sessionWithRestaurant.Restaurants[0].RestaurantID
+
+	participantItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/items",
+		participantToken,
+		`{"name":"Participant Item"}`,
+	)
+	if participantItemResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected participant item add to be forbidden, got %d: %s", participantItemResponse.Code, participantItemResponse.Body.String())
+	}
+
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Leader Item",
+		"visibility": "friends",
+	})
+
+	leaderItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/items",
+		leaderToken,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
+	)
+	if leaderItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected leader item add to succeed, got %d: %s", leaderItemResponse.Code, leaderItemResponse.Body.String())
+	}
+	sessionWithItem := parseJSONResponse[tastingSessionResponse](t, leaderItemResponse.Body.Bytes())
+	if len(sessionWithItem.Restaurants) != 1 ||
+		len(sessionWithItem.Restaurants[0].Items) != 1 ||
+		sessionWithItem.Restaurants[0].Items[0].Status != "approved" {
+		t.Fatalf("expected leader item add to be approved, got %#v", sessionWithItem.Restaurants)
 	}
 }
 

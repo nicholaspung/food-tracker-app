@@ -8,7 +8,7 @@ import { Text } from '../../ui';
 
 export interface ScreenHeaderProps {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   onBackPress?: () => void;
   rightAccessory?: ReactNode;
   backAccessibilityLabel?: string;
@@ -91,10 +91,12 @@ export function ScreenHeader({
         </Text>
         {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
       </View>
-      {subtitle ? (
+      {typeof subtitle === 'string' ? (
         <Text style={[styles.subtitle, subtitleStyle]} tone="muted" variant="bodyMd">
           {subtitle}
         </Text>
+      ) : subtitle ? (
+        subtitle
       ) : null}
     </View>
   );

@@ -149,6 +149,8 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('OptionList', props, children),
   OptionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+  RestaurantMenuItemPicker: (props: Record<string, unknown>) =>
+    mockReact.createElement('RestaurantMenuItemPicker', props),
   StepProgressBar: (props: Record<string, unknown>) => mockReact.createElement('StepProgressBar', props),
   VisitMenuItemOptionRow: (props: Record<string, unknown>) => mockReact.createElement('VisitMenuItemOptionRow', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
@@ -450,35 +452,30 @@ describe('CreateVisitScreen', () => {
     });
 
     const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
-    const menuItemRows = renderer.root.findAllByType('VisitMenuItemOptionRow');
-    const editableRow = menuItemRows.find(
-      (node: { props: { name?: string } }) => node.props.name === editableMenuItem.name,
-    );
-    const nonEditableRow = menuItemRows.find(
-      (node: { props: { name?: string } }) => node.props.name === nonEditableMenuItem.name,
-    );
+    const picker = renderer.root.findByType('RestaurantMenuItemPicker');
 
     expect(scaffold.props.primaryAction.label).toBe('Select Items');
-    expect(menuItemRows).toHaveLength(2);
-    expect(editableRow).toBeDefined();
-    expect(nonEditableRow).toBeDefined();
-
-    if (!editableRow || !nonEditableRow) {
-      throw new Error('Expected both editable and non-editable menu item rows to render.');
-    }
-
-    expect(editableRow.props.compactActions).toBe(true);
-    expect(typeof editableRow.props.onEditPress).toBe('function');
-    expect(editableRow.props.friendEatenCount).toBe(2);
-    expect(editableRow.props.userEatenCount).toBe(3);
-    expect(nonEditableRow.props.compactActions).toBe(false);
-    expect(nonEditableRow.props.onEditPress).toBeUndefined();
+    expect(picker.props.items).toEqual([editableMenuItem, nonEditableMenuItem]);
+    expect(picker.props.currentUserId).toBe('user-1');
+    expect(picker.props.selectedCount).toBe(0);
+    expect(typeof picker.props.onEditItem).toBe('function');
 
     await act(async () => {
-      editableRow.props.onPress();
+      picker.props.onToggleItem(editableMenuItem);
     });
 
     expect(toggleMenuItemSelection).toHaveBeenCalledWith(editableMenuItem);
+
+    act(() => {
+      picker.props.onEditItem(editableMenuItem);
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('CreateVisitEditMenuItem', {
+      initialName: editableMenuItem.name,
+      initialVisibility: editableMenuItem.visibility,
+      menuItemId: editableMenuItem.id,
+      restaurantId: editableMenuItem.restaurant,
+    });
   });
 
   it('exits directly to the source list when the header back is pressed from an I went review flow', async () => {

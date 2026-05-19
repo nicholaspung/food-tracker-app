@@ -12,7 +12,7 @@ import { StickyActionFooter, type StickyActionFooterAction } from './StickyActio
 
 export interface FeatureFormScreenScaffoldProps {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   onBackPress: () => void;
   rightAccessory?: ReactNode;
   headerBottomContent?: ReactNode;

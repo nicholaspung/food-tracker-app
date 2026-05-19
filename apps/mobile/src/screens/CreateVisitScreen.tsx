@@ -5,7 +5,6 @@ import {
   Linking,
   Pressable,
   StyleSheet,
-  View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
@@ -20,8 +19,8 @@ import {
   OptionList,
   OptionListRow,
   PageErrorToast,
+  RestaurantMenuItemPicker,
   StepProgressBar,
-  VisitMenuItemOptionRow,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchHeaderToggle,
   VisitRestaurantSearchOptionDescription,
@@ -37,7 +36,6 @@ import {
   listVisitItemPhotos,
   syncFoodProductMutationCaches,
   syncVisitMutationCaches,
-  type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitItem,
@@ -85,7 +83,7 @@ import {
 import { useCreateVisitDraftItems } from './createVisit/useCreateVisitDraftItems';
 import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission';
 import { createThemedStyles, useTheme } from '../theme';
-import { Card, Input, Modal, Text } from '../ui';
+import { Modal, Text } from '../ui';
 
 type CreateVisitEntrySource = 'add_visit' | 'source_note' | 'source_list' | 'edit';
 type CreateVisitExitMethod =
@@ -839,24 +837,6 @@ export function CreateVisitScreen({
       scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }, 0);
   }, [step]);
-  const filteredMenuItems = useMemo(() => {
-    const items = menuItemsQuery.data ?? [];
-    const normalizedQuery = menuItemSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return items;
-    }
-
-    return items.filter((item) =>
-      item.name.toLowerCase().includes(normalizedQuery),
-    );
-  }, [menuItemSearchQuery, menuItemsQuery.data]);
-  const displayedMenuItems = useMemo(() => {
-    const selected = filteredMenuItems.filter((item) => isMenuItemSelected(item));
-    const unselected = filteredMenuItems.filter(
-      (item) => !isMenuItemSelected(item),
-    );
-    return [...selected, ...unselected];
-  }, [filteredMenuItems, isMenuItemSelected]);
   const selectedRestaurantMetadata = selectedRestaurantId
     ? restaurantMetadataById.get(selectedRestaurantId) ?? null
     : null;
@@ -971,41 +951,6 @@ export function CreateVisitScreen({
       }));
       setErrorMessage(message);
     }
-  };
-
-  const renderMenuItemCard = (menuItem: MenuItemRecord, index: number) => {
-    const isSelected = isMenuItemSelected(menuItem);
-    const isUserCreated = menuItem.createdBy === currentUserId;
-
-    return (
-      <VisitMenuItemOptionRow
-        compactActions={isUserCreated}
-        description={menuItem.description}
-        editButtonTestID={isUserCreated ? `create-visit-menu-item-edit-button-${index}` : undefined}
-        name={menuItem.name}
-        onEditPress={
-          isUserCreated
-            ? () => {
-                navigation.navigate("CreateVisitEditMenuItem", {
-                  menuItemId: menuItem.id,
-                  restaurantId: menuItem.restaurant,
-                  initialName: menuItem.name,
-                  initialVisibility: menuItem.visibility,
-                });
-              }
-            : undefined
-        }
-        onPress={() => {
-          toggleMenuItemSelection(menuItem);
-        }}
-        optionTestID={`create-visit-menu-item-option-${index}`}
-        selectButtonTestID={`create-visit-menu-item-select-button-${index}`}
-        selected={isSelected}
-        friendEatenCount={menuItem.friendEatenCount}
-        userEatenCount={menuItem.userEatenCount}
-        visibility={menuItem.visibility}
-      />
-    );
   };
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
@@ -1613,11 +1558,6 @@ export function CreateVisitScreen({
             },
           };
 
-  const headerReviewText = hasPendingMenuReview
-    ? "Review requested"
-    : menuReviewSubmitted
-      ? "Request submitted"
-      : "Request review";
   const isReviewBadgeDisabled =
     !isOnline || hasPendingMenuReview || menuReviewSubmitted;
   const trimmedRestaurantName = restaurantName.trim();
@@ -1636,11 +1576,10 @@ export function CreateVisitScreen({
     <StepProgressBar compact currentStep={step} steps={WIZARD_STEPS} />
   );
   const menuItemsLabel = menuItemSearchQuery.trim()
-    ? `Search results (${filteredMenuItems.length})`
+    ? `Search results (${(menuItemsQuery.data ?? []).filter((item) =>
+        item.name.toLowerCase().includes(menuItemSearchQuery.trim().toLowerCase()),
+      ).length})`
     : `All menu items (${menuItemsQuery.data?.length ?? 0})`;
-  const firstUnselectedMenuItemIndex = displayedMenuItems.findIndex(
-    (item) => !isMenuItemSelected(item),
-  );
   const editVisitPhotoLoadWarningMessage =
     isEditMode &&
     hydratedEditVisitId === editVisitId &&
@@ -2250,239 +2189,62 @@ export function CreateVisitScreen({
       ) : null}
 
       {step === 1 ? (
-        <View style={styles.stepOneContainer}>
-          {isTipPopoverVisible ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss tip"
-              onPress={() => {
-                setIsTipPopoverVisible(false);
-              }}
-              style={styles.tipDismissOverlay}
-            />
-          ) : null}
+        <RestaurantMenuItemPicker
+          addManualDisabled={!selectedRestaurantId}
+          currentUserId={currentUserId}
+          hasError={menuItemsQuery.isError}
+          hasPendingMenuReview={hasPendingMenuReview}
+          isItemSelected={isMenuItemSelected}
+          isLoading={menuItemsQuery.isLoading}
+          isOnline={isOnline}
+          isReviewDisabled={isReviewBadgeDisabled}
+          isReviewSubmitted={menuReviewSubmitted}
+          isTipVisible={isTipPopoverVisible}
+          items={menuItemsQuery.data ?? []}
+          label={menuItemsLabel}
+          onAddManual={() => {
+            if (!selectedRestaurantId || !restaurantName.trim()) {
+              return;
+            }
 
-          <Card
-            style={[
-              styles.quickActionsCard,
-              isTipPopoverVisible ? styles.quickActionsCardRaised : null,
-            ]}
-          >
-            <View style={styles.quickActionsPrimaryRow}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!isOnline}
-                onPress={() => {
-                  navigation.navigate("ProcessPhotos", {
-                    mode: "menu_scan",
-                    restaurantId: selectedRestaurantId ?? undefined,
-                    restaurantName: restaurantName.trim() || undefined,
-                    autoStartSourcePicker: false,
-                    sourceNoteId,
-                  });
-                }}
-                style={[
-                  styles.menuActionButton,
-                  styles.quickActionsPrimaryButton,
-                  !isOnline ? { opacity: 0.55 } : null,
-                ]}
-                testID="create-visit-scan-menu-photo-button"
-              >
-                <Ionicons
-                  color={theme.colors.text.primary}
-                  name={isOnline ? "camera-outline" : "cloud-offline-outline"}
-                  size={16}
-                />
-                <Text>
-                  {isOnline ? "Scan Menu Photo" : "Scan Menu (Offline)"}
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Show item entry tip"
-                hitSlop={12}
-                onPress={() => {
-                  setIsTipPopoverVisible((visible) => !visible);
-                }}
-                style={styles.tipIconButton}
-                testID="create-visit-tip-button"
-              >
-                <Ionicons
-                  color={theme.colors.text.warning}
-                  name="bulb-outline"
-                  size={14}
-                />
-              </Pressable>
-            </View>
-            {isTipPopoverVisible ? (
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation();
-                }}
-                style={styles.tipPopover}
-                testID="create-visit-tip-popover"
-              >
-                <View style={styles.tipPopoverArrow} />
-                <View style={styles.tipPopoverHeaderRow}>
-                  <View style={styles.tipPopoverTitleRow}>
-                    <Ionicons
-                      color={theme.colors.text.warning}
-                      name="bulb-outline"
-                      size={14}
-                    />
-                    <Text variant="label">Tip</Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close tip"
-                    hitSlop={12}
-                    onPress={() => {
-                      setIsTipPopoverVisible(false);
-                    }}
-                    style={styles.tipPopoverClose}
-                    testID="create-visit-tip-close-button"
-                  >
-                    <Ionicons
-                      color={theme.colors.text.secondary}
-                      name="close"
-                      size={12}
-                    />
-                  </Pressable>
-                </View>
-                <Text tone="secondary" variant="bodySm">
-                  Use “Scan Menu Photo” for faster item entry, or add an item
-                  manually if it is missing.
-                </Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={!selectedRestaurantId}
-              onPress={() => {
-                if (!selectedRestaurantId || !restaurantName.trim()) {
-                  return;
-                }
-
-                navigation.navigate("CreateVisitAddMenuItem", {
-                  editVisitId,
-                  restaurantId: selectedRestaurantId,
-                  restaurantName: restaurantName.trim(),
-                  sourceNoteId,
-                });
-              }}
-              style={[
-                styles.menuActionButton,
-                !selectedRestaurantId ? { opacity: 0.55 } : null,
-              ]}
-              testID="create-visit-add-menu-item-button"
-            >
-              <Ionicons
-                color={theme.colors.text.primary}
-                name="add-outline"
-                size={16}
-              />
-              <Text>Can't find it? Add manually</Text>
-            </Pressable>
-          </Card>
-
-          <Card style={styles.listCard}>
-            <View style={styles.menuItemsHeader}>
-              <View style={styles.menuItemsHeaderLeft}>
-                <Text tone="secondary">{menuItemsLabel}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={isReviewBadgeDisabled}
-                  onPress={() => {
-                    void handleRequestMenuReview();
-                  }}
-                  style={[
-                    styles.reviewBadge,
-                    isReviewBadgeDisabled ? styles.reviewBadgeDisabled : null,
-                  ]}
-                >
-                  <Ionicons
-                    color={
-                      hasPendingMenuReview
-                        ? theme.colors.text.warning
-                        : menuReviewSubmitted
-                          ? theme.colors.text.success
-                          : theme.colors.text.secondary
-                    }
-                    name={
-                      menuReviewSubmitted
-                        ? "checkmark-circle-outline"
-                        : "flag-outline"
-                    }
-                    size={12}
-                  />
-                  <Text
-                    ellipsizeMode="tail"
-                    numberOfLines={1}
-                    tone={
-                      hasPendingMenuReview
-                        ? "warning"
-                        : menuReviewSubmitted
-                          ? "success"
-                          : "secondary"
-                    }
-                    variant="bodySm"
-                  >
-                    {headerReviewText}
-                  </Text>
-                </Pressable>
-              </View>
-              {selectedMenuItemCount > 0 ? (
-                <Text tone="success" variant="label">
-                  {selectedMenuItemCount} selected
-                </Text>
-              ) : null}
-            </View>
-            <Input
-              containerStyle={styles.menuSearchInput}
-              onChangeText={setMenuItemSearchQuery}
-              placeholder="Search menu items..."
-              value={menuItemSearchQuery}
-            />
-
-            {menuItemsQuery.isLoading ? (
-              <LoadingState label="Loading menu items..." />
-            ) : menuItemsQuery.isError ? (
-              <PageErrorToast
-                errorMessage="Could not load menu items for this restaurant."
-                title="Menu unavailable"
-                actionLabel="Retry"
-                onAction={() => {
-                  void menuItemsQuery.refetch();
-                }}
-              />
-            ) : displayedMenuItems.length === 0 ? (
-              <EmptyState
-                description={
-                  menuItemSearchQuery.trim()
-                    ? "No items found. Try another search or add manually."
-                    : "No menu items yet. Scan a menu or add one manually."
-                }
-                title="No items available"
-              />
-            ) : (
-              displayedMenuItems.map((menuItem, index) => (
-                <View key={menuItem.id}>
-                  {selectedMenuItemCount > 0 &&
-                  index === firstUnselectedMenuItemIndex ? (
-                    <View style={styles.menuItemDividerRow}>
-                      <View style={styles.menuItemDividerLine} />
-                      <Text tone="muted" variant="bodySm">
-                        Other items
-                      </Text>
-                      <View style={styles.menuItemDividerLine} />
-                    </View>
-                  ) : null}
-                  {renderMenuItemCard(menuItem, index)}
-                </View>
-              ))
-            )}
-          </Card>
-        </View>
+            navigation.navigate("CreateVisitAddMenuItem", {
+              editVisitId,
+              restaurantId: selectedRestaurantId,
+              restaurantName: restaurantName.trim(),
+              sourceNoteId,
+            });
+          }}
+          onEditItem={(menuItem) => {
+            navigation.navigate("CreateVisitEditMenuItem", {
+              initialName: menuItem.name,
+              initialVisibility: menuItem.visibility,
+              menuItemId: menuItem.id,
+              restaurantId: menuItem.restaurant,
+            });
+          }}
+          onRequestMenuReview={() => {
+            void handleRequestMenuReview();
+          }}
+          onRetry={() => {
+            void menuItemsQuery.refetch();
+          }}
+          onScanMenuPhoto={() => {
+            navigation.navigate("ProcessPhotos", {
+              autoStartSourcePicker: false,
+              mode: "menu_scan",
+              restaurantId: selectedRestaurantId ?? undefined,
+              restaurantName: restaurantName.trim() || undefined,
+              sourceNoteId,
+            });
+          }}
+          onSearchQueryChange={setMenuItemSearchQuery}
+          onTipVisibilityChange={setIsTipPopoverVisible}
+          onToggleItem={toggleMenuItemSelection}
+          scanDisabled={!isOnline}
+          searchQuery={menuItemSearchQuery}
+          selectedCount={selectedMenuItemCount}
+          testIDPrefix="create-visit"
+        />
       ) : null}
 
       {step === 2 ? (

@@ -92,7 +92,9 @@ export function MenuScanPhotoProcessingScreen({
   const mode = route.params?.mode ?? 'general';
   const restaurantId = route.params?.restaurantId;
   const restaurantName = route.params?.restaurantName?.trim() ?? 'this restaurant';
+  const returnTo = route.params?.returnTo;
   const sourceNoteId = route.params?.sourceNoteId;
+  const tastingSessionId = route.params?.tastingSessionId;
   const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
   const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
 
@@ -112,13 +114,20 @@ export function MenuScanPhotoProcessingScreen({
       return;
     }
 
+    if (returnTo === 'TastingSessionPlanning' && tastingSessionId) {
+      navigation.popTo('TastingSessionPlanning', {
+        sessionId: tastingSessionId,
+      });
+      return;
+    }
+
     navigation.popTo('CreateVisit', {
       preselectedRestaurantId: restaurantId,
       preselectedRestaurantName: restaurantName,
       returnToStep: 1,
       sourceNoteId,
     });
-  }, [navigation, restaurantId, restaurantName, sourceNoteId]);
+  }, [navigation, restaurantId, restaurantName, returnTo, sourceNoteId, tastingSessionId]);
 
   const startCountdown = useCallback(() => {
     if (countdownIntervalRef.current) {

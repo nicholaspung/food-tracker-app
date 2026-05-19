@@ -1,6 +1,4 @@
 import { useCallback, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { Pressable, View } from 'react-native';
 
 import {
   ConfirmDestructiveModal,
@@ -8,12 +6,12 @@ import {
   PhotoInputField,
   PhotoViewerModal,
   RatingLegend,
-  RatingSelector,
+  VisitItemRatingCard,
   VisitMetadataCard,
   type VisibilityOptionValue,
 } from '../../components/shared';
-import { createThemedStyles, useTheme } from '../../theme';
-import { Card, Input, Text } from '../../ui';
+import { createThemedStyles } from '../../theme';
+import { Card, Text } from '../../ui';
 import type { DraftVisitItem, DraftVisitItemPhoto } from './shared';
 
 type DraftVisitItemUpdates = Partial<
@@ -43,24 +41,6 @@ interface CreateVisitReviewStepProps {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  itemCard: {
-    gap: theme.spacing.sm,
-  },
-  itemHeaderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  itemTitle: {
-    flex: 1,
-  },
-  removeItemButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 36,
-    minWidth: 36,
-    padding: theme.spacing.xxs,
-  },
   statusCard: {
     gap: theme.spacing.xs,
   },
@@ -84,7 +64,6 @@ export function CreateVisitReviewStep({
   visitDate,
   visitVisibility,
 }: CreateVisitReviewStepProps) {
-  const theme = useTheme();
   const styles = useStyles();
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
@@ -157,95 +136,77 @@ export function CreateVisitReviewStep({
       ) : null}
 
       {draftItems.map((item, index) => (
-        <Card key={item.id} style={styles.itemCard}>
-          <View style={styles.itemHeaderRow}>
-            <View style={styles.itemTitle}>
-              <Text variant="label">{item.name}</Text>
-            </View>
-            {canRemoveItems ? (
-              <Pressable
-                accessibilityLabel={`Remove ${item.name} from visit`}
-                accessibilityRole="button"
-                hitSlop={12}
-                onPress={() => {
+        <VisitItemRatingCard
+          key={item.id}
+          descriptionValue={item.description}
+          itemName={item.name}
+          notesPlaceholder='Optional notes, e.g. "tastes the same as every other boba shop"'
+          notesValue={item.notes}
+          onDescriptionChange={(value) => {
+            onUpdateDraftItem(item.id, { description: value });
+          }}
+          onNotesChange={(value) => {
+            onUpdateDraftItem(item.id, { notes: value });
+          }}
+          onRatingChange={(value) => {
+            onUpdateDraftItem(item.id, { rating: value });
+          }}
+          onRequestRemove={
+            canRemoveItems
+              ? () => {
                   setPendingRemoveItem(item);
-                }}
-                style={styles.removeItemButton}
-                testID={`create-visit-remove-item-button-${index}`}
-              >
-                <Ionicons
-                  color={theme.colors.text.danger}
-                  name="trash-outline"
-                  size={18}
-                />
-              </Pressable>
-            ) : null}
-          </View>
-          <RatingSelector
-            onChange={(value) => {
-              onUpdateDraftItem(item.id, { rating: value });
-            }}
-            testIDPrefix={`create-visit-rating-${index}`}
-            value={item.rating}
-          />
-          <Input
-            label="Description"
-            onChangeText={(value) => {
-              onUpdateDraftItem(item.id, { description: value });
-            }}
-            placeholder="Optional description or modification"
-            value={item.description}
-          />
-          <PhotoInputField
-            attachments={item.photos.map((photo, photoIndex) => ({
-              id: photo.id,
-              label: photo.labelDate,
-              uri: photo.thumbnailUri,
-              accessibilityLabel: `View attached photo ${photoIndex + 1} full screen`,
-              onPress: () => {
-                openPhotoViewer(item.photos, photoIndex);
-              },
-              onRemove: () => {
-                closePhotoViewer();
-                onRemoveDraftItemPhoto(item.id, photo.id);
-              },
-            }))}
-            cameraSubtitle="Camera"
-            cameraTitle="Capture"
-            countLabel={
-              displayMaxPhotosPerItem === null ||
-              (photoActionsHidden && item.photos.length === 0)
-                ? null
-                : `${item.photos.length}/${displayMaxPhotosPerItem}`
-            }
-            gallerySubtitle="Photo Library"
-            galleryTitle="Upload"
-            hideSourceActions={photoActionsHidden}
-            iconName="images-outline"
-            label="Add photos"
-            footerAction={
-              photoQuotaStatusMessage ? (
-                <Text tone="secondary" variant="bodySm">
-                  {photoQuotaStatusMessage}
-                </Text>
-              ) : null
-            }
-            onCameraPress={() => {
-              onAttachPhoto(item.id, 'camera');
-            }}
-            onGalleryPress={() => {
-              onAttachPhoto(item.id, 'gallery');
-            }}
-          />
-          <Input
-            label="Notes"
-            onChangeText={(value) => {
-              onUpdateDraftItem(item.id, { notes: value });
-            }}
-            placeholder='Optional notes, e.g. "tastes the same as every other boba shop"'
-            value={item.notes}
-          />
-        </Card>
+                }
+              : undefined
+          }
+          photoSection={
+            <PhotoInputField
+              attachments={item.photos.map((photo, photoIndex) => ({
+                id: photo.id,
+                label: photo.labelDate,
+                uri: photo.thumbnailUri,
+                accessibilityLabel: `View attached photo ${photoIndex + 1} full screen`,
+                onPress: () => {
+                  openPhotoViewer(item.photos, photoIndex);
+                },
+                onRemove: () => {
+                  closePhotoViewer();
+                  onRemoveDraftItemPhoto(item.id, photo.id);
+                },
+              }))}
+              cameraSubtitle="Camera"
+              cameraTitle="Capture"
+              countLabel={
+                displayMaxPhotosPerItem === null ||
+                (photoActionsHidden && item.photos.length === 0)
+                  ? null
+                  : `${item.photos.length}/${displayMaxPhotosPerItem}`
+              }
+              footerAction={
+                photoQuotaStatusMessage ? (
+                  <Text tone="secondary" variant="bodySm">
+                    {photoQuotaStatusMessage}
+                  </Text>
+                ) : null
+              }
+              gallerySubtitle="Photo Library"
+              galleryTitle="Upload"
+              hideSourceActions={photoActionsHidden}
+              iconName="images-outline"
+              label="Add photos"
+              onCameraPress={() => {
+                onAttachPhoto(item.id, 'camera');
+              }}
+              onGalleryPress={() => {
+                onAttachPhoto(item.id, 'gallery');
+              }}
+            />
+          }
+          rating={item.rating}
+          removeAccessibilityLabel={`Remove ${item.name} from visit`}
+          removeTestID={`create-visit-remove-item-button-${index}`}
+          showDescription
+          testIDPrefix={`create-visit-rating-${index}`}
+        />
       ))}
 
       <PhotoViewerModal

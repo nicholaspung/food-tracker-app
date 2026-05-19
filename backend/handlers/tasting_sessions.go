@@ -444,7 +444,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 		err = app.RunInTransaction(func(txApp core.App) error {
-			sessionRecord, participantRecord, prepErr := loadPlanningParticipant(txApp, sessionID, authRecord.Id)
+			sessionRecord, participantRecord, prepErr := loadPlanningLeaderParticipant(txApp, sessionID, authRecord.Id)
 			if prepErr != nil {
 				return prepErr
 			}
@@ -472,7 +472,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			record.Set("session", sessionRecord.Id)
 			record.Set("restaurant", restaurantRecord.Id)
 			record.Set("suggested_by_participant", participantRecord.Id)
-			record.Set("status", tastingSuggestionStatusPending)
+			record.Set("status", tastingSuggestionStatusApproved)
 			if err := txApp.Save(record); err != nil {
 				return apis.NewApiError(500, "failed to suggest restaurant", err)
 			}
@@ -513,7 +513,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 		err = app.RunInTransaction(func(txApp core.App) error {
-			sessionRecord, participantRecord, prepErr := loadPlanningParticipant(txApp, sessionID, authRecord.Id)
+			sessionRecord, participantRecord, prepErr := loadPlanningLeaderParticipant(txApp, sessionID, authRecord.Id)
 			if prepErr != nil {
 				return prepErr
 			}
@@ -539,7 +539,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			record.Set("restaurant_suggestion", restaurantSuggestion.Id)
 			record.Set("menu_item", menuItemRecord.Id)
 			record.Set("suggested_by_participant", participantRecord.Id)
-			record.Set("status", tastingSuggestionStatusPending)
+			record.Set("status", tastingSuggestionStatusApproved)
 			if err := txApp.Save(record); err != nil {
 				return apis.NewApiError(500, "failed to suggest item", err)
 			}
@@ -1094,7 +1094,7 @@ func isTastingUserBlocked(app core.App, sessionID string, userID string) (bool, 
 	return record != nil, nil
 }
 
-func loadPlanningParticipant(app core.App, sessionID string, userID string) (*core.Record, *core.Record, error) {
+func loadPlanningLeaderParticipant(app core.App, sessionID string, userID string) (*core.Record, *core.Record, error) {
 	sessionRecord, err := loadAccessibleTastingSession(app, sessionID, userID)
 	if err != nil {
 		return nil, nil, mapTastingLoadError(err)
@@ -1102,12 +1102,15 @@ func loadPlanningParticipant(app core.App, sessionID string, userID string) (*co
 	if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusPlanning {
 		return nil, nil, apis.NewBadRequestError("suggestions are only available during planning", nil)
 	}
+	if strings.TrimSpace(sessionRecord.GetString("leader")) != strings.TrimSpace(userID) {
+		return nil, nil, apis.NewForbiddenError("only the leader can choose tasting restaurants and items", nil)
+	}
 	participantRecord, err := findTastingParticipantRecord(app, sessionRecord.Id, userID)
 	if err != nil {
 		return nil, nil, apis.NewApiError(500, "failed to load participant", err)
 	}
 	if participantRecord == nil {
-		return nil, nil, apis.NewForbiddenError("only participants can suggest tasting items", nil)
+		return nil, nil, apis.NewForbiddenError("only the leader participant can choose tasting restaurants and items", nil)
 	}
 	return sessionRecord, participantRecord, nil
 }

@@ -194,6 +194,9 @@ export type RootStackParamList = {
     restaurantName: string;
     editVisitId?: string;
     sourceNoteId?: string;
+    returnTo?: 'CreateVisit' | 'TastingSessionPlanning';
+    tastingSessionId?: string;
+    tastingRestaurantSuggestionId?: string;
   };
   CreateVisitEditMenuItem: {
     menuItemId: string;
@@ -215,7 +218,9 @@ export type RootStackParamList = {
         restaurantId?: string;
         restaurantName?: string;
         autoStartSourcePicker?: boolean;
+        returnTo?: 'CreateVisit' | 'TastingSessionPlanning';
         sourceNoteId?: string;
+        tastingSessionId?: string;
       }
     | undefined;
   Lists: undefined;

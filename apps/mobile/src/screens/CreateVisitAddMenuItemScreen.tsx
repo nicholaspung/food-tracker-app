@@ -9,7 +9,12 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createCollectionRecord, getAuthenticatedUserIdOrNull } from '../features';
+import {
+  createCollectionRecord,
+  getAuthenticatedUserIdOrNull,
+  suggestTastingMenuItem,
+  tastingSessionsQueryKeys,
+} from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -48,7 +53,15 @@ export function CreateVisitAddMenuItemScreen({
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
 
-  const { editVisitId, restaurantId, restaurantName, sourceNoteId } = route.params;
+  const {
+    editVisitId,
+    restaurantId,
+    restaurantName,
+    returnTo,
+    sourceNoteId,
+    tastingRestaurantSuggestionId,
+    tastingSessionId,
+  } = route.params;
 
   const [menuItemName, setMenuItemName] = useState('');
   const [visibility, setVisibility] = useState<VisibilityOptionValue>('friends');
@@ -127,6 +140,18 @@ export function CreateVisitAddMenuItemScreen({
         menuItemId: createdItem.id,
         visibility,
       });
+
+      if (returnTo === 'TastingSessionPlanning' && tastingSessionId && tastingRestaurantSuggestionId) {
+        await suggestTastingMenuItem(tastingSessionId, tastingRestaurantSuggestionId, {
+          menuItemId: createdItem.id,
+          name: createdItem.name,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: tastingSessionsQueryKeys.detail(tastingSessionId),
+        });
+        navigation.popTo('TastingSessionPlanning', { sessionId: tastingSessionId });
+        return;
+      }
 
       navigation.popTo('CreateVisit', {
         editVisitId,
