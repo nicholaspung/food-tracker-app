@@ -307,13 +307,16 @@ create_directory_snapshot_archive() {
     local source_dir="$1"
     local archive_path="$2"
     local source_name
+    local archive_dir
     local snapshot_root
     local snapshot_dir
     local rsync_output
     local rsync_exit_code
 
     source_name=$(basename "$source_dir")
-    snapshot_root=$(mktemp -d "/tmp/food-tracker-backup-${source_name}.XXXXXX")
+    archive_dir=$(dirname "$archive_path")
+    mkdir -p "$archive_dir"
+    snapshot_root=$(mktemp -d "$archive_dir/.snapshot-${source_name}.XXXXXX")
     snapshot_dir="$snapshot_root/$source_name"
     mkdir -p "$snapshot_dir"
 

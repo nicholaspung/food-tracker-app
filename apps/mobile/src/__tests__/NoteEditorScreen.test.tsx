@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { createNote, useMonthlyUsage } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useNoteWrites } from '../features/store/useNoteWrites';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
@@ -36,8 +36,8 @@ jest.mock('../features', () => ({
   useMonthlyUsage: jest.fn(),
 }));
 
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
+jest.mock('../features/store/useNoteWrites', () => ({
+  useNoteWrites: jest.fn(),
 }));
 
 jest.mock('../hooks/useImageSourcePicker', () => ({
@@ -129,9 +129,7 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedCreateNote = createNote as jest.MockedFunction<typeof createNote>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
-const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
-  typeof useOfflineAwareFeatureWrite
->;
+const mockedUseNoteWrites = useNoteWrites as jest.MockedFunction<typeof useNoteWrites>;
 const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
 const mockedBuildLocalPhotoFile = buildLocalPhotoFile as jest.MockedFunction<typeof buildLocalPhotoFile>;
 const mockedResolvePhotoCaptureDate = resolvePhotoCaptureDate as jest.MockedFunction<typeof resolvePhotoCaptureDate>;
@@ -163,7 +161,7 @@ function renderNoteEditor(routeParams: Record<string, unknown> = {}): any {
 }
 
 describe('NoteEditorScreen photo capture dates', () => {
-  let writeFeature: jest.Mock;
+  let createNoteWrite: jest.Mock;
   let pickImageAssets: jest.Mock;
   let requestSourcePermission: jest.Mock;
   let resetPermissionNeedsSettings: jest.Mock;
@@ -213,11 +211,16 @@ describe('NoteEditorScreen photo capture dates', () => {
       createdAt: '2026-04-28T12:00:00.000Z',
       updatedAt: '2026-04-28T12:00:00.000Z',
     } as never);
-    writeFeature = jest.fn(async ({ execute }) => ({
+    createNoteWrite = jest.fn(async (input) => ({
       status: 'completed',
-      result: await execute(),
+      result: await mockedCreateNote(input),
     }));
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseNoteWrites.mockReturnValue({
+      createNote: createNoteWrite,
+      deleteNote: jest.fn(),
+      markNoteUsed: jest.fn(),
+      updateNote: jest.fn(),
+    } as unknown as ReturnType<typeof useNoteWrites>);
   });
 
   it('uses EXIF-enabled gallery picking and submits capturedAt for new note photos', async () => {
@@ -258,7 +261,7 @@ describe('NoteEditorScreen photo capture dates', () => {
       renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
     });
 
-    expect(writeFeature.mock.calls[0][0].offline.payload.photos[0]).toMatchObject({
+    expect(createNoteWrite.mock.calls[0][0].photos[0]).toMatchObject({
       capturedAt: '2024-09-15T12:34:56.000Z',
     });
     expect(mockedCreateNote).toHaveBeenCalledWith(
@@ -303,7 +306,7 @@ describe('NoteEditorScreen photo capture dates', () => {
       renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
     });
 
-    expect(writeFeature.mock.calls[0][0].offline.payload.photos[0]).not.toHaveProperty('capturedAt');
+    expect(createNoteWrite.mock.calls[0][0].photos[0]).not.toHaveProperty('capturedAt');
     expect(mockedCreateNote).toHaveBeenCalledWith(
       expect.objectContaining({
         photos: [
@@ -393,15 +396,10 @@ describe('NoteEditorScreen photo capture dates', () => {
       renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
     });
 
-    expect(writeFeature).toHaveBeenCalledWith(
+    expect(createNoteWrite).toHaveBeenCalledWith(
       expect.objectContaining({
-        operationName: 'note.create',
-        offline: expect.objectContaining({
-          payload: expect.objectContaining({
-            content: 'Text-only note',
-            photos: [],
-          }),
-        }),
+        content: 'Text-only note',
+        photos: [],
       }),
     );
     expect(mockedCreateNote).toHaveBeenCalledWith(

@@ -1,5 +1,5 @@
 import mockAsyncStorage from '@react-native-async-storage/async-storage/jest/async-storage-mock';
-import { timeoutManager } from '@tanstack/query-core';
+import { timeoutManager } from '@tanstack/react-query';
 
 type TimerId = ReturnType<typeof setTimeout>;
 
@@ -14,18 +14,18 @@ function unrefTimer(timerId: TimerId): void {
 }
 
 timeoutManager.setTimeoutProvider({
-  clearInterval: (intervalId) => {
+  clearInterval: (intervalId: TimerId | undefined) => {
     clearInterval(intervalId as TimerId | undefined);
   },
-  clearTimeout: (timeoutId) => {
+  clearTimeout: (timeoutId: TimerId | undefined) => {
     clearTimeout(timeoutId as TimerId | undefined);
   },
-  setInterval: (callback, delay) => {
+  setInterval: (callback: () => void, delay: number | undefined) => {
     const intervalId = setInterval(callback, delay);
     unrefTimer(intervalId);
     return intervalId;
   },
-  setTimeout: (callback, delay) => {
+  setTimeout: (callback: () => void, delay: number | undefined) => {
     const timeoutId = setTimeout(callback, delay);
     unrefTimer(timeoutId);
     return timeoutId;
@@ -33,6 +33,35 @@ timeoutManager.setTimeoutProvider({
 });
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
+
+jest.mock('@gorhom/bottom-sheet', () => {
+  const react = jest.requireActual<typeof import('react')>('react');
+
+  const BottomSheet = react.forwardRef(function MockBottomSheet(
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+    ref: React.ForwardedRef<{ snapToIndex: jest.Mock }>,
+  ) {
+    react.useImperativeHandle(ref, () => ({
+      snapToIndex: jest.fn(),
+    }));
+
+    return react.createElement('BottomSheet', props, children);
+  });
+
+  return {
+    __esModule: true,
+    default: BottomSheet,
+    BottomSheetFlatList: (
+      { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+    ) => react.createElement('BottomSheetFlatList', props, children),
+    BottomSheetScrollView: (
+      { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+    ) => react.createElement('BottomSheetScrollView', props, children),
+    BottomSheetView: (
+      { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+    ) => react.createElement('BottomSheetView', props, children),
+  };
+});
 
 jest.mock('./src/features/store/useQueuedFeatureWrites', () => ({
   useQueuedFeatureWrites: () => ({

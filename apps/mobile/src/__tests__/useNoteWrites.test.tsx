@@ -1,0 +1,210 @@
+import React from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { useQueryClient } from '@tanstack/react-query';
+
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { createNote, deleteNote } from '../features/store/notesStore';
+import { notesQueryKeys } from '../features/store/notesQuery';
+import { removeCachedNote } from '../features/store/notesCache';
+import { useNoteWrites } from '../features/store/useNoteWrites';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+
+jest.mock('@tanstack/react-query', () => ({
+  useQueryClient: jest.fn(),
+}));
+
+jest.mock('../features/store/notesStore', () => ({
+  createNote: jest.fn(),
+  deleteNote: jest.fn(),
+  markNoteUsed: jest.fn(),
+  updateNote: jest.fn(),
+}));
+
+jest.mock('../features/store/notesCache', () => ({
+  promoteCachedNoteToUsed: jest.fn(),
+  removeCachedNote: jest.fn(),
+}));
+
+jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
+  useOfflineAwareFeatureWrite: jest.fn(),
+}));
+
+jest.mock('../lib/offlineAlerts', () => ({
+  showQueuedOfflineAlert: jest.fn(),
+}));
+
+const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedCreateNote = createNote as jest.MockedFunction<typeof createNote>;
+const mockedDeleteNote = deleteNote as jest.MockedFunction<typeof deleteNote>;
+const mockedRemoveCachedNote = removeCachedNote as jest.MockedFunction<typeof removeCachedNote>;
+const mockedUseOfflineAwareFeatureWrite =
+  useOfflineAwareFeatureWrite as jest.MockedFunction<typeof useOfflineAwareFeatureWrite>;
+const mockedShowQueuedOfflineAlert = showQueuedOfflineAlert as jest.MockedFunction<
+  typeof showQueuedOfflineAlert
+>;
+
+describe('useNoteWrites', () => {
+  const queryClient = {
+    invalidateQueries: jest.fn(),
+    removeQueries: jest.fn(),
+    setQueryData: jest.fn(),
+  };
+
+  beforeEach(() => {
+    queryClient.invalidateQueries.mockReset();
+    queryClient.removeQueries.mockReset();
+    queryClient.setQueryData.mockReset();
+    mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
+    mockedCreateNote.mockReset();
+    mockedDeleteNote.mockReset();
+    mockedRemoveCachedNote.mockReset();
+    mockedUseOfflineAwareFeatureWrite.mockReset();
+    mockedShowQueuedOfflineAlert.mockReset();
+  });
+
+  async function renderHook(): Promise<{
+    hook: ReturnType<typeof useNoteWrites>;
+    renderer: ReactTestRenderer;
+  }> {
+    let hook: ReturnType<typeof useNoteWrites> | null = null;
+    let renderer: ReactTestRenderer | null = null;
+
+    function TestComponent() {
+      hook = useNoteWrites();
+      return null;
+    }
+
+    await act(async () => {
+      renderer = create(React.createElement(TestComponent));
+    });
+
+    if (!hook || !renderer) {
+      throw new Error('Expected hook to render.');
+    }
+
+    return { hook, renderer };
+  }
+
+  it('runs Note creation online and applies Note cache effects', async () => {
+    const savedNote = {
+      id: 'note_1',
+      title: 'Lunch',
+      content: 'Good noodles',
+      status: 'draft',
+      createdAt: '2026-05-19T12:00:00.000Z',
+      updatedAt: '2026-05-19T12:00:00.000Z',
+    } as Awaited<ReturnType<typeof createNote>>;
+    mockedCreateNote.mockResolvedValue(savedNote);
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+    const input = {
+      content: 'Good noodles',
+      photos: [],
+      title: 'Lunch',
+    };
+
+    let result: Awaited<ReturnType<typeof hook.createNote>> | undefined;
+    await act(async () => {
+      result = await hook.createNote(input);
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'note.create',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+      }),
+    );
+    expect(mockedCreateNote).toHaveBeenCalledWith(input);
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(notesQueryKeys.detail('note_1'), savedNote);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notePhotos'] });
+    expect(result).toEqual({ status: 'completed', result: savedNote });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues Note creation through the feature outbox payload', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+    const input = {
+      content: 'Good noodles',
+      title: 'Lunch',
+    };
+
+    let result: Awaited<ReturnType<typeof hook.createNote>> | undefined;
+    await act(async () => {
+      result = await hook.createNote(input);
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'note.create',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+      }),
+    );
+    expect(mockedCreateNote).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({
+      analyticsSource: 'useNoteWrites',
+      subject: 'Note',
+    });
+    expect(result).toEqual({ status: 'queued' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('removes Note cache after queued delete', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.deleteNote>> | undefined;
+    await act(async () => {
+      result = await hook.deleteNote({ noteId: 'note_1' });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'note.delete',
+        offline: {
+          strategy: 'outbox',
+          payload: { noteId: 'note_1' },
+        },
+      }),
+    );
+    expect(mockedDeleteNote).not.toHaveBeenCalled();
+    expect(mockedRemoveCachedNote).toHaveBeenCalledWith(queryClient, 'note_1');
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notePhotos'] });
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({
+      analyticsSource: 'useNoteWrites',
+      subject: 'Note delete',
+    });
+    expect(result).toEqual({ status: 'queued' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+});

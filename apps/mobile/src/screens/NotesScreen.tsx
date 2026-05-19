@@ -17,10 +17,8 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import {
-  deleteNote,
   listNotePhotosForNote,
   listNotesOverviewPage,
-  removeCachedNote,
   type NoteOverviewItemRecord,
   type NotePhotoRecord,
   type NoteRecord,
@@ -28,8 +26,8 @@ import {
 import { buildPhotoViewerState } from '../lib/photoUrls';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureWriteSubmit } from '../features/store/useFeatureWriteSubmit';
 import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
+import { useNoteWrites } from '../features/store/useNoteWrites';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -185,15 +183,12 @@ const useStyles = createThemedStyles((theme) => ({
 export function NotesScreen({ navigation }: NotesScreenProps) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const {
-    isSubmitting: isDeletingNote,
-    setErrorMessage: setDeleteSubmitErrorMessage,
-    submitFeatureWrite,
-  } = useFeatureWriteSubmit();
+  const noteWrites = useNoteWrites();
   const { queuedWrites: pendingNoteWrites } = useQueuedFeatureWrites(['note.create']);
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
   const [loadingPhotoNoteId, setLoadingPhotoNoteId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -452,36 +447,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     });
 
     setActionErrorMessage(null);
-    setDeleteSubmitErrorMessage(null);
+    setIsDeletingNote(true);
 
     try {
-      const invalidateDeletedNoteQueries = async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
-        ]);
-      };
-
-      const deleteResult = await submitFeatureWrite({
-        operationName: 'note.delete',
-        offline: {
-          strategy: 'outbox',
-          payload: { noteId: pendingDeleteNote.id },
-        },
-        execute: () => deleteNote(pendingDeleteNote.id),
-        fallbackErrorMessage: 'Could not delete note.',
-        onQueued: () => {
-          removeCachedNote(queryClient, pendingDeleteNote.id);
-        },
-        onSuccess: () => {
-          removeCachedNote(queryClient, pendingDeleteNote.id);
-        },
-        onSettledInvalidate: invalidateDeletedNoteQueries,
-        queuedToast: {
-          analyticsSource: 'NotesScreen',
-          subject: 'Note delete',
-        },
-      });
+      const deleteResult = await noteWrites.deleteNote({ noteId: pendingDeleteNote.id });
 
       if (deleteResult.status === 'queued') {
         trackObservabilityEvent('NOTE_DELETE_SUCCEEDED', {
@@ -509,8 +478,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         wasUsed,
       });
       setActionErrorMessage(message);
+    } finally {
+      setIsDeletingNote(false);
     }
-  }, [isOnline, pendingDeleteNote, queryClient, setDeleteSubmitErrorMessage, submitFeatureWrite]);
+  }, [isOnline, noteWrites, pendingDeleteNote]);
 
   const hasSearchFallbackError =
     shouldQueryNotesBySearch &&

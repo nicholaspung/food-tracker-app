@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useNoteWrites } from '../features/store/useNoteWrites';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { NotesScreen } from '../screens/NotesScreen';
@@ -52,8 +52,8 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
+jest.mock('../features/store/useNoteWrites', () => ({
+  useNoteWrites: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
@@ -107,9 +107,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
-const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
-  typeof useOfflineAwareFeatureWrite
->;
+const mockedUseNoteWrites = useNoteWrites as jest.MockedFunction<typeof useNoteWrites>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent
@@ -273,14 +271,19 @@ describe('NotesScreen', () => {
     jest.useFakeTimers();
     mockedUseInfiniteQuery.mockReset();
     mockedUseQueryClient.mockReset();
-    mockedUseOfflineAwareFeatureWrite.mockReset();
+    mockedUseNoteWrites.mockReset();
     mockedTrackObservabilityEvent.mockReset();
     mockNotesQueries();
     mockedUseQueryClient.mockReturnValue({
       fetchQuery: jest.fn(),
       invalidateQueries: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseNoteWrites.mockReturnValue({
+      createNote: jest.fn(),
+      deleteNote: jest.fn().mockResolvedValue({ status: 'completed' }),
+      markNoteUsed: jest.fn(),
+      updateNote: jest.fn(),
+    } as unknown as ReturnType<typeof useNoteWrites>);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 

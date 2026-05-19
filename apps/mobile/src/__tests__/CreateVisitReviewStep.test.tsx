@@ -26,6 +26,27 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('RatingLegend', props),
   RatingSelector: (props: Record<string, unknown>) =>
     mockReact.createElement('RatingSelector', props),
+  VisitItemRatingCard: ({
+    onRequestRemove,
+    photoSection,
+    removeTestID,
+    ...props
+  }: Record<string, unknown> & {
+    onRequestRemove?: () => void;
+    photoSection?: React.ReactNode;
+    removeTestID?: string;
+  }) =>
+    mockReact.createElement(
+      'VisitItemRatingCard',
+      props,
+      photoSection,
+      onRequestRemove
+        ? mockReact.createElement('RemoveButton', {
+            onPress: onRequestRemove,
+            testID: removeTestID,
+          })
+        : null,
+    ),
   VisitMetadataCard: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitMetadataCard', props),
 }));

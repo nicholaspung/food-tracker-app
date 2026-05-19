@@ -8,11 +8,7 @@ import {
   getBillById,
   updateBill,
 } from '../features';
-import {
-  createBillApiMutationInput,
-  updateBillApiMutationInput,
-} from '../features/store/featureOutboxOperations';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useBillWrites } from '../features/store/useBillWrites';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -152,16 +148,8 @@ jest.mock('../features', () => ({
   updateBill: jest.fn(),
 }));
 
-jest.mock('../features/store/featureOutboxOperations', () => ({
-  createBillApiMutationInput: jest.fn((payload: unknown) => ({ body: payload })),
-  updateBillApiMutationInput: jest.fn((billId: string, updates: unknown) => ({
-    billId,
-    body: updates,
-  })),
-}));
-
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
+jest.mock('../features/store/useBillWrites', () => ({
+  useBillWrites: jest.fn(),
 }));
 
 jest.mock('../hooks/useDebouncedValue', () => ({
@@ -214,12 +202,7 @@ const mockedCreateBill = createBill as jest.MockedFunction<typeof createBill>;
 const mockedCreateEntityId = createEntityId as jest.MockedFunction<typeof createEntityId>;
 const mockedGetBillById = getBillById as jest.MockedFunction<typeof getBillById>;
 const mockedUpdateBill = updateBill as jest.MockedFunction<typeof updateBill>;
-const mockedCreateBillApiMutationInput =
-  createBillApiMutationInput as jest.MockedFunction<typeof createBillApiMutationInput>;
-const mockedUpdateBillApiMutationInput =
-  updateBillApiMutationInput as jest.MockedFunction<typeof updateBillApiMutationInput>;
-const mockedUseOfflineAwareFeatureWrite =
-  useOfflineAwareFeatureWrite as jest.MockedFunction<typeof useOfflineAwareFeatureWrite>;
+const mockedUseBillWrites = useBillWrites as jest.MockedFunction<typeof useBillWrites>;
 const mockedTrackObservabilityEvent =
   trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
@@ -408,17 +391,25 @@ describe('CreateBillScreen', () => {
 
     mockedGetBillById.mockReset();
     mockedUpdateBill.mockReset();
-    mockedCreateBillApiMutationInput.mockClear();
-    mockedUpdateBillApiMutationInput.mockClear();
     mockedTrackObservabilityEvent.mockReset();
 
-    mockedUseOfflineAwareFeatureWrite.mockReset();
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
-      (async ({ execute }: { execute: () => Promise<unknown> }) => ({
-        result: await execute(),
+    mockedUseBillWrites.mockReset();
+    mockedUseBillWrites.mockReturnValue({
+      createBill: async (input: Parameters<ReturnType<typeof useBillWrites>['createBill']>[0]) => ({
+        result: await mockedCreateBill(input),
         status: 'completed' as const,
-      })) as ReturnType<typeof useOfflineAwareFeatureWrite>,
-    );
+      }),
+      deleteBill: jest.fn(),
+      updateBill: async ({
+        billId,
+        updates,
+      }: Parameters<ReturnType<typeof useBillWrites>['updateBill']>[0]) => ({
+        result: await mockedUpdateBill(billId, updates),
+        status: 'completed' as const,
+      }),
+      updateBillStatus: jest.fn(),
+      updateParticipantPaidStatus: jest.fn(),
+    } as unknown as ReturnType<typeof useBillWrites>);
 
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({

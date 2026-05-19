@@ -17,24 +17,14 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  deleteBill,
   getBillById,
-  markBillParticipantPaid,
-  updateBill,
   type BillParticipantRecord,
   type BillRecord,
 } from '../features';
 import { billsQueryKeys, getCachedBillDetail } from '../features/store/billsQuery';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
-import {
-  deleteBillApiMutationInput,
-  updateBillApiMutationInput,
-  updateBillParticipantPaidStatusApiMutationInput,
-} from '../features/store/featureOutboxOperations';
+import { useBillWrites } from '../features/store/useBillWrites';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { useFeatureWriteSubmit } from '../features/store/useFeatureWriteSubmit';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -264,8 +254,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
-  const writeFeature = useOfflineAwareFeatureWrite();
-  const { isSubmitting: isDeletingBill, submitFeatureWrite } = useFeatureWriteSubmit();
+  const billWrites = useBillWrites();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
@@ -277,6 +266,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUpdatingBillStatus, setIsUpdatingBillStatus] = useState(false);
+  const [isDeletingBill, setIsDeletingBill] = useState(false);
   const [updatingParticipantId, setUpdatingParticipantId] = useState<string | null>(null);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billQuery.isRefetching);
@@ -354,13 +344,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     );
   }, [bill]);
 
-  const refreshBill = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: billsQueryKeys.root }),
-      queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(billId) }),
-    ]);
-  };
-
   const navigateToBillsAfterDelete = useCallback(() => {
     setIsDeleteConfirmVisible(false);
 
@@ -399,31 +382,21 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setIsUpdatingBillStatus(true);
 
     try {
-      const updateResult = await writeFeature({
-        operationName: 'bill.status.toggle',
-        offline: {
-          strategy: 'api',
-          input: updateBillApiMutationInput(billId, { status: nextStatus }),
-        },
-        execute: () =>
-          updateBill(billId, {
-            status: nextStatus,
-          }),
+      const updateResult = await billWrites.updateBillStatus({
+        billId,
+        status: nextStatus,
       });
 
       if (updateResult.status === 'queued') {
-        await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
           billId,
           nextStatus,
           queued: true,
         });
-        showQueuedOfflineAlert('Bill status update');
         return;
       }
 
-      await refreshBill();
       trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
         billId,
@@ -463,21 +436,13 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setUpdatingParticipantId(participantId);
 
     try {
-      const updateResult = await writeFeature({
-        operationName: 'bill.participant.toggle-paid',
-        offline: {
-          strategy: 'api',
-          input: updateBillParticipantPaidStatusApiMutationInput(
-            billId,
-            participantId,
-            nextPaidStatus,
-          ),
-        },
-        execute: () => markBillParticipantPaid(billId, participantId, nextPaidStatus),
+      const updateResult = await billWrites.updateParticipantPaidStatus({
+        billId,
+        participantId,
+        paidStatus: nextPaidStatus,
       });
 
       if (updateResult.status === 'queued') {
-        await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
           billId,
@@ -485,11 +450,9 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
           nextPaidStatus,
           queued: true,
         });
-        showQueuedOfflineAlert('Payment status update');
         return;
       }
 
-      await refreshBill();
       trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
         billId,
@@ -523,21 +486,9 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       billId: bill.id,
       isOnline,
     });
+    setIsDeletingBill(true);
     try {
-      const deleteResult = await submitFeatureWrite({
-        operationName: 'bill.delete',
-        offline: {
-          strategy: 'api',
-          input: deleteBillApiMutationInput(bill.id),
-        },
-        execute: () => deleteBill(bill.id),
-        fallbackErrorMessage: 'Could not delete bill.',
-        onSettledInvalidate: async () => {
-          await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
-          queryClient.removeQueries({ queryKey: billsQueryKeys.detail(bill.id) });
-        },
-        queuedToast: 'Bill delete',
-      });
+      const deleteResult = await billWrites.deleteBill({ billId: bill.id });
 
       if (deleteResult.status === 'queued') {
         trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
@@ -563,6 +514,8 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         billId: bill.id,
         error: message,
       });
+    } finally {
+      setIsDeletingBill(false);
     }
   };
   const handleRefresh = useCallback(async () => {

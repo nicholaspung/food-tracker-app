@@ -20,17 +20,13 @@ import {
 import { RestaurantMapView, type RestaurantMapGroup } from '../components/maps';
 import {
   createDefaultRestaurantList,
-  deleteRestaurantList,
   getRestaurantListDetail,
-  invalidateRestaurantListCollectionQueries,
   invalidateRestaurantListContentQueries,
   invalidateRestaurantListSaveTargetQueries,
   moveRestaurantListRestaurant,
-  removeRestaurantListSourceRating,
-  removeRestaurantListQueries,
-  removeRestaurantListUserRating,
   restaurantListQueryKeys,
   saveRestaurantFoodItemToList,
+  useRestaurantListWrites,
 } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
@@ -377,6 +373,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const queryClient = useQueryClient();
   const trackWriteTelemetry = useWriteTelemetry();
   const queueFeatureOutbox = useFeatureOutboxQueue();
+  const restaurantListWrites = useRestaurantListWrites();
   const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
@@ -683,12 +680,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     await invalidateRestaurantListContentQueries(queryClient, listId);
   }, [listId, queryClient]);
 
-  const invalidateCurrentListMembershipQueries = useCallback(async () => {
-    await invalidateRestaurantListContentQueries(queryClient, listId, {
-      includeCandidateRestaurants: true,
-    });
-  }, [listId, queryClient]);
-
   const invalidateSaveTargetQueries = useCallback(async () => {
     await invalidateRestaurantListSaveTargetQueries(queryClient, listId);
   }, [listId, queryClient]);
@@ -710,30 +701,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsDeletingList(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('list.delete', { listId: list.id });
-        await invalidateRestaurantListCollectionQueries(queryClient);
-        removeRestaurantListQueries(queryClient, list.id);
-        setIsDeleteConfirmVisible(false);
-        setIsRedirectingAfterListDelete(true);
-        trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
-          ...listAnalyticsContext,
-          queued: true,
-        });
-        showQueuedOfflineAlert('List delete');
-        navigation.replace('Lists');
-        return;
-      }
-
-      await trackWriteTelemetry('list.delete');
-      await deleteRestaurantList(list.id);
-      await invalidateRestaurantListCollectionQueries(queryClient);
-      removeRestaurantListQueries(queryClient, list.id);
+      const result = await restaurantListWrites.deleteRestaurantList({ listId: list.id });
       setIsDeleteConfirmVisible(false);
       setIsRedirectingAfterListDelete(true);
       trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
-        queued: false,
+        queued: result.status === 'queued',
       });
       navigation.replace('Lists');
     } catch (error) {
@@ -748,7 +721,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     } finally {
       setIsDeletingList(false);
     }
-  }, [isOnline, isOwner, list, listAnalyticsContext, navigation, queryClient, queueFeatureOutbox, trackWriteTelemetry]);
+  }, [isOnline, isOwner, list, listAnalyticsContext, navigation, restaurantListWrites]);
 
   const confirmDeleteList = () => {
     if (!list || !isOwner) {
@@ -847,33 +820,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('list.restaurant.remove.source', {
-          listId,
-          listItemId: input.listItemId,
-          foodItemId: input.foodItemId,
-        });
-        await invalidateCurrentListMembershipQueries();
-        trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
-          ...listAnalyticsContext,
-          itemKind,
-          queued: true,
-        });
-        showQueuedOfflineAlert('List update');
-        return true;
-      }
-
-      await trackWriteTelemetry('list.restaurant.remove.source');
-      await removeRestaurantListSourceRating({
+      const result = await restaurantListWrites.removeRestaurantListSourceRating({
         listId,
         listItemId: input.listItemId,
         foodItemId: input.foodItemId,
       });
-      await invalidateCurrentListMembershipQueries();
       trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
         itemKind,
-        queued: false,
+        queued: result.status === 'queued',
       });
       return true;
     } catch (error) {
@@ -907,25 +862,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('list.restaurant.remove.user', { listId, listItemId });
-        await invalidateCurrentListMembershipQueries();
-        trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
-          ...listAnalyticsContext,
-          itemKind: 'user_linked',
-          queued: true,
-        });
-        showQueuedOfflineAlert('List update');
-        return true;
-      }
-
-      await trackWriteTelemetry('list.restaurant.remove.user');
-      await removeRestaurantListUserRating(listId, listItemId);
-      await invalidateCurrentListMembershipQueries();
+      const result = await restaurantListWrites.removeRestaurantListUserRating({ listId, listItemId });
       trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
         ...listAnalyticsContext,
         itemKind: 'user_linked',
-        queued: false,
+        queued: result.status === 'queued',
       });
       return true;
     } catch (error) {

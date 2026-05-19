@@ -4,13 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   buildPocketBaseFileUrl,
-  deleteRestaurantList,
   getRestaurantListDetail,
-  invalidateRestaurantListCollectionQueries,
   invalidateRestaurantListContentQueries,
-  removeRestaurantListQueries,
-  removeRestaurantListSourceRating,
-  removeRestaurantListUserRating,
+  useRestaurantListWrites,
 } from '../features';
 import type { RestaurantListDetailRecord } from '../features/store/featureStore';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -94,19 +90,15 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
   createDefaultRestaurantList: jest.fn(),
-  deleteRestaurantList: jest.fn(),
   getRestaurantListDetail: jest.fn(),
-  invalidateRestaurantListCollectionQueries: jest.fn(),
   invalidateRestaurantListContentQueries: jest.fn(),
   invalidateRestaurantListSaveTargetQueries: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
-  removeRestaurantListQueries: jest.fn(),
-  removeRestaurantListSourceRating: jest.fn(),
-  removeRestaurantListUserRating: jest.fn(),
   restaurantListQueryKeys: {
     detail: (listId: string) => ['feature', 'restaurantListDetail', listId],
   },
   saveRestaurantFoodItemToList: jest.fn(),
+  useRestaurantListWrites: jest.fn(),
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
@@ -167,10 +159,65 @@ jest.mock('../components/shared', () => ({
   FeatureDetailScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
+  FoodItemRatingRecordCard: ({
+    itemName,
+    photoEntries,
+    photoTestID,
+    rows,
+  }: Record<string, unknown> & {
+    itemName?: string;
+    photoEntries?: { previewUrl?: string; uri?: string }[];
+    photoTestID?: string;
+    rows?: { actions?: React.ReactNode; id: string }[];
+  }) =>
+    mockReact.createElement(
+      'FoodItemRatingRecordCard',
+      { itemName },
+      photoEntries && photoEntries.length > 0
+        ? mockReact.createElement(
+            'RecordPhotoThumbnailButton',
+            {
+              entries: photoEntries,
+              testID: photoTestID,
+            },
+            photoEntries[0].previewUrl || photoEntries[0].uri
+              ? mockReact.createElement('CachedRemoteImage', {
+                  uri: photoEntries[0].previewUrl ?? photoEntries[0].uri,
+                })
+              : null,
+          )
+        : null,
+      ...(rows ?? []).map((row) =>
+        mockReact.createElement('FoodItemRatingRecordRow', { key: row.id }, row.actions),
+      ),
+    ),
   PhotoViewerModal: () => null,
   RatingPill: () => null,
+  RecordPhotoThumbnailButton: ({
+    entries,
+    testID,
+  }: Record<string, unknown> & {
+    entries?: { previewUrl?: string; uri?: string }[];
+    testID?: string;
+  }) =>
+    mockReact.createElement(
+      'RecordPhotoThumbnailButton',
+      { testID },
+      entries?.[0]?.previewUrl || entries?.[0]?.uri
+        ? mockReact.createElement('CachedRemoteImage', {
+            uri: entries[0].previewUrl ?? entries[0].uri,
+          })
+        : null,
+    ),
   SectionHeader: (props: Record<string, unknown>) => mockReact.createElement('SectionHeader', props),
+  SegmentedControl: (props: Record<string, unknown>) =>
+    mockReact.createElement('SegmentedControl', props),
   Skeleton: () => null,
+}));
+
+jest.mock('../components/maps', () => ({
+  RestaurantMapView: (props: Record<string, unknown>) =>
+    mockReact.createElement('RestaurantMapView', props),
 }));
 
 jest.mock('../components/shared/PageErrorToast', () => ({
@@ -180,23 +227,11 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
-const mockedDeleteRestaurantList = deleteRestaurantList as jest.MockedFunction<typeof deleteRestaurantList>;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<typeof getRestaurantListDetail>;
-const mockedInvalidateRestaurantListCollectionQueries = invalidateRestaurantListCollectionQueries as jest.MockedFunction<
-  typeof invalidateRestaurantListCollectionQueries
->;
 const mockedInvalidateRestaurantListContentQueries = invalidateRestaurantListContentQueries as jest.MockedFunction<
   typeof invalidateRestaurantListContentQueries
 >;
-const mockedRemoveRestaurantListQueries = removeRestaurantListQueries as jest.MockedFunction<
-  typeof removeRestaurantListQueries
->;
-const mockedRemoveRestaurantListSourceRating = removeRestaurantListSourceRating as jest.MockedFunction<
-  typeof removeRestaurantListSourceRating
->;
-const mockedRemoveRestaurantListUserRating = removeRestaurantListUserRating as jest.MockedFunction<
-  typeof removeRestaurantListUserRating
->;
+const mockedUseRestaurantListWrites = useRestaurantListWrites as jest.MockedFunction<typeof useRestaurantListWrites>;
 const mockedUseFeatureOutboxQueue = useFeatureOutboxQueue as jest.MockedFunction<typeof useFeatureOutboxQueue>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
@@ -336,6 +371,11 @@ describe('ListDetailScreen', () => {
     replace: jest.fn(),
   };
   const queryClient = {};
+  const restaurantListWrites = {
+    deleteRestaurantList: jest.fn(),
+    removeRestaurantListSourceRating: jest.fn(),
+    removeRestaurantListUserRating: jest.fn(),
+  };
 
   const route = {
     key: 'ListDetail-list_1',
@@ -348,15 +388,20 @@ describe('ListDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedBuildPocketBaseFileUrl.mockReturnValue('photo-url');
-    mockedDeleteRestaurantList.mockResolvedValue(undefined);
     mockedUseQuery.mockReturnValue(buildQueryResult());
     mockedUseQueryClient.mockReturnValue(queryClient as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
-    mockedInvalidateRestaurantListCollectionQueries.mockResolvedValue(undefined);
     mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
-    mockedRemoveRestaurantListQueries.mockImplementation(() => undefined);
-    mockedRemoveRestaurantListSourceRating.mockResolvedValue([]);
-    mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
+    restaurantListWrites.deleteRestaurantList.mockResolvedValue({ status: 'completed' });
+    restaurantListWrites.removeRestaurantListSourceRating.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.removeRestaurantListUserRating.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    mockedUseRestaurantListWrites.mockReturnValue(restaurantListWrites);
     mockedUseFeatureOutboxQueue.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseAuth.mockReturnValue({
@@ -605,9 +650,7 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'delete-list-confirmation-modal' }).props.onConfirm();
     });
 
-    expect(mockedDeleteRestaurantList).toHaveBeenCalledWith('list_1');
-    expect(mockedInvalidateRestaurantListCollectionQueries).toHaveBeenCalledWith(queryClient);
-    expect(mockedRemoveRestaurantListQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(restaurantListWrites.deleteRestaurantList).toHaveBeenCalledWith({ listId: 'list_1' });
     expect(navigation.replace).toHaveBeenCalledWith('Lists');
     expect(navigation.navigate).not.toHaveBeenCalledWith('Lists');
   });
@@ -657,8 +700,7 @@ describe('ListDetailScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: false,
     } as ReturnType<typeof useConnectivity>);
-    const queueFeatureOutbox = jest.fn().mockResolvedValue(undefined);
-    mockedUseFeatureOutboxQueue.mockReturnValue(queueFeatureOutbox);
+    restaurantListWrites.deleteRestaurantList.mockResolvedValue({ status: 'queued' });
     const queryResult = buildQueryResult();
     mockedUseQuery.mockReturnValue(queryResult);
 
@@ -686,14 +728,12 @@ describe('ListDetailScreen', () => {
       (node: any) => node.type === 'EmptyState' && node.props.title === 'List not found',
     );
 
-    expect(queueFeatureOutbox).toHaveBeenCalledWith('list.delete', { listId: 'list_1' });
-    expect(mockedInvalidateRestaurantListCollectionQueries).toHaveBeenCalledWith(queryClient);
-    expect(mockedRemoveRestaurantListQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(restaurantListWrites.deleteRestaurantList).toHaveBeenCalledWith({ listId: 'list_1' });
     expect(navigation.replace).toHaveBeenCalledWith('Lists');
     expect(notFoundStates).toHaveLength(0);
   });
 
-  it('invalidates candidate restaurant caches after confirming source rating deletion', async () => {
+  it('delegates source rating deletion to restaurant list writes', async () => {
     const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
     mockedUseQueryClient.mockReturnValue(queryClient);
     mockedUseAuth.mockReturnValue({
@@ -737,17 +777,14 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
     });
 
-    expect(mockedRemoveRestaurantListSourceRating).toHaveBeenCalledWith({
+    expect(restaurantListWrites.removeRestaurantListSourceRating).toHaveBeenCalledWith({
       listId: 'list_1',
       listItemId: 'item_1',
       foodItemId: 'food_item_1',
     });
-    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
-      includeCandidateRestaurants: true,
-    });
   });
 
-  it('invalidates candidate restaurant caches after confirming linked user rating deletion', async () => {
+  it('delegates linked user rating deletion to restaurant list writes', async () => {
     const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
     mockedUseQueryClient.mockReturnValue(queryClient);
     mockedUseAuth.mockReturnValue({
@@ -795,17 +832,18 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
     });
 
-    expect(mockedRemoveRestaurantListUserRating).toHaveBeenCalledWith('list_1', 'item_1');
-    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
-      includeCandidateRestaurants: true,
+    expect(restaurantListWrites.removeRestaurantListUserRating).toHaveBeenCalledWith({
+      listId: 'list_1',
+      listItemId: 'item_1',
     });
   });
 
-  it('invalidates candidate restaurant caches after queueing offline source rating deletion', async () => {
+  it('delegates offline source rating deletion to restaurant list writes', async () => {
     const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
-    const queueFeatureOutbox = jest.fn().mockResolvedValue(undefined);
     mockedUseQueryClient.mockReturnValue(queryClient);
-    mockedUseFeatureOutboxQueue.mockReturnValue(queueFeatureOutbox);
+    restaurantListWrites.removeRestaurantListSourceRating.mockResolvedValue({
+      status: 'queued',
+    });
     mockedUseConnectivity.mockReturnValue({
       isOnline: false,
     } as ReturnType<typeof useConnectivity>);
@@ -850,14 +888,10 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
     });
 
-    expect(queueFeatureOutbox).toHaveBeenCalledWith('list.restaurant.remove.source', {
+    expect(restaurantListWrites.removeRestaurantListSourceRating).toHaveBeenCalledWith({
       listId: 'list_1',
       listItemId: 'item_1',
       foodItemId: 'food_item_1',
-    });
-    expect(mockedRemoveRestaurantListSourceRating).not.toHaveBeenCalled();
-    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'list_1', {
-      includeCandidateRestaurants: true,
     });
   });
 

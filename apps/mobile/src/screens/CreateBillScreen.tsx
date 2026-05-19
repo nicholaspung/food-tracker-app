@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   ConfirmDestructiveModal,
   FeatureFormScreenScaffold,
@@ -14,25 +13,17 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  createBill,
   createEntityId,
-  updateBill,
   type BillItemRecord,
   type BillItemSplitConfig,
   type BillParticipantRecord,
   type FriendRecord,
 } from '../features';
-import { billsQueryKeys } from '../features/store/billsQuery';
 import {
   formatCurrency,
   validateBillTotal,
 } from '../features/bills/billCalculations';
-import {
-  createBillApiMutationInput,
-  updateBillApiMutationInput,
-} from '../features/store/featureOutboxOperations';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useBillWrites } from '../features/store/useBillWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -364,9 +355,8 @@ const useStyles = createThemedStyles((theme) => ({
 export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const billWrites = useBillWrites();
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
   const editBillId = route.params?.billId;
   const isEditMode = Boolean(editBillId);
 
@@ -1770,32 +1760,16 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       };
 
       const writeResult = isEditMode && editBillId
-        ? await writeFeature({
-            operationName: 'bill.update',
-            offline: {
-              strategy: 'api',
-              input: updateBillApiMutationInput(editBillId, billPayload),
-            },
-            execute: () => updateBill(editBillId, billPayload),
+        ? await billWrites.updateBill({
+            billId: editBillId,
+            updates: billPayload,
           })
-        : await writeFeature({
-            operationName: 'bill.create',
-            offline: {
-              strategy: 'api',
-              input: createBillApiMutationInput({
-                ...billPayload,
-                createdByUserId: user?.id ?? 'unknown_user',
-              }),
-            },
-            execute: () =>
-              createBill({
-                ...billPayload,
-                createdByUserId: user?.id ?? 'unknown_user',
-              }),
+        : await billWrites.createBill({
+            ...billPayload,
+            createdByUserId: user?.id ?? 'unknown_user',
           });
 
       if (writeResult.status === 'queued') {
-        await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
         trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
           source: 'CreateBillScreen',
           isEditMode,
@@ -1803,18 +1777,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           queued: true,
         });
         hasCompletedFlowRef.current = true;
-        showQueuedOfflineAlert({
-          analyticsSource: 'CreateBillScreen',
-          subject: 'Bill',
-        });
         navigation.navigate('Bills');
         return;
       }
 
       const savedBill = writeResult.result;
 
-      await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
-      await queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(savedBill.id) });
       trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
         source: 'CreateBillScreen',
         isEditMode,

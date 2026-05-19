@@ -4,7 +4,7 @@ import type * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Modal, Pressable, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -16,20 +16,17 @@ import {
   Skeleton,
 } from '../components/shared';
 import {
-  createNote,
   formatLimitExceededMessage,
   getNoteDetail,
   parseLimitExceededError,
-  updateNote,
   useMonthlyUsage,
   type NotePhotoUploadInput,
 } from '../features';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
+import { useNoteWrites } from '../features/store/useNoteWrites';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
@@ -151,10 +148,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const styles = useStyles();
   const noteId = route.params?.noteId;
   const isEditing = Boolean(noteId);
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const noteWrites = useNoteWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
-  const queryClient = useQueryClient();
   const cameraRef = useRef<CameraView | null>(null);
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
@@ -707,28 +703,13 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
     try {
       const saveResult = isEditing && noteId
-        ? await writeFeature({
-            operationName: 'note.update',
-            offline: {
-              strategy: 'outbox',
-              payload: {
-                noteId,
-                updates: noteUpdateInput,
-              },
-            },
-            execute: () => updateNote(noteId, noteUpdateInput),
+        ? await noteWrites.updateNote({
+            noteId,
+            updates: noteUpdateInput,
           })
-        : await writeFeature({
-            operationName: 'note.create',
-            offline: {
-              strategy: 'outbox',
-              payload: noteCreateInput,
-            },
-            execute: () => createNote(noteCreateInput),
-          });
+        : await noteWrites.createNote(noteCreateInput);
 
       if (saveResult.status === 'queued') {
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] });
         trackObservabilityEvent('NOTE_SUBMIT_SUCCEEDED', {
           source: 'NoteEditorScreen',
           mode,
@@ -748,27 +729,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           });
         }
         hasCompletedEditorFlowRef.current = true;
-        showQueuedOfflineAlert({
-          analyticsSource: 'NoteEditorScreen',
-          subject: 'Note',
-        });
         navigation.navigate('Notes');
         return;
       }
 
-      const invalidations: Promise<unknown>[] = [
-        queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
-        ...(noteId ? [queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] })] : []),
-      ];
-
-      if (uploadPhotos.length > 0) {
-        invalidations.push(
-          queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
-        );
-      }
-
-      await Promise.all(invalidations);
       await cleanupStagedPhotoFiles(uploadPhotos);
       trackObservabilityEvent('NOTE_SUBMIT_SUCCEEDED', {
         source: 'NoteEditorScreen',
@@ -855,10 +819,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     navigation,
     newPhotos,
     noteId,
+    noteWrites,
     perNotePhotoLimit,
     photosToDelete,
-    queryClient,
-    writeFeature,
     shouldEnforceUsageLimitsClientSide,
     totalPhotoCount,
   ]);
