@@ -2,23 +2,17 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  createFoodProduct,
-  createVisit,
   formatLimitExceededMessage,
   homeFeedMapQueryKeys,
   homeFeedQueryKeys,
-  markNoteUsed,
   parseLimitExceededError,
-  promoteCachedNoteToUsed,
   restaurantsQueryKeys,
   type MonthlyUsageSnapshot,
 } from '../../features';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
-import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import {
-  buildCreateFoodProductInput,
   buildDefaultFoodProductForm,
   validateFoodProductForm,
   type FoodProductFormValues,
@@ -32,7 +26,6 @@ import {
 } from '../../observability/productAnalytics';
 import {
   buildDefaultRestaurantForm,
-  buildPhotoUploadInput,
   resolveDraftPhotoDetectedDateValue,
   type DraftPhotoAsset,
   type GeneralPhotoStep,
@@ -41,6 +34,11 @@ import {
   type RestaurantPhotoForm,
 } from './shared';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './shared';
+import {
+  submitFoodProductPhotoEntries,
+  submitRestaurantPhotoEntries,
+  validateRestaurantPhotoSubmissionForm,
+} from '../../features/photoProcessing/photoSubmission';
 
 interface UsePhotoProcessingSubmissionParams {
   currentPhoto: DraftPhotoAsset | null;
@@ -95,62 +93,9 @@ export function usePhotoProcessingSubmission({
 }: UsePhotoProcessingSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const syncSourceNoteUsedState = useCallback((usedAt: string) => {
-    if (!sourceNoteId) {
-      return;
-    }
-
-    promoteCachedNoteToUsed(queryClient, {
-      noteId: sourceNoteId,
-      usedAt,
-    });
-  }, [queryClient, sourceNoteId]);
-
-  const persistSourceNoteUsed = useCallback(async (usedAt: string) => {
-    if (!sourceNoteId) {
-      return;
-    }
-
-    await writeFeature({
-      operationName: 'note.mark-used',
-      trackOnlineWrite: false,
-      offline: {
-        strategy: 'outbox',
-        payload: {
-          noteId: sourceNoteId,
-          usedAt,
-        },
-      },
-      execute: () =>
-        markNoteUsed({
-          noteId: sourceNoteId,
-          usedAt,
-        }),
-    });
-
-    syncSourceNoteUsedState(usedAt);
-  }, [sourceNoteId, syncSourceNoteUsedState, writeFeature]);
-
   const validateRestaurantForm = useCallback(
-    (form: RestaurantPhotoForm): string | null => {
-      if (!form.restaurantName.trim()) {
-        return 'Select a restaurant before continuing.';
-      }
-
-      if (!form.menuItemName.trim()) {
-        return 'Select a menu item before continuing.';
-      }
-
-      if (form.rating < 1 || form.rating > 5) {
-        return 'Rating must be between 1 and 5.';
-      }
-
-      if (!isValidLocalDate(form.date.trim())) {
-        return 'Date must use YYYY-MM-DD format.';
-      }
-
-      return null;
-    },
+    (form: RestaurantPhotoForm): string | null =>
+      validateRestaurantPhotoSubmissionForm(form),
     [],
   );
 
@@ -199,92 +144,20 @@ export function usePhotoProcessingSubmission({
   ]);
 
   const submitRestaurantVisits = useCallback(async (): Promise<PhotoProcessingSubmitResult> => {
-    const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
-    let queued = false;
-    const groupedVisits = new Map<
-      string,
-      {
-        restaurantId: string;
-        restaurantName: string;
-        date: string;
-        items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
-      }
-    >();
-
-    for (const [index, photo] of photos.entries()) {
-      const form = restaurantForms[photo.id];
-      if (!form) {
-        throw new Error(`Photo ${index + 1} is missing restaurant details.`);
-      }
-
-      const validationMessage = validateRestaurantForm(form);
-      if (validationMessage) {
-        throw new Error(`Photo ${index + 1}: ${validationMessage}`);
-      }
-
-      const key = `${form.restaurantId.trim()}__${form.date}`;
-      const existingVisit =
-        groupedVisits.get(key) ?? {
-          restaurantId: form.restaurantId.trim(),
-          restaurantName: form.restaurantName.trim(),
-          date: form.date,
-          items: [],
-        };
-
-      groupedVisits.set(key, {
-        ...existingVisit,
-        items: [...existingVisit.items, { photo, form }],
-      });
-    }
-
-    for (const visitGroup of groupedVisits.values()) {
-      const visitInput = {
-        restaurantId: visitGroup.restaurantId,
-        restaurantName: visitGroup.restaurantName,
-        visitedAt: localDateStringToUTC(visitGroup.date),
-        visitedOn: visitGroup.date,
-        visibility: visitVisibility,
-        source: 'visit' as const,
-        ...(sourceNoteId && groupedVisits.size === 1
-          ? { sourceNoteId }
-          : {}),
-        items: visitGroup.items.map((entry) => ({
-          name: entry.form.menuItemName.trim(),
-          rating: entry.form.rating,
-          description: entry.form.description.trim() || undefined,
-          notes: entry.form.notes.trim() || undefined,
-          photos: [buildPhotoUploadInput(entry.photo)],
-        })),
-      };
-
-      const createResult = await writeFeature({
-        operationName: 'visit.create',
-        offline: {
-          strategy: 'outbox',
-          payload: visitInput,
-        },
-        execute: () => createVisit(visitInput),
-      });
-      queued = queued || createResult.status === 'queued';
-
-      if (sourceNoteId && groupedVisits.size === 1 && noteUsedAt) {
-        if (createResult.status === 'queued') {
-          await persistSourceNoteUsed(noteUsedAt);
-        } else {
-          syncSourceNoteUsedState(noteUsedAt);
-        }
-      }
-    }
-
-    if (sourceNoteId && groupedVisits.size > 1 && noteUsedAt) {
-      await persistSourceNoteUsed(noteUsedAt);
-    }
+    const result = await submitRestaurantPhotoEntries({
+      noteId: sourceNoteId,
+      photos,
+      queryClient,
+      restaurantForms,
+      visitVisibility,
+      writeFeature,
+    });
 
     trackObservabilityEvent('Photo Processing Completed', {
       processType: 'restaurant',
       source: 'PhotoProcessingScreen',
       photoCount: photos.length,
-      visitCount: groupedVisits.size,
+      visitCount: result.visitCount ?? 0,
     });
     trackProductEvent('tracking.entry_completed', {
       entryType: 'restaurant_visit',
@@ -294,8 +167,8 @@ export function usePhotoProcessingSubmission({
       ratingCount: photos.length,
       visibility: visitVisibility,
       completed: true,
-      queued,
-      visitCount: groupedVisits.size,
+      queued: result.queued,
+      visitCount: result.visitCount ?? 0,
     });
     trackFirstFoodLogged({
       entryType: 'restaurant_visit',
@@ -306,59 +179,24 @@ export function usePhotoProcessingSubmission({
       visibility: visitVisibility,
       completed: true,
     });
-    return { queued };
+    return { queued: result.queued };
   }, [
     photos,
+    queryClient,
     restaurantForms,
     sourceNoteId,
-    persistSourceNoteUsed,
-    syncSourceNoteUsedState,
-    validateRestaurantForm,
     visitVisibility,
     writeFeature,
   ]);
 
   const submitFoodProductItems = useCallback(async (): Promise<PhotoProcessingSubmitResult> => {
-    const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
-    let queued = false;
-    for (const [index, photo] of photos.entries()) {
-      const form = foodProductForms[photo.id];
-      if (!form) {
-        throw new Error(`Photo ${index + 1} is missing food product details.`);
-      }
-
-      const validationMessage = validateFoodProductForm(form);
-      if (validationMessage) {
-        throw new Error(`Photo ${index + 1}: ${validationMessage}`);
-      }
-
-      const foodProductInput = buildCreateFoodProductInput(form, {
-        photo: buildPhotoUploadInput(photo),
-        sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
-      });
-
-      const createResult = await writeFeature({
-        operationName: 'food-product.create',
-        offline: {
-          strategy: 'outbox',
-          payload: foodProductInput,
-        },
-        execute: () => createFoodProduct(foodProductInput),
-      });
-      queued = queued || createResult.status === 'queued';
-
-      if (sourceNoteId && photos.length === 1 && noteUsedAt) {
-        if (createResult.status === 'queued') {
-          await persistSourceNoteUsed(noteUsedAt);
-        } else {
-          syncSourceNoteUsedState(noteUsedAt);
-        }
-      }
-    }
-
-    if (sourceNoteId && photos.length > 1 && noteUsedAt) {
-      await persistSourceNoteUsed(noteUsedAt);
-    }
+    const result = await submitFoodProductPhotoEntries({
+      foodProductForms,
+      noteId: sourceNoteId,
+      photos,
+      queryClient,
+      writeFeature,
+    });
 
     trackObservabilityEvent('Photo Processing Completed', {
       processType: 'foodProduct',
@@ -372,7 +210,7 @@ export function usePhotoProcessingSubmission({
       itemCount: photos.length,
       ratingCount: photos.length,
       completed: true,
-      queued,
+      queued: result.queued,
     });
     trackFirstFoodLogged({
       entryType: 'food_product',
@@ -382,8 +220,8 @@ export function usePhotoProcessingSubmission({
       ratingCount: photos.length,
       completed: true,
     });
-    return { queued };
-  }, [photos, foodProductForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
+    return { queued: result.queued };
+  }, [photos, foodProductForms, queryClient, sourceNoteId, writeFeature]);
 
   const handleSubmitAll = useCallback(async () => {
     if (!processType) {

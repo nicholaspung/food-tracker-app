@@ -1,0 +1,340 @@
+import {
+  createFoodProduct,
+  createVisit,
+  markNoteUsed,
+  type CreateFoodProductInput,
+  type CreateVisitInput,
+  type VisitPhotoUploadInput,
+} from '../store/featureStore';
+import { promoteCachedNoteToUsed } from '../store/notesCache';
+import type { QueryClient } from '@tanstack/react-query';
+
+import type { OfflineAwareFeatureWrite } from '../store/useOfflineAwareFeatureWrite';
+import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
+import {
+  buildCreateFoodProductInput,
+  validateFoodProductForm,
+  type FoodProductFormValues,
+} from '../../lib/foodProductForm';
+
+export interface PhotoSubmissionDraftAsset {
+  id: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
+export interface RestaurantPhotoSubmissionForm {
+  restaurantId: string;
+  restaurantName: string;
+  menuItemName: string;
+  rating: number;
+  description: string;
+  notes: string;
+  date: string;
+}
+
+export interface PhotoSubmissionResult {
+  photoCount: number;
+  queued: boolean;
+  visitCount?: number;
+}
+
+interface SourceNoteSubmissionParams {
+  noteId?: string;
+  queryClient: QueryClient;
+  writeFeature: OfflineAwareFeatureWrite;
+}
+
+interface SubmitRestaurantPhotoEntriesParams extends SourceNoteSubmissionParams {
+  photos: PhotoSubmissionDraftAsset[];
+  restaurantForms: Record<string, RestaurantPhotoSubmissionForm>;
+  visitVisibility: 'friends' | 'private';
+}
+
+interface SubmitFoodProductPhotoEntriesParams extends SourceNoteSubmissionParams {
+  foodProductForms: Record<string, FoodProductFormValues>;
+  photos: PhotoSubmissionDraftAsset[];
+}
+
+function buildPhotoUploadInput(asset: PhotoSubmissionDraftAsset): VisitPhotoUploadInput {
+  return {
+    uri: asset.uri,
+    name: asset.name,
+    mimeType: asset.mimeType,
+  };
+}
+
+export function validateRestaurantPhotoSubmissionForm(
+  form: RestaurantPhotoSubmissionForm,
+): string | null {
+  if (!form.restaurantName.trim()) {
+    return 'Select a restaurant before continuing.';
+  }
+
+  if (!form.menuItemName.trim()) {
+    return 'Select a menu item before continuing.';
+  }
+
+  if (form.rating < 1 || form.rating > 5) {
+    return 'Rating must be between 1 and 5.';
+  }
+
+  if (!isValidLocalDate(form.date.trim())) {
+    return 'Date must use YYYY-MM-DD format.';
+  }
+
+  return null;
+}
+
+export function promoteSourceNoteUsed(
+  queryClient: QueryClient,
+  noteId: string | undefined,
+  usedAt: string,
+): void {
+  if (!noteId) {
+    return;
+  }
+
+  promoteCachedNoteToUsed(queryClient, {
+    noteId,
+    usedAt,
+  });
+}
+
+export async function persistSourceNoteUsed({
+  noteId,
+  queryClient,
+  usedAt,
+  writeFeature,
+}: SourceNoteSubmissionParams & { usedAt: string }): Promise<void> {
+  if (!noteId) {
+    return;
+  }
+
+  await writeFeature({
+    operationName: 'note.mark-used',
+    trackOnlineWrite: false,
+    offline: {
+      strategy: 'outbox',
+      payload: {
+        noteId,
+        usedAt,
+      },
+    },
+    execute: () =>
+      markNoteUsed({
+        noteId,
+        usedAt,
+      }),
+  });
+
+  promoteSourceNoteUsed(queryClient, noteId, usedAt);
+}
+
+export function buildRestaurantVisitInputsFromPhotos({
+  photos,
+  restaurantForms,
+  sourceNoteId,
+  visitVisibility,
+}: {
+  photos: PhotoSubmissionDraftAsset[];
+  restaurantForms: Record<string, RestaurantPhotoSubmissionForm>;
+  sourceNoteId?: string;
+  visitVisibility: 'friends' | 'private';
+}): CreateVisitInput[] {
+  const groupedVisits = new Map<
+    string,
+    {
+      restaurantId: string;
+      restaurantName: string;
+      date: string;
+      items: { photo: PhotoSubmissionDraftAsset; form: RestaurantPhotoSubmissionForm }[];
+    }
+  >();
+
+  for (const [index, photo] of photos.entries()) {
+    const form = restaurantForms[photo.id];
+    if (!form) {
+      throw new Error(`Photo ${index + 1} is missing restaurant details.`);
+    }
+
+    const validationMessage = validateRestaurantPhotoSubmissionForm(form);
+    if (validationMessage) {
+      throw new Error(`Photo ${index + 1}: ${validationMessage}`);
+    }
+
+    const key = `${form.restaurantId.trim()}__${form.date}`;
+    const existingVisit =
+      groupedVisits.get(key) ?? {
+        restaurantId: form.restaurantId.trim(),
+        restaurantName: form.restaurantName.trim(),
+        date: form.date,
+        items: [],
+      };
+
+    groupedVisits.set(key, {
+      ...existingVisit,
+      items: [...existingVisit.items, { photo, form }],
+    });
+  }
+
+  return Array.from(groupedVisits.values()).map((visitGroup) => ({
+    restaurantId: visitGroup.restaurantId,
+    restaurantName: visitGroup.restaurantName,
+    visitedAt: localDateStringToUTC(visitGroup.date),
+    visitedOn: visitGroup.date,
+    visibility: visitVisibility,
+    source: 'visit' as const,
+    ...(sourceNoteId && groupedVisits.size === 1
+      ? { sourceNoteId }
+      : {}),
+    items: visitGroup.items.map((entry) => ({
+      name: entry.form.menuItemName.trim(),
+      rating: entry.form.rating,
+      description: entry.form.description.trim() || undefined,
+      notes: entry.form.notes.trim() || undefined,
+      photos: [buildPhotoUploadInput(entry.photo)],
+    })),
+  }));
+}
+
+export function buildFoodProductInputsFromPhotos({
+  foodProductForms,
+  photos,
+  sourceNoteId,
+}: {
+  foodProductForms: Record<string, FoodProductFormValues>;
+  photos: PhotoSubmissionDraftAsset[];
+  sourceNoteId?: string;
+}): CreateFoodProductInput[] {
+  return photos.map((photo, index) => {
+    const form = foodProductForms[photo.id];
+    if (!form) {
+      throw new Error(`Photo ${index + 1} is missing food product details.`);
+    }
+
+    const validationMessage = validateFoodProductForm(form);
+    if (validationMessage) {
+      throw new Error(`Photo ${index + 1}: ${validationMessage}`);
+    }
+
+    return buildCreateFoodProductInput(form, {
+      photo: buildPhotoUploadInput(photo),
+      sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
+    });
+  });
+}
+
+export async function submitRestaurantPhotoEntries({
+  noteId,
+  photos,
+  queryClient,
+  restaurantForms,
+  visitVisibility,
+  writeFeature,
+}: SubmitRestaurantPhotoEntriesParams): Promise<PhotoSubmissionResult> {
+  const noteUsedAt = noteId ? new Date().toISOString() : null;
+  let queued = false;
+  const visitInputs = buildRestaurantVisitInputsFromPhotos({
+    photos,
+    restaurantForms,
+    sourceNoteId: noteId,
+    visitVisibility,
+  });
+
+  for (const visitInput of visitInputs) {
+    const createResult = await writeFeature({
+      operationName: 'visit.create',
+      offline: {
+        strategy: 'outbox',
+        payload: visitInput,
+      },
+      execute: () => createVisit(visitInput),
+    });
+    queued = queued || createResult.status === 'queued';
+
+    if (noteId && visitInputs.length === 1 && noteUsedAt) {
+      if (createResult.status === 'queued') {
+        await persistSourceNoteUsed({
+          noteId,
+          queryClient,
+          usedAt: noteUsedAt,
+          writeFeature,
+        });
+      } else {
+        promoteSourceNoteUsed(queryClient, noteId, noteUsedAt);
+      }
+    }
+  }
+
+  if (noteId && visitInputs.length > 1 && noteUsedAt) {
+    await persistSourceNoteUsed({
+      noteId,
+      queryClient,
+      usedAt: noteUsedAt,
+      writeFeature,
+    });
+  }
+
+  return {
+    photoCount: photos.length,
+    queued,
+    visitCount: visitInputs.length,
+  };
+}
+
+export async function submitFoodProductPhotoEntries({
+  foodProductForms,
+  noteId,
+  photos,
+  queryClient,
+  writeFeature,
+}: SubmitFoodProductPhotoEntriesParams): Promise<PhotoSubmissionResult> {
+  const noteUsedAt = noteId ? new Date().toISOString() : null;
+  let queued = false;
+  const foodProductInputs = buildFoodProductInputsFromPhotos({
+    foodProductForms,
+    photos,
+    sourceNoteId: noteId,
+  });
+
+  for (const foodProductInput of foodProductInputs) {
+    const createResult = await writeFeature({
+      operationName: 'food-product.create',
+      offline: {
+        strategy: 'outbox',
+        payload: foodProductInput,
+      },
+      execute: () => createFoodProduct(foodProductInput),
+    });
+    queued = queued || createResult.status === 'queued';
+
+    if (noteId && photos.length === 1 && noteUsedAt) {
+      if (createResult.status === 'queued') {
+        await persistSourceNoteUsed({
+          noteId,
+          queryClient,
+          usedAt: noteUsedAt,
+          writeFeature,
+        });
+      } else {
+        promoteSourceNoteUsed(queryClient, noteId, noteUsedAt);
+      }
+    }
+  }
+
+  if (noteId && photos.length > 1 && noteUsedAt) {
+    await persistSourceNoteUsed({
+      noteId,
+      queryClient,
+      usedAt: noteUsedAt,
+      writeFeature,
+    });
+  }
+
+  return {
+    photoCount: photos.length,
+    queued,
+  };
+}
