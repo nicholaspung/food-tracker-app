@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 import type { OfflineAwareFeatureWrite } from '../store/useOfflineAwareFeatureWrite';
-import { markNoteUsed } from '../store/featureStore';
-import { promoteCachedNoteToUsed } from '../store/notesCache';
+import {
+  applyNoteUsedCacheEffects,
+  writeNoteUsedWithOfflineSupport,
+} from '../store/noteUsedWrite';
 
 interface SourceNoteCompletionInput {
   noteId?: string;
@@ -28,7 +30,7 @@ export function promoteSourceNoteUsed({
     return;
   }
 
-  promoteCachedNoteToUsed(queryClient, {
+  applyNoteUsedCacheEffects(queryClient, {
     noteId,
     usedAt,
   });
@@ -44,22 +46,16 @@ export async function persistSourceNoteUsed({
     return;
   }
 
-  await writeFeature({
-    operationName: 'note.mark-used',
-    trackOnlineWrite: false,
-    offline: {
-      strategy: 'outbox',
-      payload: {
-        noteId,
-        usedAt,
-      },
+  await writeNoteUsedWithOfflineSupport(
+    writeFeature,
+    {
+      noteId,
+      usedAt,
     },
-    execute: () =>
-      markNoteUsed({
-        noteId,
-        usedAt,
-      }),
-  });
+    {
+      trackOnlineWrite: false,
+    },
+  );
 
   promoteSourceNoteUsed({
     noteId,

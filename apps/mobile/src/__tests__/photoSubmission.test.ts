@@ -7,15 +7,33 @@ import {
 } from '../features/photoProcessing/photoSubmission';
 import {
   createFoodProduct,
+} from '../features/store/foodProductsStore';
+import {
   createVisit,
-  markNoteUsed,
-} from '../features/store/featureStore';
+} from '../features/store/visitsStore';
+import { markNoteUsed } from '../features/store/notesStore';
+import { syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
+import { syncVisitMutationCaches } from '../features/store/visitsQuery';
 import { promoteCachedNoteToUsed } from '../features/store/notesCache';
 
-jest.mock('../features/store/featureStore', () => ({
-  createFoodProduct: jest.fn(),
+jest.mock('../features/store/visitsStore', () => ({
   createVisit: jest.fn(),
+}));
+
+jest.mock('../features/store/foodProductsStore', () => ({
+  createFoodProduct: jest.fn(),
+}));
+
+jest.mock('../features/store/notesStore', () => ({
   markNoteUsed: jest.fn(),
+}));
+
+jest.mock('../features/store/foodProductsQuery', () => ({
+  syncFoodProductMutationCaches: jest.fn(),
+}));
+
+jest.mock('../features/store/visitsQuery', () => ({
+  syncVisitMutationCaches: jest.fn(),
 }));
 
 jest.mock('../features/store/notesCache', () => ({
@@ -40,6 +58,10 @@ jest.mock('../lib/foodProductForm', () => ({
 const mockedCreateFoodProduct = createFoodProduct as jest.MockedFunction<typeof createFoodProduct>;
 const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>;
 const mockedMarkNoteUsed = markNoteUsed as jest.MockedFunction<typeof markNoteUsed>;
+const mockedSyncFoodProductMutationCaches =
+  syncFoodProductMutationCaches as jest.MockedFunction<typeof syncFoodProductMutationCaches>;
+const mockedSyncVisitMutationCaches =
+  syncVisitMutationCaches as jest.MockedFunction<typeof syncVisitMutationCaches>;
 const mockedPromoteCachedNoteToUsed = promoteCachedNoteToUsed as jest.MockedFunction<
   typeof promoteCachedNoteToUsed
 >;
@@ -98,6 +120,8 @@ describe('photo submission module', () => {
     mockedCreateFoodProduct.mockResolvedValue({ id: 'food-product-1' } as never);
     mockedCreateVisit.mockResolvedValue({ id: 'visit-1' } as never);
     mockedMarkNoteUsed.mockResolvedValue({ id: 'note-1' } as never);
+    mockedSyncFoodProductMutationCaches.mockResolvedValue(undefined);
+    mockedSyncVisitMutationCaches.mockResolvedValue(undefined);
   });
 
   it('validates restaurant photo forms', () => {

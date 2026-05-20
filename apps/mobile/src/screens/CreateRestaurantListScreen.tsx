@@ -1,7 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
@@ -10,14 +9,10 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import {
-  createRestaurantList,
-  invalidateRestaurantListCollectionQueries,
   resolveDefaultListVisibilityFromAuth,
-  upsertRestaurantListInCollectionCaches,
   type RestaurantListRecord,
 } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -75,8 +70,7 @@ function buildOptimisticRestaurantList(
 
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
   const styles = useStyles();
-  const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const listWrites = useRestaurantListWrites();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
 
@@ -125,39 +119,27 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
         visibility,
       };
 
-      const createResult = await writeFeature({
-        operationName: 'list.create',
-        offline: {
-          strategy: 'outbox',
-          payload: listInput,
-        },
-        execute: () => createRestaurantList(listInput),
+      const createResult = await listWrites.createRestaurantList({
+        input: listInput,
+        optimisticQueuedList: buildOptimisticRestaurantList(user, {
+          name: trimmedName,
+          description,
+          visibility,
+        }),
       });
 
       if (createResult.status === 'queued') {
-        upsertRestaurantListInCollectionCaches(
-          queryClient,
-          buildOptimisticRestaurantList(user, {
-            name: trimmedName,
-            description,
-            visibility,
-          }),
-          'my',
-        );
-        await invalidateRestaurantListCollectionQueries(queryClient);
         trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'CreateRestaurantListScreen',
           queued: true,
           visibility,
         });
-        showQueuedOfflineAlert('List');
         navigation.navigate('Lists');
         return;
       }
 
       const createdList = createResult.result;
 
-      await invalidateRestaurantListCollectionQueries(queryClient);
       trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'CreateRestaurantListScreen',
         queued: false,

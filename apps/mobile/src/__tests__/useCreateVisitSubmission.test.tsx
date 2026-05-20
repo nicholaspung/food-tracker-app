@@ -1,7 +1,6 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
-import { createVisitApiMutationInput } from '../features/store/featureOutboxOperations';
 import { buildVisitCreatedHomeParams } from '../navigation/homeRouteParams';
 import { useCreateVisitSubmission } from '../screens/createVisit/useCreateVisitSubmission';
 
@@ -22,15 +21,13 @@ jest.mock('../features', () => ({
   updateVisit: jest.fn(),
 }));
 
-jest.mock('../features/store/featureOutboxOperations', () => ({
-  createVisitApiMutationInput: jest.fn((payload: unknown) => ({
-    body: payload,
-    headers: {
-      'X-Mobile-Write-Operation': 'visit.create',
-    },
-    method: 'POST',
-    url: 'https://example.test/api/visits',
-  })),
+const mockVisitWrites = {
+  createVisit: jest.fn(),
+  updateVisit: jest.fn(),
+};
+
+jest.mock('../features/store/useVisitWrites', () => ({
+  useVisitWrites: jest.fn(() => mockVisitWrites),
 }));
 
 jest.mock('../features/store/notesQuery', () => ({
@@ -56,10 +53,6 @@ jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
 }));
 
-const mockedCreateVisitApiMutationInput = createVisitApiMutationInput as jest.MockedFunction<
-  typeof createVisitApiMutationInput
->;
-
 describe('useCreateVisitSubmission', () => {
   const queryClient = {
     invalidateQueries: jest.fn().mockResolvedValue(undefined),
@@ -73,7 +66,26 @@ describe('useCreateVisitSubmission', () => {
   const setSourceListItemId = jest.fn();
 
   beforeEach(() => {
-    mockedCreateVisitApiMutationInput.mockClear();
+    mockVisitWrites.createVisit.mockReset();
+    mockVisitWrites.createVisit.mockResolvedValue({
+      result: {
+        createdAt: '2026-04-20T18:00:00.000Z',
+        id: 'visit-123',
+        items: [],
+        updatedAt: '2026-04-20T18:00:00.000Z',
+      },
+      status: 'completed',
+    });
+    mockVisitWrites.updateVisit.mockReset();
+    mockVisitWrites.updateVisit.mockResolvedValue({
+      result: {
+        createdAt: '2026-04-20T18:00:00.000Z',
+        id: 'visit-123',
+        items: [],
+        updatedAt: '2026-04-20T18:00:00.000Z',
+      },
+      status: 'completed',
+    });
     queryClient.invalidateQueries.mockClear();
     navigation.canGoBack.mockClear();
     navigation.canGoBack.mockReturnValue(false);
@@ -88,16 +100,6 @@ describe('useCreateVisitSubmission', () => {
   ) {
     let hookResult: ReturnType<typeof useCreateVisitSubmission> | null = null;
     let renderer: ReactTestRenderer | null = null;
-
-    const writeFeature = jest.fn().mockResolvedValue({
-      result: {
-        createdAt: '2026-04-20T18:00:00.000Z',
-        id: 'visit-123',
-        items: [],
-        updatedAt: '2026-04-20T18:00:00.000Z',
-      },
-      status: 'completed',
-    });
 
     function TestComponent() {
       hookResult = useCreateVisitSubmission({
@@ -125,7 +127,6 @@ describe('useCreateVisitSubmission', () => {
         sourceListItemId: null,
         visitDate: '2026-04-20',
         visitVisibility: 'friends',
-        writeFeature: writeFeature as never,
         ...overrideParams,
       });
 
@@ -144,7 +145,6 @@ describe('useCreateVisitSubmission', () => {
           renderer?.unmount();
         });
       },
-      writeFeature,
     };
   }
 
@@ -157,42 +157,28 @@ describe('useCreateVisitSubmission', () => {
       await hook.getResult()?.submitVisit();
     });
 
-    expect(mockedCreateVisitApiMutationInput).toHaveBeenCalledWith({
-      restaurantId: 'restaurant-1',
-      restaurantName: 'Noodle House',
-      items: [
-        {
-          description: 'Crispy wrapper',
-          name: 'Spicy Wontons',
-          notes: 'Split with table',
-          photos: [],
-          rating: 4,
-        },
-      ],
-      source: 'visit',
-      sourceListItemId: undefined,
-      sourceNoteId: undefined,
-      visibility: 'friends',
-      visitedAt: '2026-04-20T00:00:00.000Z',
-      visitedOn: '2026-04-20',
-    });
-    expect(hook.writeFeature).toHaveBeenCalledWith(
+    expect(mockVisitWrites.createVisit).toHaveBeenCalledWith(
       expect.objectContaining({
-        operationName: 'visit.create',
-        offline: {
-          strategy: 'api',
-          input: {
-            body: expect.objectContaining({
-              visitedAt: '2026-04-20T00:00:00.000Z',
-              visitedOn: '2026-04-20',
-            }),
-            headers: {
-              'X-Mobile-Write-Operation': 'visit.create',
+        input: {
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Noodle House',
+          items: [
+            {
+              description: 'Crispy wrapper',
+              name: 'Spicy Wontons',
+              notes: 'Split with table',
+              photos: [],
+              rating: 4,
             },
-            method: 'POST',
-            url: 'https://example.test/api/visits',
-          },
+          ],
+          source: 'visit',
+          sourceListItemId: undefined,
+          sourceNoteId: undefined,
+          visibility: 'friends',
+          visitedAt: '2026-04-20T00:00:00.000Z',
+          visitedOn: '2026-04-20',
         },
+        useApiReplay: true,
       }),
     );
     expect(navigation.navigate).toHaveBeenCalledWith(
@@ -214,22 +200,12 @@ describe('useCreateVisitSubmission', () => {
       await hook.getResult()?.submitVisit();
     });
 
-    expect(mockedCreateVisitApiMutationInput).toHaveBeenCalledWith(
+    expect(mockVisitWrites.createVisit).toHaveBeenCalledWith(
       expect.objectContaining({
-        sourceListItemId: 'list-item-1',
-      }),
-    );
-    expect(hook.writeFeature).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operationName: 'visit.create',
-        offline: {
-          strategy: 'api',
-          input: expect.objectContaining({
-            body: expect.objectContaining({
-              sourceListItemId: 'list-item-1',
-            }),
-          }),
-        },
+        input: expect.objectContaining({
+          sourceListItemId: 'list-item-1',
+        }),
+        useApiReplay: true,
       }),
     );
 
@@ -237,12 +213,8 @@ describe('useCreateVisitSubmission', () => {
   });
 
   it('keeps queued visit creates on the current home navigation path', async () => {
-    const writeFeature = jest.fn().mockResolvedValue({
-      status: 'queued',
-    });
-    const hook = renderSubmissionHook({
-      writeFeature: writeFeature as never,
-    });
+    mockVisitWrites.createVisit.mockResolvedValue({ status: 'queued' });
+    const hook = renderSubmissionHook();
 
     await hook.mount();
 
@@ -278,28 +250,22 @@ describe('useCreateVisitSubmission', () => {
       await hook.getResult()?.submitVisit();
     });
 
-    expect(hook.writeFeature).toHaveBeenCalledWith(
+    expect(mockVisitWrites.updateVisit).toHaveBeenCalledWith(
       expect.objectContaining({
-        operationName: 'visit.update',
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            visitId: 'visit-123',
-            updates: expect.objectContaining({
-              items: [
-                {
-                  deletePhotoIds: [],
-                  description: 'Crispy wrapper',
-                  id: 'visit-item-kept',
-                  name: 'Spicy Wontons',
-                  newPhotos: [],
-                  notes: 'Split with table',
-                  rating: 4,
-                },
-              ],
-            }),
-          },
-        },
+        visitId: 'visit-123',
+        updates: expect.objectContaining({
+          items: [
+            {
+              deletePhotoIds: [],
+              description: 'Crispy wrapper',
+              id: 'visit-item-kept',
+              name: 'Spicy Wontons',
+              newPhotos: [],
+              notes: 'Split with table',
+              rating: 4,
+            },
+          ],
+        }),
       }),
     );
     expect(navigation.navigate).toHaveBeenCalledWith('Home');

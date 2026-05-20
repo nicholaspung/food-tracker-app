@@ -3,7 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -20,8 +20,6 @@ import {
 } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
-  createDefaultRestaurantList,
-  invalidateRestaurantListCollectionQueries,
   listRestaurantListsPage,
   restaurantListQueryKeys,
   type RestaurantListRecord,
@@ -29,8 +27,8 @@ import {
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -335,8 +333,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const { createDefaultRestaurantList: createDefaultRestaurantListWrite } = useRestaurantListWrites();
   const { queuedWrites: pendingListWrites } = useQueuedFeatureWrites(['list.create']);
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
@@ -430,17 +427,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       });
 
       try {
-        const createResult = await writeFeature({
-          operationName: 'list.default.create',
-          offline: {
-            strategy: 'outbox',
-            payload: {},
-          },
-          execute: () => createDefaultRestaurantList(),
-        });
+        const createResult = await createDefaultRestaurantListWrite();
 
         if (createResult.status === 'queued') {
-          await invalidateRestaurantListCollectionQueries(queryClient, 'my');
           trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
             source: 'ListsScreen',
             listCountBeforeCreate: myLists.length,
@@ -450,7 +439,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           return;
         }
 
-        await invalidateRestaurantListCollectionQueries(queryClient, 'my');
         trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
           source: 'ListsScreen',
           listCountBeforeCreate: myLists.length,
@@ -482,8 +470,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     myListsQuery.isError,
     myListsQuery.isLoading,
     isOnline,
-    queryClient,
-    writeFeature,
+    createDefaultRestaurantListWrite,
   ]);
 
   const myLists = myListsState.items;

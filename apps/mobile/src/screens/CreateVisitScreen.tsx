@@ -1264,7 +1264,6 @@ export function CreateVisitScreen({
     sourceListItemId,
     visitDate,
     visitVisibility,
-    writeFeature,
   });
   const [isConvertingVisitItem, setIsConvertingVisitItem] = useState(false);
   const [isVisitActionsModalVisible, setIsVisitActionsModalVisible] = useState(false);

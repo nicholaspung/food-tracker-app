@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  deleteFoodProduct,
   deleteVisit,
   homeFeedQueryKeys,
   invalidateHomeFeedQueries,
@@ -15,6 +14,7 @@ import {
   visitsQueryKeys,
 } from '../../features';
 import { moveVisitItemApiMutationInput } from '../../features/store/featureOutboxOperations';
+import { useFoodProductWrites } from '../../features/store/useFoodProductWrites';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { buildPhotoViewerState } from '../../lib/photoUrls';
@@ -179,6 +179,7 @@ export function useHomeFeedActionController({
     null,
   );
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const foodProductWrites = useFoodProductWrites();
 
   const invalidateHomeFeed = useCallback(async () => {
     await invalidateHomeFeedQueries(queryClient);
@@ -203,34 +204,24 @@ export function useHomeFeedActionController({
 
   const handleDeleteFoodProduct = useCallback(
     async (foodProductId: string) => {
-      const deleteResult = await writeFeature({
-        operationName: 'food-product.delete',
-        offline: {
-          strategy: 'outbox',
-          payload: { foodProductId },
-        },
-        execute: () => deleteFoodProduct(foodProductId),
-      });
+      const deleteResult = await foodProductWrites.deleteFoodProduct({ foodProductId });
 
       if (deleteResult.status === 'queued') {
-        await invalidateHomeFeed();
         trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
           source: 'HomeFeedActionController',
           contentType: 'food-product',
           queued: true,
         });
-        showQueuedOfflineAlert('Food product delete');
         return;
       }
 
-      await invalidateHomeFeed();
       trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
         source: 'HomeFeedActionController',
         contentType: 'food-product',
         queued: false,
       });
     },
-    [invalidateHomeFeed, writeFeature],
+    [foodProductWrites],
   );
 
   const handleDeleteVisit = useCallback(

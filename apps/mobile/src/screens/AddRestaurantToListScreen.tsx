@@ -15,9 +15,7 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  addRestaurantVisitRatingsToList,
   getRestaurantListCandidateRestaurants,
-  invalidateRestaurantListContentQueries,
   listRestaurantListCandidateFoodItemsPhotos,
   listRestaurantListCandidateFoodItemPhotos,
   restaurantListQueryKeys,
@@ -27,9 +25,8 @@ import {
 } from '../features';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useQueryListState } from '../hooks/useListQueryState';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { formatDisplayDate } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildPhotoFileUrl, buildPhotoViewerState } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -291,7 +288,7 @@ export function AddRestaurantToListScreen({
   const { listId } = route.params;
   const theme = useTheme();
   const styles = useStyles();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const listWrites = useRestaurantListWrites();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
@@ -674,19 +671,9 @@ export function AddRestaurantToListScreen({
         note: noteDirty ? note : undefined,
       };
 
-      const addResult = await writeFeature({
-        operationName: 'list.restaurant.add',
-        offline: {
-          strategy: 'outbox',
-          payload: addInput,
-        },
-        execute: () => addRestaurantVisitRatingsToList(addInput),
-      });
+      const addResult = await listWrites.addRestaurant(addInput);
 
       if (addResult.status === 'queued') {
-        await invalidateRestaurantListContentQueries(queryClient, listId, {
-          includeCandidateRestaurants: true,
-        });
         trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
           source: 'AddRestaurantToListScreen',
           listId,
@@ -694,14 +681,9 @@ export function AddRestaurantToListScreen({
           selectedFoodItemCount: selectedNewFoodItemIds.length,
           queued: true,
         });
-        showQueuedOfflineAlert("List updates");
         handleBackToListDetail();
         return;
       }
-
-      await invalidateRestaurantListContentQueries(queryClient, listId, {
-        includeCandidateRestaurants: true,
-      });
 
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
         source: 'AddRestaurantToListScreen',

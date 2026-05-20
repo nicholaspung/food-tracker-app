@@ -372,12 +372,16 @@ describe('ListDetailScreen', () => {
   };
   const queryClient = {};
   const restaurantListWrites = {
+    addRestaurant: jest.fn(),
+    createDefaultRestaurantList: jest.fn(),
+    createRestaurantList: jest.fn(),
     deleteRestaurantList: jest.fn(),
     reorderRestaurant: jest.fn(),
     removeRestaurantListSourceRating: jest.fn(),
     removeRestaurantListUserRating: jest.fn(),
     saveBookmarkToDefaultList: jest.fn(),
     saveBookmarkToLists: jest.fn(),
+    updateRestaurantList: jest.fn(),
   };
 
   const route = {

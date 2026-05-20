@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -19,21 +19,19 @@ import {
   getFoodProductById,
   listFoodProductPhotos,
   parseLimitExceededError,
-  updateFoodProduct,
   useMonthlyUsage,
   type VisitPhotoRecord,
   type VisitPhotoUploadInput,
 } from '../features';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
-import { foodProductsQueryKeys, syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
+import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import {
@@ -100,8 +98,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const { exitToHomeOnClose, foodProductId } = route.params;
   const legacyFoodProductId = foodProductId;
   const styles = useStyles();
-  const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const foodProductWrites = useFoodProductWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -489,24 +486,18 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setIsSubmitting(true);
 
     try {
-      const updateResult = await writeFeature({
-        operationName: 'food-product.update',
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            foodProductId: legacyFoodProductId,
-            updates: foodProductUpdateInput,
-          },
+      const updateResult = await foodProductWrites.updateFoodProduct({
+        foodProductId: legacyFoodProductId,
+        updates: foodProductUpdateInput,
+        includeFoodProductPhotos: hasPhotoChanges,
+        includeUsage: Boolean(replacementPhoto),
+        queuedAlert: {
+          analyticsSource: 'EditFoodProductScreen',
+          subject: 'Food product update',
         },
-        execute: () => updateFoodProduct(legacyFoodProductId, foodProductUpdateInput),
       });
 
       if (updateResult.status === 'queued') {
-        await syncFoodProductMutationCaches(queryClient, {
-          foodProductId,
-          includeFoodProductPhotos: hasPhotoChanges,
-          includeUsage: Boolean(replacementPhoto),
-        });
         trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
           source: 'EditFoodProductScreen',
           foodProductId: legacyFoodProductId,
@@ -515,19 +506,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
           photoMode: photoDraftMode,
         });
         hasCompletedEditorFlowRef.current = true;
-        showQueuedOfflineAlert({
-          analyticsSource: 'EditFoodProductScreen',
-          subject: 'Food product update',
-        });
         handleBackPress();
         return;
       }
 
-      await syncFoodProductMutationCaches(queryClient, {
-        foodProduct: updateResult.result,
-        includeFoodProductPhotos: hasPhotoChanges,
-        includeUsage: Boolean(replacementPhoto),
-      });
       await cleanupStagedPhotoFiles(replacementPhoto ? [replacementPhoto.upload] : []);
       trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',

@@ -22,30 +22,17 @@ import {
 } from '../features/bills/billCalculations';
 import {
   areStringArraysEqual,
-  addDraftBillItem,
-  buildBillDraftSubmission,
+  billDraftFacade,
   buildDefaultAdvancedSplits,
   calculateSuggestedBillAmounts,
-  changeAdvancedSplitType,
   formatPercentageDisplay,
   getAdvancedSplitRawValue,
   inferEditSplitMode,
   isAdvancedSplitLocked,
-  normalizeDraftBillItemsForParticipants,
   resolveSplitTarget,
   roundToCurrency,
   sanitizeParticipantName,
-  removeDraftBillItem,
-  syncAdvancedSplitsToParticipants,
   toCurrencyInput,
-  toggleAdvancedDraftBillItemParticipant,
-  toggleAdvancedSplitLock as toggleDraftAdvancedSplitLock,
-  toggleDraftBillItemAdvancedSplitLock,
-  toggleSimpleDraftBillItemParticipant,
-  updateAdvancedSplitValue as updateDraftAdvancedSplitValue,
-  updateDraftBillItemAdvancedSplitType,
-  updateDraftBillItemAdvancedSplitValue,
-  updateDraftBillItemSplitMode,
   type CreateBillSplitMode,
   type DraftAdvancedSplitEntry,
   type DraftAdvancedSplitType,
@@ -702,7 +689,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     }
 
     setItems((currentItems) =>
-      normalizeDraftBillItemsForParticipants(currentItems, participantIds),
+      billDraftFacade.normalizeItemsForParticipants(currentItems, participantIds),
     );
   }, [isEditHydrated, isEditMode, participantIds]);
 
@@ -738,7 +725,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     }
 
     setCustomTipSplits((currentSplits) => {
-      return syncAdvancedSplitsToParticipants({
+      return billDraftFacade.syncCustomTipSplitsToParticipants({
         participantIds,
         splits: currentSplits,
         totalAmount: normalizedTip,
@@ -961,7 +948,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const addItem = () => {
-    const result = addDraftBillItem({
+    const result = billDraftFacade.addItem({
       createEntityId,
       draftItemName,
       draftItemPrice,
@@ -987,7 +974,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const removeItem = (itemId: string) => {
-    setItems((currentItems) => removeDraftBillItem(currentItems, { itemId }));
+    setItems((currentItems) => billDraftFacade.removeItem(currentItems, { itemId }));
     setExpandedItemIds((currentIds) => currentIds.filter((currentId) => currentId !== itemId));
     trackObservabilityEvent('CREATE_BILL_ITEM_REMOVED', {
       source: 'CreateBillScreen',
@@ -998,7 +985,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const updateItemSplitMode = (itemId: string, nextSplitMode: 'simple' | 'advanced') => {
     setItems((currentItems) =>
-      updateDraftBillItemSplitMode(currentItems, {
+      billDraftFacade.updateItemSplitMode(currentItems, {
         itemId,
         nextSplitMode,
         participantIds,
@@ -1008,7 +995,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const toggleSimpleItemParticipant = (itemId: string, participantId: string) => {
     setItems((currentItems) =>
-      toggleSimpleDraftBillItemParticipant(currentItems, {
+      billDraftFacade.toggleSimpleItemParticipant(currentItems, {
         itemId,
         participantId,
       }),
@@ -1017,7 +1004,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const updateAdvancedSplitType = (itemId: string, nextType: DraftAdvancedSplitType) => {
     setItems((currentItems) =>
-      updateDraftBillItemAdvancedSplitType(currentItems, {
+      billDraftFacade.updateAdvancedSplitType(currentItems, {
         itemId,
         nextType,
       }),
@@ -1026,7 +1013,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const toggleAdvancedItemParticipant = (itemId: string, participantId: string) => {
     setItems((currentItems) =>
-      toggleAdvancedDraftBillItemParticipant(currentItems, {
+      billDraftFacade.toggleAdvancedItemParticipant(currentItems, {
         itemId,
         participantId,
       }),
@@ -1040,7 +1027,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     value: string,
   ) => {
     setItems((currentItems) =>
-      updateDraftBillItemAdvancedSplitValue(currentItems, {
+      billDraftFacade.updateAdvancedSplitValue(currentItems, {
         itemId,
         participantId,
         splitType,
@@ -1055,7 +1042,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     splitType: DraftAdvancedSplitType,
   ) => {
     setItems((currentItems) =>
-      toggleDraftBillItemAdvancedSplitLock(currentItems, {
+      billDraftFacade.toggleAdvancedSplitLock(currentItems, {
         itemId,
         participantId,
         splitType,
@@ -1071,7 +1058,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
     setIsCustomTipEnabled(true);
     setCustomTipSplits((currentSplits) => {
-      return syncAdvancedSplitsToParticipants({
+      return billDraftFacade.syncCustomTipSplitsToParticipants({
         participantIds,
         splits: currentSplits,
         totalAmount: normalizedTip,
@@ -1093,7 +1080,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const changeCustomTipSplitType = (nextType: DraftAdvancedSplitType) => {
     setCustomTipSplitType(nextType);
     setCustomTipSplits((currentSplits) =>
-      changeAdvancedSplitType({
+      billDraftFacade.changeCustomTipSplitType({
         nextType,
         splits: currentSplits,
         totalAmount: normalizedTip,
@@ -1103,7 +1090,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const updateCustomTipSplitValue = (participantId: string, value: string) => {
     setCustomTipSplits((currentSplits) =>
-      updateDraftAdvancedSplitValue({
+      billDraftFacade.updateCustomTipSplitValue({
         participantId,
         splitType: customTipSplitType,
         splits: currentSplits,
@@ -1115,7 +1102,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const toggleCustomTipSplitLock = (participantId: string) => {
     setCustomTipSplits((currentSplits) =>
-      toggleDraftAdvancedSplitLock({
+      billDraftFacade.toggleCustomTipSplitLock({
         participantId,
         splitType: customTipSplitType,
         splits: currentSplits,
@@ -1300,7 +1287,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    const submission = buildBillDraftSubmission({
+    const submission = billDraftFacade.buildSubmission({
       billTitle,
       createEntityId,
       customTipContributionMap,

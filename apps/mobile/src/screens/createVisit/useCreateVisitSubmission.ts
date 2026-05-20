@@ -2,24 +2,16 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  createVisit,
   formatLimitExceededMessage,
   linkVisitToListBookmark,
   parseLimitExceededError,
   restaurantListQueryKeys,
-  syncVisitMutationCaches,
-  updateVisit,
   type MonthlyUsageSnapshot,
   type UpdateVisitInput,
 } from '../../features';
-import {
-  createVisitApiMutationInput,
-} from '../../features/store/featureOutboxOperations';
-import { completeSourceNoteAfterEntryWrite } from '../../features/notes/sourceNoteCompletion';
-import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
+import { useVisitWrites } from '../../features/store/useVisitWrites';
 import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import { buildVisitCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
@@ -54,7 +46,6 @@ interface UseCreateVisitSubmissionParams {
   sourceListItemId: string | null;
   visitDate: string;
   visitVisibility: VisitVisibility;
-  writeFeature: OfflineAwareFeatureWrite;
 }
 
 export function useCreateVisitSubmission({
@@ -76,10 +67,10 @@ export function useCreateVisitSubmission({
   sourceListItemId,
   visitDate,
   visitVisibility,
-  writeFeature,
 }: UseCreateVisitSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trackWriteTelemetry = useWriteTelemetry();
+  const visitWrites = useVisitWrites();
   const isCurrentlyOnline = isOnline ?? false;
 
   const navigateAfterEdit = useCallback(() => {
@@ -269,25 +260,15 @@ export function useCreateVisitSubmission({
           visibility: visitVisibility,
         };
 
-        const updateResult = await writeFeature({
-          operationName: 'visit.update',
-          offline: {
-            strategy: 'outbox',
-            payload: {
-              visitId: editVisitId,
-              updates: visitUpdateInput,
-            },
-          },
-          execute: () => updateVisit(editVisitId, visitUpdateInput),
+        const updateResult = await visitWrites.updateVisit({
+          visitId: editVisitId,
+          updates: visitUpdateInput,
+          includeUsage: hasNewPhotoUploads,
+          includeVisitPhotos: hasPhotoChanges,
         });
 
         if (updateResult.status === 'queued') {
           onSubmitSucceeded?.();
-          await syncVisitMutationCaches(queryClient, {
-            visitId: editVisitId,
-            includeUsage: hasNewPhotoUploads,
-            includeVisitPhotos: hasPhotoChanges,
-          });
           trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
             source: 'CreateVisitScreen',
             mode,
@@ -304,19 +285,10 @@ export function useCreateVisitSubmission({
             completed: true,
             queued: true,
           });
-          showQueuedOfflineAlert({
-            analyticsSource: 'CreateVisitScreen',
-            subject: 'Visit update',
-          });
           navigateAfterEdit();
           return;
         }
 
-        await syncVisitMutationCaches(queryClient, {
-          visit: updateResult.result,
-          includeUsage: hasNewPhotoUploads,
-          includeVisitPhotos: hasPhotoChanges,
-        });
         await cleanupStagedPhotoFiles(parsedItems.flatMap((item) => item.newPhotos));
         onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
@@ -339,40 +311,18 @@ export function useCreateVisitSubmission({
         return;
       }
 
-      const createResult = hasPhotoUploads || sourceNoteId
-        ? await writeFeature({
-            operationName: 'visit.create',
-            offline: {
-              strategy: 'outbox',
-              payload: visitInput,
-            },
-            execute: () => createVisit(visitInput),
-          })
-        : await writeFeature({
-            operationName: 'visit.create',
-            offline: {
-              strategy: 'api',
-              input: createVisitApiMutationInput(visitInput),
-            },
-            execute: () => createVisit(visitInput),
-          });
+      const createResult = await visitWrites.createVisit({
+        input: visitInput,
+        hasPhotoUploads,
+        sourceNote: {
+          noteId: sourceNoteId,
+          usedAt: noteUsedAt,
+        },
+        useApiReplay: !hasPhotoUploads && !sourceNoteId,
+      });
 
       if (createResult.status === 'queued') {
-        if (sourceNoteId && noteUsedAt) {
-          await completeSourceNoteAfterEntryWrite({
-            entryWriteStatus: createResult.status,
-            noteId: sourceNoteId,
-            queryClient,
-            usedAt: noteUsedAt,
-            writeFeature,
-          });
-        }
-
         setSourceListItemId(null);
-        await syncVisitMutationCaches(queryClient, {
-          includeUsage: hasPhotoUploads,
-          sourceNoteId,
-        });
         onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
           source: 'CreateVisitScreen',
@@ -399,10 +349,6 @@ export function useCreateVisitSubmission({
         trackFirstFoodLogged({
           ...productTrackingProperties,
           completed: true,
-        });
-        showQueuedOfflineAlert({
-          analyticsSource: 'CreateVisitScreen',
-          subject: 'Visit',
         });
         navigation.navigate('Home');
         return;
@@ -469,21 +415,6 @@ export function useCreateVisitSubmission({
         completed: true,
       });
 
-      if (sourceNoteId && noteUsedAt) {
-        await completeSourceNoteAfterEntryWrite({
-          entryWriteStatus: createResult.status,
-          noteId: sourceNoteId,
-          queryClient,
-          usedAt: noteUsedAt,
-          writeFeature,
-        });
-      }
-
-      await syncVisitMutationCaches(queryClient, {
-        visit: createdVisit,
-        includeUsage: hasPhotoUploads,
-        sourceNoteId,
-      });
       await cleanupStagedPhotoFiles(parsedItems.flatMap((item) => item.newPhotos));
       onSubmitSucceeded?.();
       navigation.navigate('Home', buildVisitCreatedHomeParams(createdVisit.id));
@@ -561,9 +492,9 @@ export function useCreateVisitSubmission({
     sourceNoteId,
     sourceListItemId,
     trackWriteTelemetry,
+    visitWrites,
     visitDate,
     visitVisibility,
-    writeFeature,
   ]);
 
   return {

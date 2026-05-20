@@ -203,7 +203,7 @@ export function isAdvancedSplitLocked(
     : split.amountLocked;
 }
 
-export function setAdvancedSplitRawValue(
+function setAdvancedSplitRawValue(
   split: DraftAdvancedSplitEntry,
   splitType: DraftAdvancedSplitType,
   value: string,
@@ -213,7 +213,7 @@ export function setAdvancedSplitRawValue(
     : { ...split, amountValue: value };
 }
 
-export function setAdvancedSplitLocked(
+function setAdvancedSplitLocked(
   split: DraftAdvancedSplitEntry,
   splitType: DraftAdvancedSplitType,
   isLocked: boolean,
@@ -236,7 +236,7 @@ export function resolveSplitTarget(
     : 0;
 }
 
-export function redistributeAdvancedSplits(
+function redistributeAdvancedSplits(
   splits: DraftAdvancedSplitEntry[],
   splitType: DraftAdvancedSplitType,
   totalAmount: number,
@@ -487,7 +487,7 @@ export function buildDefaultAdvancedSplits(
   return redistributeAdvancedSplits(withEvenPercentages, 'amount', totalAmount);
 }
 
-export type AddDraftBillItemResult =
+type AddDraftBillItemResult =
   | {
       ok: true;
       item: DraftBillItem;
@@ -595,7 +595,7 @@ function redistributeAllAdvancedSplitValues(
   return redistributeAdvancedSplits(withPercentages, 'amount', totalAmount);
 }
 
-export function syncAdvancedSplitsToParticipants({
+function syncAdvancedSplitsToParticipants({
   participantIds,
   splits,
   totalAmount,
@@ -612,7 +612,7 @@ export function syncAdvancedSplitsToParticipants({
   return redistributeAllAdvancedSplitValues(nextSplits, totalAmount);
 }
 
-export function changeAdvancedSplitType({
+function changeAdvancedSplitType({
   nextType,
   splits,
   totalAmount,
@@ -620,7 +620,7 @@ export function changeAdvancedSplitType({
   return redistributeAdvancedSplits(splits, nextType, totalAmount);
 }
 
-export function updateAdvancedSplitValue({
+function updateAdvancedSplitValue({
   participantId,
   splitType,
   splits,
@@ -644,7 +644,7 @@ export function updateAdvancedSplitValue({
     : nextSplits;
 }
 
-export function toggleAdvancedSplitLock({
+function toggleAdvancedSplitLock({
   participantId,
   splitType,
   splits,
@@ -663,7 +663,7 @@ export function toggleAdvancedSplitLock({
   return redistributeAdvancedSplits(toggledSplits, splitType, totalAmount);
 }
 
-export function addDraftBillItem({
+function addDraftBillItem({
   createEntityId,
   draftItemName,
   draftItemPrice,
@@ -706,14 +706,14 @@ export function addDraftBillItem({
   };
 }
 
-export function removeDraftBillItem(
+function removeDraftBillItem(
   items: DraftBillItem[],
   { itemId }: DraftBillItemTransitionInput,
 ): DraftBillItem[] {
   return items.filter((item) => item.id !== itemId);
 }
 
-export function updateDraftBillItemSplitMode(
+function updateDraftBillItemSplitMode(
   items: DraftBillItem[],
   { itemId, nextSplitMode, participantIds }: UpdateDraftBillItemSplitModeInput,
 ): DraftBillItem[] {
@@ -754,7 +754,7 @@ export function updateDraftBillItemSplitMode(
   });
 }
 
-export function toggleSimpleDraftBillItemParticipant(
+function toggleSimpleDraftBillItemParticipant(
   items: DraftBillItem[],
   { itemId, participantId }: DraftBillItemParticipantTransitionInput,
 ): DraftBillItem[] {
@@ -773,7 +773,7 @@ export function toggleSimpleDraftBillItemParticipant(
   });
 }
 
-export function updateDraftBillItemAdvancedSplitType(
+function updateDraftBillItemAdvancedSplitType(
   items: DraftBillItem[],
   { itemId, nextType }: UpdateDraftBillItemAdvancedSplitTypeInput,
 ): DraftBillItem[] {
@@ -782,7 +782,7 @@ export function updateDraftBillItemAdvancedSplitType(
   );
 }
 
-export function toggleAdvancedDraftBillItemParticipant(
+function toggleAdvancedDraftBillItemParticipant(
   items: DraftBillItem[],
   { itemId, participantId }: DraftBillItemParticipantTransitionInput,
 ): DraftBillItem[] {
@@ -810,7 +810,7 @@ export function toggleAdvancedDraftBillItemParticipant(
   });
 }
 
-export function updateDraftBillItemAdvancedSplitValue(
+function updateDraftBillItemAdvancedSplitValue(
   items: DraftBillItem[],
   {
     itemId,
@@ -837,7 +837,7 @@ export function updateDraftBillItemAdvancedSplitValue(
   });
 }
 
-export function toggleDraftBillItemAdvancedSplitLock(
+function toggleDraftBillItemAdvancedSplitLock(
   items: DraftBillItem[],
   {
     itemId,
@@ -862,7 +862,7 @@ export function toggleDraftBillItemAdvancedSplitLock(
   });
 }
 
-export function normalizeDraftBillItemsForParticipants(
+function normalizeDraftBillItemsForParticipants(
   items: DraftBillItem[],
   participantIds: string[],
 ): DraftBillItem[] {
@@ -967,7 +967,7 @@ function validateBillTotal(
   return Math.abs(totalAmount - calculatedTotal) < 0.01;
 }
 
-export function buildBillDraftSubmission({
+function buildBillDraftSubmission({
   billTitle,
   createEntityId,
   customTipContributionMap,
@@ -1291,3 +1291,20 @@ export function buildBillDraftSubmission({
     },
   };
 }
+
+export const billDraftFacade = {
+  addItem: addDraftBillItem,
+  buildSubmission: buildBillDraftSubmission,
+  changeCustomTipSplitType: changeAdvancedSplitType,
+  normalizeItemsForParticipants: normalizeDraftBillItemsForParticipants,
+  removeItem: removeDraftBillItem,
+  syncCustomTipSplitsToParticipants: syncAdvancedSplitsToParticipants,
+  toggleAdvancedItemParticipant: toggleAdvancedDraftBillItemParticipant,
+  toggleAdvancedSplitLock: toggleDraftBillItemAdvancedSplitLock,
+  toggleCustomTipSplitLock: toggleAdvancedSplitLock,
+  toggleSimpleItemParticipant: toggleSimpleDraftBillItemParticipant,
+  updateAdvancedSplitType: updateDraftBillItemAdvancedSplitType,
+  updateAdvancedSplitValue: updateDraftBillItemAdvancedSplitValue,
+  updateCustomTipSplitValue: updateAdvancedSplitValue,
+  updateItemSplitMode: updateDraftBillItemSplitMode,
+} as const;

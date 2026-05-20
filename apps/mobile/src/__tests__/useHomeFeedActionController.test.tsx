@@ -8,6 +8,7 @@ import {
   syncVisitMutationCaches,
 } from '../features';
 import { moveVisitItemApiMutationInput } from '../features/store/featureOutboxOperations';
+import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
   type HomeFeedActionController,
@@ -40,6 +41,10 @@ jest.mock('../features/store/featureOutboxOperations', () => ({
   moveVisitItemApiMutationInput: jest.fn(),
 }));
 
+jest.mock('../features/store/useFoodProductWrites', () => ({
+  useFoodProductWrites: jest.fn(),
+}));
+
 jest.mock('../lib/offlineAlerts', () => ({
   showQueuedOfflineAlert: jest.fn(),
 }));
@@ -56,6 +61,7 @@ const mockedMoveVisitItemApiMutationInput =
   moveVisitItemApiMutationInput as jest.MockedFunction<
     typeof moveVisitItemApiMutationInput
   >;
+const mockedUseFoodProductWrites = useFoodProductWrites as jest.MockedFunction<typeof useFoodProductWrites>;
 const mockedShowQueuedOfflineAlert =
   showQueuedOfflineAlert as jest.MockedFunction<typeof showQueuedOfflineAlert>;
 
@@ -105,6 +111,7 @@ describe('useHomeFeedActionController', () => {
     mockedMoveVisitItem.mockReset();
     mockedSyncVisitMutationCaches.mockReset();
     mockedMoveVisitItemApiMutationInput.mockReset();
+    mockedUseFoodProductWrites.mockReset();
     mockedShowQueuedOfflineAlert.mockReset();
     mockedBuildPocketBaseFileUrl.mockImplementation(({ recordId, filename, thumb }) =>
       `pb://${recordId}/${filename}${thumb ? `?thumb=${thumb}` : ''}`,
@@ -121,6 +128,11 @@ describe('useHomeFeedActionController', () => {
       method: 'POST',
       url: 'https://example.com/api/visit-items/item-1/move',
     });
+    mockedUseFoodProductWrites.mockReturnValue({
+      createFoodProduct: jest.fn(),
+      deleteFoodProduct: jest.fn().mockResolvedValue({ status: 'completed' }),
+      updateFoodProduct: jest.fn(),
+    } as unknown as ReturnType<typeof useFoodProductWrites>);
   });
 
   it('stores aligned full and preview urls and bounds the initial photo index', async () => {

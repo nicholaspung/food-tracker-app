@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
@@ -14,23 +14,19 @@ import {
   FoodProductFormFields,
 } from '../components/shared';
 import {
-  createFoodProduct,
   formatLimitExceededMessage,
   getNoteDetail,
   parseLimitExceededError,
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
-import { completeSourceNoteAfterEntryWrite } from '../features/notes/sourceNoteCompletion';
-import { syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import {
@@ -89,8 +85,7 @@ async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promis
 
 export function FoodProductScreen({ navigation, route }: FoodProductScreenProps) {
   const styles = useStyles();
-  const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const foodProductWrites = useFoodProductWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -444,30 +439,20 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         sourceNoteId,
       });
 
-      const createResult = await writeFeature({
-        operationName: 'food-product.create',
-        offline: {
-          strategy: 'outbox',
-          payload: foodProductInput,
+      const createResult = await foodProductWrites.createFoodProduct({
+        input: foodProductInput,
+        includeUsage: Boolean(photo),
+        sourceNote: {
+          noteId: sourceNoteId,
+          usedAt: noteUsedAt,
         },
-        execute: () => createFoodProduct(foodProductInput),
+        queuedAlert: {
+          analyticsSource: 'FoodProductScreen',
+          subject: 'Food product',
+        },
       });
 
       if (createResult.status === 'queued') {
-        if (sourceNoteId && noteUsedAt) {
-          await completeSourceNoteAfterEntryWrite({
-            entryWriteStatus: createResult.status,
-            noteId: sourceNoteId,
-            queryClient,
-            usedAt: noteUsedAt,
-            writeFeature,
-          });
-        }
-
-        await syncFoodProductMutationCaches(queryClient, {
-          includeUsage: Boolean(photo),
-          sourceNoteId,
-        });
         trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
           source: 'FoodProductScreen',
           queued: true,
@@ -485,31 +470,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           completed: true,
         });
         hasCompletedEditorFlowRef.current = true;
-        showQueuedOfflineAlert({
-          analyticsSource: 'FoodProductScreen',
-          subject: 'Food product',
-        });
         navigation.navigate('Home', buildFoodProductCreatedHomeParams());
         return;
       }
 
-      if (sourceNoteId) {
-        if (noteUsedAt) {
-          await completeSourceNoteAfterEntryWrite({
-            entryWriteStatus: createResult.status,
-            noteId: sourceNoteId,
-            queryClient,
-            usedAt: noteUsedAt,
-            writeFeature,
-          });
-        }
-      }
-
-      await syncFoodProductMutationCaches(queryClient, {
-        foodProduct: createResult.result,
-        includeUsage: Boolean(photo),
-        sourceNoteId,
-      });
       await cleanupStagedPhotoFiles(photo ? [photo.upload] : []);
       await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
       trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {

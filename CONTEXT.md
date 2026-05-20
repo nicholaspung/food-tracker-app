@@ -8,6 +8,22 @@ Food Tracker helps people record restaurant visits, rate food items, and share r
 A user-curated collection of restaurants with bookmarked food-item recommendations.
 _Avoid_: List, saved places
 
+**Visit Writes**:
+The mobile module that owns creating and updating restaurant visit records, including offline replay payloads, cache effects, source Note completion timing, and queued feedback.
+_Avoid_: visit submit helper, visit mutation wrapper
+
+**Food Product Writes**:
+The mobile module that owns creating, updating, and deleting food product entries, including offline replay payloads, cache effects, photo usage invalidation, source Note completion timing, and queued feedback.
+_Avoid_: food product submit helper, food product mutation wrapper
+
+**Bill Draft**:
+The in-progress bill split state before a Bill is saved, including participants, items, split modes, custom tip splits, derived totals, and submit payload construction.
+_Avoid_: bill form state, bill helper functions
+
+**Source Note Completion**:
+The workflow that marks a source Note as used after a Visit or Food Product entry is completed or queued.
+_Avoid_: note mark-used helper, note usage side effect
+
 **List Detail**:
 The screen for one **Restaurant List**, showing the restaurants and recommendations inside that list.
 _Avoid_: Lists page
@@ -27,6 +43,10 @@ _Avoid_: Assigned items
 ## Relationships
 
 - A **Restaurant List** contains zero or more restaurants.
+- **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
+- **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
+- A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
+- **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.
 - A **Tasting Plan** contains one or more selected restaurants.

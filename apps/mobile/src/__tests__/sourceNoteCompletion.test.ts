@@ -3,10 +3,10 @@ import {
   persistSourceNoteUsed,
   promoteSourceNoteUsed,
 } from '../features/notes/sourceNoteCompletion';
-import { markNoteUsed } from '../features/store/featureStore';
+import { markNoteUsed } from '../features/store/notesStore';
 import { promoteCachedNoteToUsed } from '../features/store/notesCache';
 
-jest.mock('../features/store/featureStore', () => ({
+jest.mock('../features/store/notesStore', () => ({
   markNoteUsed: jest.fn(),
 }));
 

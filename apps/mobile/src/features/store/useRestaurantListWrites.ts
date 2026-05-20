@@ -2,23 +2,31 @@ import { useCallback } from 'react';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
-import type { RestaurantListItemRecord } from '../models';
+import type { RestaurantListItemRecord, RestaurantListRecord } from '../models';
 import {
+  addRestaurantVisitRatingsToList,
   createDefaultRestaurantList,
+  createRestaurantList,
   deleteRestaurantList,
   moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
+  updateRestaurantList,
+  type AddRestaurantVisitRatingsToListInput,
+  type CreateRestaurantListInput,
   type MoveRestaurantListRestaurantInput,
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
+  type UpdateRestaurantListInput,
 } from './restaurantListsStore';
 import {
   invalidateRestaurantListCollectionQueries,
   invalidateRestaurantListContentQueries,
+  invalidateRestaurantListMetadataQueries,
   invalidateRestaurantListSaveTargetQueries,
   removeRestaurantListQueries,
+  upsertRestaurantListInCollectionCaches,
 } from './restaurantListQuery';
 import {
   type OfflineAwareFeatureWriteResult,
@@ -27,6 +35,17 @@ import {
 
 interface DeleteRestaurantListWriteInput {
   listId: string;
+}
+
+interface CreateRestaurantListWriteInput {
+  input: CreateRestaurantListInput;
+  optimisticQueuedList?: RestaurantListRecord;
+}
+
+interface UpdateRestaurantListWriteInput {
+  currentList?: Pick<RestaurantListRecord, 'isDefault'> | null;
+  listId: string;
+  updates: UpdateRestaurantListInput;
 }
 
 interface RemoveRestaurantListUserRatingWriteInput {
@@ -54,6 +73,28 @@ async function syncDeletedRestaurantListCaches(
   removeRestaurantListQueries(queryClient, listId);
 }
 
+async function syncCreatedRestaurantListCaches(
+  queryClient: QueryClient,
+  options: {
+    createdList?: RestaurantListRecord;
+    optimisticQueuedList?: RestaurantListRecord;
+  } = {},
+): Promise<void> {
+  const list = options.createdList ?? options.optimisticQueuedList;
+  if (list) {
+    upsertRestaurantListInCollectionCaches(queryClient, list, 'my');
+  }
+
+  await invalidateRestaurantListCollectionQueries(queryClient);
+}
+
+async function syncUpdatedRestaurantListCaches(
+  queryClient: QueryClient,
+  listId: string,
+): Promise<void> {
+  await invalidateRestaurantListMetadataQueries(queryClient, listId);
+}
+
 async function syncRestaurantListMembershipCaches(
   queryClient: QueryClient,
   listId: string,
@@ -73,6 +114,79 @@ async function syncRestaurantListSaveTargetCaches(
 export function useRestaurantListWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+
+  const createListWrite = useCallback(
+    async ({
+      input,
+      optimisticQueuedList,
+    }: CreateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> => {
+      const result = await writeFeature({
+        operationName: 'list.create',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+        execute: () => createRestaurantList(input),
+      });
+
+      if (result.status === 'queued') {
+        await syncCreatedRestaurantListCaches(queryClient, { optimisticQueuedList });
+        showQueuedOfflineAlert('List');
+        return result;
+      }
+
+      await syncCreatedRestaurantListCaches(queryClient, { createdList: result.result });
+      return result;
+    },
+    [queryClient, writeFeature],
+  );
+
+  const updateListWrite = useCallback(
+    async ({
+      currentList,
+      listId,
+      updates,
+    }: UpdateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> => {
+      const result = await writeFeature({
+        operationName: 'list.update',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId,
+            updates,
+          },
+        },
+        execute: () => updateRestaurantList(listId, updates, currentList),
+      });
+
+      await syncUpdatedRestaurantListCaches(queryClient, listId);
+
+      if (result.status === 'queued') {
+        showQueuedOfflineAlert('List update');
+      }
+
+      return result;
+    },
+    [queryClient, writeFeature],
+  );
+
+  const createDefaultListWrite = useCallback(
+    async (): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> => {
+      const result = await writeFeature({
+        operationName: 'list.default.create',
+        offline: {
+          strategy: 'outbox',
+          payload: {},
+        },
+        execute: () => createDefaultRestaurantList(),
+      });
+
+      await invalidateRestaurantListCollectionQueries(queryClient, 'my');
+
+      return result;
+    },
+    [queryClient, writeFeature],
+  );
 
   const deleteListWrite = useCallback(
     async ({
@@ -257,12 +371,40 @@ export function useRestaurantListWrites() {
     [queryClient, saveBookmarkToListsWrite, writeFeature],
   );
 
+  const addRestaurantWrite = useCallback(
+    async (
+      input: AddRestaurantVisitRatingsToListInput,
+    ): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[]>> => {
+      const result = await writeFeature({
+        operationName: 'list.restaurant.add',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+        execute: () => addRestaurantVisitRatingsToList(input),
+      });
+
+      await syncRestaurantListMembershipCaches(queryClient, input.listId);
+
+      if (result.status === 'queued') {
+        showQueuedOfflineAlert('List updates');
+      }
+
+      return result;
+    },
+    [queryClient, writeFeature],
+  );
+
   return {
+    addRestaurant: addRestaurantWrite,
+    createDefaultRestaurantList: createDefaultListWrite,
+    createRestaurantList: createListWrite,
     deleteRestaurantList: deleteListWrite,
     reorderRestaurant: reorderRestaurantWrite,
     removeRestaurantListSourceRating: removeSourceRatingWrite,
     removeRestaurantListUserRating: removeUserRatingWrite,
     saveBookmarkToDefaultList: saveBookmarkToDefaultListWrite,
     saveBookmarkToLists: saveBookmarkToListsWrite,
+    updateRestaurantList: updateListWrite,
   };
 }

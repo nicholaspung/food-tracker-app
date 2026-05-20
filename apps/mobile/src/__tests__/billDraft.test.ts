@@ -1,18 +1,6 @@
 import {
-  addDraftBillItem,
-  buildBillDraftSubmission,
+  billDraftFacade,
   calculateSuggestedBillAmounts,
-  changeAdvancedSplitType,
-  normalizeDraftBillItemsForParticipants,
-  syncAdvancedSplitsToParticipants,
-  toggleAdvancedDraftBillItemParticipant,
-  toggleAdvancedSplitLock,
-  toggleDraftBillItemAdvancedSplitLock,
-  toggleSimpleDraftBillItemParticipant,
-  updateAdvancedSplitValue,
-  updateDraftBillItemAdvancedSplitType,
-  updateDraftBillItemAdvancedSplitValue,
-  updateDraftBillItemSplitMode,
   type DraftBillItem,
   type DraftParticipant,
 } from '../features/bills/billDraft';
@@ -37,8 +25,8 @@ const participants: DraftParticipant[] = [
 ];
 
 function buildBaseSubmissionInput(
-  overrides: Partial<Parameters<typeof buildBillDraftSubmission>[0]> = {},
-): Parameters<typeof buildBillDraftSubmission>[0] {
+  overrides: Partial<Parameters<typeof billDraftFacade.buildSubmission>[0]> = {},
+): Parameters<typeof billDraftFacade.buildSubmission>[0] {
   const participantIds = participants.map((participant) => participant.id);
   const suggestedAmounts = new Map([
     ['user:self', 20],
@@ -92,8 +80,37 @@ function buildDraftItem(overrides: Partial<DraftBillItem> = {}): DraftBillItem {
 }
 
 describe('bill draft item transitions', () => {
+  it('exposes screen-level item actions through the facade', () => {
+    const addResult = billDraftFacade.addItem({
+      createEntityId,
+      draftItemName: 'Noodles',
+      draftItemPrice: '12.50',
+      isCustomSplitMode: true,
+      items: [],
+      participantIds: ['user:self', 'custom:alex'],
+    });
+
+    expect(addResult.ok).toBe(true);
+    if (!addResult.ok) {
+      return;
+    }
+
+    const advancedItems = billDraftFacade.updateItemSplitMode(addResult.items, {
+      itemId: addResult.item.id,
+      nextSplitMode: 'advanced',
+      participantIds: ['user:self', 'custom:alex'],
+    });
+    const toggledItems = billDraftFacade.toggleAdvancedItemParticipant(advancedItems, {
+      itemId: addResult.item.id,
+      participantId: 'custom:alex',
+    });
+
+    expect(toggledItems[0]?.advancedSplits).toHaveLength(1);
+    expect(toggledItems[0]?.advancedSplits[0]?.participantId).toBe('user:self');
+  });
+
   it('adds draft items with default simple splits', () => {
-    const result = addDraftBillItem({
+    const result = billDraftFacade.addItem({
       createEntityId,
       draftItemName: '',
       draftItemPrice: '12.345',
@@ -121,7 +138,7 @@ describe('bill draft item transitions', () => {
 
   it('rejects invalid draft item input', () => {
     expect(
-      addDraftBillItem({
+      billDraftFacade.addItem({
         createEntityId,
         draftItemName: 'Sushi',
         draftItemPrice: '0',
@@ -136,7 +153,7 @@ describe('bill draft item transitions', () => {
     });
 
     expect(
-      addDraftBillItem({
+      billDraftFacade.addItem({
         createEntityId,
         draftItemName: '',
         draftItemPrice: '10',
@@ -152,7 +169,7 @@ describe('bill draft item transitions', () => {
   });
 
   it('switches simple items into advanced splits and back', () => {
-    const advancedItems = updateDraftBillItemSplitMode(
+    const advancedItems = billDraftFacade.updateItemSplitMode(
       [buildDraftItem()],
       {
         itemId: 'draft_item_1',
@@ -178,7 +195,7 @@ describe('bill draft item transitions', () => {
       }),
     ]);
 
-    const simpleItems = updateDraftBillItemSplitMode(advancedItems, {
+    const simpleItems = billDraftFacade.updateItemSplitMode(advancedItems, {
       itemId: 'draft_item_1',
       nextSplitMode: 'simple',
       participantIds: ['user:self', 'custom:alex'],
@@ -191,7 +208,7 @@ describe('bill draft item transitions', () => {
   });
 
   it('toggles simple and advanced participant assignment', () => {
-    const simpleItems = toggleSimpleDraftBillItemParticipant(
+    const simpleItems = billDraftFacade.toggleSimpleItemParticipant(
       [buildDraftItem()],
       {
         itemId: 'draft_item_1',
@@ -200,7 +217,7 @@ describe('bill draft item transitions', () => {
     );
     expect(simpleItems[0]?.assignedParticipantIds).toEqual(['user:self']);
 
-    const advancedItems = updateDraftBillItemSplitMode(
+    const advancedItems = billDraftFacade.updateItemSplitMode(
       [buildDraftItem()],
       {
         itemId: 'draft_item_1',
@@ -208,7 +225,7 @@ describe('bill draft item transitions', () => {
         participantIds: ['user:self', 'custom:alex'],
       },
     );
-    const removedAdvancedItems = toggleAdvancedDraftBillItemParticipant(
+    const removedAdvancedItems = billDraftFacade.toggleAdvancedItemParticipant(
       advancedItems,
       {
         itemId: 'draft_item_1',
@@ -225,7 +242,7 @@ describe('bill draft item transitions', () => {
   });
 
   it('updates advanced split type, values, and locks', () => {
-    const [advancedItem] = updateDraftBillItemSplitMode(
+    const [advancedItem] = billDraftFacade.updateItemSplitMode(
       [buildDraftItem()],
       {
         itemId: 'draft_item_1',
@@ -234,7 +251,7 @@ describe('bill draft item transitions', () => {
       },
     );
 
-    const typeItems = updateDraftBillItemAdvancedSplitType(
+    const typeItems = billDraftFacade.updateAdvancedSplitType(
       [advancedItem],
       {
         itemId: 'draft_item_1',
@@ -243,12 +260,12 @@ describe('bill draft item transitions', () => {
     );
     expect(typeItems[0]?.advancedSplitType).toBe('amount');
 
-    const lockedItems = toggleDraftBillItemAdvancedSplitLock(typeItems, {
+    const lockedItems = billDraftFacade.toggleAdvancedSplitLock(typeItems, {
       itemId: 'draft_item_1',
       participantId: 'user:self',
       splitType: 'amount',
     });
-    const updatedItems = updateDraftBillItemAdvancedSplitValue(lockedItems, {
+    const updatedItems = billDraftFacade.updateAdvancedSplitValue(lockedItems, {
       itemId: 'draft_item_1',
       participantId: 'user:self',
       splitType: 'amount',
@@ -292,7 +309,7 @@ describe('bill draft participant and custom tip split transitions', () => {
       ],
     });
 
-    const result = normalizeDraftBillItemsForParticipants(
+    const result = billDraftFacade.normalizeItemsForParticipants(
       [item],
       ['user:self', 'custom:alex'],
     );
@@ -310,7 +327,7 @@ describe('bill draft participant and custom tip split transitions', () => {
   });
 
   it('keeps participant-aware custom tip splits balanced', () => {
-    const initialSplits = syncAdvancedSplitsToParticipants({
+    const initialSplits = billDraftFacade.syncCustomTipSplitsToParticipants({
       participantIds: ['user:self', 'custom:alex'],
       splits: [],
       totalAmount: 12,
@@ -329,18 +346,18 @@ describe('bill draft participant and custom tip split transitions', () => {
       }),
     ]);
 
-    const amountSplits = changeAdvancedSplitType({
+    const amountSplits = billDraftFacade.changeCustomTipSplitType({
       nextType: 'amount',
       splits: initialSplits,
       totalAmount: 12,
     });
-    const lockedSplits = toggleAdvancedSplitLock({
+    const lockedSplits = billDraftFacade.toggleCustomTipSplitLock({
       participantId: 'user:self',
       splitType: 'amount',
       splits: amountSplits,
       totalAmount: 12,
     });
-    const updatedSplits = updateAdvancedSplitValue({
+    const updatedSplits = billDraftFacade.updateCustomTipSplitValue({
       participantId: 'user:self',
       splitType: 'amount',
       splits: lockedSplits,
@@ -364,7 +381,7 @@ describe('bill draft participant and custom tip split transitions', () => {
 
 describe('bill draft submission', () => {
   it('builds an equal split payload with generated bill item ids', () => {
-    const result = buildBillDraftSubmission(buildBaseSubmissionInput());
+    const result = billDraftFacade.buildSubmission(buildBaseSubmissionInput());
 
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) {
@@ -430,7 +447,7 @@ describe('bill draft submission', () => {
       ],
     };
 
-    const result = buildBillDraftSubmission(
+    const result = billDraftFacade.buildSubmission(
       buildBaseSubmissionInput({
         extrasSplitMode: 'proportional',
         isCustomSplitMode: true,
@@ -492,7 +509,7 @@ describe('bill draft submission', () => {
       updatedAt: '2026-05-19T00:00:00.000Z',
     };
 
-    const result = buildBillDraftSubmission(
+    const result = billDraftFacade.buildSubmission(
       buildBaseSubmissionInput({
         editBill,
         editBillId: 'bill_1',

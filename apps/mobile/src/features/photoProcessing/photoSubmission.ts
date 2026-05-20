@@ -1,6 +1,4 @@
 import {
-  createFoodProduct,
-  createVisit,
   type CreateFoodProductInput,
   type CreateVisitInput,
   type VisitPhotoUploadInput,
@@ -8,10 +6,9 @@ import {
 import type { QueryClient } from '@tanstack/react-query';
 
 import type { OfflineAwareFeatureWrite } from '../store/useOfflineAwareFeatureWrite';
-import {
-  completeSourceNoteAfterEntryWrite,
-  persistSourceNoteUsed,
-} from '../notes/sourceNoteCompletion';
+import { createFoodProductWithOfflineSupport } from '../store/useFoodProductWrites';
+import { createVisitWithOfflineSupport } from '../store/useVisitWrites';
+import { persistSourceNoteUsed } from '../notes/sourceNoteCompletion';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import {
   buildCreateFoodProductInput,
@@ -201,25 +198,22 @@ export async function submitRestaurantPhotoEntries({
   });
 
   for (const visitInput of visitInputs) {
-    const createResult = await writeFeature({
-      operationName: 'visit.create',
-      offline: {
-        strategy: 'outbox',
-        payload: visitInput,
-      },
-      execute: () => createVisit(visitInput),
+    const createResult = await createVisitWithOfflineSupport({
+      input: visitInput,
+      hasPhotoUploads: true,
+      queryClient,
+      queuedAlert: false,
+      sourceNote:
+        noteId && visitInputs.length === 1 && noteUsedAt
+          ? {
+              noteId,
+              usedAt: noteUsedAt,
+            }
+          : undefined,
+      useApiReplay: false,
+      writeFeature,
     });
     queued = queued || createResult.status === 'queued';
-
-    if (noteId && visitInputs.length === 1 && noteUsedAt) {
-      await completeSourceNoteAfterEntryWrite({
-        entryWriteStatus: createResult.status,
-        noteId,
-        queryClient,
-        usedAt: noteUsedAt,
-        writeFeature,
-      });
-    }
   }
 
   if (noteId && visitInputs.length > 1 && noteUsedAt) {
@@ -254,25 +248,21 @@ export async function submitFoodProductPhotoEntries({
   });
 
   for (const foodProductInput of foodProductInputs) {
-    const createResult = await writeFeature({
-      operationName: 'food-product.create',
-      offline: {
-        strategy: 'outbox',
-        payload: foodProductInput,
-      },
-      execute: () => createFoodProduct(foodProductInput),
+    const createResult = await createFoodProductWithOfflineSupport({
+      input: foodProductInput,
+      includeUsage: true,
+      queryClient,
+      queuedAlert: false,
+      sourceNote:
+        noteId && photos.length === 1 && noteUsedAt
+          ? {
+              noteId,
+              usedAt: noteUsedAt,
+            }
+          : undefined,
+      writeFeature,
     });
     queued = queued || createResult.status === 'queued';
-
-    if (noteId && photos.length === 1 && noteUsedAt) {
-      await completeSourceNoteAfterEntryWrite({
-        entryWriteStatus: createResult.status,
-        noteId,
-        queryClient,
-        usedAt: noteUsedAt,
-        writeFeature,
-      });
-    }
   }
 
   if (noteId && photos.length > 1 && noteUsedAt) {

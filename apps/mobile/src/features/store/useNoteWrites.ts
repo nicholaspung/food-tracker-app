@@ -4,12 +4,12 @@ import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import type { NoteRecord } from '../models';
 import type { CreateNoteInput, MarkNoteUsedInput, UpdateNoteInput } from './featureStore';
-import { promoteCachedNoteToUsed, removeCachedNote } from './notesCache';
+import { applyNoteUsedCacheEffects, writeNoteUsedWithOfflineSupport } from './noteUsedWrite';
+import { removeCachedNote } from './notesCache';
 import { notesQueryKeys } from './notesQuery';
 import {
   createNote,
   deleteNote,
-  markNoteUsed,
   updateNote,
 } from './notesStore';
 import {
@@ -164,16 +164,9 @@ export function useNoteWrites() {
 
   const markNoteUsedWrite = useCallback(
     async (input: MarkNoteUsedInput): Promise<OfflineAwareFeatureWriteResult<void>> => {
-      const result = await writeFeature({
-        operationName: 'note.mark-used',
-        offline: {
-          strategy: 'outbox',
-          payload: input,
-        },
-        execute: () => markNoteUsed(input),
-      });
+      const result = await writeNoteUsedWithOfflineSupport(writeFeature, input);
 
-      promoteCachedNoteToUsed(queryClient, {
+      applyNoteUsedCacheEffects(queryClient, {
         noteId: input.noteId,
         usedAt: input.usedAt ?? new Date().toISOString(),
       });
