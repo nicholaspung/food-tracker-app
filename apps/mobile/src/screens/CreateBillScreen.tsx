@@ -20,6 +20,39 @@ import {
   formatCurrency,
   validateBillTotal,
 } from '../features/bills/billCalculations';
+import {
+  areStringArraysEqual,
+  addDraftBillItem,
+  buildBillDraftSubmission,
+  buildDefaultAdvancedSplits,
+  calculateSuggestedBillAmounts,
+  changeAdvancedSplitType,
+  formatPercentageDisplay,
+  getAdvancedSplitRawValue,
+  inferEditSplitMode,
+  isAdvancedSplitLocked,
+  normalizeDraftBillItemsForParticipants,
+  resolveSplitTarget,
+  roundToCurrency,
+  sanitizeParticipantName,
+  removeDraftBillItem,
+  syncAdvancedSplitsToParticipants,
+  toCurrencyInput,
+  toggleAdvancedDraftBillItemParticipant,
+  toggleAdvancedSplitLock as toggleDraftAdvancedSplitLock,
+  toggleDraftBillItemAdvancedSplitLock,
+  toggleSimpleDraftBillItemParticipant,
+  updateAdvancedSplitValue as updateDraftAdvancedSplitValue,
+  updateDraftBillItemAdvancedSplitType,
+  updateDraftBillItemAdvancedSplitValue,
+  updateDraftBillItemSplitMode,
+  type CreateBillSplitMode,
+  type DraftAdvancedSplitEntry,
+  type DraftAdvancedSplitType,
+  type DraftBillItem,
+  type DraftCustomParticipant,
+  type OwedAmountEntry,
+} from '../features/bills/billDraft';
 import { useBillWrites } from '../features/store/useBillWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -29,29 +62,6 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
 import { BillPayerAndTotalsSection } from './createBill/BillPayerAndTotalsSection';
-import {
-  areStringArraysEqual,
-  buildBillDraftSubmission,
-  buildDefaultAdvancedSplits,
-  calculateSuggestedBillAmounts,
-  formatPercentageDisplay,
-  getAdvancedSplitRawValue,
-  inferEditSplitMode,
-  isAdvancedSplitLocked,
-  redistributeAdvancedSplits,
-  resolveSplitTarget,
-  roundToCurrency,
-  sanitizeParticipantName,
-  setAdvancedSplitLocked,
-  setAdvancedSplitRawValue,
-  toCurrencyInput,
-  type CreateBillSplitMode,
-  type DraftAdvancedSplitEntry,
-  type DraftAdvancedSplitType,
-  type DraftBillItem,
-  type DraftCustomParticipant,
-  type OwedAmountEntry,
-} from './createBill/shared';
 import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
@@ -691,51 +701,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    const participantIdSet = new Set(participantIds);
-
-    setItems((currentItems) => {
-      let didChange = false;
-      const nextItems = currentItems.map((item) => {
-        const filteredAssignedIds = item.assignedParticipantIds.filter((participantId) =>
-          participantIdSet.has(participantId),
-        );
-        const filteredAdvancedSplits = item.advancedSplits.filter((split) =>
-          participantIdSet.has(split.participantId),
-        );
-
-        const normalizedAssignedIds = filteredAssignedIds;
-        const normalizedSplitMode = item.splitMode;
-        const normalizedAdvancedSplits = filteredAdvancedSplits;
-
-        const assignedChanged = !areStringArraysEqual(item.assignedParticipantIds, normalizedAssignedIds);
-        const splitModeChanged = item.splitMode !== normalizedSplitMode;
-        const advancedSplitsChanged =
-          item.advancedSplits.length !== normalizedAdvancedSplits.length ||
-          item.advancedSplits.some((split, index) => {
-            const nextSplit = normalizedAdvancedSplits[index];
-            return (
-              !nextSplit ||
-              nextSplit.participantId !== split.participantId ||
-              nextSplit.percentageValue !== split.percentageValue ||
-              nextSplit.amountValue !== split.amountValue
-            );
-          });
-
-        if (!assignedChanged && !splitModeChanged && !advancedSplitsChanged) {
-          return item;
-        }
-
-        didChange = true;
-        return {
-          ...item,
-          splitMode: normalizedSplitMode,
-          assignedParticipantIds: normalizedAssignedIds,
-          advancedSplits: normalizedAdvancedSplits,
-        };
-      });
-
-      return didChange ? nextItems : currentItems;
-    });
+    setItems((currentItems) =>
+      normalizeDraftBillItemsForParticipants(currentItems, participantIds),
+    );
   }, [isEditHydrated, isEditMode, participantIds]);
 
   useEffect(() => {
@@ -770,22 +738,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     }
 
     setCustomTipSplits((currentSplits) => {
-      const currentByParticipant = new Map(currentSplits.map((split) => [split.participantId, split]));
-      const nextSplits = participantIds.map(
-        (participantId) =>
-          currentByParticipant.get(participantId) ?? {
-            participantId,
-            percentageValue: '',
-            amountValue: '',
-            percentageLocked: false,
-            amountLocked: false,
-          },
-      );
-
-      const withPercentages = redistributeAdvancedSplits(nextSplits, 'percentage', normalizedTip);
-      const withAmounts = redistributeAdvancedSplits(withPercentages, 'amount', normalizedTip);
-
-      return withAmounts;
+      return syncAdvancedSplitsToParticipants({
+        participantIds,
+        splits: currentSplits,
+        totalAmount: normalizedTip,
+      });
     });
   }, [isCustomTipEnabled, normalizedTip, participantIds]);
 
@@ -1004,31 +961,21 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const addItem = () => {
-    const price = Number(draftItemPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      setErrorMessage('Item price must be greater than zero.');
+    const result = addDraftBillItem({
+      createEntityId,
+      draftItemName,
+      draftItemPrice,
+      isCustomSplitMode,
+      items,
+      participantIds,
+    });
+
+    if (!result.ok) {
+      setErrorMessage(result.message);
       return;
     }
 
-    const normalizedName = draftItemName.trim() || `Item ${items.length + 1}`;
-    if (isCustomSplitMode && !draftItemName.trim()) {
-      setErrorMessage('Item name is required for custom split.');
-      return;
-    }
-
-    setItems((currentItems) => [
-      ...currentItems,
-      {
-        id: createEntityId('bill_item_draft'),
-        name: normalizedName,
-        price: String(roundToCurrency(price)),
-        splitMode: 'simple',
-        assignedParticipantIds: [...participantIds],
-        advancedSplitType: 'percentage',
-        advancedSplits: [],
-      },
-    ]);
-
+    setItems(result.items);
     setDraftItemName('');
     setDraftItemPrice('');
     setErrorMessage(null);
@@ -1040,7 +987,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const removeItem = (itemId: string) => {
-    setItems((currentItems) => currentItems.filter((item) => item.id !== itemId));
+    setItems((currentItems) => removeDraftBillItem(currentItems, { itemId }));
     setExpandedItemIds((currentIds) => currentIds.filter((currentId) => currentId !== itemId));
     trackObservabilityEvent('CREATE_BILL_ITEM_REMOVED', {
       source: 'CreateBillScreen',
@@ -1051,104 +998,37 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const updateItemSplitMode = (itemId: string, nextSplitMode: 'simple' | 'advanced') => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId || item.splitMode === nextSplitMode) {
-          return item;
-        }
-
-        if (nextSplitMode === 'advanced') {
-          const assignedParticipantIds =
-            item.assignedParticipantIds.length > 0 ? item.assignedParticipantIds : [...participantIds];
-          const parsedItemPrice = Number(item.price);
-          const normalizedItemPrice = Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
-
-          return {
-            ...item,
-            splitMode: 'advanced',
-            advancedSplitType: 'percentage',
-            advancedSplits: buildDefaultAdvancedSplits(assignedParticipantIds, normalizedItemPrice),
-          };
-        }
-
-        return {
-          ...item,
-          splitMode: 'simple',
-          assignedParticipantIds:
-            item.advancedSplits.length > 0
-              ? item.advancedSplits
-                  .map((split) => split.participantId)
-                  .filter((participantId, index, collection) => collection.indexOf(participantId) === index)
-              : item.assignedParticipantIds,
-        };
+      updateDraftBillItemSplitMode(currentItems, {
+        itemId,
+        nextSplitMode,
+        participantIds,
       }),
     );
   };
 
   const toggleSimpleItemParticipant = (itemId: string, participantId: string) => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        const isAssigned = item.assignedParticipantIds.includes(participantId);
-        const nextAssignedParticipantIds = isAssigned
-          ? item.assignedParticipantIds.filter((id) => id !== participantId)
-          : [...item.assignedParticipantIds, participantId];
-
-        return {
-          ...item,
-          assignedParticipantIds: nextAssignedParticipantIds,
-        };
+      toggleSimpleDraftBillItemParticipant(currentItems, {
+        itemId,
+        participantId,
       }),
     );
   };
 
   const updateAdvancedSplitType = (itemId: string, nextType: DraftAdvancedSplitType) => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        return {
-          ...item,
-          advancedSplitType: nextType,
-        };
+      updateDraftBillItemAdvancedSplitType(currentItems, {
+        itemId,
+        nextType,
       }),
     );
   };
 
   const toggleAdvancedItemParticipant = (itemId: string, participantId: string) => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        const existingSplit = item.advancedSplits.find((split) => split.participantId === participantId);
-        const parsedItemPrice = Number(item.price);
-        const normalizedItemPrice = Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
-        const nextSplits = existingSplit
-          ? item.advancedSplits.filter((split) => split.participantId !== participantId)
-          : [
-              ...item.advancedSplits,
-              {
-                participantId,
-                percentageValue: '',
-                amountValue: '',
-                percentageLocked: false,
-                amountLocked: false,
-              },
-            ];
-
-        const withPercentages = redistributeAdvancedSplits(nextSplits, 'percentage', normalizedItemPrice);
-        const withAmounts = redistributeAdvancedSplits(withPercentages, 'amount', normalizedItemPrice);
-
-        return {
-          ...item,
-          advancedSplits: withAmounts,
-        };
+      toggleAdvancedDraftBillItemParticipant(currentItems, {
+        itemId,
+        participantId,
       }),
     );
   };
@@ -1160,33 +1040,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     value: string,
   ) => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        const parsedItemPrice = Number(item.price);
-        const normalizedItemPrice = Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
-        const nextSplits = item.advancedSplits.map((split) =>
-          split.participantId === participantId
-            ? {
-                ...split,
-                percentageValue: splitType === 'percentage' ? value : split.percentageValue,
-                amountValue: splitType === 'amount' ? value : split.amountValue,
-              }
-            : split,
-        );
-
-        const editedSplit = nextSplits.find((split) => split.participantId === participantId);
-        const shouldRedistribute =
-          editedSplit ? isAdvancedSplitLocked(editedSplit, splitType) : false;
-
-        return {
-          ...item,
-          advancedSplits: shouldRedistribute
-            ? redistributeAdvancedSplits(nextSplits, splitType, normalizedItemPrice)
-            : nextSplits,
-        };
+      updateDraftBillItemAdvancedSplitValue(currentItems, {
+        itemId,
+        participantId,
+        splitType,
+        value,
       }),
     );
   };
@@ -1197,29 +1055,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     splitType: DraftAdvancedSplitType,
   ) => {
     setItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        const parsedItemPrice = Number(item.price);
-        const normalizedItemPrice = Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
-        const toggledSplits = item.advancedSplits.map((split) => {
-          if (split.participantId !== participantId) {
-            return split;
-          }
-
-          return setAdvancedSplitLocked(
-            split,
-            splitType,
-            !isAdvancedSplitLocked(split, splitType),
-          );
-        });
-
-        return {
-          ...item,
-          advancedSplits: redistributeAdvancedSplits(toggledSplits, splitType, normalizedItemPrice),
-        };
+      toggleDraftBillItemAdvancedSplitLock(currentItems, {
+        itemId,
+        participantId,
+        splitType,
       }),
     );
   };
@@ -1232,20 +1071,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
     setIsCustomTipEnabled(true);
     setCustomTipSplits((currentSplits) => {
-      const currentByParticipant = new Map(currentSplits.map((split) => [split.participantId, split]));
-      const nextSplits = participantIds.map(
-        (participantId) =>
-          currentByParticipant.get(participantId) ?? {
-            participantId,
-            percentageValue: '',
-            amountValue: '',
-            percentageLocked: false,
-            amountLocked: false,
-          },
-      );
-
-      const withPercentages = redistributeAdvancedSplits(nextSplits, 'percentage', normalizedTip);
-      return redistributeAdvancedSplits(withPercentages, 'amount', normalizedTip);
+      return syncAdvancedSplitsToParticipants({
+        participantIds,
+        splits: currentSplits,
+        totalAmount: normalizedTip,
+      });
     });
   };
 
@@ -1263,43 +1093,35 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const changeCustomTipSplitType = (nextType: DraftAdvancedSplitType) => {
     setCustomTipSplitType(nextType);
     setCustomTipSplits((currentSplits) =>
-      redistributeAdvancedSplits(currentSplits, nextType, normalizedTip),
+      changeAdvancedSplitType({
+        nextType,
+        splits: currentSplits,
+        totalAmount: normalizedTip,
+      }),
     );
   };
 
   const updateCustomTipSplitValue = (participantId: string, value: string) => {
-    setCustomTipSplits((currentSplits) => {
-      const nextSplits = currentSplits.map((split) =>
-        split.participantId === participantId
-          ? setAdvancedSplitRawValue(split, customTipSplitType, value)
-          : split,
-      );
-      const editedSplit = nextSplits.find((split) => split.participantId === participantId);
-      const shouldRedistribute =
-        editedSplit ? isAdvancedSplitLocked(editedSplit, customTipSplitType) : false;
-
-      return shouldRedistribute
-        ? redistributeAdvancedSplits(nextSplits, customTipSplitType, normalizedTip)
-        : nextSplits;
-    });
+    setCustomTipSplits((currentSplits) =>
+      updateDraftAdvancedSplitValue({
+        participantId,
+        splitType: customTipSplitType,
+        splits: currentSplits,
+        totalAmount: normalizedTip,
+        value,
+      }),
+    );
   };
 
   const toggleCustomTipSplitLock = (participantId: string) => {
-    setCustomTipSplits((currentSplits) => {
-      const toggledSplits = currentSplits.map((split) => {
-        if (split.participantId !== participantId) {
-          return split;
-        }
-
-        return setAdvancedSplitLocked(
-          split,
-          customTipSplitType,
-          !isAdvancedSplitLocked(split, customTipSplitType),
-        );
-      });
-
-      return redistributeAdvancedSplits(toggledSplits, customTipSplitType, normalizedTip);
-    });
+    setCustomTipSplits((currentSplits) =>
+      toggleDraftAdvancedSplitLock({
+        participantId,
+        splitType: customTipSplitType,
+        splits: currentSplits,
+        totalAmount: normalizedTip,
+      }),
+    );
   };
 
   const buildItemSplitSummary = (item: DraftBillItem): string => {

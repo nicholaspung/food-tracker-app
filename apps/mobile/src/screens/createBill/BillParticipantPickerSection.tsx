@@ -4,14 +4,14 @@ import { ScrollView, View } from 'react-native';
 
 import { OptionList, OptionListRow, Skeleton } from '../../components/shared';
 import { createEntityId, type FriendRecord } from '../../features';
-import { createThemedStyles, useTheme } from '../../theme';
-import { Button, Card, Input, Modal, Text } from '../../ui';
 import {
   isSyntheticFriendEmail,
   normalizeFriendName,
   sanitizeParticipantName,
   type DraftCustomParticipant,
-} from './shared';
+} from '../../features/bills/billDraft';
+import { createThemedStyles, useTheme } from '../../theme';
+import { Button, Card, Input, Modal, Text } from '../../ui';
 
 interface BillParticipantPickerSelection {
   friendIds: string[];

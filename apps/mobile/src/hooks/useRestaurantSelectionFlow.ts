@@ -14,9 +14,6 @@ import {
 } from 'react';
 
 import {
-  formatLimitExceededMessage,
-  parseLimitExceededError,
-  type LimitExceededPayload,
   type MenuItemRecord,
   type RestaurantRecord,
 } from '../features';
@@ -37,8 +34,13 @@ import {
   buildRecentRestaurantsQueryOptions,
   buildRestaurantMenuItemsQueryOptions,
   resolveSavedRestaurantsUiState,
-  syncMonthlyUsageSnapshot,
+  resolveRestaurantTextSearchPreflight,
+  resolveRestaurantNearbySearchPreflight,
+  runRestaurantNearbySearch,
+  runRestaurantTextSearch,
   RESTAURANT_SUGGESTIONS_LIMIT,
+  type RestaurantNearbySearchResult,
+  type RestaurantTextSearchResult,
 } from '../features/restaurants/restaurantSelection';
 
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
@@ -122,52 +124,9 @@ interface UseRestaurantSelectionFlowResult {
   triggerSavedRestaurantsRefetch: () => Promise<unknown>;
 }
 
-export type TextRestaurantSearchResult =
-  | {
-      message: string;
-      status: 'offline' | 'quota_reached' | 'validation_error';
-    }
-  | {
-      results: RestaurantRecord[];
-      status: 'success';
-    }
-  | {
-      error: unknown;
-      limitPayload: LimitExceededPayload | null;
-      message: string;
-      status: 'error';
-    };
+export type TextRestaurantSearchResult = RestaurantTextSearchResult;
 
-export type NearbyRestaurantSearchResult =
-  | {
-      message: string;
-      status: 'offline' | 'quota_reached';
-    }
-  | {
-      canAskAgain: boolean;
-      message: string;
-      status: 'permission_denied';
-    }
-  | {
-      error: unknown;
-      message: string;
-      status: 'location_error';
-    }
-  | {
-      results: RestaurantRecord[];
-      status: 'success';
-    }
-  | {
-      error: unknown;
-      limitPayload: LimitExceededPayload | null;
-      message: string;
-      status: 'error';
-    };
-
-export {
-  buildRestaurantMenuItemsQueryOptions,
-  buildRestaurantSearchQueryOptions,
-} from '../features/restaurants/restaurantSelection';
+export type NearbyRestaurantSearchResult = RestaurantNearbySearchResult;
 
 export function useSavedRestaurantSuggestions({
   enabled,
@@ -396,24 +355,17 @@ export function useRestaurantSelectionFlow({
       collapseAfterSearch?: boolean;
       queryOverride?: string;
     } = {}): Promise<TextRestaurantSearchResult> => {
-      if (!isOnline) {
-        const message = 'Google Places search requires internet connection.';
-        setSearchErrorMessage(message);
-        return { message, status: 'offline' };
-      }
-
-      if (searchUi.isQuotaReached && shouldEnforceUsageLimitsClientSide) {
-        const message = 'Monthly food place search limit reached.';
-        setSearchErrorMessage(message);
-        return { message, status: 'quota_reached' };
-      }
-
-      const trimmedLocation = manualLocation.trim();
       const effectiveSearchQuery = queryOverride?.trim() ?? trimmedSearchQuery;
-      if (!effectiveSearchQuery && !trimmedLocation) {
-        const message = 'Enter a place name/type or a location to search.';
-        setSearchErrorMessage(message);
-        return { message, status: 'validation_error' };
+      const preflight = resolveRestaurantTextSearchPreflight({
+        isOnline,
+        isQuotaReached: searchUi.isQuotaReached,
+        locationText: manualLocation,
+        query: effectiveSearchQuery,
+        shouldEnforceUsageLimitsClientSide,
+      });
+      if (!('ok' in preflight)) {
+        setSearchErrorMessage(preflight.message);
+        return preflight;
       }
 
       if (collapseAfterSearch) {
@@ -425,47 +377,28 @@ export function useRestaurantSelectionFlow({
       setSearchErrorMessage(null);
       resetLocationPermissionNeedsSettings();
 
-      let didAttemptPlacesQuery = false;
-      let didSyncMonthlyUsageSnapshot = false;
+      const result = await runRestaurantTextSearch({
+        effectiveReferenceCoords,
+        isOnline,
+        isQuotaReached: searchUi.isQuotaReached,
+        locationText: manualLocation,
+        query: effectiveSearchQuery,
+        queryClient,
+        searchByText: searchAndCacheRestaurantsByText,
+        shouldEnforceUsageLimitsClientSide,
+      });
+
+      if (result.status === 'success') {
+        setReferenceCoords(result.referenceCoords);
+        setSearchResults(result.results);
+      } else {
+        setSearchErrorMessage(result.message);
+      }
 
       try {
-        didAttemptPlacesQuery = true;
-
-        const { resolvedLocation, restaurants, usageSnapshot } = await searchAndCacheRestaurantsByText({
-          locationText: trimmedLocation || undefined,
-          query: effectiveSearchQuery || 'food',
-          radius: 5000,
-        });
-        didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(queryClient, usageSnapshot);
-
-        setReferenceCoords(trimmedLocation ? resolvedLocation : effectiveReferenceCoords);
-
-        setSearchResults(restaurants);
-        return {
-          results: restaurants,
-          status: 'success',
-        };
-      } catch (error) {
-        const limitPayload = parseLimitExceededError(error);
-        const message = limitPayload
-          ? formatLimitExceededMessage(limitPayload)
-          : error instanceof Error
-            ? error.message
-            : 'Could not search restaurants.';
-        setSearchErrorMessage(message);
-        return {
-          error,
-          limitPayload,
-          message,
-          status: 'error',
-        };
+        return result;
       } finally {
         setIsSearchingRestaurants(false);
-        if (didAttemptPlacesQuery && !didSyncMonthlyUsageSnapshot) {
-          await queryClient.invalidateQueries({
-            queryKey: ['feature', 'usage', 'monthly'],
-          });
-        }
       }
     },
     [
@@ -481,87 +414,46 @@ export function useRestaurantSelectionFlow({
   );
 
   const searchNearby = useCallback(async (): Promise<NearbyRestaurantSearchResult> => {
-    if (!isOnline) {
-      const message = 'Nearby search requires internet connection.';
-      setSearchErrorMessage(message);
-      return { message, status: 'offline' };
-    }
-
-    if (searchUi.isQuotaReached && shouldEnforceUsageLimitsClientSide) {
-      const message = 'Monthly food place search limit reached.';
-      setSearchErrorMessage(message);
-      return { message, status: 'quota_reached' };
+    const preflight = resolveRestaurantNearbySearchPreflight({
+      isOnline,
+      isQuotaReached: searchUi.isQuotaReached,
+      shouldEnforceUsageLimitsClientSide,
+    });
+    if (!('ok' in preflight)) {
+      setSearchErrorMessage(preflight.message);
+      return preflight;
     }
 
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
     resetLocationPermissionNeedsSettings();
 
-    const locationCapture = await captureLocation();
-    if (locationCapture.status === 'permission_denied') {
-      setSearchErrorMessage(locationCapture.message);
-      return {
-        canAskAgain: locationCapture.canAskAgain,
-        message: locationCapture.message,
-        status: 'permission_denied',
-      };
-    }
-
-    if (locationCapture.status === 'error') {
-      setSearchErrorMessage(locationCapture.message);
-      return {
-        error: locationCapture.error,
-        message: locationCapture.message,
-        status: 'location_error',
-      };
-    }
-
-    const coords = {
-      lat: locationCapture.coordinates.latitude,
-      lng: locationCapture.coordinates.longitude,
-    };
-    setReferenceCoords(coords);
-
-    let didAttemptPlacesQuery = false;
-    let didSyncMonthlyUsageSnapshot = false;
-
     try {
-      setIsSearchingNearbyRestaurants(true);
-      didAttemptPlacesQuery = true;
-
-      const { restaurants, usageSnapshot } = await searchAndCacheNearbyRestaurants({
-        latitude: coords.lat,
-        longitude: coords.lng,
-        radius: 5000,
+      const result = await runRestaurantNearbySearch({
+        captureLocation,
+        isOnline,
+        isQuotaReached: searchUi.isQuotaReached,
+        queryClient,
+        searchNearby: async (params) => {
+          setIsSearchingNearbyRestaurants(true);
+          return searchAndCacheNearbyRestaurants(params);
+        },
+        shouldEnforceUsageLimitsClientSide,
       });
-      didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(queryClient, usageSnapshot);
 
-      setNearbyResults(restaurants);
-      return {
-        results: restaurants,
-        status: 'success',
-      };
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : 'Could not load nearby restaurants.';
-      setSearchErrorMessage(message);
-      return {
-        error,
-        limitPayload,
-        message,
-        status: 'error',
-      };
+      if ('referenceCoords' in result) {
+        setReferenceCoords(result.referenceCoords);
+      }
+
+      if (result.status === 'success') {
+        setNearbyResults(result.results);
+      } else {
+        setSearchErrorMessage(result.message);
+      }
+
+      return result;
     } finally {
       setIsSearchingNearbyRestaurants(false);
-      if (didAttemptPlacesQuery && !didSyncMonthlyUsageSnapshot) {
-        await queryClient.invalidateQueries({
-          queryKey: ['feature', 'usage', 'monthly'],
-        });
-      }
     }
   }, [
     captureLocation,

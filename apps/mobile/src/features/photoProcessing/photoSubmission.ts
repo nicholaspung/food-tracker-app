@@ -1,15 +1,17 @@
 import {
   createFoodProduct,
   createVisit,
-  markNoteUsed,
   type CreateFoodProductInput,
   type CreateVisitInput,
   type VisitPhotoUploadInput,
 } from '../store/featureStore';
-import { promoteCachedNoteToUsed } from '../store/notesCache';
 import type { QueryClient } from '@tanstack/react-query';
 
 import type { OfflineAwareFeatureWrite } from '../store/useOfflineAwareFeatureWrite';
+import {
+  completeSourceNoteAfterEntryWrite,
+  persistSourceNoteUsed,
+} from '../notes/sourceNoteCompletion';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import {
   buildCreateFoodProductInput,
@@ -85,51 +87,6 @@ export function validateRestaurantPhotoSubmissionForm(
   }
 
   return null;
-}
-
-export function promoteSourceNoteUsed(
-  queryClient: QueryClient,
-  noteId: string | undefined,
-  usedAt: string,
-): void {
-  if (!noteId) {
-    return;
-  }
-
-  promoteCachedNoteToUsed(queryClient, {
-    noteId,
-    usedAt,
-  });
-}
-
-export async function persistSourceNoteUsed({
-  noteId,
-  queryClient,
-  usedAt,
-  writeFeature,
-}: SourceNoteSubmissionParams & { usedAt: string }): Promise<void> {
-  if (!noteId) {
-    return;
-  }
-
-  await writeFeature({
-    operationName: 'note.mark-used',
-    trackOnlineWrite: false,
-    offline: {
-      strategy: 'outbox',
-      payload: {
-        noteId,
-        usedAt,
-      },
-    },
-    execute: () =>
-      markNoteUsed({
-        noteId,
-        usedAt,
-      }),
-  });
-
-  promoteSourceNoteUsed(queryClient, noteId, usedAt);
 }
 
 export function buildRestaurantVisitInputsFromPhotos({
@@ -255,16 +212,13 @@ export async function submitRestaurantPhotoEntries({
     queued = queued || createResult.status === 'queued';
 
     if (noteId && visitInputs.length === 1 && noteUsedAt) {
-      if (createResult.status === 'queued') {
-        await persistSourceNoteUsed({
-          noteId,
-          queryClient,
-          usedAt: noteUsedAt,
-          writeFeature,
-        });
-      } else {
-        promoteSourceNoteUsed(queryClient, noteId, noteUsedAt);
-      }
+      await completeSourceNoteAfterEntryWrite({
+        entryWriteStatus: createResult.status,
+        noteId,
+        queryClient,
+        usedAt: noteUsedAt,
+        writeFeature,
+      });
     }
   }
 
@@ -311,16 +265,13 @@ export async function submitFoodProductPhotoEntries({
     queued = queued || createResult.status === 'queued';
 
     if (noteId && photos.length === 1 && noteUsedAt) {
-      if (createResult.status === 'queued') {
-        await persistSourceNoteUsed({
-          noteId,
-          queryClient,
-          usedAt: noteUsedAt,
-          writeFeature,
-        });
-      } else {
-        promoteSourceNoteUsed(queryClient, noteId, noteUsedAt);
-      }
+      await completeSourceNoteAfterEntryWrite({
+        entryWriteStatus: createResult.status,
+        noteId,
+        queryClient,
+        usedAt: noteUsedAt,
+        writeFeature,
+      });
     }
   }
 

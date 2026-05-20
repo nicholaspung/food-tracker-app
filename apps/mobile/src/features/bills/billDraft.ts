@@ -487,6 +487,427 @@ export function buildDefaultAdvancedSplits(
   return redistributeAdvancedSplits(withEvenPercentages, 'amount', totalAmount);
 }
 
+export type AddDraftBillItemResult =
+  | {
+      ok: true;
+      item: DraftBillItem;
+      items: DraftBillItem[];
+    }
+  | {
+      ok: false;
+      message: string;
+      reason: 'invalid_price' | 'missing_custom_item_name';
+    };
+
+interface AddDraftBillItemInput {
+  createEntityId: (prefix: string) => string;
+  draftItemName: string;
+  draftItemPrice: string;
+  isCustomSplitMode: boolean;
+  items: DraftBillItem[];
+  participantIds: string[];
+}
+
+interface DraftBillItemTransitionInput {
+  itemId: string;
+}
+
+interface DraftBillItemParticipantTransitionInput
+  extends DraftBillItemTransitionInput {
+  participantId: string;
+}
+
+interface UpdateDraftBillItemSplitModeInput
+  extends DraftBillItemTransitionInput {
+  nextSplitMode: DraftBillItem['splitMode'];
+  participantIds: string[];
+}
+
+interface UpdateDraftBillItemAdvancedSplitTypeInput
+  extends DraftBillItemTransitionInput {
+  nextType: DraftAdvancedSplitType;
+}
+
+interface UpdateDraftBillItemAdvancedSplitValueInput
+  extends DraftBillItemParticipantTransitionInput {
+  splitType: DraftAdvancedSplitType;
+  value: string;
+}
+
+interface ToggleDraftBillItemAdvancedSplitLockInput
+  extends DraftBillItemParticipantTransitionInput {
+  splitType: DraftAdvancedSplitType;
+}
+
+interface SyncAdvancedSplitsToParticipantsInput {
+  participantIds: string[];
+  splits: DraftAdvancedSplitEntry[];
+  totalAmount: number;
+}
+
+interface ChangeAdvancedSplitTypeInput {
+  nextType: DraftAdvancedSplitType;
+  splits: DraftAdvancedSplitEntry[];
+  totalAmount: number;
+}
+
+interface UpdateAdvancedSplitValueInput {
+  participantId: string;
+  splitType: DraftAdvancedSplitType;
+  splits: DraftAdvancedSplitEntry[];
+  totalAmount: number;
+  value: string;
+}
+
+interface ToggleAdvancedSplitLockInput {
+  participantId: string;
+  splitType: DraftAdvancedSplitType;
+  splits: DraftAdvancedSplitEntry[];
+  totalAmount: number;
+}
+
+function getNormalizedDraftItemPrice(item: DraftBillItem): number {
+  const parsedItemPrice = Number(item.price);
+  return Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
+}
+
+function createEmptyAdvancedSplit(
+  participantId: string,
+): DraftAdvancedSplitEntry {
+  return {
+    participantId,
+    percentageValue: '',
+    amountValue: '',
+    percentageLocked: false,
+    amountLocked: false,
+  };
+}
+
+function redistributeAllAdvancedSplitValues(
+  splits: DraftAdvancedSplitEntry[],
+  totalAmount: number,
+): DraftAdvancedSplitEntry[] {
+  const withPercentages = redistributeAdvancedSplits(
+    splits,
+    'percentage',
+    totalAmount,
+  );
+  return redistributeAdvancedSplits(withPercentages, 'amount', totalAmount);
+}
+
+export function syncAdvancedSplitsToParticipants({
+  participantIds,
+  splits,
+  totalAmount,
+}: SyncAdvancedSplitsToParticipantsInput): DraftAdvancedSplitEntry[] {
+  const currentByParticipant = new Map(
+    splits.map((split) => [split.participantId, split]),
+  );
+  const nextSplits = participantIds.map(
+    (participantId) =>
+      currentByParticipant.get(participantId) ??
+      createEmptyAdvancedSplit(participantId),
+  );
+
+  return redistributeAllAdvancedSplitValues(nextSplits, totalAmount);
+}
+
+export function changeAdvancedSplitType({
+  nextType,
+  splits,
+  totalAmount,
+}: ChangeAdvancedSplitTypeInput): DraftAdvancedSplitEntry[] {
+  return redistributeAdvancedSplits(splits, nextType, totalAmount);
+}
+
+export function updateAdvancedSplitValue({
+  participantId,
+  splitType,
+  splits,
+  totalAmount,
+  value,
+}: UpdateAdvancedSplitValueInput): DraftAdvancedSplitEntry[] {
+  const nextSplits = splits.map((split) =>
+    split.participantId === participantId
+      ? setAdvancedSplitRawValue(split, splitType, value)
+      : split,
+  );
+  const editedSplit = nextSplits.find(
+    (split) => split.participantId === participantId,
+  );
+  const shouldRedistribute = editedSplit
+    ? isAdvancedSplitLocked(editedSplit, splitType)
+    : false;
+
+  return shouldRedistribute
+    ? redistributeAdvancedSplits(nextSplits, splitType, totalAmount)
+    : nextSplits;
+}
+
+export function toggleAdvancedSplitLock({
+  participantId,
+  splitType,
+  splits,
+  totalAmount,
+}: ToggleAdvancedSplitLockInput): DraftAdvancedSplitEntry[] {
+  const toggledSplits = splits.map((split) =>
+    split.participantId === participantId
+      ? setAdvancedSplitLocked(
+          split,
+          splitType,
+          !isAdvancedSplitLocked(split, splitType),
+        )
+      : split,
+  );
+
+  return redistributeAdvancedSplits(toggledSplits, splitType, totalAmount);
+}
+
+export function addDraftBillItem({
+  createEntityId,
+  draftItemName,
+  draftItemPrice,
+  isCustomSplitMode,
+  items,
+  participantIds,
+}: AddDraftBillItemInput): AddDraftBillItemResult {
+  const price = Number(draftItemPrice);
+  if (!Number.isFinite(price) || price <= 0) {
+    return {
+      ok: false,
+      reason: 'invalid_price',
+      message: 'Item price must be greater than zero.',
+    };
+  }
+
+  const trimmedName = draftItemName.trim();
+  if (isCustomSplitMode && !trimmedName) {
+    return {
+      ok: false,
+      reason: 'missing_custom_item_name',
+      message: 'Item name is required for custom split.',
+    };
+  }
+
+  const item: DraftBillItem = {
+    id: createEntityId('bill_item_draft'),
+    name: trimmedName || `Item ${items.length + 1}`,
+    price: String(roundToCurrency(price)),
+    splitMode: 'simple',
+    assignedParticipantIds: [...participantIds],
+    advancedSplitType: 'percentage',
+    advancedSplits: [],
+  };
+
+  return {
+    ok: true,
+    item,
+    items: [...items, item],
+  };
+}
+
+export function removeDraftBillItem(
+  items: DraftBillItem[],
+  { itemId }: DraftBillItemTransitionInput,
+): DraftBillItem[] {
+  return items.filter((item) => item.id !== itemId);
+}
+
+export function updateDraftBillItemSplitMode(
+  items: DraftBillItem[],
+  { itemId, nextSplitMode, participantIds }: UpdateDraftBillItemSplitModeInput,
+): DraftBillItem[] {
+  return items.map((item) => {
+    if (item.id !== itemId || item.splitMode === nextSplitMode) {
+      return item;
+    }
+
+    if (nextSplitMode === 'advanced') {
+      const assignedParticipantIds =
+        item.assignedParticipantIds.length > 0
+          ? item.assignedParticipantIds
+          : [...participantIds];
+
+      return {
+        ...item,
+        splitMode: 'advanced',
+        advancedSplitType: 'percentage',
+        advancedSplits: buildDefaultAdvancedSplits(
+          assignedParticipantIds,
+          getNormalizedDraftItemPrice(item),
+        ),
+      };
+    }
+
+    return {
+      ...item,
+      splitMode: 'simple',
+      assignedParticipantIds:
+        item.advancedSplits.length > 0
+          ? Array.from(
+              new Set(
+                item.advancedSplits.map((split) => split.participantId),
+              ),
+            )
+          : item.assignedParticipantIds,
+    };
+  });
+}
+
+export function toggleSimpleDraftBillItemParticipant(
+  items: DraftBillItem[],
+  { itemId, participantId }: DraftBillItemParticipantTransitionInput,
+): DraftBillItem[] {
+  return items.map((item) => {
+    if (item.id !== itemId) {
+      return item;
+    }
+
+    const isAssigned = item.assignedParticipantIds.includes(participantId);
+    return {
+      ...item,
+      assignedParticipantIds: isAssigned
+        ? item.assignedParticipantIds.filter((id) => id !== participantId)
+        : [...item.assignedParticipantIds, participantId],
+    };
+  });
+}
+
+export function updateDraftBillItemAdvancedSplitType(
+  items: DraftBillItem[],
+  { itemId, nextType }: UpdateDraftBillItemAdvancedSplitTypeInput,
+): DraftBillItem[] {
+  return items.map((item) =>
+    item.id === itemId ? { ...item, advancedSplitType: nextType } : item,
+  );
+}
+
+export function toggleAdvancedDraftBillItemParticipant(
+  items: DraftBillItem[],
+  { itemId, participantId }: DraftBillItemParticipantTransitionInput,
+): DraftBillItem[] {
+  return items.map((item) => {
+    if (item.id !== itemId) {
+      return item;
+    }
+
+    const existingSplit = item.advancedSplits.find(
+      (split) => split.participantId === participantId,
+    );
+    const nextSplits = existingSplit
+      ? item.advancedSplits.filter(
+          (split) => split.participantId !== participantId,
+        )
+      : [...item.advancedSplits, createEmptyAdvancedSplit(participantId)];
+
+    return {
+      ...item,
+      advancedSplits: redistributeAllAdvancedSplitValues(
+        nextSplits,
+        getNormalizedDraftItemPrice(item),
+      ),
+    };
+  });
+}
+
+export function updateDraftBillItemAdvancedSplitValue(
+  items: DraftBillItem[],
+  {
+    itemId,
+    participantId,
+    splitType,
+    value,
+  }: UpdateDraftBillItemAdvancedSplitValueInput,
+): DraftBillItem[] {
+  return items.map((item) => {
+    if (item.id !== itemId) {
+      return item;
+    }
+
+    return {
+      ...item,
+      advancedSplits: updateAdvancedSplitValue({
+        participantId,
+        splitType,
+        splits: item.advancedSplits,
+        totalAmount: getNormalizedDraftItemPrice(item),
+        value,
+      }),
+    };
+  });
+}
+
+export function toggleDraftBillItemAdvancedSplitLock(
+  items: DraftBillItem[],
+  {
+    itemId,
+    participantId,
+    splitType,
+  }: ToggleDraftBillItemAdvancedSplitLockInput,
+): DraftBillItem[] {
+  return items.map((item) => {
+    if (item.id !== itemId) {
+      return item;
+    }
+
+    return {
+      ...item,
+      advancedSplits: toggleAdvancedSplitLock({
+        participantId,
+        splitType,
+        splits: item.advancedSplits,
+        totalAmount: getNormalizedDraftItemPrice(item),
+      }),
+    };
+  });
+}
+
+export function normalizeDraftBillItemsForParticipants(
+  items: DraftBillItem[],
+  participantIds: string[],
+): DraftBillItem[] {
+  const participantIdSet = new Set(participantIds);
+  let didChange = false;
+
+  const nextItems = items.map((item) => {
+    const assignedParticipantIds = item.assignedParticipantIds.filter(
+      (participantId) => participantIdSet.has(participantId),
+    );
+    const advancedSplits = item.advancedSplits.filter((split) =>
+      participantIdSet.has(split.participantId),
+    );
+
+    const assignedChanged = !areStringArraysEqual(
+      item.assignedParticipantIds,
+      assignedParticipantIds,
+    );
+    const advancedSplitsChanged =
+      item.advancedSplits.length !== advancedSplits.length ||
+      item.advancedSplits.some((split, index) => {
+        const nextSplit = advancedSplits[index];
+        return (
+          !nextSplit ||
+          nextSplit.participantId !== split.participantId ||
+          nextSplit.percentageValue !== split.percentageValue ||
+          nextSplit.amountValue !== split.amountValue
+        );
+      });
+
+    if (!assignedChanged && !advancedSplitsChanged) {
+      return item;
+    }
+
+    didChange = true;
+    return {
+      ...item,
+      assignedParticipantIds,
+      advancedSplits,
+    };
+  });
+
+  return didChange ? nextItems : items;
+}
+
 export function areStringArraysEqual(left: string[], right: string[]): boolean {
   if (left.length !== right.length) {
     return false;

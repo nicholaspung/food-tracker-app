@@ -8,7 +8,12 @@ import {
   type MenuItemRecord,
 } from '../store/featureStore';
 import { restaurantsQueryKeys } from '../store/restaurantsQuery';
-import type { MonthlyUsageSnapshot } from '../store/usageLimitsGateway';
+import {
+  formatLimitExceededMessage,
+  parseLimitExceededError,
+  type LimitExceededPayload,
+  type MonthlyUsageSnapshot,
+} from '../store/usageLimitsGateway';
 import {
   dedupeVisitRestaurants,
   matchesVisitRestaurantSearch,
@@ -23,6 +28,135 @@ export const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 export const RESTAURANT_SUGGESTIONS_LIMIT = 50;
 
 type RestaurantSearchQueryKey = readonly ['feature', 'restaurants', 'search', string, number, number];
+
+interface RestaurantTextSearchAdapterResult {
+  resolvedLocation: VisitRestaurantReferenceCoords | null;
+  restaurants: RestaurantRecord[];
+  usageSnapshot: MonthlyUsageSnapshot | null;
+}
+
+interface RunRestaurantTextSearchInput {
+  effectiveReferenceCoords: VisitRestaurantReferenceCoords | null;
+  isOnline: boolean;
+  isQuotaReached: boolean;
+  locationText: string;
+  query: string;
+  queryClient: QueryClient;
+  searchByText: (params: {
+    locationText?: string;
+    query: string;
+    radius: number;
+  }) => Promise<RestaurantTextSearchAdapterResult>;
+  shouldEnforceUsageLimitsClientSide: boolean;
+}
+
+type RestaurantLocationCaptureResult =
+  | {
+      coordinates: {
+        latitude: number;
+        longitude: number;
+      };
+      status: 'success';
+    }
+  | {
+      canAskAgain: boolean;
+      message: string;
+      status: 'permission_denied';
+    }
+  | {
+      error: unknown;
+      message: string;
+      status: 'error';
+    };
+
+interface RestaurantNearbySearchAdapterResult {
+  restaurants: RestaurantRecord[];
+  usageSnapshot: MonthlyUsageSnapshot | null;
+}
+
+interface RunRestaurantNearbySearchInput {
+  captureLocation: () => Promise<RestaurantLocationCaptureResult>;
+  isOnline: boolean;
+  isQuotaReached: boolean;
+  queryClient: QueryClient;
+  searchNearby: (params: {
+    latitude: number;
+    longitude: number;
+    radius: number;
+  }) => Promise<RestaurantNearbySearchAdapterResult>;
+  shouldEnforceUsageLimitsClientSide: boolean;
+}
+
+interface ResolveRestaurantTextSearchPreflightInput {
+  isOnline: boolean;
+  isQuotaReached: boolean;
+  locationText: string;
+  query: string;
+  shouldEnforceUsageLimitsClientSide: boolean;
+}
+
+export type RestaurantTextSearchResult =
+  | {
+      message: string;
+      status: 'offline' | 'quota_reached' | 'validation_error';
+    }
+  | {
+      referenceCoords: VisitRestaurantReferenceCoords | null;
+      results: RestaurantRecord[];
+      status: 'success';
+    }
+  | {
+      error: unknown;
+      limitPayload: LimitExceededPayload | null;
+      message: string;
+      status: 'error';
+    };
+
+export type RestaurantNearbySearchResult =
+  | {
+      message: string;
+      status: 'offline' | 'quota_reached';
+    }
+  | {
+      canAskAgain: boolean;
+      message: string;
+      status: 'permission_denied';
+    }
+  | {
+      error: unknown;
+      message: string;
+      status: 'location_error';
+    }
+  | {
+      referenceCoords: VisitRestaurantReferenceCoords;
+      results: RestaurantRecord[];
+      status: 'success';
+    }
+  | {
+      error: unknown;
+      limitPayload: LimitExceededPayload | null;
+      message: string;
+      referenceCoords: VisitRestaurantReferenceCoords;
+      status: 'error';
+    };
+
+export type RestaurantTextSearchPreflightResult =
+  | {
+      ok: true;
+    }
+  | Extract<
+      RestaurantTextSearchResult,
+      { status: 'offline' | 'quota_reached' | 'validation_error' }
+    >;
+
+export type RestaurantNearbySearchPreflightResult =
+  | {
+      ok: true;
+    }
+  | Extract<
+      RestaurantNearbySearchResult,
+      { status: 'offline' | 'quota_reached' }
+    >;
 
 export function buildRecentRestaurantsQueryOptions({
   enabled,
@@ -193,4 +327,204 @@ export function buildLoadedRestaurantRecords({
     ...searchResults,
     ...nearbyResults,
   ]);
+}
+
+export function resolveRestaurantTextSearchPreflight({
+  isOnline,
+  isQuotaReached,
+  locationText,
+  query,
+  shouldEnforceUsageLimitsClientSide,
+}: ResolveRestaurantTextSearchPreflightInput): RestaurantTextSearchPreflightResult {
+  if (!isOnline) {
+    return {
+      message: 'Google Places search requires internet connection.',
+      status: 'offline',
+    };
+  }
+
+  if (isQuotaReached && shouldEnforceUsageLimitsClientSide) {
+    return {
+      message: 'Monthly food place search limit reached.',
+      status: 'quota_reached',
+    };
+  }
+
+  if (!query.trim() && !locationText.trim()) {
+    return {
+      message: 'Enter a place name/type or a location to search.',
+      status: 'validation_error',
+    };
+  }
+
+  return { ok: true };
+}
+
+export function resolveRestaurantNearbySearchPreflight({
+  isOnline,
+  isQuotaReached,
+  shouldEnforceUsageLimitsClientSide,
+}: Pick<
+  RunRestaurantNearbySearchInput,
+  'isOnline' | 'isQuotaReached' | 'shouldEnforceUsageLimitsClientSide'
+>): RestaurantNearbySearchPreflightResult {
+  if (!isOnline) {
+    return {
+      message: 'Nearby search requires internet connection.',
+      status: 'offline',
+    };
+  }
+
+  if (isQuotaReached && shouldEnforceUsageLimitsClientSide) {
+    return {
+      message: 'Monthly food place search limit reached.',
+      status: 'quota_reached',
+    };
+  }
+
+  return { ok: true };
+}
+
+export async function runRestaurantTextSearch({
+  effectiveReferenceCoords,
+  isOnline,
+  isQuotaReached,
+  locationText,
+  query,
+  queryClient,
+  searchByText,
+  shouldEnforceUsageLimitsClientSide,
+}: RunRestaurantTextSearchInput): Promise<RestaurantTextSearchResult> {
+  const trimmedQuery = query.trim();
+  const trimmedLocation = locationText.trim();
+  const preflight = resolveRestaurantTextSearchPreflight({
+    isOnline,
+    isQuotaReached,
+    locationText,
+    query,
+    shouldEnforceUsageLimitsClientSide,
+  });
+  if (!('ok' in preflight)) {
+    return preflight;
+  }
+
+  let didSyncMonthlyUsageSnapshot = false;
+
+  try {
+    const { resolvedLocation, restaurants, usageSnapshot } = await searchByText({
+      locationText: trimmedLocation || undefined,
+      query: trimmedQuery || 'food',
+      radius: 5000,
+    });
+    didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(
+      queryClient,
+      usageSnapshot,
+    );
+
+    return {
+      referenceCoords: trimmedLocation ? resolvedLocation : effectiveReferenceCoords,
+      results: restaurants,
+      status: 'success',
+    };
+  } catch (error) {
+    const limitPayload = parseLimitExceededError(error);
+    const message = limitPayload
+      ? formatLimitExceededMessage(limitPayload)
+      : error instanceof Error
+        ? error.message
+        : 'Could not search restaurants.';
+
+    return {
+      error,
+      limitPayload,
+      message,
+      status: 'error',
+    };
+  } finally {
+    if (!didSyncMonthlyUsageSnapshot) {
+      await queryClient.invalidateQueries({
+        queryKey: ['feature', 'usage', 'monthly'],
+      });
+    }
+  }
+}
+
+export async function runRestaurantNearbySearch({
+  captureLocation,
+  isOnline,
+  isQuotaReached,
+  queryClient,
+  searchNearby,
+  shouldEnforceUsageLimitsClientSide,
+}: RunRestaurantNearbySearchInput): Promise<RestaurantNearbySearchResult> {
+  const preflight = resolveRestaurantNearbySearchPreflight({
+    isOnline,
+    isQuotaReached,
+    shouldEnforceUsageLimitsClientSide,
+  });
+  if (!('ok' in preflight)) {
+    return preflight;
+  }
+
+  const locationCapture = await captureLocation();
+  if (locationCapture.status === 'permission_denied') {
+    return {
+      canAskAgain: locationCapture.canAskAgain,
+      message: locationCapture.message,
+      status: 'permission_denied',
+    };
+  }
+
+  if (locationCapture.status === 'error') {
+    return {
+      error: locationCapture.error,
+      message: locationCapture.message,
+      status: 'location_error',
+    };
+  }
+
+  const referenceCoords = {
+    lat: locationCapture.coordinates.latitude,
+    lng: locationCapture.coordinates.longitude,
+  };
+  let didSyncMonthlyUsageSnapshot = false;
+
+  try {
+    const { restaurants, usageSnapshot } = await searchNearby({
+      latitude: referenceCoords.lat,
+      longitude: referenceCoords.lng,
+      radius: 5000,
+    });
+    didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(
+      queryClient,
+      usageSnapshot,
+    );
+
+    return {
+      referenceCoords,
+      results: restaurants,
+      status: 'success',
+    };
+  } catch (error) {
+    const limitPayload = parseLimitExceededError(error);
+    const message = limitPayload
+      ? formatLimitExceededMessage(limitPayload)
+      : error instanceof Error
+        ? error.message
+        : 'Could not load nearby restaurants.';
+
+    return {
+      error,
+      limitPayload,
+      message,
+      referenceCoords,
+      status: 'error',
+    };
+  } finally {
+    if (!didSyncMonthlyUsageSnapshot) {
+      await queryClient.invalidateQueries({
+        queryKey: ['feature', 'usage', 'monthly'],
+      });
+    }
+  }
 }

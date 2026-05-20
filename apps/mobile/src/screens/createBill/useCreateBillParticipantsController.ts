@@ -8,9 +8,6 @@ import {
   listFriendsPage,
   type FriendRecord,
 } from '../../features';
-import { billsQueryKeys } from '../../features/store/billsQuery';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { usePaginatedQueryState } from '../../hooks/useListQueryState';
 import {
   mapBillParticipantToFriendRecord,
   mergeFriendCollections,
@@ -18,7 +15,10 @@ import {
   sanitizeParticipantName,
   type DraftCustomParticipant,
   type DraftParticipant,
-} from './shared';
+} from '../../features/bills/billDraft';
+import { billsQueryKeys } from '../../features/store/billsQuery';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { usePaginatedQueryState } from '../../hooks/useListQueryState';
 
 const FRIEND_SEARCH_DEBOUNCE_MS = 250;
 const MIN_SERVER_FRIEND_SEARCH_LENGTH = 2;

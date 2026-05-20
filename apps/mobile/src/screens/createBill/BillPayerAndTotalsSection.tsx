@@ -3,9 +3,9 @@ import { Pressable, View } from 'react-native';
 
 import { StatusPill, OptionList, OptionListRow } from '../../components/shared';
 import { formatCurrency } from '../../features/bills/billCalculations';
+import type { OwedAmountEntry, DraftParticipant } from '../../features/bills/billDraft';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Input, Text } from '../../ui';
-import type { OwedAmountEntry, DraftParticipant } from './shared';
 
 interface BillPayerAndTotalsSectionProps {
   isEqualSplitMode: boolean;

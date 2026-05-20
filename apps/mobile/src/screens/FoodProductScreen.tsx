@@ -17,12 +17,11 @@ import {
   createFoodProduct,
   formatLimitExceededMessage,
   getNoteDetail,
-  markNoteUsed,
   parseLimitExceededError,
-  promoteCachedNoteToUsed,
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
+import { completeSourceNoteAfterEntryWrite } from '../features/notes/sourceNoteCompletion';
 import { syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
@@ -456,25 +455,12 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
       if (createResult.status === 'queued') {
         if (sourceNoteId && noteUsedAt) {
-          await writeFeature({
-            operationName: 'note.mark-used',
-            trackOnlineWrite: false,
-            offline: {
-              strategy: 'outbox',
-              payload: {
-                noteId: sourceNoteId,
-                usedAt: noteUsedAt,
-              },
-            },
-            execute: () =>
-              markNoteUsed({
-                noteId: sourceNoteId,
-                usedAt: noteUsedAt,
-              }),
-          });
-          promoteCachedNoteToUsed(queryClient, {
+          await completeSourceNoteAfterEntryWrite({
+            entryWriteStatus: createResult.status,
             noteId: sourceNoteId,
+            queryClient,
             usedAt: noteUsedAt,
+            writeFeature,
           });
         }
 
@@ -509,9 +495,12 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
       if (sourceNoteId) {
         if (noteUsedAt) {
-          promoteCachedNoteToUsed(queryClient, {
+          await completeSourceNoteAfterEntryWrite({
+            entryWriteStatus: createResult.status,
             noteId: sourceNoteId,
+            queryClient,
             usedAt: noteUsedAt,
+            writeFeature,
           });
         }
       }

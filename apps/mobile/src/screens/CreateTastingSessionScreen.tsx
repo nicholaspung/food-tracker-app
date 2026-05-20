@@ -11,6 +11,10 @@ import {
   tastingSessionsQueryKeys,
   type FriendRecord,
 } from '../features';
+import {
+  mergeFriendCollections,
+  normalizeFriendName,
+} from '../features/bills/billDraft';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -18,7 +22,6 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { Button, Card, Input, Text } from '../ui';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
-import { mergeFriendCollections, normalizeFriendName } from './createBill/shared';
 import { navigateToTastingSession } from './tastingSessions/shared';
 
 type CreateTastingSessionScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateTastingSession'>;

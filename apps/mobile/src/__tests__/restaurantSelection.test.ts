@@ -5,6 +5,8 @@ import {
   buildRecentRestaurantsQueryOptions,
   buildRestaurantMenuItemsQueryOptions,
   resolveSavedRestaurantsUiState,
+  runRestaurantNearbySearch,
+  runRestaurantTextSearch,
   syncMonthlyUsageSnapshot,
 } from '../features/restaurants/restaurantSelection';
 import {
@@ -192,5 +194,273 @@ describe('restaurant selection module', () => {
       snapshot,
     );
     expect(syncMonthlyUsageSnapshot(queryClient as never, null)).toBe(false);
+  });
+
+  it('returns text search precondition outcomes without calling Places', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const searchByText = jest.fn();
+
+    await expect(
+      runRestaurantTextSearch({
+        effectiveReferenceCoords: null,
+        isOnline: false,
+        isQuotaReached: false,
+        locationText: '',
+        query: 'pizza',
+        queryClient: queryClient as never,
+        searchByText,
+        shouldEnforceUsageLimitsClientSide: false,
+      }),
+    ).resolves.toEqual({
+      message: 'Google Places search requires internet connection.',
+      status: 'offline',
+    });
+
+    await expect(
+      runRestaurantTextSearch({
+        effectiveReferenceCoords: null,
+        isOnline: true,
+        isQuotaReached: true,
+        locationText: '',
+        query: 'pizza',
+        queryClient: queryClient as never,
+        searchByText,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      message: 'Monthly food place search limit reached.',
+      status: 'quota_reached',
+    });
+
+    await expect(
+      runRestaurantTextSearch({
+        effectiveReferenceCoords: null,
+        isOnline: true,
+        isQuotaReached: false,
+        locationText: '  ',
+        query: '  ',
+        queryClient: queryClient as never,
+        searchByText,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      message: 'Enter a place name/type or a location to search.',
+      status: 'validation_error',
+    });
+
+    expect(searchByText).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('runs text search, syncs usage snapshots, and resolves reference coordinates', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const usageSnapshot = {
+      monthKey: '2026-05',
+      userTier: 'free',
+      limits: {},
+      usage: {},
+      remaining: {},
+    };
+    const searchByText = jest.fn().mockResolvedValue({
+      resolvedLocation: { lat: 37.8, lng: -122.4 },
+      restaurants,
+      usageSnapshot,
+    });
+
+    const result = await runRestaurantTextSearch({
+      effectiveReferenceCoords: { lat: 37, lng: -122 },
+      isOnline: true,
+      isQuotaReached: false,
+      locationText: 'San Francisco',
+      query: '',
+      queryClient: queryClient as never,
+      searchByText,
+      shouldEnforceUsageLimitsClientSide: true,
+    });
+
+    expect(result).toEqual({
+      referenceCoords: { lat: 37.8, lng: -122.4 },
+      results: restaurants,
+      status: 'success',
+    });
+    expect(searchByText).toHaveBeenCalledWith({
+      locationText: 'San Francisco',
+      query: 'food',
+      radius: 5000,
+    });
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['feature', 'usage', 'monthly', 'actual'],
+      usageSnapshot,
+    );
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('normalizes text search limit errors and invalidates monthly usage when no snapshot is synced', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const error = {
+      data: {
+        code: 'LIMIT_EXCEEDED',
+        limit: 10,
+        message: 'Monthly places query limit reached.',
+        metric: 'places_queries',
+        monthKey: '2026-05',
+        remaining: 0,
+        used: 10,
+      },
+    };
+    const searchByText = jest.fn().mockRejectedValue(error);
+
+    const result = await runRestaurantTextSearch({
+      effectiveReferenceCoords: null,
+      isOnline: true,
+      isQuotaReached: false,
+      locationText: '',
+      query: 'ramen',
+      queryClient: queryClient as never,
+      searchByText,
+      shouldEnforceUsageLimitsClientSide: true,
+    });
+
+    expect(result).toMatchObject({
+      error,
+      limitPayload: expect.objectContaining({
+        code: 'LIMIT_EXCEEDED',
+        metric: 'places_queries',
+      }),
+      message: 'Search limit reached for this month (10).',
+      status: 'error',
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'usage', 'monthly'],
+    });
+  });
+
+  it('returns nearby search precondition and location outcomes without calling Places', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const captureLocation = jest.fn();
+    const searchNearby = jest.fn();
+
+    await expect(
+      runRestaurantNearbySearch({
+        captureLocation,
+        isOnline: false,
+        isQuotaReached: false,
+        queryClient: queryClient as never,
+        searchNearby,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      message: 'Nearby search requires internet connection.',
+      status: 'offline',
+    });
+
+    await expect(
+      runRestaurantNearbySearch({
+        captureLocation,
+        isOnline: true,
+        isQuotaReached: true,
+        queryClient: queryClient as never,
+        searchNearby,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      message: 'Monthly food place search limit reached.',
+      status: 'quota_reached',
+    });
+
+    captureLocation.mockResolvedValueOnce({
+      canAskAgain: false,
+      message: 'Location permission is blocked. Enable it in device settings.',
+      status: 'permission_denied',
+    });
+    await expect(
+      runRestaurantNearbySearch({
+        captureLocation,
+        isOnline: true,
+        isQuotaReached: false,
+        queryClient: queryClient as never,
+        searchNearby,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      canAskAgain: false,
+      message: 'Location permission is blocked. Enable it in device settings.',
+      status: 'permission_denied',
+    });
+
+    captureLocation.mockResolvedValueOnce({
+      error: new Error('GPS unavailable'),
+      message: 'GPS unavailable',
+      status: 'error',
+    });
+    await expect(
+      runRestaurantNearbySearch({
+        captureLocation,
+        isOnline: true,
+        isQuotaReached: false,
+        queryClient: queryClient as never,
+        searchNearby,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toMatchObject({
+      message: 'GPS unavailable',
+      status: 'location_error',
+    });
+
+    expect(searchNearby).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('runs nearby search from captured coordinates and invalidates usage when no snapshot is synced', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const captureLocation = jest.fn().mockResolvedValue({
+      coordinates: {
+        latitude: 37.8,
+        longitude: -122.4,
+      },
+      status: 'success',
+    });
+    const searchNearby = jest.fn().mockResolvedValue({
+      restaurants,
+      usageSnapshot: null,
+    });
+
+    const result = await runRestaurantNearbySearch({
+      captureLocation,
+      isOnline: true,
+      isQuotaReached: false,
+      queryClient: queryClient as never,
+      searchNearby,
+      shouldEnforceUsageLimitsClientSide: true,
+    });
+
+    expect(result).toEqual({
+      referenceCoords: { lat: 37.8, lng: -122.4 },
+      results: restaurants,
+      status: 'success',
+    });
+    expect(searchNearby).toHaveBeenCalledWith({
+      latitude: 37.8,
+      longitude: -122.4,
+      radius: 5000,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'usage', 'monthly'],
+    });
   });
 });

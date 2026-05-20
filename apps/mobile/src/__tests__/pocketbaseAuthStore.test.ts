@@ -107,9 +107,17 @@ describe('SecureStoreAuthStore', () => {
 
   it('falls back to AsyncStorage when the SecureStore native module is unavailable', async () => {
     jest.resetModules();
+    const warn = jest.fn();
     jest.doMock('expo-secure-store', () => {
       throw new Error("Cannot find native module 'ExpoSecureStore'");
     });
+    jest.doMock('../lib/logger', () => ({
+      logger: {
+        error: jest.fn(),
+        log: jest.fn(),
+        warn,
+      },
+    }));
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { SecureStoreAuthStore: FallbackAuthStore } = require('../lib/pocketbaseAuthStore');
@@ -132,5 +140,9 @@ describe('SecureStoreAuthStore', () => {
 
     expect(restoredStore.token).toBe('fallback_jwt');
     expect(restoredStore.record?.id).toBe('user_fallback');
+    expect(warn).toHaveBeenCalledWith(
+      '[AuthStore] expo-secure-store native module is unavailable, falling back to AsyncStorage:',
+      expect.any(Error),
+    );
   });
 });

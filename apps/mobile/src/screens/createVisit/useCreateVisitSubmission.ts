@@ -5,9 +5,7 @@ import {
   createVisit,
   formatLimitExceededMessage,
   linkVisitToListBookmark,
-  markNoteUsed,
   parseLimitExceededError,
-  promoteCachedNoteToUsed,
   restaurantListQueryKeys,
   syncVisitMutationCaches,
   updateVisit,
@@ -17,6 +15,7 @@ import {
 import {
   createVisitApiMutationInput,
 } from '../../features/store/featureOutboxOperations';
+import { completeSourceNoteAfterEntryWrite } from '../../features/notes/sourceNoteCompletion';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
@@ -360,25 +359,12 @@ export function useCreateVisitSubmission({
 
       if (createResult.status === 'queued') {
         if (sourceNoteId && noteUsedAt) {
-          await writeFeature({
-            operationName: 'note.mark-used',
-            trackOnlineWrite: false,
-            offline: {
-              strategy: 'outbox',
-              payload: {
-                noteId: sourceNoteId,
-                usedAt: noteUsedAt,
-              },
-            },
-            execute: () =>
-              markNoteUsed({
-                noteId: sourceNoteId,
-                usedAt: noteUsedAt,
-              }),
-          });
-          promoteCachedNoteToUsed(queryClient, {
+          await completeSourceNoteAfterEntryWrite({
+            entryWriteStatus: createResult.status,
             noteId: sourceNoteId,
+            queryClient,
             usedAt: noteUsedAt,
+            writeFeature,
           });
         }
 
@@ -484,9 +470,12 @@ export function useCreateVisitSubmission({
       });
 
       if (sourceNoteId && noteUsedAt) {
-        promoteCachedNoteToUsed(queryClient, {
+        await completeSourceNoteAfterEntryWrite({
+          entryWriteStatus: createResult.status,
           noteId: sourceNoteId,
+          queryClient,
           usedAt: noteUsedAt,
+          writeFeature,
         });
       }
 

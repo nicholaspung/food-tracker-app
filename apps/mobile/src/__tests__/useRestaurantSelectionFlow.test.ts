@@ -11,11 +11,13 @@ import {
   searchRestaurantsPage,
 } from '../features/store/featureStore';
 import {
-  buildRestaurantMenuItemsQueryOptions,
-  buildRestaurantSearchQueryOptions,
   useRestaurantSelectionFlow,
   useSavedRestaurantSuggestions,
 } from '../hooks/useRestaurantSelectionFlow';
+import {
+  buildRestaurantMenuItemsQueryOptions,
+  buildRestaurantSearchQueryOptions,
+} from '../features/restaurants/restaurantSelection';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { searchAndCacheRestaurantsByText } from '../lib/googlePlaces';
 
