@@ -3,7 +3,6 @@ import { useIsFocused } from '@react-navigation/native';
 import { act, create } from 'react-test-renderer';
 
 import { AddFeatureOnboardingScreen } from '../screens/AddFeatureOnboardingScreen';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useAuth } from '../providers/AuthProvider';
 import type { AddOnboardingCardId } from '../types/auth';
 
@@ -12,7 +11,7 @@ const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
 const mockCanGoBack = jest.fn();
-const mockWriteFeature = jest.fn();
+const mockDismissAddOnboardingCard = jest.fn();
 const mockSaveOptimisticMobileOnboardingState = jest.fn();
 const mockTrackObservabilityEvent = jest.fn();
 
@@ -87,10 +86,9 @@ jest.mock('../features', () => ({
   dismissAddOnboardingCard: jest.fn(),
   isAddOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.addCards?.[cardId]?.dismissedAt)),
   saveOptimisticMobileOnboardingState: (...args: unknown[]) => mockSaveOptimisticMobileOnboardingState(...args),
-}));
-
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
+  useOnboardingProgressWrites: () => ({
+    dismissAddOnboardingCard: mockDismissAddOnboardingCard,
+  }),
 }));
 
 jest.mock('../lib/onboardingAssets', () => ({
@@ -177,9 +175,6 @@ jest.mock('../ui', () => ({
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseIsFocused = useIsFocused as jest.MockedFunction<typeof useIsFocused>;
-const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
-  typeof useOfflineAwareFeatureWrite
->;
 
 const expectedConfig: Record<
   AddOnboardingCardId,
@@ -290,7 +285,7 @@ describe('AddFeatureOnboardingScreen', () => {
     mockReplace.mockReset();
     mockGoBack.mockReset();
     mockCanGoBack.mockReset();
-    mockWriteFeature.mockReset();
+    mockDismissAddOnboardingCard.mockReset();
     mockSaveOptimisticMobileOnboardingState.mockReset();
     mockTrackObservabilityEvent.mockReset();
     mockCanGoBack.mockReturnValue(false);
@@ -301,8 +296,7 @@ describe('AddFeatureOnboardingScreen', () => {
         mobileOnboardingState: {},
       },
     } as ReturnType<typeof useAuth>);
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(mockWriteFeature);
-    mockWriteFeature.mockResolvedValue({ status: 'completed', result: {} });
+    mockDismissAddOnboardingCard.mockResolvedValue({ status: 'completed', result: {} });
   });
 
   it.each(['trackRestaurantVisit', 'trackFoodProduct', 'logNote', 'processSavedPhotos', 'manageNotes'] as const)(
@@ -344,15 +338,10 @@ describe('AddFeatureOnboardingScreen', () => {
         await Promise.resolve();
       });
 
-      expect(mockWriteFeature).toHaveBeenCalledWith(
+      expect(mockDismissAddOnboardingCard).toHaveBeenCalledWith(
         expect.objectContaining({
-          operationName: 'onboarding.add-card.dismiss',
-          offline: expect.objectContaining({
-            payload: expect.objectContaining({
-              cardId,
-              userId: 'user_1',
-            }),
-          }),
+          cardId,
+          userId: 'user_1',
         }),
       );
       expect(mockReplace).toHaveBeenCalledWith(expectedConfig[cardId].destination);
@@ -360,7 +349,16 @@ describe('AddFeatureOnboardingScreen', () => {
   );
 
   it('saves optimistic onboarding state when the dismissal is queued', async () => {
-    mockWriteFeature.mockResolvedValue({ status: 'queued' });
+    mockDismissAddOnboardingCard.mockImplementation(async (input) => {
+      mockSaveOptimisticMobileOnboardingState({
+        addCards: {
+          [input.cardId]: {
+            dismissedAt: input.dismissedAt,
+          },
+        },
+      });
+      return { status: 'queued' };
+    });
     const renderer = await renderAddFeatureOnboardingScreen('trackRestaurantVisit');
 
     await act(async () => {
@@ -381,7 +379,7 @@ describe('AddFeatureOnboardingScreen', () => {
   });
 
   it('shows an error and does not navigate when dismissal fails', async () => {
-    mockWriteFeature.mockRejectedValue(new Error('Network failed'));
+    mockDismissAddOnboardingCard.mockRejectedValue(new Error('Network failed'));
     const renderer = await renderAddFeatureOnboardingScreen('logNote');
 
     await act(async () => {
@@ -400,7 +398,7 @@ describe('AddFeatureOnboardingScreen', () => {
       renderer.root.findByType('BackHeaderScreenScaffold').props.onBackPress();
     });
 
-    expect(mockWriteFeature).not.toHaveBeenCalled();
+    expect(mockDismissAddOnboardingCard).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('AddVisit');
   });
 
@@ -433,7 +431,7 @@ describe('AddFeatureOnboardingScreen', () => {
       findPrimaryButton(renderer).props.onPress();
     });
 
-    expect(mockWriteFeature).not.toHaveBeenCalled();
+    expect(mockDismissAddOnboardingCard).not.toHaveBeenCalled();
     expect(mockSaveOptimisticMobileOnboardingState).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('FoodProduct');
     expect(mockTrackObservabilityEvent).toHaveBeenCalledWith(

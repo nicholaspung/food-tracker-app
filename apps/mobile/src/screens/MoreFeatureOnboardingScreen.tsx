@@ -8,9 +8,8 @@ import {
   type FeatureIntroConfig,
 } from '../components/shared';
 import {
-  buildMoreOnboardingCardDismissedState,
-  dismissMoreOnboardingCard,
   isMoreOnboardingCardDismissed,
+  useOnboardingProgressWrites,
 } from '../features';
 import { useDismissibleOnboardingCard } from '../hooks/useDismissibleOnboardingCard';
 import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
@@ -65,17 +64,11 @@ export function MoreFeatureOnboardingScreen({ navigation, route }: MoreFeatureOn
   const entrySource = route.params.source ?? 'more';
   const config = MORE_FEATURE_ONBOARDING_CONFIG[cardId];
   const isFocused = useIsFocused();
+  const onboardingWrites = useOnboardingProgressWrites();
   const { dismiss, errorMessage, isSubmitting } = useDismissibleOnboardingCard({
-    buildOptimisticState: buildMoreOnboardingCardDismissedState,
     cardId,
-    createOfflinePayload: (userId, input) => ({
-      userId,
-      cardId: input.cardId,
-      dismissedAt: input.dismissedAt,
-    }),
     currentOnboardingState: user?.mobileOnboardingState,
-    dismissCard: dismissMoreOnboardingCard,
-    operationName: 'onboarding.more-card.dismiss',
+    dismissCard: onboardingWrites.dismissMoreOnboardingCard,
   });
 
   useEffect(() => {

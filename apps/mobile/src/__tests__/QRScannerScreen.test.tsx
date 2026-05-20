@@ -1,11 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCameraPermissions } from 'expo-camera';
 
 import { QRScannerScreen } from '../screens/QRScannerScreen';
-import { inviteFriend } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useFriendWrites } from '../features';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { useAuth } from '../providers/AuthProvider';
 
@@ -32,10 +30,6 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
-jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: jest.fn(),
-}));
-
 jest.mock('expo-camera', () => ({
   CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
   useCameraPermissions: jest.fn(),
@@ -59,13 +53,9 @@ jest.mock('../features', () => {
     friendsQueryKeys: {
       root: ['feature', 'friends'],
     },
-    inviteFriend: jest.fn(),
+    useFriendWrites: jest.fn(),
   };
 });
-
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
-}));
 
 jest.mock('../features/store/useWriteTelemetry', () => ({
   useWriteTelemetry: jest.fn(),
@@ -135,12 +125,8 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, props.children),
 }));
 
-const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseCameraPermissions = useCameraPermissions as jest.MockedFunction<typeof useCameraPermissions>;
-const mockedInviteFriend = inviteFriend as jest.MockedFunction<typeof inviteFriend>;
-const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
-  typeof useOfflineAwareFeatureWrite
->;
+const mockedUseFriendWrites = useFriendWrites as jest.MockedFunction<typeof useFriendWrites>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 
@@ -171,21 +157,16 @@ function renderScanner() {
 }
 
 describe('QRScannerScreen', () => {
-  let invalidateQueries: jest.Mock;
-  let writeFeature: jest.Mock;
+  let sendFriendRequest: jest.Mock;
 
   beforeEach(() => {
-    invalidateQueries = jest.fn().mockResolvedValue(undefined);
-    writeFeature = jest.fn(async ({ execute }: { execute: () => Promise<unknown> }) => {
-      await execute();
+    sendFriendRequest = jest.fn(async ({ beforeExecute }: { beforeExecute?: () => Promise<void> }) => {
+      await beforeExecute?.();
       return {
-        status: 'executed',
+        status: 'completed',
       };
     });
 
-    mockedUseQueryClient.mockReturnValue({
-      invalidateQueries,
-    } as never);
     mockedUseCameraPermissions.mockReturnValue([
       {
         canAskAgain: true,
@@ -193,7 +174,11 @@ describe('QRScannerScreen', () => {
       },
       jest.fn(),
     ] as never);
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseFriendWrites.mockReturnValue({
+      acceptFriendRequest: jest.fn(),
+      removeFriend: jest.fn(),
+      sendFriendRequest,
+    } as never);
     mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseAuth.mockReturnValue({
       user: {
@@ -201,14 +186,6 @@ describe('QRScannerScreen', () => {
         id: 'user-1',
       },
     } as never);
-    mockedInviteFriend.mockResolvedValue({
-      createdAt: '2026-04-25T12:00:00.000Z',
-      email: '',
-      id: 'friendship-1',
-      name: 'Friend',
-      status: 'pending_sent',
-      userId: 'friend-user-1',
-    });
   });
 
   afterEach(() => {
@@ -241,20 +218,10 @@ describe('QRScannerScreen', () => {
       });
     });
 
-    expect(writeFeature).toHaveBeenCalledWith(expect.objectContaining({
-      offline: {
-        payload: {
-          code: 'ABCD1234',
-        },
-        strategy: 'outbox',
-      },
-      operationName: 'friend.request.send',
-    }));
-    expect(mockedInviteFriend).toHaveBeenCalledWith({
+    expect(sendFriendRequest).toHaveBeenCalledWith({
+      beforeExecute: expect.any(Function),
       code: 'ABCD1234',
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'friends'],
+      trackOnlineWrite: false,
     });
   });
 
@@ -269,8 +236,7 @@ describe('QRScannerScreen', () => {
       });
     });
 
-    expect(writeFeature).not.toHaveBeenCalled();
-    expect(mockedInviteFriend).not.toHaveBeenCalled();
+    expect(sendFriendRequest).not.toHaveBeenCalled();
   });
 
   it('resets paused scan state when Scan Again is pressed', () => {

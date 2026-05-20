@@ -22,14 +22,12 @@ import {
   listFeedbackMessagesPage,
   markFeedbackAsRead,
   mergeFeedbackRecord,
-  prependFeedbackMessageListItem,
   replaceFeedbackMessageFirstPage,
-  sendFeedbackMessage,
   upsertFeedbackListItem,
+  useFeedbackWrites,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -243,7 +241,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const feedbackWrites = useFeedbackWrites();
   const { isOnline } = useConnectivity();
   const isFocused = useIsFocused();
   const messagesScrollRef = useRef<ScrollView>(null);
@@ -428,25 +426,13 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     setIsSending(true);
 
     try {
-      const sendResult = await writeFeature({
-        operationName: 'feedback.message.send',
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            feedbackId,
-            message: draftMessage,
-          },
-        },
-        execute: () =>
-          sendFeedbackMessage({
-            feedbackId,
-            message: draftMessage,
-          }),
+      const sendResult = await feedbackWrites.sendFeedbackMessage({
+        feedbackId,
+        message: draftMessage,
       });
 
       if (sendResult.status === 'queued') {
         setDraftMessage('');
-        await queryClient.invalidateQueries({ queryKey: messagesQueryKey });
         trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
           source: 'FeedbackDetailScreen',
           feedbackId,
@@ -455,14 +441,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         return;
       }
 
-      const result = sendResult.result;
-
       setDraftMessage('');
-      applyFeedbackThreadUpdate(result.feedback, { moveToFront: true });
-      queryClient.setQueryData<FeedbackMessageListQueryData | undefined>(
-        messagesQueryKey,
-        (currentMessages) => prependFeedbackMessageListItem(currentMessages, result.message),
-      );
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
         source: 'FeedbackDetailScreen',
         feedbackId,

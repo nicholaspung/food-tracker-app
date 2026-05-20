@@ -1,8 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RecordModel } from 'pocketbase';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -13,19 +12,19 @@ import {
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
-  buildHomeFeedDefaultsUpdate,
   getCollectionRecord,
-  invalidateSettingsQueries,
-  mapHomeFeedDefaultsFromRecord,
-  saveAuthRecord,
+  mapUserSettings,
   settingsQueryKeys,
-  updateCollectionRecord,
+  useSettingsPreferencesWrites,
   type HomeFeedDefaultMode,
   type HomeFeedDefaultSort,
   type HomeFeedDefaultTypeFilter,
+  type ListVisibility,
+  type RestaurantVisibility,
+  type UserSettings,
+  type UserSettingsRecord,
+  type VisitVisibility,
 } from '../features';
-import { getAuthRecord } from '../features/store/pocketbaseGateway';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -35,9 +34,6 @@ import { Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
-type VisitVisibility = 'friends' | 'private';
-type RestaurantVisibility = 'private' | 'friends';
-type ListVisibility = 'private' | 'friends';
 
 const appearanceOptions = [
   { label: 'System', value: 'system' },
@@ -61,24 +57,6 @@ const homeFeedSortOptions = [
   { label: 'Date Tracked', value: 'tracked' },
 ] as const satisfies readonly { label: string; value: HomeFeedDefaultSort }[];
 
-interface UserSettingsRecord {
-  defaultVisitVisibility?: unknown;
-  defaultRestaurantVisibility?: unknown;
-  defaultListVisibility?: unknown;
-  defaultHomeFeedMode?: unknown;
-  defaultHomeFeedTypeFilter?: unknown;
-  defaultHomeFeedSort?: unknown;
-}
-
-interface UserSettings {
-  visitVisibility: VisitVisibility;
-  restaurantVisibility: RestaurantVisibility;
-  listVisibility: ListVisibility;
-  homeFeedMode: HomeFeedDefaultMode;
-  homeFeedTypeFilter: HomeFeedDefaultTypeFilter;
-  homeFeedSort: HomeFeedDefaultSort;
-}
-
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
@@ -89,42 +67,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function normalizeVisitVisibility(value: unknown): VisitVisibility {
-  return value === 'private' ? 'private' : 'friends';
-}
-
-function normalizeRestaurantVisibility(
-  value: unknown,
-): RestaurantVisibility {
-  if (value === 'private') {
-    return 'private';
-  }
-
-  return 'friends';
-}
-
-function normalizeListVisibility(value: unknown): ListVisibility {
-  return value === 'private' ? 'private' : 'friends';
-}
-
-function mapUserSettings(record: UserSettingsRecord): UserSettings {
-  const homeFeedDefaults = mapHomeFeedDefaultsFromRecord(record);
-
-  return {
-    visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
-    restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
-    listVisibility: normalizeListVisibility(record.defaultListVisibility),
-    ...homeFeedDefaults,
-  };
-}
-
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const styles = useStyles();
   const theme = useTheme();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const writeFeature = useOfflineAwareFeatureWrite();
-  const queryClient = useQueryClient();
+  const settingsWrites = useSettingsPreferencesWrites();
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
   const [listVisibility, setListVisibility] = useState<ListVisibility>('friends');
@@ -211,46 +159,17 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setIsSaving(true);
 
     try {
-      const settingsUpdate = {
-        defaultListVisibility: listVisibility,
-        defaultRestaurantVisibility: restaurantVisibility,
-        defaultVisitVisibility: visitVisibility,
-        ...buildHomeFeedDefaultsUpdate({
+      const saveResult = await settingsWrites.saveSettingsPreferences({
+        userId: user.id,
+        visitVisibility,
+        restaurantVisibility,
+        listVisibility,
           homeFeedMode,
           homeFeedTypeFilter,
           homeFeedSort,
-        }),
-      };
-
-      const saveResult = await writeFeature({
-        operationName: 'settings.visibility.save',
-        trackOnlineWrite: false,
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            userId: user.id,
-            ...settingsUpdate,
-          },
-        },
-        execute: () =>
-          updateCollectionRecord<RecordModel & UserSettingsRecord>(
-            'users',
-            user.id,
-            settingsUpdate,
-          ),
       });
 
       if (saveResult.status === 'queued') {
-        const currentAuthRecord = getAuthRecord();
-        if (currentAuthRecord) {
-          saveAuthRecord({
-            ...(currentAuthRecord as RecordModel),
-            ...settingsUpdate,
-          } as RecordModel);
-        }
-
-        const nextSettings = mapUserSettings(settingsUpdate);
-        queryClient.setQueryData(settingsQueryKeys.detail(user.id), nextSettings);
         trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
           source: 'SettingsScreen',
           userId: user.id,
@@ -266,12 +185,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         return;
       }
 
-      const updatedRecord = saveResult.result;
-
-      const nextSettings = mapUserSettings(updatedRecord);
-      saveAuthRecord(updatedRecord);
-      queryClient.setQueryData(settingsQueryKeys.detail(user.id), nextSettings);
-      await invalidateSettingsQueries(queryClient, user.id);
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
         source: 'SettingsScreen',
         userId: user.id,

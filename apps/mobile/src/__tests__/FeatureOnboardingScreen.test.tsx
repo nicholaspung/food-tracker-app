@@ -3,13 +3,12 @@ import { act, create } from 'react-test-renderer';
 
 import { FeatureOnboardingScreen } from '../screens/FeatureOnboardingScreen';
 import { useAuth } from '../providers/AuthProvider';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 
 const mockReact = React;
 const mockReset = jest.fn();
 const mockGoBack = jest.fn();
 const mockNavigate = jest.fn();
-const mockWriteFeature = jest.fn();
+const mockCompleteMainOnboarding = jest.fn();
 const mockSaveOptimisticMobileOnboardingState = jest.fn();
 const mockMainOnboardingPublishedAssets: Record<string, boolean> = {
   welcome: false,
@@ -73,10 +72,9 @@ jest.mock('../features', () => ({
   })),
   completeMainOnboarding: jest.fn(),
   saveOptimisticMobileOnboardingState: (...args: unknown[]) => mockSaveOptimisticMobileOnboardingState(...args),
-}));
-
-jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
-  useOfflineAwareFeatureWrite: jest.fn(),
+  useOnboardingProgressWrites: () => ({
+    completeMainOnboarding: mockCompleteMainOnboarding,
+  }),
 }));
 
 jest.mock('../lib/onboardingAssets', () => ({
@@ -189,9 +187,6 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
-  typeof useOfflineAwareFeatureWrite
->;
 
 async function renderFeatureOnboardingScreen(params: Record<string, unknown> = { mode: 'required' }): Promise<any> {
   let renderer: any;
@@ -248,15 +243,14 @@ describe('FeatureOnboardingScreen', () => {
     mockReset.mockReset();
     mockGoBack.mockReset();
     mockNavigate.mockReset();
-    mockWriteFeature.mockReset();
+    mockCompleteMainOnboarding.mockReset();
     mockSaveOptimisticMobileOnboardingState.mockReset();
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'user_1',
       },
     } as ReturnType<typeof useAuth>);
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(mockWriteFeature);
-    mockWriteFeature.mockResolvedValue({ status: 'completed', result: {} });
+    mockCompleteMainOnboarding.mockResolvedValue({ status: 'completed', result: {} });
   });
 
   it('renders the welcome onboarding cards', async () => {
@@ -454,9 +448,10 @@ describe('FeatureOnboardingScreen', () => {
       await renderer.root.findByProps({ testID: 'feature-onboarding-finish-button' }).props.onPress();
     });
 
-    expect(mockWriteFeature).toHaveBeenCalledWith(
+    expect(mockCompleteMainOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({
-        operationName: 'onboarding.main.complete',
+        userId: 'user_1',
+        version: 1,
       }),
     );
     expect(mockReset).toHaveBeenCalledWith({
@@ -466,7 +461,15 @@ describe('FeatureOnboardingScreen', () => {
   });
 
   it('optimistically saves queued completion before resetting to Home', async () => {
-    mockWriteFeature.mockResolvedValue({ status: 'queued' });
+    mockCompleteMainOnboarding.mockImplementation(async (input) => {
+      mockSaveOptimisticMobileOnboardingState({
+        main: {
+          completedAt: input.completedAt,
+          completedVersion: input.version,
+        },
+      });
+      return { status: 'queued' };
+    });
     const renderer = await renderFeatureOnboardingScreen();
 
     await act(async () => {

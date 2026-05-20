@@ -110,6 +110,9 @@ jest.mock('../features', () => ({
     detail: (userId: string) => ['settings', userId],
   },
   updateCollectionRecord: jest.fn(),
+  useSettingsPreferencesWrites: () => ({
+    saveSettingsPreferences: mockSaveSettings,
+  }),
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
@@ -262,21 +265,14 @@ describe('SettingsScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockSaveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operationName: 'settings.visibility.save',
-        offline: expect.objectContaining({
-          payload: expect.objectContaining({
-            defaultHomeFeedMode: 'friends',
-            defaultHomeFeedSort: 'tracked',
-            defaultHomeFeedTypeFilter: 'all',
-            defaultListVisibility: 'friends',
-            defaultRestaurantVisibility: 'private',
-            defaultVisitVisibility: 'friends',
-            userId: 'user-1',
-          }),
-        }),
-      }),
-    );
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      homeFeedMode: 'friends',
+      homeFeedSort: 'tracked',
+      homeFeedTypeFilter: 'all',
+      listVisibility: 'friends',
+      restaurantVisibility: 'private',
+      userId: 'user-1',
+      visitVisibility: 'friends',
+    });
   });
 });

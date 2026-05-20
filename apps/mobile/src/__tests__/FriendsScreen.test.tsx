@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { evictFriendshipDependentQueries, removeFriend } from '../features';
+import { evictFriendshipDependentQueries, removeFriend, useFriendWrites } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -193,6 +193,7 @@ jest.mock('../features', () => {
       requestsCount: 0,
       sentCount: 0,
     })),
+    useFriendWrites: jest.fn(),
   };
 });
 
@@ -249,6 +250,7 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 const mockedEvictFriendshipDependentQueries =
   evictFriendshipDependentQueries as jest.MockedFunction<typeof evictFriendshipDependentQueries>;
 const mockedRemoveFriend = removeFriend as jest.MockedFunction<typeof removeFriend>;
+const mockedUseFriendWrites = useFriendWrites as jest.MockedFunction<typeof useFriendWrites>;
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   return StyleSheet.flatten(style) as Record<string, unknown>;
@@ -330,6 +332,20 @@ describe('FriendsScreen', () => {
     mockedEvictFriendshipDependentQueries.mockResolvedValue(undefined);
     mockedRemoveFriend.mockReset();
     mockedRemoveFriend.mockResolvedValue(undefined);
+    mockedUseFriendWrites.mockReset();
+    mockedUseFriendWrites.mockReturnValue({
+      acceptFriendRequest: jest.fn().mockResolvedValue({ status: 'completed' }),
+      removeFriend: jest.fn(async ({ friend, operationName, removedUserId }) => {
+        await mockedRemoveFriend(friend.id);
+        if (operationName === 'friend.remove') {
+          await mockedEvictFriendshipDependentQueries(queryClient as never, { removedUserId });
+        } else {
+          await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+        }
+        return { status: 'completed' };
+      }),
+      sendFriendRequest: jest.fn().mockResolvedValue({ status: 'completed' }),
+    } as never);
   });
 
   it('keeps the root content orange while measuring a white top backdrop for pull-down refresh', async () => {
@@ -413,13 +429,6 @@ describe('FriendsScreen', () => {
         },
       ],
     } as never);
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
-      jest.fn(async (options: { execute: () => Promise<void> }) => {
-        await options.execute();
-        return { status: 'completed' };
-      }) as never,
-    );
-
     let renderer: any = null;
     await act(async () => {
       renderer = renderFriendsScreen();

@@ -20,24 +20,18 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import {
-  acceptCachedFriendRequest,
   createFriendQrPayload,
-  evictFriendshipDependentQueries,
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
   listFriendsPage,
-  markFriendInviteAccepted,
-  removeCachedFriend,
-  removeFriend,
   resolveOwnFriendCode,
   selectFriendsSummary,
+  useFriendWrites,
   type FriendRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -222,7 +216,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const userId = user?.id ?? null;
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const friendWrites = useFriendWrites();
   const { queuedWrites: pendingFriendRequestWrites } = useQueuedFeatureWrites([
     'friend.request.send',
   ]);
@@ -361,28 +355,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     });
   }, [mainTab]);
 
-  const invalidateFriends = async () => {
-    await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
-  };
-
-  const invalidateFriendRemovalQueries = async (
-    operationName: FriendRemoveOperationName,
-    removedUserId?: string,
-    options?: {
-      preserveFriendsQueries?: boolean;
-    },
-  ) => {
-    if (operationName === 'friend.remove') {
-      await evictFriendshipDependentQueries(queryClient, {
-        removedUserId,
-        preserveFriendsQueries: options?.preserveFriendsQueries,
-      });
-      return;
-    }
-
-    await invalidateFriends();
-  };
-
   const handleAccept = async (friend: FriendRecord) => {
     trackObservabilityEvent('FRIEND_ACTION_STARTED', {
       source: 'FriendsScreen',
@@ -394,24 +366,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
-      const acceptResult = await writeFeature({
-        operationName: 'friend.accept',
-        offline: {
-          strategy: 'outbox',
-          payload: { friendId: friend.id },
-        },
-        execute: () => markFriendInviteAccepted(friend.id),
+      const acceptResult = await friendWrites.acceptFriendRequest({
+        friend,
+        userId,
       });
 
-      acceptCachedFriendRequest(
-        queryClient,
-        userId,
-        friend,
-        acceptResult.status === 'queued' ? undefined : acceptResult.result,
-      );
-
       if (acceptResult.status === 'queued') {
-        await invalidateFriends();
         trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
           source: 'FriendsScreen',
           action: 'accept',
@@ -422,14 +382,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           source: 'FriendsScreen',
           queued: true,
         });
-        showQueuedOfflineAlert({
-          analyticsSource: 'FriendsScreen',
-          subject: 'Friend action',
-        });
         return;
       }
 
-      await invalidateFriends();
       trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
         source: 'FriendsScreen',
         action: 'accept',
@@ -472,35 +427,23 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
-      const removeResult = await writeFeature({
+      const removeResult = await friendWrites.removeFriend({
+        friend,
         operationName,
-        offline: {
-          strategy: 'outbox',
-          payload: { friendId: friend.id },
-        },
-        execute: () => removeFriend(friend.id),
+        removedUserId,
+        userId,
       });
 
-      removeCachedFriend(queryClient, userId, friend);
-
       if (removeResult.status === 'queued') {
-        await invalidateFriendRemovalQueries(operationName, removedUserId, {
-          preserveFriendsQueries: true,
-        });
         trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
           source: 'FriendsScreen',
           action,
           queued: true,
           subTab: friendsSubTab,
         });
-        showQueuedOfflineAlert({
-          analyticsSource: 'FriendsScreen',
-          subject: 'Friend action',
-        });
         return true;
       }
 
-      await invalidateFriendRemovalQueries(operationName, removedUserId);
       trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
         source: 'FriendsScreen',
         action,

@@ -40,6 +40,26 @@ _Avoid_: Suggestions, readiness
 A participant's personal ratings for the selected menu items they tried during a group tasting session.
 _Avoid_: Assigned items
 
+**Friend Writes**:
+The mobile module that owns friend request and friendship mutation flows, including offline replay payloads, friendship cache effects, queued feedback, and request entry adapters such as manual code entry and QR scanning.
+_Avoid_: friend action helper, social mutation wrapper
+
+**Feedback Writes**:
+The mobile module that owns user feedback creation and feedback thread replies, including offline replay payloads, feedback list/thread cache effects, and queued feedback.
+_Avoid_: feedback submit helper, support message wrapper
+
+**Visit Action Writes**:
+The mobile module that owns restaurant visit actions beyond create/update, including deleting visits, moving visit items, converting visit items to food products, replay payloads, and affected cache effects.
+_Avoid_: home feed action helper, visit item mutation wrapper
+
+**Settings Preferences**:
+The saved mobile preferences for default visibility and Home feed defaults.
+_Avoid_: settings form values
+
+**Onboarding Progress**:
+The saved mobile onboarding state for first-run completion and per-feature intro dismissal.
+_Avoid_: tutorial flags
+
 ## Relationships
 
 - A **Restaurant List** contains zero or more restaurants.
@@ -66,6 +86,11 @@ _Avoid_: Assigned items
 - A participant may edit and resubmit their **Tasting Rating Submission** until the group tasting session is completed.
 - Participants save **Tasting Rating Submissions**; only the leader completes the group tasting session.
 - The leader may complete a group tasting session before every participant has submitted, with confirmation that missing submissions are omitted from results.
+- **Friend Writes** preserve the write lifecycle for friend request send, accept, decline, cancel, and remove actions.
+- **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
+- **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.
+- **Settings Preferences** include default Visit, Restaurant, Restaurant List, and Home feed preferences.
+- **Onboarding Progress** is persisted on the authenticated user record and may be updated while offline.
 
 ## Example dialogue
 

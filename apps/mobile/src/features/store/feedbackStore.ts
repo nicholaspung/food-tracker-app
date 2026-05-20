@@ -101,7 +101,7 @@ interface FeedbackMarkReadResult {
   markedRead: boolean;
 }
 
-interface FeedbackReplyResult {
+export interface FeedbackReplyResult {
   feedback: FeedbackRecord;
   message: FeedbackMessageRecord;
 }

@@ -2,21 +2,17 @@ import { useCallback, useState } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  deleteVisit,
-  homeFeedQueryKeys,
   invalidateHomeFeedQueries,
-  moveVisitItem,
   reportContent,
-  syncVisitMutationCaches,
   type ContentReportReasonCode,
-  type HomeFeedInfiniteData,
   type VisitRecord,
-  visitsQueryKeys,
 } from '../../features';
-import { moveVisitItemApiMutationInput } from '../../features/store/featureOutboxOperations';
 import { useFoodProductWrites } from '../../features/store/useFoodProductWrites';
+import {
+  deleteVisitWithOfflineSupport,
+  moveVisitItemWithOfflineSupport,
+} from '../../features/store/useVisitWrites';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { buildPhotoViewerState } from '../../lib/photoUrls';
 import { trackObservabilityEvent } from '../../observability';
 import type {
@@ -31,84 +27,6 @@ interface UseHomeFeedActionControllerParams {
   queryClient: QueryClient;
   trackWriteTelemetry: (operationName: string) => Promise<void>;
   writeFeature: OfflineAwareFeatureWrite;
-}
-
-type VisitItemRecord = VisitRecord['items'][number];
-
-function removeVisitItem(visit: VisitRecord, itemId: string): VisitRecord {
-  return {
-    ...visit,
-    items: visit.items.filter((item) => item.id !== itemId),
-  };
-}
-
-function appendVisitItem(visit: VisitRecord, item: VisitItemRecord): VisitRecord {
-  if (visit.items.some((existingItem) => existingItem.id === item.id)) {
-    return visit;
-  }
-
-  return {
-    ...visit,
-    items: [...visit.items, item],
-  };
-}
-
-function patchVisitRecordForMovedItem(
-  visit: VisitRecord | null | undefined,
-  pendingMoveItem: PendingMoveVisitItem,
-  destinationVisit: VisitRecord,
-): VisitRecord | null | undefined {
-  if (!visit) {
-    return visit;
-  }
-
-  if (visit.id === pendingMoveItem.sourceVisitId) {
-    return removeVisitItem(visit, pendingMoveItem.item.id);
-  }
-
-  if (visit.id === destinationVisit.id) {
-    return appendVisitItem(visit, pendingMoveItem.item);
-  }
-
-  return visit;
-}
-
-function patchHomeFeedDataForMovedItem(
-  currentData: HomeFeedInfiniteData | undefined,
-  pendingMoveItem: PendingMoveVisitItem,
-  destinationVisit: VisitRecord,
-): HomeFeedInfiniteData | undefined {
-  if (!currentData) {
-    return currentData;
-  }
-
-  return {
-    ...currentData,
-    pages: currentData.pages.map((page) => ({
-      ...page,
-      items: page.items.map((entry) => {
-        if (entry.source !== 'visit') {
-          return entry;
-        }
-
-        if (entry.visit.id === pendingMoveItem.sourceVisitId) {
-          return {
-            ...entry,
-            visit: removeVisitItem(entry.visit, pendingMoveItem.item.id),
-          };
-        }
-
-        if (entry.visit.id === destinationVisit.id) {
-          return {
-            ...entry,
-            visit: appendVisitItem(entry.visit, pendingMoveItem.item),
-          };
-        }
-
-        return entry;
-      }),
-    })),
-  };
 }
 
 export interface HomeFeedActionController {
@@ -185,23 +103,6 @@ export function useHomeFeedActionController({
     await invalidateHomeFeedQueries(queryClient);
   }, [queryClient]);
 
-  const invalidateMoveVisitItemQueries = useCallback(
-    async (sourceVisitId: string, destinationVisitId: string) => {
-      await Promise.all([
-        invalidateHomeFeedQueries(queryClient),
-        queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
-        queryClient.invalidateQueries({
-          queryKey: ['feature', 'visit', sourceVisitId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['feature', 'visit', destinationVisitId],
-        }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
-      ]);
-    },
-    [queryClient],
-  );
-
   const handleDeleteFoodProduct = useCallback(
     async (foodProductId: string) => {
       const deleteResult = await foodProductWrites.deleteFoodProduct({ foodProductId });
@@ -226,33 +127,22 @@ export function useHomeFeedActionController({
 
   const handleDeleteVisit = useCallback(
     async (visitId: string) => {
-      const deleteResult = await writeFeature({
-        operationName: 'visit.delete',
-        offline: {
-          strategy: 'outbox',
-          payload: { visitId },
-        },
-        execute: () => deleteVisit(visitId),
+      const deleteResult = await deleteVisitWithOfflineSupport({
+        includeVisitPhotos: true,
+        queryClient,
+        visitId,
+        writeFeature,
       });
 
       if (deleteResult.status === 'queued') {
-        await syncVisitMutationCaches(queryClient, {
-          visitId,
-          includeVisitPhotos: true,
-        });
         trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
           source: 'HomeFeedActionController',
           contentType: 'visit',
           queued: true,
         });
-        showQueuedOfflineAlert('Visit delete');
         return;
       }
 
-      await syncVisitMutationCaches(queryClient, {
-        visitId,
-        includeVisitPhotos: true,
-      });
       trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
         source: 'HomeFeedActionController',
         contentType: 'visit',
@@ -376,24 +266,6 @@ export function useHomeFeedActionController({
         return;
       }
 
-      const sourceVisitQueryKey = [
-        'feature',
-        'visit',
-        pendingMoveItem.sourceVisitId,
-      ] as const;
-      const destinationVisitQueryKey = [
-        'feature',
-        'visit',
-        destinationVisit.id,
-      ] as const;
-      const homeFeedSnapshots = queryClient.getQueriesData<HomeFeedInfiniteData>({
-        queryKey: homeFeedQueryKeys.root,
-      });
-      const sourceVisitSnapshot =
-        queryClient.getQueryData<VisitRecord | null>(sourceVisitQueryKey);
-      const destinationVisitSnapshot =
-        queryClient.getQueryData<VisitRecord | null>(destinationVisitQueryKey);
-
       setMoveErrorMessage(null);
       trackObservabilityEvent('HOME_FEED_MOVE_ITEM_STARTED', {
         source: 'HomeFeedActionController',
@@ -401,88 +273,23 @@ export function useHomeFeedActionController({
       });
       setIsMovingVisitItem(true);
 
-      queryClient.setQueriesData<HomeFeedInfiniteData>(
-        { queryKey: homeFeedQueryKeys.root },
-        (currentData) =>
-          patchHomeFeedDataForMovedItem(
-            currentData,
-            pendingMoveItem,
-            destinationVisit,
-          ),
-      );
-
-      if (sourceVisitSnapshot !== undefined) {
-        queryClient.setQueryData<VisitRecord | null>(
-          sourceVisitQueryKey,
-          patchVisitRecordForMovedItem(
-            sourceVisitSnapshot,
-            pendingMoveItem,
-            destinationVisit,
-          ),
-        );
-      }
-
-      if (destinationVisitSnapshot !== undefined) {
-        queryClient.setQueryData<VisitRecord | null>(
-          destinationVisitQueryKey,
-          patchVisitRecordForMovedItem(
-            destinationVisitSnapshot,
-            pendingMoveItem,
-            destinationVisit,
-          ),
-        );
-      }
-
       try {
-        const moveResult = await writeFeature({
-          operationName: 'visit.item.move',
-          offline: {
-            strategy: 'api',
-            input: moveVisitItemApiMutationInput(
-              pendingMoveItem.item.id,
-              destinationVisit.id,
-            ),
-          },
-          execute: () =>
-            moveVisitItem({
-              itemId: pendingMoveItem.item.id,
-              destinationVisitId: destinationVisit.id,
-            }),
+        const moveResult = await moveVisitItemWithOfflineSupport({
+          destinationVisit,
+          item: pendingMoveItem.item,
+          queryClient,
+          sourceVisitId: pendingMoveItem.sourceVisitId,
+          writeFeature,
         });
 
         setPendingMoveItem(null);
         setMoveErrorMessage(null);
 
-        await invalidateMoveVisitItemQueries(
-          pendingMoveItem.sourceVisitId,
-          destinationVisit.id,
-        );
         trackObservabilityEvent('HOME_FEED_MOVE_ITEM_SUCCEEDED', {
           source: 'HomeFeedActionController',
           queued: moveResult.status === 'queued',
         });
-
-        if (moveResult.status === 'queued') {
-          showQueuedOfflineAlert('Visit item move');
-        }
       } catch (error) {
-        for (const [queryKey, snapshot] of homeFeedSnapshots) {
-          if (snapshot !== undefined) {
-            queryClient.setQueryData(queryKey, snapshot);
-          }
-        }
-
-        if (sourceVisitSnapshot !== undefined) {
-          queryClient.setQueryData(sourceVisitQueryKey, sourceVisitSnapshot);
-        }
-
-        if (destinationVisitSnapshot !== undefined) {
-          queryClient.setQueryData(
-            destinationVisitQueryKey,
-            destinationVisitSnapshot,
-          );
-        }
-
         const message =
           error instanceof Error ? error.message : 'Could not move visit item.';
         trackObservabilityEvent('HOME_FEED_MOVE_ITEM_FAILED', {
@@ -497,7 +304,6 @@ export function useHomeFeedActionController({
       }
     },
     [
-      invalidateMoveVisitItemQueries,
       isOnline,
       isMovingVisitItem,
       pendingMoveItem,

@@ -28,14 +28,11 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  convertVisitItemToFoodProduct,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getNoteDetail,
   getVisitById,
   listVisitItemPhotos,
-  syncFoodProductMutationCaches,
-  syncVisitMutationCaches,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitItem,
@@ -43,7 +40,7 @@ import {
 } from '../features';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -53,7 +50,6 @@ import {
   getTodayLocalDateString,
   isValidLocalDate,
 } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
@@ -464,7 +460,7 @@ export function CreateVisitScreen({
 }: CreateVisitScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const visitWrites = useVisitWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -1338,25 +1334,12 @@ export function CreateVisitScreen({
       setIsConvertingVisitItem(true);
 
       try {
-        const conversionResult = await writeFeature({
-          operationName: 'visit.item.convert-to-food-product',
-          offline: {
-            strategy: 'outbox',
-            payload: {
-              itemId: normalizedItemId,
-            },
-          },
-          execute: () => convertVisitItemToFoodProduct({ itemId: normalizedItemId }),
+        const conversionResult = await visitWrites.convertVisitItemToFoodProduct({
+          itemId: normalizedItemId,
+          sourceVisitId: editVisitId,
         });
 
         if (conversionResult.status === 'queued') {
-          await Promise.all([
-            syncVisitMutationCaches(queryClient, {
-              visitId: editVisitId,
-              includeVisitPhotos: true,
-            }),
-            syncFoodProductMutationCaches(queryClient),
-          ]);
           hasCompletedFlowRef.current = true;
           trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_SUCCEEDED', {
             source: 'CreateVisitScreen',
@@ -1364,24 +1347,10 @@ export function CreateVisitScreen({
             visitId: editVisitId,
             queued: true,
           });
-          showQueuedOfflineAlert({
-            analyticsSource: 'CreateVisitScreen',
-            subject: 'Food product conversion',
-          });
           navigateAfterEditMutation();
           return;
         }
 
-        await Promise.all([
-          syncVisitMutationCaches(queryClient, {
-            visitId: conversionResult.result.sourceVisitId,
-            includeVisitPhotos: true,
-          }),
-          syncFoodProductMutationCaches(queryClient, {
-            foodProductId: conversionResult.result.foodProductId,
-            includeFoodProductPhotos: true,
-          }),
-        ]);
         hasCompletedFlowRef.current = true;
         trackObservabilityEvent('VISIT_ITEM_CONVERT_TO_FOOD_PRODUCT_SUCCEEDED', {
           source: 'CreateVisitScreen',
@@ -1418,8 +1387,7 @@ export function CreateVisitScreen({
       isOnline,
       navigateAfterEditMutation,
       navigation,
-      queryClient,
-      writeFeature,
+      visitWrites,
     ],
   );
 

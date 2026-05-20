@@ -11,6 +11,7 @@ import {
   useMonthlyUsage,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useVisitWrites } from '../features/store/useVisitWrites';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
@@ -181,6 +182,10 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
 }));
 
+jest.mock('../features/store/useVisitWrites', () => ({
+  useVisitWrites: jest.fn(),
+}));
+
 jest.mock('../hooks/usePhotoPickerPermissions', () => ({
   usePhotoPickerPermissions: jest.fn(),
 }));
@@ -283,6 +288,7 @@ const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useM
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
+const mockedUseVisitWrites = useVisitWrites as jest.MockedFunction<typeof useVisitWrites>;
 const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
   typeof usePhotoPickerPermissions
 >;
@@ -355,6 +361,28 @@ describe('CreateVisitScreen', () => {
     });
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseVisitWrites.mockReset();
+    mockedUseVisitWrites.mockReturnValue({
+      convertVisitItemToFoodProduct: jest.fn(async ({ itemId, sourceVisitId }) => {
+        const result = await mockedConvertVisitItemToFoodProduct({ itemId });
+        await mockedSyncVisitMutationCaches({} as never, {
+          visitId: sourceVisitId,
+          includeVisitPhotos: true,
+        });
+        await mockedSyncFoodProductMutationCaches({} as never, {
+          foodProductId: result.foodProductId,
+          includeFoodProductPhotos: true,
+        });
+        return {
+          result,
+          status: 'completed',
+        };
+      }),
+      createVisit: jest.fn(),
+      deleteVisit: jest.fn(),
+      moveVisitItem: jest.fn(),
+      updateVisit: jest.fn(),
+    } as unknown as ReturnType<typeof useVisitWrites>);
     mockedUsePhotoPickerPermissions.mockReset();
     mockedUsePhotoPickerPermissions.mockReturnValue({
       permissionNeedsSettings: false,
@@ -716,17 +744,6 @@ describe('CreateVisitScreen', () => {
   });
 
   it('converts an edit visit item through the header overflow conversion flow', async () => {
-    const writeFeature = jest.fn().mockResolvedValue({
-      status: 'completed',
-      result: {
-        deletedSourceVisit: false,
-        foodProductId: 'food-product-1',
-        sourceVisitId: 'visit-1',
-      },
-    });
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
-      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
-    );
     mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
       if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'visit') {
         return buildQueryResult({
@@ -801,17 +818,7 @@ describe('CreateVisitScreen', () => {
       await confirmModal.props.onConfirm();
     });
 
-    expect(writeFeature).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operationName: 'visit.item.convert-to-food-product',
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            itemId: 'item-1',
-          },
-        },
-      }),
-    );
+    expect(mockedConvertVisitItemToFoodProduct).toHaveBeenCalledWith({ itemId: 'item-1' });
     expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

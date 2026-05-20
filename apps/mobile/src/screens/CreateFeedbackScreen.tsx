@@ -1,18 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import {
-  createFeedback,
-  feedbackQueryKeys,
-  type FeedbackCountSummary,
-  type FeedbackListQueryData,
-  prependFeedbackListItem,
-} from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useFeedbackWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -44,8 +35,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) {
   const styles = useStyles();
-  const writeFeature = useOfflineAwareFeatureWrite();
-  const queryClient = useQueryClient();
+  const feedbackWrites = useFeedbackWrites();
   const { isOnline } = useConnectivity();
 
   const [subject, setSubject] = useState('');
@@ -141,44 +131,26 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         description: trimmedMessage,
       };
 
-      const createResult = await writeFeature({
-        operationName: 'feedback.create',
-        offline: {
-          strategy: 'outbox',
-          payload: feedbackInput,
+      const createResult = await feedbackWrites.createFeedback({
+        ...feedbackInput,
+        queuedAlert: {
+          analyticsSource: 'CreateFeedbackScreen',
+          subject: 'Feedback',
         },
-        execute: () => createFeedback(feedbackInput),
       });
 
       if (createResult.status === 'queued') {
-        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
         trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
           source: 'CreateFeedbackScreen',
           queued: true,
         });
         hasCompletedFlowRef.current = true;
-        showQueuedOfflineAlert({
-          analyticsSource: 'CreateFeedbackScreen',
-          subject: 'Feedback',
-        });
         navigation.replace('Feedback');
         return;
       }
 
       const createdFeedback = createResult.result;
 
-      queryClient.setQueryData<FeedbackListQueryData>(feedbackQueryKeys.list, (currentFeedback) =>
-        prependFeedbackListItem(currentFeedback, createdFeedback),
-      );
-      queryClient.setQueryData(feedbackQueryKeys.detail(createdFeedback.id), createdFeedback);
-      queryClient.setQueryData<FeedbackCountSummary | undefined>(feedbackQueryKeys.summary, (currentSummary) =>
-        currentSummary
-          ? {
-              allCount: currentSummary.allCount + 1,
-              activeCount: createdFeedback.status === 'closed' ? currentSummary.activeCount : currentSummary.activeCount + 1,
-            }
-          : currentSummary,
-      );
       trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
         source: 'CreateFeedbackScreen',
         queued: false,

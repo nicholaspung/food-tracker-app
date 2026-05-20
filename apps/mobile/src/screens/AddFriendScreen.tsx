@@ -1,12 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { friendsQueryKeys, inviteFriend } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useFriendWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -47,8 +44,7 @@ function generateFriendCode(userId: string | undefined): string {
 
 export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const styles = useStyles();
-  const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const friendWrites = useFriendWrites();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
 
@@ -109,17 +105,11 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     setIsSubmitting(true);
 
     try {
-      const requestResult = await writeFeature({
-        operationName: 'friend.request.send',
-        offline: {
-          strategy: 'outbox',
-          payload: { code: normalizedCode },
-        },
-        execute: () => inviteFriend({ code: normalizedCode }),
+      const requestResult = await friendWrites.sendFriendRequest({
+        code: normalizedCode,
       });
 
       if (requestResult.status === 'queued') {
-        await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
         trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
           source: 'AddFriendScreen',
           entryMethod: 'manual_code',
@@ -130,12 +120,10 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
           entryMethod: 'manual_code',
           queued: true,
         });
-        showQueuedOfflineAlert('Friend request');
         handleRequestComplete();
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
       trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
         source: 'AddFriendScreen',
         entryMethod: 'manual_code',

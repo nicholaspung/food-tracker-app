@@ -9,11 +9,8 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { TutorialMedia } from '../components/shared/TutorialMedia';
 import {
   MAIN_ONBOARDING_VERSION,
-  buildMainOnboardingCompletedState,
-  completeMainOnboarding,
-  saveOptimisticMobileOnboardingState,
+  useOnboardingProgressWrites,
 } from '../features';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { FEATURE_ONBOARDING_ASSETS } from '../lib/onboardingAssets';
 import { MAIN_ONBOARDING_PUBLISHED_ASSETS } from '../lib/onboardingPublishedAssets';
 import { BRAND_LOGO } from '../lib/branding';
@@ -387,7 +384,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const writeFeature = useOfflineAwareFeatureWrite();
+  const onboardingWrites = useOnboardingProgressWrites();
   const carouselRef = useRef<ScrollView | null>(null);
   const lastTrackedCardKeyRef = useRef<string | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(() => findMainOnboardingCardIndex(initialCardId));
@@ -471,32 +468,12 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
     const completedAt = new Date().toISOString();
 
     try {
-      const saveResult = await writeFeature({
-        operationName: 'onboarding.main.complete',
-        trackOnlineWrite: false,
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            userId: user.id,
-            version: MAIN_ONBOARDING_VERSION,
-            completedAt,
-          },
-        },
-        execute: () =>
-          completeMainOnboarding(user.id, {
-            version: MAIN_ONBOARDING_VERSION,
-            completedAt,
-          }),
+      const saveResult = await onboardingWrites.completeMainOnboarding({
+        userId: user.id,
+        currentOnboardingState: user.mobileOnboardingState,
+        version: MAIN_ONBOARDING_VERSION,
+        completedAt,
       });
-
-      if (saveResult.status === 'queued') {
-        saveOptimisticMobileOnboardingState(
-          buildMainOnboardingCompletedState(user.mobileOnboardingState, {
-            version: MAIN_ONBOARDING_VERSION,
-            completedAt,
-          }),
-        );
-      }
 
       trackObservabilityEvent('FEATURE_ONBOARDING_COMPLETED', {
         queued: saveResult.status === 'queued',

@@ -3,10 +3,10 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 import {
   buildPocketBaseFileUrl,
-  invalidateHomeFeedQueries,
-  moveVisitItem,
-  syncVisitMutationCaches,
 } from '../features';
+import { invalidateHomeFeedQueries } from '../features/store/homeFeedQuery';
+import { moveVisitItem } from '../features/store/visitsStore';
+import { syncVisitMutationCaches } from '../features/store/visitsQuery';
 import { moveVisitItemApiMutationInput } from '../features/store/featureOutboxOperations';
 import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -39,6 +39,25 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
 
 jest.mock('../features/store/featureOutboxOperations', () => ({
   moveVisitItemApiMutationInput: jest.fn(),
+}));
+
+jest.mock('../features/store/homeFeedQuery', () => ({
+  homeFeedQueryKeys: {
+    root: ['feature', 'homeFeed'],
+  },
+  invalidateHomeFeedQueries: jest.fn(),
+}));
+
+jest.mock('../features/store/visitsQuery', () => ({
+  syncVisitMutationCaches: jest.fn(),
+  visitsQueryKeys: {
+    root: ['feature', 'visits'],
+  },
+}));
+
+jest.mock('../features/store/visitsStore', () => ({
+  deleteVisit: jest.fn(),
+  moveVisitItem: jest.fn(),
 }));
 
 jest.mock('../features/store/useFoodProductWrites', () => ({
