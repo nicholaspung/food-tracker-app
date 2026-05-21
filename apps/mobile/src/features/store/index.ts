@@ -37,6 +37,7 @@ export * from './useRestaurantListWrites';
 export * from './useSettingsPreferencesWrites';
 export * from './useTastingSessionWrites';
 export * from './useTastingPlanWrites';
+export * from './useTastingPlanMenuCatalog';
 export * from './useTastingRatingSubmissionWrites';
 export * from './visitPhotosQuery';
 export * from './visitsQuery';

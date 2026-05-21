@@ -133,30 +133,31 @@ describe('useTastingRatingSubmissionWrites', () => {
 
   it('submits included approved items and uploads generated Visit photos', async () => {
     const { hook, renderer } = await renderHook();
-    const resolveDraft = jest.fn(() => ({
-      included: true,
-      note: ' Nice ',
-      photos: [
-        {
-          id: 'photo_1',
-          labelDate: 'Today',
-          thumbnailUri: 'file://photo.jpg',
-          upload: {
-            mimeType: 'image/jpeg',
-            name: 'photo.jpg',
-            uri: 'file://photo.jpg',
-          },
-          viewerUri: 'file://photo.jpg',
-        },
-      ],
-      rating: 4,
-    }));
 
     await hook.submitRatingDraft({
       approvedRestaurants,
       currentUserId: 'user_1',
+      draftByItemId: {
+        item_1: {
+          included: true,
+          note: ' Nice ',
+          photos: [
+            {
+              id: 'photo_1',
+              labelDate: 'Today',
+              thumbnailUri: 'file://photo.jpg',
+              upload: {
+                mimeType: 'image/jpeg',
+                name: 'photo.jpg',
+                uri: 'file://photo.jpg',
+              },
+              viewerUri: 'file://photo.jpg',
+            },
+          ],
+          rating: 4,
+        },
+      },
       isOnline: true,
-      resolveDraft,
       sessionId: 'session_1',
     });
 
@@ -197,37 +198,39 @@ describe('useTastingRatingSubmissionWrites', () => {
 
   it('does not upload duplicate generated Visit photos on resubmit', async () => {
     const { hook, renderer } = await renderHook();
-    const resolveDraft = jest.fn(() => ({
-      included: true,
-      note: '',
-      photos: [
-        {
-          id: 'photo_1',
-          labelDate: 'Today',
-          thumbnailUri: 'file://photo.jpg',
-          upload: {
-            mimeType: 'image/jpeg',
-            name: 'photo.jpg',
-            uri: 'file://photo.jpg',
+    const draftByItemId = {
+      item_1: {
+        included: true,
+        note: '',
+        photos: [
+          {
+            id: 'photo_1',
+            labelDate: 'Today',
+            thumbnailUri: 'file://photo.jpg',
+            upload: {
+              mimeType: 'image/jpeg',
+              name: 'photo.jpg',
+              uri: 'file://photo.jpg',
+            },
+            viewerUri: 'file://photo.jpg',
           },
-          viewerUri: 'file://photo.jpg',
-        },
-      ],
-      rating: 4,
-    }));
+        ],
+        rating: 4,
+      },
+    };
 
     await hook.submitRatingDraft({
       approvedRestaurants,
       currentUserId: 'user_1',
+      draftByItemId,
       isOnline: true,
-      resolveDraft,
       sessionId: 'session_1',
     });
     await hook.submitRatingDraft({
       approvedRestaurants,
       currentUserId: 'user_1',
+      draftByItemId,
       isOnline: true,
-      resolveDraft,
       sessionId: 'session_1',
     });
 
@@ -244,13 +247,15 @@ describe('useTastingRatingSubmissionWrites', () => {
     await hook.submitRatingDraft({
       approvedRestaurants,
       currentUserId: 'user_1',
+      draftByItemId: {
+        item_1: {
+          included: false,
+          note: '',
+          photos: [],
+          rating: 3,
+        },
+      },
       isOnline: true,
-      resolveDraft: () => ({
-        included: false,
-        note: '',
-        photos: [],
-        rating: 3,
-      }),
       sessionId: 'session_1',
     });
 
@@ -284,13 +289,15 @@ describe('useTastingRatingSubmissionWrites', () => {
     const submitResult = await hook.submitRatingDraft({
       approvedRestaurants,
       currentUserId: 'user_1',
+      draftByItemId: {
+        item_1: {
+          included: true,
+          note: '',
+          photos: [],
+          rating: 3,
+        },
+      },
       isOnline: false,
-      resolveDraft: () => ({
-        included: true,
-        note: '',
-        photos: [],
-        rating: 3,
-      }),
       sessionId: 'session_1',
     });
     const completeResult = await hook.completeTasting({ isOnline: false, sessionId: 'session_1' });

@@ -1,8 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useTastingPlanWrites } from '../features';
+import { useTastingPlanMenuCatalog, useTastingPlanWrites } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -12,7 +11,6 @@ import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSe
 const mockReact = React;
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
-const mockInvalidateQueries = jest.fn();
 const mockClearPlacesSearchState = jest.fn();
 const mockSearchByText = jest.fn();
 const mockSearchNearby = jest.fn();
@@ -34,11 +32,6 @@ jest.mock('react-native', () => ({
     mockReact.createElement('Pressable', props, children),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
-}));
-
-jest.mock('@tanstack/react-query', () => ({
-  useQuery: jest.fn(),
-  useQueryClient: jest.fn(),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -86,11 +79,8 @@ jest.mock('../features', () => ({
     status: 'idle',
     verification: null,
   })),
+  useTastingPlanMenuCatalog: jest.fn(),
   useTastingPlanWrites: jest.fn(),
-}));
-
-jest.mock('../features/store/restaurantsStore', () => ({
-  listMenuItemsForRestaurant: jest.fn(),
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
@@ -163,10 +153,11 @@ jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
 }));
 
 const mockedUseTastingPlanWrites = useTastingPlanWrites as jest.MockedFunction<typeof useTastingPlanWrites>;
-const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseTastingPlanMenuCatalog = useTastingPlanMenuCatalog as jest.MockedFunction<
+  typeof useTastingPlanMenuCatalog
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseRestaurantSelectionFlow = useTastingPlanRestaurantSelectionFlow as jest.MockedFunction<
   typeof useTastingPlanRestaurantSelectionFlow
 >;
@@ -275,7 +266,6 @@ describe('TastingSessionPlanningScreen', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockReplace.mockReset();
-    mockInvalidateQueries.mockReset();
     mockClearPlacesSearchState.mockReset();
     mockSearchByText.mockReset();
     mockSearchByText.mockResolvedValue({ results: [], status: 'success' });
@@ -311,16 +301,16 @@ describe('TastingSessionPlanningScreen', () => {
       },
     } as never);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as never);
-    mockedUseQueryClient.mockReturnValue({
-      getQueryData: jest.fn(() => []),
-      invalidateQueries: mockInvalidateQueries,
-    } as never);
-    mockedUseQuery.mockReturnValue({
-      data: [],
-      isError: false,
-      isLoading: false,
-      refetch: jest.fn(),
-    } as never);
+    mockedUseTastingPlanMenuCatalog.mockReturnValue({
+      menuItemsQuery: {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      },
+      menuReviewSubmitted: false,
+      requestMenuReview: jest.fn().mockResolvedValue({ status: 'completed' }),
+    } as unknown as ReturnType<typeof useTastingPlanMenuCatalog>);
     mockedUseTastingSessionDetail.mockReturnValue({
       data: planningSession,
     } as never);
@@ -420,18 +410,22 @@ describe('TastingSessionPlanningScreen', () => {
     mockedUseTastingSessionDetail.mockReturnValue({
       data: sessionWithRestaurant,
     } as never);
-    mockedUseQuery.mockReturnValue({
-      data: [
-        {
-          id: 'menu-item-2',
-          name: 'Tonkotsu Ramen',
-          restaurant: 'restaurant-1',
-        },
-      ],
-      isError: false,
-      isLoading: false,
-      refetch: jest.fn(),
-    } as never);
+    mockedUseTastingPlanMenuCatalog.mockReturnValue({
+      menuItemsQuery: {
+        data: [
+          {
+            id: 'menu-item-2',
+            name: 'Tonkotsu Ramen',
+            restaurant: 'restaurant-1',
+          },
+        ],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      },
+      menuReviewSubmitted: false,
+      requestMenuReview: jest.fn().mockResolvedValue({ status: 'completed' }),
+    } as unknown as ReturnType<typeof useTastingPlanMenuCatalog>);
 
     const renderer = renderScreen();
 

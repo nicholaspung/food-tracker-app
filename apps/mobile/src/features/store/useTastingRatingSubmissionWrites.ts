@@ -2,7 +2,6 @@ import { useCallback, useRef } from 'react';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 
 import type {
-  TastingMenuItemRecord,
   TastingRestaurantRecord,
   TastingSessionRecord,
 } from '../models';
@@ -32,8 +31,8 @@ export interface TastingRatingDraft {
 interface SubmitTastingRatingDraftInput {
   approvedRestaurants: TastingRestaurantRecord[];
   currentUserId: string | null | undefined;
+  draftByItemId: Record<string, TastingRatingDraft>;
   isOnline: boolean;
-  resolveDraft: (item: TastingMenuItemRecord) => TastingRatingDraft;
   sessionId: string;
 }
 
@@ -68,15 +67,16 @@ async function refreshTastingSession(
 
 function buildTastingRatingSubmissionPayload({
   approvedRestaurants,
-  resolveDraft,
-}: Pick<SubmitTastingRatingDraftInput, 'approvedRestaurants' | 'resolveDraft'>) {
+  draftByItemId,
+}: Pick<SubmitTastingRatingDraftInput, 'approvedRestaurants' | 'draftByItemId'>) {
   return {
     restaurants: approvedRestaurants
       .map((restaurant) => ({
         restaurantSuggestionId: restaurant.id,
         items: (restaurant.items ?? [])
           .filter((item) => item.status === 'approved')
-          .map((item) => ({ item, draft: resolveDraft(item) }))
+          .map((item) => ({ item, draft: draftByItemId[item.id] }))
+          .filter(({ draft }) => Boolean(draft))
           .filter(({ draft }) => draft.included)
           .map(({ item, draft }) => ({
             itemId: item.id,
@@ -94,13 +94,13 @@ function buildSubmittedPhotoKey(itemId: string, photoUri: string): string {
 
 async function uploadSubmittedRatingPhotos({
   currentUserId,
+  draftByItemId,
   nextSession,
-  resolveDraft,
   uploadedPhotoKeys,
 }: {
   currentUserId: string | null | undefined;
+  draftByItemId: Record<string, TastingRatingDraft>;
   nextSession: TastingSessionRecord;
-  resolveDraft: (item: TastingMenuItemRecord) => TastingRatingDraft;
   uploadedPhotoKeys: Set<string>;
 }): Promise<Set<string>> {
   if (!currentUserId) {
@@ -110,7 +110,10 @@ async function uploadSubmittedRatingPhotos({
   const nextUploadedKeys = new Set<string>();
   const nextItems = nextSession.restaurants.flatMap((restaurant) => restaurant.items ?? []);
   for (const item of nextItems) {
-    const draft = resolveDraft(item);
+    const draft = draftByItemId[item.id];
+    if (!draft) {
+      continue;
+    }
     if (!draft.included || draft.photos.length === 0) {
       continue;
     }
@@ -149,8 +152,8 @@ export function useTastingRatingSubmissionWrites() {
     async ({
       approvedRestaurants,
       currentUserId,
+      draftByItemId,
       isOnline,
-      resolveDraft,
       sessionId,
     }: SubmitTastingRatingDraftInput): Promise<TastingRatingSubmissionWriteResult<TastingSessionRecord>> => {
       if (!isOnline) {
@@ -159,13 +162,13 @@ export function useTastingRatingSubmissionWrites() {
 
       const payload = buildTastingRatingSubmissionPayload({
         approvedRestaurants,
-        resolveDraft,
+        draftByItemId,
       });
       const nextSession = await submitTastingRatings(sessionId, payload);
       const nextUploadedKeys = await uploadSubmittedRatingPhotos({
         currentUserId,
+        draftByItemId,
         nextSession,
-        resolveDraft,
         uploadedPhotoKeys: uploadedPhotoKeysRef.current,
       });
       if (nextUploadedKeys.size > 0) {

@@ -123,7 +123,7 @@ jest.mock('../lib/photoFiles', () => ({
   buildLocalPhotoFile: jest.fn(),
 }));
 
-jest.mock('../screens/photoProcessing/shared', () => ({
+jest.mock('../features/photoProcessing/menuItemCsvParsing', () => ({
   parseMenuItemNamesFromCsv: jest.fn(() => []),
 }));
 

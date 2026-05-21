@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -15,14 +14,12 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  createMenuReviewRequest,
-  menuItemsQueryKeys,
   type MenuItemRecord,
   type RestaurantRecord,
   useMonthlyUsage,
+  useTastingPlanMenuCatalog,
   useTastingPlanWrites,
 } from '../features';
-import { listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -98,7 +95,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
   const tastingPlanWrites = useTastingPlanWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const sessionQuery = useTastingSessionDetail(sessionId, true);
@@ -106,7 +102,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [phase, setPhase] = useState<PlanningPhase>('restaurants');
   const [activeRestaurantSuggestionId, setActiveRestaurantSuggestionId] = useState<string | null>(null);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
-  const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
@@ -206,20 +201,14 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const showNearbyPlaces = search.showNearbyPlaces;
   const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
 
-  const menuItemsQuery = useQuery({
-    queryKey: menuItemsQueryKeys.restaurant(activeRestaurant?.restaurantId ?? ''),
-    queryFn: ({ signal }) => {
-      if (!activeRestaurant) {
-        return Promise.resolve([]);
-      }
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<MenuItemRecord[]>(menuItemsQueryKeys.restaurant(activeRestaurant.restaurantId)) ?? [],
-        );
-      }
-      return listMenuItemsForRestaurant(activeRestaurant.restaurantId, { signal });
-    },
-    enabled: phase === 'items' && Boolean(activeRestaurant),
+  const {
+    menuItemsQuery,
+    menuReviewSubmitted,
+    requestMenuReview,
+  } = useTastingPlanMenuCatalog({
+    activeRestaurantId: activeRestaurant?.restaurantId ?? null,
+    enabled: phase === 'items',
+    isOnline,
   });
 
   useEffect(() => {
@@ -229,7 +218,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     }
     previousActiveRestaurantIdRef.current = activeRestaurantId;
     setMenuItemSearchQuery('');
-    setMenuReviewSubmitted(false);
     setIsTipPopoverVisible(false);
   }, [activeRestaurant?.restaurantId]);
 
@@ -320,24 +308,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   };
 
   const handleRequestMenuReview = async () => {
-    if (!activeRestaurant || !isOnline || menuReviewSubmitted) {
-      return;
-    }
-
     try {
       setErrorMessage(null);
-      await createMenuReviewRequest({
-        restaurantId: activeRestaurant.restaurantId,
-        reason: 'User reported incorrect menu items',
-      });
-      setMenuReviewSubmitted(true);
-      queryClient.setQueryData(
-        ['feature', 'menuReview', 'pending', activeRestaurant.restaurantId],
-        true,
-      );
-      setTimeout(() => {
-        setMenuReviewSubmitted(false);
-      }, 3000);
+      await requestMenuReview();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not submit review request.');
     }

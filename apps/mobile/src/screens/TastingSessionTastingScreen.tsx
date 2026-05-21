@@ -289,11 +289,14 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       setErrorMessage(null);
       setSubmitSuccessMessage(null);
       setIsSubmittingRatings(true);
+      const draftByItemId = Object.fromEntries(
+        approvedItems.map((item) => [item.id, resolveDraft(item)]),
+      );
       const submitResult = await tastingRatingWrites.submitRatingDraft({
         approvedRestaurants,
         currentUserId: user?.id,
+        draftByItemId,
         isOnline,
-        resolveDraft,
         sessionId,
       });
       if (submitResult.status === 'blocked') {

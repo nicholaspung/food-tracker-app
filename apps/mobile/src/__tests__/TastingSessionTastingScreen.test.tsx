@@ -258,8 +258,15 @@ describe('TastingSessionTastingScreen', () => {
     expect(mockSubmitRatingDraft).toHaveBeenCalledWith({
       approvedRestaurants: tastingSession.restaurants,
       currentUserId: 'user-1',
+      draftByItemId: {
+        'tasting-item-1': {
+          included: true,
+          note: '',
+          photos: [],
+          rating: 3,
+        },
+      },
       isOnline: true,
-      resolveDraft: expect.any(Function),
       sessionId: 'session-1',
     });
     expect(renderer!.root.findAllByProps({ label: 'Update Ratings' })).toHaveLength(1);

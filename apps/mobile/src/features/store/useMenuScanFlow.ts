@@ -6,7 +6,7 @@ import { useImageSourcePicker } from '../../hooks/useImageSourcePicker';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../../lib/photoStaging';
 import { captureObservabilityError, trackObservabilityEvent, type EventProperties } from '../../observability';
 import { trackProductEvent } from '../../observability/productAnalytics';
-import { parseMenuItemNamesFromCsv } from '../../screens/photoProcessing/shared';
+import { parseMenuItemNamesFromCsv } from '../photoProcessing/menuItemCsvParsing';
 import type { MenuItemRecord } from './featureStore';
 import {
   createMenuItemsFromScan,
