@@ -40,6 +40,26 @@ _Avoid_: Suggestions, readiness
 A participant's personal ratings for the selected menu items they tried during a group tasting session.
 _Avoid_: Assigned items
 
+**Tasting Session Writes**:
+The mobile module that owns group tasting session lifecycle writes, including creating sessions, joining sessions, invite actions, lobby membership changes, cache effects, and online-only action handling.
+_Avoid_: tasting session mutation helper, group tasting action wrapper
+
+**Tasting Plan Writes**:
+The mobile module that owns leader-selected **Tasting Plan** changes before tasting starts, including adding/removing restaurants, adding/removing menu items, starting tasting, and refreshing affected session state.
+_Avoid_: tasting suggestion helper, planning screen actions
+
+**Tasting Rating Submission Writes**:
+The mobile module that owns submitting a participant's **Tasting Rating Submission**, including payload construction, generated Visit photo upload handoff, cache effects, and leader completion.
+_Avoid_: tasting submit helper, rating mutation wrapper
+
+**Menu Item Catalog Writes**:
+The mobile module that owns creating and updating a restaurant's saved menu item catalog, including cache insertion, invalidation, scan-created records, and tasting-plan handoff after catalog changes.
+_Avoid_: menu item form helper, menu item cache snippet
+
+**Photo Processing Submission**:
+The workflow that validates processed photos, creates Visit or Food Product entries, applies usage-limit handling, updates affected caches, handles queued feedback, cleans up staged files, and returns the post-submit navigation outcome.
+_Avoid_: photo submit hook, process photos helper
+
 **Friend Writes**:
 The mobile module that owns friend request and friendship mutation flows, including offline replay payloads, friendship cache effects, queued feedback, and request entry adapters such as manual code entry and QR scanning.
 _Avoid_: friend action helper, social mutation wrapper
@@ -86,6 +106,11 @@ _Avoid_: tutorial flags
 - A participant may edit and resubmit their **Tasting Rating Submission** until the group tasting session is completed.
 - Participants save **Tasting Rating Submissions**; only the leader completes the group tasting session.
 - The leader may complete a group tasting session before every participant has submitted, with confirmation that missing submissions are omitted from results.
+- **Tasting Session Writes** preserve the write lifecycle for group tasting creation, joining, invite actions, lobby changes, and session status movement.
+- **Tasting Plan Writes** preserve the write lifecycle for leader-selected restaurants and menu items inside a **Tasting Plan**.
+- **Tasting Rating Submission Writes** preserve the write lifecycle for participant ratings and generated Visit photo handoff.
+- **Menu Item Catalog Writes** preserve menu item catalog write behavior across Visit creation, Photo Processing, menu scan, and Tasting Plan adapters.
+- **Photo Processing Submission** uses **Visit Writes** and **Food Product Writes** to create entries from processed photos.
 - **Friend Writes** preserve the write lifecycle for friend request send, accept, decline, cancel, and remove actions.
 - **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
 - **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.

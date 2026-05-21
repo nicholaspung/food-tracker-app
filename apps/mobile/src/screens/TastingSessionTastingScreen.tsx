@@ -1,7 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useMemo, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -15,15 +14,12 @@ import {
   VisitItemRatingCard,
 } from '../components/shared';
 import {
-  completeTastingSession,
-  submitTastingRatings,
-  tastingSessionsQueryKeys,
   type TastingMenuItemRecord,
+  type TastingRatingDraft,
+  type TastingRatingDraftPhoto,
   useMonthlyUsage,
-  type TastingSessionRecord,
-  type VisitPhotoUploadInput,
+  useTastingRatingSubmissionWrites,
 } from '../features';
-import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
@@ -89,21 +85,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-interface RatingDraft {
-  included: boolean;
-  photos: TastingRatingDraftPhoto[];
-  rating: number;
-  note: string;
-}
-
-interface TastingRatingDraftPhoto {
-  id: string;
-  upload: VisitPhotoUploadInput;
-  thumbnailUri: string;
-  viewerUri: string;
-  labelDate: string;
-}
-
 function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
   return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
 }
@@ -113,11 +94,10 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
+  const tastingRatingWrites = useTastingRatingSubmissionWrites();
   const sessionQuery = useTastingSessionDetail(sessionId, true);
   const session = sessionQuery.data;
-  const [drafts, setDrafts] = useState<Record<string, RatingDraft>>({});
-  const [uploadedPhotoKeys, setUploadedPhotoKeys] = useState<Set<string>>(() => new Set());
+  const [drafts, setDrafts] = useState<Record<string, TastingRatingDraft>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmittingRatings, setIsSubmittingRatings] = useState(false);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
@@ -182,7 +162,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining)
     : null;
 
-  const resolveDraft = (item: TastingMenuItemRecord): RatingDraft => {
+  const resolveDraft = useCallback((item: TastingMenuItemRecord): TastingRatingDraft => {
     const savedRating = currentParticipant
       ? item.ratings.find((rating) => rating.participantId === currentParticipant.id)
       : undefined;
@@ -194,7 +174,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         rating: savedRating?.rating ?? 3,
       }
     );
-  };
+  }, [currentParticipant, drafts]);
   const removedItems = approvedItems.filter((item) => !resolveDraft(item).included);
 
   const openPhotoViewer = useCallback((photos: TastingRatingDraftPhoto[], initialIndex: number) => {
@@ -304,66 +284,22 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     }));
   };
 
-  const uploadSubmittedPhotos = async (nextSession: TastingSessionRecord) => {
-    const currentUserId = user?.id;
-    if (!currentUserId) {
-      return;
-    }
-
-    const nextItems = nextSession.restaurants.flatMap((restaurant) => restaurant.items ?? []);
-    const uploadedKeys = new Set<string>();
-    for (const item of nextItems) {
-      const draft = drafts[item.id];
-      if (!draft?.included || draft.photos.length === 0) {
-        continue;
-      }
-      const rating = item.ratings.find((entry) => entry.userId === currentUserId);
-      if (!rating?.generatedFoodItemId) {
-        continue;
-      }
-      const pendingPhotos = draft.photos.filter((photo) => !uploadedPhotoKeys.has(`${item.id}:${photo.upload.uri}`));
-      if (pendingPhotos.length === 0) {
-        continue;
-      }
-      await uploadVisitPhotos(
-        rating.generatedVisitId,
-        rating.generatedFoodItemId,
-        currentUserId,
-        pendingPhotos.map((photo) => photo.upload),
-      );
-      pendingPhotos.forEach((photo) => uploadedKeys.add(`${item.id}:${photo.upload.uri}`));
-    }
-    if (uploadedKeys.size > 0) {
-      setUploadedPhotoKeys((current) => new Set([...current, ...uploadedKeys]));
-    }
-  };
-
   const handleSubmit = async () => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to submit ratings.');
-      return;
-    }
     try {
       setErrorMessage(null);
       setSubmitSuccessMessage(null);
       setIsSubmittingRatings(true);
-      const restaurants = approvedRestaurants
-        .map((restaurant) => ({
-          restaurantSuggestionId: restaurant.id,
-          items: (restaurant.items ?? [])
-            .filter((item) => item.status === 'approved')
-            .map((item) => ({ item, draft: resolveDraft(item) }))
-            .filter(({ draft }) => draft.included)
-            .map(({ item, draft }) => ({
-              itemId: item.id,
-              note: draft.note.trim() || undefined,
-              rating: draft.rating,
-            })),
-        }))
-        .filter((restaurant) => restaurant.items.length > 0);
-      const nextSession = await submitTastingRatings(sessionId, { restaurants });
-      await uploadSubmittedPhotos(nextSession);
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
+      const submitResult = await tastingRatingWrites.submitRatingDraft({
+        approvedRestaurants,
+        currentUserId: user?.id,
+        isOnline,
+        resolveDraft,
+        sessionId,
+      });
+      if (submitResult.status === 'blocked') {
+        setErrorMessage(submitResult.message);
+        return;
+      }
       setSubmitSuccessMessage('Ratings saved. You can edit and submit again until the tasting is completed.');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not submit ratings.');
@@ -373,14 +309,13 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   };
 
   const handleComplete = async () => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to complete this tasting.');
-      return;
-    }
     try {
-      const nextSession = await completeTastingSession(sessionId);
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
-      navigation.replace('TastingSessionResults', { sessionId: nextSession.id });
+      const completeResult = await tastingRatingWrites.completeTasting({ isOnline, sessionId });
+      if (completeResult.status === 'blocked') {
+        setErrorMessage(completeResult.message);
+        return;
+      }
+      navigation.replace('TastingSessionResults', { sessionId: completeResult.result.id });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not complete session.');
     }

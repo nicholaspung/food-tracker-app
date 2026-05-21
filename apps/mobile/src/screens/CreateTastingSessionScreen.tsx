@@ -4,12 +4,11 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
 import {
-  createTastingSession,
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
   listFriendsPage,
-  tastingSessionsQueryKeys,
   type FriendRecord,
+  useTastingSessionWrites,
 } from '../features';
 import {
   mergeFriendCollections,
@@ -47,6 +46,7 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
   const { isOnline } = useConnectivity();
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
+  const tastingSessionWrites = useTastingSessionWrites();
   const [name, setName] = useState('');
   const [duration, setDuration] = useState<number>(60);
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
@@ -150,10 +150,6 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
   }, [selectableFriends]);
 
   const handleCreate = async () => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to create a group tasting.');
-      return;
-    }
     if (!name.trim()) {
       setErrorMessage('Session name is required.');
       return;
@@ -163,13 +159,17 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
       const invitedUserIds = selectedFriendIds
         .map((friendId) => acceptedFriendById.get(friendId)?.userId)
         .filter((userId): userId is string => Boolean(userId?.trim()));
-      const session = await createTastingSession({
+      const createResult = await tastingSessionWrites.createSession({
         invitedUserIds,
+        isOnline,
         joinDurationMinutes: duration,
         name,
       });
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
-      navigateToTastingSession(navigation, session);
+      if (createResult.status === 'blocked') {
+        setErrorMessage(createResult.message);
+        return;
+      }
+      navigateToTastingSession(navigation, createResult.result);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not create group tasting.');
     }

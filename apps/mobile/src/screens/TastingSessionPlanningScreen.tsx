@@ -17,18 +17,13 @@ import {
 import {
   createMenuReviewRequest,
   menuItemsQueryKeys,
-  setTastingMenuItemSuggestionStatus,
-  setTastingRestaurantSuggestionStatus,
-  startTastingSession,
-  suggestTastingMenuItem,
-  suggestTastingRestaurant,
-  tastingSessionsQueryKeys,
   type MenuItemRecord,
   type RestaurantRecord,
   useMonthlyUsage,
+  useTastingPlanWrites,
 } from '../features';
 import { listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -104,6 +99,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const { actualUser, user } = useAuth();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
+  const tastingPlanWrites = useTastingPlanWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const sessionQuery = useTastingSessionDetail(sessionId, true);
   const session = sessionQuery.data;
@@ -167,37 +163,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     }
   }, [activeRestaurant, activeRestaurantSuggestionId, selectedRestaurants]);
 
-  const {
-    clearPlacesSearchState,
-    compactSearchLabel,
-    displayedNearbyRestaurants,
-    displayedSavedRestaurants,
-    expandedSearchLabel,
-    isGettingLocation,
-    isPlacesQuotaReached,
-    isSearchExpanded,
-    isSearchingNearbyRestaurants,
-    isSearchingRestaurants,
-    locationPermissionNeedsSettings,
-    manualLocation,
-    placesQueriesRemaining: flowPlacesQueriesRemaining,
-    savedEmptyDescription,
-    savedEmptyTitle,
-    savedRestaurantsErrorMessage,
-    savedRestaurantsLoading,
-    savedRestaurantsTitle,
-    searchButtonDisabled,
-    searchByText,
-    searchErrorMessage,
-    searchNearby,
-    searchQuery,
-    setIsSearchExpanded,
-    setManualLocation,
-    setSearchQuery,
-    shouldShowPlacesUpgradePrompt,
-    showNearbyPlaces,
-    triggerSavedRestaurantsRefetch,
-  } = useRestaurantSelectionFlow({
+  const restaurantSelection = useTastingPlanRestaurantSelectionFlow({
     autoCaptureReferenceLocation: true,
     isOnline,
     menuItemsEnabled: false,
@@ -209,6 +175,36 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       placesQueriesRemaining,
     },
   });
+  const { quotaDisplay, savedSuggestions, search } = restaurantSelection;
+  const clearPlacesSearchState = search.clearPlacesState;
+  const compactSearchLabel = search.compactLabel;
+  const displayedNearbyRestaurants = search.displayedNearbyRestaurants;
+  const displayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
+  const expandedSearchLabel = search.expandedLabel;
+  const isGettingLocation = search.isGettingLocation;
+  const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
+  const isSearchExpanded = search.isExpanded;
+  const isSearchingNearbyRestaurants = search.isSearchingNearby;
+  const isSearchingRestaurants = search.isSearchingText;
+  const locationPermissionNeedsSettings = search.locationPermissionNeedsSettings;
+  const manualLocation = search.manualLocation;
+  const flowPlacesQueriesRemaining = quotaDisplay.placesQueriesRemaining;
+  const savedEmptyDescription = savedSuggestions.emptyDescription;
+  const savedEmptyTitle = savedSuggestions.emptyTitle;
+  const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
+  const savedRestaurantsLoading = savedSuggestions.isLoading;
+  const savedRestaurantsTitle = savedSuggestions.title;
+  const searchButtonDisabled = search.searchButtonDisabled;
+  const searchByText = search.searchByText;
+  const searchErrorMessage = search.searchErrorMessage;
+  const searchNearby = search.nearby;
+  const searchQuery = search.query;
+  const setIsSearchExpanded = search.setExpanded;
+  const setManualLocation = search.setManualLocation;
+  const setSearchQuery = search.setQuery;
+  const shouldShowPlacesUpgradePrompt = quotaDisplay.shouldShowPlacesUpgradePrompt;
+  const showNearbyPlaces = search.showNearbyPlaces;
+  const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
 
   const menuItemsQuery = useQuery({
     queryKey: menuItemsQueryKeys.restaurant(activeRestaurant?.restaurantId ?? ''),
@@ -237,19 +233,13 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     setIsTipPopoverVisible(false);
   }, [activeRestaurant?.restaurantId]);
 
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
-  };
-
-  const runAction = async (action: () => Promise<unknown>) => {
-    if (!isOnline) {
-      setErrorMessage('Planning actions require a connection.');
-      return;
-    }
+  const runAction = async (action: () => Promise<{ message: string; status: 'blocked' } | { status: 'completed' }>) => {
     try {
       setErrorMessage(null);
-      await action();
-      await refresh();
+      const result = await action();
+      if (result.status === 'blocked') {
+        setErrorMessage(result.message);
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Planning action failed.');
     }
@@ -257,8 +247,11 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
   const handleStartTasting = async () => {
     await runAction(async () => {
-      const nextSession = await startTastingSession(sessionId);
-      navigation.replace('TastingSessionTasting', { sessionId: nextSession.id });
+      const startResult = await tastingPlanWrites.startTasting({ isOnline, sessionId });
+      if (startResult.status === 'completed') {
+        navigation.replace('TastingSessionTasting', { sessionId: startResult.result.id });
+      }
+      return startResult;
     });
   };
 
@@ -269,22 +262,31 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
     setAddingRestaurantId(restaurant.id);
     await runAction(async () => {
-      await suggestTastingRestaurant(sessionId, {
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
+      const addResult = await tastingPlanWrites.addRestaurant({
+        isOnline,
+        restaurant,
+        sessionId,
       });
-      setSearchQuery('');
-      clearPlacesSearchState();
+      if (addResult.status === 'completed') {
+        setSearchQuery('');
+        clearPlacesSearchState();
+      }
+      return addResult;
     });
     setAddingRestaurantId(null);
   };
 
   const handleRemoveRestaurant = async (restaurantSuggestionId: string) => {
     await runAction(async () => {
-      await setTastingRestaurantSuggestionStatus(sessionId, restaurantSuggestionId, 'rejected');
-      if (activeRestaurantSuggestionId === restaurantSuggestionId) {
+      const removeResult = await tastingPlanWrites.removeRestaurant({
+        isOnline,
+        restaurantSuggestionId,
+        sessionId,
+      });
+      if (removeResult.status === 'completed' && activeRestaurantSuggestionId === restaurantSuggestionId) {
         setActiveRestaurantSuggestionId(null);
       }
+      return removeResult;
     });
   };
 
@@ -296,20 +298,25 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     const existingSuggestion = (activeRestaurant.items ?? []).find((item) => item.menuItemId === menuItem.id);
 
     if (existingSuggestion?.status === 'approved') {
-      await runAction(() => setTastingMenuItemSuggestionStatus(sessionId, existingSuggestion.id, 'rejected'));
+      await runAction(() =>
+        tastingPlanWrites.removeMenuItem({
+          isOnline,
+          itemSuggestionId: existingSuggestion.id,
+          sessionId,
+        }),
+      );
       return;
     }
 
-    await runAction(async () => {
-      if (existingSuggestion) {
-        await setTastingMenuItemSuggestionStatus(sessionId, existingSuggestion.id, 'approved');
-        return;
-      }
-      await suggestTastingMenuItem(sessionId, activeRestaurant.id, {
-        menuItemId: menuItem.id,
-        name: menuItem.name,
-      });
-    });
+    await runAction(() =>
+      tastingPlanWrites.addMenuItem({
+        existingSuggestionId: existingSuggestion?.id,
+        isOnline,
+        menuItem,
+        restaurantSuggestionId: activeRestaurant.id,
+        sessionId,
+      }),
+    );
   };
 
   const handleRequestMenuReview = async () => {

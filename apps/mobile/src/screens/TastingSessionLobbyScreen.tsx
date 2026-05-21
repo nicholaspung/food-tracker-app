@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Share, View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -12,11 +11,9 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  kickTastingParticipant,
-  lockTastingSessionMembership,
-  tastingSessionsQueryKeys,
   type TastingInviteRecord,
   type TastingParticipantRecord,
+  useTastingSessionWrites,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -68,7 +65,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const { sessionId } = route.params;
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
+  const tastingSessionWrites = useTastingSessionWrites();
   const sessionQuery = useTastingSessionDetail(sessionId, true);
   const [pendingKick, setPendingKick] = useState<TastingParticipantRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -83,22 +80,14 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     await Share.share({ message: `Join my group tasting with code: ${session.inviteCode}` });
   };
 
-  const refresh = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root }),
-      queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) }),
-    ]);
-  };
-
   const handleLock = async () => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to lock the group.');
-      return;
-    }
     try {
-      const nextSession = await lockTastingSessionMembership(sessionId);
-      await refresh();
-      navigation.replace('TastingSessionPlanning', { sessionId: nextSession.id });
+      const lockResult = await tastingSessionWrites.lockLobby({ isOnline, sessionId });
+      if (lockResult.status === 'blocked') {
+        setErrorMessage(lockResult.message);
+        return;
+      }
+      navigation.replace('TastingSessionPlanning', { sessionId: lockResult.result.id });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not lock group.');
     }
@@ -109,9 +98,16 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       return;
     }
     try {
-      await kickTastingParticipant(sessionId, pendingKick.id);
+      const removeResult = await tastingSessionWrites.removeParticipant({
+        isOnline,
+        participantId: pendingKick.id,
+        sessionId,
+      });
+      if (removeResult.status === 'blocked') {
+        setErrorMessage(removeResult.message);
+        return;
+      }
       setPendingKick(null);
-      await refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not remove participant.');
     }

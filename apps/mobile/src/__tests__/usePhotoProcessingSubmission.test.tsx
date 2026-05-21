@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
-import { restaurantsQueryKeys } from '../features';
+import { submitProcessedPhotos } from '../features';
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import { usePhotoProcessingSubmission } from '../screens/photoProcessing/usePhotoProcessingSubmission';
 
@@ -21,6 +21,7 @@ jest.mock('../features', () => ({
   restaurantsQueryKeys: {
     root: ['feature', 'restaurants'],
   },
+  submitProcessedPhotos: jest.fn(),
 }));
 
 jest.mock('../features/store/notesQuery', () => ({
@@ -76,6 +77,9 @@ jest.mock('../screens/photoProcessing/shared', () => ({
 }));
 
 describe('usePhotoProcessingSubmission', () => {
+  const mockedSubmitProcessedPhotos = submitProcessedPhotos as jest.MockedFunction<
+    typeof submitProcessedPhotos
+  >;
   const queryClient = {
     invalidateQueries: jest.fn().mockResolvedValue(undefined),
   };
@@ -86,6 +90,13 @@ describe('usePhotoProcessingSubmission', () => {
     queryClient.invalidateQueries.mockClear();
     setErrorMessage.mockClear();
     setStep.mockClear();
+    mockedSubmitProcessedPhotos.mockResolvedValue({
+      destination: {
+        name: 'Home',
+        params: buildFoodProductCreatedHomeParams(),
+      },
+      status: 'completed',
+    });
   });
 
   function renderSubmissionHook(
@@ -206,22 +217,19 @@ describe('usePhotoProcessingSubmission', () => {
       await hook.getResult()?.handleSubmitAll();
     });
 
+    expect(mockedSubmitProcessedPhotos).toHaveBeenCalledWith(expect.objectContaining({
+      processType: 'foodProduct',
+    }));
     expect(navigate).toHaveBeenCalledWith('Home', buildFoodProductCreatedHomeParams());
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'homeFeedMap'],
-    });
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: restaurantsQueryKeys.root,
-    });
 
     await hook.unmount();
   });
 
   it('keeps the plain Home redirect for restaurant submissions', async () => {
     const navigate = jest.fn();
-    const writeFeature = jest.fn().mockResolvedValue({
-      result: {
-        id: 'created-record-1',
+    mockedSubmitProcessedPhotos.mockResolvedValue({
+      destination: {
+        name: 'Home',
       },
       status: 'completed',
     });
@@ -230,7 +238,6 @@ describe('usePhotoProcessingSubmission', () => {
         navigate,
       } as never,
       processType: 'restaurant',
-      writeFeature: writeFeature as never,
     });
 
     await hook.mount();
@@ -239,34 +246,10 @@ describe('usePhotoProcessingSubmission', () => {
       await hook.getResult()?.handleSubmitAll();
     });
 
-    expect(writeFeature).toHaveBeenCalledTimes(1);
-    expect(writeFeature.mock.calls[0]?.[0]).toMatchObject({
-      operationName: 'visit.create',
-      offline: {
-        strategy: 'outbox',
-        payload: {
-          restaurantId: 'restaurant-1',
-          restaurantName: 'Corner Spot',
-          visitedAt: '2026-04-20T00:00:00.000Z',
-          visitedOn: '2026-04-20',
-          visibility: 'friends',
-          source: 'visit',
-          items: [
-            {
-              name: 'Burger',
-              rating: 4,
-            },
-          ],
-        },
-      },
-    });
+    expect(mockedSubmitProcessedPhotos).toHaveBeenCalledWith(expect.objectContaining({
+      processType: 'restaurant',
+    }));
     expect(navigate).toHaveBeenCalledWith('Home');
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'homeFeedMap'],
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: restaurantsQueryKeys.root,
-    });
 
     await hook.unmount();
   });

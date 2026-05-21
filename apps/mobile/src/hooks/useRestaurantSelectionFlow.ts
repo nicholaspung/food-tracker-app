@@ -124,6 +124,67 @@ interface UseRestaurantSelectionFlowResult {
   triggerSavedRestaurantsRefetch: () => Promise<unknown>;
 }
 
+interface RestaurantSelectionSavedSuggestions {
+  displayedSavedRestaurants: VisitRestaurantWithDistance[];
+  emptyDescription: string;
+  emptyTitle: string;
+  errorMessage: string | null;
+  isLoading: boolean;
+  refetch: () => Promise<unknown>;
+  title: string;
+}
+
+interface RestaurantSelectionSearchActions {
+  clearErrorMessage: () => void;
+  clearPlacesState: () => void;
+  compactLabel: string;
+  displayedNearbyRestaurants: VisitRestaurantWithDistance[];
+  expandedLabel: string;
+  isExpanded: boolean;
+  isGettingLocation: boolean;
+  isSearchingNearby: boolean;
+  isSearchingText: boolean;
+  locationPermissionNeedsSettings: boolean;
+  manualLocation: string;
+  nearby: () => Promise<NearbyRestaurantSearchResult>;
+  query: string;
+  searchByText: (options?: {
+    collapseAfterSearch?: boolean;
+    queryOverride?: string;
+  }) => Promise<TextRestaurantSearchResult>;
+  searchButtonDisabled: boolean;
+  searchErrorMessage: string | null;
+  setExpanded: Dispatch<SetStateAction<boolean>>;
+  setManualLocation: Dispatch<SetStateAction<string>>;
+  setQuery: Dispatch<SetStateAction<string>>;
+  showNearbyPlaces: boolean;
+}
+
+interface RestaurantSelectionMenuItems {
+  loadedRestaurantRecords: RestaurantRecord[];
+  query: UseQueryResult<MenuItemRecord[], Error>;
+}
+
+interface RestaurantSelectionQuotaDisplay {
+  isPlacesQuotaReached: boolean;
+  placesQueriesRemaining: number | null;
+  shouldShowPlacesUpgradePrompt: boolean;
+}
+
+interface RestaurantSelectionConceptInterfaces {
+  menuItems: RestaurantSelectionMenuItems;
+  quotaDisplay: RestaurantSelectionQuotaDisplay;
+  savedSuggestions: RestaurantSelectionSavedSuggestions;
+  search: RestaurantSelectionSearchActions;
+}
+
+interface PhotoProcessingRestaurantSelectionFlowResult extends RestaurantSelectionConceptInterfaces {
+  reset: () => void;
+}
+
+type CreateVisitRestaurantSelectionFlowResult = RestaurantSelectionConceptInterfaces;
+type RestaurantSearchOnlySelectionFlowResult = Omit<RestaurantSelectionConceptInterfaces, 'menuItems'>;
+
 export type TextRestaurantSearchResult = RestaurantTextSearchResult;
 
 export type NearbyRestaurantSearchResult = RestaurantNearbySearchResult;
@@ -504,3 +565,81 @@ export function useRestaurantSelectionFlow({
     triggerSavedRestaurantsRefetch,
   };
 }
+
+function buildRestaurantSelectionConceptInterfaces(
+  flow: UseRestaurantSelectionFlowResult,
+): RestaurantSelectionConceptInterfaces {
+  return {
+    menuItems: {
+      loadedRestaurantRecords: flow.loadedRestaurantRecords,
+      query: flow.menuItemsQuery,
+    },
+    quotaDisplay: {
+      isPlacesQuotaReached: flow.isPlacesQuotaReached,
+      placesQueriesRemaining: flow.placesQueriesRemaining,
+      shouldShowPlacesUpgradePrompt: flow.shouldShowPlacesUpgradePrompt,
+    },
+    savedSuggestions: {
+      displayedSavedRestaurants: flow.displayedSavedRestaurants,
+      emptyDescription: flow.savedEmptyDescription,
+      emptyTitle: flow.savedEmptyTitle,
+      errorMessage: flow.savedRestaurantsErrorMessage,
+      isLoading: flow.savedRestaurantsLoading,
+      refetch: flow.triggerSavedRestaurantsRefetch,
+      title: flow.savedRestaurantsTitle,
+    },
+    search: {
+      clearErrorMessage: flow.clearSearchErrorMessage,
+      clearPlacesState: flow.clearPlacesSearchState,
+      compactLabel: flow.compactSearchLabel,
+      displayedNearbyRestaurants: flow.displayedNearbyRestaurants,
+      expandedLabel: flow.expandedSearchLabel,
+      isExpanded: flow.isSearchExpanded,
+      isGettingLocation: flow.isGettingLocation,
+      isSearchingNearby: flow.isSearchingNearbyRestaurants,
+      isSearchingText: flow.isSearchingRestaurants,
+      locationPermissionNeedsSettings: flow.locationPermissionNeedsSettings,
+      manualLocation: flow.manualLocation,
+      nearby: flow.searchNearby,
+      query: flow.searchQuery,
+      searchByText: flow.searchByText,
+      searchButtonDisabled: flow.searchButtonDisabled,
+      searchErrorMessage: flow.searchErrorMessage,
+      setExpanded: flow.setIsSearchExpanded,
+      setManualLocation: flow.setManualLocation,
+      setQuery: flow.setSearchQuery,
+      showNearbyPlaces: flow.showNearbyPlaces,
+    },
+  };
+}
+
+export function useCreateVisitRestaurantSelectionFlow(
+  options: UseRestaurantSelectionFlowOptions,
+): CreateVisitRestaurantSelectionFlowResult {
+  const flow = useRestaurantSelectionFlow(options);
+
+  return buildRestaurantSelectionConceptInterfaces(flow);
+}
+
+export function usePhotoProcessingRestaurantSelectionFlow(
+  options: UseRestaurantSelectionFlowOptions,
+): PhotoProcessingRestaurantSelectionFlowResult {
+  const flow = useRestaurantSelectionFlow(options);
+
+  return {
+    ...buildRestaurantSelectionConceptInterfaces(flow),
+    reset: flow.resetRestaurantSelectionFlow,
+  };
+}
+
+export function useRestaurantDiscoverySelectionFlow(
+  options: UseRestaurantSelectionFlowOptions,
+): RestaurantSearchOnlySelectionFlowResult {
+  const flow = useRestaurantSelectionFlow(options);
+  const { menuItems: _menuItems, ...concepts } = buildRestaurantSelectionConceptInterfaces(flow);
+
+  return concepts;
+}
+
+export const useTastingPlanRestaurantSelectionFlow =
+  useRestaurantDiscoverySelectionFlow;

@@ -28,7 +28,7 @@ import {
 } from '../features';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -190,37 +190,7 @@ export function RestaurantDiscoveryScreen({
     galleryRequiredMessage: 'Photo library permission is required to upload an image.',
   });
 
-  const {
-    clearPlacesSearchState,
-    compactSearchLabel,
-    displayedNearbyRestaurants,
-    displayedSavedRestaurants,
-    expandedSearchLabel,
-    isGettingLocation,
-    isPlacesQuotaReached,
-    isSearchExpanded,
-    isSearchingNearbyRestaurants,
-    isSearchingRestaurants,
-    locationPermissionNeedsSettings,
-    manualLocation,
-    placesQueriesRemaining: flowPlacesQueriesRemaining,
-    savedEmptyDescription,
-    savedEmptyTitle,
-    savedRestaurantsErrorMessage,
-    savedRestaurantsLoading,
-    savedRestaurantsTitle,
-    searchButtonDisabled,
-    searchByText,
-    searchErrorMessage,
-    searchNearby,
-    searchQuery,
-    setIsSearchExpanded,
-    setManualLocation,
-    setSearchQuery,
-    shouldShowPlacesUpgradePrompt,
-    showNearbyPlaces,
-    triggerSavedRestaurantsRefetch,
-  } = useRestaurantSelectionFlow({
+  const restaurantSelection = useRestaurantDiscoverySelectionFlow({
     autoCaptureReferenceLocation: true,
     isOnline,
     menuItemsEnabled: false,
@@ -232,6 +202,36 @@ export function RestaurantDiscoveryScreen({
       placesQueriesRemaining,
     },
   });
+  const { quotaDisplay, savedSuggestions, search } = restaurantSelection;
+  const clearPlacesSearchState = search.clearPlacesState;
+  const compactSearchLabel = search.compactLabel;
+  const displayedNearbyRestaurants = search.displayedNearbyRestaurants;
+  const displayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
+  const expandedSearchLabel = search.expandedLabel;
+  const isGettingLocation = search.isGettingLocation;
+  const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
+  const isSearchExpanded = search.isExpanded;
+  const isSearchingNearbyRestaurants = search.isSearchingNearby;
+  const isSearchingRestaurants = search.isSearchingText;
+  const locationPermissionNeedsSettings = search.locationPermissionNeedsSettings;
+  const manualLocation = search.manualLocation;
+  const flowPlacesQueriesRemaining = quotaDisplay.placesQueriesRemaining;
+  const savedEmptyDescription = savedSuggestions.emptyDescription;
+  const savedEmptyTitle = savedSuggestions.emptyTitle;
+  const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
+  const savedRestaurantsLoading = savedSuggestions.isLoading;
+  const savedRestaurantsTitle = savedSuggestions.title;
+  const searchButtonDisabled = search.searchButtonDisabled;
+  const searchByText = search.searchByText;
+  const searchErrorMessage = search.searchErrorMessage;
+  const searchNearby = search.nearby;
+  const searchQuery = search.query;
+  const setIsSearchExpanded = search.setExpanded;
+  const setManualLocation = search.setManualLocation;
+  const setSearchQuery = search.setQuery;
+  const shouldShowPlacesUpgradePrompt = quotaDisplay.shouldShowPlacesUpgradePrompt;
+  const showNearbyPlaces = search.showNearbyPlaces;
+  const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
 
   const isBusyWithImage = isExtractingStorefront;
   const extractedNames = useMemo(() => getRestaurantNameOptions(storefrontResult), [storefrontResult]);

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ClientResponseError } from 'pocketbase';
 
 import { useMenuScanFlow, type MenuScanFlowController } from '../features/store/useMenuScanFlow';
+import { useMenuItemCatalogWrites } from '../features/store/useMenuItemCatalogWrites';
 import {
   createMenuItemsFromScan,
   parseMenuImage,
@@ -23,6 +24,10 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../features/store/menuParsingGateway', () => ({
   createMenuItemsFromScan: jest.fn(),
   parseMenuImage: jest.fn(),
+}));
+
+jest.mock('../features/store/useMenuItemCatalogWrites', () => ({
+  useMenuItemCatalogWrites: jest.fn(),
 }));
 
 jest.mock('../features/store/usageLimitsGateway', () => ({
@@ -49,6 +54,9 @@ jest.mock('../screens/photoProcessing/shared', () => ({
 }));
 
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseMenuItemCatalogWrites = useMenuItemCatalogWrites as jest.MockedFunction<
+  typeof useMenuItemCatalogWrites
+>;
 const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
 const mockedParseMenuImage = parseMenuImage as jest.MockedFunction<typeof parseMenuImage>;
 const mockedCreateMenuItemsFromScan = createMenuItemsFromScan as jest.MockedFunction<
@@ -111,11 +119,13 @@ describe('useMenuScanFlow', () => {
   let controller: MenuScanFlowController;
   let invalidateQueries: jest.Mock;
   let setQueryData: jest.Mock;
+  let applyScannedMenuItems: jest.Mock;
   let pickImageAssets: jest.Mock;
 
   beforeEach(() => {
     invalidateQueries = jest.fn().mockResolvedValue(undefined);
     setQueryData = jest.fn();
+    applyScannedMenuItems = jest.fn().mockResolvedValue(undefined);
     pickImageAssets = jest.fn();
     controller = undefined as unknown as MenuScanFlowController;
 
@@ -123,6 +133,11 @@ describe('useMenuScanFlow', () => {
       invalidateQueries,
       setQueryData,
     } as never);
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems,
+      createMenuItem: jest.fn(),
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
     mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
       pickImageAssets,
@@ -179,9 +194,9 @@ describe('useMenuScanFlow', () => {
       restaurantId: 'restaurant-1',
       sourceImageId: 'menu-image-1',
     });
-    expect(setQueryData).toHaveBeenCalled();
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'menuItems', 'restaurant-1'],
+    expect(applyScannedMenuItems).toHaveBeenCalledWith({
+      items: [{ id: 'item-1', name: 'Ramen' }],
+      restaurantId: 'restaurant-1',
     });
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
       'MENU_SCAN_STARTED',

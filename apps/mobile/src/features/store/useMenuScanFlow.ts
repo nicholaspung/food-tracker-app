@@ -12,9 +12,9 @@ import {
   createMenuItemsFromScan,
   parseMenuImage,
 } from './menuParsingGateway';
-import { menuItemsQueryKeys } from './menuItemsQuery';
 import { formatLimitExceededMessage, parseLimitExceededError } from './usageLimitsGateway';
 import { createAIRequestCorrelation, resolveAIImageErrorProperties } from './aiImageObservability';
+import { useMenuItemCatalogWrites } from './useMenuItemCatalogWrites';
 
 export type MenuScanSource = PhotoPickerPermissionSource;
 
@@ -80,6 +80,7 @@ function isNotMenuImageError(input: {
 
 export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowController {
   const queryClient = useQueryClient();
+  const menuItemCatalogWrites = useMenuItemCatalogWrites();
   const [status, setStatus] = useState<MenuScanFlowStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdItemNames, setCreatedItemNames] = useState<string[]>([]);
@@ -175,20 +176,9 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         });
         const returnedRecords = [...result.createdItems, ...result.existingItems];
 
-        queryClient.setQueryData(
-          menuItemsQueryKeys.restaurant(options.restaurantId),
-          (currentItems: MenuItemRecord[] | undefined) => {
-            const nextItems = [...(currentItems ?? [])];
-            for (const record of returnedRecords) {
-              if (!nextItems.some((item) => item.id === record.id)) {
-                nextItems.unshift(record);
-              }
-            }
-            return nextItems;
-          },
-        );
-        await queryClient.invalidateQueries({
-          queryKey: menuItemsQueryKeys.restaurant(options.restaurantId),
+        await menuItemCatalogWrites.applyScannedMenuItems({
+          items: returnedRecords,
+          restaurantId: options.restaurantId,
         });
 
         const flowResult: MenuScanFlowResult = {
@@ -283,7 +273,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
       }
     },
-    [options, pickImageAssets, queryClient],
+    [menuItemCatalogWrites, options, pickImageAssets, queryClient],
   );
 
   return {

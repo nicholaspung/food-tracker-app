@@ -43,7 +43,7 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useCreateVisitRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
@@ -538,39 +538,7 @@ export function CreateVisitScreen({
     galleryRequiredMessage:
       "Photo library permission is required to upload an image.",
   });
-  const {
-    clearPlacesSearchState: clearSearchState,
-    clearSearchErrorMessage,
-    compactSearchLabel,
-    displayedNearbyRestaurants,
-    displayedSavedRestaurants,
-    expandedSearchLabel,
-    isGettingLocation,
-    isPlacesQuotaReached,
-    isSearchExpanded,
-    isSearchingNearbyRestaurants: isSearchingNearby,
-    isSearchingRestaurants: isSearching,
-    loadedRestaurantRecords,
-    locationPermissionNeedsSettings,
-    manualLocation,
-    menuItemsQuery,
-    savedEmptyDescription,
-    savedEmptyTitle,
-    savedRestaurantsErrorMessage,
-    savedRestaurantsLoading,
-    savedRestaurantsTitle,
-    searchButtonDisabled,
-    searchByText: runRestaurantSearchByText,
-    searchErrorMessage,
-    searchNearby: runNearbyRestaurantSearch,
-    searchQuery: restaurantSearchQuery,
-    setIsSearchExpanded,
-    setManualLocation,
-    setSearchQuery: setRestaurantSearchQuery,
-    shouldShowPlacesUpgradePrompt,
-    showNearbyPlaces,
-    triggerSavedRestaurantsRefetch,
-  } = useRestaurantSelectionFlow({
+  const restaurantSelection = useCreateVisitRestaurantSelectionFlow({
     autoCaptureReferenceLocation: step === 0,
     isOnline,
     menuItemsEnabled: step === 1 && Boolean(selectedRestaurantId),
@@ -582,6 +550,38 @@ export function CreateVisitScreen({
       placesQueriesRemaining,
     },
   });
+  const { menuItems, quotaDisplay, savedSuggestions, search: restaurantSearch } = restaurantSelection;
+  const clearSearchState = restaurantSearch.clearPlacesState;
+  const clearSearchErrorMessage = restaurantSearch.clearErrorMessage;
+  const compactSearchLabel = restaurantSearch.compactLabel;
+  const displayedNearbyRestaurants = restaurantSearch.displayedNearbyRestaurants;
+  const displayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
+  const expandedSearchLabel = restaurantSearch.expandedLabel;
+  const isGettingLocation = restaurantSearch.isGettingLocation;
+  const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
+  const isSearchExpanded = restaurantSearch.isExpanded;
+  const isSearchingNearby = restaurantSearch.isSearchingNearby;
+  const isSearching = restaurantSearch.isSearchingText;
+  const loadedRestaurantRecords = menuItems.loadedRestaurantRecords;
+  const locationPermissionNeedsSettings = restaurantSearch.locationPermissionNeedsSettings;
+  const manualLocation = restaurantSearch.manualLocation;
+  const menuItemsQuery = menuItems.query;
+  const savedEmptyDescription = savedSuggestions.emptyDescription;
+  const savedEmptyTitle = savedSuggestions.emptyTitle;
+  const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
+  const savedRestaurantsLoading = savedSuggestions.isLoading;
+  const savedRestaurantsTitle = savedSuggestions.title;
+  const searchButtonDisabled = restaurantSearch.searchButtonDisabled;
+  const runRestaurantSearchByText = restaurantSearch.searchByText;
+  const searchErrorMessage = restaurantSearch.searchErrorMessage;
+  const runNearbyRestaurantSearch = restaurantSearch.nearby;
+  const restaurantSearchQuery = restaurantSearch.query;
+  const setIsSearchExpanded = restaurantSearch.setExpanded;
+  const setManualLocation = restaurantSearch.setManualLocation;
+  const setRestaurantSearchQuery = restaurantSearch.setQuery;
+  const shouldShowPlacesUpgradePrompt = quotaDisplay.shouldShowPlacesUpgradePrompt;
+  const showNearbyPlaces = restaurantSearch.showNearbyPlaces;
+  const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
   const {
     draftItems,
     draftPhotoCount,

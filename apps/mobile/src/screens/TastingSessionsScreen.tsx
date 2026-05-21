@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -14,11 +14,10 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  acceptTastingInvite,
-  dismissTastingInvite,
   listTastingSessions,
   tastingSessionsQueryKeys,
   type TastingSessionRecord,
+  useTastingSessionWrites,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -126,7 +125,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const theme = useTheme();
   const { isOnline } = useConnectivity();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const tastingSessionWrites = useTastingSessionWrites();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const sessionsQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.root,
@@ -154,29 +153,32 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     : 'Enter an invite code to join a shared tasting session.';
 
   const handleAcceptInvite = async (session: TastingSessionRecord) => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to join a tasting session.');
-      return;
-    }
     try {
       setErrorMessage(null);
-      const nextSession = await acceptTastingInvite(session.id);
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
-      navigateToTastingSession(navigation, nextSession);
+      const acceptResult = await tastingSessionWrites.acceptInvite({
+        isOnline,
+        sessionId: session.id,
+      });
+      if (acceptResult.status === 'blocked') {
+        setErrorMessage(acceptResult.message);
+        return;
+      }
+      navigateToTastingSession(navigation, acceptResult.result);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not join session.');
     }
   };
 
   const handleDismissInvite = async (session: TastingSessionRecord) => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to dismiss this invite.');
-      return;
-    }
     try {
       setErrorMessage(null);
-      await dismissTastingInvite(session.id);
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
+      const dismissResult = await tastingSessionWrites.dismissInvite({
+        isOnline,
+        sessionId: session.id,
+      });
+      if (dismissResult.status === 'blocked') {
+        setErrorMessage(dismissResult.message);
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not dismiss invite.');
     }

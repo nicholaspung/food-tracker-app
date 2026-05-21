@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { createTastingSession } from '../features';
+import { useTastingSessionWrites } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateTastingSessionScreen } from '../screens/CreateTastingSessionScreen';
@@ -109,7 +109,6 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
-  createTastingSession: jest.fn(),
   friendsQueryKeys: {
     paginated: (userId: string | null | undefined, section: string, search?: string) =>
       search?.trim()
@@ -121,6 +120,7 @@ jest.mock('../features', () => ({
   tastingSessionsQueryKeys: {
     root: ['feature', 'tasting-sessions'],
   },
+  useTastingSessionWrites: jest.fn(),
 }));
 
 jest.mock('../hooks/useDebouncedValue', () => ({
@@ -160,7 +160,9 @@ jest.mock('../ui', () => ({
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
-const mockedCreateTastingSession = createTastingSession as jest.MockedFunction<typeof createTastingSession>;
+const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<
+  typeof useTastingSessionWrites
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 type TestRenderer = ReturnType<typeof create> & { root: any };
@@ -272,25 +274,35 @@ describe('CreateTastingSessionScreen', () => {
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
 
-    mockedCreateTastingSession.mockReset();
-    mockedCreateTastingSession.mockResolvedValue({
-      createdAt: '2026-05-01T00:00:00.000Z',
-      createdByUserId: 'user-1',
-      id: 'session-1',
-      inviteCode: 'ABC123',
-      invites: [],
-      joinExpiresAt: '2026-05-01T01:00:00.000Z',
-      joinedCount: 1,
-      leaderUserId: 'user-1',
-      maxApprovedItems: 8,
-      maxParticipants: 8,
-      maxRestaurants: 3,
-      name: 'Friday ramen tasting',
-      participants: [],
-      restaurants: [],
-      status: 'lobby',
-      updatedAt: '2026-05-01T00:00:00.000Z',
-    } as Awaited<ReturnType<typeof createTastingSession>>);
+    mockedUseTastingSessionWrites.mockReset();
+    mockedUseTastingSessionWrites.mockReturnValue({
+      acceptInvite: jest.fn(),
+      createSession: jest.fn().mockResolvedValue({
+        result: {
+          createdAt: '2026-05-01T00:00:00.000Z',
+          createdByUserId: 'user-1',
+          id: 'session-1',
+          inviteCode: 'ABC123',
+          invites: [],
+          joinExpiresAt: '2026-05-01T01:00:00.000Z',
+          joinedCount: 1,
+          leaderUserId: 'user-1',
+          maxApprovedItems: 8,
+          maxParticipants: 8,
+          maxRestaurants: 3,
+          name: 'Friday ramen tasting',
+          participants: [],
+          restaurants: [],
+          status: 'lobby',
+          updatedAt: '2026-05-01T00:00:00.000Z',
+        },
+        status: 'completed',
+      }),
+      dismissInvite: jest.fn(),
+      joinSession: jest.fn(),
+      lockLobby: jest.fn(),
+      removeParticipant: jest.fn(),
+    } as unknown as ReturnType<typeof useTastingSessionWrites>);
 
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
@@ -390,9 +402,11 @@ describe('CreateTastingSessionScreen', () => {
     });
     await flushMicrotasks();
 
-    expect(mockedCreateTastingSession).toHaveBeenCalledTimes(1);
-    expect(mockedCreateTastingSession).toHaveBeenCalledWith({
+    const tastingSessionWrites = mockedUseTastingSessionWrites.mock.results[0]?.value;
+    expect(tastingSessionWrites.createSession).toHaveBeenCalledTimes(1);
+    expect(tastingSessionWrites.createSession).toHaveBeenCalledWith({
       invitedUserIds: ['user-friend-1', 'user-friend-2'],
+      isOnline: true,
       joinDurationMinutes: 60,
       name: 'Friday ramen tasting',
     });

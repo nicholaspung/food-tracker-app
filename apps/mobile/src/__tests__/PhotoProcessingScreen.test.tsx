@@ -2,13 +2,13 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useMonthlyUsage } from '../features';
+import { useMenuItemCatalogWrites, useMonthlyUsage } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { PhotoProcessingScreen } from '../screens/PhotoProcessingScreen';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { usePhotoProcessingRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { usePhotoProcessingDraftState } from '../screens/photoProcessing/usePhotoProcessingDraftState';
 import { usePhotoProcessingReviewData } from '../screens/photoProcessing/usePhotoProcessingReviewData';
 import { usePhotoProcessingSubmission } from '../screens/photoProcessing/usePhotoProcessingSubmission';
@@ -123,10 +123,9 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
-  createCollectionRecord: jest.fn(),
   getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
   getNoteDetail: jest.fn(),
-  updateCollectionRecord: jest.fn(),
+  useMenuItemCatalogWrites: jest.fn(),
   useMonthlyUsage: jest.fn(),
 }));
 
@@ -145,7 +144,7 @@ jest.mock('../hooks/useImageSourcePicker', () => ({
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
-  useRestaurantSelectionFlow: jest.fn(),
+  usePhotoProcessingRestaurantSelectionFlow: jest.fn(),
 }));
 
 jest.mock('../lib/dateFormatting', () => ({
@@ -254,12 +253,15 @@ jest.mock('../screens/photoProcessing/shared', () => ({
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedUseMenuItemCatalogWrites = useMenuItemCatalogWrites as jest.MockedFunction<
+  typeof useMenuItemCatalogWrites
+>;
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
 const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
-const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
-  typeof useRestaurantSelectionFlow
+const mockedUseRestaurantSelectionFlow = usePhotoProcessingRestaurantSelectionFlow as jest.MockedFunction<
+  typeof usePhotoProcessingRestaurantSelectionFlow
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
@@ -342,6 +344,11 @@ describe('PhotoProcessingScreen', () => {
       isError: false,
       refetch: jest.fn(),
     });
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems: jest.fn(),
+      createMenuItem: jest.fn(),
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
     mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
@@ -353,43 +360,52 @@ describe('PhotoProcessingScreen', () => {
       resetPermissionNeedsSettings: jest.fn(),
     } as ReturnType<typeof useImageSourcePicker>);
     mockedUseRestaurantSelectionFlow.mockReturnValue({
-      clearPlacesSearchState: jest.fn(),
-      clearSearchErrorMessage: jest.fn(),
-      compactSearchLabel: 'Search',
-      displayedNearbyRestaurants: [],
-      displayedSavedRestaurants: [],
-      expandedSearchLabel: 'Search nearby',
-      isGettingLocation: false,
-      isPlacesQuotaReached: false,
-      isSearchExpanded: false,
-      isSearchingNearbyRestaurants: false,
-      isSearchingRestaurants: false,
-      loadedRestaurantRecords: [],
-      locationPermissionNeedsSettings: false,
-      manualLocation: '',
-      menuItemsQuery: {
-        data: [],
-        isError: false,
-        isLoading: false,
+      menuItems: {
+        loadedRestaurantRecords: [],
+        query: {
+          data: [],
+          isError: false,
+          isLoading: false,
+        },
       },
-      resetRestaurantSelectionFlow: jest.fn(),
-      savedEmptyDescription: 'No saved restaurants',
-      savedEmptyTitle: 'No saved restaurants',
-      savedRestaurantsErrorMessage: null,
-      savedRestaurantsLoading: false,
-      savedRestaurantsTitle: 'Saved restaurants',
-      searchButtonDisabled: false,
-      searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchErrorMessage: null,
-      searchNearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchQuery: '',
-      setIsSearchExpanded: jest.fn(),
-      setManualLocation: jest.fn(),
-      setSearchQuery: jest.fn(),
-      shouldShowPlacesUpgradePrompt: false,
-      showNearbyPlaces: false,
-      triggerSavedRestaurantsRefetch: jest.fn(),
-    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: null,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      reset: jest.fn(),
+      savedSuggestions: {
+        displayedSavedRestaurants: [],
+        emptyDescription: 'No saved restaurants',
+        emptyTitle: 'No saved restaurants',
+        errorMessage: null,
+        isLoading: false,
+        refetch: jest.fn(),
+        title: 'Saved restaurants',
+      },
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: jest.fn(),
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [],
+        expandedLabel: 'Search nearby',
+        isExpanded: false,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: '',
+        nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        query: '',
+        searchButtonDisabled: false,
+        searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchErrorMessage: null,
+        setExpanded: jest.fn(),
+        setManualLocation: jest.fn(),
+        setQuery: jest.fn(),
+        showNearbyPlaces: false,
+      },
+    } as unknown as ReturnType<typeof usePhotoProcessingRestaurantSelectionFlow>);
     mockedUseAuth.mockReturnValue({
       actualUser: {
         isAdmin: false,
@@ -687,70 +703,79 @@ describe('PhotoProcessingScreen', () => {
 
   it('passes history counts into restaurant and menu item selection rows', async () => {
     mockedUseRestaurantSelectionFlow.mockReturnValue({
-      clearPlacesSearchState: jest.fn(),
-      clearSearchErrorMessage: jest.fn(),
-      compactSearchLabel: 'Search',
-      displayedNearbyRestaurants: [],
-      displayedSavedRestaurants: [
-        {
-          distance: null,
-          restaurant: {
+      menuItems: {
+        loadedRestaurantRecords: [
+          {
             friendCount: 2,
             id: 'restaurant-1',
             name: 'Noodle House',
             userVisitCount: 4,
           },
+        ],
+        query: {
+          data: [
+            {
+              createdBy: 'user-1',
+              friendEatenCount: 2,
+              id: 'menu-item-1',
+              name: 'Spicy Ramen',
+              restaurant: 'restaurant-1',
+              userEatenCount: 5,
+              visibility: 'friends',
+            },
+          ],
+          isError: false,
+          isLoading: false,
         },
-      ],
-      expandedSearchLabel: 'Search nearby',
-      isGettingLocation: false,
-      isPlacesQuotaReached: false,
-      isSearchExpanded: false,
-      isSearchingNearbyRestaurants: false,
-      isSearchingRestaurants: false,
-      loadedRestaurantRecords: [
-        {
-          friendCount: 2,
-          id: 'restaurant-1',
-          name: 'Noodle House',
-          userVisitCount: 4,
-        },
-      ],
-      locationPermissionNeedsSettings: false,
-      manualLocation: '',
-      menuItemsQuery: {
-        data: [
+      },
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: null,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      reset: jest.fn(),
+      savedSuggestions: {
+        displayedSavedRestaurants: [
           {
-            createdBy: 'user-1',
-            friendEatenCount: 2,
-            id: 'menu-item-1',
-            name: 'Spicy Ramen',
-            restaurant: 'restaurant-1',
-            userEatenCount: 5,
-            visibility: 'friends',
+            distance: null,
+            restaurant: {
+              friendCount: 2,
+              id: 'restaurant-1',
+              name: 'Noodle House',
+              userVisitCount: 4,
+            },
           },
         ],
-        isError: false,
+        emptyDescription: 'No saved restaurants',
+        emptyTitle: 'No saved restaurants',
+        errorMessage: null,
         isLoading: false,
+        refetch: jest.fn(),
+        title: 'Saved restaurants',
       },
-      resetRestaurantSelectionFlow: jest.fn(),
-      savedEmptyDescription: 'No saved restaurants',
-      savedEmptyTitle: 'No saved restaurants',
-      savedRestaurantsErrorMessage: null,
-      savedRestaurantsLoading: false,
-      savedRestaurantsTitle: 'Saved restaurants',
-      searchButtonDisabled: false,
-      searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchErrorMessage: null,
-      searchNearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchQuery: '',
-      setIsSearchExpanded: jest.fn(),
-      setManualLocation: jest.fn(),
-      setSearchQuery: jest.fn(),
-      shouldShowPlacesUpgradePrompt: false,
-      showNearbyPlaces: false,
-      triggerSavedRestaurantsRefetch: jest.fn(),
-    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: jest.fn(),
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [],
+        expandedLabel: 'Search nearby',
+        isExpanded: false,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: '',
+        nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        query: '',
+        searchButtonDisabled: false,
+        searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchErrorMessage: null,
+        setExpanded: jest.fn(),
+        setManualLocation: jest.fn(),
+        setQuery: jest.fn(),
+        showNearbyPlaces: false,
+      },
+    } as unknown as ReturnType<typeof usePhotoProcessingRestaurantSelectionFlow>);
     mockedUsePhotoProcessingDraftState.mockReturnValue({
       appendAssets: jest.fn(),
       currentPhoto: {

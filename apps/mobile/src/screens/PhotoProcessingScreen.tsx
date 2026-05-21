@@ -34,19 +34,17 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  createCollectionRecord,
   getNoteDetail,
   getAuthenticatedUserIdOrNull,
-  updateCollectionRecord,
   type MenuItemRecord,
   useMonthlyUsage,
+  useMenuItemCatalogWrites,
   type RestaurantRecord,
 } from '../features';
-import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { usePhotoProcessingRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
   getTodayLocalDateString,
 } from '../lib/dateFormatting';
@@ -283,6 +281,7 @@ export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
 function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
+  const menuItemCatalogWrites = useMenuItemCatalogWrites();
   const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
@@ -361,40 +360,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   });
   const currentRestaurantId = currentRestaurantForm?.restaurantId ?? null;
   const shouldEnableRestaurantSelectionQueries = processType === 'restaurant' && step === 'process';
-  const {
-    clearPlacesSearchState: clearRestaurantSearchState,
-    clearSearchErrorMessage,
-    compactSearchLabel,
-    displayedNearbyRestaurants: allDisplayedNearbyRestaurants,
-    displayedSavedRestaurants: allDisplayedSavedRestaurants,
-    expandedSearchLabel,
-    isGettingLocation,
-    isPlacesQuotaReached,
-    isSearchExpanded,
-    isSearchingNearbyRestaurants,
-    isSearchingRestaurants,
-    loadedRestaurantRecords,
-    locationPermissionNeedsSettings,
-    manualLocation,
-    menuItemsQuery,
-    resetRestaurantSelectionFlow,
-    savedEmptyDescription,
-    savedEmptyTitle,
-    savedRestaurantsErrorMessage,
-    savedRestaurantsLoading,
-    savedRestaurantsTitle,
-    searchButtonDisabled,
-    searchByText: runRestaurantSearchByText,
-    searchErrorMessage,
-    searchNearby: runNearbyRestaurantSearch,
-    searchQuery: restaurantSearchQuery,
-    setIsSearchExpanded,
-    setManualLocation,
-    setSearchQuery: setRestaurantSearchQuery,
-    shouldShowPlacesUpgradePrompt,
-    showNearbyPlaces,
-    triggerSavedRestaurantsRefetch,
-  } = useRestaurantSelectionFlow({
+  const restaurantSelection = usePhotoProcessingRestaurantSelectionFlow({
     autoCaptureReferenceLocation:
       shouldEnableRestaurantSelectionQueries && !currentPhoto?.captureCoordinates,
     fallbackReferenceCoords: currentPhoto?.captureCoordinates
@@ -418,6 +384,39 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       placesQueriesRemaining,
     },
   });
+  const { menuItems, quotaDisplay, reset: resetRestaurantSelectionFlow, savedSuggestions, search: restaurantSearch } =
+    restaurantSelection;
+  const clearRestaurantSearchState = restaurantSearch.clearPlacesState;
+  const clearSearchErrorMessage = restaurantSearch.clearErrorMessage;
+  const compactSearchLabel = restaurantSearch.compactLabel;
+  const allDisplayedNearbyRestaurants = restaurantSearch.displayedNearbyRestaurants;
+  const allDisplayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
+  const expandedSearchLabel = restaurantSearch.expandedLabel;
+  const isGettingLocation = restaurantSearch.isGettingLocation;
+  const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
+  const isSearchExpanded = restaurantSearch.isExpanded;
+  const isSearchingNearbyRestaurants = restaurantSearch.isSearchingNearby;
+  const isSearchingRestaurants = restaurantSearch.isSearchingText;
+  const loadedRestaurantRecords = menuItems.loadedRestaurantRecords;
+  const locationPermissionNeedsSettings = restaurantSearch.locationPermissionNeedsSettings;
+  const manualLocation = restaurantSearch.manualLocation;
+  const menuItemsQuery = menuItems.query;
+  const savedEmptyDescription = savedSuggestions.emptyDescription;
+  const savedEmptyTitle = savedSuggestions.emptyTitle;
+  const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
+  const savedRestaurantsLoading = savedSuggestions.isLoading;
+  const savedRestaurantsTitle = savedSuggestions.title;
+  const searchButtonDisabled = restaurantSearch.searchButtonDisabled;
+  const runRestaurantSearchByText = restaurantSearch.searchByText;
+  const searchErrorMessage = restaurantSearch.searchErrorMessage;
+  const runNearbyRestaurantSearch = restaurantSearch.nearby;
+  const restaurantSearchQuery = restaurantSearch.query;
+  const setIsSearchExpanded = restaurantSearch.setExpanded;
+  const setManualLocation = restaurantSearch.setManualLocation;
+  const setRestaurantSearchQuery = restaurantSearch.setQuery;
+  const shouldShowPlacesUpgradePrompt = quotaDisplay.shouldShowPlacesUpgradePrompt;
+  const showNearbyPlaces = restaurantSearch.showNearbyPlaces;
+  const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
   const hasNotePhotos = (noteDetailQuery.data?.photos.length ?? 0) > 0;
   const notePhotoCount = noteDetailQuery.data?.photos.length ?? 0;
   const isBlockingNotePhotoLoad = isNoteDrivenFlow && noteDetailQuery.isLoading && !noteDetailQuery.data;
@@ -1245,20 +1244,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setErrorMessage(null);
     setIsCreatingMenuItem(true);
     try {
-      const createdItem = await createCollectionRecord<MenuItemRecord>('menu_items', {
-        restaurant: currentRestaurantForm.restaurantId,
+      const createdItem = await menuItemCatalogWrites.createMenuItem({
+        restaurantId: currentRestaurantForm.restaurantId,
         name: menuItemName,
         createdBy: currentUserId,
         visibility: 'friends',
         isFromOCR: false,
-      });
-
-      queryClient.setQueryData<MenuItemRecord[]>(
-        menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
-        (currentItems) => [createdItem, ...(currentItems ?? [])],
-      );
-      await queryClient.invalidateQueries({
-        queryKey: menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
       });
 
       handleSelectMenuItem(createdItem);
@@ -1292,19 +1283,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setIsUpdatingMenuItem(true);
 
     try {
-      await updateCollectionRecord('menu_items', selectedMenuItem.id, {
+      await menuItemCatalogWrites.updateMenuItem({
+        menuItemId: selectedMenuItem.id,
+        restaurantId: currentRestaurantForm.restaurantId,
         name: trimmedName,
-      });
-
-      queryClient.setQueryData<MenuItemRecord[]>(
-        menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
-        (currentItems) =>
-          currentItems?.map((item) =>
-            item.id === selectedMenuItem.id ? { ...item, name: trimmedName } : item,
-          ) ?? currentItems,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: menuItemsQueryKeys.restaurant(currentRestaurantForm.restaurantId),
       });
 
       setRestaurantForms((current) => {

@@ -19,6 +19,19 @@ import {
 import type { VisitRestaurantWithDistance } from '../../lib/visitRestaurantSearch';
 import type { FoodProductFormValues } from '../../lib/foodProductForm';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
+import type {
+  DraftPhotoAsset,
+  PhotoCoordinates,
+  ProcessType,
+  RestaurantPhotoForm,
+} from '../../features/photoProcessing/photoProcessingTypes';
+export { FREE_MONTHLY_PHOTO_LIMIT } from '../../features/photoProcessing/photoProcessingTypes';
+export type {
+  DraftPhotoAsset,
+  PhotoCoordinates,
+  ProcessType,
+  RestaurantPhotoForm,
+} from '../../features/photoProcessing/photoProcessingTypes';
 
 export type PhotoProcessingScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -26,34 +39,7 @@ export type PhotoProcessingScreenProps = NativeStackScreenProps<
 >;
 export type ScanSource = PhotoPickerPermissionSource;
 export type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
-export type ProcessType = 'restaurant' | 'foodProduct';
 export type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
-
-export interface PhotoCoordinates {
-  latitude: number;
-  longitude: number;
-}
-
-export interface DraftPhotoAsset {
-  id: string;
-  uri: string;
-  name: string;
-  mimeType: string;
-  captureDate: Date | null;
-  captureCoordinates: PhotoCoordinates | null;
-  metadataDate: Date | string | null;
-}
-
-export interface RestaurantPhotoForm {
-  restaurantId: string;
-  restaurantName: string;
-  menuItemId: string;
-  menuItemName: string;
-  rating: number;
-  description: string;
-  notes: string;
-  date: string;
-}
 
 export interface CreatedMenuItemRecord {
   id: string;
@@ -68,7 +54,6 @@ const PROGRESS_FLOW_TAIL: { label: string }[] = [
   { label: 'Review' },
 ];
 
-export const FREE_MONTHLY_PHOTO_LIMIT = 100;
 const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
   weekday: 'short',
   month: 'short',

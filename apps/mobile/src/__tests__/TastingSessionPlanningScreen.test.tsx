@@ -2,8 +2,8 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { suggestTastingMenuItem, suggestTastingRestaurant } from '../features';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useTastingPlanWrites } from '../features';
+import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionPlanningScreen } from '../screens/TastingSessionPlanningScreen';
@@ -20,6 +20,11 @@ const mockSetIsSearchExpanded = jest.fn();
 const mockSetManualLocation = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockTriggerSavedRestaurantsRefetch = jest.fn();
+const mockAddMenuItem = jest.fn();
+const mockAddRestaurant = jest.fn();
+const mockRemoveMenuItem = jest.fn();
+const mockRemoveRestaurant = jest.fn();
+const mockStartTasting = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -59,11 +64,6 @@ jest.mock('../features', () => ({
   menuItemsQueryKeys: {
     restaurant: jest.fn((restaurantId: string) => ['feature', 'menuItems', restaurantId]),
   },
-  setTastingMenuItemSuggestionStatus: jest.fn(),
-  setTastingRestaurantSuggestionStatus: jest.fn(),
-  startTastingSession: jest.fn(),
-  suggestTastingMenuItem: jest.fn(),
-  suggestTastingRestaurant: jest.fn(),
   tastingSessionsQueryKeys: {
     detail: jest.fn((sessionId: string) => ['feature', 'tastingSessions', sessionId]),
   },
@@ -86,6 +86,7 @@ jest.mock('../features', () => ({
     status: 'idle',
     verification: null,
   })),
+  useTastingPlanWrites: jest.fn(),
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
@@ -93,7 +94,7 @@ jest.mock('../features/store/restaurantsStore', () => ({
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
-  useRestaurantSelectionFlow: jest.fn(),
+  useTastingPlanRestaurantSelectionFlow: jest.fn(),
 }));
 
 jest.mock('../providers/AuthProvider', () => ({
@@ -161,18 +162,13 @@ jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
   useTastingSessionDetail: jest.fn(),
 }));
 
-const mockedSuggestTastingRestaurant = suggestTastingRestaurant as jest.MockedFunction<
-  typeof suggestTastingRestaurant
->;
-const mockedSuggestTastingMenuItem = suggestTastingMenuItem as jest.MockedFunction<
-  typeof suggestTastingMenuItem
->;
+const mockedUseTastingPlanWrites = useTastingPlanWrites as jest.MockedFunction<typeof useTastingPlanWrites>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
-const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
-  typeof useRestaurantSelectionFlow
+const mockedUseRestaurantSelectionFlow = useTastingPlanRestaurantSelectionFlow as jest.MockedFunction<
+  typeof useTastingPlanRestaurantSelectionFlow
 >;
 const mockedUseTastingSessionDetail = useTastingSessionDetail as jest.MockedFunction<
   typeof useTastingSessionDetail
@@ -232,47 +228,47 @@ const sessionWithRestaurant = {
 };
 
 function buildRestaurantSelectionFlowResult(
-  overrides: Partial<ReturnType<typeof useRestaurantSelectionFlow>> = {},
-): ReturnType<typeof useRestaurantSelectionFlow> {
+  overrides: Partial<ReturnType<typeof useTastingPlanRestaurantSelectionFlow>> = {},
+): ReturnType<typeof useTastingPlanRestaurantSelectionFlow> {
   return {
-    clearPlacesSearchState: mockClearPlacesSearchState,
-    compactSearchLabel: 'Search',
-    displayedNearbyRestaurants: [],
-    displayedSavedRestaurants: [savedRestaurant],
-    expandedSearchLabel: 'Search Food Places',
-    isGettingLocation: false,
-    isPlacesQuotaReached: false,
-    isSearchExpanded: true,
-    isSearchingNearbyRestaurants: false,
-    isSearchingRestaurants: false,
-    loadedRestaurantRecords: [],
-    locationPermissionNeedsSettings: false,
-    manualLocation: '',
-    menuItemsQuery: {} as never,
-    placesQueriesRemaining: 10,
-    resetLocationPermissionNeedsSettings: jest.fn(),
-    resetRestaurantSelectionFlow: jest.fn(),
-    savedEmptyDescription: 'Search nearby places to build the tasting plan.',
-    savedEmptyTitle: 'No restaurants yet',
-    savedRestaurantRecords: [],
-    savedRestaurantsErrorMessage: null,
-    savedRestaurantsLoading: false,
-    savedRestaurantsTitle: 'Recent restaurants',
-    searchButtonDisabled: false,
-    searchByText: mockSearchByText,
-    searchErrorMessage: null,
-    searchNearby: mockSearchNearby,
-    searchQuery: 'ramen',
-    setIsSearchExpanded: mockSetIsSearchExpanded,
-    setManualLocation: mockSetManualLocation,
-    setSearchQuery: mockSetSearchQuery,
-    shouldEnforceUsageLimitsClientSide: true,
-    shouldQuerySavedRestaurantsBySearch: false,
-    shouldShowPlacesUpgradePrompt: false,
-    showNearbyPlaces: false,
-    triggerSavedRestaurantsRefetch: mockTriggerSavedRestaurantsRefetch,
+    quotaDisplay: {
+      isPlacesQuotaReached: false,
+      placesQueriesRemaining: 10,
+      shouldShowPlacesUpgradePrompt: false,
+    },
+    savedSuggestions: {
+      displayedSavedRestaurants: [savedRestaurant],
+      emptyDescription: 'Search nearby places to build the tasting plan.',
+      emptyTitle: 'No restaurants yet',
+      errorMessage: null,
+      isLoading: false,
+      refetch: mockTriggerSavedRestaurantsRefetch,
+      title: 'Recent restaurants',
+    },
+    search: {
+      clearErrorMessage: jest.fn(),
+      clearPlacesState: mockClearPlacesSearchState,
+      compactLabel: 'Search',
+      displayedNearbyRestaurants: [],
+      expandedLabel: 'Search Food Places',
+      isExpanded: true,
+      isGettingLocation: false,
+      isSearchingNearby: false,
+      isSearchingText: false,
+      locationPermissionNeedsSettings: false,
+      manualLocation: '',
+      nearby: mockSearchNearby,
+      query: 'ramen',
+      searchButtonDisabled: false,
+      searchByText: mockSearchByText,
+      searchErrorMessage: null,
+      setExpanded: mockSetIsSearchExpanded,
+      setManualLocation: mockSetManualLocation,
+      setQuery: mockSetSearchQuery,
+      showNearbyPlaces: false,
+    },
     ...overrides,
-  } as unknown as ReturnType<typeof useRestaurantSelectionFlow>;
+  } as unknown as ReturnType<typeof useTastingPlanRestaurantSelectionFlow>;
 }
 
 describe('TastingSessionPlanningScreen', () => {
@@ -289,10 +285,23 @@ describe('TastingSessionPlanningScreen', () => {
     mockSetManualLocation.mockReset();
     mockSetSearchQuery.mockReset();
     mockTriggerSavedRestaurantsRefetch.mockReset();
-    mockedSuggestTastingRestaurant.mockReset();
-    mockedSuggestTastingRestaurant.mockResolvedValue(planningSession as never);
-    mockedSuggestTastingMenuItem.mockReset();
-    mockedSuggestTastingMenuItem.mockResolvedValue(sessionWithRestaurant as never);
+    mockAddMenuItem.mockReset();
+    mockAddMenuItem.mockResolvedValue({ result: sessionWithRestaurant, status: 'completed' });
+    mockAddRestaurant.mockReset();
+    mockAddRestaurant.mockResolvedValue({ result: planningSession, status: 'completed' });
+    mockRemoveMenuItem.mockReset();
+    mockRemoveMenuItem.mockResolvedValue({ result: sessionWithRestaurant, status: 'completed' });
+    mockRemoveRestaurant.mockReset();
+    mockRemoveRestaurant.mockResolvedValue({ result: planningSession, status: 'completed' });
+    mockStartTasting.mockReset();
+    mockStartTasting.mockResolvedValue({ result: sessionWithRestaurant, status: 'completed' });
+    mockedUseTastingPlanWrites.mockReturnValue({
+      addMenuItem: mockAddMenuItem,
+      addRestaurant: mockAddRestaurant,
+      removeMenuItem: mockRemoveMenuItem,
+      removeRestaurant: mockRemoveRestaurant,
+      startTasting: mockStartTasting,
+    } as unknown as ReturnType<typeof useTastingPlanWrites>);
     mockedUseAuth.mockReturnValue({
       actualUser: { isAdmin: false },
       user: {
@@ -355,21 +364,22 @@ describe('TastingSessionPlanningScreen', () => {
     const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
     expect(searchSection.props.footerContent).toBeUndefined();
 
-    expect(mockedSuggestTastingRestaurant).toHaveBeenCalledWith('session-1', {
-      restaurantId: 'restaurant-1',
-      restaurantName: 'Corner Ramen',
+    expect(mockAddRestaurant).toHaveBeenCalledWith({
+      isOnline: true,
+      restaurant: savedRestaurant.restaurant,
+      sessionId: 'session-1',
     });
     expect(mockSetSearchQuery).toHaveBeenCalledWith('');
     expect(mockClearPlacesSearchState).toHaveBeenCalledTimes(1);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'tastingSessions', 'session-1'],
-    });
   });
 
   it('passes offline state and search errors through to restaurant search', () => {
     mockedUseConnectivity.mockReturnValue({ isOnline: false } as never);
     mockedUseRestaurantSelectionFlow.mockReturnValueOnce(buildRestaurantSelectionFlowResult({
-      searchErrorMessage: 'Could not search restaurants.',
+      search: {
+        ...buildRestaurantSelectionFlowResult().search,
+        searchErrorMessage: 'Could not search restaurants.',
+      },
     }));
 
     const renderer = renderScreen();
@@ -453,9 +463,16 @@ describe('TastingSessionPlanningScreen', () => {
       });
     });
 
-    expect(mockedSuggestTastingMenuItem).toHaveBeenCalledWith('session-1', 'suggestion-1', {
-      menuItemId: 'menu-item-2',
-      name: 'Tonkotsu Ramen',
+    expect(mockAddMenuItem).toHaveBeenCalledWith({
+      existingSuggestionId: undefined,
+      isOnline: true,
+      menuItem: {
+        id: 'menu-item-2',
+        name: 'Tonkotsu Ramen',
+        restaurant: 'restaurant-1',
+      },
+      restaurantSuggestionId: 'suggestion-1',
+      sessionId: 'session-1',
     });
   });
 

@@ -1,7 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
@@ -10,12 +9,9 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import {
-  createCollectionRecord,
   getAuthenticatedUserIdOrNull,
-  suggestTastingMenuItem,
-  tastingSessionsQueryKeys,
+  useMenuItemCatalogWrites,
 } from '../features';
-import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -27,11 +23,6 @@ type CreateVisitAddMenuItemScreenProps = NativeStackScreenProps<
   'CreateVisitAddMenuItem'
 >;
 const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
-
-interface MenuItemRecord {
-  id: string;
-  name: string;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -50,7 +41,7 @@ export function CreateVisitAddMenuItemScreen({
   route,
 }: CreateVisitAddMenuItemScreenProps) {
   const styles = useStyles();
-  const queryClient = useQueryClient();
+  const menuItemCatalogWrites = useMenuItemCatalogWrites();
   const { isOnline } = useConnectivity();
 
   const {
@@ -112,28 +103,24 @@ export function CreateVisitAddMenuItemScreen({
     setIsSubmitting(true);
 
     try {
-      const createdItem = await createCollectionRecord<MenuItemRecord>('menu_items', {
-        restaurant: restaurantId,
+      const baseCreateInput = {
+        restaurantId,
         name: trimmedName,
         createdBy: currentUserId,
         visibility,
         isFromOCR: false,
-      });
-
-      queryClient.setQueryData<MenuItemRecord[]>(
-        menuItemsQueryKeys.restaurant(restaurantId),
-        (currentItems) => {
-          const nextItems = currentItems ?? [];
-          if (nextItems.some((item) => item.id === createdItem.id)) {
-            return nextItems;
-          }
-
-          return [createdItem, ...nextItems];
-        },
-      );
-      await queryClient.invalidateQueries({
-        queryKey: menuItemsQueryKeys.restaurant(restaurantId),
-      });
+      };
+      const shouldAddToTastingPlan =
+        returnTo === 'TastingSessionPlanning' &&
+        Boolean(tastingSessionId) &&
+        Boolean(tastingRestaurantSuggestionId);
+      const createdItem = shouldAddToTastingPlan
+        ? await menuItemCatalogWrites.createMenuItemAndAddToTastingPlan({
+            ...baseCreateInput,
+            tastingRestaurantSuggestionId: tastingRestaurantSuggestionId!,
+            tastingSessionId: tastingSessionId!,
+          })
+        : await menuItemCatalogWrites.createMenuItem(baseCreateInput);
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddMenuItemScreen',
         restaurantId,
@@ -141,14 +128,7 @@ export function CreateVisitAddMenuItemScreen({
         visibility,
       });
 
-      if (returnTo === 'TastingSessionPlanning' && tastingSessionId && tastingRestaurantSuggestionId) {
-        await suggestTastingMenuItem(tastingSessionId, tastingRestaurantSuggestionId, {
-          menuItemId: createdItem.id,
-          name: createdItem.name,
-        });
-        await queryClient.invalidateQueries({
-          queryKey: tastingSessionsQueryKeys.detail(tastingSessionId),
-        });
+      if (shouldAddToTastingPlan && tastingSessionId) {
         navigation.popTo('TastingSessionPlanning', { sessionId: tastingSessionId });
         return;
       }

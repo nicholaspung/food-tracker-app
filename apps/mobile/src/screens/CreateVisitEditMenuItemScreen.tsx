@@ -1,7 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
@@ -9,8 +8,7 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { updateCollectionRecord } from '../features';
-import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
+import { useMenuItemCatalogWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -22,12 +20,6 @@ type CreateVisitEditMenuItemScreenProps = NativeStackScreenProps<
   'CreateVisitEditMenuItem'
 >;
 const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
-
-interface MenuItemRecord {
-  id: string;
-  name: string;
-  visibility?: VisibilityOptionValue;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -54,7 +46,7 @@ export function CreateVisitEditMenuItemScreen({
   route,
 }: CreateVisitEditMenuItemScreenProps) {
   const styles = useStyles();
-  const queryClient = useQueryClient();
+  const menuItemCatalogWrites = useMenuItemCatalogWrites();
   const { isOnline } = useConnectivity();
 
   const {
@@ -107,20 +99,11 @@ export function CreateVisitEditMenuItemScreen({
     setIsSubmitting(true);
 
     try {
-      await updateCollectionRecord('menu_items', menuItemId, {
+      await menuItemCatalogWrites.updateMenuItem({
+        menuItemId,
+        restaurantId,
         name: trimmedName,
         visibility,
-      });
-
-      queryClient.setQueryData<MenuItemRecord[]>(
-        menuItemsQueryKeys.restaurant(restaurantId),
-        (currentItems) =>
-          currentItems?.map((item) =>
-            item.id === menuItemId ? { ...item, name: trimmedName, visibility } : item,
-          ) ?? currentItems,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: menuItemsQueryKeys.restaurant(restaurantId),
       });
 
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_SUCCEEDED', {

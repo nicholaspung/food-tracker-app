@@ -1,10 +1,8 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQueryClient } from '@tanstack/react-query';
 
-import { submitTastingRatings } from '../features';
+import { useTastingRatingSubmissionWrites } from '../features';
 import type { TastingSessionRecord } from '../features';
-import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionTastingScreen } from '../screens/TastingSessionTastingScreen';
@@ -13,7 +11,8 @@ import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSe
 const mockReact = React;
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
-const mockInvalidateQueries = jest.fn();
+const mockSubmitRatingDraft = jest.fn();
+const mockCompleteTasting = jest.fn();
 
 jest.mock('expo-image-picker', () => ({
   launchCameraAsync: jest.fn(),
@@ -28,10 +27,6 @@ jest.mock('react-native', () => ({
     mockReact.createElement('Pressable', props, children),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
-}));
-
-jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: jest.fn(),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -63,11 +58,7 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
-  completeTastingSession: jest.fn(),
-  submitTastingRatings: jest.fn(),
-  tastingSessionsQueryKeys: {
-    detail: jest.fn((sessionId: string) => ['feature', 'tastingSessions', sessionId]),
-  },
+  useTastingRatingSubmissionWrites: jest.fn(),
   useMonthlyUsage: jest.fn(() => ({
     snapshot: {
       limits: {
@@ -81,10 +72,6 @@ jest.mock('../features', () => ({
       },
     },
   })),
-}));
-
-jest.mock('../features/store/visitPhotoUploads', () => ({
-  uploadVisitPhotos: jest.fn(),
 }));
 
 jest.mock('../hooks/usePhotoPickerPermissions', () => ({
@@ -159,13 +146,10 @@ jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
   useTastingSessionDetail: jest.fn(),
 }));
 
-const mockedSubmitTastingRatings = submitTastingRatings as jest.MockedFunction<
-  typeof submitTastingRatings
->;
-const mockedUploadVisitPhotos = uploadVisitPhotos as jest.MockedFunction<typeof uploadVisitPhotos>;
+const mockedUseTastingRatingSubmissionWrites =
+  useTastingRatingSubmissionWrites as jest.MockedFunction<typeof useTastingRatingSubmissionWrites>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseTastingSessionDetail = useTastingSessionDetail as jest.MockedFunction<
   typeof useTastingSessionDetail
 >;
@@ -235,14 +219,21 @@ describe('TastingSessionTastingScreen', () => {
       },
     } as ReturnType<typeof useAuth>);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
-    mockedUseQueryClient.mockReturnValue({
-      invalidateQueries: mockInvalidateQueries,
-    } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseTastingSessionDetail.mockReturnValue({
       data: tastingSession,
     } as unknown as ReturnType<typeof useTastingSessionDetail>);
-    mockedSubmitTastingRatings.mockResolvedValue(tastingSession);
-    mockedUploadVisitPhotos.mockResolvedValue(undefined);
+    mockSubmitRatingDraft.mockResolvedValue({
+      result: tastingSession,
+      status: 'completed',
+    });
+    mockCompleteTasting.mockResolvedValue({
+      result: tastingSession,
+      status: 'completed',
+    });
+    mockedUseTastingRatingSubmissionWrites.mockReturnValue({
+      completeTasting: mockCompleteTasting,
+      submitRatingDraft: mockSubmitRatingDraft,
+    } as unknown as ReturnType<typeof useTastingRatingSubmissionWrites>);
   });
 
   it('submits the visible approved tasting items and shows saved feedback', async () => {
@@ -264,21 +255,12 @@ describe('TastingSessionTastingScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockedSubmitTastingRatings).toHaveBeenCalledWith('session-1', {
-      restaurants: [
-        {
-          restaurantSuggestionId: 'restaurant-suggestion-1',
-          items: [
-            {
-              itemId: 'tasting-item-1',
-              rating: 3,
-            },
-          ],
-        },
-      ],
-    });
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'tastingSessions', 'session-1'],
+    expect(mockSubmitRatingDraft).toHaveBeenCalledWith({
+      approvedRestaurants: tastingSession.restaurants,
+      currentUserId: 'user-1',
+      isOnline: true,
+      resolveDraft: expect.any(Function),
+      sessionId: 'session-1',
     });
     expect(renderer!.root.findAllByProps({ label: 'Update Ratings' })).toHaveLength(1);
     expect(

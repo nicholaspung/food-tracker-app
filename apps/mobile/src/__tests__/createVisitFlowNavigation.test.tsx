@@ -10,6 +10,7 @@ import {
   parseMenuImage,
   resolveDefaultRestaurantVisibilityFromAuth,
   upsertRestaurantRecord,
+  useMenuItemCatalogWrites,
 } from '../features';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { trackObservabilityEvent } from '../observability';
@@ -51,6 +52,7 @@ jest.mock('../features', () => ({
   getAuthenticatedUserIdOrNull: jest.fn(),
   resolveDefaultRestaurantVisibilityFromAuth: jest.fn(() => 'friends'),
   upsertRestaurantRecord: jest.fn(),
+  useMenuItemCatalogWrites: jest.fn(),
 }));
 
 jest.mock('../hooks/useImageSourcePicker', () => ({
@@ -129,6 +131,9 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFunction<
   typeof createCollectionRecord
 >;
+const mockedUseMenuItemCatalogWrites = useMenuItemCatalogWrites as jest.MockedFunction<
+  typeof useMenuItemCatalogWrites
+>;
 const mockedCreateMenuItemsFromScan = createMenuItemsFromScan as jest.MockedFunction<
   typeof createMenuItemsFromScan
 >;
@@ -169,6 +174,7 @@ describe('create visit flow navigation', () => {
 
     mockedUseQueryClient.mockReset();
     mockedCreateCollectionRecord.mockReset();
+    mockedUseMenuItemCatalogWrites.mockReset();
     mockedCreateMenuItemsFromScan.mockReset();
     mockedGetAuthenticatedUserIdOrNull.mockReset();
     mockedParseMenuImage.mockReset();
@@ -202,6 +208,18 @@ describe('create visit flow navigation', () => {
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
     mockedGetAuthenticatedUserIdOrNull.mockReturnValue('user_1');
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems: jest.fn(),
+      createMenuItemAndAddToTastingPlan: jest.fn().mockResolvedValue({
+        id: 'item_9',
+        name: 'Miso Ramen',
+      }),
+      createMenuItem: jest.fn().mockResolvedValue({
+        id: 'item_9',
+        name: 'Miso Ramen',
+      }),
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
     mockUseMenuScanFlow.mockReturnValue({
       createdItemNames: [],
       errorMessage: null,
@@ -405,11 +423,6 @@ describe('create visit flow navigation', () => {
       goBack: jest.fn(),
       popTo: jest.fn(),
     };
-    mockedCreateCollectionRecord.mockResolvedValue({
-      id: 'item_9',
-      name: 'Miso Ramen',
-    } as Awaited<ReturnType<typeof createCollectionRecord>>);
-
     let renderer: any = null;
 
     await act(async () => {
@@ -446,6 +459,64 @@ describe('create visit flow navigation', () => {
       preselectedMenuItemName: 'Miso Ramen',
       returnToStep: 1,
       sourceNoteId: 'note_1',
+    });
+  });
+
+  it('uses the catalog write handoff after adding a menu item for a Tasting Plan', async () => {
+    const createMenuItemAndAddToTastingPlan = jest.fn().mockResolvedValue({
+      id: 'item_10',
+      name: 'Tonkotsu Ramen',
+    });
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems: jest.fn(),
+      createMenuItem: jest.fn(),
+      createMenuItemAndAddToTastingPlan,
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitAddMenuItemScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              restaurantId: 'restaurant_42',
+              restaurantName: 'Cafe Test',
+              returnTo: 'TastingSessionPlanning',
+              tastingRestaurantSuggestionId: 'restaurant_suggestion_1',
+              tastingSessionId: 'session_1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer!.root.findByType('Input').props.onChangeText('Tonkotsu Ramen');
+    });
+
+    await act(async () => {
+      renderer!.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(createMenuItemAndAddToTastingPlan).toHaveBeenCalledWith({
+      createdBy: 'user_1',
+      isFromOCR: false,
+      name: 'Tonkotsu Ramen',
+      restaurantId: 'restaurant_42',
+      tastingRestaurantSuggestionId: 'restaurant_suggestion_1',
+      tastingSessionId: 'session_1',
+      visibility: 'friends',
+    });
+    expect(navigation.popTo).toHaveBeenCalledWith('TastingSessionPlanning', {
+      sessionId: 'session_1',
     });
   });
 });

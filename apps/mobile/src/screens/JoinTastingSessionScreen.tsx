@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { joinTastingSession, tastingSessionsQueryKeys } from '../features';
+import { useTastingSessionWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { Card, Input, Text } from '../ui';
@@ -13,20 +12,19 @@ type JoinTastingSessionScreenProps = NativeStackScreenProps<RootStackParamList, 
 
 export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScreenProps) {
   const { isOnline } = useConnectivity();
-  const queryClient = useQueryClient();
+  const tastingSessionWrites = useTastingSessionWrites();
   const [inviteCode, setInviteCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleJoin = async () => {
-    if (!isOnline) {
-      setErrorMessage('Connect to the internet to join a group tasting.');
-      return;
-    }
     try {
       setErrorMessage(null);
-      const session = await joinTastingSession({ inviteCode });
-      await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
-      navigateToTastingSession(navigation, session);
+      const joinResult = await tastingSessionWrites.joinSession({ inviteCode, isOnline });
+      if (joinResult.status === 'blocked') {
+        setErrorMessage(joinResult.message);
+        return;
+      }
+      navigateToTastingSession(navigation, joinResult.result);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not join tasting session.');
     }

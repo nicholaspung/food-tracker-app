@@ -13,7 +13,7 @@ import {
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useCreateVisitRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateVisitScreen } from '../screens/CreateVisitScreen';
@@ -191,7 +191,7 @@ jest.mock('../hooks/usePhotoPickerPermissions', () => ({
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
-  useRestaurantSelectionFlow: jest.fn(),
+  useCreateVisitRestaurantSelectionFlow: jest.fn(),
 }));
 
 jest.mock('../lib/dateFormatting', () => ({
@@ -292,8 +292,8 @@ const mockedUseVisitWrites = useVisitWrites as jest.MockedFunction<typeof useVis
 const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
   typeof usePhotoPickerPermissions
 >;
-const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
-  typeof useRestaurantSelectionFlow
+const mockedUseRestaurantSelectionFlow = useCreateVisitRestaurantSelectionFlow as jest.MockedFunction<
+  typeof useCreateVisitRestaurantSelectionFlow
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
@@ -391,43 +391,52 @@ describe('CreateVisitScreen', () => {
     } as ReturnType<typeof usePhotoPickerPermissions>);
     mockedUseRestaurantSelectionFlow.mockReset();
     mockedUseRestaurantSelectionFlow.mockReturnValue({
-      clearPlacesSearchState: jest.fn(),
-      clearSearchErrorMessage: jest.fn(),
-      compactSearchLabel: 'Search',
-      displayedNearbyRestaurants: [],
-      displayedSavedRestaurants: [],
-      expandedSearchLabel: 'Search nearby',
-      isGettingLocation: false,
-      isPlacesQuotaReached: false,
-      isSearchExpanded: false,
-      isSearchingNearbyRestaurants: false,
-      isSearchingRestaurants: false,
-      loadedRestaurantRecords: [],
-      locationPermissionNeedsSettings: false,
-      manualLocation: '',
-      menuItemsQuery: {
-        data: [editableMenuItem, nonEditableMenuItem],
-        isError: false,
+      menuItems: {
+        loadedRestaurantRecords: [],
+        query: {
+          data: [editableMenuItem, nonEditableMenuItem],
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        },
+      },
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: null,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      savedSuggestions: {
+        displayedSavedRestaurants: [],
+        emptyDescription: 'No saved restaurants',
+        emptyTitle: 'No saved restaurants',
+        errorMessage: null,
         isLoading: false,
         refetch: jest.fn(),
+        title: 'Saved restaurants',
       },
-      savedEmptyDescription: 'No saved restaurants',
-      savedEmptyTitle: 'No saved restaurants',
-      savedRestaurantsErrorMessage: null,
-      savedRestaurantsLoading: false,
-      savedRestaurantsTitle: 'Saved restaurants',
-      searchButtonDisabled: false,
-      searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchErrorMessage: null,
-      searchNearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
-      searchQuery: '',
-      setIsSearchExpanded: jest.fn(),
-      setManualLocation: jest.fn(),
-      setSearchQuery: jest.fn(),
-      shouldShowPlacesUpgradePrompt: false,
-      showNearbyPlaces: false,
-      triggerSavedRestaurantsRefetch: jest.fn(),
-    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: jest.fn(),
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [],
+        expandedLabel: 'Search nearby',
+        isExpanded: false,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: '',
+        nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        query: '',
+        searchButtonDisabled: false,
+        searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchErrorMessage: null,
+        setExpanded: jest.fn(),
+        setManualLocation: jest.fn(),
+        setQuery: jest.fn(),
+        showNearbyPlaces: false,
+      },
+    } as unknown as ReturnType<typeof useCreateVisitRestaurantSelectionFlow>);
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
       actualUser: {

@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
 import { extractRestaurantNamesFromImage, parseLimitExceededError } from '../features';
-import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import { captureObservabilityError, trackObservabilityEvent } from '../observability';
@@ -82,7 +82,7 @@ jest.mock('../hooks/useImageSourcePicker', () => ({
 }));
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
-  useRestaurantSelectionFlow: jest.fn(),
+  useRestaurantDiscoverySelectionFlow: jest.fn(),
 }));
 
 jest.mock('../lib/photoStaging', () => ({
@@ -146,8 +146,8 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, children),
 }));
 
-const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
-  typeof useRestaurantSelectionFlow
+const mockedUseRestaurantSelectionFlow = useRestaurantDiscoverySelectionFlow as jest.MockedFunction<
+  typeof useRestaurantDiscoverySelectionFlow
 >;
 const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
 const mockedExtractRestaurantNamesFromImage = extractRestaurantNamesFromImage as jest.MockedFunction<
@@ -203,54 +203,54 @@ describe('RestaurantDiscoveryScreen', () => {
       isOnline: true,
     } as never);
     mockedUseRestaurantSelectionFlow.mockReturnValue({
-      clearPlacesSearchState: mockClearPlacesSearchState,
-      compactSearchLabel: 'Search',
-      displayedNearbyRestaurants: [],
-      displayedSavedRestaurants: [
-        {
-          distance: null,
-          restaurant: {
-            id: 'restaurant-1',
-            name: 'Erewhon West Hollywood',
-            location: 'West Hollywood, CA',
-            cuisineType: 'Cafe',
-            userVisitCount: 1,
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: 10,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      savedSuggestions: {
+        displayedSavedRestaurants: [
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+              location: 'West Hollywood, CA',
+              cuisineType: 'Cafe',
+              userVisitCount: 1,
+            },
           },
-        },
-      ],
-      expandedSearchLabel: 'Search Food Places',
-      isGettingLocation: false,
-      isPlacesQuotaReached: false,
-      isSearchExpanded: true,
-      isSearchingNearbyRestaurants: false,
-      isSearchingRestaurants: false,
-      loadedRestaurantRecords: [],
-      locationPermissionNeedsSettings: false,
-      manualLocation: 'Tokyo',
-      menuItemsQuery: {} as never,
-      placesQueriesRemaining: 10,
-      resetLocationPermissionNeedsSettings: jest.fn(),
-      resetRestaurantSelectionFlow: jest.fn(),
-      savedEmptyDescription: 'No restaurants.',
-      savedEmptyTitle: 'No restaurants',
-      savedRestaurantRecords: [],
-      savedRestaurantsErrorMessage: null,
-      savedRestaurantsLoading: false,
-      savedRestaurantsTitle: 'Recent restaurants',
-      searchButtonDisabled: false,
-      searchByText: mockSearchByText,
-      searchErrorMessage: null,
-      searchNearby: mockSearchNearby,
-      searchQuery: 'ramen',
-      setIsSearchExpanded: mockSetIsSearchExpanded,
-      setManualLocation: jest.fn(),
-      setSearchQuery: mockSetSearchQuery,
-      shouldEnforceUsageLimitsClientSide: true,
-      shouldQuerySavedRestaurantsBySearch: false,
-      shouldShowPlacesUpgradePrompt: false,
-      showNearbyPlaces: false,
-      triggerSavedRestaurantsRefetch: jest.fn(),
-    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+        ],
+        emptyDescription: 'No restaurants.',
+        emptyTitle: 'No restaurants',
+        errorMessage: null,
+        isLoading: false,
+        refetch: jest.fn(),
+        title: 'Recent restaurants',
+      },
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: mockClearPlacesSearchState,
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [],
+        expandedLabel: 'Search Food Places',
+        isExpanded: true,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: 'Tokyo',
+        nearby: mockSearchNearby,
+        query: 'ramen',
+        searchButtonDisabled: false,
+        searchByText: mockSearchByText,
+        searchErrorMessage: null,
+        setExpanded: mockSetIsSearchExpanded,
+        setManualLocation: jest.fn(),
+        setQuery: mockSetSearchQuery,
+        showNearbyPlaces: false,
+      },
+    } as unknown as ReturnType<typeof useRestaurantDiscoverySelectionFlow>);
   });
 
   function renderScreen() {
