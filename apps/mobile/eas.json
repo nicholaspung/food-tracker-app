@@ -4,7 +4,11 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "node": "22.14.0"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
@@ -18,6 +22,7 @@
       "channel": "development"
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
       "environment": "preview",
       "ios": {
@@ -34,6 +39,7 @@
       "channel": "preview"
     },
     "production-preview": {
+      "extends": "base",
       "distribution": "internal",
       "environment": "production",
       "ios": {
@@ -50,6 +56,7 @@
       "channel": "production-preview"
     },
     "production": {
+      "extends": "base",
       "autoIncrement": true,
       "environment": "production",
       "ios": {
