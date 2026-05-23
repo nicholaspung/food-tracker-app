@@ -66,7 +66,7 @@ async function invalidateFriendRemovalQueries(
   await invalidateFriends(queryClient);
 }
 
-export async function sendFriendRequestWithOfflineSupport({
+async function sendFriendRequestWithOfflineSupport({
   beforeExecute,
   code,
   queryClient,
@@ -98,7 +98,7 @@ export async function sendFriendRequestWithOfflineSupport({
   return result;
 }
 
-export async function acceptFriendRequestWithOfflineSupport({
+async function acceptFriendRequestWithOfflineSupport({
   friend,
   queryClient,
   userId,
@@ -134,7 +134,7 @@ export async function acceptFriendRequestWithOfflineSupport({
   return result;
 }
 
-export async function removeFriendWithOfflineSupport({
+async function removeFriendWithOfflineSupport({
   friend,
   operationName,
   queryClient,

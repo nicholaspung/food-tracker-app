@@ -23,8 +23,8 @@ import {
   type VisitRestaurantWithDistance,
 } from '../../lib/visitRestaurantSearch';
 
-export const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as const;
-export const RESTAURANT_SELECTION_PAGE_SIZE = 12;
+const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as const;
+const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 export const RESTAURANT_SUGGESTIONS_LIMIT = 50;
 
 type RestaurantSearchQueryKey = readonly ['feature', 'restaurants', 'search', string, number, number];

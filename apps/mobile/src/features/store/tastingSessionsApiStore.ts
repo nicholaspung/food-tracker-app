@@ -316,19 +316,3 @@ export async function setTastingSessionStatus(
   }
   throw new Error('Unsupported tasting session status transition.');
 }
-
-export async function addTastingItem(): Promise<unknown> {
-  throw new Error('Legacy tasting item queue operations are no longer supported.');
-}
-
-export async function deleteTastingItem(): Promise<unknown> {
-  throw new Error('Legacy tasting item queue operations are no longer supported.');
-}
-
-export async function regenerateTastingInviteCode(): Promise<unknown> {
-  throw new Error('Legacy tasting invite-code operations are no longer supported.');
-}
-
-export async function submitTastingRating(): Promise<unknown> {
-  throw new Error('Legacy tasting rating queue operations are no longer supported.');
-}

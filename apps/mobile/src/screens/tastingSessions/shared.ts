@@ -77,11 +77,3 @@ export function getApprovedItemCount(session: TastingSessionRecord): number {
     .filter((restaurant) => restaurant.status === 'approved')
     .reduce((count, restaurant) => count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length, 0);
 }
-
-export function hasPendingSuggestions(session: TastingSessionRecord): boolean {
-  return session.restaurants.some(
-    (restaurant) =>
-      restaurant.status === 'pending' ||
-      (restaurant.status !== 'rejected' && (restaurant.items ?? []).some((item) => item.status === 'pending')),
-  );
-}

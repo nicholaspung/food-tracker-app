@@ -73,7 +73,7 @@ function applyFeedbackThreadUpdate(
   );
 }
 
-export async function createFeedbackWithOfflineSupport({
+async function createFeedbackWithOfflineSupport({
   description,
   queryClient,
   queuedAlert,
@@ -113,7 +113,7 @@ export async function createFeedbackWithOfflineSupport({
   return result;
 }
 
-export async function sendFeedbackMessageWithOfflineSupport({
+async function sendFeedbackMessageWithOfflineSupport({
   feedbackId,
   message,
   queryClient,

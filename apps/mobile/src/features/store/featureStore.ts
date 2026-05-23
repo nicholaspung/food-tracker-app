@@ -507,22 +507,8 @@ export {
 } from './featureStoreRuntime';
 export { getProfile, updateProfile } from './profileApiStore';
 export {
-  acceptTastingInvite,
-  completeTastingSession,
-  createTastingSession,
-  dismissTastingInvite,
   getTastingSessionById,
-  joinTastingSession,
-  kickTastingParticipant,
   listTastingSessions,
-  lockTastingSessionMembership,
-  setTastingSessionStatus,
-  setTastingMenuItemSuggestionStatus,
-  setTastingRestaurantSuggestionStatus,
-  startTastingSession,
-  submitTastingRatings,
-  suggestTastingMenuItem,
-  suggestTastingRestaurant,
 } from './tastingSessionsApiStore';
 export {
   deleteAccount,
@@ -533,15 +519,8 @@ export {
 } from './accountStore';
 export {
   MAIN_ONBOARDING_VERSION,
-  buildAddOnboardingCardDismissedState,
-  buildMainOnboardingCompletedState,
-  buildMoreOnboardingCardDismissedState,
-  completeMainOnboarding,
-  dismissAddOnboardingCard,
-  dismissMoreOnboardingCard,
   isAddOnboardingCardDismissed,
   isMoreOnboardingCardDismissed,
-  saveOptimisticMobileOnboardingState,
   type CompleteMainOnboardingInput,
   type DismissAddOnboardingCardInput,
   type DismissMoreOnboardingCardInput,
@@ -568,7 +547,6 @@ export {
   getVisitById,
   listVisitsPage,
   listVisitItemPhotos,
-  moveVisitItem,
   updateVisit,
 } from './visitsStore';
 

@@ -6,7 +6,6 @@ import type {
   FoodProductRecord,
   RestaurantRecord,
   VisitRecord,
-  VisitPhotoUploadInput,
 } from '../../features';
 import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPermissions';
 import {
@@ -25,7 +24,6 @@ import type {
   ProcessType,
   RestaurantPhotoForm,
 } from '../../features/photoProcessing/photoProcessingTypes';
-export { parseMenuItemNamesFromCsv } from '../../features/photoProcessing/menuItemCsvParsing';
 export { FREE_MONTHLY_PHOTO_LIMIT } from '../../features/photoProcessing/photoProcessingTypes';
 export type {
   DraftPhotoAsset,
@@ -354,16 +352,6 @@ export function buildDefaultRestaurantForm(
     description: '',
     notes: '',
     date: resolveDraftPhotoDetectedDateValue(photo) ?? getTodayLocalDateString(),
-  };
-}
-
-export function buildPhotoUploadInput(
-  asset: DraftPhotoAsset,
-): VisitPhotoUploadInput {
-  return {
-    uri: asset.uri,
-    name: asset.name,
-    mimeType: asset.mimeType,
   };
 }
 

@@ -37,7 +37,7 @@
     "mobile:update:production": "pnpm --filter @food-tracker/mobile update:production",
     "mobile:build:ios:preview:local": "bash scripts/mobile-eas-build-ios-preview-local.sh",
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
-    "mobile:doctor": "cd apps/mobile && npx expo-doctor --verbose",
+    "mobile:doctor": "bash scripts/mobile-doctor.sh",
     "mobile:asset-size": "node scripts/check-mobile-asset-size.mjs",
     "mobile:unused-exports": "node scripts/check-mobile-unused-exports.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
@@ -62,7 +62,7 @@
     "turbo": "^2.9.10"
   },
   "dependencies": {
-    "expo": "~55.0.24",
+    "expo": "~55.0.26",
     "react": "19.2.0",
     "react-native": "0.83.6"
   },

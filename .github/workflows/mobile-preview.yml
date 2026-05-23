@@ -83,8 +83,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify repo-pinned EAS CLI
-        run: pnpm --dir apps/mobile exec eas --version
+      - name: Verify pinned EAS CLI
+        run: pnpm --dir apps/mobile dlx eas-cli@19.0.8 --version
 
       - name: Lint mobile app
         run: pnpm mobile:lint
@@ -175,7 +175,7 @@ jobs:
       - name: Publish mobile OTA update
         if: steps.release_type.outputs.publish_mode == 'ota'
         run: |
-          pnpm --dir apps/mobile exec eas update \
+          pnpm --dir apps/mobile dlx eas-cli@19.0.8 update \
             --channel "${{ steps.release_target.outputs.ota_channel }}" \
             --environment "${{ steps.release_target.outputs.eas_environment }}" \
             --message "${{ steps.release_target.outputs.target_label }} OTA from ${GITHUB_REF_NAME} (${GITHUB_SHA::7})" \
@@ -184,7 +184,7 @@ jobs:
       - name: Trigger mobile build
         if: steps.release_type.outputs.publish_mode == 'build'
         run: |
-          pnpm --dir apps/mobile exec eas build \
+          pnpm --dir apps/mobile dlx eas-cli@19.0.8 build \
             --platform "${{ steps.build_platform.outputs.build_platform }}" \
             --profile "${{ steps.release_target.outputs.build_profile }}" \
             --non-interactive \

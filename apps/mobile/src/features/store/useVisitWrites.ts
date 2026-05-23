@@ -335,7 +335,7 @@ export async function moveVisitItemWithOfflineSupport({
   }
 }
 
-export async function convertVisitItemToFoodProductWithOfflineSupport({
+async function convertVisitItemToFoodProductWithOfflineSupport({
   itemId,
   queryClient,
   sourceVisitId,
