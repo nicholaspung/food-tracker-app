@@ -16,6 +16,7 @@ import {
 } from '../components/shared/BottomTabNavigation';
 import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
+import { trackStartupMilestone } from '../lib/startupDiagnostics';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
 import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
@@ -484,6 +485,9 @@ export function RootNavigator() {
 
     const previousRouteName = previousRouteNameRef.current;
     if (!previousRouteName) {
+      trackStartupMilestone('ROOT_NAVIGATOR_RENDERED', {
+        routeName: typedRouteName,
+      });
       activeRouteNameRef.current = typedRouteName;
       routeStartedAtRef.current = Date.now();
       trackObservabilityEvent('SCREEN_VIEW', {

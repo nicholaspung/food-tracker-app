@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { logger } from '../lib/logger';
+import { trackStartupMilestone } from '../lib/startupDiagnostics';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
 import {
   setProductAnalyticsAnonymousId,
@@ -41,6 +42,7 @@ export function AppProviders({ children }: AppProvidersProps) {
   const hasTrackedColdStartRef = useRef(false);
 
   useEffect(() => {
+    trackStartupMilestone('APP_PROVIDERS_MOUNTED');
     initializeObservability();
     void resolveProductAnalyticsAnonymousId().then(setProductAnalyticsAnonymousId).catch((error) => {
       logger.warn('[AppProviders] Failed to resolve product analytics anonymous id:', error);
@@ -69,6 +71,7 @@ export function AppProviders({ children }: AppProvidersProps) {
     let unsubscribe = () => {};
 
     const restorePersistedQueries = async () => {
+      trackStartupMilestone('QUERY_RESTORE_STARTED');
       try {
         const removedLegacyKeys = await removeLegacyQueryCache();
         trackObservabilityEvent('QUERY_CACHE_RESET_APPLIED', {
@@ -104,6 +107,10 @@ export function AppProviders({ children }: AppProvidersProps) {
       .finally(() => {
         if (isMounted) {
           setIsQueryPersistenceReady(true);
+          trackStartupMilestone('QUERY_RESTORE_READY', {
+            durationMs: Date.now() - restoreStartedAt,
+            restoreFailed,
+          });
           if (!hasTrackedColdStartRef.current) {
             hasTrackedColdStartRef.current = true;
             trackObservabilityEvent('APP_COLD_START_COMPLETED', {

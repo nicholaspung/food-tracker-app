@@ -22,6 +22,10 @@ export interface MobileEnv {
   posthogHost: string;
 }
 
+interface LoadMobileEnvOptions {
+  validateBackend?: boolean;
+}
+
 const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV,
   EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
@@ -82,6 +86,7 @@ export function resolveAppEnvironment(source?: EnvSource, currentOrigin?: string
 export function loadMobileEnv(
   source?: EnvSource,
   currentOrigin?: string,
+  options?: LoadMobileEnvOptions,
 ): MobileEnv {
   const resolvedSource = source ?? expoPublicEnv;
   const backendConfiguration = resolveMobileBackendConfiguration(resolvedSource);
@@ -119,13 +124,25 @@ export function loadMobileEnv(
     posthogHost,
   };
 
+  if (options?.validateBackend ?? true) {
+    assertSafeMobileBackendConfiguration({
+      apiBaseUrl: mobileEnv.apiBaseUrl,
+      environment: mobileEnv.environment,
+      pocketbaseUrl: mobileEnv.pocketbaseUrl,
+    });
+  }
+
+  return mobileEnv;
+}
+
+export function validateMobileEnv(mobileEnv = env): void {
   assertSafeMobileBackendConfiguration({
     apiBaseUrl: mobileEnv.apiBaseUrl,
     environment: mobileEnv.environment,
     pocketbaseUrl: mobileEnv.pocketbaseUrl,
   });
-
-  return mobileEnv;
 }
 
-export const env = loadMobileEnv();
+export const env = loadMobileEnv(undefined, undefined, {
+  validateBackend: false,
+});

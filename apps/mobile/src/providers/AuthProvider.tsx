@@ -21,6 +21,7 @@ import {
 import { pb } from '../lib/pocketbase';
 import { authStore } from '../lib/pocketbaseAuthStore';
 import { logger } from '../lib/logger';
+import { trackStartupMilestone } from '../lib/startupDiagnostics';
 import {
   clearPersistedRolePreviewSettings,
   DEFAULT_ROLE_PREVIEW_SETTINGS,
@@ -281,6 +282,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const hadPersistedToken = Boolean(pb.authStore.token);
       let hadRestoredSession = false;
       let refreshFailed = false;
+      trackStartupMilestone('AUTH_BOOTSTRAP_STARTED', {
+        hadPersistedToken,
+      });
       trackObservabilityEvent('AUTH_SESSION_RESTORE_STARTED', {
         hadPersistedToken,
         source: 'AuthProvider',
@@ -338,6 +342,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
           refreshFailed,
           source: 'AuthProvider',
         });
+        trackStartupMilestone('AUTH_BOOTSTRAP_FINISHED', {
+          durationMs: Date.now() - restoreStartedAt,
+          hadPersistedToken,
+          hasValidSession: Boolean(pb.authStore.token && getCurrentUser()),
+          refreshFailed,
+          status: 'succeeded',
+        });
       } catch (error) {
         if (hadRestoredSession || Boolean(pb.authStore.token)) {
           await resetAuthenticatedLocalState('auth_change');
@@ -358,6 +369,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setAuthError('Unable to restore session. Please sign in again.');
           captureObservabilityError(error);
         }
+        trackStartupMilestone('AUTH_BOOTSTRAP_FINISHED', {
+          durationMs: Date.now() - restoreStartedAt,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          hadPersistedToken,
+          status: 'failed',
+        });
       }
     };
 
