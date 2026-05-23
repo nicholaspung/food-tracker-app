@@ -376,13 +376,14 @@
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-Wno-incomplete-umbrella",
+					"-Wno-nullability-completeness",
 				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG -Xcc -Wno-incomplete-umbrella";
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile;
 				PRODUCT_NAME = YummyRecs;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -412,13 +413,14 @@
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-Wno-incomplete-umbrella",
+					"-Wno-nullability-completeness",
 				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella";
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile;
 				PRODUCT_NAME = YummyRecs;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -447,13 +449,14 @@
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-Wno-incomplete-umbrella",
+					"-Wno-nullability-completeness",
 				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella";
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
 				PRODUCT_BUNDLE_IDENTIFIER = com.yummyrecs.mobile.preview;
 				PRODUCT_NAME = YummyRecs;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

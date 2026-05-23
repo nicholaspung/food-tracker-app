@@ -51,6 +51,9 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       MOBILE_DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production' && 'production' || 'beta' }}
+      APP_VARIANT: preview
+      EXPO_PUBLIC_APP_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production' && 'production' || 'beta' }}
+      EXPO_NO_DOTENV: "1"
 
     steps:
       - name: Checkout repository
@@ -166,7 +169,7 @@ jobs:
 
           printf '%s\n' "$CHANGED_FILES"
 
-          # apps/mobile/app.config.js only validates environment safety and passes through app.json.
+          # apps/mobile/app.config.js controls app identity, release guards, deep links, and native config.
           # Push events must never start EAS builds. Native-affecting changes require a manual build.
           if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
             echo "publish_mode=blocked_native_change" >> "$GITHUB_OUTPUT"
@@ -180,6 +183,10 @@ jobs:
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
             echo "publish_reason=push_default_ota" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Verify mobile preview app config
+        working-directory: apps/mobile
+        run: pnpm exec expo config --json | node ../../scripts/assert-mobile-preview-config.mjs
 
       - name: Publish mobile OTA update
         if: steps.release_type.outputs.publish_mode == 'ota'

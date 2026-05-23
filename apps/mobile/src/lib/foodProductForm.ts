@@ -1,10 +1,10 @@
-import {
-  type FoodProductRecord,
-  resolveDefaultVisitVisibilityFromAuth,
-  type CreateFoodProductInput,
-  type UpdateFoodProductInput,
-  type VisitPhotoUploadInput,
-} from '../features';
+import type { FoodProductRecord } from '../features/models';
+import type {
+  CreateFoodProductInput,
+  UpdateFoodProductInput,
+  VisitPhotoUploadInput,
+} from '../features/store/featureStore';
+import { resolveDefaultVisitVisibilityFromAuth } from '../features/store/pocketbaseGateway';
 import {
   formatDateToLocalDateString,
   getTodayLocalDateString,
