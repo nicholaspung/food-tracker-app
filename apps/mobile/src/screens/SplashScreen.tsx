@@ -1,4 +1,6 @@
+import { useCallback } from 'react';
 import { ActivityIndicator, Image, View } from 'react-native';
+import * as NativeSplashScreen from 'expo-splash-screen';
 
 import { APP_NAME, BRAND_LOGO } from '../lib/branding';
 import { createThemedStyles, useTheme } from '../theme';
@@ -29,9 +31,12 @@ const useStyles = createThemedStyles((theme) => ({
 export function SplashScreen() {
   const theme = useTheme();
   const styles = useStyles();
+  const handleLayout = useCallback(() => {
+    void NativeSplashScreen.hideAsync();
+  }, []);
 
   return (
-    <Screen background="surface" padded={false} testID="splash-screen">
+    <Screen background="surface" onLayout={handleLayout} padded={false} testID="splash-screen">
       <View style={styles.container}>
         <Image
           accessibilityIgnoresInvertColors

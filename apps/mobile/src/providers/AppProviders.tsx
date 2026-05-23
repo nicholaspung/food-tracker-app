@@ -27,6 +27,7 @@ const queryClient = new QueryClient({
   },
 });
 const PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY = 'analytics.product.anonymousId';
+const QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS = 4000;
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -88,7 +89,11 @@ export function AppProviders({ children }: AppProvidersProps) {
       });
 
       unsubscribe = nextUnsubscribe;
-      await restorePromise;
+      await withTimeout(
+        restorePromise,
+        QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS,
+        'Persisted React Query cache restore timed out.',
+      );
     };
 
     void restorePersistedQueries()
@@ -204,4 +209,23 @@ async function resolveProductAnalyticsAnonymousId(): Promise<string> {
   const nextAnonymousId = `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
   await AsyncStorage.setItem(PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY, nextAnonymousId);
   return nextAnonymousId;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }

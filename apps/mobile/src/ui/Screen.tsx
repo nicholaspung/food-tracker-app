@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type {
   NativeScrollEvent,
   NativeSyntheticEvent,
+  ViewProps,
   StyleProp,
   ViewStyle,
 } from 'react-native';
@@ -28,6 +29,7 @@ interface ScreenProps {
   scrollUnderlayColor?: string;
   scrollUnderlayTopInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onLayout?: ViewProps['onLayout'];
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   scrollEventThrottle?: number;
@@ -70,6 +72,7 @@ export function Screen({
   scrollUnderlayColor,
   scrollUnderlayTopInset = 0,
   onScroll,
+  onLayout,
   onRefresh,
   refreshing = false,
   scrollEventThrottle = 16,
@@ -112,7 +115,7 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView edges={resolvedEdges} style={[styles.safeArea, style]} testID={testID}>
+    <SafeAreaView edges={resolvedEdges} onLayout={onLayout} style={[styles.safeArea, style]} testID={testID}>
       {scroll && scrollUnderlayColor ? (
         <View
           pointerEvents="none"

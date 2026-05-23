@@ -53,6 +53,7 @@ type RolePreviewSettingKey = keyof RolePreviewSettings;
 
 export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
 const AUTH_VERIFICATION_STATUS_REFRESH_INTERVAL_MS = 15_000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 6_000;
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -286,9 +287,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       try {
-        await authStore.waitUntilReady();
+        await withTimeout(
+          authStore.waitUntilReady(),
+          AUTH_BOOTSTRAP_TIMEOUT_MS,
+          'Auth storage restore timed out.',
+        );
         hadRestoredSession = Boolean(pb.authStore.token);
-        const loadedRolePreviewSettings = await loadRolePreviewSettings();
+        const loadedRolePreviewSettings = await withTimeout(
+          loadRolePreviewSettings(),
+          AUTH_BOOTSTRAP_TIMEOUT_MS,
+          'Role preview settings restore timed out.',
+        );
 
         if (isMounted) {
           setRolePreviewSettings(loadedRolePreviewSettings);
@@ -300,7 +309,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         if (pb.authStore.isValid) {
           try {
-            await pb.collection('users').authRefresh();
+            await withTimeout(
+              pb.collection('users').authRefresh(),
+              AUTH_BOOTSTRAP_TIMEOUT_MS,
+              'Auth session refresh timed out.',
+            );
           } catch (refreshError) {
             refreshFailed = true;
             if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
@@ -665,4 +678,23 @@ export function useAuth(): AuthContextValue {
   }
 
   return context;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }
