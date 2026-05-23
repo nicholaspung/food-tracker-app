@@ -92,7 +92,8 @@ jobs:
           echo "NODE_PATH=${EXPO_PKG_DIR}/node_modules:${EXPO_PARENT_DIR}:${WORKSPACE_PNPM_ROOT}${NODE_PATH:+:${NODE_PATH}}" >> "$GITHUB_ENV"
 
       - name: Verify pinned EAS CLI
-        run: pnpm --dir apps/mobile dlx eas-cli@19.0.8 --version
+        working-directory: apps/mobile
+        run: pnpm dlx eas-cli@19.0.8 --version
 
       - name: Lint mobile app
         run: pnpm mobile:lint
@@ -182,8 +183,9 @@ jobs:
 
       - name: Publish mobile OTA update
         if: steps.release_type.outputs.publish_mode == 'ota'
+        working-directory: apps/mobile
         run: |
-          pnpm --dir apps/mobile dlx eas-cli@19.0.8 update \
+          pnpm dlx eas-cli@19.0.8 update \
             --channel "${{ steps.release_target.outputs.ota_channel }}" \
             --environment "${{ steps.release_target.outputs.eas_environment }}" \
             --message "${{ steps.release_target.outputs.target_label }} OTA from ${GITHUB_REF_NAME} (${GITHUB_SHA::7})" \
@@ -191,8 +193,9 @@ jobs:
 
       - name: Trigger mobile build
         if: steps.release_type.outputs.publish_mode == 'build'
+        working-directory: apps/mobile
         run: |
-          pnpm --dir apps/mobile dlx eas-cli@19.0.8 build \
+          pnpm dlx eas-cli@19.0.8 build \
             --platform "${{ steps.build_platform.outputs.build_platform }}" \
             --profile "${{ steps.release_target.outputs.build_profile }}" \
             --non-interactive \
@@ -202,6 +205,12 @@ jobs:
         if: always()
         shell: bash
         run: |
+          if [ "${{ job.status }}" != "success" ]; then
+            echo "Mobile preview workflow did not complete." >> "$GITHUB_STEP_SUMMARY"
+            echo "Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           case "${{ steps.release_type.outputs.publish_reason }}" in
             manual_forced_build)
               echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because manual dispatch requested a preview build." >> "$GITHUB_STEP_SUMMARY"

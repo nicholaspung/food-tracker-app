@@ -3,6 +3,11 @@ name: Deploy to Beta/Production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "apps/mobile/**"
+      - "app.config.js"
+      - "metro.config.js"
+      - ".github/workflows/mobile-*.yml"
   workflow_dispatch:
     inputs:
       environment:

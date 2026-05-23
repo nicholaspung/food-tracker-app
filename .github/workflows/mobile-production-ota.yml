@@ -74,7 +74,8 @@ jobs:
           echo "NODE_PATH=${EXPO_PKG_DIR}/node_modules:${EXPO_PARENT_DIR}:${WORKSPACE_PNPM_ROOT}${NODE_PATH:+:${NODE_PATH}}" >> "$GITHUB_ENV"
 
       - name: Verify pinned EAS CLI
-        run: pnpm --dir apps/mobile dlx eas-cli@19.0.8 --version
+        working-directory: apps/mobile
+        run: pnpm dlx eas-cli@19.0.8 --version
 
       - name: Lint mobile app
         run: pnpm mobile:lint
@@ -92,11 +93,12 @@ jobs:
         run: pnpm mobile:doctor
 
       - name: Publish production OTA update
+        working-directory: apps/mobile
         env:
           RELEASE_MESSAGE: ${{ github.event.inputs.release_message }}
           RELEASE_PLATFORM: ${{ github.event.inputs.platform }}
         run: |
-          pnpm --dir apps/mobile dlx eas-cli@19.0.8 update \
+          pnpm dlx eas-cli@19.0.8 update \
             --channel production \
             --environment production \
             --platform "$RELEASE_PLATFORM" \
