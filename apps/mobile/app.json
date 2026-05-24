@@ -76,7 +76,6 @@
       "expo-localization",
       "@react-native-community/datetimepicker",
       "expo-sqlite",
-      "expo-asset",
       "posthog-react-native/expo",
       "expo-font"
     ],

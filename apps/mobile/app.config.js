@@ -110,6 +110,22 @@ function resolveMobileAppIdentity(source) {
   };
 }
 
+function resolveMobileRuntimeVersion(config, source) {
+  const explicitRuntimeVersion = readOptionalEnvValue(source?.MOBILE_RUNTIME_VERSION);
+  if (explicitRuntimeVersion) {
+    return explicitRuntimeVersion;
+  }
+
+  const appVersion = readOptionalEnvValue(config?.version) ?? '1.0.0';
+  const variant = resolveConfiguredAppVariant(source);
+
+  if (variant === 'preview') {
+    return `${appVersion}-preview-embedded-1`;
+  }
+
+  return appVersion;
+}
+
 function isLocalDevelopmentHostname(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
 }
@@ -221,19 +237,32 @@ function assertSafeMobileReleaseBuildBackendConfiguration(source, options) {
 module.exports = ({ config }) => {
   assertSafeMobileReleaseBuildBackendConfiguration(process.env);
   const appIdentity = resolveMobileAppIdentity(process.env);
+  const runtimeVersion = resolveMobileRuntimeVersion(config, process.env);
+  const appVariant = resolveConfiguredAppVariant(process.env);
   const authLinkHosts =
     appIdentity.scheme === 'yummyrecs-preview'
       ? ['beta.app.yummyrecs.com']
       : ['app.yummyrecs.com'];
   const authLinkPathPrefixes = ['/reset-password', '/verify-email', '/signup'];
+  const updatesConfig =
+    appVariant === 'preview'
+      ? {
+          ...config.updates,
+          checkAutomatically: 'ON_ERROR_RECOVERY',
+          fallbackToCacheTimeout: 0,
+        }
+      : config.updates;
 
   return {
     ...config,
     name: appIdentity.name,
     scheme: appIdentity.scheme,
+    runtimeVersion,
+    updates: updatesConfig,
     ios: {
       ...config.ios,
       bundleIdentifier: appIdentity.bundleIdentifier,
+      runtimeVersion,
       associatedDomains: authLinkHosts.map((host) => `applinks:${host}`),
       infoPlist: {
         ...config.ios?.infoPlist,
@@ -244,6 +273,7 @@ module.exports = ({ config }) => {
     android: {
       ...config.android,
       package: appIdentity.androidPackage,
+      runtimeVersion,
       intentFilters: [
         ...(config.android?.intentFilters ?? []),
         {

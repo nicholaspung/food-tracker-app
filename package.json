@@ -62,7 +62,7 @@
     "turbo": "^2.9.10"
   },
   "dependencies": {
-    "expo": "~55.0.26",
+    "expo": "55.0.24",
     "react": "19.2.0",
     "react-native": "0.83.6"
   },
@@ -87,6 +87,13 @@
     },
     "patchedDependencies": {
       "expo-sqlite@55.0.16": "patches/expo-sqlite@55.0.16.patch"
+    },
+    "packageExtensions": {
+      "@react-native-community/datetimepicker@8.6.0": {
+        "dependencies": {
+          "@expo/config-plugins": "55.0.10"
+        }
+      }
     }
   }
 }
