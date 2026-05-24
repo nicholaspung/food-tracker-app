@@ -600,6 +600,7 @@ describe('tab root content sections', () => {
       }),
     );
     expect(renderer.root.findByProps({ testID: 'misc-screen-content-section' })).toBeTruthy();
+    expect(renderer.root.findByProps({ testID: 'feature-group-tastings' })).toBeTruthy();
   });
 
   it('keeps the Profile tab header fixed and uses a keyboard-aware orange body scroller', async () => {

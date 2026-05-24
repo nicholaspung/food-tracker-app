@@ -163,6 +163,23 @@ describe('MiscScreen More feature onboarding routing', () => {
     expect(renderer.root.findAllByProps({ testID: 'more-onboarding-split-bill-card' })).toHaveLength(0);
   });
 
+  it('shows Group Tastings to non-admin users without a beta badge', async () => {
+    const renderer = await renderMiscScreen();
+
+    expect(findFeatureRow(renderer, 'feature-group-tastings')).toBeTruthy();
+    expect(renderer.root.findByProps({ title: 'Group Tastings' }).props.titleAccessory).toBeUndefined();
+  });
+
+  it('routes Group Tastings directly to tasting sessions', async () => {
+    const renderer = await renderMiscScreen();
+
+    await act(async () => {
+      findFeatureRow(renderer, 'feature-group-tastings').props.onPress();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
   it.each([
     ['feature-restaurant-lists', 'lists'],
     ['feature-bill-splitter', 'splitBill'],

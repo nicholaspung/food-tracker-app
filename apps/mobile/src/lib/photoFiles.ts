@@ -1,7 +1,9 @@
 export interface LocalPhotoAsset {
   uri: string;
   fileName?: string | null;
+  height?: number | null;
   mimeType?: string | null;
+  width?: number | null;
 }
 
 interface BuildLocalPhotoFileNameOptions {

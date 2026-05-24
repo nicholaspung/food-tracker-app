@@ -96,13 +96,20 @@ function MenuPhotosTable({ rows }: { rows: MenuImageInventoryRow[] }) {
                   <tr key={row.id}>
                     <td>
                       {thumbUrl ? (
-                        <a href={fullUrl} rel="noreferrer" target="_blank">
-                          <img
-                            alt={`Menu upload ${row.id}`}
-                            className="inventory-thumbnail"
-                            src={thumbUrl}
-                          />
-                        </a>
+                        <div className="inventory-primary-cell">
+                          <Link to={`/menu-inventory/menu-images/${row.id}`}>
+                            <img
+                              alt={`Menu upload ${row.id}`}
+                              className="inventory-thumbnail"
+                              src={thumbUrl}
+                            />
+                          </Link>
+                          {fullUrl ? (
+                            <a className="route-link" href={fullUrl} rel="noreferrer" target="_blank">
+                              Open image
+                            </a>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted">No image file</span>
                       )}

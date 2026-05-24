@@ -5,18 +5,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/jpeg"
+	_ "image/png"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/disintegration/imaging"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/jdeng/goheif"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
+	_ "golang.org/x/image/webp"
 	"google.golang.org/api/option"
 
 	"myapp/lib"
@@ -25,6 +30,8 @@ import (
 const (
 	geminiMenuModel         = "gemini-2.5-flash"
 	geminiMenuFallbackModel = ""
+	storedMenuImageMaxEdge  = 2048
+	storedMenuImageQuality  = 80
 )
 
 var providerAPIKeyPattern = regexp.MustCompile(`(?i)([?&]key=)[^&\s"]+`)
@@ -1360,7 +1367,12 @@ func saveMenuScanImage(
 		return savedMenuImageResult{}, err
 	}
 
-	file, err := filesystem.NewFileFromBytes(imageData, fileName)
+	storedImageData, storedFileName, err := prepareStoredMenuImage(imageData, fileName)
+	if err != nil {
+		return savedMenuImageResult{}, err
+	}
+
+	file, err := filesystem.NewFileFromBytes(storedImageData, storedFileName)
 	if err != nil {
 		return savedMenuImageResult{}, err
 	}
@@ -1380,6 +1392,52 @@ func saveMenuScanImage(
 	}
 
 	return savedMenuImageResult{ID: record.Id}, nil
+}
+
+func prepareStoredMenuImage(imageData []byte, fileName string) ([]byte, string, error) {
+	decodedImage, _, err := image.Decode(bytes.NewReader(imageData))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decode menu image for storage: %w", err)
+	}
+
+	bounds := decodedImage.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return nil, "", fmt.Errorf("menu image has invalid dimensions")
+	}
+
+	imageToStore := decodedImage
+	if longEdge := max(width, height); longEdge > storedMenuImageMaxEdge {
+		if width >= height {
+			imageToStore = imaging.Resize(decodedImage, storedMenuImageMaxEdge, 0, imaging.Lanczos)
+		} else {
+			imageToStore = imaging.Resize(decodedImage, 0, storedMenuImageMaxEdge, imaging.Lanczos)
+		}
+	}
+
+	var buffer bytes.Buffer
+	if err := jpeg.Encode(&buffer, imageToStore, &jpeg.Options{Quality: storedMenuImageQuality}); err != nil {
+		return nil, "", fmt.Errorf("failed to encode menu image for storage: %w", err)
+	}
+
+	return buffer.Bytes(), normalizeStoredMenuImageFileName(fileName), nil
+}
+
+func normalizeStoredMenuImageFileName(fileName string) string {
+	trimmedFileName := strings.TrimSpace(fileName)
+	if trimmedFileName == "" {
+		return "menu-image.jpg"
+	}
+
+	baseName := filepath.Base(trimmedFileName)
+	extension := filepath.Ext(baseName)
+	nameWithoutExtension := strings.TrimSpace(strings.TrimSuffix(baseName, extension))
+	if nameWithoutExtension == "" || nameWithoutExtension == "." {
+		return "menu-image.jpg"
+	}
+
+	return nameWithoutExtension + ".jpg"
 }
 
 type usageReservation struct {

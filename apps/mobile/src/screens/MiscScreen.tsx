@@ -8,7 +8,6 @@ import {
   OptionList,
   OptionListRow,
   ScreenContentSection,
-  StatusPill,
   TabBrandHeader,
   TabRootScreenScaffold,
   TabSectionCard,
@@ -158,7 +157,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
-  const isAdmin = Boolean(user?.isAdmin);
   const [expandedTips, setExpandedTips] = useState(false);
 
   const sectionColors = {
@@ -312,35 +310,32 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
             </OptionList>
           </TabSectionCard>
 
-          {isAdmin ? (
-            <TabSectionCard
-              description="Organize group food tasting sessions and rate together"
-              descriptionStyle={styles.sectionDescription}
-              style={styles.sectionCard}
-              title="Group Tastings"
-              titleAccessory={<StatusPill label="Beta" tone="brand" uppercase />}
-              titleLeading={<Ionicons color={sectionColors.purple} name="people-outline" size={20} />}
-            >
-              <OptionList style={styles.optionList}>
-                {groupTastingsActions.map((action, index) => (
-                  <OptionListRow
-                    isLast={index === groupTastingsActions.length - 1}
-                    key={action.title}
-                    leading={
-                      <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                        <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                      </View>
-                    }
-                    onPress={action.onPress}
-                    style={styles.featureRow}
-                    subtitle={action.description}
-                    testID={action.testID}
-                    title={action.title}
-                  />
-                ))}
-              </OptionList>
-            </TabSectionCard>
-          ) : null}
+          <TabSectionCard
+            description="Organize group food tasting sessions and rate together"
+            descriptionStyle={styles.sectionDescription}
+            style={styles.sectionCard}
+            title="Group Tastings"
+            titleLeading={<Ionicons color={sectionColors.purple} name="people-outline" size={20} />}
+          >
+            <OptionList style={styles.optionList}>
+              {groupTastingsActions.map((action, index) => (
+                <OptionListRow
+                  isLast={index === groupTastingsActions.length - 1}
+                  key={action.title}
+                  leading={
+                    <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
+                      <Ionicons color={action.iconColor} name={action.icon} size={18} />
+                    </View>
+                  }
+                  onPress={action.onPress}
+                  style={styles.featureRow}
+                  subtitle={action.description}
+                  testID={action.testID}
+                  title={action.title}
+                />
+              ))}
+            </OptionList>
+          </TabSectionCard>
 
           <TabSectionCard
             description="Split bills and calculate tips quickly"

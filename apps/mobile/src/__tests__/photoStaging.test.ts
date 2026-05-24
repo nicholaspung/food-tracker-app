@@ -44,6 +44,24 @@ jest.mock('expo-file-system', () => {
   };
 });
 
+const mockManipulateAsync = jest.fn(async (
+  _uri?: unknown,
+  _actions?: unknown,
+  _saveOptions?: unknown,
+) => ({
+  height: 1200,
+  uri: 'file:///manipulated/photo.jpg',
+  width: 1600,
+}));
+
+jest.mock('expo-image-manipulator', () => ({
+  manipulateAsync: (uri: unknown, actions: unknown, saveOptions: unknown) =>
+    mockManipulateAsync(uri, actions, saveOptions),
+  SaveFormat: {
+    JPEG: 'jpeg',
+  },
+}));
+
 import {
   cleanupStagedPhotoFiles,
   stageLocalPhotoFile,
@@ -58,6 +76,12 @@ describe('photoStaging', () => {
   beforeEach(() => {
     jest.spyOn(Date, 'now').mockReturnValue(123456789);
     jest.spyOn(Math, 'random').mockReturnValue(0.123456789);
+    mockManipulateAsync.mockClear();
+    mockManipulateAsync.mockResolvedValue({
+      height: 1200,
+      uri: 'file:///manipulated/photo.jpg',
+      width: 1600,
+    });
     mockedFile.copiedTo.length = 0;
     mockedFile.deleted.length = 0;
   });
@@ -66,11 +90,13 @@ describe('photoStaging', () => {
     jest.restoreAllMocks();
   });
 
-  it('stages a local photo into app-owned document storage', async () => {
+  it('stages a resized jpeg photo into app-owned document storage', async () => {
     const staged = await stageLocalPhotoFile({
       uri: 'file:///picker/photo.jpg',
       fileName: 'photo.jpg',
+      height: 3024,
       mimeType: 'image/jpeg',
+      width: 4032,
     });
 
     expect(staged).toEqual({
@@ -78,12 +104,70 @@ describe('photoStaging', () => {
       name: 'photo.jpg',
       mimeType: 'image/jpeg',
     });
+    expect(mockManipulateAsync).toHaveBeenCalledWith(
+      'file:///picker/photo.jpg',
+      [{ resize: { width: 1600 } }],
+      {
+        compress: 0.78,
+        format: 'jpeg',
+      },
+    );
     expect(mockedFile.copiedTo).toEqual([
       'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-photo.jpg',
     ]);
+    expect(mockedFile.deleted).toEqual(['file:///manipulated/photo.jpg']);
   });
 
-  it('preserves fallback name and mime inference', async () => {
+  it('uses custom resize and jpeg options', async () => {
+    const staged = await stageLocalPhotoFile(
+      {
+        uri: 'file:///picker/menu.png',
+        fileName: 'menu.png',
+        height: 4096,
+        mimeType: 'image/png',
+        width: 2048,
+      },
+      {
+        jpegQuality: 0.82,
+        maxLongEdge: 2048,
+      },
+    );
+
+    expect(staged).toEqual({
+      uri: 'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-menu.jpg',
+      name: 'menu.jpg',
+      mimeType: 'image/jpeg',
+    });
+    expect(mockManipulateAsync).toHaveBeenCalledWith(
+      'file:///picker/menu.png',
+      [{ resize: { height: 2048 } }],
+      {
+        compress: 0.82,
+        format: 'jpeg',
+      },
+    );
+  });
+
+  it('compresses without resize when the photo is already below the max edge', async () => {
+    await stageLocalPhotoFile({
+      uri: 'file:///picker/small.jpg',
+      fileName: 'small.jpg',
+      height: 900,
+      mimeType: 'image/jpeg',
+      width: 1200,
+    });
+
+    expect(mockManipulateAsync).toHaveBeenCalledWith(
+      'file:///picker/small.jpg',
+      [],
+      {
+        compress: 0.78,
+        format: 'jpeg',
+      },
+    );
+  });
+
+  it('preserves fallback name and normalizes mime type to jpeg', async () => {
     const staged = await stageLocalPhotoFile(
       {
         uri: 'file:///picker/no-extension',
@@ -99,6 +183,21 @@ describe('photoStaging', () => {
 
   it('returns null for an empty uri', async () => {
     await expect(stageLocalPhotoFile({ uri: '   ' })).resolves.toBeNull();
+    expect(mockManipulateAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns null when manipulation fails', async () => {
+    mockManipulateAsync.mockRejectedValueOnce(new Error('failed to manipulate'));
+
+    await expect(
+      stageLocalPhotoFile({
+        uri: 'file:///picker/photo.jpg',
+        fileName: 'photo.jpg',
+        mimeType: 'image/jpeg',
+      }),
+    ).resolves.toBeNull();
+
+    expect(mockedFile.copiedTo).toEqual([]);
   });
 
   it('cleans staged files best effort', async () => {

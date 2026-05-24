@@ -80,6 +80,13 @@ export interface RestaurantInventoryDetailResponse {
   menuImages: MenuImageInventoryRow[];
 }
 
+export interface MenuImageInventoryDetailResponse {
+  menuImage: MenuImageInventoryRow;
+  restaurant: RestaurantInventoryRow | null;
+  attachedMenuItems: MenuItemInventoryRow[];
+  unattachedRestaurantMenuItems: MenuItemInventoryRow[];
+}
+
 type MenuInventoryResponseForType<T extends MenuInventoryType> =
   T extends 'restaurants'
     ? AdminMenuInventoryResponse<RestaurantInventoryRow>
@@ -132,5 +139,33 @@ export async function getAdminRestaurantInventoryDetail(
     );
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not load restaurant inventory detail.'));
+  }
+}
+
+export async function getAdminMenuImageInventoryDetail(
+  imageId: string,
+): Promise<MenuImageInventoryDetailResponse> {
+  try {
+    return await pb.send<MenuImageInventoryDetailResponse>(
+      `/api/admin/menu-inventory/menu-images/${encodeURIComponent(imageId)}`,
+      {},
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load menu photo inventory detail.'));
+  }
+}
+
+export async function updateAdminMenuItem(
+  itemId: string,
+  payload: {
+    name: string;
+    visibility: 'private' | 'friends' | 'public';
+    sourceImage?: string | null;
+  },
+): Promise<MenuItemInventoryRow> {
+  try {
+    return await pb.collection('menu_items').update<MenuItemInventoryRow>(itemId, payload);
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update menu item.'));
   }
 }

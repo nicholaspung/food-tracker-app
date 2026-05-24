@@ -126,6 +126,29 @@ func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, result)
 	})
 
+	se.Router.GET("/api/admin/menu-inventory/menu-images/{imageId}", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		imageID := strings.TrimSpace(e.Request.PathValue("imageId"))
+		if imageID == "" {
+			return apis.NewBadRequestError("imageId is required", nil)
+		}
+
+		result, err := loadAdminMenuImageInventoryDetail(app, imageID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return apis.NewNotFoundError("menu image was not found", err)
+			}
+
+			log.Printf("Admin menu image inventory detail query failed for image=%q: %v", imageID, err)
+			return apis.NewApiError(500, "failed to load menu image inventory detail", err)
+		}
+
+		return e.JSON(200, result)
+	})
+
 	se.Router.GET("/api/admin/menu-inventory", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {
 			return err
@@ -285,6 +308,159 @@ func loadAdminRestaurantInventoryDetail(app core.App, restaurantID string) (map[
 		"menuItems":  serializeAdminMenuItemInventoryRows(menuItems),
 		"menuImages": serializeAdminMenuImageInventoryRows(menuImages),
 	}, nil
+}
+
+func loadAdminMenuImageInventoryDetail(app core.App, imageID string) (map[string]any, error) {
+	menuImage, err := loadAdminMenuImageInventoryRowByID(app, imageID)
+	if err != nil {
+		return nil, err
+	}
+
+	var restaurant any
+	restaurantID := strings.TrimSpace(menuImage.Restaurant)
+	if restaurantID != "" {
+		restaurantRow, err := loadAdminRestaurantInventoryRowByID(app, restaurantID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return nil, err
+			}
+		} else {
+			restaurant = serializeAdminRestaurantInventoryRow(restaurantRow)
+		}
+	}
+
+	attachedMenuItems, err := loadAdminMenuImageAttachedMenuItemRows(app, imageID)
+	if err != nil {
+		return nil, err
+	}
+
+	unattachedRestaurantMenuItems := []adminMenuInventoryMenuItemRow{}
+	if restaurantID != "" {
+		unattachedRestaurantMenuItems, err = loadAdminMenuImageUnattachedRestaurantMenuItemRows(app, restaurantID, imageID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return map[string]any{
+		"menuImage":                     serializeAdminMenuImageInventoryRow(menuImage),
+		"restaurant":                    restaurant,
+		"attachedMenuItems":             serializeAdminMenuItemInventoryRows(attachedMenuItems),
+		"unattachedRestaurantMenuItems": serializeAdminMenuItemInventoryRows(unattachedRestaurantMenuItems),
+	}, nil
+}
+
+func loadAdminMenuImageInventoryRowByID(app core.App, imageID string) (adminMenuInventoryMenuImageRow, error) {
+	row := adminMenuInventoryMenuImageRow{}
+	if err := app.DB().NewQuery(`
+		SELECT
+			menu_images.id AS [[id]],
+			COALESCE(menu_images.image, '') AS [[image]],
+			COALESCE(menu_images.restaurant, '') AS [[restaurant]],
+			COALESCE(restaurants.name, '') AS [[restaurantName]],
+			COALESCE(restaurants.location, '') AS [[restaurantLocation]],
+			COALESCE(menu_images.uploadedBy, '') AS [[uploadedBy]],
+			COALESCE(menu_images.created, '') AS [[created]],
+			COALESCE(menu_images.updated, '') AS [[updated]],
+			COALESCE(uploader.id, '') AS [[uploaderId]],
+			COALESCE(uploader.email, '') AS [[uploaderEmail]],
+			COALESCE(uploader.name, '') AS [[uploaderName]],
+			COALESCE(uploader.isAdmin, 0) AS [[uploaderIsAdmin]],
+			COALESCE(uploader.isSubscriber, 0) AS [[uploaderIsSubscriber]],
+			COALESCE(uploader.isBetaUser, 0) AS [[uploaderIsBetaUser]],
+			COALESCE(uploader.created, '') AS [[uploaderCreated]],
+			COALESCE(uploader.updated, '') AS [[uploaderUpdated]]
+		FROM menu_images
+		LEFT JOIN restaurants ON restaurants.id = menu_images.restaurant
+		LEFT JOIN users uploader ON uploader.id = menu_images.uploadedBy
+		WHERE menu_images.id = {:imageId}
+	`).Bind(dbx.Params{
+		"imageId": imageID,
+	}).One(&row); err != nil {
+		return adminMenuInventoryMenuImageRow{}, err
+	}
+
+	return row, nil
+}
+
+func loadAdminMenuImageAttachedMenuItemRows(app core.App, imageID string) ([]adminMenuInventoryMenuItemRow, error) {
+	rows := []adminMenuInventoryMenuItemRow{}
+	if err := app.DB().NewQuery(`
+		SELECT
+			menu_items.id AS [[id]],
+			COALESCE(menu_items.name, '') AS [[name]],
+			COALESCE(menu_items.restaurant, '') AS [[restaurant]],
+			COALESCE(restaurants.name, '') AS [[restaurantName]],
+			COALESCE(restaurants.location, '') AS [[restaurantLocation]],
+			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
+			COALESCE(source.image, '') AS [[sourceImageFile]],
+			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
+			COALESCE(menu_items.created, '') AS [[created]],
+			COALESCE(menu_items.updated, '') AS [[updated]],
+			COALESCE(menu_items.createdBy, '') AS [[createdBy]],
+			COALESCE(creator.id, '') AS [[creatorId]],
+			COALESCE(creator.email, '') AS [[creatorEmail]],
+			COALESCE(creator.name, '') AS [[creatorName]],
+			COALESCE(creator.isAdmin, 0) AS [[creatorIsAdmin]],
+			COALESCE(creator.isSubscriber, 0) AS [[creatorIsSubscriber]],
+			COALESCE(creator.isBetaUser, 0) AS [[creatorIsBetaUser]],
+			COALESCE(creator.created, '') AS [[creatorCreated]],
+			COALESCE(creator.updated, '') AS [[creatorUpdated]]
+		FROM menu_items
+		LEFT JOIN restaurants ON restaurants.id = menu_items.restaurant
+		LEFT JOIN users creator ON creator.id = menu_items.createdBy
+		LEFT JOIN menu_images source ON source.id = menu_items.sourceImage
+		WHERE menu_items.sourceImage = {:imageId}
+		ORDER BY menu_items.name ASC, menu_items.created DESC
+	`).Bind(dbx.Params{
+		"imageId": imageID,
+	}).All(&rows); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
+func loadAdminMenuImageUnattachedRestaurantMenuItemRows(app core.App, restaurantID string, imageID string) ([]adminMenuInventoryMenuItemRow, error) {
+	rows := []adminMenuInventoryMenuItemRow{}
+	if err := app.DB().NewQuery(`
+		SELECT
+			menu_items.id AS [[id]],
+			COALESCE(menu_items.name, '') AS [[name]],
+			COALESCE(menu_items.restaurant, '') AS [[restaurant]],
+			COALESCE(restaurants.name, '') AS [[restaurantName]],
+			COALESCE(restaurants.location, '') AS [[restaurantLocation]],
+			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
+			COALESCE(source.image, '') AS [[sourceImageFile]],
+			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
+			COALESCE(menu_items.created, '') AS [[created]],
+			COALESCE(menu_items.updated, '') AS [[updated]],
+			COALESCE(menu_items.createdBy, '') AS [[createdBy]],
+			COALESCE(creator.id, '') AS [[creatorId]],
+			COALESCE(creator.email, '') AS [[creatorEmail]],
+			COALESCE(creator.name, '') AS [[creatorName]],
+			COALESCE(creator.isAdmin, 0) AS [[creatorIsAdmin]],
+			COALESCE(creator.isSubscriber, 0) AS [[creatorIsSubscriber]],
+			COALESCE(creator.isBetaUser, 0) AS [[creatorIsBetaUser]],
+			COALESCE(creator.created, '') AS [[creatorCreated]],
+			COALESCE(creator.updated, '') AS [[creatorUpdated]]
+		FROM menu_items
+		LEFT JOIN restaurants ON restaurants.id = menu_items.restaurant
+		LEFT JOIN users creator ON creator.id = menu_items.createdBy
+		LEFT JOIN menu_images source ON source.id = menu_items.sourceImage
+		WHERE menu_items.restaurant = {:restaurantId}
+			AND COALESCE(menu_items.sourceImage, '') != {:imageId}
+		ORDER BY menu_items.name ASC, menu_items.created DESC
+	`).Bind(dbx.Params{
+		"restaurantId": restaurantID,
+		"imageId":      imageID,
+	}).All(&rows); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
 
 func loadAdminRestaurantInventoryRowByID(app core.App, restaurantID string) (adminMenuInventoryRestaurantRow, error) {

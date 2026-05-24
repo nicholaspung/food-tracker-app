@@ -69,6 +69,13 @@ type adminRestaurantInventoryDetailResponse struct {
 	Restaurant adminMenuInventoryRestaurant  `json:"restaurant"`
 }
 
+type adminMenuImageInventoryDetailResponse struct {
+	AttachedMenuItems             []adminMenuInventoryMenuItem  `json:"attachedMenuItems"`
+	MenuImage                     adminMenuInventoryMenuImage   `json:"menuImage"`
+	Restaurant                    *adminMenuInventoryRestaurant `json:"restaurant"`
+	UnattachedRestaurantMenuItems []adminMenuInventoryMenuItem  `json:"unattachedRestaurantMenuItems"`
+}
+
 func loadAdminMenuInventoryResponse[T any](
 	t *testing.T,
 	server *preparedServer,
@@ -101,6 +108,14 @@ func findAdminMenuInventoryRestaurant(
 	}
 
 	return adminMenuInventoryRestaurant{}, false
+}
+
+func adminMenuInventoryItemIDs(rows []adminMenuInventoryMenuItem) map[string]bool {
+	ids := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		ids[row.ID] = true
+	}
+	return ids
 }
 
 func TestAdminMenuInventoryRejectsNonAdmin(t *testing.T) {
@@ -381,6 +396,166 @@ func TestAdminMenuInventoryRestaurantDetailRejectsNonAdmin(t *testing.T) {
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAdminMenuInventoryMenuImageDetailRejectsNonAdmin(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	owner, userToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Photo Detail Private",
+		"location":   "San Francisco, CA",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+	imageID := insertMenuImageRowRaw(t, server.app, restaurant.Id, owner.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory/menu-images/"+imageID,
+		userToken,
+		"",
+	)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAdminMenuInventoryMenuImageDetailIncludesAttachedAndUnattachedItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	creator.Set("email", "image.detail@example.com")
+	creator.Set("name", "Image Detail Creator")
+	if err := server.app.Save(creator); err != nil {
+		t.Fatalf("failed to update creator: %v", err)
+	}
+
+	otherCreator, _ := createAuthUser(t, server.app, false, false)
+	otherCreator.Set("email", "image.other@example.com")
+	if err := server.app.Save(otherCreator); err != nil {
+		t.Fatalf("failed to update other creator: %v", err)
+	}
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Photo Detail Noodles",
+		"location":    "Oakland, CA",
+		"createdBy":   creator.Id,
+		"visibility":  "public",
+		"cuisineType": "Noodles",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Photo Detail",
+		"location":   "Seattle, WA",
+		"createdBy":  otherCreator.Id,
+		"visibility": "public",
+	})
+
+	imageID := insertMenuImageRowRaw(t, server.app, restaurant.Id, creator.Id)
+	otherSameRestaurantImageID := insertMenuImageRowRaw(t, server.app, restaurant.Id, creator.Id)
+	otherRestaurantImageID := insertMenuImageRowRaw(t, server.app, otherRestaurant.Id, otherCreator.Id)
+
+	attachedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":        "Attached Ramen",
+		"restaurant":  restaurant.Id,
+		"sourceImage": imageID,
+		"createdBy":   creator.Id,
+		"visibility":  "friends",
+		"isFromOCR":   true,
+	})
+	unattachedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":       "Manual Bao",
+		"restaurant": restaurant.Id,
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	differentImageItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":        "Other Photo Soup",
+		"restaurant":  restaurant.Id,
+		"sourceImage": otherSameRestaurantImageID,
+		"createdBy":   creator.Id,
+		"visibility":  "friends",
+		"isFromOCR":   true,
+	})
+	otherRestaurantItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":        "Other Restaurant Item",
+		"restaurant":  otherRestaurant.Id,
+		"sourceImage": otherRestaurantImageID,
+		"createdBy":   otherCreator.Id,
+		"visibility":  "public",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory/menu-images/"+imageID,
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminMenuImageInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode menu image detail response: %v", err)
+	}
+
+	if payload.MenuImage.ID != imageID || payload.MenuImage.Image != "menu-image.jpg" {
+		t.Fatalf("unexpected menu image detail: %#v", payload.MenuImage)
+	}
+	if payload.MenuImage.Uploader == nil || payload.MenuImage.Uploader.Email != "image.detail@example.com" {
+		t.Fatalf("expected uploader summary, got %#v", payload.MenuImage.Uploader)
+	}
+	if payload.Restaurant == nil || payload.Restaurant.ID != restaurant.Id || payload.Restaurant.Name != "Photo Detail Noodles" {
+		t.Fatalf("expected restaurant summary, got %#v", payload.Restaurant)
+	}
+
+	attachedIDs := adminMenuInventoryItemIDs(payload.AttachedMenuItems)
+	if len(attachedIDs) != 1 || !attachedIDs[attachedItem.Id] {
+		t.Fatalf("expected only attached item %s, got %#v", attachedItem.Id, attachedIDs)
+	}
+	if attachedIDs[unattachedItem.Id] || attachedIDs[differentImageItem.Id] || attachedIDs[otherRestaurantItem.Id] {
+		t.Fatalf("attached item response leaked unrelated ids: %#v", attachedIDs)
+	}
+
+	unattachedIDs := adminMenuInventoryItemIDs(payload.UnattachedRestaurantMenuItems)
+	if len(unattachedIDs) != 2 || !unattachedIDs[unattachedItem.Id] || !unattachedIDs[differentImageItem.Id] {
+		t.Fatalf("expected same-restaurant unattached items, got %#v", unattachedIDs)
+	}
+	if unattachedIDs[attachedItem.Id] || unattachedIDs[otherRestaurantItem.Id] {
+		t.Fatalf("unattached item response leaked attached or other restaurant ids: %#v", unattachedIDs)
+	}
+}
+
+func TestAdminMenuInventoryMenuImageDetailReturnsNotFound(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory/menu-images/missingimage",
+		adminToken,
+		"",
+	)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
 	}
 }
 

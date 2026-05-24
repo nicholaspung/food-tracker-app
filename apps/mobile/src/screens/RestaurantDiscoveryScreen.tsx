@@ -347,6 +347,7 @@ export function RestaurantDiscoveryScreen({
 
         imageInput = await stageLocalPhotoFile(pickResult.assets[0], {
           fallbackPrefix: source === 'camera' ? 'storefront-camera' : 'storefront-image',
+          maxLongEdge: 2048,
         });
         if (!imageInput) {
           throw new Error('Could not prepare the selected image.');

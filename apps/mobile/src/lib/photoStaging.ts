@@ -1,3 +1,4 @@
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Directory, File, Paths } from 'expo-file-system';
 
 import {
@@ -11,7 +12,17 @@ export interface StagedPhotoFile extends LocalPhotoFile {
   originalUri: string;
 }
 
+interface StageLocalPhotoFileOptions {
+  fallbackPrefix?: string;
+  jpegQuality?: number;
+  maxLongEdge?: number;
+  resize?: boolean;
+}
+
 const PHOTO_STAGING_DIRECTORY_NAME = 'photo-staging';
+const DEFAULT_PHOTO_MAX_LONG_EDGE = 1600;
+const DEFAULT_PHOTO_JPEG_QUALITY = 0.78;
+const STAGED_PHOTO_MIME_TYPE = 'image/jpeg';
 
 function getPhotoStagingDirectory(): Directory {
   return new Directory(Paths.document, PHOTO_STAGING_DIRECTORY_NAME);
@@ -28,38 +39,105 @@ function buildStagedPhotoFileName(fileName: string): string {
   return `${timestamp}-${randomSuffix}-${sanitizePhotoFileName(fileName)}`;
 }
 
+function normalizePhotoFileNameToJpeg(fileName: string): string {
+  const sanitizedFileName = sanitizePhotoFileName(fileName);
+  const extensionIndex = sanitizedFileName.lastIndexOf('.');
+  if (extensionIndex <= 0) {
+    return `${sanitizedFileName}.jpg`;
+  }
+
+  return `${sanitizedFileName.slice(0, extensionIndex)}.jpg`;
+}
+
 function isStagedPhotoUri(uri: string): boolean {
   return uri.includes(`/${PHOTO_STAGING_DIRECTORY_NAME}/`);
 }
 
+function resolveResizeAction(
+  asset: LocalPhotoAsset,
+  maxLongEdge: number,
+  shouldResize: boolean,
+): ImageManipulator.Action[] {
+  if (!shouldResize || maxLongEdge <= 0) {
+    return [];
+  }
+
+  const width = typeof asset.width === 'number' ? asset.width : null;
+  const height = typeof asset.height === 'number' ? asset.height : null;
+  if (!width || !height || width <= 0 || height <= 0) {
+    return [];
+  }
+
+  const longEdge = Math.max(width, height);
+  if (longEdge <= maxLongEdge) {
+    return [];
+  }
+
+  return width >= height
+    ? [{ resize: { width: maxLongEdge } }]
+    : [{ resize: { height: maxLongEdge } }];
+}
+
+async function deleteFileBestEffort(uri: string): Promise<void> {
+  try {
+    const file = new File(uri);
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Best effort only: temporary manipulation cleanup should not affect upload flow.
+  }
+}
+
 export async function stageLocalPhotoFile(
   asset: LocalPhotoAsset,
-  options: { fallbackPrefix?: string } = {},
+  options: StageLocalPhotoFileOptions = {},
 ): Promise<LocalPhotoFile | null> {
   const localPhoto = buildLocalPhotoFile(asset, options);
   if (!localPhoto) {
     return null;
   }
 
+  const maxLongEdge = options.maxLongEdge ?? DEFAULT_PHOTO_MAX_LONG_EDGE;
+  const jpegQuality = options.jpegQuality ?? DEFAULT_PHOTO_JPEG_QUALITY;
+  const resize = options.resize ?? true;
+  let manipulatedUri: string | null = null;
+
   const stagingDirectory = getPhotoStagingDirectory();
-  const sourceFile = new File(localPhoto.uri);
+  const stagedPhotoName = normalizePhotoFileNameToJpeg(localPhoto.name);
   const destinationFile = new File(
     stagingDirectory,
-    buildStagedPhotoFileName(localPhoto.name),
+    buildStagedPhotoFileName(stagedPhotoName),
   );
 
   try {
+    const manipulatedPhoto = await ImageManipulator.manipulateAsync(
+      localPhoto.uri,
+      resolveResizeAction(asset, maxLongEdge, resize),
+      {
+        compress: jpegQuality,
+        format: ImageManipulator.SaveFormat.JPEG,
+      },
+    );
+    manipulatedUri = manipulatedPhoto.uri;
+
     stagingDirectory.create({
       idempotent: true,
       intermediates: true,
     });
+    const sourceFile = new File(manipulatedUri);
     sourceFile.copy(destinationFile);
   } catch {
     return null;
+  } finally {
+    if (manipulatedUri) {
+      await deleteFileBestEffort(manipulatedUri);
+    }
   }
 
   return {
-    ...localPhoto,
+    mimeType: STAGED_PHOTO_MIME_TYPE,
+    name: stagedPhotoName,
     uri: destinationFile.uri,
   };
 }

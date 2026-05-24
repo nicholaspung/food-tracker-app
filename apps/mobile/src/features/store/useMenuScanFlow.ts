@@ -146,6 +146,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         imageInput = await stageLocalPhotoFile(pickResult.assets[0], {
           fallbackPrefix:
             options.fallbackPrefix ?? (source === 'camera' ? 'menu-camera' : 'menu-image'),
+          maxLongEdge: 2048,
         });
         if (!imageInput) {
           throw new Error('Could not prepare the selected image.');
