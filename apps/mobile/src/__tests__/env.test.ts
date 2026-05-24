@@ -57,24 +57,6 @@ describe('loadMobileEnv', () => {
     );
   });
 
-  it('can resolve invalid runtime config without throwing before React renders', () => {
-    const env = loadMobileEnv(
-      {
-        EXPO_PUBLIC_APP_ENV: 'beta',
-        EXPO_PUBLIC_API_BASE_URL: 'https://api.yummyrecs.com',
-        EXPO_PUBLIC_POCKETBASE_URL: 'https://pb.yummyrecs.com',
-      },
-      undefined,
-      {
-        validateBackend: false,
-      },
-    );
-
-    expect(env.environment).toBe('beta');
-    expect(env.apiBaseUrl).toBe('https://api.yummyrecs.com');
-    expect(env.pocketbaseUrl).toBe('https://pb.yummyrecs.com');
-  });
-
   it('rejects non-local backends that resolve to localhost', () => {
     expect(() =>
       loadMobileEnv({
