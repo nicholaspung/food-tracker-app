@@ -39,6 +39,7 @@ export * from './FoodProductScreen';
 export * from './ResetPasswordScreen';
 export * from './SettingsScreen';
 export * from './SignUpScreen';
+export * from './SharedRestaurantListScreen';
 export * from './SplashScreen';
 export * from './TermsOfServiceScreen';
 export * from './TipCalculatorScreen';

@@ -195,6 +195,7 @@ type billResponse struct {
 func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantWriteHandlers(se, app)
 	registerRestaurantListWriteHandlers(se, app)
+	registerRestaurantListSharingWriteHandlers(se, app)
 
 	se.Router.GET("/api/visits/{visitId}", func(e *core.RequestEvent) error {
 		if e.Auth == nil {

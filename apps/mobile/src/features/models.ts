@@ -95,6 +95,7 @@ export interface RestaurantListRecord {
   userId: string;
   ownerName?: string;
   isDefault?: boolean;
+  shareEnabled?: boolean;
   coverImage?: string;
   restaurantCount?: number;
   menuItemCount?: number;
@@ -140,6 +141,35 @@ export interface RestaurantListItemRecord {
   bookmarkedItems: RestaurantListBookmarkedItemRecord[];
   note?: string;
   createdAt: string;
+}
+
+export interface SharedRestaurantListRecord {
+  id: string;
+  name: string;
+  description?: string;
+  ownerName?: string;
+  restaurantCount?: number;
+  menuItemCount?: number;
+  updatedAt: string;
+}
+
+export interface SharedRestaurantListPhotoPreviewRecord {
+  id: string;
+  food_item?: string;
+  photo: string;
+  collectionId?: string;
+  collectionName?: string;
+  created: string;
+}
+
+export interface SharedRestaurantListDetailRecord {
+  list: SharedRestaurantListRecord | null;
+  items: RestaurantListItemRecord[];
+  photoPreviews: SharedRestaurantListPhotoPreviewRecord[];
+  bookmarkState: {
+    savedListIdsByBookmarkLookupId: Record<string, string[]>;
+  };
+  viewerLists: RestaurantListRecord[];
 }
 
 export interface NoteRecord {

@@ -85,7 +85,7 @@ The deploy workflow also generates Universal Link/App Link association files for
 - `app_build/.well-known/apple-app-site-association`
 - `app_build/.well-known/assetlinks.json`
 
-These association files cover `/reset-password`, `/verify-email`, and `/signup` app routes.
+These association files cover `/reset-password`, `/verify-email`, `/signup`, and `/lists/shared/*` app routes.
 
 Add these GitHub environment secrets to both `beta` and `production` so those files can be generated during deploy:
 

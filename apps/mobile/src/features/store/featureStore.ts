@@ -607,7 +607,10 @@ export {
   createDefaultRestaurantList,
   createRestaurantList,
   deleteRestaurantList,
+  disableRestaurantListShareLink,
+  getOrCreateRestaurantListShareLink,
   getRestaurantListCandidateRestaurants,
+  getSharedRestaurantList,
   listRestaurantListCandidateFoodItemsPhotos,
   listRestaurantListCandidateFoodItemPhotos,
   getRestaurantListDetail,
@@ -615,9 +618,11 @@ export {
   linkVisitToListBookmark,
   listRestaurantListsPage,
   moveRestaurantListRestaurant,
+  regenerateRestaurantListShareLink,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
+  saveSharedRestaurantListRecommendation,
   updateRestaurantList,
 } from './restaurantListsStore';
 

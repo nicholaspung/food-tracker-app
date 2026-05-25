@@ -3,6 +3,7 @@ import type {
   RestaurantListBookmarkedItemRecord,
   RestaurantListItemRecord,
   RestaurantListRecord,
+  SharedRestaurantListDetailRecord,
 } from '../models';
 import type {
   RestaurantListCandidateRestaurantsResult,
@@ -63,6 +64,7 @@ interface RestaurantListDetailApiListRecord {
   userId: string;
   ownerName?: string;
   isDefault?: boolean;
+  shareEnabled?: boolean;
   coverImage?: string;
   restaurantCount?: number;
   menuItemCount?: number;
@@ -122,6 +124,31 @@ interface RestaurantListDetailApiResponse {
   };
   photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
   viewerLists?: RestaurantListDetailApiListRecord[];
+}
+
+interface SharedRestaurantListApiResponse {
+  list: {
+    id: string;
+    name: string;
+    description?: string;
+    ownerName?: string;
+    restaurantCount?: number;
+    menuItemCount?: number;
+    updatedAt: string;
+  };
+  items?: RestaurantListDetailApiItemRecord[];
+  bookmarkState?: {
+    savedListIdsByBookmarkLookupId?: Record<string, string[] | undefined>;
+  };
+  photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
+  viewerLists?: RestaurantListDetailApiListRecord[];
+}
+
+export interface RestaurantListShareLinkRecord {
+  listId: string;
+  shareToken: string;
+  url?: string;
+  path?: string;
 }
 
 interface RestaurantListCandidateRestaurantsApiResponse {
@@ -212,6 +239,7 @@ function mapRestaurantListCollectionRecord(record: RestaurantListCollectionRecor
     userId: record.user,
     ownerName: resolveExpandedUserName(record.expand?.user),
     isDefault: record.isDefault === true,
+    shareEnabled: record.shareEnabled === true,
     coverImage: record.coverImage,
     restaurantCount: normalizeOptionalCount(record.restaurantCount),
     menuItemCount: normalizeOptionalCount(record.menuItemCount),
@@ -229,6 +257,7 @@ function mapRestaurantListDetailApiListRecord(record: RestaurantListDetailApiLis
     userId: record.userId,
     ownerName: record.ownerName?.trim() || undefined,
     isDefault: record.isDefault === true,
+    shareEnabled: record.shareEnabled === true,
     coverImage: record.coverImage?.trim() || undefined,
     restaurantCount: normalizeOptionalCount(record.restaurantCount),
     menuItemCount: normalizeOptionalCount(record.menuItemCount),
@@ -277,6 +306,18 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
 }
 
 function createEmptyRestaurantListDetail(): RestaurantListDetailRecord {
+  return {
+    list: null,
+    items: [],
+    bookmarkState: {
+      savedListIdsByBookmarkLookupId: {},
+    },
+    photoPreviews: [],
+    viewerLists: [],
+  };
+}
+
+function createEmptySharedRestaurantListDetail(): SharedRestaurantListDetailRecord {
   return {
     list: null,
     items: [],
@@ -368,6 +409,40 @@ function mapRestaurantListDetailResponse(response: RestaurantListDetailApiRespon
       collectionName: photoPreview.collectionName?.trim() || undefined,
       created: photoPreview.created,
       ownerName: photoPreview.ownerName?.trim() || undefined,
+    })),
+    viewerLists: (response.viewerLists ?? []).map(mapRestaurantListDetailApiListRecord),
+  };
+}
+
+function mapSharedRestaurantListResponse(response: SharedRestaurantListApiResponse): SharedRestaurantListDetailRecord {
+  const savedListIdsByBookmarkLookupId = Object.fromEntries(
+    Object.entries(response.bookmarkState?.savedListIdsByBookmarkLookupId ?? {}).map(([bookmarkLookupId, listIds]) => [
+      bookmarkLookupId,
+      (listIds ?? []).map((candidate) => candidate.trim()).filter((candidate) => candidate.length > 0),
+    ]),
+  );
+
+  return {
+    list: {
+      id: response.list.id,
+      name: response.list.name.trim(),
+      description: response.list.description?.trim() || undefined,
+      ownerName: response.list.ownerName?.trim() || undefined,
+      restaurantCount: normalizeOptionalCount(response.list.restaurantCount),
+      menuItemCount: normalizeOptionalCount(response.list.menuItemCount),
+      updatedAt: response.list.updatedAt,
+    },
+    items: (response.items ?? []).map(mapRestaurantListDetailItemRecord),
+    bookmarkState: {
+      savedListIdsByBookmarkLookupId,
+    },
+    photoPreviews: (response.photoPreviews ?? []).map((photoPreview) => ({
+      id: photoPreview.id,
+      food_item: photoPreview.food_item?.trim() || undefined,
+      photo: photoPreview.photo,
+      collectionId: photoPreview.collectionId?.trim() || undefined,
+      collectionName: photoPreview.collectionName?.trim() || undefined,
+      created: photoPreview.created,
     })),
     viewerLists: (response.viewerLists ?? []).map(mapRestaurantListDetailApiListRecord),
   };
@@ -590,6 +665,34 @@ export async function getRestaurantListDetail(
   }
 }
 
+export async function getSharedRestaurantList(
+  shareToken: string,
+  options?: ReadRequestOptions,
+): Promise<SharedRestaurantListDetailRecord> {
+  const trimmedShareToken = shareToken.trim();
+  if (!trimmedShareToken) {
+    return createEmptySharedRestaurantListDetail();
+  }
+
+  try {
+    const response = await sendApiRequest<SharedRestaurantListApiResponse>(
+      `/api/public/restaurant-lists/${encodeURIComponent(trimmedShareToken)}`,
+      {
+        method: 'GET',
+        signal: options?.signal,
+      },
+    );
+
+    return mapSharedRestaurantListResponse(response);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return createEmptySharedRestaurantListDetail();
+    }
+
+    throw error;
+  }
+}
+
 export async function getRestaurantListCandidateRestaurants(
   listId: string,
   search?: string,
@@ -675,6 +778,102 @@ export async function createDefaultRestaurantList(
     });
 
     return mapRestaurantListDetailApiListRecord(response);
+  });
+}
+
+export async function getOrCreateRestaurantListShareLink(
+  listId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListShareLinkRecord> {
+  return trackFeatureMutation('restaurant_list.share_link.create', async () => {
+    getAuthenticatedUserId();
+
+    const trimmedListId = listId.trim();
+    if (!trimmedListId) {
+      throw new Error('List is required.');
+    }
+
+    return sendApiRequest<RestaurantListShareLinkRecord>(
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/share-link`,
+      {
+        method: 'POST',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      },
+    );
+  });
+}
+
+export async function regenerateRestaurantListShareLink(
+  listId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListShareLinkRecord> {
+  return trackFeatureMutation('restaurant_list.share_link.regenerate', async () => {
+    getAuthenticatedUserId();
+
+    const trimmedListId = listId.trim();
+    if (!trimmedListId) {
+      throw new Error('List is required.');
+    }
+
+    return sendApiRequest<RestaurantListShareLinkRecord>(
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/share-link/regenerate`,
+      {
+        method: 'POST',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      },
+    );
+  });
+}
+
+export async function disableRestaurantListShareLink(
+  listId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
+  return trackFeatureMutation('restaurant_list.share_link.disable', async () => {
+    getAuthenticatedUserId();
+
+    const trimmedListId = listId.trim();
+    if (!trimmedListId) {
+      throw new Error('List is required.');
+    }
+
+    await sendApiRequest(
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/share-link/disable`,
+      {
+        method: 'POST',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      },
+    );
+  });
+}
+
+export async function saveSharedRestaurantListRecommendation(input: {
+  shareToken: string;
+  restaurantId: string;
+  foodItemId: string;
+  targetListIds?: string[];
+}, requestOptions?: FeatureWriteRequestOptions): Promise<void> {
+  return trackFeatureMutation('restaurant_list.shared_recommendation.save', async () => {
+    getAuthenticatedUserId();
+
+    const shareToken = input.shareToken.trim();
+    const restaurantId = input.restaurantId.trim();
+    const foodItemId = input.foodItemId.trim();
+    if (!shareToken || !restaurantId || !foodItemId) {
+      throw new Error('Recommendation is required.');
+    }
+
+    await sendApiRequest(`/api/public/restaurant-lists/${encodeURIComponent(shareToken)}/bookmarks`, {
+      method: 'POST',
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      body: {
+        restaurantId,
+        foodItemId,
+        targetListIds: (input.targetListIds ?? [])
+          .map((targetListId) => targetListId.trim())
+          .filter((targetListId) => targetListId.length > 0),
+      },
+    });
   });
 }
 

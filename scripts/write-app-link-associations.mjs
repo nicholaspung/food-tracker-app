@@ -22,6 +22,7 @@ const androidFingerprints = (process.env.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGER
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+const associatedPaths = ['/reset-password*', '/verify-email*', '/signup*', '/lists/shared/*'];
 
 await mkdir(wellKnownDir, { recursive: true });
 
@@ -32,7 +33,7 @@ if (iosTeamId) {
       details: [
         {
           appID: `${iosTeamId}.${bundleIdentifier}`,
-          paths: ['/reset-password*', '/verify-email*', '/signup*'],
+          paths: associatedPaths,
         },
       ],
     },

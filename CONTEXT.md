@@ -36,6 +36,10 @@ _Avoid_: note mark-used helper, note usage side effect
 The screen for one **Restaurant List**, showing the restaurants and recommendations inside that list.
 _Avoid_: Lists page
 
+**Shared Restaurant List**:
+A live, read-only view of a **Restaurant List** made accessible through a revocable secret link.
+_Avoid_: Public Restaurant List, public list
+
 **List Detail Map**:
 A map view of the restaurants inside one **Restaurant List**.
 _Avoid_: Lists map
@@ -103,6 +107,8 @@ _Avoid_: tutorial flags
 ## Relationships
 
 - A **Restaurant List** contains zero or more restaurants.
+- A **Shared Restaurant List** represents exactly one **Restaurant List**.
+- A **Shared Restaurant List** shows the current contents of its **Restaurant List**, not a frozen snapshot.
 - **All Locations History** spans a user's own item-backed visits at restaurants with conservatively matching names, but it does not replace exact restaurant/location identity.
 - **All Locations History** is shown when the user has item-backed orders at two or more matching restaurant locations, or at one matching ordered location that is different from the restaurant currently being viewed.
 - **All Locations History** is an MVP read model, not a persisted **Restaurant Group**.
@@ -168,6 +174,9 @@ _Avoid_: tutorial flags
 > **Dev:** "Should the **List Detail Map** include every list the viewer can see?"
 > **Domain expert:** "No - it only plots restaurants from the currently opened **Restaurant List**."
 
+> **Dev:** "Is a **Shared Restaurant List** the same as making a **Restaurant List** public?"
+> **Domain expert:** "No - it is a revocable secret-link view, while the Restaurant List keeps its normal visibility."
+
 > **Dev:** "When the leader taps a restaurant during tasting planning, is that just a suggestion?"
 > **Domain expert:** "No - leader-picked restaurants are selected into the **Tasting Plan** immediately."
 
@@ -180,6 +189,8 @@ _Avoid_: tutorial flags
 ## Flagged ambiguities
 
 - "lists feature" was used to mean both the top-level list index and the detail for one list - resolved: this map belongs to **List Detail**.
+- "add to my list" was ambiguous between copying an entire **Restaurant List** and saving recommendations - resolved: the first **Shared Restaurant List** version saves individual recommendations.
+- "public list" was used for link sharing - resolved: use **Shared Restaurant List** because public Restaurant List visibility is not part of the current model.
 - "food discovery" was ambiguous with saved places and restaurant lists - resolved: **Food Discovery** is an exploratory surface, not a **Restaurant List**.
 - "map discovery" was ambiguous between saved-first and nearby-first behavior - resolved: **Food Discovery** exploratory browsing is nearby-first.
 - "Your Records" in a **Food Discovery Map** sheet was ambiguous between visits, activity, and item-backed records - resolved: use **Your Ordered Items** for the user's own exact-location item-backed food records.

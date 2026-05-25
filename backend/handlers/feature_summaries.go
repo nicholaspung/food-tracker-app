@@ -378,6 +378,7 @@ type visitPageRow struct {
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantListDetailSummaryHandler(se, app)
+	registerRestaurantListSharingSummaryHandler(se, app)
 	registerFoodProductCategorySuggestionHandlers(se, app)
 
 	se.Router.GET("/api/notes/summary", func(e *core.RequestEvent) error {

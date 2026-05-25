@@ -678,6 +678,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           title={list.name}
           trailing={
             <View style={styles.trailingIcons}>
+              {activeTab === 'my' && list.shareEnabled ? (
+                <Ionicons color={theme.colors.text.info} name="link-outline" size={16} />
+              ) : null}
               <Ionicons color={visibilityIconColor} name={visibilityIconName} size={16} />
               <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={16} />
             </View>

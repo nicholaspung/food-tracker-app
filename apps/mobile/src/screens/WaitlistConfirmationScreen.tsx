@@ -31,6 +31,10 @@ export function WaitlistConfirmationScreen({
 }: WaitlistConfirmationScreenProps) {
   const styles = useStyles();
   const email = route.params.email.trim().toLowerCase();
+  const sharedListParams = {
+    source: route.params.source,
+    sharedListToken: route.params.sharedListToken,
+  };
 
   return (
     <Screen background="app" scroll testID="waitlist-confirmation-screen">
@@ -38,7 +42,7 @@ export function WaitlistConfirmationScreen({
         lead={
           <AuthTopBar
             onBackPress={() => {
-              navigation.navigate('SignUp', { email, mode: 'join_waitlist' });
+              navigation.navigate('SignUp', { email, mode: 'join_waitlist', ...sharedListParams });
             }}
           />
         }
@@ -68,14 +72,14 @@ export function WaitlistConfirmationScreen({
           <Button
             label="Back to Sign Up"
             onPress={() => {
-              navigation.navigate('SignUp', { email, mode: 'join_waitlist' });
+              navigation.navigate('SignUp', { email, mode: 'join_waitlist', ...sharedListParams });
             }}
             testID="waitlist-confirmation-signup-button"
           />
           <Button
             label="Log In Instead"
             onPress={() => {
-              navigation.navigate('Login', { email });
+              navigation.navigate('Login', { email, ...sharedListParams });
             }}
             testID="waitlist-confirmation-login-button"
             variant="secondary"

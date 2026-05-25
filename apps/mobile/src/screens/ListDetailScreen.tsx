@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { Pressable, Share, View } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -19,10 +19,14 @@ import {
 } from '../components/shared';
 import { RestaurantMapView, type RestaurantMapGroup } from '../components/maps';
 import {
+  disableRestaurantListShareLink,
+  getOrCreateRestaurantListShareLink,
   getRestaurantListDetail,
+  regenerateRestaurantListShareLink,
   restaurantListQueryKeys,
   useRestaurantListWrites,
 } from '../features';
+import { env } from '../config/env';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -86,6 +90,20 @@ const useStyles = createThemedStyles((theme) => ({
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  headerIconButtonActive: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  shareStatusCard: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  shareStatusText: {
+    color: theme.colors.text.info,
+    flex: 1,
+    ...theme.typography.bodyMdMedium,
   },
   addBannerButton: {
     alignItems: 'center',
@@ -361,6 +379,7 @@ function RestaurantMetaRow({
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
   const theme = useTheme();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const restaurantListWrites = useRestaurantListWrites();
   const { isOnline } = useConnectivity();
@@ -384,6 +403,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ListDetailViewMode>('list');
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
+  const [shareSheetVisible, setShareSheetVisible] = useState(false);
+  const [isSharingList, setIsSharingList] = useState(false);
+  const [isRegeneratingShareLink, setIsRegeneratingShareLink] = useState(false);
+  const [isDisablingShareLink, setIsDisablingShareLink] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
@@ -663,6 +686,78 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
 
     navigation.navigate('Lists');
+  };
+
+  const resolveShareUrl = (shareLink: { path?: string; url?: string }) => {
+    const path = shareLink.path?.trim();
+    if (path) {
+      return `${env.appWebUrl.replace(/\/$/, '')}${path}`;
+    }
+
+    return shareLink.url?.trim() ?? '';
+  };
+
+  const shareListLink = async (mode: 'create' | 'regenerate' = 'create') => {
+    if (!list || !isOwner) {
+      return;
+    }
+
+    const isRegenerate = mode === 'regenerate';
+    if (isRegenerate) {
+      setIsRegeneratingShareLink(true);
+    } else {
+      setIsSharingList(true);
+    }
+    setErrorMessage(null);
+
+    try {
+      const shareLink = isRegenerate
+        ? await regenerateRestaurantListShareLink(list.id)
+        : await getOrCreateRestaurantListShareLink(list.id);
+      const shareUrl = resolveShareUrl(shareLink);
+      if (!shareUrl) {
+        throw new Error('Could not create a share link.');
+      }
+
+      await Share.share({
+        message: `View my Yummy Recs list "${list.name}": ${shareUrl}`,
+        url: shareUrl,
+      });
+      await detailQuery.refetch();
+      await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root });
+      setShareSheetVisible(false);
+      trackProductEvent('social.invite_shared', {
+        source: 'ListDetailScreen',
+        shareMethod: 'restaurant_list_link',
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not share list.');
+    } finally {
+      if (isRegenerate) {
+        setIsRegeneratingShareLink(false);
+      } else {
+        setIsSharingList(false);
+      }
+    }
+  };
+
+  const disableShareLink = async () => {
+    if (!list || !isOwner) {
+      return;
+    }
+
+    setIsDisablingShareLink(true);
+    setErrorMessage(null);
+    try {
+      await disableRestaurantListShareLink(list.id);
+      await detailQuery.refetch();
+      await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root });
+      setShareSheetVisible(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not disable sharing.');
+    } finally {
+      setIsDisablingShareLink(false);
+    }
   };
 
   const deleteList = useCallback(async () => {
@@ -1216,32 +1311,54 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       onBackPress={handleBack}
       refreshing={isPullRefreshing}
       rightAccessory={
-        isOwner && !list.isDefault ? (
+        isOwner ? (
           <View style={styles.headerRightRow}>
             <Pressable
-              accessibilityLabel="Edit list"
+              accessibilityLabel="Share list"
               accessibilityRole="button"
               onPress={() => {
-                trackObservabilityEvent('LIST_DETAIL_EDIT_TAPPED', {
+                trackObservabilityEvent('LIST_SHARE_LINK_TAPPED', {
                   source: 'ListDetailScreen',
                 });
-                navigation.navigate('EditRestaurantList', { listId });
+                setShareSheetVisible(true);
               }}
-              style={styles.headerIconButton}
-              testID="list-detail-edit-button"
+              style={[styles.headerIconButton, list.shareEnabled ? styles.headerIconButtonActive : null]}
+              testID="list-detail-share-button"
             >
-              <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
+              <Ionicons
+                color={list.shareEnabled ? theme.colors.text.info : theme.colors.text.primary}
+                name={list.shareEnabled ? 'link-outline' : 'share-outline'}
+                size={16}
+              />
             </Pressable>
-            <Pressable
-              accessibilityLabel="Delete list"
-              accessibilityRole="button"
-              disabled={isDeletingList}
-              onPress={confirmDeleteList}
-              style={styles.headerIconButton}
-              testID="list-detail-delete-button"
-            >
-              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
-            </Pressable>
+            {!list.isDefault ? (
+              <>
+                <Pressable
+                  accessibilityLabel="Edit list"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    trackObservabilityEvent('LIST_DETAIL_EDIT_TAPPED', {
+                      source: 'ListDetailScreen',
+                    });
+                    navigation.navigate('EditRestaurantList', { listId });
+                  }}
+                  style={styles.headerIconButton}
+                  testID="list-detail-edit-button"
+                >
+                  <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Delete list"
+                  accessibilityRole="button"
+                  disabled={isDeletingList}
+                  onPress={confirmDeleteList}
+                  style={styles.headerIconButton}
+                  testID="list-detail-delete-button"
+                >
+                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+                </Pressable>
+              </>
+            ) : null}
           </View>
         ) : undefined
       }
@@ -1267,6 +1384,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           }}
           title="Lists unavailable"
         />
+
+        {isOwner && list.shareEnabled ? (
+          <Card style={styles.shareStatusCard} testID="list-detail-share-enabled-indicator" tone="info">
+            <Ionicons color={theme.colors.text.info} name="link-outline" size={16} />
+            <Text style={styles.shareStatusText}>Shared by secret link</Text>
+          </Card>
+        ) : null}
 
         <SegmentedControl
           activeLabelStyle={styles.viewModeLabelActive}
@@ -1493,6 +1617,64 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         title="Delete List?"
         visible={isDeleteConfirmVisible}
       />
+
+      <Modal
+        description={
+          list?.shareEnabled
+            ? 'This list is available to anyone with the secret link. You can share, regenerate, or disable it.'
+            : 'Create a secret link so anyone with the link can view a read-only version of this list.'
+        }
+        onRequestClose={() => {
+          if (isSharingList || isRegeneratingShareLink || isDisablingShareLink) {
+            return;
+          }
+          setShareSheetVisible(false);
+        }}
+        primaryAction={{
+          disabled: isRegeneratingShareLink || isDisablingShareLink,
+          label: list?.shareEnabled ? 'Share Link' : 'Enable & Share Link',
+          loading: isSharingList,
+          onPress: () => {
+            void shareListLink();
+          },
+          testID: 'share-list-link-button',
+        }}
+        secondaryAction={{
+          disabled: isSharingList || isRegeneratingShareLink || isDisablingShareLink,
+          label: 'Cancel',
+          onPress: () => {
+            setShareSheetVisible(false);
+          },
+        }}
+        testID="share-list-modal"
+        title="Share List"
+        visible={shareSheetVisible}
+      >
+        {list?.shareEnabled ? (
+          <>
+            <Button
+              disabled={isSharingList || isDisablingShareLink}
+              label="Regenerate Link"
+              loading={isRegeneratingShareLink}
+              onPress={() => {
+                void shareListLink('regenerate');
+              }}
+              testID="regenerate-share-list-link-button"
+              variant="secondary"
+            />
+            <Button
+              disabled={isSharingList || isRegeneratingShareLink}
+              label="Disable Sharing"
+              loading={isDisablingShareLink}
+              onPress={() => {
+                void disableShareLink();
+              }}
+              testID="disable-share-list-link-button"
+              variant="secondary"
+            />
+          </>
+        ) : null}
+      </Modal>
 
       <ConfirmDestructiveModal
         cancelLabel="Keep Item"

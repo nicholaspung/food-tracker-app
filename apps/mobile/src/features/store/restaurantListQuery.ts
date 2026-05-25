@@ -19,6 +19,8 @@ export const restaurantListQueryKeys = {
   list: (listId: string) => ['feature', 'restaurantList', listId] as const,
   detailRoot: ['feature', 'restaurantListDetail'] as const,
   detail: (listId: string) => ['feature', 'restaurantListDetail', listId] as const,
+  sharedRoot: ['feature', 'sharedRestaurantList'] as const,
+  shared: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken] as const,
   itemsRoot: ['feature', 'restaurantListItems'] as const,
   items: (listId: string) => ['feature', 'restaurantListItems', listId] as const,
   itemLinksRoot: ['feature', 'restaurantListItemLinks'] as const,

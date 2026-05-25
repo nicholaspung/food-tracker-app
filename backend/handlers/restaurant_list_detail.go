@@ -29,6 +29,7 @@ type restaurantListDetailListResponse struct {
 	UserID          string `json:"userId"`
 	OwnerName       string `json:"ownerName,omitempty"`
 	IsDefault       bool   `json:"isDefault,omitempty"`
+	ShareEnabled    bool   `json:"shareEnabled,omitempty"`
 	CoverImage      string `json:"coverImage,omitempty"`
 	RestaurantCount int    `json:"restaurantCount,omitempty"`
 	MenuItemCount   int    `json:"menuItemCount,omitempty"`
@@ -186,6 +187,7 @@ type restaurantListsPageRow struct {
 	OwnerName       string `db:"ownerName"`
 	OwnerEmail      string `db:"ownerEmail"`
 	IsDefault       bool   `db:"isDefault"`
+	ShareEnabled    bool   `db:"shareEnabled"`
 	CoverImage      string `db:"coverImage"`
 	RestaurantCount int    `db:"restaurantCount"`
 	MenuItemCount   int    `db:"menuItemCount"`
@@ -384,6 +386,7 @@ func listRestaurantListsPageResponse(
 			UserID:          strings.TrimSpace(row.UserID),
 			OwnerName:       resolveFriendDisplayName(row.OwnerName, row.OwnerEmail),
 			IsDefault:       row.IsDefault,
+			ShareEnabled:    row.ShareEnabled,
 			CoverImage:      strings.TrimSpace(row.CoverImage),
 			RestaurantCount: row.RestaurantCount,
 			MenuItemCount:   row.MenuItemCount,
@@ -502,6 +505,7 @@ func findRestaurantListsForPage(
 			owners.name AS [[ownerName]],
 			owners.email AS [[ownerEmail]],
 			COALESCE(rl.isDefault, 0) AS [[isDefault]],
+			COALESCE(rl.shareEnabled, 0) AS [[shareEnabled]],
 			rl.coverImage AS [[coverImage]],
 			COALESCE(rl.restaurantCount, 0) AS [[restaurantCount]],
 			COALESCE(rl.menuItemCount, 0) AS [[menuItemCount]],
@@ -1348,6 +1352,7 @@ func buildRestaurantListDetailListResponse(record *core.Record) restaurantListDe
 		Visibility:      normalizeRestaurantListDetailVisibility(record.GetString("visibility")),
 		UserID:          strings.TrimSpace(record.GetString("user")),
 		IsDefault:       record.GetBool("isDefault"),
+		ShareEnabled:    record.GetBool("shareEnabled"),
 		CoverImage:      strings.TrimSpace(record.GetString("coverImage")),
 		RestaurantCount: record.GetInt("restaurantCount"),
 		MenuItemCount:   record.GetInt("menuItemCount"),

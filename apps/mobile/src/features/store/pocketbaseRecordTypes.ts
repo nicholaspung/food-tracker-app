@@ -70,6 +70,7 @@ export interface RestaurantListCollectionRecord {
   user: string;
   coverImage?: string;
   isDefault?: boolean;
+  shareEnabled?: boolean;
   restaurantCount?: number;
   menuItemCount?: number;
   created: string;

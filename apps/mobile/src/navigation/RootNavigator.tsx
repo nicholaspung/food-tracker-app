@@ -16,6 +16,7 @@ import {
 } from '../components/shared/BottomTabNavigation';
 import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
+import { clearPendingAuthRedirect, getPendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
 import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
@@ -66,6 +67,7 @@ import {
   ResetPasswordScreen,
   SettingsScreen,
   SignUpScreen,
+  SharedRestaurantListScreen,
   SplashScreen,
   TermsOfServiceScreen,
   TipCalculatorScreen,
@@ -90,6 +92,8 @@ export type RootStackParamList = {
   Login:
     | {
         email?: string;
+        source?: 'shared_list';
+        sharedListToken?: string;
       }
     | undefined;
   SignUp:
@@ -98,10 +102,14 @@ export type RootStackParamList = {
         inviteCode?: string;
         code?: string;
         mode?: 'waitlist_approved' | 'invite_code' | 'join_waitlist';
+        source?: 'shared_list';
+        sharedListToken?: string;
       }
     | undefined;
   WaitlistConfirmation: {
     email: string;
+    source?: 'shared_list';
+    sharedListToken?: string;
   };
   ForgotPassword: undefined;
   ResetPassword:
@@ -226,6 +234,7 @@ export type RootStackParamList = {
   Lists: undefined;
   CreateRestaurantList: undefined;
   ListDetail: { listId: string };
+  SharedRestaurantList: { shareToken: string };
   EditRestaurantList: { listId: string };
   AddRestaurantToList: { listId: string };
   Notes: undefined;
@@ -287,6 +296,7 @@ export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
       Onboarding: '',
       Login: 'login',
       SignUp: 'signup',
+      SharedRestaurantList: 'lists/shared/:shareToken',
       WaitlistConfirmation: 'waitlist',
       ForgotPassword: 'forgot-password',
       ResetPassword: 'reset-password',
@@ -329,6 +339,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Lists',
   'CreateRestaurantList',
   'ListDetail',
+  'SharedRestaurantList',
   'EditRestaurantList',
   'AddRestaurantToList',
   'Notes',
@@ -410,6 +421,7 @@ export function RootNavigator() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const authSubmissionWasActiveRef = useRef(false);
   const [isAuthenticatedChromeReady, setIsAuthenticatedChromeReady] = useState(false);
+  const hasConsumedPendingAuthRedirectRef = useRef(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -418,6 +430,30 @@ export function RootNavigator() {
 
     document.title = getWebDocumentTitle(currentRouteName);
   }, [currentRouteName]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !navigationRef.isReady() || hasConsumedPendingAuthRedirectRef.current) {
+      if (status !== 'authenticated') {
+        hasConsumedPendingAuthRedirectRef.current = false;
+      }
+      return;
+    }
+
+    hasConsumedPendingAuthRedirectRef.current = true;
+    void (async () => {
+      const redirect = await getPendingAuthRedirect();
+      if (!redirect) {
+        return;
+      }
+
+      await clearPendingAuthRedirect();
+      if (redirect.route === 'SharedRestaurantList') {
+        navigationRef.navigate('SharedRestaurantList', {
+          shareToken: redirect.shareToken,
+        });
+      }
+    })();
+  }, [currentRouteName, navigationRef, status]);
 
   const navigationTheme = {
     ...DefaultTheme,
@@ -751,6 +787,11 @@ export function RootNavigator() {
                   />
                   <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ headerShown: false }} />
                   <Stack.Screen
+                    component={SharedRestaurantListScreen}
+                    name="SharedRestaurantList"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
                     component={EditRestaurantListScreen}
                     name="EditRestaurantList"
                     options={{ headerShown: false }}
@@ -860,6 +901,11 @@ export function RootNavigator() {
                   <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ headerShown: false }} />
                   <Stack.Screen component={LoginScreen} name="Login" options={{ headerShown: false }} />
                   <Stack.Screen component={SignUpScreen} name="SignUp" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={SharedRestaurantListScreen}
+                    name="SharedRestaurantList"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen
                     component={WaitlistConfirmationScreen}
                     name="WaitlistConfirmation"

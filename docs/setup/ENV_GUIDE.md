@@ -186,7 +186,7 @@ Notes:
 
 ### App Link Association Secrets
 
-The deploy workflow uses these secrets to write `/.well-known` association files into the app web build. Those files let password reset and email verification HTTPS links open the installed app when the device supports Universal Links/App Links.
+The deploy workflow uses these secrets to write `/.well-known` association files into the app web build. Those files let password reset, email verification, signup, and Shared Restaurant List HTTPS links open the installed app when the device supports Universal Links/App Links.
 
 `FOOD_TRACKER_IOS_TEAM_ID` is the Apple Developer Team ID. Find it in Apple Developer:
 

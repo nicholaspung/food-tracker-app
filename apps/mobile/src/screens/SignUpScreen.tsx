@@ -346,7 +346,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         method: 'POST',
         body: {
           email: trimmedEmail,
-          source: 'mobile_signup',
+          source: route.params?.source === 'shared_list' ? 'shared_list' : 'mobile_signup',
         },
       });
       trackObservabilityEvent('AUTH_WAITLIST_JOIN_SUCCEEDED', {
@@ -356,6 +356,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       await refreshWaitlistRateLimit();
       navigation.navigate('WaitlistConfirmation', {
         email: trimmedEmail,
+        source: route.params?.source,
+        sharedListToken: route.params?.sharedListToken,
       });
     } catch (error) {
       const message = getErrorMessage(error, 'Could not join the waitlist.');
@@ -565,7 +567,11 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                 source: 'SignUpScreen',
                 destination: 'Login',
               });
-              navigation.navigate('Login');
+              navigation.navigate('Login', {
+                email: normalizedEmail || undefined,
+                source: route.params?.source,
+                sharedListToken: route.params?.sharedListToken,
+              });
             }}
             testID="signup-login-instead-button"
             variant="secondary"
