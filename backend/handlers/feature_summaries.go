@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -139,6 +140,54 @@ type restaurantVisitStatsResponse struct {
 	Stats []restaurantVisitStatsSummary `json:"stats"`
 }
 
+type sameNameRestaurantHistoryAnchorResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Location    string `json:"location,omitempty"`
+	City        string `json:"city,omitempty"`
+	CuisineType string `json:"cuisineType,omitempty"`
+}
+
+type sameNameRestaurantHistoryRestaurantResponse struct {
+	RestaurantID       string `json:"restaurantId"`
+	RestaurantName     string `json:"restaurantName"`
+	RestaurantLocation string `json:"restaurantLocation,omitempty"`
+	RestaurantCity     string `json:"restaurantCity,omitempty"`
+	VisitCount         int    `json:"visitCount"`
+	LatestVisitedAt    string `json:"latestVisitedAt,omitempty"`
+}
+
+type sameNameRestaurantHistoryItemRestaurantResponse struct {
+	RestaurantID       string `json:"restaurantId"`
+	RestaurantName     string `json:"restaurantName"`
+	RestaurantLocation string `json:"restaurantLocation,omitempty"`
+	OrderCount         int    `json:"orderCount"`
+}
+
+type sameNameRestaurantHistoryItemResponse struct {
+	NormalizedItemName       string                                            `json:"normalizedItemName"`
+	DisplayName              string                                            `json:"displayName"`
+	OrderCount               int                                               `json:"orderCount"`
+	AverageRating            float64                                           `json:"averageRating"`
+	LatestRating             float64                                           `json:"latestRating"`
+	LatestVisitedAt          string                                            `json:"latestVisitedAt"`
+	LatestRestaurantID       string                                            `json:"latestRestaurantId"`
+	LatestRestaurantName     string                                            `json:"latestRestaurantName"`
+	LatestRestaurantLocation string                                            `json:"latestRestaurantLocation,omitempty"`
+	Restaurants              []sameNameRestaurantHistoryItemRestaurantResponse `json:"restaurants"`
+}
+
+type sameNameRestaurantHistoryResponse struct {
+	AnchorRestaurant sameNameRestaurantHistoryAnchorResponse       `json:"anchorRestaurant"`
+	NormalizedName   string                                        `json:"normalizedName"`
+	LocationCount    int                                           `json:"locationCount"`
+	VisitCount       int                                           `json:"visitCount"`
+	ItemCount        int                                           `json:"itemCount"`
+	LatestVisitedAt  string                                        `json:"latestVisitedAt,omitempty"`
+	Restaurants      []sameNameRestaurantHistoryRestaurantResponse `json:"restaurants"`
+	Items            []sameNameRestaurantHistoryItemResponse       `json:"items"`
+}
+
 type restaurantSearchPageResponse struct {
 	Items       []restaurantSearchResult `json:"items"`
 	Page        int                      `json:"page"`
@@ -183,6 +232,25 @@ type restaurantSelectionSummaryRow struct {
 	UserVisitCount       int             `db:"userVisitCount"`
 	FriendCount          int             `db:"friendCount"`
 	HasPendingMenuReview int             `db:"hasPendingMenuReview"`
+}
+
+type restaurantHistoryCandidateRow struct {
+	RestaurantID string `db:"restaurantId"`
+	Name         string `db:"name"`
+	Location     string `db:"location"`
+	CuisineType  string `db:"cuisineType"`
+}
+
+type sameNameHistoryVisitItemRow struct {
+	VisitID            string  `db:"visitId"`
+	ItemID             string  `db:"itemId"`
+	ItemName           string  `db:"itemName"`
+	Rating             float64 `db:"rating"`
+	VisitedAt          string  `db:"visitedAt"`
+	VisitCreatedAt     string  `db:"visitCreatedAt"`
+	RestaurantID       string  `db:"restaurantId"`
+	RestaurantName     string  `db:"restaurantName"`
+	RestaurantLocation string  `db:"restaurantLocation"`
 }
 
 type homeFeedEntryRow struct {
@@ -655,6 +723,25 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, items)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/restaurants/{restaurantId}/same-name-history", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if restaurantID == "" {
+			return apis.NewBadRequestError("restaurantId is required", nil)
+		}
+
+		history, err := getSameNameRestaurantHistory(app, e.Auth, restaurantID)
+		if err != nil {
+			log.Printf("Failed to load same-name history for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
+			return err
+		}
+
+		return e.JSON(200, history)
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/restaurants/visit-stats", func(e *core.RequestEvent) error {
@@ -3253,6 +3340,372 @@ func listRestaurantMenuItemSummaries(
 	}
 
 	return result, nil
+}
+
+func getSameNameRestaurantHistory(
+	app core.App,
+	authRecord *core.Record,
+	restaurantID string,
+) (sameNameRestaurantHistoryResponse, error) {
+	response := sameNameRestaurantHistoryResponse{
+		Restaurants: []sameNameRestaurantHistoryRestaurantResponse{},
+		Items:       []sameNameRestaurantHistoryItemResponse{},
+	}
+	if authRecord == nil {
+		return response, apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return response, apis.NewApiError(500, "failed to resolve restaurant visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return response, apis.NewNotFoundError("restaurant not found", nil)
+		}
+		return response, apis.NewApiError(500, "failed to resolve restaurant", err)
+	}
+
+	anchorName := strings.TrimSpace(restaurantRecord.GetString("name"))
+	normalizedName := normalizeRestaurantHistoryName(anchorName)
+	response.AnchorRestaurant = sameNameRestaurantHistoryAnchorResponse{
+		ID:          restaurantRecord.Id,
+		Name:        anchorName,
+		Location:    resolveRestaurantLocation(restaurantRecord),
+		City:        resolveRestaurantLocation(restaurantRecord),
+		CuisineType: resolveRestaurantCuisine(restaurantRecord),
+	}
+	response.NormalizedName = normalizedName
+	response.LocationCount = 1
+
+	if normalizedName == "" {
+		return response, nil
+	}
+
+	candidateRestaurants, err := listAccessibleSameNameRestaurantCandidates(app, viewerUserID, isAdmin)
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load restaurant history candidates", err)
+	}
+
+	restaurantByID := make(map[string]restaurantHistoryCandidateRow, len(candidateRestaurants))
+	restaurantIDs := make([]string, 0, len(candidateRestaurants))
+	seenRestaurantIDs := map[string]struct{}{}
+	for _, candidate := range candidateRestaurants {
+		if normalizeRestaurantHistoryName(candidate.Name) != normalizedName {
+			continue
+		}
+		trimmedID := strings.TrimSpace(candidate.RestaurantID)
+		if trimmedID == "" {
+			continue
+		}
+		if _, exists := seenRestaurantIDs[trimmedID]; exists {
+			continue
+		}
+		seenRestaurantIDs[trimmedID] = struct{}{}
+		restaurantIDs = append(restaurantIDs, trimmedID)
+		restaurantByID[trimmedID] = candidate
+	}
+	if len(restaurantIDs) == 0 {
+		restaurantIDs = []string{restaurantRecord.Id}
+		restaurantByID[restaurantRecord.Id] = restaurantHistoryCandidateRow{
+			RestaurantID: restaurantRecord.Id,
+			Name:         anchorName,
+			Location:     resolveRestaurantLocation(restaurantRecord),
+			CuisineType:  resolveRestaurantCuisine(restaurantRecord),
+		}
+	}
+
+	itemRows, err := listSameNameHistoryVisitItemRows(app, viewerUserID, isAdmin, restaurantIDs)
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load same-name restaurant history", err)
+	}
+
+	return buildSameNameRestaurantHistoryResponse(response, restaurantByID, itemRows), nil
+}
+
+func listAccessibleSameNameRestaurantCandidates(
+	app core.App,
+	userID string,
+	isAdmin bool,
+) ([]restaurantHistoryCandidateRow, error) {
+	query := buildRestaurantSearchBaseQuery(isAdmin) + `
+		SELECT
+			restaurants.id AS [[restaurantId]],
+			COALESCE(restaurants.name, '') AS [[name]],
+			COALESCE(restaurants.location, '') AS [[location]],
+			COALESCE(restaurants.cuisineType, '') AS [[cuisineType]]
+		FROM restaurants
+	`
+	if !isAdmin {
+		query += `
+			WHERE ` + restaurantAccessCondition()
+	}
+	query += `
+		ORDER BY restaurants.name ASC, restaurants.location ASC, restaurants.id ASC
+	`
+
+	rows := []restaurantHistoryCandidateRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{"userId": userID}).
+		All(&rows)
+	return rows, err
+}
+
+func listSameNameHistoryVisitItemRows(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	restaurantIDs []string,
+) ([]sameNameHistoryVisitItemRow, error) {
+	normalizedRestaurantIDs := normalizeRestaurantIDs(restaurantIDs)
+	if len(normalizedRestaurantIDs) == 0 {
+		return []sameNameHistoryVisitItemRow{}, nil
+	}
+
+	encodedRestaurantIDs, err := json.Marshal(normalizedRestaurantIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	ownerCondition := ownerAccessibleVisitModerationCondition
+	if isAdmin {
+		ownerCondition = "1 = 1"
+	}
+
+	query := fmt.Sprintf(`
+		WITH requested_restaurants AS (
+			SELECT DISTINCT TRIM(value) AS restaurantId
+			FROM json_each({:restaurantIdsJson})
+			WHERE TRIM(value) != ''
+		)
+		SELECT
+			visits.id AS [[visitId]],
+			food_items.id AS [[itemId]],
+			COALESCE(food_items.name, '') AS [[itemName]],
+			COALESCE(food_items.rating, 0) AS [[rating]],
+			COALESCE(visits.visitDate, visits.created, '') AS [[visitedAt]],
+			COALESCE(visits.created, '') AS [[visitCreatedAt]],
+			restaurants.id AS [[restaurantId]],
+			COALESCE(restaurants.name, '') AS [[restaurantName]],
+			COALESCE(restaurants.location, '') AS [[restaurantLocation]]
+		FROM requested_restaurants
+		INNER JOIN restaurants ON restaurants.id = requested_restaurants.restaurantId
+		INNER JOIN visits ON visits.restaurant = restaurants.id
+		INNER JOIN food_items ON food_items.visit = visits.id
+		WHERE visits.user = {:userId}
+			AND %s
+			AND COALESCE(food_items.itemType, '') = {:visitItemType}
+			AND TRIM(COALESCE(food_items.name, '')) != ''
+		ORDER BY COALESCE(visits.visitDate, visits.created, '') DESC, food_items.created DESC, food_items.id DESC
+	`, ownerCondition)
+
+	rows := []sameNameHistoryVisitItemRow{}
+	err = app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"restaurantIdsJson": string(encodedRestaurantIDs),
+			"userId":            userID,
+			"visitItemType":     foodItemTypeVisitItem,
+		}).
+		All(&rows)
+	return rows, err
+}
+
+type sameNameRestaurantHistoryItemAccumulator struct {
+	normalizedItemName string
+	displayName        string
+	orderCount         int
+	ratingTotal        float64
+	latestRating       float64
+	latestVisitedAt    string
+	latestRestaurantID string
+	restaurants        map[string]*sameNameRestaurantHistoryItemRestaurantResponse
+}
+
+type sameNameRestaurantHistoryRestaurantAccumulator struct {
+	restaurant sameNameRestaurantHistoryRestaurantResponse
+}
+
+func buildSameNameRestaurantHistoryResponse(
+	response sameNameRestaurantHistoryResponse,
+	restaurantByID map[string]restaurantHistoryCandidateRow,
+	itemRows []sameNameHistoryVisitItemRow,
+) sameNameRestaurantHistoryResponse {
+	itemAccumulators := map[string]*sameNameRestaurantHistoryItemAccumulator{}
+	restaurantAccumulators := map[string]*sameNameRestaurantHistoryRestaurantAccumulator{}
+	visitIDs := map[string]struct{}{}
+	restaurantVisitIDs := map[string]map[string]struct{}{}
+	latestVisitedAt := ""
+
+	for _, row := range itemRows {
+		restaurantID := strings.TrimSpace(row.RestaurantID)
+		visitID := strings.TrimSpace(row.VisitID)
+		itemName := strings.TrimSpace(row.ItemName)
+		normalizedItemName := normalizeRestaurantHistoryItemName(itemName)
+		if restaurantID == "" || normalizedItemName == "" {
+			continue
+		}
+		if visitID != "" {
+			visitIDs[visitID] = struct{}{}
+			if restaurantVisitIDs[restaurantID] == nil {
+				restaurantVisitIDs[restaurantID] = map[string]struct{}{}
+			}
+			restaurantVisitIDs[restaurantID][visitID] = struct{}{}
+		}
+
+		visitedAt := defaultString(strings.TrimSpace(row.VisitedAt), strings.TrimSpace(row.VisitCreatedAt))
+		if visitedAt > latestVisitedAt {
+			latestVisitedAt = visitedAt
+		}
+
+		restaurantCandidate := restaurantByID[restaurantID]
+		restaurantName := defaultString(strings.TrimSpace(row.RestaurantName), strings.TrimSpace(restaurantCandidate.Name))
+		restaurantLocation := defaultString(strings.TrimSpace(row.RestaurantLocation), strings.TrimSpace(restaurantCandidate.Location))
+
+		restaurantAccumulator := restaurantAccumulators[restaurantID]
+		if restaurantAccumulator == nil {
+			restaurantAccumulator = &sameNameRestaurantHistoryRestaurantAccumulator{
+				restaurant: sameNameRestaurantHistoryRestaurantResponse{
+					RestaurantID:       restaurantID,
+					RestaurantName:     restaurantName,
+					RestaurantLocation: restaurantLocation,
+					RestaurantCity:     restaurantLocation,
+				},
+			}
+			restaurantAccumulators[restaurantID] = restaurantAccumulator
+		}
+		restaurantAccumulator.restaurant.VisitCount = len(restaurantVisitIDs[restaurantID])
+		if visitedAt > restaurantAccumulator.restaurant.LatestVisitedAt {
+			restaurantAccumulator.restaurant.LatestVisitedAt = visitedAt
+		}
+
+		itemAccumulator := itemAccumulators[normalizedItemName]
+		if itemAccumulator == nil {
+			itemAccumulator = &sameNameRestaurantHistoryItemAccumulator{
+				normalizedItemName: normalizedItemName,
+				displayName:        itemName,
+				latestRestaurantID: restaurantID,
+				restaurants:        map[string]*sameNameRestaurantHistoryItemRestaurantResponse{},
+			}
+			itemAccumulators[normalizedItemName] = itemAccumulator
+		}
+		itemAccumulator.orderCount++
+		itemAccumulator.ratingTotal += row.Rating
+		if visitedAt >= itemAccumulator.latestVisitedAt {
+			itemAccumulator.displayName = itemName
+			itemAccumulator.latestRating = row.Rating
+			itemAccumulator.latestVisitedAt = visitedAt
+			itemAccumulator.latestRestaurantID = restaurantID
+		}
+
+		itemRestaurant := itemAccumulator.restaurants[restaurantID]
+		if itemRestaurant == nil {
+			itemRestaurant = &sameNameRestaurantHistoryItemRestaurantResponse{
+				RestaurantID:       restaurantID,
+				RestaurantName:     restaurantName,
+				RestaurantLocation: restaurantLocation,
+			}
+			itemAccumulator.restaurants[restaurantID] = itemRestaurant
+		}
+		itemRestaurant.OrderCount++
+	}
+
+	response.VisitCount = len(visitIDs)
+	response.ItemCount = len(itemAccumulators)
+	response.LatestVisitedAt = latestVisitedAt
+
+	response.Restaurants = make([]sameNameRestaurantHistoryRestaurantResponse, 0, len(restaurantAccumulators))
+	for _, accumulator := range restaurantAccumulators {
+		response.Restaurants = append(response.Restaurants, accumulator.restaurant)
+	}
+	sort.Slice(response.Restaurants, func(i, j int) bool {
+		if response.Restaurants[i].LatestVisitedAt != response.Restaurants[j].LatestVisitedAt {
+			return response.Restaurants[i].LatestVisitedAt > response.Restaurants[j].LatestVisitedAt
+		}
+		if response.Restaurants[i].VisitCount != response.Restaurants[j].VisitCount {
+			return response.Restaurants[i].VisitCount > response.Restaurants[j].VisitCount
+		}
+		return response.Restaurants[i].RestaurantName < response.Restaurants[j].RestaurantName
+	})
+	if len(response.Restaurants) > 1 {
+		response.LocationCount = len(response.Restaurants)
+	} else {
+		response.LocationCount = 1
+	}
+
+	response.Items = make([]sameNameRestaurantHistoryItemResponse, 0, len(itemAccumulators))
+	for _, accumulator := range itemAccumulators {
+		itemRestaurants := make([]sameNameRestaurantHistoryItemRestaurantResponse, 0, len(accumulator.restaurants))
+		for _, restaurant := range accumulator.restaurants {
+			itemRestaurants = append(itemRestaurants, *restaurant)
+		}
+		sort.Slice(itemRestaurants, func(i, j int) bool {
+			if itemRestaurants[i].OrderCount != itemRestaurants[j].OrderCount {
+				return itemRestaurants[i].OrderCount > itemRestaurants[j].OrderCount
+			}
+			return itemRestaurants[i].RestaurantName < itemRestaurants[j].RestaurantName
+		})
+
+		latestRestaurant := restaurantByID[accumulator.latestRestaurantID]
+		latestRestaurantName := strings.TrimSpace(latestRestaurant.Name)
+		latestRestaurantLocation := strings.TrimSpace(latestRestaurant.Location)
+		for _, restaurant := range itemRestaurants {
+			if restaurant.RestaurantID == accumulator.latestRestaurantID {
+				latestRestaurantName = defaultString(restaurant.RestaurantName, latestRestaurantName)
+				latestRestaurantLocation = defaultString(restaurant.RestaurantLocation, latestRestaurantLocation)
+				break
+			}
+		}
+
+		response.Items = append(response.Items, sameNameRestaurantHistoryItemResponse{
+			NormalizedItemName:       accumulator.normalizedItemName,
+			DisplayName:              accumulator.displayName,
+			OrderCount:               accumulator.orderCount,
+			AverageRating:            accumulator.ratingTotal / float64(accumulator.orderCount),
+			LatestRating:             accumulator.latestRating,
+			LatestVisitedAt:          accumulator.latestVisitedAt,
+			LatestRestaurantID:       accumulator.latestRestaurantID,
+			LatestRestaurantName:     latestRestaurantName,
+			LatestRestaurantLocation: latestRestaurantLocation,
+			Restaurants:              itemRestaurants,
+		})
+	}
+	sort.Slice(response.Items, func(i, j int) bool {
+		if response.Items[i].LatestVisitedAt != response.Items[j].LatestVisitedAt {
+			return response.Items[i].LatestVisitedAt > response.Items[j].LatestVisitedAt
+		}
+		if response.Items[i].OrderCount != response.Items[j].OrderCount {
+			return response.Items[i].OrderCount > response.Items[j].OrderCount
+		}
+		return response.Items[i].DisplayName < response.Items[j].DisplayName
+	})
+
+	return response
+}
+
+func normalizeRestaurantHistoryName(name string) string {
+	return normalizeRestaurantHistoryText(name)
+}
+
+func normalizeRestaurantHistoryItemName(name string) string {
+	return normalizeRestaurantHistoryText(name)
+}
+
+func normalizeRestaurantHistoryText(value string) string {
+	normalized := strings.NewReplacer(
+		"’", "'",
+		"‘", "'",
+		"＇", "'",
+		"`", "'",
+	).Replace(value)
+	return strings.ToLower(strings.Join(strings.Fields(normalized), " "))
 }
 
 func getRestaurantVisitStats(

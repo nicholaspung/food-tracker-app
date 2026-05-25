@@ -5,6 +5,7 @@ import {
   buildRecentRestaurantsQueryOptions,
   buildRestaurantMenuItemsQueryOptions,
   resolveSavedRestaurantsUiState,
+  runRestaurantNearbyCoordinateSearch,
   runRestaurantNearbySearch,
   runRestaurantTextSearch,
   syncMonthlyUsageSnapshot,
@@ -462,5 +463,73 @@ describe('restaurant selection module', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['feature', 'usage', 'monthly'],
     });
+  });
+
+  it('runs coordinate nearby search without capturing GPS', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const usageSnapshot = {
+      monthKey: '2026-05',
+      userTier: 'free',
+      limits: {},
+      usage: {},
+      remaining: {},
+    };
+    const searchNearby = jest.fn().mockResolvedValue({
+      restaurants,
+      usageSnapshot,
+    });
+
+    const result = await runRestaurantNearbyCoordinateSearch({
+      coords: { lat: 34.05, lng: -118.24 },
+      isOnline: true,
+      isQuotaReached: false,
+      queryClient: queryClient as never,
+      searchNearby,
+      shouldEnforceUsageLimitsClientSide: true,
+    });
+
+    expect(result).toEqual({
+      referenceCoords: { lat: 34.05, lng: -118.24 },
+      results: restaurants,
+      status: 'success',
+    });
+    expect(searchNearby).toHaveBeenCalledWith({
+      latitude: 34.05,
+      longitude: -118.24,
+      radius: 5000,
+    });
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['feature', 'usage', 'monthly', 'actual'],
+      usageSnapshot,
+    );
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('uses nearby preflight for coordinate nearby search', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const searchNearby = jest.fn();
+
+    await expect(
+      runRestaurantNearbyCoordinateSearch({
+        coords: { lat: 34.05, lng: -118.24 },
+        isOnline: false,
+        isQuotaReached: false,
+        queryClient: queryClient as never,
+        searchNearby,
+        shouldEnforceUsageLimitsClientSide: true,
+      }),
+    ).resolves.toEqual({
+      message: 'Nearby search requires internet connection.',
+      status: 'offline',
+    });
+
+    expect(searchNearby).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 });

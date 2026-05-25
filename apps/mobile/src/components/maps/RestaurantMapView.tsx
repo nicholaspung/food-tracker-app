@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import type { MapMarkerProps, MapViewProps } from 'react-native-maps';
+import type { MapMarkerProps, MapViewProps, Region } from 'react-native-maps';
 
 import {
   CurrentLocationButton,
@@ -36,10 +36,16 @@ interface RestaurantMapViewProps {
   omittedWithoutCoordinates: number;
   hiddenLocationSingularLabel?: string;
   hiddenLocationPluralLabel?: string;
+  initialUserCoordinates?: Coordinates | null;
+  onOpenSelectedGroup?: (group: RestaurantMapGroup) => void;
+  selectedGroupActionLabel?: string;
   analyticsSource: string;
   testID: string;
   mapTestID: string;
   onRetry: () => void;
+  externalTopInset?: number;
+  onUserRegionChangeComplete?: (region: Region) => void;
+  preserveRegionOnGroupsChange?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -146,9 +152,6 @@ const useStyles = createThemedStyles((theme) => ({
     top: theme.spacing.sm,
     zIndex: 2,
   },
-  mapControlsWithHelper: {
-    top: theme.spacing.xxl + theme.spacing.lg,
-  },
   resetButton: {
     alignItems: 'center',
     backgroundColor: theme.colors.background.surface,
@@ -195,20 +198,29 @@ export function RestaurantMapView({
   omittedWithoutCoordinates,
   hiddenLocationSingularLabel = 'entry',
   hiddenLocationPluralLabel = 'entries',
+  initialUserCoordinates = null,
+  onOpenSelectedGroup,
+  selectedGroupActionLabel,
   analyticsSource,
   testID,
   mapTestID,
   onRetry,
+  externalTopInset = 0,
+  onUserRegionChangeComplete,
+  preserveRegionOnGroupsChange = false,
   style,
 }: RestaurantMapViewProps) {
   const styles = useStyles();
   const theme = useTheme();
   const mapRef = useRef<MapViewHandle | null>(null);
+  const userPanPendingRef = useRef(false);
+  const didHandleInitialRegionRef = useRef(false);
+  const lastHandledResetSignalRef = useRef(resetSignal);
   const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
   const [directionsErrorMessage, setDirectionsErrorMessage] = useState<string | null>(null);
   const [directionsLoading, setDirectionsLoading] = useState(false);
   const [hiddenLocationBannerDismissed, setHiddenLocationBannerDismissed] = useState(false);
-  const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null);
+  const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(initialUserCoordinates);
   const maps = loadMapsComponents();
   const initialRegion = useMemo(() => buildInitialMapRegion(groups), [groups]);
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
@@ -227,6 +239,12 @@ export function RestaurantMapView({
   }, [omittedWithoutCoordinates]);
 
   useEffect(() => {
+    if (initialUserCoordinates) {
+      setUserCoordinates(initialUserCoordinates);
+    }
+  }, [initialUserCoordinates]);
+
+  useEffect(() => {
     if (selectedGroupId && !selectedGroup) {
       onSelectedGroupChange(null);
     }
@@ -241,7 +259,26 @@ export function RestaurantMapView({
       return;
     }
 
+    if (preserveRegionOnGroupsChange && didHandleInitialRegionRef.current) {
+      return;
+    }
+
+    didHandleInitialRegionRef.current = true;
     mapRef.current?.animateToRegion?.(initialRegion, 0);
+  }, [groups.length, initialRegion, maps, preserveRegionOnGroupsChange]);
+
+  useEffect(() => {
+    if (lastHandledResetSignalRef.current === resetSignal) {
+      return;
+    }
+
+    lastHandledResetSignalRef.current = resetSignal;
+    if (!maps || groups.length === 0) {
+      return;
+    }
+
+    didHandleInitialRegionRef.current = true;
+    mapRef.current?.animateToRegion?.(initialRegion, 300);
   }, [groups.length, initialRegion, maps, resetSignal]);
 
   if (loading && groups.length === 0) {
@@ -299,6 +336,10 @@ export function RestaurantMapView({
   }
 
   const { MapView, Marker } = maps;
+  const helperTop = theme.spacing.sm + externalTopInset;
+  const controlsTop = showHiddenLocationBanner
+    ? theme.spacing.xxl + theme.spacing.lg + externalTopInset
+    : theme.spacing.sm + externalTopInset;
   const handleRestaurantMarkerPress = (groupId: string) => {
     const group = groups.find((candidate) => candidate.id === groupId);
     if (group) {
@@ -322,6 +363,17 @@ export function RestaurantMapView({
     onSelectedGroupChange(null);
     mapRef.current?.animateToRegion?.(initialRegion, 300);
   };
+  const handlePanDrag = () => {
+    userPanPendingRef.current = true;
+  };
+  const handleRegionChangeComplete = (region: Region) => {
+    if (!userPanPendingRef.current) {
+      return;
+    }
+
+    userPanPendingRef.current = false;
+    onUserRegionChangeComplete?.(region);
+  };
   const handleOpenDirections = async (group: RestaurantMapGroup) => {
     setDirectionsErrorMessage(null);
     setDirectionsLoading(true);
@@ -342,6 +394,8 @@ export function RestaurantMapView({
         onPress={() => {
           onSelectedGroupChange(null);
         }}
+        onPanDrag={handlePanDrag}
+        onRegionChangeComplete={handleRegionChangeComplete}
         ref={mapRef}
         showsUserLocation={Boolean(userCoordinates)}
         style={styles.map}
@@ -371,7 +425,7 @@ export function RestaurantMapView({
       </MapView>
 
       {showHiddenLocationBanner ? (
-        <View style={styles.helperPill}>
+        <View style={[styles.helperPill, { top: helperTop }]}>
           <Text style={styles.helperText} variant="bodySmTightSemiBold">
             {omittedWithoutCoordinates} {omittedWithoutCoordinates === 1 ? hiddenLocationSingularLabel : hiddenLocationPluralLabel} without locations are hidden from map.
           </Text>
@@ -388,7 +442,7 @@ export function RestaurantMapView({
         </View>
       ) : null}
 
-      <View style={[styles.mapControls, showHiddenLocationBanner ? styles.mapControlsWithHelper : null]}>
+      <View style={[styles.mapControls, { top: controlsTop }]} testID={`${testID}-controls`}>
         <Pressable
           accessibilityLabel="Reset map view"
           accessibilityRole="button"
@@ -423,7 +477,9 @@ export function RestaurantMapView({
         onClose={() => {
           onSelectedGroupChange(null);
         }}
+        onOpenSelectedGroup={onOpenSelectedGroup}
         onOpenDirections={handleOpenDirections}
+        selectedGroupActionLabel={selectedGroupActionLabel}
       />
     </View>
   );

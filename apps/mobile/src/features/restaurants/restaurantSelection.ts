@@ -87,6 +87,19 @@ interface RunRestaurantNearbySearchInput {
   shouldEnforceUsageLimitsClientSide: boolean;
 }
 
+interface RunRestaurantNearbyCoordinateSearchInput {
+  coords: VisitRestaurantReferenceCoords;
+  isOnline: boolean;
+  isQuotaReached: boolean;
+  queryClient: QueryClient;
+  searchNearby: (params: {
+    latitude: number;
+    longitude: number;
+    radius: number;
+  }) => Promise<RestaurantNearbySearchAdapterResult>;
+  shouldEnforceUsageLimitsClientSide: boolean;
+}
+
 interface ResolveRestaurantTextSearchPreflightInput {
   isOnline: boolean;
   isQuotaReached: boolean;
@@ -486,6 +499,69 @@ export async function runRestaurantNearbySearch({
   const referenceCoords = {
     lat: locationCapture.coordinates.latitude,
     lng: locationCapture.coordinates.longitude,
+  };
+  let didSyncMonthlyUsageSnapshot = false;
+
+  try {
+    const { restaurants, usageSnapshot } = await searchNearby({
+      latitude: referenceCoords.lat,
+      longitude: referenceCoords.lng,
+      radius: 5000,
+    });
+    didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(
+      queryClient,
+      usageSnapshot,
+    );
+
+    return {
+      referenceCoords,
+      results: restaurants,
+      status: 'success',
+    };
+  } catch (error) {
+    const limitPayload = parseLimitExceededError(error);
+    const message = limitPayload
+      ? formatLimitExceededMessage(limitPayload)
+      : error instanceof Error
+        ? error.message
+        : 'Could not load nearby restaurants.';
+
+    return {
+      error,
+      limitPayload,
+      message,
+      referenceCoords,
+      status: 'error',
+    };
+  } finally {
+    if (!didSyncMonthlyUsageSnapshot) {
+      await queryClient.invalidateQueries({
+        queryKey: ['feature', 'usage', 'monthly'],
+      });
+    }
+  }
+}
+
+export async function runRestaurantNearbyCoordinateSearch({
+  coords,
+  isOnline,
+  isQuotaReached,
+  queryClient,
+  searchNearby,
+  shouldEnforceUsageLimitsClientSide,
+}: RunRestaurantNearbyCoordinateSearchInput): Promise<RestaurantNearbySearchResult> {
+  const preflight = resolveRestaurantNearbySearchPreflight({
+    isOnline,
+    isQuotaReached,
+    shouldEnforceUsageLimitsClientSide,
+  });
+  if (!('ok' in preflight)) {
+    return preflight;
+  }
+
+  const referenceCoords = {
+    lat: coords.lat,
+    lng: coords.lng,
   };
   let didSyncMonthlyUsageSnapshot = false;
 

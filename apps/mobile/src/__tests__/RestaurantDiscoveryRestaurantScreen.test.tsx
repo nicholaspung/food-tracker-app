@@ -36,6 +36,7 @@ jest.mock('../components/shared', () => ({
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
 }));
@@ -45,6 +46,7 @@ jest.mock('../features', () => ({
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
+  getSameNameRestaurantHistory: jest.fn(),
   listMenuItemsForRestaurant: jest.fn(),
 }));
 
@@ -156,12 +158,35 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
     } as never);
-    mockedUseQuery.mockReturnValue({
-      data: [],
-      isError: false,
-      isLoading: false,
-      refetch: jest.fn(),
-    } as never);
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('sameNameHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
     mockScanMenu.mockReset();
     mockUseMenuScanFlow.mockReset();
     mockUseMenuScanFlow.mockReturnValue({
@@ -189,6 +214,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     expect(scaffold.props.subtitle).toContain('Google place');
     expect(scaffold.props.rightAccessory).toBeTruthy();
     expect(renderer.root.findAllByType('Card')).toHaveLength(2);
+    expect(renderer.root.findAllByType('SegmentedControl')).toHaveLength(0);
     expect(mockedUseQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: menuItemsQueryKeys.restaurant('restaurant-1'),
@@ -253,5 +279,109 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
       'failed to parse menu with Gemini',
     );
+  });
+
+  it('shows all locations scope when same-name history spans multiple locations', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('sameNameHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 2,
+            items: [
+              {
+                averageRating: 4.5,
+                displayName: 'Tonic Bar Smoothie',
+                latestRating: 5,
+                latestRestaurantId: 'restaurant-2',
+                latestRestaurantLocation: 'Venice, CA',
+                latestRestaurantName: 'Erewhon West Hollywood',
+                latestVisitedAt: '2026-04-05T18:30:00.000Z',
+                normalizedItemName: 'tonic bar smoothie',
+                orderCount: 2,
+                restaurants: [],
+              },
+            ],
+            latestVisitedAt: '2026-04-05T18:30:00.000Z',
+            locationCount: 2,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 3,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    const segmentedControl = renderer.root.findByType('SegmentedControl');
+    expect(segmentedControl.props.options).toEqual([
+      { label: 'This Location', value: 'location' },
+      { label: 'All Locations', value: 'allLocations' },
+    ]);
+
+    act(() => {
+      segmentedControl.props.onChange('allLocations');
+    });
+
+    const listItem = renderer.root.findByType('ListItem');
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Ordered Across Locations')).toBe(true);
+    expect(listItem.props.title).toBe('Tonic Bar Smoothie');
+  });
+
+  it('renders a retryable all locations error without blocking the screen', () => {
+    const refetch = jest.fn();
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('sameNameHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 2,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 1,
+          },
+          isError: true,
+          isLoading: false,
+          refetch,
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    act(() => {
+      renderer.root.findByType('SegmentedControl').props.onChange('allLocations');
+    });
+
+    expect(renderer.root.findByProps({ title: 'Orders unavailable' }).props.errorMessage).toBe(
+      'Could not load orders across locations.',
+    );
+    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.title).toBe('Erewhon West Hollywood');
   });
 });

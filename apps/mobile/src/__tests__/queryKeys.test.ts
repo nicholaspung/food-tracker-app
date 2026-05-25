@@ -17,6 +17,7 @@ import {
   isTastingSessionsListQueryKey,
   tastingSessionsQueryKeys,
 } from '../features/store/tastingSessionsQuery';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 
 describe('mobile feature query keys', () => {
   it('defines stable bills query keys and cache lookup helpers', () => {
@@ -91,5 +92,18 @@ describe('mobile feature query keys', () => {
     expect(isTastingSessionDetailQueryKey(tastingSessionsQueryKeys.detail('session_1'))).toBe(true);
     expect(getCachedTastingSessionDetail(queryClient, 'session_1')?.name).toBe('Coffee');
   });
-});
 
+  it('defines stable same-name restaurant history query keys', () => {
+    expect(restaurantsQueryKeys.sameNameHistoryRoot).toEqual([
+      'feature',
+      'restaurants',
+      'sameNameHistory',
+    ]);
+    expect(restaurantsQueryKeys.sameNameHistory(' restaurant-1 ')).toEqual([
+      'feature',
+      'restaurants',
+      'sameNameHistory',
+      'restaurant-1',
+    ]);
+  });
+});

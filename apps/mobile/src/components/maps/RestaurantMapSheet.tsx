@@ -15,6 +15,8 @@ interface RestaurantMapSheetProps {
   group: RestaurantMapGroup | null;
   onClose: () => void;
   onOpenDirections: (group: RestaurantMapGroup) => Promise<void>;
+  onOpenSelectedGroup?: (group: RestaurantMapGroup) => void;
+  selectedGroupActionLabel?: string;
 }
 
 const COLLAPSED_SNAP = 260;
@@ -231,6 +233,8 @@ export function RestaurantMapSheet({
   group,
   onClose,
   onOpenDirections,
+  onOpenSelectedGroup,
+  selectedGroupActionLabel = 'Open Restaurant',
 }: RestaurantMapSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const previousGroupIdRef = useRef<string | null>(null);
@@ -293,6 +297,16 @@ export function RestaurantMapSheet({
         </View>
 
         <View style={styles.actions}>
+          {onOpenSelectedGroup ? (
+            <Button
+              accessibilityLabel={`${selectedGroupActionLabel} ${group.restaurantName}`}
+              label={selectedGroupActionLabel}
+              onPress={() => {
+                onOpenSelectedGroup(group);
+              }}
+              testID="restaurant-map-open-selected-group-button"
+            />
+          ) : null}
           <Button
             accessibilityLabel={`Get directions to ${group.restaurantName}`}
             label="Directions"

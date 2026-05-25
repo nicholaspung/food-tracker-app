@@ -231,6 +231,40 @@ export function formatLocalDateLabel(
   return parsedDate.toLocaleDateString(locale, options);
 }
 
+export function formatStoredCalendarDateLabel(
+  value: unknown,
+  {
+    locale,
+    fallback = 'Unknown date',
+    options = {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    },
+  }: FormatLocalDateOptions = {},
+): string {
+  if (typeof value === 'string') {
+    const localDateString = value.trim().match(/^(\d{4}-\d{2}-\d{2})(?:$|[ T])/)?.[1];
+    if (localDateString) {
+      if (!isValidLocalDate(localDateString)) {
+        return fallback;
+      }
+
+      return formatLocalDateLabel(localDateString, {
+        locale,
+        fallback,
+        options,
+      });
+    }
+  }
+
+  return formatDisplayDate(value, {
+    locale,
+    fallback,
+    options,
+  });
+}
+
 export function formatPhotoAttachmentDateLabel(value: unknown): string {
   return formatDisplayDate(value, {
     locale: 'en-US',

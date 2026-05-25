@@ -10,11 +10,14 @@ import {
   LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
+  SegmentedControl,
+  type SegmentedControlOption,
   VisitRestaurantOptionTrailing,
 } from '../components/shared';
-import { type MenuItemRecord, useMenuScanFlow } from '../features';
+import { type MenuItemRecord, type SameNameRestaurantHistoryRecord, useMenuScanFlow } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
-import { listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
+import { getSameNameRestaurantHistory, listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
 import { buildVisitRestaurantDescription } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -25,6 +28,12 @@ type RestaurantDiscoveryRestaurantScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'RestaurantDiscoveryRestaurant'
 >;
+type RestaurantDetailScope = 'location' | 'allLocations';
+
+const RESTAURANT_DETAIL_SCOPE_OPTIONS: readonly SegmentedControlOption<RestaurantDetailScope>[] = [
+  { label: 'This Location', value: 'location' },
+  { label: 'All Locations', value: 'allLocations' },
+];
 
 const useStyles = createThemedStyles((theme) => ({
   card: {
@@ -39,6 +48,14 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.xs,
+  },
+  itemDescription: {
+    gap: theme.spacing.xxs,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
   },
   warningPanel: {
     backgroundColor: theme.colors.status.warningBg,
@@ -78,6 +95,27 @@ function buildRestaurantFromRoute(
   };
 }
 
+function formatCount(value: number, singular: string, plural = `${singular}s`) {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function formatAverageRating(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 'avg unrated';
+  }
+
+  return `avg ${value.toFixed(1)}`;
+}
+
+function buildLatestLocationLabel(item: SameNameRestaurantHistoryRecord['items'][number]) {
+  const parts = [item.latestRestaurantName, item.latestRestaurantLocation].filter(Boolean);
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  return `Latest at ${parts.join(' • ')}`;
+}
+
 export function RestaurantDiscoveryRestaurantScreen({
   navigation,
   route,
@@ -87,6 +125,7 @@ export function RestaurantDiscoveryRestaurantScreen({
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
   const restaurant = useMemo(() => buildRestaurantFromRoute(route.params), [route.params]);
+  const [detailScope, setDetailScope] = useState<RestaurantDetailScope>('location');
   const restaurantDescription = useMemo(() => {
     const parts = [buildVisitRestaurantDescription(restaurant, null)];
     if (restaurant.userVisitCount && restaurant.userVisitCount > 0) {
@@ -126,6 +165,36 @@ export function RestaurantDiscoveryRestaurantScreen({
     enabled: Boolean(restaurant.id),
   });
 
+  const sameNameHistoryQuery = useQuery({
+    queryKey: restaurantsQueryKeys.sameNameHistory(restaurant.id),
+    queryFn: ({ signal }): Promise<SameNameRestaurantHistoryRecord> => {
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<SameNameRestaurantHistoryRecord>(
+            restaurantsQueryKeys.sameNameHistory(restaurant.id),
+          ) ?? {
+            anchorRestaurant: {
+              id: restaurant.id,
+              name: restaurant.name,
+              city: restaurant.city,
+              cuisineType: restaurant.cuisineType,
+              location: restaurant.location,
+            },
+            normalizedName: '',
+            locationCount: 1,
+            visitCount: 0,
+            itemCount: 0,
+            restaurants: [],
+            items: [],
+          },
+        );
+      }
+
+      return getSameNameRestaurantHistory(restaurant.id, { signal });
+    },
+    enabled: Boolean(restaurant.id),
+  });
+
   const verificationNeedsAttention =
     menuScanFlow.verification?.matched === false ||
     (menuScanFlow.verification?.checked === true &&
@@ -135,6 +204,11 @@ export function RestaurantDiscoveryRestaurantScreen({
 
   const isMenuScanProcessing =
     menuScanFlow.status === 'selecting' || menuScanFlow.status === 'processing';
+  const sameNameHistory = sameNameHistoryQuery.data;
+  const canShowAllLocations =
+    Boolean(sameNameHistory) &&
+    (sameNameHistory?.locationCount ?? 0) > 1 &&
+    (sameNameHistory?.visitCount ?? 0) > 0;
 
   return (
     <FeatureDetailScreenScaffold
@@ -234,33 +308,94 @@ export function RestaurantDiscoveryRestaurantScreen({
         ) : null}
       </Card>
 
-      <Card style={styles.card}>
-        <Text variant="label">Saved Menu Items</Text>
-        {menuItemsQuery.isLoading ? (
-          <LoadingState label="Loading menu items..." />
-        ) : menuItemsQuery.isError ? (
-          <PageErrorToast
-            actionLabel="Retry"
-            errorMessage="Could not load menu items."
-            onAction={() => {
-              void menuItemsQuery.refetch();
-            }}
-            title="Menu items unavailable"
-          />
-        ) : menuItemsQuery.data && menuItemsQuery.data.length > 0 ? (
-          menuItemsQuery.data.map((item) => (
-            <ListItem
-              key={item.id}
-              title={item.name}
+      {canShowAllLocations ? (
+        <SegmentedControl
+          onChange={setDetailScope}
+          options={RESTAURANT_DETAIL_SCOPE_OPTIONS}
+          value={detailScope}
+        />
+      ) : null}
+
+      {detailScope === 'allLocations' && canShowAllLocations ? (
+        <Card style={styles.card}>
+          <Text variant="label">Ordered Across Locations</Text>
+          {sameNameHistory ? (
+            <View style={styles.summaryRow}>
+              <Text tone="secondary">{formatCount(sameNameHistory.visitCount, 'ordered visit')}</Text>
+              <Text tone="secondary">{formatCount(sameNameHistory.locationCount, 'location')}</Text>
+              <Text tone="secondary">{formatCount(sameNameHistory.itemCount, 'item')}</Text>
+            </View>
+          ) : null}
+          {sameNameHistoryQuery.isLoading ? (
+            <LoadingState label="Loading orders..." />
+          ) : sameNameHistoryQuery.isError ? (
+            <PageErrorToast
+              actionLabel="Retry"
+              errorMessage="Could not load orders across locations."
+              onAction={() => {
+                void sameNameHistoryQuery.refetch();
+              }}
+              title="Orders unavailable"
             />
-          ))
-        ) : (
-          <EmptyState
-            description="Scan a menu photo to add items for this restaurant."
-            title="No menu items yet"
-          />
-        )}
-      </Card>
+          ) : sameNameHistory && sameNameHistory.items.length > 0 ? (
+            sameNameHistory.items.map((item) => {
+              const latestLocationLabel = buildLatestLocationLabel(item);
+
+              return (
+                <ListItem
+                  description={
+                    <View style={styles.itemDescription}>
+                      <Text tone="secondary">
+                        {formatCount(item.orderCount, 'order')} • {formatAverageRating(item.averageRating)}
+                      </Text>
+                      {latestLocationLabel ? (
+                        <Text numberOfLines={1} tone="secondary" variant="bodySm">
+                          {latestLocationLabel}
+                        </Text>
+                      ) : null}
+                    </View>
+                  }
+                  key={item.normalizedItemName}
+                  title={item.displayName}
+                />
+              );
+            })
+          ) : (
+            <EmptyState
+              description="Track a visit at this restaurant name to build your history."
+              title="No orders across locations yet"
+            />
+          )}
+        </Card>
+      ) : (
+        <Card style={styles.card}>
+          <Text variant="label">Saved Menu Items</Text>
+          {menuItemsQuery.isLoading ? (
+            <LoadingState label="Loading menu items..." />
+          ) : menuItemsQuery.isError ? (
+            <PageErrorToast
+              actionLabel="Retry"
+              errorMessage="Could not load menu items."
+              onAction={() => {
+                void menuItemsQuery.refetch();
+              }}
+              title="Menu items unavailable"
+            />
+          ) : menuItemsQuery.data && menuItemsQuery.data.length > 0 ? (
+            menuItemsQuery.data.map((item) => (
+              <ListItem
+                key={item.id}
+                title={item.name}
+              />
+            ))
+          ) : (
+            <EmptyState
+              description="Scan a menu photo to add items for this restaurant."
+              title="No menu items yet"
+            />
+          )}
+        </Card>
+      )}
 
       <Button
         label="Track Visit With This Restaurant"

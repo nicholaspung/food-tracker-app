@@ -24,6 +24,7 @@ import {
 } from '../lib/googlePlaces';
 import { resolveCreateVisitSearchUi } from '../lib/usageUiRules';
 import {
+  dedupeVisitRestaurants,
   type VisitRestaurantReferenceCoords,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
@@ -36,6 +37,7 @@ import {
   resolveSavedRestaurantsUiState,
   resolveRestaurantTextSearchPreflight,
   resolveRestaurantNearbySearchPreflight,
+  runRestaurantNearbyCoordinateSearch,
   runRestaurantNearbySearch,
   runRestaurantTextSearch,
   RESTAURANT_SUGGESTIONS_LIMIT,
@@ -94,10 +96,12 @@ interface UseRestaurantSelectionFlowResult {
   isSearchingNearbyRestaurants: boolean;
   isSearchingRestaurants: boolean;
   loadedRestaurantRecords: RestaurantRecord[];
+  gpsReferenceCoords: VisitRestaurantReferenceCoords | null;
   locationPermissionNeedsSettings: boolean;
   manualLocation: string;
   menuItemsQuery: UseQueryResult<MenuItemRecord[], Error>;
   placesQueriesRemaining: number | null;
+  referenceCoords: VisitRestaurantReferenceCoords | null;
   resetLocationPermissionNeedsSettings: () => void;
   resetRestaurantSelectionFlow: () => void;
   savedEmptyDescription: string;
@@ -113,6 +117,10 @@ interface UseRestaurantSelectionFlowResult {
   }) => Promise<TextRestaurantSearchResult>;
   searchErrorMessage: string | null;
   searchNearby: () => Promise<NearbyRestaurantSearchResult>;
+  searchNearbyAt: (
+    coords: VisitRestaurantReferenceCoords,
+    options?: { appendResults?: boolean },
+  ) => Promise<NearbyRestaurantSearchResult>;
   searchQuery: string;
   setIsSearchExpanded: Dispatch<SetStateAction<boolean>>;
   setManualLocation: Dispatch<SetStateAction<string>>;
@@ -142,12 +150,18 @@ interface RestaurantSelectionSearchActions {
   expandedLabel: string;
   isExpanded: boolean;
   isGettingLocation: boolean;
+  gpsReferenceCoords: VisitRestaurantReferenceCoords | null;
   isSearchingNearby: boolean;
   isSearchingText: boolean;
   locationPermissionNeedsSettings: boolean;
   manualLocation: string;
   nearby: () => Promise<NearbyRestaurantSearchResult>;
+  nearbyAt: (
+    coords: VisitRestaurantReferenceCoords,
+    options?: { appendResults?: boolean },
+  ) => Promise<NearbyRestaurantSearchResult>;
   query: string;
+  referenceCoords: VisitRestaurantReferenceCoords | null;
   searchByText: (options?: {
     collapseAfterSearch?: boolean;
     queryOverride?: string;
@@ -261,6 +275,7 @@ export function useRestaurantSelectionFlow({
   const [manualLocation, setManualLocation] = useState('');
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
   const [referenceCoords, setReferenceCoords] = useState<VisitRestaurantReferenceCoords | null>(null);
+  const [gpsReferenceCoords, setGpsReferenceCoords] = useState<VisitRestaurantReferenceCoords | null>(null);
   const [searchResults, setSearchResults] = useState<RestaurantRecord[]>([]);
   const [nearbyResults, setNearbyResults] = useState<RestaurantRecord[]>([]);
   const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
@@ -365,6 +380,7 @@ export function useRestaurantSelectionFlow({
     setIsSearchExpanded(false);
     setManualLocation('');
     setReferenceCoords(null);
+    setGpsReferenceCoords(null);
     setShowNearbyPlaces(false);
     setSearchResults([]);
     setNearbyResults([]);
@@ -391,10 +407,12 @@ export function useRestaurantSelectionFlow({
         return;
       }
 
-      setReferenceCoords({
+      const capturedCoords = {
         lat: locationCapture.coordinates.latitude,
         lng: locationCapture.coordinates.longitude,
-      });
+      };
+      setReferenceCoords(capturedCoords);
+      setGpsReferenceCoords(capturedCoords);
     });
 
     return () => {
@@ -504,6 +522,7 @@ export function useRestaurantSelectionFlow({
 
       if ('referenceCoords' in result) {
         setReferenceCoords(result.referenceCoords);
+        setGpsReferenceCoords(result.referenceCoords);
       }
 
       if (result.status === 'success') {
@@ -525,6 +544,61 @@ export function useRestaurantSelectionFlow({
     shouldEnforceUsageLimitsClientSide,
   ]);
 
+  const searchNearbyAt = useCallback(async (
+    coords: VisitRestaurantReferenceCoords,
+    { appendResults = true }: { appendResults?: boolean } = {},
+  ): Promise<NearbyRestaurantSearchResult> => {
+    const preflight = resolveRestaurantNearbySearchPreflight({
+      isOnline,
+      isQuotaReached: searchUi.isQuotaReached,
+      shouldEnforceUsageLimitsClientSide,
+    });
+    if (!('ok' in preflight)) {
+      setSearchErrorMessage(preflight.message);
+      return preflight;
+    }
+
+    setShowNearbyPlaces(true);
+    setSearchErrorMessage(null);
+    resetLocationPermissionNeedsSettings();
+    setIsSearchingNearbyRestaurants(true);
+
+    try {
+      const result = await runRestaurantNearbyCoordinateSearch({
+        coords,
+        isOnline,
+        isQuotaReached: searchUi.isQuotaReached,
+        queryClient,
+        searchNearby: searchAndCacheNearbyRestaurants,
+        shouldEnforceUsageLimitsClientSide,
+      });
+
+      if ('referenceCoords' in result) {
+        setReferenceCoords(result.referenceCoords);
+      }
+
+      if (result.status === 'success') {
+        setNearbyResults((currentResults) =>
+          appendResults
+            ? dedupeVisitRestaurants([...currentResults, ...result.results])
+            : result.results,
+        );
+      } else {
+        setSearchErrorMessage(result.message);
+      }
+
+      return result;
+    } finally {
+      setIsSearchingNearbyRestaurants(false);
+    }
+  }, [
+    isOnline,
+    queryClient,
+    resetLocationPermissionNeedsSettings,
+    searchUi.isQuotaReached,
+    shouldEnforceUsageLimitsClientSide,
+  ]);
+
   return {
     clearPlacesSearchState,
     clearSearchErrorMessage,
@@ -532,6 +606,7 @@ export function useRestaurantSelectionFlow({
     displayedNearbyRestaurants,
     displayedSavedRestaurants,
     expandedSearchLabel: searchUi.expandedLabel,
+    gpsReferenceCoords,
     isGettingLocation,
     isPlacesQuotaReached: searchUi.isQuotaReached,
     isSearchExpanded,
@@ -542,6 +617,7 @@ export function useRestaurantSelectionFlow({
     manualLocation,
     menuItemsQuery,
     placesQueriesRemaining,
+    referenceCoords: effectiveReferenceCoords,
     resetLocationPermissionNeedsSettings,
     resetRestaurantSelectionFlow,
     savedEmptyDescription,
@@ -554,6 +630,7 @@ export function useRestaurantSelectionFlow({
     searchByText,
     searchErrorMessage,
     searchNearby,
+    searchNearbyAt,
     searchQuery,
     setIsSearchExpanded,
     setManualLocation,
@@ -594,6 +671,7 @@ function buildRestaurantSelectionConceptInterfaces(
       compactLabel: flow.compactSearchLabel,
       displayedNearbyRestaurants: flow.displayedNearbyRestaurants,
       expandedLabel: flow.expandedSearchLabel,
+      gpsReferenceCoords: flow.gpsReferenceCoords,
       isExpanded: flow.isSearchExpanded,
       isGettingLocation: flow.isGettingLocation,
       isSearchingNearby: flow.isSearchingNearbyRestaurants,
@@ -601,7 +679,9 @@ function buildRestaurantSelectionConceptInterfaces(
       locationPermissionNeedsSettings: flow.locationPermissionNeedsSettings,
       manualLocation: flow.manualLocation,
       nearby: flow.searchNearby,
+      nearbyAt: flow.searchNearbyAt,
       query: flow.searchQuery,
+      referenceCoords: flow.referenceCoords,
       searchByText: flow.searchByText,
       searchButtonDisabled: flow.searchButtonDisabled,
       searchErrorMessage: flow.searchErrorMessage,

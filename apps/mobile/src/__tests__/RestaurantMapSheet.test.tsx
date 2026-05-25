@@ -129,12 +129,16 @@ function renderSheet({
   directionsErrorMessage = null,
   directionsLoading = false,
   group = buildGroup(),
+  onOpenSelectedGroup,
   onOpenDirections = jest.fn().mockResolvedValue(undefined),
+  selectedGroupActionLabel,
 }: {
   directionsErrorMessage?: string | null;
   directionsLoading?: boolean;
   group?: RestaurantMapGroup;
+  onOpenSelectedGroup?: jest.Mock;
   onOpenDirections?: jest.Mock;
+  selectedGroupActionLabel?: string;
 } = {}) {
   let renderer: any = null;
 
@@ -145,7 +149,9 @@ function renderSheet({
         directionsLoading={directionsLoading}
         group={group}
         onClose={jest.fn()}
+        onOpenSelectedGroup={onOpenSelectedGroup}
         onOpenDirections={onOpenDirections}
+        selectedGroupActionLabel={selectedGroupActionLabel}
       />,
     );
   });
@@ -156,6 +162,7 @@ function renderSheet({
 
   return {
     group,
+    onOpenSelectedGroup,
     onOpenDirections,
     renderer,
   };
@@ -226,6 +233,35 @@ describe('RestaurantMapSheet', () => {
     expect(button.props.accessibilityLabel).toBe('Get directions to Test Restaurant');
     expect(button.props.label).toBe('Directions');
     expect(button.props.variant).toBe('secondary');
+  });
+
+  it('does not render an open selected restaurant action by default', () => {
+    const { renderer } = renderSheet();
+
+    expect(renderer.root.findAllByProps({
+      testID: 'restaurant-map-open-selected-group-button',
+    })).toHaveLength(0);
+  });
+
+  it('renders and invokes the optional open selected restaurant action', () => {
+    const onOpenSelectedGroup = jest.fn();
+    const { group, renderer } = renderSheet({
+      onOpenSelectedGroup,
+      selectedGroupActionLabel: 'Open Restaurant',
+    });
+
+    const button = renderer.root.findByProps({
+      testID: 'restaurant-map-open-selected-group-button',
+    });
+
+    expect(button.props.accessibilityLabel).toBe('Open Restaurant Test Restaurant');
+    expect(button.props.label).toBe('Open Restaurant');
+
+    act(() => {
+      button.props.onPress();
+    });
+
+    expect(onOpenSelectedGroup).toHaveBeenCalledWith(group);
   });
 
   it('opens directions for the selected restaurant when the directions button is pressed', () => {

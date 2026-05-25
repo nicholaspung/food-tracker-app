@@ -1,16 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
+import type { Region } from 'react-native-maps';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { RestaurantMapView, type RestaurantMapGroup } from '../components/maps';
 import {
   BackHeaderScreenScaffold,
+  CurrentLocationButton,
   LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
   SegmentedControl,
+  UpgradePromptCard,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchHeaderToggle,
   VisitRestaurantSearchOptionDescription,
@@ -29,6 +34,7 @@ import {
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { calculateDistance, formatDistance } from '../lib/googlePlaces';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -36,7 +42,7 @@ import { captureObservabilityError, trackObservabilityEvent } from '../observabi
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, ListItem, Text } from '../ui';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 import {
   createAIRequestCorrelation,
   resolveAIImageErrorProperties,
@@ -45,15 +51,28 @@ import {
 type RestaurantDiscoveryScreenProps = NativeStackScreenProps<RootStackParamList, 'RestaurantDiscovery'>;
 type ImageSource = PhotoPickerPermissionSource;
 type DiscoveryTab = 'search' | 'scan';
+type DiscoverySearchViewMode = 'list' | 'map';
 
 const DISCOVERY_TAB_OPTIONS: readonly SegmentedControlOption<DiscoveryTab>[] = [
   { label: 'Search', value: 'search' },
   { label: 'Scan', value: 'scan' },
 ];
 
+const DISCOVERY_SEARCH_VIEW_OPTIONS: readonly SegmentedControlOption<DiscoverySearchViewMode>[] = [
+  { label: 'List', value: 'list' },
+  { label: 'Map', value: 'map' },
+];
+
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
+  },
+  mapBody: {
+    flex: 1,
+    gap: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   card: {
     gap: theme.spacing.sm,
@@ -62,6 +81,133 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  mapModeRoot: {
+    flex: 1,
+  },
+  mapModeControls: {
+    backgroundColor: theme.colors.background.surface,
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  mapCanvasWrap: {
+    backgroundColor: theme.colors.background.app,
+    flex: 1,
+    position: 'relative',
+  },
+  mapFull: {
+    flex: 1,
+  },
+  floatingSearchPanelWrap: {
+    left: theme.spacing.md,
+    position: 'absolute',
+    right: theme.spacing.md,
+    top: theme.spacing.md,
+    zIndex: 3,
+  },
+  floatingSearchPanel: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    elevation: 3,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      height: 2,
+      width: 0,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+  },
+  mapSearchHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  floatingSearchPanelHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  floatingSearchPanelTitleRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  floatingSearchPanelText: {
+    flex: 1,
+    gap: 2,
+  },
+  floatingSearchPanelStatus: {
+    color: theme.colors.text.secondary,
+  },
+  floatingSearchPanelToggle: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  floatingSearchPanelExpandedContent: {
+    gap: theme.spacing.sm,
+  },
+  searchHereButtonWrap: {
+    alignSelf: 'center',
+    elevation: 3,
+    position: 'absolute',
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      height: 2,
+      width: 0,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    zIndex: 2,
+  },
+  locationField: {
+    flex: 1,
+  },
+  locationInput: {
+    height: theme.sizes.inputMinHeight,
+    minHeight: theme.sizes.inputMinHeight,
+  },
+  locationAction: {
+    alignSelf: 'flex-end',
+    minWidth: 96,
+  },
+  viewModeControl: {
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 2,
+  },
+  viewModeSegment: {
+    borderRadius: 8,
+    minHeight: 38,
+  },
+  viewModeSegmentActive: {
+    backgroundColor: theme.colors.background.surface,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      height: 1,
+      width: 0,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  viewModeLabel: {
+    color: theme.colors.text.muted,
+  },
+  viewModeLabelActive: {
+    color: theme.colors.text.primary,
   },
   wrapRow: {
     flexDirection: 'row',
@@ -92,6 +238,108 @@ const useStyles = createThemedStyles((theme) => ({
     padding: theme.spacing.md,
   },
 }));
+
+const MIN_SEARCH_HERE_MOVE_MILES = 0.15;
+
+function hasUsableCoordinates(restaurant: RestaurantRecord): restaurant is RestaurantRecord & {
+  latitude: number;
+  longitude: number;
+} {
+  return (
+    typeof restaurant.latitude === 'number' &&
+    typeof restaurant.longitude === 'number' &&
+    Number.isFinite(restaurant.latitude) &&
+    Number.isFinite(restaurant.longitude) &&
+    restaurant.latitude >= -90 &&
+    restaurant.latitude <= 90 &&
+    restaurant.longitude >= -180 &&
+    restaurant.longitude <= 180 &&
+    !(restaurant.latitude === 0 && restaurant.longitude === 0)
+  );
+}
+
+function hasUsableMapCenter(region: Region): boolean {
+  return (
+    Number.isFinite(region.latitude) &&
+    Number.isFinite(region.longitude) &&
+    region.latitude >= -90 &&
+    region.latitude <= 90 &&
+    region.longitude >= -180 &&
+    region.longitude <= 180 &&
+    !(region.latitude === 0 && region.longitude === 0)
+  );
+}
+
+function hasMeaningfulMapCenterMove(current: Region, previous: Region | null): boolean {
+  if (!previous) {
+    return true;
+  }
+
+  return calculateDistance(
+    previous.latitude,
+    previous.longitude,
+    current.latitude,
+    current.longitude,
+  ) >= MIN_SEARCH_HERE_MOVE_MILES;
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function buildDiscoveryRestaurantSummary({ distance, restaurant }: VisitRestaurantWithDistance): string {
+  const parts = [
+    restaurant.cuisineType,
+    distance !== null ? formatDistance(distance) : null,
+    typeof restaurant.userVisitCount === 'number' && restaurant.userVisitCount > 0
+      ? pluralize(restaurant.userVisitCount, 'visit', 'visits')
+      : null,
+    typeof restaurant.friendCount === 'number' && restaurant.friendCount > 0
+      ? pluralize(restaurant.friendCount, 'friend', 'friends')
+      : null,
+  ].filter(Boolean);
+
+  return parts.join(' • ') || 'Restaurant';
+}
+
+function buildDiscoveryMapGroups(
+  restaurants: readonly VisitRestaurantWithDistance[],
+): RestaurantMapGroup[] {
+  return restaurants.flatMap((entry) => {
+    const { restaurant } = entry;
+    if (!hasUsableCoordinates(restaurant)) {
+      return [];
+    }
+
+    const meta = [
+      restaurant.isGooglePlace ? { label: 'Google Place' } : null,
+      typeof restaurant.userVisitCount === 'number' && restaurant.userVisitCount > 0
+        ? { label: pluralize(restaurant.userVisitCount, 'visit', 'visits') }
+        : null,
+      typeof restaurant.friendCount === 'number' && restaurant.friendCount > 0
+        ? { label: pluralize(restaurant.friendCount, 'friend', 'friends') }
+        : null,
+    ].filter((value): value is { label: string } => Boolean(value));
+
+    return [
+      {
+        id: restaurant.id,
+        items: [
+          {
+            id: restaurant.id,
+            meta,
+            name: restaurant.cuisineType ?? 'Restaurant',
+          },
+        ],
+        latitude: restaurant.latitude,
+        longitude: restaurant.longitude,
+        restaurantLocation: restaurant.location ?? restaurant.city,
+        restaurantName: restaurant.name,
+        summary: buildDiscoveryRestaurantSummary(entry),
+      },
+    ];
+  });
+}
 
 function resolveConfidenceTone(confidence: string): 'success' | 'info' | 'warning' {
   if (confidence === 'high') {
@@ -180,8 +428,19 @@ export function RestaurantDiscoveryScreen({
   const [storefrontErrorMessage, setStorefrontErrorMessage] = useState<string | null>(null);
   const [isExtractingStorefront, setIsExtractingStorefront] = useState(false);
   const [activeTab, setActiveTab] = useState<DiscoveryTab>('search');
+  const [searchViewMode, setSearchViewMode] = useState<DiscoverySearchViewMode>('list');
+  const [mapSearchPanelExpanded, setMapSearchPanelExpanded] = useState(false);
+  const [mapSearchPanelHeight, setMapSearchPanelHeight] = useState(0);
+  const [latestUserMapRegion, setLatestUserMapRegion] = useState<Region | null>(null);
+  const [lastMapSearchRegion, setLastMapSearchRegion] = useState<Region | null>(null);
+  const [showSearchHereButton, setShowSearchHereButton] = useState(false);
+  const [searchHereButtonHeight, setSearchHereButtonHeight] = useState(0);
+  const [preserveMapRegionOnGroupsChange, setPreserveMapRegionOnGroupsChange] = useState(false);
+  const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
+  const [mapResetSignal, setMapResetSignal] = useState(0);
   const [showStorefrontPhotoSources, setShowStorefrontPhotoSources] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const hasAutoSearchedMapNearbyRef = useRef(false);
 
   const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
@@ -208,6 +467,7 @@ export function RestaurantDiscoveryScreen({
   const displayedNearbyRestaurants = search.displayedNearbyRestaurants;
   const displayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
   const expandedSearchLabel = search.expandedLabel;
+  const gpsReferenceCoords = search.gpsReferenceCoords;
   const isGettingLocation = search.isGettingLocation;
   const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
   const isSearchExpanded = search.isExpanded;
@@ -225,6 +485,7 @@ export function RestaurantDiscoveryScreen({
   const searchByText = search.searchByText;
   const searchErrorMessage = search.searchErrorMessage;
   const searchNearby = search.nearby;
+  const searchNearbyAt = search.nearbyAt;
   const searchQuery = search.query;
   const setIsSearchExpanded = search.setExpanded;
   const setManualLocation = search.setManualLocation;
@@ -235,6 +496,29 @@ export function RestaurantDiscoveryScreen({
 
   const isBusyWithImage = isExtractingStorefront;
   const extractedNames = useMemo(() => getRestaurantNameOptions(storefrontResult), [storefrontResult]);
+  const isSearchMapMode = activeTab === 'search' && searchViewMode === 'map';
+  const currentMapRestaurants = showNearbyPlaces ? displayedNearbyRestaurants : displayedSavedRestaurants;
+  const discoveryMapGroups = useMemo(
+    () => buildDiscoveryMapGroups(currentMapRestaurants),
+    [currentMapRestaurants],
+  );
+  const omittedDiscoveryMapRestaurants = currentMapRestaurants.length - discoveryMapGroups.length;
+  const discoveryUserCoordinates = gpsReferenceCoords
+    ? { latitude: gpsReferenceCoords.lat, longitude: gpsReferenceCoords.lng }
+    : null;
+  const mapSearchStatusLabel = isSearchingNearbyRestaurants || isGettingLocation
+    ? 'Finding nearby places...'
+    : searchErrorMessage
+      ? 'Search needs attention'
+      : showNearbyPlaces
+        ? 'Showing search results'
+        : displayedSavedRestaurants.length > 0
+          ? 'Showing saved restaurants'
+          : 'Nearby-first map search';
+  const mapExternalTopInset =
+    mapSearchPanelHeight +
+    theme.spacing.sm +
+    (showSearchHereButton ? searchHereButtonHeight + theme.spacing.sm : 0);
 
   const handleSelectRestaurant = useCallback((restaurant: RestaurantRecord) => {
     trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_SELECTED', {
@@ -258,6 +542,54 @@ export function RestaurantDiscoveryScreen({
       visibility: restaurant.visibility,
     });
   }, [navigation]);
+
+  const handleSearchViewModeChange = useCallback((nextViewMode: DiscoverySearchViewMode) => {
+    setSearchViewMode(nextViewMode);
+    setSelectedMapGroupId(null);
+    setMapResetSignal((value) => value + 1);
+    setShowSearchHereButton(false);
+    setPreserveMapRegionOnGroupsChange(false);
+    trackObservabilityEvent('FOOD_DISCOVERY_VIEW_MODE_CHANGED', {
+      source: 'RestaurantDiscoveryScreen',
+      viewMode: nextViewMode,
+    });
+  }, []);
+
+  const handleDiscoveryTabChange = useCallback((nextTab: DiscoveryTab) => {
+    setActiveTab(nextTab);
+    if (nextTab !== 'search') {
+      setSelectedMapGroupId(null);
+      setShowSearchHereButton(false);
+      setPreserveMapRegionOnGroupsChange(false);
+    }
+  }, []);
+
+  const handleSelectedMapGroupChange = useCallback((groupId: string | null) => {
+    setSelectedMapGroupId(groupId);
+
+    if (!groupId) {
+      return;
+    }
+
+    const restaurant = currentMapRestaurants.find((entry) => entry.restaurant.id === groupId)?.restaurant;
+    trackObservabilityEvent('FOOD_DISCOVERY_MAP_MARKER_SELECTED', {
+      isGooglePlace: restaurant?.isGooglePlace === true,
+      restaurantId: groupId,
+    });
+  }, [currentMapRestaurants]);
+
+  const handleOpenSelectedMapGroup = useCallback((group: RestaurantMapGroup) => {
+    const restaurant = currentMapRestaurants.find((entry) => entry.restaurant.id === group.id)?.restaurant;
+    if (!restaurant) {
+      return;
+    }
+
+    trackObservabilityEvent('FOOD_DISCOVERY_MAP_RESTAURANT_OPENED', {
+      isGooglePlace: restaurant.isGooglePlace === true,
+      restaurantId: restaurant.id,
+    });
+    handleSelectRestaurant(restaurant);
+  }, [currentMapRestaurants, handleSelectRestaurant]);
 
   const buildRestaurantOption = useCallback(
     (
@@ -420,114 +752,439 @@ export function RestaurantDiscoveryScreen({
 
   const handleClearPlacesSearchState = useCallback(() => {
     clearPlacesSearchState();
+    setSelectedMapGroupId(null);
+    setMapResetSignal((value) => value + 1);
+    setLatestUserMapRegion(null);
+    setLastMapSearchRegion(null);
+    setShowSearchHereButton(false);
+    setPreserveMapRegionOnGroupsChange(false);
   }, [clearPlacesSearchState]);
 
   const handleUseCurrentLocationPress = useCallback(async () => {
     await searchNearby();
   }, [searchNearby]);
 
+  const handleMapSearchPanelLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setMapSearchPanelHeight((currentHeight) =>
+      currentHeight === nextHeight ? currentHeight : nextHeight,
+    );
+  }, []);
+
+  const handleSearchHereButtonLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setSearchHereButtonHeight((currentHeight) =>
+      currentHeight === nextHeight ? currentHeight : nextHeight,
+    );
+  }, []);
+
+  const toggleMapSearchPanel = useCallback(() => {
+    setMapSearchPanelExpanded((expanded) => !expanded);
+  }, []);
+
+  const handleUserMapRegionChangeComplete = useCallback((region: Region) => {
+    setLatestUserMapRegion(region);
+
+    if (
+      !isSearchMapMode ||
+      !isOnline ||
+      isSearchingNearbyRestaurants ||
+      !hasUsableMapCenter(region) ||
+      !hasMeaningfulMapCenterMove(region, lastMapSearchRegion)
+    ) {
+      setShowSearchHereButton(false);
+      return;
+    }
+
+    setShowSearchHereButton((isVisible) => {
+      if (!isVisible) {
+        trackObservabilityEvent('FOOD_DISCOVERY_MAP_SEARCH_HERE_SHOWN', {
+          source: 'RestaurantDiscoveryScreen',
+        });
+      }
+      return true;
+    });
+  }, [
+    isOnline,
+    isSearchMapMode,
+    isSearchingNearbyRestaurants,
+    lastMapSearchRegion,
+  ]);
+
+  const handleSearchHerePress = useCallback(async () => {
+    if (
+      !latestUserMapRegion ||
+      !hasUsableMapCenter(latestUserMapRegion) ||
+      !isOnline ||
+      searchButtonDisabled
+    ) {
+      return;
+    }
+
+    const coords = {
+      lat: latestUserMapRegion.latitude,
+      lng: latestUserMapRegion.longitude,
+    };
+    const existingResultCount = displayedNearbyRestaurants.length;
+    trackObservabilityEvent('FOOD_DISCOVERY_MAP_SEARCH_HERE_STARTED', {
+      existingResultCount,
+      source: 'RestaurantDiscoveryScreen',
+    });
+
+    setPreserveMapRegionOnGroupsChange(true);
+    const result = await searchNearbyAt(coords, { appendResults: true });
+
+    if (result.status === 'success') {
+      const totalResultCount = new Set([
+        ...displayedNearbyRestaurants.map((entry) => entry.restaurant.id),
+        ...result.results.map((restaurant) => restaurant.id),
+      ]).size;
+      setLastMapSearchRegion(latestUserMapRegion);
+      setShowSearchHereButton(false);
+      setSelectedMapGroupId(null);
+
+      trackObservabilityEvent('FOOD_DISCOVERY_MAP_SEARCH_HERE_SUCCEEDED', {
+        resultCount: result.results.length,
+        source: 'RestaurantDiscoveryScreen',
+        totalResultCount,
+      });
+    } else {
+      setPreserveMapRegionOnGroupsChange(false);
+      trackObservabilityEvent('FOOD_DISCOVERY_MAP_SEARCH_HERE_FAILED', {
+        source: 'RestaurantDiscoveryScreen',
+        status: result.status,
+      });
+    }
+  }, [
+    displayedNearbyRestaurants,
+    isOnline,
+    latestUserMapRegion,
+    searchButtonDisabled,
+    searchNearbyAt,
+  ]);
+
+  useEffect(() => {
+    if (
+      activeTab !== 'search' ||
+      searchViewMode !== 'map' ||
+      showNearbyPlaces ||
+      hasAutoSearchedMapNearbyRef.current ||
+      !isOnline ||
+      searchButtonDisabled ||
+      isSearchingNearbyRestaurants ||
+      isGettingLocation
+    ) {
+      return;
+    }
+
+    hasAutoSearchedMapNearbyRef.current = true;
+    trackObservabilityEvent('FOOD_DISCOVERY_MAP_AUTO_NEARBY_STARTED', {
+      source: 'RestaurantDiscoveryScreen',
+    });
+    void searchNearby();
+  }, [
+    activeTab,
+    isGettingLocation,
+    isOnline,
+    isSearchingNearbyRestaurants,
+    searchButtonDisabled,
+    searchNearby,
+    searchViewMode,
+    showNearbyPlaces,
+  ]);
+
+  const discoveryTabControl = (
+    <SegmentedControl
+      getOptionTestID={(value) => `restaurant-discovery-tab-${value}`}
+      onChange={handleDiscoveryTabChange}
+      options={DISCOVERY_TAB_OPTIONS}
+      value={activeTab}
+    />
+  );
+
+  const searchViewModeControl = (
+    <SegmentedControl
+      activeLabelStyle={styles.viewModeLabelActive}
+      activeSegmentStyle={styles.viewModeSegmentActive}
+      containerStyle={styles.viewModeControl}
+      getOptionTestID={(value) => `restaurant-discovery-search-view-mode-${value}`}
+      labelStyle={styles.viewModeLabel}
+      onChange={handleSearchViewModeChange}
+      options={DISCOVERY_SEARCH_VIEW_OPTIONS}
+      segmentStyle={styles.viewModeSegment}
+      value={searchViewMode}
+    />
+  );
+
+  const mapSearchPanel = (
+    <View
+      onLayout={handleMapSearchPanelLayout}
+      style={styles.floatingSearchPanel}
+      testID="restaurant-discovery-map-search-panel"
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: mapSearchPanelExpanded }}
+        onPress={toggleMapSearchPanel}
+        style={styles.floatingSearchPanelHeader}
+        testID="restaurant-discovery-map-search-panel-toggle"
+      >
+        <View style={styles.floatingSearchPanelTitleRow}>
+          <Ionicons color={theme.colors.text.info} name="search-outline" size={18} />
+          <View style={styles.floatingSearchPanelText}>
+            <Text variant="label">Search for food places</Text>
+            <Text numberOfLines={1} style={styles.floatingSearchPanelStatus} variant="bodySmTight">
+              {mapSearchStatusLabel}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.floatingSearchPanelToggle}>
+          <Ionicons
+            color={theme.colors.text.secondary}
+            name={mapSearchPanelExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+            size={18}
+          />
+        </View>
+      </Pressable>
+
+      {mapSearchPanelExpanded ? (
+        <View
+          style={styles.floatingSearchPanelExpandedContent}
+          testID="restaurant-discovery-map-search-panel-expanded-content"
+        >
+          <Input
+            autoCapitalize="words"
+            label="Place name or type"
+            onChangeText={setSearchQuery}
+            placeholder="e.g., Starbucks, cafe, bakery"
+            value={searchQuery}
+          />
+          <View style={styles.row}>
+            <Input
+              autoCapitalize="words"
+              containerStyle={styles.locationField}
+              inputStyle={styles.locationInput}
+              label="Location (city, zip, or address)"
+              onChangeText={setManualLocation}
+              placeholder="e.g., 90210, Los Angeles"
+              value={manualLocation}
+            />
+            <CurrentLocationButton
+              accessibilityLabel="Use current location"
+              disabled={searchButtonDisabled}
+              loading={isSearchingNearbyRestaurants || isGettingLocation}
+              onPress={() => {
+                void handleUseCurrentLocationPress();
+              }}
+              style={styles.locationAction}
+              variant="inline"
+            />
+          </View>
+          <Button
+            disabled={searchButtonDisabled}
+            label={isSearchingRestaurants ? 'Searching...' : expandedSearchLabel}
+            loading={isSearchingRestaurants}
+            onPress={() => {
+              void searchByText();
+            }}
+          />
+          {isOnline && isPlacesQuotaReached ? (
+            <Text tone="warning">
+              {shouldEnforceUsageLimitsClientSide
+                ? 'Monthly food place search limit reached.'
+                : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'}
+            </Text>
+          ) : null}
+          {shouldShowPlacesUpgradePrompt ? (
+            <UpgradePromptCard
+              description={
+                isPlacesQuotaReached
+                  ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                  : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+              }
+              title={isPlacesQuotaReached ? 'Free limit reached' : 'You are close to your free limit'}
+            />
+          ) : null}
+          {!isOnline ? <Text tone="warning">Online search is unavailable while offline.</Text> : null}
+          {showNearbyPlaces ? (
+            <Button
+              label="Clear Search Results"
+              onPress={handleClearPlacesSearchState}
+              variant="secondary"
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const restaurantMapView = (
+    <RestaurantMapView
+      analyticsSource="RestaurantDiscoveryMapView"
+      emptyDescription="Search nearby places when online or choose a saved restaurant with a location."
+      emptyTitle="No restaurants to map"
+      errorMessage={null}
+      externalTopInset={isSearchMapMode ? mapExternalTopInset : 0}
+      groups={discoveryMapGroups}
+      hiddenLocationPluralLabel="restaurants"
+      hiddenLocationSingularLabel="restaurant"
+      initialUserCoordinates={discoveryUserCoordinates}
+      loading={isSearchingNearbyRestaurants || isGettingLocation}
+      mapTestID="restaurant-discovery-map"
+      omittedWithoutCoordinates={omittedDiscoveryMapRestaurants}
+      onOpenSelectedGroup={handleOpenSelectedMapGroup}
+      onRetry={() => {
+        void searchNearby();
+      }}
+      onSelectedGroupChange={handleSelectedMapGroupChange}
+      onUserRegionChangeComplete={handleUserMapRegionChangeComplete}
+      preserveRegionOnGroupsChange={isSearchMapMode && preserveMapRegionOnGroupsChange}
+      resetSignal={mapResetSignal}
+      selectedGroupActionLabel="Open Restaurant"
+      selectedGroupId={selectedMapGroupId}
+      style={styles.mapFull}
+      testID="restaurant-discovery-map-view"
+    />
+  );
+
   return (
     <BackHeaderScreenScaffold
+      bodyStyle={isSearchMapMode ? styles.mapBody : undefined}
       onBackPress={() => {
         navigation.goBack();
       }}
+      scroll={!isSearchMapMode}
       subtitle="Search food places, read storefronts, and add menu items."
       title="Food Discovery"
       testID="restaurant-discovery-screen"
     >
-      <View style={styles.body}>
-        <SegmentedControl
-          getOptionTestID={(value) => `restaurant-discovery-tab-${value}`}
-          onChange={setActiveTab}
-          options={DISCOVERY_TAB_OPTIONS}
-          value={activeTab}
-        />
-
-        {activeTab === 'search' ? (
-          <VisitRestaurantSearchSection
-            connectivityWarningMessage={!isOnline ? 'Online search is unavailable while offline.' : null}
-            footerContent={
-              isSearchExpanded ? (
-                <Pressable
-                  accessibilityRole="button"
+      {isSearchMapMode ? (
+        <View style={styles.mapModeRoot}>
+          <View style={styles.mapModeControls}>
+            {discoveryTabControl}
+            {searchViewModeControl}
+          </View>
+          <View style={styles.mapCanvasWrap}>
+            {restaurantMapView}
+            {showSearchHereButton ? (
+              <View
+                onLayout={handleSearchHereButtonLayout}
+                style={[
+                  styles.searchHereButtonWrap,
+                  { top: mapSearchPanelHeight + theme.spacing.lg },
+                ]}
+                testID="restaurant-discovery-map-search-here-wrap"
+              >
+                <Button
+                  disabled={searchButtonDisabled || !isOnline || isSearchingNearbyRestaurants}
+                  label={isSearchingNearbyRestaurants ? 'Searching...' : 'Search Here'}
+                  loading={isSearchingNearbyRestaurants}
                   onPress={() => {
-                    handleManualAdd();
+                    void handleSearchHerePress();
                   }}
-                  style={styles.inlineLink}
-                  testID="restaurant-discovery-add-restaurant-link"
-                >
-                  <Text tone="brand">Add new restaurant</Text>
-                </Pressable>
-              ) : null
-            }
-            headerAccessory={
-              <VisitRestaurantSearchHeaderToggle
-                expanded={isSearchExpanded}
-                onPress={() => {
-                  setIsSearchExpanded((current) => !current);
+                  testID="restaurant-discovery-map-search-here"
+                  variant="secondary"
+                />
+              </View>
+            ) : null}
+            <View style={styles.floatingSearchPanelWrap}>
+              {mapSearchPanel}
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.body}>
+          {discoveryTabControl}
+
+          {activeTab === 'search' ? (
+            <>
+              {searchViewModeControl}
+
+              <VisitRestaurantSearchSection
+                connectivityWarningMessage={!isOnline ? 'Online search is unavailable while offline.' : null}
+                footerContent={
+                  isSearchExpanded ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        handleManualAdd();
+                      }}
+                      style={styles.inlineLink}
+                      testID="restaurant-discovery-add-restaurant-link"
+                    >
+                      <Text tone="brand">Add new restaurant</Text>
+                    </Pressable>
+                  ) : null
+                }
+                headerAccessory={
+                  <VisitRestaurantSearchHeaderToggle
+                    expanded={isSearchExpanded}
+                    onPress={() => {
+                      setIsSearchExpanded((current) => !current);
+                    }}
+                    testID="restaurant-discovery-search-toggle"
+                  />
+                }
+                isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
+                locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+                manualLocation={manualLocation}
+                onClearSearchResults={handleClearPlacesSearchState}
+                onManualLocationChange={setManualLocation}
+                onOpenLocationSettings={() => {
+                  void Linking.openSettings();
                 }}
-                testID="restaurant-discovery-search-toggle"
+                onRetrySavedResults={() => {
+                  void triggerSavedRestaurantsRefetch();
+                }}
+                onSearchPress={() => {
+                  void searchByText();
+                }}
+                onSearchQueryChange={setSearchQuery}
+                onUseCurrentLocationPress={() => {
+                  void handleUseCurrentLocationPress();
+                }}
+                quotaWarningMessage={
+                  isOnline && isPlacesQuotaReached
+                    ? shouldEnforceUsageLimitsClientSide
+                      ? 'Monthly food place search limit reached.'
+                      : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
+                    : null
+                }
+                savedEmptyDescription={savedEmptyDescription}
+                savedEmptyTitle={savedEmptyTitle}
+                savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
+                  buildRestaurantOption(restaurant, index, 'saved'),
+                )}
+                savedResultsErrorMessage={savedRestaurantsErrorMessage}
+                savedResultsLoading={savedRestaurantsLoading}
+                savedResultsTitle={savedRestaurantsTitle}
+                searchButtonDisabled={searchButtonDisabled}
+                searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+                searchButtonLoading={isSearchingRestaurants}
+                searchErrorMessage={searchErrorMessage}
+                searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
+                searchQuery={searchQuery}
+                searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
+                  buildRestaurantOption(restaurant, index, 'search'),
+                )}
+                showSearchResults={showNearbyPlaces}
+                upgradePromptDescription={
+                  shouldShowPlacesUpgradePrompt
+                    ? isPlacesQuotaReached
+                      ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                      : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+                    : null
+                }
+                upgradePromptTitle={
+                  shouldShowPlacesUpgradePrompt
+                    ? isPlacesQuotaReached
+                      ? 'Free limit reached'
+                      : 'You are close to your free limit'
+                    : null
+                }
               />
-            }
-            isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
-            locationPermissionNeedsSettings={locationPermissionNeedsSettings}
-            manualLocation={manualLocation}
-            onClearSearchResults={handleClearPlacesSearchState}
-            onManualLocationChange={setManualLocation}
-            onOpenLocationSettings={() => {
-              void Linking.openSettings();
-            }}
-            onRetrySavedResults={() => {
-              void triggerSavedRestaurantsRefetch();
-            }}
-            onSearchPress={() => {
-              void searchByText();
-            }}
-            onSearchQueryChange={setSearchQuery}
-            onUseCurrentLocationPress={() => {
-              void handleUseCurrentLocationPress();
-            }}
-            quotaWarningMessage={
-              isOnline && isPlacesQuotaReached
-                ? shouldEnforceUsageLimitsClientSide
-                  ? 'Monthly food place search limit reached.'
-                  : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
-                : null
-            }
-            savedEmptyDescription={savedEmptyDescription}
-            savedEmptyTitle={savedEmptyTitle}
-            savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
-              buildRestaurantOption(restaurant, index, 'saved'),
-            )}
-            savedResultsErrorMessage={savedRestaurantsErrorMessage}
-            savedResultsLoading={savedRestaurantsLoading}
-            savedResultsTitle={savedRestaurantsTitle}
-            searchButtonDisabled={searchButtonDisabled}
-            searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
-            searchButtonLoading={isSearchingRestaurants}
-            searchErrorMessage={searchErrorMessage}
-            searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
-            searchQuery={searchQuery}
-            searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
-              buildRestaurantOption(restaurant, index, 'search'),
-            )}
-            showSearchResults={showNearbyPlaces}
-            upgradePromptDescription={
-              shouldShowPlacesUpgradePrompt
-                ? isPlacesQuotaReached
-                  ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
-                  : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
-                : null
-            }
-            upgradePromptTitle={
-              shouldShowPlacesUpgradePrompt
-                ? isPlacesQuotaReached
-                  ? 'Free limit reached'
-                  : 'You are close to your free limit'
-                : null
-            }
-          />
-        ) : (
+            </>
+          ) : (
           <Card style={styles.card}>
             <View style={styles.iconTitle}>
               <Ionicons color={theme.colors.text.info} name="scan-outline" size={18} />
@@ -656,7 +1313,8 @@ export function RestaurantDiscoveryScreen({
             {copyStatus ? <Text tone="secondary">{copyStatus}</Text> : null}
           </Card>
         )}
-      </View>
+        </View>
+      )}
     </BackHeaderScreenScaffold>
   );
 }

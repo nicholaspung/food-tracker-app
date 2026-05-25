@@ -13,6 +13,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 const mockReact = React;
 const mockNavigate = jest.fn();
 const mockSearchNearby = jest.fn();
+const mockSearchNearbyAt = jest.fn();
 const mockClearPlacesSearchState = jest.fn();
 const mockSearchByText = jest.fn();
 const mockSetIsSearchExpanded = jest.fn();
@@ -47,10 +48,12 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../components/shared', () => ({
   BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('BackHeaderScreenScaffold', props, children),
+  CurrentLocationButton: (props: Record<string, unknown>) => mockReact.createElement('CurrentLocationButton', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
+  UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
   VisitRestaurantSearchHeaderToggle: (props: Record<string, unknown>) =>
@@ -59,6 +62,10 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('VisitRestaurantSearchOptionDescription', props),
   VisitRestaurantSearchSection: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantSearchSection', props),
+}));
+
+jest.mock('../components/maps', () => ({
+  RestaurantMapView: (props: Record<string, unknown>) => mockReact.createElement('RestaurantMapView', props),
 }));
 
 jest.mock('../features', () => ({
@@ -90,6 +97,13 @@ jest.mock('../lib/photoStaging', () => ({
   stageLocalPhotoFile: jest.fn(),
 }));
 
+jest.mock('../lib/googlePlaces', () => ({
+  calculateDistance: jest.fn((lat1: number, lng1: number, lat2: number, lng2: number) =>
+    Math.hypot(lat2 - lat1, lng2 - lng1),
+  ),
+  formatDistance: jest.fn((miles: number) => `${miles.toFixed(1)} mi`),
+}));
+
 jest.mock('../observability', () => ({
   captureObservabilityError: jest.fn(),
   trackObservabilityEvent: jest.fn(),
@@ -115,15 +129,28 @@ jest.mock('../theme', () => ({
       factory(
         {
           colors: {
+            background: {
+              app: 'app-background',
+              inverse: 'inverse-background',
+              muted: 'muted-background',
+              surface: 'surface-background',
+            },
+            border: {
+              default: 'default-border',
+            },
             status: {
               warningBg: 'warning-bg',
               warningBorder: 'warning-border',
             },
             text: {
               info: 'info',
+              muted: 'muted',
+              primary: 'primary',
+              secondary: 'secondary',
             },
           },
           radii: { md: 8 },
+          sizes: { inputMinHeight: 48 },
           spacing: { md: 16, sm: 8, xs: 4, xxs: 2 },
         },
         ...args,
@@ -132,8 +159,10 @@ jest.mock('../theme', () => ({
     colors: {
       text: {
         info: 'info',
+        secondary: 'secondary',
       },
     },
+    spacing: { lg: 24, sm: 8 },
   })),
 }));
 
@@ -141,6 +170,7 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
+  Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   ListItem: (props: Record<string, unknown>) => mockReact.createElement('ListItem', props),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
@@ -168,6 +198,8 @@ describe('RestaurantDiscoveryScreen', () => {
     mockNavigate.mockReset();
     mockSearchNearby.mockReset();
     mockSearchNearby.mockResolvedValue({ results: [], status: 'success' });
+    mockSearchNearbyAt.mockReset();
+    mockSearchNearbyAt.mockResolvedValue({ results: [], status: 'success' });
     mockClearPlacesSearchState.mockReset();
     mockSearchByText.mockReset();
     mockSearchByText.mockResolvedValue(undefined);
@@ -217,6 +249,8 @@ describe('RestaurantDiscoveryScreen', () => {
               name: 'Erewhon West Hollywood',
               location: 'West Hollywood, CA',
               cuisineType: 'Cafe',
+              latitude: 34.09,
+              longitude: -118.36,
               userVisitCount: 1,
             },
           },
@@ -234,6 +268,7 @@ describe('RestaurantDiscoveryScreen', () => {
         compactLabel: 'Search',
         displayedNearbyRestaurants: [],
         expandedLabel: 'Search Food Places',
+        gpsReferenceCoords: null,
         isExpanded: true,
         isGettingLocation: false,
         isSearchingNearby: false,
@@ -241,7 +276,9 @@ describe('RestaurantDiscoveryScreen', () => {
         locationPermissionNeedsSettings: false,
         manualLocation: 'Tokyo',
         nearby: mockSearchNearby,
+        nearbyAt: mockSearchNearbyAt,
         query: 'ramen',
+        referenceCoords: null,
         searchButtonDisabled: false,
         searchByText: mockSearchByText,
         searchErrorMessage: null,
@@ -267,10 +304,114 @@ describe('RestaurantDiscoveryScreen', () => {
     return renderer;
   }
 
+  function mockDiscoverySelectionFlow({
+    displayedNearbyRestaurants = [],
+    displayedSavedRestaurants = [],
+    gpsReferenceCoords = null,
+    isOnlineSearchDisabled = false,
+    referenceCoords = null,
+    searchButtonDisabled = isOnlineSearchDisabled,
+    searchErrorMessage = null,
+    showNearbyPlaces = false,
+  }: {
+    displayedNearbyRestaurants?: any[];
+    displayedSavedRestaurants?: any[];
+    gpsReferenceCoords?: { lat: number; lng: number } | null;
+    isOnlineSearchDisabled?: boolean;
+    referenceCoords?: { lat: number; lng: number } | null;
+    searchButtonDisabled?: boolean;
+    searchErrorMessage?: string | null;
+    showNearbyPlaces?: boolean;
+  }) {
+    mockedUseRestaurantSelectionFlow.mockReturnValue({
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: 10,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      savedSuggestions: {
+        displayedSavedRestaurants,
+        emptyDescription: 'No restaurants.',
+        emptyTitle: 'No restaurants',
+        errorMessage: null,
+        isLoading: false,
+        refetch: jest.fn(),
+        title: 'Recent restaurants',
+      },
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: mockClearPlacesSearchState,
+        compactLabel: 'Search',
+        displayedNearbyRestaurants,
+        expandedLabel: 'Search Food Places',
+        gpsReferenceCoords,
+        isExpanded: true,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: 'Tokyo',
+        nearby: mockSearchNearby,
+        nearbyAt: mockSearchNearbyAt,
+        query: 'ramen',
+        referenceCoords,
+        searchButtonDisabled,
+        searchByText: mockSearchByText,
+        searchErrorMessage,
+        setExpanded: mockSetIsSearchExpanded,
+        setManualLocation: jest.fn(),
+        setQuery: mockSetSearchQuery,
+        showNearbyPlaces,
+      },
+    } as unknown as ReturnType<typeof useRestaurantDiscoverySelectionFlow>);
+  }
+
   function switchDiscoveryTab(renderer: any, tab: 'search' | 'scan') {
     act(() => {
-      renderer.root.findByType('SegmentedControl').props.onChange(tab);
+      renderer.root
+        .findAllByType('SegmentedControl')
+        .find((node: any) => node.props.getOptionTestID?.('search') === 'restaurant-discovery-tab-search')
+        ?.props.onChange(tab);
     });
+  }
+
+  function switchDiscoverySearchViewMode(renderer: any, viewMode: 'list' | 'map') {
+    act(() => {
+      renderer.root
+        .findAllByType('SegmentedControl')
+        .find((node: any) =>
+          node.props.getOptionTestID?.('list') === 'restaurant-discovery-search-view-mode-list')
+        ?.props.onChange(viewMode);
+    });
+  }
+
+  function getDiscoveryTabControl(renderer: any) {
+    return renderer.root
+      .findAllByType('SegmentedControl')
+      .find((node: any) => node.props.getOptionTestID?.('search') === 'restaurant-discovery-tab-search');
+  }
+
+  function getSearchViewModeControl(renderer: any) {
+    return renderer.root
+      .findAllByType('SegmentedControl')
+      .find((node: any) => node.props.getOptionTestID?.('list') === 'restaurant-discovery-search-view-mode-list');
+  }
+
+  function moveDiscoveryMap(renderer: any, latitude = 34.1, longitude = -118.2) {
+    act(() => {
+      renderer.root.findByType('RestaurantMapView').props.onUserRegionChangeComplete({
+        latitude,
+        latitudeDelta: 0.1,
+        longitude,
+        longitudeDelta: 0.1,
+      });
+    });
+  }
+
+  function findSearchHereButton(renderer: any) {
+    return renderer.root
+      .findAllByType('Button')
+      .find((node: any) => node.props.testID === 'restaurant-discovery-map-search-here');
   }
 
   async function runGalleryStorefrontScan(renderer: any) {
@@ -322,10 +463,492 @@ describe('RestaurantDiscoveryScreen', () => {
   it('opens on the Search tab by default', () => {
     const renderer = renderScreen();
 
-    expect(renderer.root.findByType('SegmentedControl').props.value).toBe('search');
+    expect(getDiscoveryTabControl(renderer)?.props.value).toBe('search');
+    expect(getSearchViewModeControl(renderer)?.props.value).toBe('list');
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(1);
     expect(renderer.root.findAllByType('PhotoSourceActionCards')).toHaveLength(0);
     expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Read a Storefront')).toBe(false);
+  });
+
+  it('switches the search tab from list to map', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(getSearchViewModeControl(renderer)?.props.value).toBe('map');
+    expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(0);
+    expect(renderer.root.findAllByType('RestaurantMapView')).toHaveLength(1);
+    expect(renderer.root.findByType('BackHeaderScreenScaffold').props.scroll).toBe(false);
+    expect(renderer.root.findByProps({ testID: 'restaurant-discovery-map-search-panel' })).toBeTruthy();
+    expect(renderer.root.findByProps({
+      testID: 'restaurant-discovery-map-search-panel-toggle',
+    }).props.accessibilityState).toEqual({ expanded: false });
+    expect(renderer.root.findByType('RestaurantMapView').props).toMatchObject({
+      mapTestID: 'restaurant-discovery-map',
+      style: expect.objectContaining({ flex: 1 }),
+      testID: 'restaurant-discovery-map-view',
+    });
+    expect(findSearchHereButton(renderer)).toBeUndefined();
+  });
+
+  it('shows search here after the user pans the map', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    moveDiscoveryMap(renderer);
+
+    expect(findSearchHereButton(renderer)?.props.label).toBe('Search Here');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_SEARCH_HERE_SHOWN',
+      { source: 'RestaurantDiscoveryScreen' },
+    );
+  });
+
+  it('searches the map center and hides search here on success', async () => {
+    mockSearchNearbyAt.mockResolvedValueOnce({
+      results: [
+        {
+          id: 'new-restaurant',
+          latitude: 34.11,
+          longitude: -118.21,
+          name: 'New Restaurant',
+        },
+      ],
+      status: 'success',
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    moveDiscoveryMap(renderer, 34.1, -118.2);
+    await act(async () => {
+      await findSearchHereButton(renderer)?.props.onPress();
+    });
+
+    expect(mockSearchNearbyAt).toHaveBeenCalledWith(
+      { lat: 34.1, lng: -118.2 },
+      { appendResults: true },
+    );
+    expect(renderer.root.findByType('RestaurantMapView').props.preserveRegionOnGroupsChange).toBe(true);
+    expect(findSearchHereButton(renderer)).toBeUndefined();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_SEARCH_HERE_STARTED',
+      expect.objectContaining({
+        existingResultCount: 0,
+        source: 'RestaurantDiscoveryScreen',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_SEARCH_HERE_SUCCEEDED',
+      expect.objectContaining({
+        resultCount: 1,
+        totalResultCount: 1,
+      }),
+    );
+  });
+
+  it('keeps current map groups visible when search here fails', async () => {
+    mockSearchNearbyAt.mockResolvedValueOnce({
+      message: 'Could not load nearby restaurants.',
+      status: 'error',
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    const initialGroups = renderer.root.findByType('RestaurantMapView').props.groups;
+    moveDiscoveryMap(renderer, 34.1, -118.2);
+    await act(async () => {
+      await findSearchHereButton(renderer)?.props.onPress();
+    });
+
+    expect(renderer.root.findByType('RestaurantMapView').props.groups).toBe(initialGroups);
+    expect(renderer.root.findByType('RestaurantMapView').props.preserveRegionOnGroupsChange).toBe(false);
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_SEARCH_HERE_FAILED',
+      expect.objectContaining({ status: 'error' }),
+    );
+  });
+
+  it('does not show search here while offline', () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as never);
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    moveDiscoveryMap(renderer);
+
+    expect(findSearchHereButton(renderer)).toBeUndefined();
+  });
+
+  it('disables search here when search is quota-disabled', () => {
+    mockDiscoverySelectionFlow({
+      displayedSavedRestaurants: [
+        {
+          distance: null,
+          restaurant: {
+            id: 'restaurant-1',
+            latitude: 34.09,
+            longitude: -118.36,
+            name: 'Erewhon West Hollywood',
+          },
+        },
+      ],
+      searchButtonDisabled: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    moveDiscoveryMap(renderer);
+
+    expect(findSearchHereButton(renderer)?.props.disabled).toBe(true);
+  });
+
+  it('passes accumulated active results to the map and keeps query-filtered groups', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [
+        {
+          distance: 0.2,
+          restaurant: {
+            cuisineType: 'Ramen',
+            id: 'nearby-ramen',
+            latitude: 34.1,
+            longitude: -118.2,
+            name: 'Ramen House',
+          },
+        },
+        {
+          distance: 0.3,
+          restaurant: {
+            cuisineType: 'Ramen',
+            id: 'search-ramen',
+            latitude: 34.11,
+            longitude: -118.21,
+            name: 'Ramen Annex',
+          },
+        },
+      ],
+      showNearbyPlaces: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(renderer.root.findByType('RestaurantMapView').props.groups.map((group: any) => group.id)).toEqual([
+      'nearby-ramen',
+      'search-ramen',
+    ]);
+  });
+
+  it('expands and collapses the floating map search panel', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    expect(renderer.root.findAllByProps({
+      testID: 'restaurant-discovery-map-search-panel-expanded-content',
+    })).toHaveLength(0);
+    expect(renderer.root.findAllByType('Input')).toHaveLength(0);
+
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-discovery-map-search-panel-toggle',
+      }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({
+      testID: 'restaurant-discovery-map-search-panel-toggle',
+    }).props.accessibilityState).toEqual({ expanded: true });
+    expect(renderer.root.findAllByProps({
+      testID: 'restaurant-discovery-map-search-panel-expanded-content',
+    }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByType('Input')).toHaveLength(2);
+    expect(renderer.root.findAllByType('CurrentLocationButton')).toHaveLength(1);
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Search Food Places')).toBe(true);
+
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-discovery-map-search-panel-toggle',
+      }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({
+      testID: 'restaurant-discovery-map-search-panel-toggle',
+    }).props.accessibilityState).toEqual({ expanded: false });
+    expect(renderer.root.findAllByType('Input')).toHaveLength(0);
+  });
+
+  it('passes the floating search panel height as a map control inset', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-discovery-map-search-panel',
+      }).props.onLayout({
+        nativeEvent: {
+          layout: {
+            height: 88,
+          },
+        },
+      });
+    });
+
+    expect(renderer.root.findByType('RestaurantMapView').props.externalTopInset).toBe(96);
+  });
+
+  it('auto searches nearby once when map opens without active results', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [],
+      displayedSavedRestaurants: [],
+      showNearbyPlaces: false,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    switchDiscoverySearchViewMode(renderer, 'list');
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(mockSearchNearby).toHaveBeenCalledTimes(1);
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_AUTO_NEARBY_STARTED',
+      { source: 'RestaurantDiscoveryScreen' },
+    );
+  });
+
+  it('does not auto search nearby while offline', () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as never);
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [],
+      displayedSavedRestaurants: [],
+      showNearbyPlaces: false,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(mockSearchNearby).not.toHaveBeenCalled();
+  });
+
+  it('maps active search results without rendering a manual location as GPS', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [
+        {
+          distance: 1.2,
+          restaurant: {
+            cuisineType: 'Ramen',
+            friendCount: 2,
+            id: 'nearby-1',
+            isGooglePlace: true,
+            latitude: 35.67,
+            location: 'Shibuya, Tokyo',
+            longitude: 139.7,
+            name: 'Ramen Bar',
+            userVisitCount: 1,
+          },
+        },
+      ],
+      displayedSavedRestaurants: [],
+      referenceCoords: { lat: 35.66, lng: 139.69 },
+      showNearbyPlaces: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    const map = renderer.root.findByType('RestaurantMapView');
+    expect(map.props.initialUserCoordinates).toBeNull();
+    expect(map.props.groups).toEqual([
+      expect.objectContaining({
+        id: 'nearby-1',
+        latitude: 35.67,
+        longitude: 139.7,
+        restaurantLocation: 'Shibuya, Tokyo',
+        restaurantName: 'Ramen Bar',
+        summary: 'Ramen • 1.2 mi • 1 visit • 2 friends',
+      }),
+    ]);
+    expect(map.props.groups[0].items[0]).toMatchObject({
+      meta: [{ label: 'Google Place' }, { label: '1 visit' }, { label: '2 friends' }],
+      name: 'Ramen',
+    });
+  });
+
+  it('passes device GPS coordinates to the discovery map user location', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [
+        {
+          distance: 1.2,
+          restaurant: {
+            id: 'nearby-1',
+            latitude: 35.67,
+            longitude: 139.7,
+            name: 'Ramen Bar',
+          },
+        },
+      ],
+      gpsReferenceCoords: { lat: 35.66, lng: 139.69 },
+      referenceCoords: { lat: 35.66, lng: 139.69 },
+      showNearbyPlaces: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(renderer.root.findByType('RestaurantMapView').props.initialUserCoordinates).toEqual({
+      latitude: 35.66,
+      longitude: 139.69,
+    });
+  });
+
+  it('shows saved restaurants as fallback while starting nearby search', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(renderer.root.findByType('RestaurantMapView').props.groups).toEqual([
+      expect.objectContaining({
+        id: 'restaurant-1',
+        restaurantName: 'Erewhon West Hollywood',
+      }),
+    ]);
+    expect(mockSearchNearby).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits restaurants without usable coordinates from map groups', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [
+        {
+          distance: null,
+          restaurant: {
+            id: 'valid-restaurant',
+            latitude: 34.1,
+            longitude: -118.2,
+            name: 'Valid Restaurant',
+          },
+        },
+        {
+          distance: null,
+          restaurant: {
+            id: 'missing-coordinates',
+            name: 'Missing Coordinates',
+          },
+        },
+        {
+          distance: null,
+          restaurant: {
+            id: 'zero-island',
+            latitude: 0,
+            longitude: 0,
+            name: 'Zero Island',
+          },
+        },
+      ],
+      showNearbyPlaces: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    const map = renderer.root.findByType('RestaurantMapView');
+    expect(map.props.groups).toHaveLength(1);
+    expect(map.props.omittedWithoutCoordinates).toBe(2);
+  });
+
+  it('opens selected map restaurants in discovery detail', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    const map = renderer.root.findByType('RestaurantMapView');
+    act(() => {
+      map.props.onSelectedGroupChange('restaurant-1');
+      map.props.onOpenSelectedGroup(map.props.groups[0]);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      'RestaurantDiscoveryRestaurant',
+      expect.objectContaining({
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Erewhon West Hollywood',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_MARKER_SELECTED',
+      expect.objectContaining({ restaurantId: 'restaurant-1' }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'FOOD_DISCOVERY_MAP_RESTAURANT_OPENED',
+      expect.objectContaining({ restaurantId: 'restaurant-1' }),
+    );
+  });
+
+  it('clears map selection and resets map when search results are cleared', () => {
+    mockDiscoverySelectionFlow({
+      displayedNearbyRestaurants: [
+        {
+          distance: null,
+          restaurant: {
+            id: 'nearby-1',
+            latitude: 34.1,
+            longitude: -118.2,
+            name: 'Nearby Restaurant',
+          },
+        },
+      ],
+      showNearbyPlaces: true,
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-discovery-map-search-panel-toggle',
+      }).props.onPress();
+    });
+    const initialResetSignal = renderer.root.findByType('RestaurantMapView').props.resetSignal;
+    act(() => {
+      renderer.root.findByType('RestaurantMapView').props.onSelectedGroupChange('nearby-1');
+    });
+    moveDiscoveryMap(renderer, 34.2, -118.3);
+    expect(findSearchHereButton(renderer)).toBeTruthy();
+    act(() => {
+      renderer.root.findAllByType('Button').find((node: any) => node.props.label === 'Clear Search Results')?.props.onPress();
+    });
+
+    const map = renderer.root.findByType('RestaurantMapView');
+    expect(mockClearPlacesSearchState).toHaveBeenCalledTimes(1);
+    expect(map.props.selectedGroupId).toBeNull();
+    expect(map.props.resetSignal).toBe(initialResetSignal + 1);
+    expect(map.props.preserveRegionOnGroupsChange).toBe(false);
+    expect(findSearchHereButton(renderer)).toBeUndefined();
+  });
+
+  it('clears map-region preservation when switching away from map mode', async () => {
+    mockSearchNearbyAt.mockResolvedValueOnce({
+      results: [
+        {
+          id: 'new-restaurant',
+          latitude: 34.11,
+          longitude: -118.21,
+          name: 'New Restaurant',
+        },
+      ],
+      status: 'success',
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    moveDiscoveryMap(renderer, 34.1, -118.2);
+    await act(async () => {
+      await findSearchHereButton(renderer)?.props.onPress();
+    });
+    expect(renderer.root.findByType('RestaurantMapView').props.preserveRegionOnGroupsChange).toBe(true);
+
+    switchDiscoverySearchViewMode(renderer, 'list');
+    switchDiscoverySearchViewMode(renderer, 'map');
+
+    expect(renderer.root.findByType('RestaurantMapView').props.preserveRegionOnGroupsChange).toBe(false);
+    expect(findSearchHereButton(renderer)).toBeUndefined();
   });
 
   it('shows storefront reading on the Scan tab without GPS search', () => {
@@ -384,7 +1007,7 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(mockSetSearchQuery).toHaveBeenCalledWith('Sushi Ginza');
     expect(mockSetIsSearchExpanded).toHaveBeenCalledWith(true);
     expect(mockSearchByText).toHaveBeenCalledWith({ queryOverride: 'Sushi Ginza' });
-    expect(renderer.root.findByType('SegmentedControl').props.value).toBe('search');
+    expect(getDiscoveryTabControl(renderer)?.props.value).toBe('search');
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(1);
   });
 

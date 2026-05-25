@@ -55,6 +55,54 @@ export interface MoveVisitItemResult {
   destinationVisitId: string;
 }
 
+export interface SameNameRestaurantHistoryAnchor {
+  id: string;
+  name: string;
+  location?: string;
+  city?: string;
+  cuisineType?: string;
+}
+
+export interface SameNameRestaurantHistoryRestaurantRecord {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantLocation?: string;
+  restaurantCity?: string;
+  visitCount: number;
+  latestVisitedAt?: string;
+}
+
+export interface SameNameRestaurantHistoryItemRestaurantRecord {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantLocation?: string;
+  orderCount: number;
+}
+
+export interface SameNameRestaurantHistoryItemRecord {
+  normalizedItemName: string;
+  displayName: string;
+  orderCount: number;
+  averageRating: number;
+  latestRating: number;
+  latestVisitedAt: string;
+  latestRestaurantId: string;
+  latestRestaurantName: string;
+  latestRestaurantLocation?: string;
+  restaurants: SameNameRestaurantHistoryItemRestaurantRecord[];
+}
+
+export interface SameNameRestaurantHistoryRecord {
+  anchorRestaurant: SameNameRestaurantHistoryAnchor;
+  normalizedName: string;
+  locationCount: number;
+  visitCount: number;
+  itemCount: number;
+  latestVisitedAt?: string;
+  restaurants: SameNameRestaurantHistoryRestaurantRecord[];
+  items: SameNameRestaurantHistoryItemRecord[];
+}
+
 export interface ConvertVisitItemToFoodProductInput {
   itemId: string;
 }

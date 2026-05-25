@@ -2176,6 +2176,260 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 }
 
+func TestSameNameRestaurantHistoryEndpointAggregatesOwnVisitItemsAcrossLocations(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	nonFriend, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	anchorRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "McDonald's",
+		"location":   "Hollywood, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	otherSameNameRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "  McDonald’s  ",
+		"location":   "Pasadena, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "McDonald's Downtown",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	privateOtherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "McDonald's",
+		"location":   "Private, CA",
+		"visibility": "private",
+		"createdBy":  nonFriend.Id,
+	})
+
+	visitA := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": anchorRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	visitB := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       otherSameNameRestaurant.Id,
+		"user":             user.Id,
+		"visitDate":        "2026-04-05 18:30:00.000Z",
+		"visibility":       "private",
+		"moderationStatus": "under_review",
+	})
+	hiddenVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       otherSameNameRestaurant.Id,
+		"user":             user.Id,
+		"visitDate":        "2026-04-06 18:30:00.000Z",
+		"visibility":       "friends",
+		"moderationStatus": "hidden",
+	})
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherSameNameRestaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-07 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	privateOtherVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": privateOtherRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-08 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitA.Id,
+		"user":   user.Id,
+		"name":   "Big Mac",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitB.Id,
+		"user":   user.Id,
+		"name":   " big   mac ",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visitB.Id,
+		"user":   user.Id,
+		"name":   "Fries",
+		"rating": 3,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  hiddenVisit.Id,
+		"user":   user.Id,
+		"name":   "Hidden Shake",
+		"rating": 1,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Friend Nuggets",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  privateOtherVisit.Id,
+		"user":   user.Id,
+		"name":   "Private Nuggets",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":          user.Id,
+		"name":          "Packaged Sauce",
+		"rating":        5,
+		"location_text": "McDonald's",
+		"itemType":      "food-product",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/same-name-history", anchorRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		AnchorRestaurant struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Location string `json:"location"`
+		} `json:"anchorRestaurant"`
+		NormalizedName  string `json:"normalizedName"`
+		LocationCount   int    `json:"locationCount"`
+		VisitCount      int    `json:"visitCount"`
+		ItemCount       int    `json:"itemCount"`
+		LatestVisitedAt string `json:"latestVisitedAt"`
+		Restaurants     []struct {
+			RestaurantID    string `json:"restaurantId"`
+			RestaurantName  string `json:"restaurantName"`
+			VisitCount      int    `json:"visitCount"`
+			LatestVisitedAt string `json:"latestVisitedAt"`
+		} `json:"restaurants"`
+		Items []struct {
+			NormalizedItemName       string  `json:"normalizedItemName"`
+			DisplayName              string  `json:"displayName"`
+			OrderCount               int     `json:"orderCount"`
+			AverageRating            float64 `json:"averageRating"`
+			LatestRating             float64 `json:"latestRating"`
+			LatestVisitedAt          string  `json:"latestVisitedAt"`
+			LatestRestaurantID       string  `json:"latestRestaurantId"`
+			LatestRestaurantName     string  `json:"latestRestaurantName"`
+			LatestRestaurantLocation string  `json:"latestRestaurantLocation"`
+			Restaurants              []struct {
+				RestaurantID string `json:"restaurantId"`
+				OrderCount   int    `json:"orderCount"`
+			} `json:"restaurants"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse same-name history response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.AnchorRestaurant.ID != anchorRestaurant.Id || payload.AnchorRestaurant.Name != "McDonald's" {
+		t.Fatalf("unexpected anchor restaurant: %#v", payload.AnchorRestaurant)
+	}
+	if payload.NormalizedName != "mcdonald's" {
+		t.Fatalf("expected apostrophe-normalized name, got %q", payload.NormalizedName)
+	}
+	if payload.LocationCount != 2 || payload.VisitCount != 2 || payload.ItemCount != 2 {
+		t.Fatalf("unexpected history counts: %#v", payload)
+	}
+	if payload.LatestVisitedAt != "2026-04-05 18:30:00.000Z" {
+		t.Fatalf("expected latest visible own visit date, got %q", payload.LatestVisitedAt)
+	}
+	if len(payload.Restaurants) != 2 || payload.Restaurants[0].RestaurantID != otherSameNameRestaurant.Id || payload.Restaurants[1].RestaurantID != anchorRestaurant.Id {
+		t.Fatalf("expected visited same-name restaurants sorted by latest visit, got %#v", payload.Restaurants)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected two aggregated item groups, got %#v", payload.Items)
+	}
+	if payload.Items[0].NormalizedItemName != "big mac" || payload.Items[0].OrderCount != 2 || payload.Items[0].AverageRating != 4.5 {
+		t.Fatalf("unexpected first item aggregate: %#v", payload.Items[0])
+	}
+	if payload.Items[0].LatestRating != 5 || payload.Items[0].LatestRestaurantID != otherSameNameRestaurant.Id {
+		t.Fatalf("unexpected latest item metadata: %#v", payload.Items[0])
+	}
+	if len(payload.Items[0].Restaurants) != 2 {
+		t.Fatalf("expected Big Mac across two locations, got %#v", payload.Items[0].Restaurants)
+	}
+	if payload.Items[1].NormalizedItemName != "fries" {
+		t.Fatalf("expected fries second by latest date/order/name sort, got %#v", payload.Items[1])
+	}
+}
+
+func TestSameNameRestaurantHistoryEndpointReturnsEmptyHistoryForUnvisitedRestaurant(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Quiet Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/same-name-history", restaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		LocationCount int   `json:"locationCount"`
+		VisitCount    int   `json:"visitCount"`
+		ItemCount     int   `json:"itemCount"`
+		Restaurants   []any `json:"restaurants"`
+		Items         []any `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse same-name history response JSON: %v; body=%s", err, response.Body.String())
+	}
+	if payload.LocationCount != 1 || payload.VisitCount != 0 || payload.ItemCount != 0 || len(payload.Restaurants) != 0 || len(payload.Items) != 0 {
+		t.Fatalf("expected empty single-location history, got %#v", payload)
+	}
+}
+
+func TestSameNameRestaurantHistoryEndpointRejectsInaccessibleRestaurant(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+
+	privateRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Private Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "private",
+		"createdBy":  otherUser.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/same-name-history", privateRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for inaccessible restaurant by user %s, got %d: %s", user.Id, response.Code, response.Body.String())
+	}
+}
+
 func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

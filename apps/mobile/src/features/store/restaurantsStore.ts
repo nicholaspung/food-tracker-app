@@ -5,6 +5,7 @@ import type {
   MenuItemRecord,
   PaginatedResult,
   SearchRestaurantsPageInput,
+  SameNameRestaurantHistoryRecord,
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
@@ -19,6 +20,7 @@ export type {
   ListRestaurantSuggestionsInput,
   MenuItemRecord,
   SearchRestaurantsPageInput,
+  SameNameRestaurantHistoryRecord,
 } from './featureStore';
 
 interface RestaurantSelectionApiRecord {
@@ -236,6 +238,50 @@ export async function listMenuItemsForRestaurant(
 
   return sendApiRequest<MenuItemRecord[]>(
     `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
+}
+
+export async function getSameNameRestaurantHistory(
+  restaurantId: string,
+  options?: SearchRestaurantsPageOptions,
+): Promise<SameNameRestaurantHistoryRecord> {
+  if (!pb.authStore.record?.id) {
+    return {
+      anchorRestaurant: {
+        id: restaurantId.trim(),
+        name: '',
+      },
+      normalizedName: '',
+      locationCount: 1,
+      visitCount: 0,
+      itemCount: 0,
+      restaurants: [],
+      items: [],
+    };
+  }
+
+  const trimmedRestaurantId = restaurantId.trim();
+  if (!trimmedRestaurantId) {
+    return {
+      anchorRestaurant: {
+        id: '',
+        name: '',
+      },
+      normalizedName: '',
+      locationCount: 1,
+      visitCount: 0,
+      itemCount: 0,
+      restaurants: [],
+      items: [],
+    };
+  }
+
+  return sendApiRequest<SameNameRestaurantHistoryRecord>(
+    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/same-name-history`,
     {
       method: 'GET',
       signal: options?.signal,

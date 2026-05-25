@@ -1,5 +1,5 @@
-import * as ImageManipulator from 'expo-image-manipulator';
 import { Directory, File, Paths } from 'expo-file-system';
+import type { Action } from 'expo-image-manipulator';
 
 import {
   buildLocalPhotoFile,
@@ -23,6 +23,14 @@ const PHOTO_STAGING_DIRECTORY_NAME = 'photo-staging';
 const DEFAULT_PHOTO_MAX_LONG_EDGE = 1600;
 const DEFAULT_PHOTO_JPEG_QUALITY = 0.78;
 const STAGED_PHOTO_MIME_TYPE = 'image/jpeg';
+
+type ImageManipulatorModule = typeof import('expo-image-manipulator');
+
+function loadImageManipulator(): ImageManipulatorModule {
+  // Lazy-load so screens that do not stage photos can render in dev clients built without this native module.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('expo-image-manipulator') as ImageManipulatorModule;
+}
 
 function getPhotoStagingDirectory(): Directory {
   return new Directory(Paths.document, PHOTO_STAGING_DIRECTORY_NAME);
@@ -57,7 +65,7 @@ function resolveResizeAction(
   asset: LocalPhotoAsset,
   maxLongEdge: number,
   shouldResize: boolean,
-): ImageManipulator.Action[] {
+): Action[] {
   if (!shouldResize || maxLongEdge <= 0) {
     return [];
   }
@@ -111,6 +119,7 @@ export async function stageLocalPhotoFile(
   );
 
   try {
+    const ImageManipulator = loadImageManipulator();
     const manipulatedPhoto = await ImageManipulator.manipulateAsync(
       localPhoto.uri,
       resolveResizeAction(asset, maxLongEdge, resize),

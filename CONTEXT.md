@@ -8,6 +8,10 @@ Food Tracker helps people record restaurant visits, rate food items, and share r
 A user-curated collection of restaurants with bookmarked food-item recommendations.
 _Avoid_: List, saved places
 
+**All Locations History**:
+A read-only view of a user's own ordered items across visited restaurants whose names match conservatively by normalized restaurant name.
+_Avoid_: Chain, Restaurant Group, Similar Restaurants, Same-name history
+
 **Visit Writes**:
 The mobile module that owns creating and updating restaurant visit records, including offline replay payloads, cache effects, source Note completion timing, and queued feedback.
 _Avoid_: visit submit helper, visit mutation wrapper
@@ -31,6 +35,14 @@ _Avoid_: Lists page
 **List Detail Map**:
 A map view of the restaurants inside one **Restaurant List**.
 _Avoid_: Lists map
+
+**Food Discovery**:
+The exploratory surface for finding restaurants from saved restaurants, Google Places search, nearby search, or storefront photo extraction before recording food activity.
+_Avoid_: saved places, restaurant list, discovery feed
+
+**Food Discovery Map**:
+The nearby-first map view in **Food Discovery** for spatially exploring restaurants before recording food activity.
+_Avoid_: discovery feed map, saved places map, list map
 
 **Tasting Plan**:
 The leader-selected set of restaurants and menu items for a group tasting session.
@@ -83,12 +95,27 @@ _Avoid_: tutorial flags
 ## Relationships
 
 - A **Restaurant List** contains zero or more restaurants.
+- **All Locations History** spans a user's own item-backed visits at restaurants with conservatively matching names, but it does not replace exact restaurant/location identity.
+- **All Locations History** is shown only when the user has item-backed orders at two or more matching restaurant locations.
+- **All Locations History** may include accessible Google places and user-created restaurants, including private restaurants owned by the user.
+- **All Locations History** matches restaurants by exact normalized name equality; suffix stripping and fuzzy brand matching belong to future Restaurant Group work.
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
 - **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.
+- **Food Discovery** may surface saved restaurants, Google places, nearby restaurants, and storefront-extracted names, but it does not create a **Restaurant List**.
+- **Food Discovery** prioritizes nearby restaurants for exploratory browsing; saved restaurants are fallback or recall content, not the primary discovery result.
+- **Food Discovery Map** defaults to current-location nearby exploration, but explicit text or location searches may replace the mapped results.
+- Selecting a restaurant in **Food Discovery Map** opens a preview sheet before navigating to restaurant detail.
+- Any user-record preview in a **Food Discovery Map** sheet is scoped to the selected restaurant location, not **All Locations History**.
+- **Food Discovery Map** shows the user's GPS location only from device-captured location, not from manually entered search locations.
+- **Food Discovery Map** does not show a separate marker for manually entered search locations.
+- Entering nearby-first Map exploration in **Food Discovery** is a user-initiated Places search and may consume Places search quota.
+- **Food Discovery Map** auto-starts nearby exploration at most once per screen session.
+- If nearby exploration cannot use the user's location, **Food Discovery** may still show saved restaurant fallback content with a non-blocking error.
+- Clearing exploratory results in **Food Discovery** stops nearby exploration for that screen session until the user explicitly searches again.
 - A **Tasting Plan** contains one or more selected restaurants.
 - A selected restaurant in a **Tasting Plan** contains zero or more selected menu items until the plan is ready to start.
 - A leader selecting a restaurant during tasting planning adds it to the **Tasting Plan** immediately.
@@ -125,9 +152,17 @@ _Avoid_: tutorial flags
 > **Dev:** "When the leader taps a restaurant during tasting planning, is that just a suggestion?"
 > **Domain expert:** "No - leader-picked restaurants are selected into the **Tasting Plan** immediately."
 
+> **Dev:** "Is **Food Discovery** another **Restaurant List**?"
+> **Domain expert:** "No - it is an exploratory surface for finding a restaurant before recording food activity."
+
+> **Dev:** "Should **Food Discovery** show saved restaurants before nearby restaurants?"
+> **Domain expert:** "No - exploratory browsing should be nearby-first, with saved restaurants as fallback or recall content."
+
 ## Flagged ambiguities
 
 - "lists feature" was used to mean both the top-level list index and the detail for one list - resolved: this map belongs to **List Detail**.
+- "food discovery" was ambiguous with saved places and restaurant lists - resolved: **Food Discovery** is an exploratory surface, not a **Restaurant List**.
+- "map discovery" was ambiguous between saved-first and nearby-first behavior - resolved: **Food Discovery** exploratory browsing is nearby-first.
 - "suggestion" was used for leader-picked tasting restaurants and menu items - resolved: in the product language these are selected entries in the **Tasting Plan**.
 - "selecting a restaurant" was ambiguous between local UI selection and plan selection - resolved: leader restaurant selection immediately adds the restaurant to the **Tasting Plan**.
 - "next" in tasting planning was ambiguous between navigation and planning progress - resolved: it advances the **Tasting Plan** from restaurant selection to menu item selection.

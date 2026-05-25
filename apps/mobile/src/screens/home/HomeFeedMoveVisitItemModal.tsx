@@ -15,6 +15,7 @@ import {
   type VisitRecord,
   visitsQueryKeys,
 } from '../../features';
+import { formatStoredCalendarDateLabel } from '../../lib/dateFormatting';
 import { createThemedStyles } from '../../theme';
 import { Button, Card, Input, Modal, Text } from '../../ui';
 import type { HomeFeedActionController } from './useHomeFeedActionController';
@@ -74,15 +75,10 @@ function matchesVisitSearch(visit: VisitRecord, searchQuery: string): boolean {
 }
 
 function formatVisitOptionSubtitle(visit: VisitRecord): string {
-  const visitDate = visit.visitedAt ? new Date(visit.visitedAt) : null;
-  const dateLabel =
-    visitDate && !Number.isNaN(visitDate.getTime())
-      ? visitDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-      : 'Unknown date';
+  const dateLabel = formatStoredCalendarDateLabel(visit.visitedAt, {
+    locale: 'en-US',
+    fallback: 'Unknown date',
+  });
   const itemCount = visit.items.length;
 
   return `${dateLabel} • ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;

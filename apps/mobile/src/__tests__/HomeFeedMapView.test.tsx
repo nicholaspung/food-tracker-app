@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import type { HomeFeedMapPoint } from '../features';
+import { RestaurantMapView } from '../components/maps/RestaurantMapView';
 import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
 import { HomeFeedMapView } from '../screens/home/HomeFeedMapView';
 
@@ -109,6 +110,11 @@ jest.mock('../theme', () => ({
         secondary: 'secondary-text',
       },
     },
+    spacing: {
+      lg: 24,
+      sm: 12,
+      xxl: 40,
+    },
   }),
 }));
 
@@ -175,6 +181,52 @@ function renderMapView(
 
   return renderer;
 }
+
+function renderRestaurantMapView(
+  props: Partial<React.ComponentProps<typeof RestaurantMapView>> = {},
+) {
+  let renderer: any = null;
+
+  act(() => {
+    renderer = create(
+      <RestaurantMapView
+        analyticsSource="TestMapView"
+        emptyDescription="No restaurants."
+        emptyTitle="No restaurants"
+        errorMessage={null}
+        groups={[
+          {
+            id: 'restaurant-1',
+            items: [{ id: 'restaurant-1', meta: [], name: 'Restaurant' }],
+            latitude: 34.05,
+            longitude: -118.24,
+            restaurantName: 'CCB Snack Bar',
+            summary: 'Restaurant',
+          },
+        ]}
+        loading={false}
+        mapTestID="test-map"
+        omittedWithoutCoordinates={0}
+        onRetry={jest.fn()}
+        onSelectedGroupChange={jest.fn()}
+        selectedGroupId={null}
+        testID="test-map-view"
+        {...props}
+      />,
+    );
+  });
+
+  return renderer;
+}
+
+const secondMapGroup = {
+  id: 'restaurant-2',
+  items: [{ id: 'restaurant-2', meta: [], name: 'Restaurant' }],
+  latitude: 34.1,
+  longitude: -118.3,
+  restaurantName: 'Second Restaurant',
+  summary: 'Restaurant',
+};
 
 describe('HomeFeedMapView', () => {
   beforeEach(() => {
@@ -350,6 +402,214 @@ describe('HomeFeedMapView', () => {
         longitude: -118.24,
       }),
       350,
+    );
+  });
+
+  it('shows the user location when initial user coordinates are provided', () => {
+    const renderer = renderRestaurantMapView({
+      initialUserCoordinates: {
+        latitude: 34.05,
+        longitude: -118.24,
+      },
+    });
+
+    expect(renderer.root.findByType('MapView').props.showsUserLocation).toBe(true);
+  });
+
+  it('does not show the user location before coordinates are available', () => {
+    const renderer = renderRestaurantMapView();
+
+    expect(renderer.root.findByType('MapView').props.showsUserLocation).toBe(false);
+  });
+
+  it('keeps default map control offset without an external inset', () => {
+    const renderer = renderRestaurantMapView();
+
+    const controls = renderer.root.findByProps({ testID: 'test-map-view-controls' });
+    expect(controls.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ top: 12 }),
+      ]),
+    );
+  });
+
+  it('applies an external top inset to map controls', () => {
+    const renderer = renderRestaurantMapView({
+      externalTopInset: 80,
+    });
+
+    const controls = renderer.root.findByProps({ testID: 'test-map-view-controls' });
+    expect(controls.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ top: 92 }),
+      ]),
+    );
+  });
+
+  it('does not report region changes until the user pans the map', () => {
+    const onUserRegionChangeComplete = jest.fn();
+    const renderer = renderRestaurantMapView({
+      onUserRegionChangeComplete,
+    });
+    const region = {
+      latitude: 34.05,
+      latitudeDelta: 0.1,
+      longitude: -118.24,
+      longitudeDelta: 0.1,
+    };
+
+    act(() => {
+      renderer.root.findByType('MapView').props.onRegionChangeComplete(region);
+    });
+
+    expect(onUserRegionChangeComplete).not.toHaveBeenCalled();
+  });
+
+  it('reports completed regions after a user pan', () => {
+    const onUserRegionChangeComplete = jest.fn();
+    const renderer = renderRestaurantMapView({
+      onUserRegionChangeComplete,
+    });
+    const region = {
+      latitude: 34.05,
+      latitudeDelta: 0.1,
+      longitude: -118.24,
+      longitudeDelta: 0.1,
+    };
+
+    act(() => {
+      const map = renderer.root.findByType('MapView');
+      map.props.onPanDrag();
+      map.props.onRegionChangeComplete(region);
+    });
+
+    expect(onUserRegionChangeComplete).toHaveBeenCalledWith(region);
+  });
+
+  it('keeps default group-change camera fitting behavior', () => {
+    const renderer = renderRestaurantMapView();
+    mockAnimateToRegion.mockClear();
+
+    act(() => {
+      renderer.update(
+        <RestaurantMapView
+          analyticsSource="TestMapView"
+          emptyDescription="No restaurants."
+          emptyTitle="No restaurants"
+          errorMessage={null}
+          groups={[
+            {
+              id: 'restaurant-1',
+              items: [{ id: 'restaurant-1', meta: [], name: 'Restaurant' }],
+              latitude: 34.05,
+              longitude: -118.24,
+              restaurantName: 'CCB Snack Bar',
+              summary: 'Restaurant',
+            },
+            secondMapGroup,
+          ]}
+          loading={false}
+          mapTestID="test-map"
+          omittedWithoutCoordinates={0}
+          onRetry={jest.fn()}
+          onSelectedGroupChange={jest.fn()}
+          selectedGroupId={null}
+          testID="test-map-view"
+        />,
+      );
+    });
+
+    expect(mockAnimateToRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: 34.075,
+        longitude: -118.27,
+      }),
+      0,
+    );
+  });
+
+  it('preserves the current camera when groups change and preservation is enabled', () => {
+    const renderer = renderRestaurantMapView({
+      preserveRegionOnGroupsChange: true,
+    });
+    mockAnimateToRegion.mockClear();
+
+    act(() => {
+      renderer.update(
+        <RestaurantMapView
+          analyticsSource="TestMapView"
+          emptyDescription="No restaurants."
+          emptyTitle="No restaurants"
+          errorMessage={null}
+          groups={[
+            {
+              id: 'restaurant-1',
+              items: [{ id: 'restaurant-1', meta: [], name: 'Restaurant' }],
+              latitude: 34.05,
+              longitude: -118.24,
+              restaurantName: 'CCB Snack Bar',
+              summary: 'Restaurant',
+            },
+            secondMapGroup,
+          ]}
+          loading={false}
+          mapTestID="test-map"
+          omittedWithoutCoordinates={0}
+          onRetry={jest.fn()}
+          onSelectedGroupChange={jest.fn()}
+          preserveRegionOnGroupsChange
+          selectedGroupId={null}
+          testID="test-map-view"
+        />,
+      );
+    });
+
+    expect(mockAnimateToRegion).not.toHaveBeenCalled();
+  });
+
+  it('still resets the camera when reset signal changes while preserving group changes', () => {
+    const renderer = renderRestaurantMapView({
+      preserveRegionOnGroupsChange: true,
+      resetSignal: 0,
+    });
+    mockAnimateToRegion.mockClear();
+
+    act(() => {
+      renderer.update(
+        <RestaurantMapView
+          analyticsSource="TestMapView"
+          emptyDescription="No restaurants."
+          emptyTitle="No restaurants"
+          errorMessage={null}
+          groups={[
+            {
+              id: 'restaurant-1',
+              items: [{ id: 'restaurant-1', meta: [], name: 'Restaurant' }],
+              latitude: 34.05,
+              longitude: -118.24,
+              restaurantName: 'CCB Snack Bar',
+              summary: 'Restaurant',
+            },
+          ]}
+          loading={false}
+          mapTestID="test-map"
+          omittedWithoutCoordinates={0}
+          onRetry={jest.fn()}
+          onSelectedGroupChange={jest.fn()}
+          preserveRegionOnGroupsChange
+          resetSignal={1}
+          selectedGroupId={null}
+          testID="test-map-view"
+        />,
+      );
+    });
+
+    expect(mockAnimateToRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: 34.05,
+        longitude: -118.24,
+      }),
+      300,
     );
   });
 
