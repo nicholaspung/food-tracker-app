@@ -15,6 +15,51 @@ jest.mock('@expo/vector-icons', () => ({
   },
 }));
 
+jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+
+  const createGesture = () => {
+    const gesture = {
+      minDistance: () => gesture,
+      numberOfTaps: () => gesture,
+      onEnd: () => gesture,
+      onUpdate: () => gesture,
+    };
+
+    return gesture;
+  };
+
+  return {
+    Gesture: {
+      Pan: createGesture,
+      Pinch: createGesture,
+      Simultaneous: (...gestures: unknown[]) => gestures,
+      Tap: createGesture,
+    },
+    GestureDetector: ({
+      children,
+      ...props
+    }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      React.createElement('GestureDetector', props, children),
+  };
+});
+
+jest.mock('react-native-reanimated', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+
+  return {
+    __esModule: true,
+    default: {
+      View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+        React.createElement('ReanimatedView', props, children),
+    },
+    runOnJS: (fn: (...args: unknown[]) => unknown) => fn,
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useSharedValue: (value: unknown) => ({ value }),
+    withTiming: (value: unknown) => value,
+  };
+});
+
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
 
@@ -446,5 +491,40 @@ describe('PhotoViewerModal', () => {
     expect(closeIcon.props.color).toBe('white');
     expect(previousIcon.props.color).toBe('white');
     expect(nextIcon.props.color).toBe('white');
+  });
+
+  it('keeps the zoom wrapper full-size so the image can lay out inside the viewer', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          urls={['full://one']}
+          visible
+        />,
+      );
+    });
+
+    const zoomContainer = renderer.root.find(
+      (node: any) =>
+        node.type === 'View' &&
+        node.props.style?.overflow === 'hidden',
+    );
+    const zoomContent = renderer.root.findByType('ReanimatedView');
+    const zoomContentStyles = Array.isArray(zoomContent.props.style)
+      ? zoomContent.props.style
+      : [zoomContent.props.style];
+
+    expect(zoomContainer.props.style).toEqual(expect.objectContaining({
+      flex: 1,
+      height: '100%',
+      width: '100%',
+    }));
+    expect(zoomContentStyles).toContainEqual(expect.objectContaining({
+      flex: 1,
+      height: '100%',
+      width: '100%',
+    }));
   });
 });
