@@ -369,4 +369,21 @@ describe('TastingSessionLobbyScreen', () => {
       errorMessage: 'Your invite was revoked.',
     });
   });
+
+  it('moves invitees from the lobby to planning when the leader starts planning', () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'user_2',
+      },
+    } as ReturnType<typeof useAuth>);
+
+    const { navigation } = renderScreen({
+      ...buildSession('2099-01-01T00:00:00.000Z', 'accepted'),
+      status: 'planning',
+    });
+
+    expect(navigation.replace).toHaveBeenCalledWith('TastingSessionPlanning', {
+      sessionId: 'session_1',
+    });
+  });
 });

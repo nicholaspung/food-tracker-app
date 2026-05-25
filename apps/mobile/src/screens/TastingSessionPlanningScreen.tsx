@@ -99,6 +99,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const sessionQuery = useTastingSessionDetail(sessionId, true);
   const session = sessionQuery.data;
+  const currentSessionId = session?.id;
+  const currentSessionStatus = session?.status;
   const [phase, setPhase] = useState<PlanningPhase>('restaurants');
   const [activeRestaurantSuggestionId, setActiveRestaurantSuggestionId] = useState<string | null>(null);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
@@ -141,6 +143,21 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const selectedItemCount = session ? getApprovedItemCount(session) : 0;
   const canStart = isLeader && selectedRestaurants.length > 0 && selectedItemCount > 0;
   const activeSelectedItemCount = (activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').length;
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      return;
+    }
+
+    if (currentSessionStatus === 'tasting' || currentSessionStatus === 'rating') {
+      navigation.replace('TastingSessionTasting', { sessionId: currentSessionId });
+      return;
+    }
+
+    if (currentSessionStatus === 'completed') {
+      navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
+    }
+  }, [currentSessionId, currentSessionStatus, navigation]);
 
   useEffect(() => {
     if (selectedRestaurants.length === 0 && phase === 'items') {

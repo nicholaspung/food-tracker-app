@@ -10,6 +10,8 @@ import {
   ErrorState,
   HeaderAccessoryButton,
   LoadingState,
+  OptionList,
+  OptionListRow,
   PageErrorToast,
   StatusPill,
 } from '../components/shared';
@@ -20,6 +22,7 @@ import {
   useTastingSessionWrites,
 } from '../features';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import { formatStoredCalendarDateLabel } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -121,6 +124,14 @@ function formatCompletedSessionSummary(session: TastingSessionRecord): string {
     formatCount(getApprovedItemCount(session), 'item', 'items'),
     formatCount(session.participants.length, 'taster', 'tasters'),
   ].join(', ');
+}
+
+function formatCompletedSessionListSubtitle(session: TastingSessionRecord): string {
+  const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
+    fallback: 'Unknown date',
+    locale: 'en-US',
+  });
+  return `${sessionDate} - ${formatCompletedSessionSummary(session)}`;
 }
 
 function isCurrentUserParticipant(session: TastingSessionRecord, userId: string | undefined): boolean {
@@ -454,23 +465,23 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
             <Text variant="titleMd">Completed</Text>
             <Text tone="muted" variant="label">{formatCount(completedSessions.length, 'session', 'sessions')}</Text>
           </View>
-          <View style={styles.sessionCards}>
-            {completedSessions.map((session) => (
-              <Card key={session.id}>
-                <ListItem
-                  description={formatCompletedSessionSummary(session)}
-                  onPress={() => navigation.navigate('TastingSessionResults', { sessionId: session.id })}
-                  title={session.name}
-                  trailing={
-                    <StatusPill
-                      label={formatTastingSessionStatusLabel(session.status)}
-                      tone={resolveTastingSessionStatusTone(session.status)}
-                    />
-                  }
-                />
-              </Card>
+          <OptionList>
+            {completedSessions.map((session, index) => (
+              <OptionListRow
+                isLast={index === completedSessions.length - 1}
+                key={session.id}
+                onPress={() => navigation.navigate('TastingSessionResults', { sessionId: session.id })}
+                rightAccessory={
+                  <StatusPill
+                    label={formatTastingSessionStatusLabel(session.status)}
+                    tone={resolveTastingSessionStatusTone(session.status)}
+                  />
+                }
+                subtitle={formatCompletedSessionListSubtitle(session)}
+                title={session.name}
+              />
             ))}
-          </View>
+          </OptionList>
         </View>
       ) : null}
     </BackHeaderScreenScaffold>

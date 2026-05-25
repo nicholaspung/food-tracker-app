@@ -226,8 +226,8 @@ export function RestaurantDiscoveryRestaurantScreen({
     >
       <Card style={styles.card}>
         <View style={styles.iconTitle}>
-          <Ionicons color={theme.colors.text.brand} name="document-text-outline" size={18} />
-          <Text variant="label">Menu Items</Text>
+          <Ionicons color={theme.colors.text.brand} name="flash-outline" size={18} />
+          <Text variant="label">Actions</Text>
         </View>
         <Button
           disabled={!isOnline || isMenuScanProcessing}
@@ -262,6 +262,16 @@ export function RestaurantDiscoveryRestaurantScreen({
             variant="secondary"
           />
         ) : null}
+        <Button
+          label="Track Visit With This Restaurant"
+          onPress={() => {
+            navigation.navigate('CreateVisit', {
+              preselectedRestaurantId: restaurant.id,
+              preselectedRestaurantName: restaurant.name,
+            });
+          }}
+          variant="secondary"
+        />
         <PageErrorToast
           errorMessage={menuScanFlow.status === 'error' ? menuScanFlow.errorMessage : null}
           title="Menu scan failed"
@@ -405,17 +415,6 @@ export function RestaurantDiscoveryRestaurantScreen({
           )}
         </Card>
       )}
-
-      <Button
-        label="Track Visit With This Restaurant"
-        onPress={() => {
-          navigation.navigate('CreateVisit', {
-            preselectedRestaurantId: restaurant.id,
-            preselectedRestaurantName: restaurant.name,
-          });
-        }}
-        variant="secondary"
-      />
     </FeatureDetailScreenScaffold>
   );
 }

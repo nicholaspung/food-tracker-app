@@ -489,5 +489,31 @@ describe('TastingSessionPlanningScreen', () => {
     expect(renderer.root.findAllByType('Input').some((node: any) => node.props.label === 'New menu item')).toBe(false);
     expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Add New Item')).toBe(false);
     expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Corner Ramen')).toBe(true);
+    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.subtitle).toBe(
+      'Waiting for the leader to finalize the tasting plan.',
+    );
+  });
+
+  it('moves invitees from planning to tasting when the leader starts rating', () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { isAdmin: false },
+      user: {
+        id: 'user-2',
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as never);
+    mockedUseTastingSessionDetail.mockReturnValue({
+      data: {
+        ...sessionWithRestaurant,
+        status: 'tasting',
+      },
+    } as never);
+
+    renderScreen();
+
+    expect(mockReplace).toHaveBeenCalledWith('TastingSessionTasting', {
+      sessionId: 'session-1',
+    });
   });
 });

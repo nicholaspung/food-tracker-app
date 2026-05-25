@@ -50,6 +50,8 @@ jest.mock('../components/shared', () => ({
       mockReact.createElement('Button', primaryAction),
       children,
     ),
+  HomeFeedVisitEntryCard: (props: Record<string, unknown>) =>
+    mockReact.createElement('HomeFeedVisitEntryCard', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoInputField: (props: Record<string, unknown>) => mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
@@ -83,6 +85,7 @@ jest.mock('../hooks/usePhotoPickerPermissions', () => ({
 }));
 
 jest.mock('../lib/dateFormatting', () => ({
+  formatDateToLocalDateString: jest.fn(() => '2026-05-19'),
   formatPhotoAttachmentDateLabel: jest.fn(() => 'Today'),
 }));
 
@@ -136,6 +139,8 @@ jest.mock('../theme', () => ({
 
 jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
+  Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Card', props, children),
   Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Modal', props, children),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -179,6 +184,13 @@ const tastingSession: TastingSessionRecord = {
       name: 'Leader',
       role: 'leader',
       userId: 'user-1',
+    },
+    {
+      id: 'participant-2',
+      joinedAt: '2026-05-19T10:02:00.000Z',
+      name: 'Mina',
+      role: 'participant',
+      userId: 'user-2',
     },
   ],
   restaurants: [
@@ -236,7 +248,7 @@ describe('TastingSessionTastingScreen', () => {
     } as unknown as ReturnType<typeof useTastingRatingSubmissionWrites>);
   });
 
-  it('submits the visible approved tasting items and shows saved feedback', async () => {
+  it('submits the visible approved tasting items and advances to review', async () => {
     let renderer: TestRendererHandle;
     await act(async () => {
       renderer = create(
@@ -269,11 +281,47 @@ describe('TastingSessionTastingScreen', () => {
       isOnline: true,
       sessionId: 'session-1',
     });
+    expect(renderer!.root.findAllByProps({ title: 'Review Your Ratings' }).length).toBeGreaterThan(0);
     expect(renderer!.root.findAllByProps({ label: 'Update Ratings' })).toHaveLength(1);
+    expect(renderer!.root.findAllByProps({ label: 'Complete' })).toHaveLength(1);
+    expect(
+      renderer!.root.findAllByProps({ testID: 'tasting-completion-summary-card' }).length,
+    ).toBeGreaterThan(0);
+    expect(renderer!.root.findAllByProps({ children: 'Still rating' }).length).toBeGreaterThan(0);
     expect(
       renderer!.root.findAllByProps({
         children: 'Ratings saved. You can edit and submit again until the tasting is completed.',
       }),
-    ).not.toHaveLength(0);
+    ).toHaveLength(0);
+  });
+
+  it('sends participants to results when the tasting is completed', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { id: 'user-2', isAdmin: false },
+      user: {
+        id: 'user-2',
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseTastingSessionDetail.mockReturnValue({
+      data: {
+        ...tastingSession,
+        status: 'completed',
+      },
+    } as unknown as ReturnType<typeof useTastingSessionDetail>);
+
+    await act(async () => {
+      create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('TastingSessionResults', {
+      sessionId: 'session-1',
+    });
   });
 });

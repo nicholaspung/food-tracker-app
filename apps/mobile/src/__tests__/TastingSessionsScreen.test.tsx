@@ -39,6 +39,10 @@ jest.mock('../components/shared', () => ({
   HeaderAccessoryButton: (props: Record<string, unknown>) => mockReact.createElement('HeaderAccessoryButton', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+  OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('OptionList', props, children),
+  OptionListRow: ({ rightAccessory, titleAccessory, ...props }: Record<string, unknown>) =>
+    mockReact.createElement('OptionListRow', props, titleAccessory as React.ReactNode, rightAccessory as React.ReactNode),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
 }));
 
@@ -188,6 +192,57 @@ function buildRevokedSessionWithStaleParticipant(): TastingSessionRecord {
   };
 }
 
+function buildCompletedSession(): TastingSessionRecord {
+  return {
+    ...buildSession('2026-05-20T12:00:00.000Z'),
+    id: 'session_completed',
+    invites: [],
+    joinedCount: 2,
+    leaderUserId: 'user_1',
+    name: 'Completed tasting',
+    participants: [
+      {
+        id: 'participant_1',
+        joinedAt: '2026-05-20T11:00:00.000Z',
+        name: 'Pat',
+        role: 'leader',
+        userId: 'user_1',
+      },
+      {
+        id: 'participant_2',
+        joinedAt: '2026-05-20T11:05:00.000Z',
+        name: 'Sam',
+        role: 'participant',
+        userId: 'user_2',
+      },
+    ],
+    restaurants: [
+      {
+        createdAt: '2026-05-20T11:10:00.000Z',
+        id: 'restaurant_1',
+        items: [
+          {
+            createdAt: '2026-05-20T11:15:00.000Z',
+            id: 'item_1',
+            menuItemId: 'menu_item_1',
+            name: 'Tonkotsu',
+            ratings: [],
+            restaurantSuggestionId: 'restaurant_1',
+            status: 'approved',
+            suggestedByParticipantId: 'participant_1',
+          },
+        ],
+        restaurantId: 'restaurant_record_1',
+        restaurantName: 'Ramen Place',
+        status: 'approved',
+        suggestedByParticipantId: 'participant_1',
+      },
+    ],
+    status: 'completed',
+    updatedAt: '2026-05-22T16:30:00.000Z',
+  };
+}
+
 function renderScreen(sessions: TastingSessionRecord[]) {
   const navigation = {
     navigate: jest.fn(),
@@ -308,5 +363,17 @@ describe('TastingSessionsScreen', () => {
     });
 
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders completed sessions as list rows with a session date', () => {
+    const { renderer } = renderScreen([buildCompletedSession()]);
+
+    const completedRow = renderer.root
+      .findAllByType('OptionListRow')
+      .find((node: any) => node.props.title === 'Completed tasting');
+
+    expect(completedRow).toBeTruthy();
+    expect(completedRow?.props.subtitle).toBe('May 22, 2026 - 1 restaurant, 1 item, 2 tasters');
+    expect(renderer.root.findAllByType('Card')).toHaveLength(0);
   });
 });

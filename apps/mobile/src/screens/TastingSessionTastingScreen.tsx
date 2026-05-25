@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -7,6 +7,8 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   FeatureFormScreenScaffold,
+  HomeFeedVisitEntryCard,
+  type HomeFeedPhotoRecord,
   PageErrorToast,
   PhotoInputField,
   PhotoViewerModal,
@@ -21,7 +23,10 @@ import {
   useTastingRatingSubmissionWrites,
 } from '../features';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
-import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
+import {
+  formatDateToLocalDateString,
+  formatPhotoAttachmentDateLabel,
+} from '../lib/dateFormatting';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
 import { resolveDisplayPhotoUploadsPerRecordLimit } from '../lib/usageUiRules';
@@ -29,11 +34,13 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Button, Modal, Text } from '../ui';
+import { Button, Card, Modal, Text } from '../ui';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './createVisit/shared';
+import { formatReviewEntryFooterLabel } from './photoProcessing/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
 type TastingSessionTastingScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionTasting'>;
+type TastingSessionTastingStep = 'rating' | 'review';
 
 const useStyles = createThemedStyles((theme) => ({
   restaurantSection: {
@@ -83,6 +90,20 @@ const useStyles = createThemedStyles((theme) => ({
   undoTitle: {
     flex: 1,
   },
+  reviewList: {
+    gap: theme.spacing.md,
+  },
+  completionSummaryCard: {
+    gap: theme.spacing.sm,
+  },
+  completionSummaryRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  completionSummaryMetric: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
 }));
 
 function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
@@ -100,7 +121,9 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const [drafts, setDrafts] = useState<Record<string, TastingRatingDraft>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmittingRatings, setIsSubmittingRatings] = useState(false);
-  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
+  const [isCompletingTasting, setIsCompletingTasting] = useState(false);
+  const [reviewTimestamp, setReviewTimestamp] = useState<string | null>(null);
+  const [step, setStep] = useState<TastingSessionTastingStep>('rating');
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [isUndoModalVisible, setIsUndoModalVisible] = useState(false);
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
@@ -108,6 +131,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const isLeader = Boolean(session && user?.id === session.leaderUserId);
+  const currentSessionId = session?.id;
+  const currentSessionStatus = session?.status;
   const currentParticipant = session?.participants.find((participant) => participant.userId === user?.id);
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
@@ -135,6 +160,14 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
     galleryRequiredMessage: 'Photo library permission is required to upload an image.',
   });
+
+  useEffect(() => {
+    if (!currentSessionId || currentSessionStatus !== 'completed') {
+      return;
+    }
+
+    navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
+  }, [currentSessionId, currentSessionStatus, navigation]);
 
   const approvedRestaurants = useMemo(
     () => session?.restaurants.filter((restaurant) => restaurant.status === 'approved') ?? [],
@@ -176,6 +209,104 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     );
   }, [currentParticipant, drafts]);
   const removedItems = approvedItems.filter((item) => !resolveDraft(item).included);
+  const completionSummary = useMemo(() => {
+    const participants = session?.participants ?? [];
+    const submittedParticipants = participants.filter((participant) =>
+      Boolean(participant.submittedAt || (reviewTimestamp && participant.userId === user?.id)),
+    );
+    const pendingParticipants = participants.filter(
+      (participant) =>
+        !participant.submittedAt && !(reviewTimestamp && participant.userId === user?.id),
+    );
+    const pendingNames = pendingParticipants
+      .map((participant) => participant.name.trim())
+      .filter(Boolean);
+
+    return {
+      completedCount: submittedParticipants.length,
+      pendingCount: pendingParticipants.length,
+      pendingNames,
+      totalCount: participants.length,
+    };
+  }, [reviewTimestamp, session?.participants, user?.id]);
+  const completionSummaryDescription =
+    completionSummary.pendingCount > 0
+      ? `${completionSummary.pendingCount} participant${
+          completionSummary.pendingCount === 1 ? ' is' : 's are'
+        } still rating${
+          completionSummary.pendingNames.length > 0
+            ? `: ${completionSummary.pendingNames.join(', ')}`
+            : ''
+        }. Completing now will omit anyone who has not submitted.`
+      : 'All participants have submitted ratings.';
+  const reviewCards = useMemo(() => {
+    const reviewedAt =
+      reviewTimestamp ??
+      currentParticipant?.submittedAt ??
+      session?.updatedAt ??
+      new Date().toISOString();
+    const reviewedDate = formatDateToLocalDateString(new Date(reviewedAt));
+    const footerLabel = formatReviewEntryFooterLabel(reviewedAt, reviewedDate);
+
+    return approvedRestaurants
+      .map((restaurant) => {
+        const visibleItems = (restaurant.items ?? [])
+          .filter((item) => item.status === 'approved')
+          .map((item) => ({ item, draft: resolveDraft(item) }))
+          .filter(({ draft }) => draft.included);
+
+        const photosByFoodItem = new Map<string, HomeFeedPhotoRecord[]>();
+        visibleItems.forEach(({ item, draft }) => {
+          if (draft.photos.length === 0) {
+            return;
+          }
+
+          photosByFoodItem.set(
+            item.id,
+            draft.photos.map((photo) => ({
+              id: photo.id,
+              food_item: item.id,
+              photo: photo.upload.name,
+              uri: photo.thumbnailUri,
+              created: reviewedAt,
+            })),
+          );
+        });
+
+        return {
+          id: `tasting-review-${restaurant.id}`,
+          footerLabel,
+          photosByFoodItem,
+          visit: {
+            id: `tasting-review-visit-${restaurant.id}`,
+            restaurantId: restaurant.restaurantId,
+            restaurantName: restaurant.restaurantName,
+            visitedAt: reviewedAt,
+            items: visibleItems.map(({ item, draft }) => ({
+              id: item.id,
+              name: item.name,
+              rating: draft.rating,
+              notes: draft.note.trim() || undefined,
+            })),
+            source: 'tasting-result' as const,
+            userId: user?.id,
+            userName: currentParticipant?.name,
+            visibility: 'friends' as const,
+            createdAt: reviewedAt,
+            updatedAt: reviewedAt,
+          },
+        };
+      })
+      .filter((card) => card.visit.items.length > 0);
+  }, [
+    approvedRestaurants,
+    currentParticipant?.name,
+    currentParticipant?.submittedAt,
+    resolveDraft,
+    reviewTimestamp,
+    session?.updatedAt,
+    user?.id,
+  ]);
 
   const openPhotoViewer = useCallback((photos: TastingRatingDraftPhoto[], initialIndex: number) => {
     if (photos.length === 0) {
@@ -189,6 +320,20 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
 
   const closePhotoViewer = useCallback(() => {
     setIsPhotoViewerVisible(false);
+  }, []);
+
+  const openReviewPhotoViewer = useCallback((photos: HomeFeedPhotoRecord[], initialIndex = 0) => {
+    const urls = photos
+      .map((photo) => photo.uri?.trim())
+      .filter((value): value is string => Boolean(value));
+    if (urls.length === 0) {
+      return;
+    }
+
+    setPhotoViewerPreviewUrls(urls);
+    setPhotoViewerUrls(urls);
+    setPhotoViewerInitialIndex(Math.max(0, Math.min(initialIndex, urls.length - 1)));
+    setIsPhotoViewerVisible(true);
   }, []);
 
   const attachPhotoToDraftItem = async (
@@ -287,7 +432,6 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const handleSubmit = async () => {
     try {
       setErrorMessage(null);
-      setSubmitSuccessMessage(null);
       setIsSubmittingRatings(true);
       const draftByItemId = Object.fromEntries(
         approvedItems.map((item) => [item.id, resolveDraft(item)]),
@@ -303,7 +447,11 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         setErrorMessage(submitResult.message);
         return;
       }
-      setSubmitSuccessMessage('Ratings saved. You can edit and submit again until the tasting is completed.');
+      const submittedParticipant = submitResult.result.participants.find(
+        (participant) => participant.userId === user?.id,
+      );
+      setReviewTimestamp(submittedParticipant?.submittedAt ?? submitResult.result.updatedAt);
+      setStep('review');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not submit ratings.');
     } finally {
@@ -313,6 +461,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
 
   const handleComplete = async () => {
     try {
+      setErrorMessage(null);
+      setIsCompletingTasting(true);
       const completeResult = await tastingRatingWrites.completeTasting({ isOnline, sessionId });
       if (completeResult.status === 'blocked') {
         setErrorMessage(completeResult.message);
@@ -321,6 +471,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       navigation.replace('TastingSessionResults', { sessionId: completeResult.result.id });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not complete session.');
+    } finally {
+      setIsCompletingTasting(false);
     }
   };
 
@@ -336,27 +488,130 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     );
   }
 
+  if (step === 'review') {
+    const reviewItemCount = reviewCards.reduce((count, card) => count + card.visit.items.length, 0);
+
+    return (
+      <FeatureFormScreenScaffold
+        keyboardAware={false}
+        onBackPress={() => {
+          setStep('rating');
+          setErrorMessage(null);
+        }}
+        primaryAction={
+          isLeader
+            ? {
+                disabled: !isOnline || isCompletingTasting,
+                label: 'Complete',
+                loading: isCompletingTasting,
+                onPress: () => setShowCompleteConfirm(true),
+                testID: 'tasting-complete-session-button',
+              }
+            : {
+                label: 'Done',
+                onPress: () => navigation.navigate('TastingSessions'),
+              }
+        }
+        secondaryAction={{
+          label: 'Update Ratings',
+          onPress: () => {
+            setStep('rating');
+            setErrorMessage(null);
+          },
+          testID: 'tasting-update-ratings-button',
+          variant: 'secondary',
+        }}
+        subtitle={`${reviewItemCount} item${reviewItemCount === 1 ? '' : 's'} ready to complete`}
+        title="Review Your Ratings"
+      >
+        {!isOnline ? <Text tone="warning">Completing the tasting requires a connection.</Text> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Tasting action failed" />
+        {reviewCards.length === 0 ? (
+          <EmptyState
+            description="Update your ratings to add items back before completing the tasting."
+            title="No ratings to review"
+          />
+        ) : null}
+        {isLeader ? (
+          <Card
+            style={styles.completionSummaryCard}
+            testID="tasting-completion-summary-card"
+            tone={completionSummary.pendingCount > 0 ? 'warning' : 'success'}
+          >
+            <Text variant="label">Participant Ratings</Text>
+            <View style={styles.completionSummaryRow}>
+              <View style={styles.completionSummaryMetric}>
+                <Text variant="titleSm">{completionSummary.completedCount}</Text>
+                <Text tone="secondary" variant="bodySm">
+                  Complete
+                </Text>
+              </View>
+              <View style={styles.completionSummaryMetric}>
+                <Text variant="titleSm">{completionSummary.pendingCount}</Text>
+                <Text tone="secondary" variant="bodySm">
+                  Still rating
+                </Text>
+              </View>
+            </View>
+            <Text tone={completionSummary.pendingCount > 0 ? 'warning' : 'success'} variant="bodySm">
+              {completionSummary.completedCount} of {completionSummary.totalCount} participant
+              {completionSummary.totalCount === 1 ? '' : 's'} complete.
+            </Text>
+            {completionSummary.pendingNames.length > 0 ? (
+              <Text tone="secondary" variant="bodySm">
+                Waiting on {completionSummary.pendingNames.join(', ')}.
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+        <View style={styles.reviewList}>
+          {reviewCards.map((card) => (
+            <HomeFeedVisitEntryCard
+              footerLabel={card.footerLabel}
+              getPhotosForItem={(itemId) => card.photosByFoodItem.get(itemId) ?? []}
+              key={card.id}
+              onOpenPhotoViewer={openReviewPhotoViewer}
+              visit={card.visit}
+            />
+          ))}
+        </View>
+
+        <PhotoViewerModal
+          initialIndex={photoViewerInitialIndex}
+          onRequestClose={closePhotoViewer}
+          previewUrls={photoViewerPreviewUrls}
+          urls={photoViewerUrls}
+          visible={isPhotoViewerVisible}
+        />
+
+        <ConfirmDestructiveModal
+          cancelLabel="Review"
+          confirmLabel="Complete"
+          description={`Complete this tasting and reveal submitted ratings? ${completionSummaryDescription}`}
+          onCancel={() => setShowCompleteConfirm(false)}
+          onConfirm={() => {
+            setShowCompleteConfirm(false);
+            void handleComplete();
+          }}
+          title="Complete Tasting?"
+          visible={showCompleteConfirm}
+        />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
   return (
     <FeatureFormScreenScaffold
       onBackPress={() => navigation.navigate('TastingSessions')}
       primaryAction={{
         disabled: approvedItems.length === 0 || !isOnline || isSubmittingRatings,
-        label: submitSuccessMessage ? 'Update Ratings' : 'Submit Ratings',
+        label: 'Submit Ratings',
         loading: isSubmittingRatings,
         onPress: () => {
           void handleSubmit();
         },
         testID: 'tasting-submit-ratings-button',
       }}
-      secondaryAction={
-        isLeader
-          ? {
-              disabled: !isOnline,
-              label: 'Complete',
-              onPress: () => setShowCompleteConfirm(true),
-            }
-          : undefined
-      }
       subtitle={
         <View style={styles.headerSubtitleRow}>
           <Text style={styles.headerSubtitleText} tone="muted" variant="bodyMd">
@@ -387,11 +642,6 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         </Text>
       ) : null}
       <PageErrorToast errorMessage={errorMessage} title="Tasting action failed" />
-      {submitSuccessMessage ? (
-        <Text tone="success" variant="bodySm">
-          {submitSuccessMessage}
-        </Text>
-      ) : null}
       <RatingLegend initiallyExpanded persistenceKey="ui.tastingRatingGuide.expanded" />
       {approvedItems.length === 0 ? (
         <EmptyState
@@ -531,18 +781,6 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         </View>
       </Modal>
 
-      <ConfirmDestructiveModal
-        cancelLabel="Keep Tasting"
-        confirmLabel="Complete Session"
-        description="Complete this tasting and reveal submitted ratings? Participants who have not submitted will be omitted from results."
-        onCancel={() => setShowCompleteConfirm(false)}
-        onConfirm={() => {
-          setShowCompleteConfirm(false);
-          void handleComplete();
-        }}
-        title="Complete Tasting?"
-        visible={showCompleteConfirm}
-      />
     </FeatureFormScreenScaffold>
   );
 }

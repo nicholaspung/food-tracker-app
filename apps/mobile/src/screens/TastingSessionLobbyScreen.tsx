@@ -118,6 +118,8 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const session = sessionQuery.data;
+  const currentSessionId = session?.id;
+  const currentSessionStatus = session?.status;
   const isLeader = Boolean(session && user?.id === session.leaderUserId);
   const inviteWindowOpen = session ? isTastingInviteWindowOpen(session.joinExpiresAt) : false;
   const inviteWindowExpired = session ? isTastingInviteWindowExpired(session.joinExpiresAt) : false;
@@ -138,6 +140,26 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       errorMessage: 'Your invite was revoked.',
     });
   }, [navigation, queryClient, session, sessionId, sessionQuery.isError, sessionQuery.isLoading]);
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      return;
+    }
+
+    if (currentSessionStatus === 'planning') {
+      navigation.replace('TastingSessionPlanning', { sessionId: currentSessionId });
+      return;
+    }
+
+    if (currentSessionStatus === 'tasting' || currentSessionStatus === 'rating') {
+      navigation.replace('TastingSessionTasting', { sessionId: currentSessionId });
+      return;
+    }
+
+    if (currentSessionStatus === 'completed') {
+      navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
+    }
+  }, [currentSessionId, currentSessionStatus, navigation]);
 
   const handleShare = async () => {
     if (!session?.inviteCode || !inviteWindowOpen) {

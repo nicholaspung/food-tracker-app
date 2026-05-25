@@ -217,6 +217,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     expect(scaffold.props.rightAccessory).toBeTruthy();
     expect(renderer.root.findAllByType('Card')).toHaveLength(2);
     expect(renderer.root.findAllByType('SegmentedControl')).toHaveLength(0);
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Actions')).toBe(true);
     expect(mockedUseQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: menuItemsQueryKeys.restaurant('restaurant-1'),
@@ -234,6 +235,23 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       .find((node: any) => node.props.label === 'Scan Menu Items');
 
     expect(scanButton?.props.disabled).toBe(true);
+  });
+
+  it('starts a visit with the current restaurant from the actions section', () => {
+    const renderer = renderScreen();
+
+    const trackVisitButton = renderer.root
+      .findAllByType('Button')
+      .find((node: any) => node.props.label === 'Track Visit With This Restaurant');
+
+    act(() => {
+      trackVisitButton?.props.onPress();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('CreateVisit', {
+      preselectedRestaurantId: 'restaurant-1',
+      preselectedRestaurantName: 'Erewhon West Hollywood',
+    });
   });
 
   it('delegates menu photo source actions to the shared menu scan flow', () => {
