@@ -24,3 +24,23 @@ export interface RestaurantMapGroup {
   notes?: string[];
   items: RestaurantMapItem[];
 }
+
+export type RestaurantMapSheetTabId = 'orderedItems' | 'menuItems';
+
+export interface RestaurantMapSheetTabState {
+  title: string;
+  loading: boolean;
+  errorMessage: string | null;
+  emptyTitle: string;
+  emptyDescription?: string;
+  actionLabel?: string;
+  onActionPress?: () => void;
+  items: RestaurantMapItem[];
+}
+
+export interface RestaurantMapSheetTabs {
+  activeTab: RestaurantMapSheetTabId;
+  onTabChange: (tabId: RestaurantMapSheetTabId) => void;
+  orderedItems: RestaurantMapSheetTabState;
+  menuItems: RestaurantMapSheetTabState;
+}

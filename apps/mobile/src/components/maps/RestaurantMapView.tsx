@@ -22,7 +22,7 @@ import {
   buildSelectedRestaurantRegion,
 } from './restaurantMapRegion';
 import { buildRestaurantDirectionsUrl } from './restaurantDirectionsLink';
-import type { RestaurantMapGroup } from './restaurantMapTypes';
+import type { RestaurantMapGroup, RestaurantMapSheetTabs } from './restaurantMapTypes';
 
 interface RestaurantMapViewProps {
   groups: RestaurantMapGroup[];
@@ -39,6 +39,7 @@ interface RestaurantMapViewProps {
   initialUserCoordinates?: Coordinates | null;
   onOpenSelectedGroup?: (group: RestaurantMapGroup) => void;
   selectedGroupActionLabel?: string;
+  selectedGroupTabs?: RestaurantMapSheetTabs | null;
   analyticsSource: string;
   testID: string;
   mapTestID: string;
@@ -46,6 +47,7 @@ interface RestaurantMapViewProps {
   externalTopInset?: number;
   onUserRegionChangeComplete?: (region: Region) => void;
   preserveRegionOnGroupsChange?: boolean;
+  showCurrentLocationControl?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -201,6 +203,7 @@ export function RestaurantMapView({
   initialUserCoordinates = null,
   onOpenSelectedGroup,
   selectedGroupActionLabel,
+  selectedGroupTabs = null,
   analyticsSource,
   testID,
   mapTestID,
@@ -208,6 +211,7 @@ export function RestaurantMapView({
   externalTopInset = 0,
   onUserRegionChangeComplete,
   preserveRegionOnGroupsChange = false,
+  showCurrentLocationControl = true,
   style,
 }: RestaurantMapViewProps) {
   const styles = useStyles();
@@ -451,15 +455,17 @@ export function RestaurantMapView({
         >
           <Ionicons color={theme.colors.text.secondary} name="refresh" size={16} />
         </Pressable>
-        <CurrentLocationButton
-          accessibilityLabel="Recenter map to current location"
-          loading={isCapturingLocation}
-          onPress={() => {
-            void handleUseCurrentLocationPress();
-          }}
-          style={styles.gpsButton}
-          variant="icon"
-        />
+        {showCurrentLocationControl ? (
+          <CurrentLocationButton
+            accessibilityLabel="Recenter map to current location"
+            loading={isCapturingLocation}
+            onPress={() => {
+              void handleUseCurrentLocationPress();
+            }}
+            style={styles.gpsButton}
+            variant="icon"
+          />
+        ) : null}
       </View>
 
       {locationErrorMessage ? (
@@ -479,6 +485,7 @@ export function RestaurantMapView({
         }}
         onOpenSelectedGroup={onOpenSelectedGroup}
         onOpenDirections={handleOpenDirections}
+        tabs={selectedGroupTabs}
         selectedGroupActionLabel={selectedGroupActionLabel}
       />
     </View>

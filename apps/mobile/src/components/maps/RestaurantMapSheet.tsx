@@ -4,10 +4,21 @@ import BottomSheet, {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { CachedRemoteImage, RatingPill } from '../shared';
+import {
+  CachedRemoteImage,
+  LoadingState,
+  RatingPill,
+  SegmentedControl,
+  type SegmentedControlOption,
+} from '../shared';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Text } from '../../ui';
-import type { RestaurantMapGroup, RestaurantMapItem } from './restaurantMapTypes';
+import type {
+  RestaurantMapGroup,
+  RestaurantMapItem,
+  RestaurantMapSheetTabId,
+  RestaurantMapSheetTabs,
+} from './restaurantMapTypes';
 
 interface RestaurantMapSheetProps {
   directionsErrorMessage: string | null;
@@ -17,10 +28,15 @@ interface RestaurantMapSheetProps {
   onOpenDirections: (group: RestaurantMapGroup) => Promise<void>;
   onOpenSelectedGroup?: (group: RestaurantMapGroup) => void;
   selectedGroupActionLabel?: string;
+  tabs?: RestaurantMapSheetTabs | null;
 }
 
 const COLLAPSED_SNAP = 260;
 const SNAP_POINTS = [COLLAPSED_SNAP, '42%', '76%'] as const;
+const SHEET_TAB_OPTIONS: readonly SegmentedControlOption<RestaurantMapSheetTabId>[] = [
+  { label: 'Your Ordered Items', value: 'orderedItems' },
+  { label: 'Menu Items', value: 'menuItems' },
+];
 
 const useStyles = createThemedStyles((theme) => ({
   sheetBackground: {
@@ -62,6 +78,13 @@ const useStyles = createThemedStyles((theme) => ({
   },
   actions: {
     gap: theme.spacing.xxs,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  actionButton: {
+    flex: 1,
   },
   itemRow: {
     alignItems: 'flex-start',
@@ -133,6 +156,23 @@ const useStyles = createThemedStyles((theme) => ({
   },
   directionsError: {
     color: theme.colors.text.warning,
+  },
+  tabsWrap: {
+    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.xs,
+  },
+  tabState: {
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  tabStateTitle: {
+    color: theme.colors.text.primary,
+  },
+  tabStateDescription: {
+    color: theme.colors.text.secondary,
   },
   showMoreButton: {
     alignItems: 'center',
@@ -227,6 +267,62 @@ function RestaurantItemRow({
   );
 }
 
+function RestaurantMapSheetTabContent({
+  tab,
+}: {
+  tab: RestaurantMapSheetTabs['orderedItems'];
+}) {
+  const styles = useStyles();
+
+  if (tab.loading) {
+    return <LoadingState label={`Loading ${tab.title.toLowerCase()}...`} />;
+  }
+
+  if (tab.errorMessage) {
+    return (
+      <View style={styles.tabState}>
+        <Text style={styles.tabStateTitle} variant="bodyMdSemiBold">
+          {tab.title} unavailable
+        </Text>
+        <Text style={styles.tabStateDescription} variant="bodySm">
+          {tab.errorMessage}
+        </Text>
+      </View>
+    );
+  }
+
+  if (tab.items.length === 0) {
+    return (
+      <View style={styles.tabState}>
+        <Text style={styles.tabStateTitle} variant="bodyMdSemiBold">
+          {tab.emptyTitle}
+        </Text>
+        {tab.emptyDescription ? (
+          <Text style={styles.tabStateDescription} variant="bodySm">
+            {tab.emptyDescription}
+          </Text>
+        ) : null}
+        {tab.actionLabel && tab.onActionPress ? (
+          <Button
+            label={tab.actionLabel}
+            onPress={tab.onActionPress}
+            testID="restaurant-map-sheet-tab-empty-action"
+            variant="secondary"
+          />
+        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <>
+      {tab.items.map((item) => (
+        <RestaurantItemRow item={item} key={item.id} />
+      ))}
+    </>
+  );
+}
+
 export function RestaurantMapSheet({
   directionsErrorMessage,
   directionsLoading,
@@ -235,6 +331,7 @@ export function RestaurantMapSheet({
   onOpenDirections,
   onOpenSelectedGroup,
   selectedGroupActionLabel = 'Open Restaurant',
+  tabs = null,
 }: RestaurantMapSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const previousGroupIdRef = useRef<string | null>(null);
@@ -261,7 +358,8 @@ export function RestaurantMapSheet({
 
   const visibleItems = sheetIndex === 0 ? group.items.slice(0, 2) : group.items;
   const remainingItemCount = Math.max(group.items.length - 2, 0);
-  const showMore = group.items.length > 2 && sheetIndex === 0;
+  const showMore = !tabs && group.items.length > 2 && sheetIndex === 0;
+  const activeTab = tabs?.activeTab === 'orderedItems' ? tabs.orderedItems : tabs?.menuItems;
 
   const expandSheet = () => {
     sheetRef.current?.snapToIndex(1);
@@ -297,26 +395,30 @@ export function RestaurantMapSheet({
         </View>
 
         <View style={styles.actions}>
-          {onOpenSelectedGroup ? (
+          <View style={onOpenSelectedGroup ? styles.actionRow : undefined}>
+            {onOpenSelectedGroup ? (
+              <Button
+                accessibilityLabel={`${selectedGroupActionLabel} ${group.restaurantName}`}
+                label={selectedGroupActionLabel}
+                onPress={() => {
+                  onOpenSelectedGroup(group);
+                }}
+                style={styles.actionButton}
+                testID="restaurant-map-open-selected-group-button"
+              />
+            ) : null}
             <Button
-              accessibilityLabel={`${selectedGroupActionLabel} ${group.restaurantName}`}
-              label={selectedGroupActionLabel}
+              accessibilityLabel={`Get directions to ${group.restaurantName}`}
+              label="Directions"
+              loading={directionsLoading}
               onPress={() => {
-                onOpenSelectedGroup(group);
+                void onOpenDirections(group);
               }}
-              testID="restaurant-map-open-selected-group-button"
+              style={onOpenSelectedGroup ? styles.actionButton : undefined}
+              testID="restaurant-map-directions-button"
+              variant="secondary"
             />
-          ) : null}
-          <Button
-            accessibilityLabel={`Get directions to ${group.restaurantName}`}
-            label="Directions"
-            loading={directionsLoading}
-            onPress={() => {
-              void onOpenDirections(group);
-            }}
-            testID="restaurant-map-directions-button"
-            variant="secondary"
-          />
+          </View>
           {directionsErrorMessage ? (
             <Text style={styles.directionsError} variant="bodySmTightSemiBold">
               {directionsErrorMessage}
@@ -324,11 +426,25 @@ export function RestaurantMapSheet({
           ) : null}
         </View>
 
-        {visibleItems.map((item) => (
-          <RestaurantItemRow item={item} key={item.id} />
-        ))}
+        {tabs && activeTab ? (
+          <View style={styles.tabsWrap}>
+            <SegmentedControl
+              getOptionTestID={(value) => `restaurant-map-sheet-tab-${value}`}
+              onChange={tabs.onTabChange}
+              options={SHEET_TAB_OPTIONS}
+              value={tabs.activeTab}
+            />
+            <RestaurantMapSheetTabContent tab={activeTab} />
+          </View>
+        ) : (
+          <>
+            {visibleItems.map((item) => (
+              <RestaurantItemRow item={item} key={item.id} />
+            ))}
+          </>
+        )}
 
-        {group.notes?.length ? (
+        {!tabs && group.notes?.length ? (
           <View style={styles.groupNotes}>
             {group.notes.map((note, index) => (
               <Text key={`${group.id}-note-${index}`} numberOfLines={2} style={styles.groupNoteText} variant="bodySm">

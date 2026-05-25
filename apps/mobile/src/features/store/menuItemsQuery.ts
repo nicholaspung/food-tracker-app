@@ -5,6 +5,12 @@ export const menuItemsQueryKeys = {
   restaurant: (restaurantId: string) => ['feature', 'menuItems', restaurantId.trim()] as const,
 };
 
+export const restaurantOrderedItemsQueryKeys = {
+  root: ['feature', 'restaurantOrderedItems'] as const,
+  restaurant: (restaurantId: string) =>
+    ['feature', 'restaurantOrderedItems', restaurantId.trim()] as const,
+};
+
 export function isRestaurantMenuItemsQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
@@ -15,4 +21,3 @@ export function isRestaurantMenuItemsQueryKey(queryKey: QueryKey): boolean {
     queryKey[2].trim().length > 0
   );
 }
-

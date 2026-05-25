@@ -33,7 +33,12 @@ import {
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
-import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
+import {
+  cleanupStagedPhotoFiles,
+  hasNativeImageManipulatorModule,
+  PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE,
+  stageLocalPhotoFile,
+} from '../lib/photoStaging';
 import {
   buildDefaultFoodProductForm,
   buildFoodProductFormFromRecord,
@@ -80,6 +85,10 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promise<VisitPhotoUploadInput | null> {
+  if (!hasNativeImageManipulatorModule()) {
+    throw new Error(PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE);
+  }
+
   return stageLocalPhotoFile(asset, {
     fallbackPrefix: 'food-product',
   });

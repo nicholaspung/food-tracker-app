@@ -446,6 +446,15 @@ describe('HomeFeedMapView', () => {
     );
   });
 
+  it('can hide the GPS control while keeping reset visible', () => {
+    const renderer = renderRestaurantMapView({
+      showCurrentLocationControl: false,
+    });
+
+    expect(renderer.root.findAllByType('CurrentLocationButton')).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Reset map view' }).length).toBeGreaterThan(0);
+  });
+
   it('does not report region changes until the user pans the map', () => {
     const onUserRegionChangeComplete = jest.fn();
     const renderer = renderRestaurantMapView({

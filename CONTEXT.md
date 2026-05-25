@@ -44,6 +44,10 @@ _Avoid_: saved places, restaurant list, discovery feed
 The nearby-first map view in **Food Discovery** for spatially exploring restaurants before recording food activity.
 _Avoid_: discovery feed map, saved places map, list map
 
+**Your Ordered Items**:
+A user's own item-backed food records at one exact restaurant location.
+_Avoid_: Your Records, Your Activity
+
 **Tasting Plan**:
 The leader-selected set of restaurants and menu items for a group tasting session.
 _Avoid_: Suggestions, readiness
@@ -110,6 +114,9 @@ _Avoid_: tutorial flags
 - **Food Discovery Map** defaults to current-location nearby exploration, but explicit text or location searches may replace the mapped results.
 - Selecting a restaurant in **Food Discovery Map** opens a preview sheet before navigating to restaurant detail.
 - Any user-record preview in a **Food Discovery Map** sheet is scoped to the selected restaurant location, not **All Locations History**.
+- A **Food Discovery Map** sheet may show **Your Ordered Items** for the selected restaurant location only.
+- **Your Ordered Items** include the user's own visit items and standalone food product entries as separate occurrences, ordered by newest tracked date first.
+- A **Food Discovery Map** sheet may show the selected restaurant location's saved menu item catalog separately from **Your Ordered Items**.
 - **Food Discovery Map** shows the user's GPS location only from device-captured location, not from manually entered search locations.
 - **Food Discovery Map** does not show a separate marker for manually entered search locations.
 - Entering nearby-first Map exploration in **Food Discovery** is a user-initiated Places search and may consume Places search quota.
@@ -163,6 +170,7 @@ _Avoid_: tutorial flags
 - "lists feature" was used to mean both the top-level list index and the detail for one list - resolved: this map belongs to **List Detail**.
 - "food discovery" was ambiguous with saved places and restaurant lists - resolved: **Food Discovery** is an exploratory surface, not a **Restaurant List**.
 - "map discovery" was ambiguous between saved-first and nearby-first behavior - resolved: **Food Discovery** exploratory browsing is nearby-first.
+- "Your Records" in a **Food Discovery Map** sheet was ambiguous between visits, activity, and item-backed records - resolved: use **Your Ordered Items** for the user's own exact-location item-backed food records.
 - "suggestion" was used for leader-picked tasting restaurants and menu items - resolved: in the product language these are selected entries in the **Tasting Plan**.
 - "selecting a restaurant" was ambiguous between local UI selection and plan selection - resolved: leader restaurant selection immediately adds the restaurant to the **Tasting Plan**.
 - "next" in tasting planning was ambiguous between navigation and planning progress - resolved: it advances the **Tasting Plan** from restaurant selection to menu item selection.

@@ -2176,6 +2176,137 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 }
 
+func TestRestaurantOrderedItemsEndpointReturnsOwnExactRestaurantItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Noodle House",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Noodle House",
+		"location":   "Pasadena, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+
+	olderVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "private",
+	})
+	newerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	otherVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "public",
+	})
+
+	olderBurger := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    olderVisit.Id,
+		"user":     user.Id,
+		"name":     "Burger",
+		"notes":    "First one",
+		"rating":   3,
+		"itemType": "visit-item",
+	})
+	newerBurger := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    newerVisit.Id,
+		"user":     user.Id,
+		"name":     "Burger",
+		"notes":    "Second one",
+		"rating":   5,
+		"itemType": "visit-item",
+	})
+	standalone := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    newerVisit.Id,
+		"user":     user.Id,
+		"name":     "Takeout ramen",
+		"notes":    "Standalone",
+		"rating":   4,
+		"itemDate": "2026-04-02 18:30:00.000Z",
+		"itemType": "food-product",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    otherVisit.Id,
+		"user":     user.Id,
+		"name":     "Wrong location burger",
+		"rating":   2,
+		"itemType": "visit-item",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    friendVisit.Id,
+		"user":     friend.Id,
+		"name":     "Friend noodles",
+		"rating":   5,
+		"itemType": "visit-item",
+	})
+	insertVisitPhotoRowRaw(t, server.app, user.Id, newerVisit.Id, newerBurger.Id)
+	insertVisitPhotoRowRaw(t, server.app, user.Id, newerVisit.Id, newerBurger.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/ordered-items", restaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID                string  `json:"id"`
+		Source            string  `json:"source"`
+		FoodItemID        string  `json:"foodItemId"`
+		VisitID           string  `json:"visitId"`
+		Name              string  `json:"name"`
+		Rating            float64 `json:"rating"`
+		Notes             string  `json:"notes"`
+		TrackedAt         string  `json:"trackedAt"`
+		PhotoPreviewID    string  `json:"photoPreviewId"`
+		PhotoPreviewPhoto string  `json:"photoPreviewPhoto"`
+		PhotoCount        int     `json:"photoCount"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse ordered items response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if len(payload) != 3 {
+		t.Fatalf("expected own exact-location visit items and standalone product, got %#v", payload)
+	}
+	if payload[0].FoodItemID != newerBurger.Id || payload[0].Name != "Burger" || payload[0].Rating != 5 {
+		t.Fatalf("expected newest burger occurrence first, got %#v", payload[0])
+	}
+	if payload[0].PhotoPreviewID == "" || payload[0].PhotoPreviewPhoto == "" || payload[0].PhotoCount != 2 {
+		t.Fatalf("expected photo preview/count on newest burger, got %#v", payload[0])
+	}
+	if payload[1].FoodItemID != standalone.Id || payload[1].Source != "food-product" {
+		t.Fatalf("expected standalone food product second, got %#v", payload[1])
+	}
+	if payload[2].FoodItemID != olderBurger.Id || payload[2].VisitID != olderVisit.Id {
+		t.Fatalf("expected older repeated burger as a separate occurrence, got %#v", payload[2])
+	}
+}
+
 func TestSameNameRestaurantHistoryEndpointAggregatesOwnVisitItemsAcrossLocations(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

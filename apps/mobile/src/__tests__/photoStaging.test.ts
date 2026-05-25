@@ -44,6 +44,13 @@ jest.mock('expo-file-system', () => {
   };
 });
 
+const mockRequireOptionalNativeModule = jest.fn<unknown, [string]>(() => ({}));
+
+jest.mock('expo', () => ({
+  requireOptionalNativeModule: (moduleName: string) =>
+    mockRequireOptionalNativeModule(moduleName),
+}));
+
 const mockManipulateAsync = jest.fn(async (
   _uri?: unknown,
   _actions?: unknown,
@@ -76,6 +83,8 @@ describe('photoStaging', () => {
   beforeEach(() => {
     jest.spyOn(Date, 'now').mockReturnValue(123456789);
     jest.spyOn(Math, 'random').mockReturnValue(0.123456789);
+    mockRequireOptionalNativeModule.mockClear();
+    mockRequireOptionalNativeModule.mockReturnValue({});
     mockManipulateAsync.mockClear();
     mockManipulateAsync.mockResolvedValue({
       height: 1200,
@@ -197,6 +206,24 @@ describe('photoStaging', () => {
       }),
     ).resolves.toBeNull();
 
+    expect(mockedFile.copiedTo).toEqual([]);
+  });
+
+  it('returns null without importing the manipulator when the native module is unavailable', async () => {
+    mockRequireOptionalNativeModule.mockReturnValueOnce(null);
+
+    await expect(
+      stageLocalPhotoFile({
+        uri: 'file:///picker/photo.jpg',
+        fileName: 'photo.jpg',
+        height: 3024,
+        mimeType: 'image/jpeg',
+        width: 4032,
+      }),
+    ).resolves.toBeNull();
+
+    expect(mockRequireOptionalNativeModule).toHaveBeenCalledWith('ExpoImageManipulator');
+    expect(mockManipulateAsync).not.toHaveBeenCalled();
     expect(mockedFile.copiedTo).toEqual([]);
   });
 

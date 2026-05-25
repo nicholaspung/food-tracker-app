@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
 import { extractRestaurantNamesFromImage, parseLimitExceededError } from '../features';
@@ -40,6 +40,11 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(() => ({
+    data: [],
+    error: null,
+    isPending: false,
+  })),
   useQueryClient: jest.fn(() => ({
     invalidateQueries: mockInvalidateQueries,
   })),
@@ -192,6 +197,7 @@ const mockedCaptureObservabilityError = captureObservabilityError as jest.Mocked
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 
 describe('RestaurantDiscoveryScreen', () => {
   beforeEach(() => {
@@ -211,6 +217,12 @@ describe('RestaurantDiscoveryScreen', () => {
       status: 'success',
     });
     mockInvalidateQueries.mockReset();
+    mockedUseQuery.mockReset();
+    mockedUseQuery.mockReturnValue({
+      data: [],
+      error: null,
+      isPending: false,
+    } as never);
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries: mockInvalidateQueries,
     } as never);
@@ -695,6 +707,37 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(renderer.root.findByType('RestaurantMapView').props.externalTopInset).toBe(96);
   });
 
+  it('hides discovery map overlays and GPS control while restaurant sheet is open', () => {
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    act(() => {
+      renderer.root.findByProps({
+        testID: 'restaurant-discovery-map-search-panel',
+      }).props.onLayout({
+        nativeEvent: {
+          layout: {
+            height: 88,
+          },
+        },
+      });
+    });
+    moveDiscoveryMap(renderer, 34.2, -118.3);
+    expect(findSearchHereButton(renderer)).toBeTruthy();
+
+    act(() => {
+      renderer.root.findByType('RestaurantMapView').props.onSelectedGroupChange('restaurant-1');
+    });
+
+    const map = renderer.root.findByType('RestaurantMapView');
+    expect(renderer.root.findAllByProps({
+      testID: 'restaurant-discovery-map-search-panel',
+    })).toHaveLength(0);
+    expect(findSearchHereButton(renderer)).toBeUndefined();
+    expect(map.props.showCurrentLocationControl).toBe(false);
+    expect(map.props.externalTopInset).toBe(0);
+  });
+
   it('auto searches nearby once when map opens without active results', () => {
     mockDiscoverySelectionFlow({
       displayedNearbyRestaurants: [],
@@ -874,12 +917,70 @@ describe('RestaurantDiscoveryScreen', () => {
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
       'FOOD_DISCOVERY_MAP_MARKER_SELECTED',
-      expect.objectContaining({ restaurantId: 'restaurant-1' }),
+      expect.objectContaining({
+        isGooglePlace: false,
+        source: 'RestaurantDiscoveryScreen',
+      }),
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
       'FOOD_DISCOVERY_MAP_RESTAURANT_OPENED',
-      expect.objectContaining({ restaurantId: 'restaurant-1' }),
+      expect.objectContaining({
+        isGooglePlace: false,
+        source: 'RestaurantDiscoveryScreen',
+      }),
     );
+  });
+
+  it('passes Food Discovery-only sheet tabs for the selected map restaurant', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly string[];
+      if (queryKey.includes('restaurantOrderedItems')) {
+        return {
+          data: [
+            {
+              createdAt: '2026-04-03T18:30:00.000Z',
+              foodItemId: 'food-item-1',
+              id: 'visit-item:food-item-1',
+              name: 'Burger',
+              notes: 'Extra pickles',
+              photoCount: 2,
+              photoPreviewId: 'photo-1',
+              photoPreviewPhoto: 'burger.jpg',
+              rating: 5,
+              source: 'visit-item',
+              trackedAt: '2026-04-03T18:30:00.000Z',
+              visitId: 'visit-1',
+            },
+          ],
+          error: null,
+          isPending: false,
+        } as never;
+      }
+
+      return {
+        data: [
+          { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
+          { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
+        ],
+        error: null,
+        isPending: false,
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    switchDiscoverySearchViewMode(renderer, 'map');
+    act(() => {
+      renderer.root.findByType('RestaurantMapView').props.onSelectedGroupChange('restaurant-1');
+    });
+
+    const tabs = renderer.root.findByType('RestaurantMapView').props.selectedGroupTabs;
+    expect(tabs.activeTab).toBe('orderedItems');
+    expect(tabs.orderedItems.items[0]).toMatchObject({
+      name: 'Burger',
+      notes: 'Extra pickles',
+      photoCount: 2,
+    });
+    expect(tabs.menuItems.items.map((item: any) => item.name)).toEqual(['Aguachile', 'Ziti']);
   });
 
   it('clears map selection and resets map when search results are cleared', () => {
@@ -906,9 +1007,6 @@ describe('RestaurantDiscoveryScreen', () => {
       }).props.onPress();
     });
     const initialResetSignal = renderer.root.findByType('RestaurantMapView').props.resetSignal;
-    act(() => {
-      renderer.root.findByType('RestaurantMapView').props.onSelectedGroupChange('nearby-1');
-    });
     moveDiscoveryMap(renderer, 34.2, -118.3);
     expect(findSearchHereButton(renderer)).toBeTruthy();
     act(() => {

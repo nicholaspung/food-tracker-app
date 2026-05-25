@@ -25,11 +25,33 @@ const DEFAULT_PHOTO_JPEG_QUALITY = 0.78;
 const STAGED_PHOTO_MIME_TYPE = 'image/jpeg';
 
 type ImageManipulatorModule = typeof import('expo-image-manipulator');
+type ExpoModule = typeof import('expo');
 
-function loadImageManipulator(): ImageManipulatorModule {
+export const PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE =
+  'Photo resizing is unavailable in this app build. Rebuild and reinstall the app, then try adding the photo again.';
+
+export function hasNativeImageManipulatorModule(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Expo = require('expo') as Pick<ExpoModule, 'requireOptionalNativeModule'>;
+    return Boolean(Expo.requireOptionalNativeModule('ExpoImageManipulator'));
+  } catch {
+    return false;
+  }
+}
+
+function loadImageManipulator(): ImageManipulatorModule | null {
   // Lazy-load so screens that do not stage photos can render in dev clients built without this native module.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('expo-image-manipulator') as ImageManipulatorModule;
+  if (!hasNativeImageManipulatorModule()) {
+    return null;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-image-manipulator') as ImageManipulatorModule;
+  } catch {
+    return null;
+  }
 }
 
 function getPhotoStagingDirectory(): Directory {
@@ -120,6 +142,10 @@ export async function stageLocalPhotoFile(
 
   try {
     const ImageManipulator = loadImageManipulator();
+    if (!ImageManipulator) {
+      return null;
+    }
+
     const manipulatedPhoto = await ImageManipulator.manipulateAsync(
       localPhoto.uri,
       resolveResizeAction(asset, maxLongEdge, resize),

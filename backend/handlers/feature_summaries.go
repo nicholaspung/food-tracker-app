@@ -211,6 +211,21 @@ type menuItemSelectionSummary struct {
 	FriendEatenCount int    `db:"friendEatenCount" json:"friendEatenCount,omitempty"`
 }
 
+type restaurantOrderedItemSummary struct {
+	ID                string  `db:"id" json:"id"`
+	Source            string  `db:"source" json:"source"`
+	FoodItemID        string  `db:"foodItemId" json:"foodItemId"`
+	VisitID           string  `db:"visitId" json:"visitId,omitempty"`
+	Name              string  `db:"name" json:"name"`
+	Rating            float64 `db:"rating" json:"rating"`
+	Notes             string  `db:"notes" json:"notes,omitempty"`
+	TrackedAt         string  `db:"trackedAt" json:"trackedAt"`
+	CreatedAt         string  `db:"createdAt" json:"createdAt"`
+	PhotoPreviewID    string  `db:"photoPreviewId" json:"photoPreviewId,omitempty"`
+	PhotoPreviewPhoto string  `db:"photoPreviewPhoto" json:"photoPreviewPhoto,omitempty"`
+	PhotoCount        int     `db:"photoCount" json:"photoCount,omitempty"`
+}
+
 type recentRestaurantIDRow struct {
 	RestaurantID string `db:"restaurantId"`
 }
@@ -719,6 +734,25 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		items, err := listRestaurantMenuItemSummaries(app, e.Auth, restaurantID)
 		if err != nil {
 			log.Printf("Failed to load menu items for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
+			return err
+		}
+
+		return e.JSON(200, items)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/restaurants/{restaurantId}/ordered-items", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if restaurantID == "" {
+			return apis.NewBadRequestError("restaurantId is required", nil)
+		}
+
+		items, err := listRestaurantOrderedItemSummaries(app, e.Auth, restaurantID)
+		if err != nil {
+			log.Printf("Failed to load ordered items for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
 			return err
 		}
 
@@ -3336,6 +3370,161 @@ func listRestaurantMenuItemSummaries(
 		row.Description = strings.TrimSpace(row.Description)
 		row.CreatedBy = strings.TrimSpace(row.CreatedBy)
 		row.Visibility = strings.TrimSpace(row.Visibility)
+		result = append(result, row)
+	}
+
+	return result, nil
+}
+
+func listRestaurantOrderedItemSummaries(
+	app core.App,
+	authRecord *core.Record,
+	restaurantID string,
+) ([]restaurantOrderedItemSummary, error) {
+	if authRecord == nil {
+		return []restaurantOrderedItemSummary{}, apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return nil, apis.NewApiError(500, "failed to resolve restaurant visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("restaurant not found", nil)
+		}
+		return nil, apis.NewApiError(500, "failed to resolve restaurant", err)
+	}
+
+	rows := []restaurantOrderedItemSummary{}
+	query := `
+		SELECT *
+		FROM (
+			SELECT
+				'visit-item:' || food_items.id AS [[id]],
+				'visit-item' AS [[source]],
+				food_items.id AS [[foodItemId]],
+				visits.id AS [[visitId]],
+				COALESCE(food_items.name, '') AS [[name]],
+				COALESCE(food_items.rating, 0) AS [[rating]],
+				TRIM(COALESCE(NULLIF(food_items.notes, ''), food_items.description, '')) AS [[notes]],
+				COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) AS [[trackedAt]],
+				COALESCE(food_items.created, '') AS [[createdAt]],
+				COALESCE((
+					SELECT visit_photos.id
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+					ORDER BY
+						COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+						visit_photos.id DESC
+					LIMIT 1
+				), '') AS [[photoPreviewId]],
+				COALESCE((
+					SELECT visit_photos.photo
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+					ORDER BY
+						COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+						visit_photos.id DESC
+					LIMIT 1
+				), '') AS [[photoPreviewPhoto]],
+				(
+					SELECT COUNT(*)
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+				) AS [[photoCount]]
+			FROM food_items
+			INNER JOIN visits ON visits.id = food_items.visit
+			WHERE food_items.user = {:userId}
+				AND visits.user = {:userId}
+				AND visits.restaurant = {:restaurantId}
+				AND ` + visitItemSQL("food_items") + `
+				AND ` + ownerAccessibleVisitModerationCondition + `
+				AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+
+			UNION ALL
+
+			SELECT
+				'food-product:' || food_items.id AS [[id]],
+				'food-product' AS [[source]],
+				food_items.id AS [[foodItemId]],
+				'' AS [[visitId]],
+				COALESCE(food_items.name, '') AS [[name]],
+				COALESCE(food_items.rating, 0) AS [[rating]],
+				TRIM(COALESCE(food_items.notes, '')) AS [[notes]],
+				COALESCE(NULLIF(TRIM(food_items.itemDate), ''), food_items.created) AS [[trackedAt]],
+				COALESCE(food_items.created, '') AS [[createdAt]],
+				COALESCE((
+					SELECT visit_photos.id
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+					ORDER BY
+						COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+						visit_photos.id DESC
+					LIMIT 1
+				), '') AS [[photoPreviewId]],
+				COALESCE((
+					SELECT visit_photos.photo
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+					ORDER BY
+						COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+						visit_photos.id DESC
+					LIMIT 1
+				), '') AS [[photoPreviewPhoto]],
+				(
+					SELECT COUNT(*)
+					FROM visit_photos
+					WHERE visit_photos.food_item = food_items.id
+						AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+						AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+				) AS [[photoCount]]
+			FROM food_items
+			INNER JOIN visits ON visits.id = food_items.visit
+			WHERE food_items.user = {:userId}
+				AND visits.user = {:userId}
+				AND visits.restaurant = {:restaurantId}
+				AND ` + foodProductSQL("food_items") + `
+				AND ` + ownerAccessibleVisitModerationCondition + `
+				AND ` + ownerAccessibleQuickTrackModerationCondition + `
+		) AS ordered_items
+		ORDER BY trackedAt DESC, createdAt DESC, foodItemId DESC
+		LIMIT 25
+	`
+	if err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"restaurantId": restaurantRecord.Id,
+			"userId":       viewerUserID,
+		}).
+		All(&rows); err != nil {
+		return nil, apis.NewApiError(500, "failed to load ordered items", err)
+	}
+
+	result := make([]restaurantOrderedItemSummary, 0, len(rows))
+	for _, row := range rows {
+		row.Name = strings.TrimSpace(row.Name)
+		if row.Name == "" {
+			row.Name = "Food item"
+		}
+		row.Notes = strings.TrimSpace(row.Notes)
 		result = append(result, row)
 	}
 

@@ -23,6 +23,21 @@ export type {
   SameNameRestaurantHistoryRecord,
 } from './featureStore';
 
+export interface RestaurantOrderedItemRecord {
+  id: string;
+  source: 'visit-item' | 'food-product';
+  foodItemId: string;
+  visitId?: string;
+  name: string;
+  rating: number;
+  notes?: string;
+  trackedAt: string;
+  createdAt: string;
+  photoPreviewId?: string;
+  photoPreviewPhoto?: string;
+  photoCount?: number;
+}
+
 interface RestaurantSelectionApiRecord {
   id: string;
   name: string;
@@ -238,6 +253,28 @@ export async function listMenuItemsForRestaurant(
 
   return sendApiRequest<MenuItemRecord[]>(
     `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
+}
+
+export async function listRestaurantOrderedItems(
+  restaurantId: string,
+  options?: SearchRestaurantsPageOptions,
+): Promise<RestaurantOrderedItemRecord[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const trimmedRestaurantId = restaurantId.trim();
+  if (!trimmedRestaurantId) {
+    return [];
+  }
+
+  return sendApiRequest<RestaurantOrderedItemRecord[]>(
+    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/ordered-items`,
     {
       method: 'GET',
       signal: options?.signal,
