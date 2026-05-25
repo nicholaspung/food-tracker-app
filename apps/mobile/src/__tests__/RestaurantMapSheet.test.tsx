@@ -307,29 +307,29 @@ describe('RestaurantMapSheet', () => {
   it('replaces the shared item list with Food Discovery sheet tabs when provided', () => {
     const { renderer } = renderSheet({
       tabs: {
-        activeTab: 'menuItems',
-        menuItems: {
+        activeTab: 'location',
+        allLocations: {
+          emptyTitle: 'No orders across locations yet',
+          errorMessage: null,
+          items: [{ id: 'double-double', meta: [{ label: '2 orders', rating: 5 }], name: 'Double Double' }],
+          loading: false,
+          title: 'All Locations',
+        },
+        location: {
           emptyTitle: 'No menu items yet',
           errorMessage: null,
           items: [{ id: 'menu-1', meta: [], name: 'Aguachile' }],
           loading: false,
-          title: 'Menu Items',
+          title: 'This Location',
         },
         onTabChange: jest.fn(),
-        orderedItems: {
-          emptyTitle: 'No ordered items yet',
-          errorMessage: null,
-          items: [{ id: 'ordered-1', meta: [{ dateLabel: 'May 1, 2026', rating: 5 }], name: 'Burger' }],
-          loading: false,
-          title: 'Your Ordered Items',
-        },
       },
     });
 
     const segmented = renderer.root.findByType('SegmentedControl');
     expect(segmented.props.options.map((option: { label: string }) => option.label)).toEqual([
-      'Your Ordered Items',
-      'Menu Items',
+      'This Location',
+      'All Locations',
     ]);
     expect(findTextNodes(renderer, 'Aguachile')).toHaveLength(1);
     expect(findTextNodes(renderer, 'First drink')).toHaveLength(0);
@@ -340,53 +340,53 @@ describe('RestaurantMapSheet', () => {
     const onTabChange = jest.fn();
     const { renderer } = renderSheet({
       tabs: {
-        activeTab: 'menuItems',
-        menuItems: {
+        activeTab: 'location',
+        allLocations: {
+          emptyTitle: 'No orders across locations yet',
+          errorMessage: null,
+          items: [],
+          loading: false,
+          title: 'All Locations',
+        },
+        location: {
           emptyTitle: 'No menu items yet',
           errorMessage: null,
           items: [],
           loading: false,
-          title: 'Menu Items',
+          title: 'This Location',
         },
         onTabChange,
-        orderedItems: {
-          emptyTitle: 'No ordered items yet',
-          errorMessage: null,
-          items: [],
-          loading: false,
-          title: 'Your Ordered Items',
-        },
       },
     });
 
     act(() => {
-      renderer.root.findByType('SegmentedControl').props.onChange('orderedItems');
+      renderer.root.findByType('SegmentedControl').props.onChange('allLocations');
     });
 
-    expect(onTabChange).toHaveBeenCalledWith('orderedItems');
+    expect(onTabChange).toHaveBeenCalledWith('allLocations');
   });
 
-  it('renders Menu Items empty state without a tab-local action', () => {
+  it('renders This Location empty state without a tab-local action', () => {
     const { renderer } = renderSheet({
       tabs: {
-        activeTab: 'menuItems',
-        menuItems: {
+        activeTab: 'location',
+        allLocations: {
+          emptyDescription: 'Track a visit at this restaurant name to build your history.',
+          emptyTitle: 'No orders across locations yet',
+          errorMessage: null,
+          items: [],
+          loading: false,
+          title: 'All Locations',
+        },
+        location: {
           emptyDescription: 'Open this restaurant to scan a menu or add items.',
           emptyTitle: 'No menu items yet',
           errorMessage: null,
           items: [],
           loading: false,
-          title: 'Menu Items',
+          title: 'This Location',
         },
         onTabChange: jest.fn(),
-        orderedItems: {
-          emptyDescription: 'Track a visit at this exact restaurant location to see ordered items here.',
-          emptyTitle: 'No ordered items yet',
-          errorMessage: null,
-          items: [],
-          loading: false,
-          title: 'Your Ordered Items',
-        },
       },
     });
 
@@ -395,33 +395,33 @@ describe('RestaurantMapSheet', () => {
     expect(renderer.root.findAllByProps({ testID: 'restaurant-map-sheet-tab-empty-action' })).toHaveLength(0);
   });
 
-  it('does not render an empty action for Your Ordered Items', () => {
+  it('does not render an empty action for All Locations', () => {
     const { renderer } = renderSheet({
       tabs: {
-        activeTab: 'orderedItems',
-        menuItems: {
+        activeTab: 'allLocations',
+        allLocations: {
+          emptyDescription: 'Track a visit at this restaurant name to build your history.',
+          emptyTitle: 'No orders across locations yet',
+          errorMessage: null,
+          items: [],
+          loading: false,
+          title: 'All Locations',
+        },
+        location: {
           actionLabel: 'Open Restaurant',
           emptyTitle: 'No menu items yet',
           errorMessage: null,
           items: [],
           loading: false,
           onActionPress: jest.fn(),
-          title: 'Menu Items',
+          title: 'This Location',
         },
         onTabChange: jest.fn(),
-        orderedItems: {
-          emptyDescription: 'Track a visit at this exact restaurant location to see ordered items here.',
-          emptyTitle: 'No ordered items yet',
-          errorMessage: null,
-          items: [],
-          loading: false,
-          title: 'Your Ordered Items',
-        },
       },
     });
 
-    expect(findTextNodes(renderer, 'No ordered items yet')).toHaveLength(1);
-    expect(findTextNodes(renderer, 'Track a visit at this exact restaurant location to see ordered items here.')).toHaveLength(1);
+    expect(findTextNodes(renderer, 'No orders across locations yet')).toHaveLength(1);
+    expect(findTextNodes(renderer, 'Track a visit at this restaurant name to build your history.')).toHaveLength(1);
     expect(renderer.root.findAllByProps({ testID: 'restaurant-map-sheet-tab-empty-action' })).toHaveLength(0);
   });
 });

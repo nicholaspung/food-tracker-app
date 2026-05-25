@@ -34,8 +34,8 @@ interface RestaurantMapSheetProps {
 const COLLAPSED_SNAP = 260;
 const SNAP_POINTS = [COLLAPSED_SNAP, '42%', '76%'] as const;
 const SHEET_TAB_OPTIONS: readonly SegmentedControlOption<RestaurantMapSheetTabId>[] = [
-  { label: 'Your Ordered Items', value: 'orderedItems' },
-  { label: 'Menu Items', value: 'menuItems' },
+  { label: 'This Location', value: 'location' },
+  { label: 'All Locations', value: 'allLocations' },
 ];
 
 const useStyles = createThemedStyles((theme) => ({
@@ -270,7 +270,7 @@ function RestaurantItemRow({
 function RestaurantMapSheetTabContent({
   tab,
 }: {
-  tab: RestaurantMapSheetTabs['orderedItems'];
+  tab: RestaurantMapSheetTabs['location'];
 }) {
   const styles = useStyles();
 
@@ -359,7 +359,7 @@ export function RestaurantMapSheet({
   const visibleItems = sheetIndex === 0 ? group.items.slice(0, 2) : group.items;
   const remainingItemCount = Math.max(group.items.length - 2, 0);
   const showMore = !tabs && group.items.length > 2 && sheetIndex === 0;
-  const activeTab = tabs?.activeTab === 'orderedItems' ? tabs.orderedItems : tabs?.menuItems;
+  const activeTab = tabs?.activeTab === 'allLocations' ? tabs.allLocations : tabs?.location;
 
   const expandSheet = () => {
     sheetRef.current?.snapToIndex(1);

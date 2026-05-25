@@ -15,11 +15,12 @@ export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScree
   const tastingSessionWrites = useTastingSessionWrites();
   const [inviteCode, setInviteCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const normalizedInviteCode = inviteCode.trim().toUpperCase();
 
   const handleJoin = async () => {
     try {
       setErrorMessage(null);
-      const joinResult = await tastingSessionWrites.joinSession({ inviteCode, isOnline });
+      const joinResult = await tastingSessionWrites.joinSession({ inviteCode: normalizedInviteCode, isOnline });
       if (joinResult.status === 'blocked') {
         setErrorMessage(joinResult.message);
         return;
@@ -34,7 +35,7 @@ export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScree
     <FeatureFormScreenScaffold
       onBackPress={() => navigation.goBack()}
       primaryAction={{
-        disabled: inviteCode.trim().length !== 6 || !isOnline,
+        disabled: normalizedInviteCode.length !== 6 || !isOnline,
         label: 'Join Session',
         onPress: () => {
           void handleJoin();
@@ -51,9 +52,9 @@ export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScree
           autoCorrect={false}
           label="6-character invite code"
           maxLength={6}
-          onChangeText={(value) => setInviteCode(value.toUpperCase())}
+          onChangeText={(value) => setInviteCode(value.trim().toUpperCase())}
           placeholder="ABC123"
-          value={inviteCode}
+          value={normalizedInviteCode}
         />
       </Card>
     </FeatureFormScreenScaffold>

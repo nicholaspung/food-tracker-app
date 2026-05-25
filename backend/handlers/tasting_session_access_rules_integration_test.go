@@ -12,7 +12,7 @@ import (
 func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 
-	leader, leaderToken := createAuthUser(t, server.app, true, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
 	_, strangerToken := createAuthUser(t, server.app, false, false)
 
@@ -55,7 +55,7 @@ func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 		participantToken,
 		"",
 	)
-	requireListItemCount(t, participantSessions.Code, participantSessions.Body.Bytes(), 0)
+	requireListItemCount(t, participantSessions.Code, participantSessions.Body.Bytes(), 1)
 
 	strangerSessions := performJSONRequest(
 		t,
@@ -71,7 +71,7 @@ func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
 func TestTastingSessionInviteListRuleRequiresLeader(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 
-	leader, leaderToken := createAuthUser(t, server.app, true, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
 	_, strangerToken := createAuthUser(t, server.app, false, false)
 
@@ -139,9 +139,9 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, _ := createAuthUser(t, server.app, true, false)
-	firstJoiner, firstJoinerToken := createAuthUser(t, server.app, true, false)
-	_, secondJoinerToken := createAuthUser(t, server.app, true, false)
+	leader, _ := createAuthUser(t, server.app, false, false)
+	firstJoiner, firstJoinerToken := createAuthUser(t, server.app, false, false)
+	_, secondJoinerToken := createAuthUser(t, server.app, false, false)
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":        "Code Consumption Tasting",
@@ -262,7 +262,7 @@ func TestTastingSessionJoinRouteRateLimitBlocksBurstRequests(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, authToken := createAuthUser(t, server.app, true, false)
+	_, authToken := createAuthUser(t, server.app, false, false)
 
 	server.app.Settings().RateLimits.Enabled = true
 	server.app.Settings().RateLimits.Rules = []core.RateLimitRule{

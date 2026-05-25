@@ -55,7 +55,7 @@ export interface MoveVisitItemResult {
   destinationVisitId: string;
 }
 
-export interface SameNameRestaurantHistoryAnchor {
+export interface AllLocationsHistoryAnchor {
   id: string;
   name: string;
   location?: string;
@@ -63,7 +63,7 @@ export interface SameNameRestaurantHistoryAnchor {
   cuisineType?: string;
 }
 
-export interface SameNameRestaurantHistoryRestaurantRecord {
+export interface AllLocationsHistoryRestaurantRecord {
   restaurantId: string;
   restaurantName: string;
   restaurantLocation?: string;
@@ -72,14 +72,14 @@ export interface SameNameRestaurantHistoryRestaurantRecord {
   latestVisitedAt?: string;
 }
 
-export interface SameNameRestaurantHistoryItemRestaurantRecord {
+export interface AllLocationsHistoryItemRestaurantRecord {
   restaurantId: string;
   restaurantName: string;
   restaurantLocation?: string;
   orderCount: number;
 }
 
-export interface SameNameRestaurantHistoryItemRecord {
+export interface AllLocationsHistoryItemRecord {
   normalizedItemName: string;
   displayName: string;
   orderCount: number;
@@ -89,18 +89,18 @@ export interface SameNameRestaurantHistoryItemRecord {
   latestRestaurantId: string;
   latestRestaurantName: string;
   latestRestaurantLocation?: string;
-  restaurants: SameNameRestaurantHistoryItemRestaurantRecord[];
+  restaurants: AllLocationsHistoryItemRestaurantRecord[];
 }
 
-export interface SameNameRestaurantHistoryRecord {
-  anchorRestaurant: SameNameRestaurantHistoryAnchor;
+export interface AllLocationsHistoryRecord {
+  anchorRestaurant: AllLocationsHistoryAnchor;
   normalizedName: string;
   locationCount: number;
   visitCount: number;
   itemCount: number;
   latestVisitedAt?: string;
-  restaurants: SameNameRestaurantHistoryRestaurantRecord[];
-  items: SameNameRestaurantHistoryItemRecord[];
+  restaurants: AllLocationsHistoryRestaurantRecord[];
+  items: AllLocationsHistoryItemRecord[];
 }
 
 export interface ConvertVisitItemToFoodProductInput {
@@ -501,6 +501,10 @@ export interface CreateTastingSessionInput {
 
 export interface JoinTastingSessionInput {
   inviteCode: string;
+}
+
+export interface ReopenTastingInviteWindowInput {
+  joinDurationMinutes: number;
 }
 
 export interface SuggestTastingRestaurantInput {

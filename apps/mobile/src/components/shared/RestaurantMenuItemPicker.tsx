@@ -7,6 +7,7 @@ import { Card, Input, Text } from '../../ui';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { PageErrorToast } from './PageErrorToast';
+import { RatingPill } from './RatingPill';
 import { VisitMenuItemOptionRow } from './VisitMenuItemOptionRow';
 
 type MenuItemVisibility = 'private' | 'friends' | 'public';
@@ -22,12 +23,26 @@ export interface RestaurantMenuItemPickerItem {
   friendEatenCount?: number;
 }
 
+export interface RestaurantMenuItemPickerCrossLocationItem {
+  id: string;
+  name: string;
+  latestRating: number;
+  latestRestaurantName: string;
+  latestRestaurantLocation?: string;
+  orderCount: number;
+}
+
 export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuItemPickerItem> {
   addManualDisabled?: boolean;
   addManualLabel?: string;
   currentUserId?: string;
   emptyDescription?: string;
   hasPendingMenuReview?: boolean;
+  crossLocationDisabled?: boolean;
+  crossLocationItems?: RestaurantMenuItemPickerCrossLocationItem[];
+  crossLocationLabel?: string;
+  crossLocationLoadingItemId?: string | null;
+  isCrossLocationItemSelected?: (item: RestaurantMenuItemPickerCrossLocationItem) => boolean;
   isItemSelected: (item: TMenuItem) => boolean;
   isLoading: boolean;
   isOnline: boolean;
@@ -39,6 +54,7 @@ export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuI
   onAddManual: () => void;
   onEditItem?: (item: TMenuItem) => void;
   onRequestMenuReview: () => void;
+  onToggleCrossLocationItem?: (item: RestaurantMenuItemPickerCrossLocationItem) => void;
   onRetry: () => void;
   onScanMenuPhoto: () => void;
   onSearchQueryChange: (value: string) => void;
@@ -200,15 +216,56 @@ const useStyles = createThemedStyles((theme) => ({
     borderTopWidth: 1,
     flex: 1,
   },
+  crossLocationSection: {
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
+  },
+  crossLocationHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  crossLocationRow: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  crossLocationRowSelected: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+  crossLocationTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  crossLocationTitle: {
+    flex: 1,
+  },
+  crossLocationMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
 }));
 
 export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPickerItem>({
   addManualDisabled = false,
   addManualLabel = "Can't find it? Add manually",
   currentUserId = '',
+  crossLocationDisabled = false,
+  crossLocationItems = [],
+  crossLocationLabel = 'Ordered at matching locations',
+  crossLocationLoadingItemId = null,
   emptyDescription = 'No menu items yet. Scan a menu or add one manually.',
   hasError,
   hasPendingMenuReview = false,
+  isCrossLocationItemSelected = () => false,
   isItemSelected,
   isLoading,
   isOnline,
@@ -220,6 +277,7 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
   onAddManual,
   onEditItem,
   onRequestMenuReview,
+  onToggleCrossLocationItem,
   onRetry,
   onScanMenuPhoto,
   onSearchQueryChange,
@@ -242,6 +300,7 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
     return [...selectedItems, ...unselectedItems];
   }, [isItemSelected, items, normalizedQuery]);
   const firstUnselectedIndex = displayedItems.findIndex((item) => !isItemSelected(item));
+  const hasCrossLocationItems = crossLocationItems.length > 0;
   const reviewText = hasPendingMenuReview
     ? 'Review pending'
     : isReviewSubmitted
@@ -383,12 +442,12 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
             onAction={onRetry}
             title="Menu unavailable"
           />
-        ) : displayedItems.length === 0 ? (
+        ) : displayedItems.length === 0 && !hasCrossLocationItems ? (
           <EmptyState
             description={searchQuery.trim() ? 'No items found. Try another search or add manually.' : emptyDescription}
             title="No items available"
           />
-        ) : (
+        ) : displayedItems.length > 0 ? (
           displayedItems.map((item, index) => {
             const selected = isItemSelected(item);
             const isUserCreated = item.createdBy === currentUserId;
@@ -420,7 +479,61 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
               </View>
             );
           })
-        )}
+        ) : null}
+
+        {hasCrossLocationItems ? (
+          <View style={styles.crossLocationSection}>
+            <View style={styles.crossLocationHeader}>
+              <Text tone="secondary">{crossLocationLabel}</Text>
+            </View>
+            {crossLocationItems.map((item, index) => {
+              const selected = isCrossLocationItemSelected(item);
+              const rowDisabled =
+                crossLocationDisabled ||
+                (crossLocationLoadingItemId !== null && crossLocationLoadingItemId !== item.id);
+              const latestLocation = [item.latestRestaurantName, item.latestRestaurantLocation]
+                .filter(Boolean)
+                .join(' • ');
+
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={rowDisabled}
+                  key={item.id}
+                  onPress={() => onToggleCrossLocationItem?.(item)}
+                  style={[
+                    styles.crossLocationRow,
+                    selected ? styles.crossLocationRowSelected : null,
+                    rowDisabled ? { opacity: 0.55 } : null,
+                  ]}
+                  testID={`${testIDPrefix}-cross-location-item-option-${index}`}
+                >
+                  <View style={styles.crossLocationTitleRow}>
+                    <Text numberOfLines={1} style={styles.crossLocationTitle} variant="label">
+                      {item.name}
+                    </Text>
+                    {item.latestRating > 0 ? <RatingPill rating={item.latestRating} /> : null}
+                  </View>
+                  <View style={styles.crossLocationMetaRow}>
+                    <Text tone="secondary" variant="bodySm">
+                      {item.orderCount} {item.orderCount === 1 ? 'order' : 'orders'}
+                    </Text>
+                    {latestLocation ? (
+                      <Text numberOfLines={1} tone="secondary" variant="bodySm">
+                        Latest at {latestLocation}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {crossLocationLoadingItemId === item.id ? (
+                    <Text tone="secondary" variant="bodySm">
+                      Adding to this restaurant...
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </Card>
     </View>
   );

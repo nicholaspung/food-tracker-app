@@ -5,10 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   acceptTastingInvite,
   createTastingSession,
+  deleteTastingSession,
   dismissTastingInvite,
   joinTastingSession,
   kickTastingParticipant,
   lockTastingSessionMembership,
+  reopenTastingInviteWindow,
+  resendTastingInvite,
 } from '../features/store/tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { useTastingSessionWrites } from '../features/store/useTastingSessionWrites';
@@ -20,20 +23,27 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../features/store/tastingSessionsApiStore', () => ({
   acceptTastingInvite: jest.fn(),
   createTastingSession: jest.fn(),
+  deleteTastingSession: jest.fn(),
   dismissTastingInvite: jest.fn(),
   joinTastingSession: jest.fn(),
   kickTastingParticipant: jest.fn(),
   lockTastingSessionMembership: jest.fn(),
+  reopenTastingInviteWindow: jest.fn(),
+  resendTastingInvite: jest.fn(),
 }));
 
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedAcceptTastingInvite = acceptTastingInvite as jest.MockedFunction<typeof acceptTastingInvite>;
 const mockedCreateTastingSession = createTastingSession as jest.MockedFunction<typeof createTastingSession>;
+const mockedDeleteTastingSession = deleteTastingSession as jest.MockedFunction<typeof deleteTastingSession>;
 const mockedDismissTastingInvite = dismissTastingInvite as jest.MockedFunction<typeof dismissTastingInvite>;
 const mockedJoinTastingSession = joinTastingSession as jest.MockedFunction<typeof joinTastingSession>;
 const mockedKickTastingParticipant = kickTastingParticipant as jest.MockedFunction<typeof kickTastingParticipant>;
 const mockedLockTastingSessionMembership =
   lockTastingSessionMembership as jest.MockedFunction<typeof lockTastingSessionMembership>;
+const mockedReopenTastingInviteWindow =
+  reopenTastingInviteWindow as jest.MockedFunction<typeof reopenTastingInviteWindow>;
+const mockedResendTastingInvite = resendTastingInvite as jest.MockedFunction<typeof resendTastingInvite>;
 
 const tastingSession = {
   createdAt: '2026-05-20T00:00:00.000Z',
@@ -65,6 +75,7 @@ describe('useTastingSessionWrites', () => {
     mockedUseQueryClient.mockReturnValue(queryClient as never);
     mockedAcceptTastingInvite.mockResolvedValue(tastingSession as never);
     mockedCreateTastingSession.mockResolvedValue(tastingSession as never);
+    mockedDeleteTastingSession.mockResolvedValue({ success: true });
     mockedDismissTastingInvite.mockResolvedValue({ success: true });
     mockedJoinTastingSession.mockResolvedValue(tastingSession as never);
     mockedKickTastingParticipant.mockResolvedValue(tastingSession as never);
@@ -72,6 +83,12 @@ describe('useTastingSessionWrites', () => {
       ...tastingSession,
       status: 'planning',
     } as never);
+    mockedReopenTastingInviteWindow.mockResolvedValue({
+      ...tastingSession,
+      inviteCode: 'NEWA12',
+      joinExpiresAt: '2026-05-20T02:00:00.000Z',
+    } as never);
+    mockedResendTastingInvite.mockResolvedValue(tastingSession as never);
   });
 
   async function renderHook(): Promise<{
@@ -152,9 +169,28 @@ describe('useTastingSessionWrites', () => {
       participantId: 'participant_1',
       sessionId: 'session_1',
     });
+    await hook.reopenInviteWindow({
+      isOnline: true,
+      joinDurationMinutes: 60,
+      sessionId: 'session_1',
+    });
+    await hook.deleteSession({
+      isOnline: true,
+      sessionId: 'session_1',
+    });
+    await hook.resendInvite({
+      inviteId: 'invite_1',
+      isOnline: true,
+      sessionId: 'session_1',
+    });
 
     expect(mockedLockTastingSessionMembership).toHaveBeenCalledWith('session_1');
     expect(mockedKickTastingParticipant).toHaveBeenCalledWith('session_1', 'participant_1');
+    expect(mockedReopenTastingInviteWindow).toHaveBeenCalledWith('session_1', {
+      joinDurationMinutes: 60,
+    });
+    expect(mockedDeleteTastingSession).toHaveBeenCalledWith('session_1');
+    expect(mockedResendTastingInvite).toHaveBeenCalledWith('session_1', 'invite_1');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.root,
     });
@@ -177,6 +213,20 @@ describe('useTastingSessionWrites', () => {
       name: 'Ramen night',
     });
     const lockResult = await hook.lockLobby({ isOnline: false, sessionId: 'session_1' });
+    const reopenResult = await hook.reopenInviteWindow({
+      isOnline: false,
+      joinDurationMinutes: 60,
+      sessionId: 'session_1',
+    });
+    const deleteResult = await hook.deleteSession({
+      isOnline: false,
+      sessionId: 'session_1',
+    });
+    const resendResult = await hook.resendInvite({
+      inviteId: 'invite_1',
+      isOnline: false,
+      sessionId: 'session_1',
+    });
 
     expect(createResult).toEqual({
       message: 'Connect to the internet to create a group tasting.',
@@ -186,8 +236,23 @@ describe('useTastingSessionWrites', () => {
       message: 'Connect to the internet to lock the group.',
       status: 'blocked',
     });
+    expect(reopenResult).toEqual({
+      message: 'Connect to the internet to reopen the invite window.',
+      status: 'blocked',
+    });
+    expect(deleteResult).toEqual({
+      message: 'Connect to the internet to delete this tasting session.',
+      status: 'blocked',
+    });
+    expect(resendResult).toEqual({
+      message: 'Connect to the internet to resend this invite.',
+      status: 'blocked',
+    });
     expect(mockedCreateTastingSession).not.toHaveBeenCalled();
+    expect(mockedDeleteTastingSession).not.toHaveBeenCalled();
     expect(mockedLockTastingSessionMembership).not.toHaveBeenCalled();
+    expect(mockedReopenTastingInviteWindow).not.toHaveBeenCalled();
+    expect(mockedResendTastingInvite).not.toHaveBeenCalled();
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
 
     await act(async () => {

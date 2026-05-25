@@ -10,7 +10,11 @@ _Avoid_: List, saved places
 
 **All Locations History**:
 A read-only view of a user's own ordered items across visited restaurants whose names match conservatively by normalized restaurant name.
-_Avoid_: Chain, Restaurant Group, Similar Restaurants, Same-name history
+_Avoid for MVP_: Chain, Similar Restaurants, Same-name history
+
+**Restaurant Group**:
+A future persisted grouping and correction concept for restaurants that represent the same chain, brand, or user-corrected group across locations. It is not part of **All Locations History**.
+_Avoid for MVP_: Chain, same-name history, similar restaurants
 
 **Visit Writes**:
 The mobile module that owns creating and updating restaurant visit records, including offline replay payloads, cache effects, source Note completion timing, and queued feedback.
@@ -100,9 +104,17 @@ _Avoid_: tutorial flags
 
 - A **Restaurant List** contains zero or more restaurants.
 - **All Locations History** spans a user's own item-backed visits at restaurants with conservatively matching names, but it does not replace exact restaurant/location identity.
-- **All Locations History** is shown only when the user has item-backed orders at two or more matching restaurant locations.
+- **All Locations History** is shown when the user has item-backed orders at two or more matching restaurant locations, or at one matching ordered location that is different from the restaurant currently being viewed.
+- **All Locations History** is an MVP read model, not a persisted **Restaurant Group**.
+- **All Locations History** counts only matching locations where the user has item-backed visit history.
+- **All Locations History** aggregates only the signed-in user's own orders, including private own visits.
+- **All Locations History** does not include friends' orders, food products, fuzzy matches, suffix stripping, or correction decisions.
 - **All Locations History** may include accessible Google places and user-created restaurants, including private restaurants owned by the user.
 - **All Locations History** matches restaurants by exact normalized name equality; suffix stripping and fuzzy brand matching belong to future Restaurant Group work.
+- **All Locations History** may help a user start a new Visit by copying a previously ordered item name onto the currently selected restaurant's menu catalog.
+- Copying an **All Locations History** item into a Visit creates or reuses a current-restaurant menu item by normalized item name; it does not create or persist a **Restaurant Group**.
+- Copying cross-location menu items is an online-only menu catalog action.
+- A future **Restaurant Group** may introduce persisted grouping, manual correction, and broader brand matching after the MVP proves useful.
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.

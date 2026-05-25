@@ -8,6 +8,7 @@ import {
   getAuthenticatedUserIdOrNull,
   syncFoodProductMutationCaches,
   syncVisitMutationCaches,
+  useMenuItemCatalogWrites,
   useMonthlyUsage,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -169,6 +170,7 @@ jest.mock('../features', () => ({
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
   syncFoodProductMutationCaches: jest.fn(() => Promise.resolve()),
   syncVisitMutationCaches: jest.fn(() => Promise.resolve()),
+  useMenuItemCatalogWrites: jest.fn(),
   useMonthlyUsage: jest.fn(),
 }));
 
@@ -284,6 +286,9 @@ const mockedSyncVisitMutationCaches = syncVisitMutationCaches as jest.MockedFunc
 >;
 const mockedGetAuthenticatedUserIdOrNull =
   getAuthenticatedUserIdOrNull as jest.MockedFunction<typeof getAuthenticatedUserIdOrNull>;
+const mockedUseMenuItemCatalogWrites = useMenuItemCatalogWrites as jest.MockedFunction<
+  typeof useMenuItemCatalogWrites
+>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
@@ -313,7 +318,23 @@ function buildQueryResult<T>(data: T) {
   } as unknown as ReturnType<typeof useQuery>;
 }
 
+function buildAllLocationsHistory(items: Record<string, unknown>[]) {
+  return {
+    anchorRestaurant: {
+      id: 'restaurant-1',
+      name: 'Fire',
+    },
+    itemCount: items.length,
+    items,
+    locationCount: 1,
+    normalizedName: 'fire',
+    restaurants: [],
+    visitCount: items.length,
+  };
+}
+
 describe('CreateVisitScreen', () => {
+  let createMenuItem: jest.Mock;
   let toggleMenuItemSelection: jest.Mock;
   let navigation: {
     canGoBack: jest.Mock;
@@ -323,6 +344,7 @@ describe('CreateVisitScreen', () => {
   };
 
   beforeEach(() => {
+    createMenuItem = jest.fn();
     toggleMenuItemSelection = jest.fn();
     navigation = {
       canGoBack: jest.fn(() => true),
@@ -335,6 +357,7 @@ describe('CreateVisitScreen', () => {
     mockedUseQuery.mockReturnValue(buildQueryResult(null));
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue({
+      getQueryData: jest.fn(),
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
@@ -359,6 +382,13 @@ describe('CreateVisitScreen', () => {
       isError: false,
       refetch: jest.fn(),
     });
+    mockedUseMenuItemCatalogWrites.mockReset();
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems: jest.fn(),
+      createMenuItem,
+      createMenuItemAndAddToTastingPlan: jest.fn(),
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
     mockedUseVisitWrites.mockReset();
@@ -513,6 +543,220 @@ describe('CreateVisitScreen', () => {
       menuItemId: editableMenuItem.id,
       restaurantId: editableMenuItem.restaurant,
     });
+  });
+
+  it('passes non-duplicate all locations history items into the menu item picker', async () => {
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.includes('allLocationsHistory')) {
+        return buildQueryResult(
+          buildAllLocationsHistory([
+            {
+              averageRating: 5,
+              displayName: 'Coconut Yogurt',
+              latestRating: 5,
+              latestRestaurantId: 'restaurant-2',
+              latestRestaurantLocation: 'Venice, CA',
+              latestRestaurantName: 'Fire',
+              latestVisitedAt: '2026-04-05T18:30:00.000Z',
+              normalizedItemName: 'coconut yogurt',
+              orderCount: 1,
+              restaurants: [],
+            },
+          ]),
+        );
+      }
+
+      return buildQueryResult(null);
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const picker = renderer.root.findByType('RestaurantMenuItemPicker');
+    expect(picker.props.crossLocationItems).toEqual([
+      {
+        id: 'coconut yogurt',
+        latestRating: 5,
+        latestRestaurantLocation: 'Venice, CA',
+        latestRestaurantName: 'Fire',
+        name: 'Coconut Yogurt',
+        orderCount: 1,
+      },
+    ]);
+  });
+
+  it('filters all locations history items already on the current restaurant menu', async () => {
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.includes('allLocationsHistory')) {
+        return buildQueryResult(
+          buildAllLocationsHistory([
+            {
+              averageRating: 5,
+              displayName: 'Editable Item',
+              latestRating: 5,
+              latestRestaurantId: 'restaurant-2',
+              latestRestaurantName: 'Fire',
+              latestVisitedAt: '2026-04-05T18:30:00.000Z',
+              normalizedItemName: 'editable item',
+              orderCount: 1,
+              restaurants: [],
+            },
+          ]),
+        );
+      }
+
+      return buildQueryResult(null);
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('RestaurantMenuItemPicker').props.crossLocationItems).toEqual([]);
+  });
+
+  it('reuses a current restaurant menu item when a same-name cross-location item is selected', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('RestaurantMenuItemPicker').props.onToggleCrossLocationItem({
+        id: 'editable item',
+        latestRating: 5,
+        latestRestaurantName: 'Fire',
+        name: 'Editable Item',
+        orderCount: 1,
+      });
+    });
+
+    expect(toggleMenuItemSelection).toHaveBeenCalledWith(editableMenuItem);
+    expect(createMenuItem).not.toHaveBeenCalled();
+  });
+
+  it('creates and selects a current restaurant menu item from a cross-location item', async () => {
+    const createdMenuItem = {
+      createdBy: 'user-1',
+      id: 'menu-item-created',
+      name: 'Coconut Yogurt',
+      restaurant: 'restaurant-1',
+      visibility: 'friends',
+    };
+    createMenuItem.mockResolvedValue(createdMenuItem);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('RestaurantMenuItemPicker').props.onToggleCrossLocationItem({
+        id: 'coconut yogurt',
+        latestRating: 5,
+        latestRestaurantName: 'Fire',
+        name: 'Coconut Yogurt',
+        orderCount: 1,
+      });
+    });
+
+    expect(createMenuItem).toHaveBeenCalledWith({
+      createdBy: 'user-1',
+      isFromOCR: false,
+      name: 'Coconut Yogurt',
+      restaurantId: 'restaurant-1',
+      visibility: 'friends',
+    });
+    expect(toggleMenuItemSelection).toHaveBeenCalledWith(createdMenuItem);
+  });
+
+  it('shows an online-only error when selecting a missing cross-location item offline', async () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('RestaurantMenuItemPicker').props.onToggleCrossLocationItem({
+        id: 'coconut yogurt',
+        latestRating: 5,
+        latestRestaurantName: 'Fire',
+        name: 'Coconut Yogurt',
+        orderCount: 1,
+      });
+    });
+
+    expect(createMenuItem).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByType('PageErrorToast').some(
+        (node: any) =>
+          node.props.errorMessage ===
+          'Adding menu items from matching locations requires internet connection.',
+      ),
+    ).toBe(true);
   });
 
   it('exits directly to the source list when the header back is pressed from an I went review flow', async () => {

@@ -68,8 +68,6 @@ export function CreateVisitEditMenuItemScreen({
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitEditMenuItemScreen',
         reason: 'offline',
-        restaurantId,
-        menuItemId,
       });
       setErrorMessage('Editing menu items requires internet connection.');
       return;
@@ -80,8 +78,6 @@ export function CreateVisitEditMenuItemScreen({
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitEditMenuItemScreen',
         reason: 'missing_name',
-        restaurantId,
-        menuItemId,
         visibility,
       });
       setErrorMessage('Menu item name is required.');
@@ -91,8 +87,6 @@ export function CreateVisitEditMenuItemScreen({
     setErrorMessage(null);
     trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_STARTED', {
       source: 'CreateVisitEditMenuItemScreen',
-      restaurantId,
-      menuItemId,
       visibility,
       isOnline,
     });
@@ -108,8 +102,6 @@ export function CreateVisitEditMenuItemScreen({
 
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitEditMenuItemScreen',
-        restaurantId,
-        menuItemId,
         visibility,
       });
       navigation.goBack();
@@ -118,8 +110,6 @@ export function CreateVisitEditMenuItemScreen({
       setErrorMessage(message);
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_FAILED', {
         source: 'CreateVisitEditMenuItemScreen',
-        restaurantId,
-        menuItemId,
         visibility,
         error: message,
       });
@@ -178,8 +168,6 @@ export function CreateVisitEditMenuItemScreen({
                   nextVisibility === 'private' ? 'private' : 'friends';
                 trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_VISIBILITY_CHANGED', {
                   source: 'CreateVisitEditMenuItemScreen',
-                  restaurantId,
-                  menuItemId,
                   previousVisibility: visibility,
                   nextVisibility: resolvedVisibility,
                 });

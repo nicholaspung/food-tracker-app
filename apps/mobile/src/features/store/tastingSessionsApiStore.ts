@@ -2,6 +2,7 @@ import type { TastingSessionRecord, TastingSessionStatus, TastingSuggestionStatu
 import type {
   CreateTastingSessionInput,
   JoinTastingSessionInput,
+  ReopenTastingInviteWindowInput,
   SubmitTastingRatingsInput,
   SuggestTastingMenuItemInput,
   SuggestTastingRestaurantInput,
@@ -17,6 +18,7 @@ import { sendApiRequest } from './pocketbaseGateway';
 export type {
   CreateTastingSessionInput,
   JoinTastingSessionInput,
+  ReopenTastingInviteWindowInput,
   SubmitTastingRatingsInput,
   SuggestTastingMenuItemInput,
   SuggestTastingRestaurantInput,
@@ -118,6 +120,26 @@ export async function acceptTastingInvite(
   );
 }
 
+export async function reopenTastingInviteWindow(
+  sessionId: string,
+  input: ReopenTastingInviteWindowInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation(
+    'tasting_session.invite_window.reopen',
+    () =>
+      sendApiRequest<TastingSessionRecord>(
+        `/api/tasting-sessions/${encodePathSegment(sessionId)}/reopen-invite-window`,
+        {
+          body: { joinDurationMinutes: input.joinDurationMinutes },
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          method: 'POST',
+        },
+      ),
+    { joinDurationMinutes: input.joinDurationMinutes },
+  );
+}
+
 export async function dismissTastingInvite(
   sessionId: string,
   requestOptions?: FeatureWriteRequestOptions,
@@ -130,6 +152,34 @@ export async function dismissTastingInvite(
         method: 'POST',
       },
     ),
+  );
+}
+
+export async function resendTastingInvite(
+  sessionId: string,
+  inviteId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<TastingSessionRecord> {
+  return trackFeatureMutation('tasting_session.invite.resend', () =>
+    sendApiRequest<TastingSessionRecord>(
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/invites/${encodePathSegment(inviteId)}/resend`,
+      {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        method: 'POST',
+      },
+    ),
+  );
+}
+
+export async function deleteTastingSession(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<{ success: boolean }> {
+  return trackFeatureMutation('tasting_session.delete', () =>
+    sendApiRequest<{ success: boolean }>(`/api/tasting-sessions/${encodePathSegment(sessionId)}`, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      method: 'DELETE',
+    }),
   );
 }
 

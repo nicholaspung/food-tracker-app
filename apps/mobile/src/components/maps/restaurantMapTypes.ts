@@ -25,7 +25,7 @@ export interface RestaurantMapGroup {
   items: RestaurantMapItem[];
 }
 
-export type RestaurantMapSheetTabId = 'orderedItems' | 'menuItems';
+export type RestaurantMapSheetTabId = 'location' | 'allLocations';
 
 export interface RestaurantMapSheetTabState {
   title: string;
@@ -41,6 +41,6 @@ export interface RestaurantMapSheetTabState {
 export interface RestaurantMapSheetTabs {
   activeTab: RestaurantMapSheetTabId;
   onTabChange: (tabId: RestaurantMapSheetTabId) => void;
-  orderedItems: RestaurantMapSheetTabState;
-  menuItems: RestaurantMapSheetTabState;
+  location: RestaurantMapSheetTabState;
+  allLocations: RestaurantMapSheetTabState;
 }

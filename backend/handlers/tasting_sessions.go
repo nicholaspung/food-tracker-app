@@ -49,6 +49,10 @@ type tastingSessionJoinRequest struct {
 	Code string `json:"code"`
 }
 
+type tastingInviteWindowReopenRequest struct {
+	JoinDurationMinutes int `json:"joinDurationMinutes"`
+}
+
 type tastingRestaurantSuggestRequest struct {
 	RestaurantID   string `json:"restaurantId"`
 	RestaurantName string `json:"restaurantName"`
@@ -148,7 +152,7 @@ type tastingSessionResponse struct {
 
 func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.GET("/api/tasting-sessions", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -171,7 +175,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -186,12 +190,9 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		durationMinutes := requestBody.JoinDurationMinutes
-		if durationMinutes == 0 {
-			durationMinutes = 60
-		}
-		if durationMinutes != 15 && durationMinutes != 30 && durationMinutes != 60 && durationMinutes != 120 {
-			return apis.NewBadRequestError("joinDurationMinutes must be 15, 30, 60, or 120", nil)
+		durationMinutes, durationErr := normalizeTastingJoinDuration(requestBody.JoinDurationMinutes, true)
+		if durationErr != nil {
+			return apis.NewBadRequestError(durationErr.Error(), nil)
 		}
 
 		sessionID := ""
@@ -242,7 +243,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/join", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -295,7 +296,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.GET("/api/tasting-sessions/{sessionId}", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -307,7 +308,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/accept-invite", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -342,7 +343,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/dismiss-invite", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -361,8 +362,54 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, map[string]any{"success": true})
 	}).Bind(apis.RequireAuth())
 
+	se.Router.POST("/api/tasting-sessions/{sessionId}/invites/{inviteId}/resend", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		inviteID := strings.TrimSpace(e.Request.PathValue("inviteId"))
+		err = app.RunInTransaction(func(txApp core.App) error {
+			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
+			if loadErr != nil {
+				return mapTastingLoadError(loadErr)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
+				return apis.NewForbiddenError("only the leader can resend invites", nil)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
+				return apis.NewBadRequestError("invites can only be resent during lobby", nil)
+			}
+			if !isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
+				return apis.NewBadRequestError("invite window is closed", nil)
+			}
+			inviteRecord, inviteErr := txApp.FindRecordById("tasting_session_invites", inviteID)
+			if inviteErr != nil || strings.TrimSpace(inviteRecord.GetString("session")) != sessionID {
+				return apis.NewNotFoundError("invite not found", inviteErr)
+			}
+			inviteStatus := strings.TrimSpace(inviteRecord.GetString("status"))
+			if inviteStatus != tastingInviteStatusDismissed && inviteStatus != tastingInviteStatusRevoked {
+				return apis.NewBadRequestError("only dismissed or revoked invites can be resent", nil)
+			}
+			if inviteStatus == tastingInviteStatusRevoked {
+				if err := clearTastingBlock(txApp, sessionID, strings.TrimSpace(inviteRecord.GetString("invited_user"))); err != nil {
+					return err
+				}
+			}
+			inviteRecord.Set("status", tastingInviteStatusPending)
+			if err := txApp.Save(inviteRecord); err != nil {
+				return apis.NewApiError(500, "failed to resend invite", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.POST("/api/tasting-sessions/{sessionId}/participants/{participantId}/kick", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -404,8 +451,36 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
 	}).Bind(apis.RequireAuth())
 
+	se.Router.DELETE("/api/tasting-sessions/{sessionId}", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		err = app.RunInTransaction(func(txApp core.App) error {
+			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
+			if loadErr != nil {
+				return mapTastingLoadError(loadErr)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
+				return apis.NewForbiddenError("only the leader can delete this tasting session", nil)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
+				return apis.NewBadRequestError("only lobby sessions can be deleted", nil)
+			}
+			if err := txApp.Delete(sessionRecord); err != nil {
+				return apis.NewApiError(500, "failed to delete tasting session", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return e.JSON(200, map[string]any{"success": true})
+	}).Bind(apis.RequireAuth())
+
 	se.Router.POST("/api/tasting-sessions/{sessionId}/lock-membership", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -433,8 +508,67 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
 	}).Bind(apis.RequireAuth())
 
+	se.Router.POST("/api/tasting-sessions/{sessionId}/reopen-invite-window", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		requestBody := tastingInviteWindowReopenRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+		durationMinutes, durationErr := normalizeTastingJoinDuration(requestBody.JoinDurationMinutes, false)
+		if durationErr != nil {
+			return apis.NewBadRequestError(durationErr.Error(), nil)
+		}
+		err = app.RunInTransaction(func(txApp core.App) error {
+			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
+			if loadErr != nil {
+				return mapTastingLoadError(loadErr)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
+				return apis.NewForbiddenError("only the leader can reopen the invite window", nil)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
+				return apis.NewBadRequestError("only lobby sessions can reopen the invite window", nil)
+			}
+			if isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
+				return apis.NewBadRequestError("invite window is already open", nil)
+			}
+			previousCode := strings.TrimSpace(sessionRecord.GetString("invite_code"))
+			code := ""
+			for attempt := 0; attempt < maxTastingInviteCodeSaveAttempts; attempt++ {
+				generatedCode, codeErr := generateTastingCode()
+				if codeErr != nil {
+					return apis.NewApiError(500, "failed to create invite code", codeErr)
+				}
+				if generatedCode != previousCode {
+					code = generatedCode
+					break
+				}
+			}
+			if code == "" {
+				return apis.NewApiError(500, "failed to create invite code", nil)
+			}
+			sessionRecord.Set("invite_code", code)
+			sessionRecord.Set("join_expires_at", time.Now().UTC().Add(time.Duration(durationMinutes)*time.Minute))
+			if err := txApp.Save(sessionRecord); err != nil {
+				return apis.NewApiError(500, "failed to reopen invite window", err)
+			}
+			if err := reactivateDismissedTastingInvites(txApp, sessionRecord.Id); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.POST("/api/tasting-sessions/{sessionId}/restaurants", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -485,7 +619,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.PATCH("/api/tasting-sessions/{sessionId}/restaurants/{restaurantSuggestionId}/status", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -502,7 +636,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/restaurants/{restaurantSuggestionId}/items", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -552,7 +686,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.PATCH("/api/tasting-sessions/{sessionId}/items/{itemSuggestionId}/status", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -569,7 +703,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/start", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -601,7 +735,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/ratings", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -620,7 +754,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/complete", func(e *core.RequestEvent) error {
-		authRecord, err := requireTastingAdmin(e)
+		authRecord, err := requireTastingAuth(e)
 		if err != nil {
 			return err
 		}
@@ -649,12 +783,9 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 }
 
-func requireTastingAdmin(e *core.RequestEvent) (*core.Record, error) {
+func requireTastingAuth(e *core.RequestEvent) (*core.Record, error) {
 	if e.Auth == nil {
 		return nil, apis.NewUnauthorizedError("authentication required", nil)
-	}
-	if !e.Auth.GetBool("isAdmin") {
-		return nil, apis.NewForbiddenError("group tastings are in admin beta", nil)
 	}
 	return e.Auth, nil
 }
@@ -679,14 +810,47 @@ func mapTastingLoadError(err error) error {
 }
 
 func listAccessibleTastingSessions(app core.App, userID string) ([]*core.Record, error) {
-	return app.FindRecordsByFilter(
+	trimmedUserID := strings.TrimSpace(userID)
+	records, err := app.FindRecordsByFilter(
 		"tasting_sessions",
 		"leader = {:user} || tasting_session_participants_via_session.user ?= {:user} || tasting_session_invites_via_session.invited_user ?= {:user}",
 		"-updated,-created",
 		200,
 		0,
-		dbx.Params{"user": strings.TrimSpace(userID)},
+		dbx.Params{"user": trimmedUserID},
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	visibleRecords := make([]*core.Record, 0, len(records))
+	for _, record := range records {
+		if strings.TrimSpace(record.GetString("leader")) == trimmedUserID {
+			visibleRecords = append(visibleRecords, record)
+			continue
+		}
+		participant, participantErr := findTastingParticipantRecord(app, record.Id, trimmedUserID)
+		if participantErr != nil {
+			return nil, participantErr
+		}
+		if participant != nil {
+			visibleRecords = append(visibleRecords, record)
+			continue
+		}
+		invite, inviteErr := findTastingInvite(app, record.Id, trimmedUserID)
+		if inviteErr != nil {
+			return nil, inviteErr
+		}
+		if strings.TrimSpace(record.GetString("status")) == tastingSessionStatusLobby &&
+			invite != nil &&
+			strings.TrimSpace(invite.GetString("status")) == tastingInviteStatusPending &&
+			isTastingJoinWindowOpen(record, now) {
+			visibleRecords = append(visibleRecords, record)
+		}
+	}
+
+	return visibleRecords, nil
 }
 
 func loadVisibleTastingSession(app core.App, sessionID string, userID string) (*core.Record, error) {
@@ -704,7 +868,10 @@ func loadVisibleTastingSession(app core.App, sessionID string, userID string) (*
 	}
 	if invite, err := findTastingInvite(app, sessionRecord.Id, userID); err != nil {
 		return nil, err
-	} else if invite != nil && strings.TrimSpace(invite.GetString("status")) == tastingInviteStatusPending {
+	} else if strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusLobby &&
+		invite != nil &&
+		strings.TrimSpace(invite.GetString("status")) == tastingInviteStatusPending &&
+		isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
 		return sessionRecord, nil
 	}
 	return nil, sql.ErrNoRows
@@ -740,7 +907,9 @@ func buildTastingSessionResponse(app core.App, sessionRecord *core.Record, viewe
 		return tastingSessionResponse{}, err
 	}
 	inviteCode := ""
-	if strings.TrimSpace(sessionRecord.GetString("leader")) == strings.TrimSpace(viewerUserID) && strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusLobby {
+	if strings.TrimSpace(sessionRecord.GetString("leader")) == strings.TrimSpace(viewerUserID) &&
+		strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusLobby &&
+		isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
 		inviteCode = strings.TrimSpace(sessionRecord.GetString("invite_code"))
 	}
 	return tastingSessionResponse{
@@ -937,8 +1106,7 @@ func validateTastingJoin(app core.App, sessionRecord *core.Record, userID string
 	if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
 		return apis.NewBadRequestError("session is no longer accepting new participants", nil)
 	}
-	expiresAt := sessionRecord.GetDateTime("join_expires_at")
-	if !expiresAt.IsZero() && !time.Now().UTC().Before(expiresAt.Time()) {
+	if !isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
 		return apis.NewBadRequestError("invite code has expired", nil)
 	}
 	if blocked, err := isTastingUserBlocked(app, sessionRecord.Id, userID); err != nil {
@@ -954,6 +1122,21 @@ func validateTastingJoin(app core.App, sessionRecord *core.Record, userID string
 		return apis.NewBadRequestError("session is full", nil)
 	}
 	return nil
+}
+
+func normalizeTastingJoinDuration(minutes int, allowDefault bool) (int, error) {
+	if minutes == 0 && allowDefault {
+		return 60, nil
+	}
+	if minutes != 15 && minutes != 30 && minutes != 60 && minutes != 120 {
+		return 0, errors.New("joinDurationMinutes must be 15, 30, 60, or 120")
+	}
+	return minutes, nil
+}
+
+func isTastingJoinWindowOpen(sessionRecord *core.Record, now time.Time) bool {
+	expiresAt := sessionRecord.GetDateTime("join_expires_at")
+	return !expiresAt.IsZero() && now.UTC().Before(expiresAt.Time())
 }
 
 func createTastingParticipant(app core.App, sessionID string, userID string, role string) (*core.Record, error) {
@@ -1047,6 +1230,29 @@ func upsertTastingInvites(app core.App, sessionID string, userIDs []string) erro
 	return nil
 }
 
+func reactivateDismissedTastingInvites(app core.App, sessionID string) error {
+	records, err := app.FindRecordsByFilter(
+		"tasting_session_invites",
+		"session = {:session} && status = {:status}",
+		"created",
+		200,
+		0,
+		dbx.Params{"session": strings.TrimSpace(sessionID), "status": tastingInviteStatusDismissed},
+	)
+	if err != nil {
+		return apis.NewApiError(500, "failed to load dismissed tasting invites", err)
+	}
+
+	for _, record := range records {
+		record.Set("status", tastingInviteStatusPending)
+		if err := app.Save(record); err != nil {
+			return apis.NewApiError(500, "failed to reactivate tasting invite", err)
+		}
+	}
+
+	return nil
+}
+
 func revokeTastingInvite(app core.App, sessionID string, userID string) error {
 	invite, err := findTastingInvite(app, sessionID, userID)
 	if err != nil {
@@ -1092,6 +1298,20 @@ func isTastingUserBlocked(app core.App, sessionID string, userID string) (bool, 
 		return false, err
 	}
 	return record != nil, nil
+}
+
+func clearTastingBlock(app core.App, sessionID string, userID string) error {
+	record, err := app.FindFirstRecordByFilter("tasting_session_blocks", "session = {:session} && user = {:user}", dbx.Params{"session": strings.TrimSpace(sessionID), "user": strings.TrimSpace(userID)})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return apis.NewApiError(500, "failed to load tasting block", err)
+	}
+	if err := app.Delete(record); err != nil {
+		return apis.NewApiError(500, "failed to clear tasting block", err)
+	}
+	return nil
 }
 
 func loadPlanningLeaderParticipant(app core.App, sessionID string, userID string) (*core.Record, *core.Record, error) {

@@ -498,11 +498,11 @@ describe('RootNavigator', () => {
         status: 'authenticated',
         actualUser: {
           id: 'user_1',
-          isAdmin: true,
+          isAdmin: false,
         },
         user: {
           id: 'user_1',
-          isAdmin: true,
+          isAdmin: false,
           mobileOnboardingState: completedMobileOnboardingState,
         },
         isSubmitting: false,
@@ -518,6 +518,48 @@ describe('RootNavigator', () => {
       expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
     },
   );
+
+  it('renders group tasting session routes for non-admin users', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const renderedMockScreens = renderer.root.findAllByType('MockScreen').map((node: any) => node.props.screenName);
+    expect(renderedMockScreens).toEqual(
+      expect.arrayContaining([
+        'TastingSessionsScreen',
+        'CreateTastingSessionScreen',
+        'JoinTastingSessionScreen',
+        'TastingSessionDetailScreen',
+        'TastingSessionLobbyScreen',
+        'TastingSessionPlanningScreen',
+        'TastingSessionTastingScreen',
+        'TastingSessionResultsScreen',
+      ]),
+    );
+    expect(
+      renderer.root
+        .findAllByType('EmptyState')
+        .filter((node: any) => node.props.description === 'This route is restricted to admin users.'),
+    ).toHaveLength(0);
+  });
 
   it('puts required feature onboarding before Home for incomplete authenticated users', async () => {
     mockedUseAuth.mockReturnValue({

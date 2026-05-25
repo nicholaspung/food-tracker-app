@@ -99,16 +99,16 @@ describe('mobile feature query keys', () => {
     expect(getCachedTastingSessionDetail(queryClient, 'session_1')?.name).toBe('Coffee');
   });
 
-  it('defines stable same-name restaurant history query keys', () => {
-    expect(restaurantsQueryKeys.sameNameHistoryRoot).toEqual([
+  it('defines stable all locations history query keys', () => {
+    expect(restaurantsQueryKeys.allLocationsHistoryRoot).toEqual([
       'feature',
       'restaurants',
-      'sameNameHistory',
+      'allLocationsHistory',
     ]);
-    expect(restaurantsQueryKeys.sameNameHistory(' restaurant-1 ')).toEqual([
+    expect(restaurantsQueryKeys.allLocationsHistory(' restaurant-1 ')).toEqual([
       'feature',
       'restaurants',
-      'sameNameHistory',
+      'allLocationsHistory',
       'restaurant-1',
     ]);
   });

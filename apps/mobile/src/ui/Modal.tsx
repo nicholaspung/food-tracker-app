@@ -62,7 +62,13 @@ export function Modal({
     actionButton: {
       minWidth: 120,
     },
+    splitActionButton: {
+      flex: 1,
+      minWidth: 0,
+    },
   });
+
+  const hasTwoActions = Boolean(primaryAction && secondaryAction);
 
   return (
     <RNModal animationType="fade" onRequestClose={onRequestClose} transparent visible={visible}>
@@ -79,7 +85,7 @@ export function Modal({
                   disabled={secondaryAction.disabled}
                   label={secondaryAction.label}
                   onPress={secondaryAction.onPress}
-                  style={styles.actionButton}
+                  style={[styles.actionButton, hasTwoActions ? styles.splitActionButton : null]}
                   testID={secondaryAction.testID}
                   variant="secondary"
                 />
@@ -91,7 +97,7 @@ export function Modal({
                   label={primaryAction.label}
                   loading={primaryAction.loading}
                   onPress={primaryAction.onPress}
-                  style={styles.actionButton}
+                  style={[styles.actionButton, hasTwoActions ? styles.splitActionButton : null]}
                   testID={primaryAction.testID}
                 />
               ) : null}

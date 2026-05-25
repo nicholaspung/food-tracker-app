@@ -253,7 +253,11 @@ export type RootStackParamList = {
     mode?: 'firstRun' | 'replay';
     source?: 'more' | 'profile';
   };
-  TastingSessions: undefined;
+  TastingSessions:
+    | {
+        errorMessage?: string;
+      }
+    | undefined;
   CreateTastingSession: undefined;
   JoinTastingSession: undefined;
   TastingSessionDetail: { sessionId: string };
@@ -379,17 +383,6 @@ function getWebDocumentTitle(routeName?: keyof RootStackParamList) {
     : (WEB_SCREEN_TITLE_BY_ROUTE[routeName] ?? routeName);
 
   return `${APP_NAME} - ${screenTitle}`;
-}
-
-function AdminOnlyRouteGuard() {
-  return (
-    <Screen>
-      <EmptyState
-        description="This route is restricted to admin users."
-        title="Access denied"
-      />
-    </Screen>
-  );
 }
 
 function BetaFeatureRouteGuard() {
@@ -804,42 +797,42 @@ export function RootNavigator() {
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionsScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionsScreen}
                     name="TastingSessions"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? CreateTastingSessionScreen : AdminOnlyRouteGuard}
+                    component={CreateTastingSessionScreen}
                     name="CreateTastingSession"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? JoinTastingSessionScreen : AdminOnlyRouteGuard}
+                    component={JoinTastingSessionScreen}
                     name="JoinTastingSession"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionDetailScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionDetailScreen}
                     name="TastingSessionDetail"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionLobbyScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionLobbyScreen}
                     name="TastingSessionLobby"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionPlanningScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionPlanningScreen}
                     name="TastingSessionPlanning"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionTastingScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionTastingScreen}
                     name="TastingSessionTasting"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={user?.isAdmin ? TastingSessionResultsScreen : AdminOnlyRouteGuard}
+                    component={TastingSessionResultsScreen}
                     name="TastingSessionResults"
                     options={{ headerShown: false }}
                   />

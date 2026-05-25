@@ -1,4 +1,4 @@
-import { getSameNameRestaurantHistory } from '../features/store/restaurantsStore';
+import { getAllLocationsHistory } from '../features/store/restaurantsStore';
 import { sendApiRequest } from '../features/store/pocketbaseGateway';
 import { pb } from '../lib/pocketbase';
 
@@ -39,7 +39,7 @@ describe('restaurantsStore', () => {
     };
   });
 
-  it('loads same-name restaurant history from the feature endpoint', async () => {
+  it('loads all locations history from the feature endpoint', async () => {
     const abortController = new AbortController();
     mockedSendApiRequest.mockResolvedValue({
       anchorRestaurant: {
@@ -55,7 +55,7 @@ describe('restaurantsStore', () => {
     });
 
     await expect(
-      getSameNameRestaurantHistory(' restaurant-1 ', { signal: abortController.signal }),
+      getAllLocationsHistory(' restaurant-1 ', { signal: abortController.signal }),
     ).resolves.toEqual(
       expect.objectContaining({
         normalizedName: 'noodle house',

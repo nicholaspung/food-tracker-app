@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import {
   type TastingSessionRecord,
   useTastingSessionWrites,
 } from '../features';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -26,6 +27,8 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, ListItem, Text } from '../ui';
 import {
   formatTastingSessionStatusLabel,
+  getTastingInviteDisplayStatus,
+  isTastingInviteWindowOpen,
   navigateToTastingSession,
   resolveTastingSessionStatusTone,
 } from './tastingSessions/shared';
@@ -120,7 +123,62 @@ function formatCompletedSessionSummary(session: TastingSessionRecord): string {
   ].join(', ');
 }
 
-export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
+function isCurrentUserParticipant(session: TastingSessionRecord, userId: string | undefined): boolean {
+  return Boolean(userId && session.participants.some((participant) => participant.userId === userId));
+}
+
+function hasCurrentUserRevokedInvite(session: TastingSessionRecord, userId: string | undefined): boolean {
+  return Boolean(
+    userId &&
+      session.leaderUserId !== userId &&
+      session.invites.some((invite) => invite.invitedUserId === userId && invite.status === 'revoked'),
+  );
+}
+
+function isExpiredInviteOnlySession(session: TastingSessionRecord, userId: string | undefined): boolean {
+  if (!userId || session.leaderUserId === userId || isCurrentUserParticipant(session, userId)) {
+    return false;
+  }
+
+  return session.invites.some(
+    (invite) =>
+      invite.invitedUserId === userId &&
+      getTastingInviteDisplayStatus(invite, session) === 'expired',
+  );
+}
+
+function hasOpenPendingInvite(session: TastingSessionRecord, userId: string | undefined): boolean {
+  return Boolean(
+    userId &&
+      isTastingInviteWindowOpen(session.joinExpiresAt) &&
+      session.invites.some((invite) => invite.invitedUserId === userId && invite.status === 'pending'),
+  );
+}
+
+function isVisibleActiveSession(session: TastingSessionRecord, userId: string | undefined): boolean {
+  if (session.status === 'completed') {
+    return false;
+  }
+  if (!userId) {
+    return false;
+  }
+  if (hasCurrentUserRevokedInvite(session, userId)) {
+    return false;
+  }
+  return session.leaderUserId === userId || isCurrentUserParticipant(session, userId) || hasOpenPendingInvite(session, userId);
+}
+
+function isVisibleCompletedSession(session: TastingSessionRecord, userId: string | undefined): boolean {
+  if (session.status !== 'completed' || !userId) {
+    return false;
+  }
+  if (hasCurrentUserRevokedInvite(session, userId)) {
+    return false;
+  }
+  return session.leaderUserId === userId || isCurrentUserParticipant(session, userId);
+}
+
+export function TastingSessionsScreen({ navigation, route }: TastingSessionsScreenProps) {
   const styles = useStyles();
   const theme = useTheme();
   const { isOnline } = useConnectivity();
@@ -131,25 +189,52 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     queryKey: tastingSessionsQueryKeys.root,
     queryFn: ({ signal }) => listTastingSessions({ signal }),
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(sessionsQuery.isRefetching);
+  const refetchSessions = sessionsQuery.refetch;
+  const handleRefresh = useCallback(async () => {
+    await runPullRefresh(async () => {
+      await refetchSessions();
+    });
+  }, [refetchSessions, runPullRefresh]);
 
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
-  const pendingInviteSession = useMemo(
+  useEffect(() => {
+    if (!route.params?.errorMessage) {
+      return;
+    }
+
+    setErrorMessage(route.params.errorMessage);
+    navigation.setParams({ errorMessage: undefined });
+  }, [navigation, route.params?.errorMessage]);
+
+  const pendingInviteSessions = useMemo(
     () =>
-      sessions.find((session) =>
+      sessions.filter((session) =>
         session.invites.some((invite) => invite.invitedUserId === user?.id && invite.status === 'pending'),
       ),
     [sessions, user?.id],
   );
+  const activePendingInviteSession = useMemo(
+    () => pendingInviteSessions.find((session) => isTastingInviteWindowOpen(session.joinExpiresAt)),
+    [pendingInviteSessions],
+  );
+  const expiredPendingInviteSession = useMemo(
+    () => pendingInviteSessions.find((session) => isExpiredInviteOnlySession(session, user?.id)),
+    [pendingInviteSessions, user?.id],
+  );
+  const hasExpiredPendingInvite = Boolean(expiredPendingInviteSession);
   const activeSessions = useMemo(
-    () => sessions.filter((session) => session.status !== 'completed'),
-    [sessions],
+    () => sessions.filter((session) => isVisibleActiveSession(session, user?.id)),
+    [sessions, user?.id],
   );
   const completedSessions = useMemo(
-    () => sessions.filter((session) => session.status === 'completed'),
-    [sessions],
+    () => sessions.filter((session) => isVisibleCompletedSession(session, user?.id)),
+    [sessions, user?.id],
   );
-  const joinBannerDescription = pendingInviteSession
-    ? `${pendingInviteSession.name}. ${isOnline ? 'Tap to join.' : 'Connect to the internet to join.'}`
+  const joinBannerDescription = activePendingInviteSession
+    ? `${activePendingInviteSession.name}. ${isOnline ? 'Tap to join.' : 'Connect to the internet to join.'}`
+    : hasExpiredPendingInvite
+      ? 'An invite expired. Enter a new code or wait for the leader to reopen the window.'
     : 'Enter an invite code to join a shared tasting session.';
 
   const handleAcceptInvite = async (session: TastingSessionRecord) => {
@@ -189,6 +274,8 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       <BackHeaderScreenScaffold
         headerScrollMode="fixed"
         onBackPress={() => navigation.navigate('Misc')}
+        onRefresh={handleRefresh}
+        refreshing={isPullRefreshing}
         rightAccessory={
           <HeaderAccessoryButton
             label="Create"
@@ -214,10 +301,8 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     <BackHeaderScreenScaffold
       headerScrollMode="fixed"
       onBackPress={() => navigation.navigate('Misc')}
-      onRefresh={() => {
-        void sessionsQuery.refetch();
-      }}
-      refreshing={sessionsQuery.isRefetching}
+      onRefresh={handleRefresh}
+      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           label="Create"
@@ -230,49 +315,67 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     >
       {!isOnline ? <Text tone="warning">Offline mode shows saved sessions. Actions require a connection.</Text> : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: Boolean(pendingInviteSession && !isOnline) }}
-        disabled={Boolean(pendingInviteSession && !isOnline)}
-        onPress={() => {
-          if (pendingInviteSession) {
-            void handleAcceptInvite(pendingInviteSession);
-            return;
-          }
-          navigation.navigate('JoinTastingSession');
-        }}
-        style={({ pressed }) => [
-          styles.joinBanner,
-          pendingInviteSession ? styles.joinBannerInvite : null,
-          pendingInviteSession && !isOnline ? styles.joinBannerDisabled : null,
-          pressed && !pendingInviteSession ? styles.joinBannerPressed : null,
-          pressed && pendingInviteSession ? styles.joinBannerInvitePressed : null,
-        ]}
-      >
-        <View style={[styles.joinBannerIcon, pendingInviteSession ? styles.joinBannerInviteIcon : null]}>
-          <Ionicons
-            color={pendingInviteSession ? theme.colors.text.info : theme.colors.text.brand}
-            name={pendingInviteSession ? 'mail-unread-outline' : 'ticket-outline'}
-            size={20}
+      {expiredPendingInviteSession && !activePendingInviteSession ? (
+        <View style={styles.joinBanner}>
+          <View style={styles.joinBannerIcon}>
+            <Ionicons color={theme.colors.text.brand} name="time-outline" size={20} />
+          </View>
+          <View style={styles.joinBannerContent}>
+            <Text variant="titleSm">Invite expired</Text>
+            <Text tone="secondary">{joinBannerDescription}</Text>
+          </View>
+          <Button
+            disabled={!isOnline}
+            label="Dismiss"
+            onPress={() => void handleDismissInvite(expiredPendingInviteSession)}
+            variant="secondary"
           />
         </View>
-        <View style={styles.joinBannerContent}>
-          <Text variant="titleSm">
-            {pendingInviteSession ? "You've been invited" : 'Joining a group tasting?'}
-          </Text>
-          <Text tone="secondary">{joinBannerDescription}</Text>
-        </View>
-        <View style={styles.joinBannerAction}>
-          <Text tone={pendingInviteSession ? 'info' : 'brand'} variant="label">
-            {pendingInviteSession ? 'Join' : 'Code'}
-          </Text>
-          <Ionicons
-            color={pendingInviteSession ? theme.colors.text.info : theme.colors.text.brand}
-            name="chevron-forward"
-            size={16}
-          />
-        </View>
-      </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: Boolean(activePendingInviteSession && !isOnline) }}
+          disabled={Boolean(activePendingInviteSession && !isOnline)}
+          onPress={() => {
+            if (activePendingInviteSession) {
+              void handleAcceptInvite(activePendingInviteSession);
+              return;
+            }
+            navigation.navigate('JoinTastingSession');
+          }}
+          style={({ pressed }) => [
+            styles.joinBanner,
+            activePendingInviteSession ? styles.joinBannerInvite : null,
+            activePendingInviteSession && !isOnline ? styles.joinBannerDisabled : null,
+            pressed && !activePendingInviteSession ? styles.joinBannerPressed : null,
+            pressed && activePendingInviteSession ? styles.joinBannerInvitePressed : null,
+          ]}
+        >
+          <View style={[styles.joinBannerIcon, activePendingInviteSession ? styles.joinBannerInviteIcon : null]}>
+            <Ionicons
+              color={activePendingInviteSession ? theme.colors.text.info : theme.colors.text.brand}
+              name={activePendingInviteSession ? 'mail-unread-outline' : 'ticket-outline'}
+              size={20}
+            />
+          </View>
+          <View style={styles.joinBannerContent}>
+            <Text variant="titleSm">
+              {activePendingInviteSession ? "You've been invited" : 'Joining a group tasting?'}
+            </Text>
+            <Text tone="secondary">{joinBannerDescription}</Text>
+          </View>
+          <View style={styles.joinBannerAction}>
+            <Text tone={activePendingInviteSession ? 'info' : 'brand'} variant="label">
+              {activePendingInviteSession ? 'Join' : 'Code'}
+            </Text>
+            <Ionicons
+              color={activePendingInviteSession ? theme.colors.text.info : theme.colors.text.brand}
+              name="chevron-forward"
+              size={16}
+            />
+          </View>
+        </Pressable>
+      )}
 
       <PageErrorToast errorMessage={errorMessage} title="Tasting action failed" />
       <PageErrorToast
@@ -301,6 +404,9 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
               const pendingInvite = session.invites.find(
                 (invite) => invite.invitedUserId === user?.id && invite.status === 'pending',
               );
+              const pendingInviteDisplayStatus = pendingInvite
+                ? getTastingInviteDisplayStatus(pendingInvite, session)
+                : null;
               return (
                 <Card key={session.id}>
                   <ListItem
@@ -316,12 +422,16 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
                   />
                   {pendingInvite ? (
                     <View style={styles.actions}>
-                      <Button
-                        disabled={!isOnline}
-                        label="Join Invite"
-                        onPress={() => void handleAcceptInvite(session)}
-                        style={styles.action}
-                      />
+                      {pendingInviteDisplayStatus === 'expired' ? (
+                        <StatusPill label="Expired" tone="muted" />
+                      ) : (
+                        <Button
+                          disabled={!isOnline}
+                          label="Join Invite"
+                          onPress={() => void handleAcceptInvite(session)}
+                          style={styles.action}
+                        />
+                      )}
                       <Button
                         disabled={!isOnline}
                         label="Dismiss"

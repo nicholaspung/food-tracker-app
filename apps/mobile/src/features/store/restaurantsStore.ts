@@ -1,11 +1,11 @@
 import { pb } from '../../lib/pocketbase';
 import type { RestaurantRecord } from '../models';
 import type {
+  AllLocationsHistoryRecord,
   ListRestaurantSuggestionsInput,
   MenuItemRecord,
   PaginatedResult,
   SearchRestaurantsPageInput,
-  SameNameRestaurantHistoryRecord,
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
@@ -17,10 +17,10 @@ import type { RestaurantCollectionRecord } from './pocketbaseRecordTypes';
 import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
+  AllLocationsHistoryRecord,
   ListRestaurantSuggestionsInput,
   MenuItemRecord,
   SearchRestaurantsPageInput,
-  SameNameRestaurantHistoryRecord,
 } from './featureStore';
 
 export interface RestaurantOrderedItemRecord {
@@ -282,10 +282,10 @@ export async function listRestaurantOrderedItems(
   );
 }
 
-export async function getSameNameRestaurantHistory(
+export async function getAllLocationsHistory(
   restaurantId: string,
   options?: SearchRestaurantsPageOptions,
-): Promise<SameNameRestaurantHistoryRecord> {
+): Promise<AllLocationsHistoryRecord> {
   if (!pb.authStore.record?.id) {
     return {
       anchorRestaurant: {
@@ -317,7 +317,7 @@ export async function getSameNameRestaurantHistory(
     };
   }
 
-  return sendApiRequest<SameNameRestaurantHistoryRecord>(
+  return sendApiRequest<AllLocationsHistoryRecord>(
     `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/same-name-history`,
     {
       method: 'GET',

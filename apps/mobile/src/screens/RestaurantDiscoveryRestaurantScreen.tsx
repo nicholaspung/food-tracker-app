@@ -10,14 +10,15 @@ import {
   LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
+  RatingPill,
   SegmentedControl,
   type SegmentedControlOption,
   VisitRestaurantOptionTrailing,
 } from '../components/shared';
-import { type MenuItemRecord, type SameNameRestaurantHistoryRecord, useMenuScanFlow } from '../features';
+import { type AllLocationsHistoryRecord, type MenuItemRecord, useMenuScanFlow } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
-import { getSameNameRestaurantHistory, listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
+import { getAllLocationsHistory, listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
 import { buildVisitRestaurantDescription } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -51,6 +52,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   itemDescription: {
     gap: theme.spacing.xxs,
+  },
+  itemMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -99,15 +106,7 @@ function formatCount(value: number, singular: string, plural = `${singular}s`) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
-function formatAverageRating(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return 'avg unrated';
-  }
-
-  return `avg ${value.toFixed(1)}`;
-}
-
-function buildLatestLocationLabel(item: SameNameRestaurantHistoryRecord['items'][number]) {
+function buildLatestLocationLabel(item: AllLocationsHistoryRecord['items'][number]) {
   const parts = [item.latestRestaurantName, item.latestRestaurantLocation].filter(Boolean);
   if (parts.length === 0) {
     return undefined;
@@ -165,13 +164,13 @@ export function RestaurantDiscoveryRestaurantScreen({
     enabled: Boolean(restaurant.id),
   });
 
-  const sameNameHistoryQuery = useQuery({
-    queryKey: restaurantsQueryKeys.sameNameHistory(restaurant.id),
-    queryFn: ({ signal }): Promise<SameNameRestaurantHistoryRecord> => {
+  const allLocationsHistoryQuery = useQuery({
+    queryKey: restaurantsQueryKeys.allLocationsHistory(restaurant.id),
+    queryFn: ({ signal }): Promise<AllLocationsHistoryRecord> => {
       if (!isOnline) {
         return Promise.resolve(
-          queryClient.getQueryData<SameNameRestaurantHistoryRecord>(
-            restaurantsQueryKeys.sameNameHistory(restaurant.id),
+          queryClient.getQueryData<AllLocationsHistoryRecord>(
+            restaurantsQueryKeys.allLocationsHistory(restaurant.id),
           ) ?? {
             anchorRestaurant: {
               id: restaurant.id,
@@ -190,7 +189,7 @@ export function RestaurantDiscoveryRestaurantScreen({
         );
       }
 
-      return getSameNameRestaurantHistory(restaurant.id, { signal });
+      return getAllLocationsHistory(restaurant.id, { signal });
     },
     enabled: Boolean(restaurant.id),
   });
@@ -204,11 +203,16 @@ export function RestaurantDiscoveryRestaurantScreen({
 
   const isMenuScanProcessing =
     menuScanFlow.status === 'selecting' || menuScanFlow.status === 'processing';
-  const sameNameHistory = sameNameHistoryQuery.data;
+  const allLocationsHistory = allLocationsHistoryQuery.data;
+  const hasOrderedHistoryAtAnotherLocation = Boolean(
+    allLocationsHistory?.restaurants.some(
+      (historyRestaurant) => historyRestaurant.restaurantId !== restaurant.id,
+    ),
+  );
   const canShowAllLocations =
-    Boolean(sameNameHistory) &&
-    (sameNameHistory?.locationCount ?? 0) > 1 &&
-    (sameNameHistory?.visitCount ?? 0) > 0;
+    Boolean(allLocationsHistory) &&
+    (allLocationsHistory?.visitCount ?? 0) > 0 &&
+    ((allLocationsHistory?.locationCount ?? 0) > 1 || hasOrderedHistoryAtAnotherLocation);
 
   return (
     <FeatureDetailScreenScaffold
@@ -319,35 +323,40 @@ export function RestaurantDiscoveryRestaurantScreen({
       {detailScope === 'allLocations' && canShowAllLocations ? (
         <Card style={styles.card}>
           <Text variant="label">Ordered Across Locations</Text>
-          {sameNameHistory ? (
+          {allLocationsHistory ? (
             <View style={styles.summaryRow}>
-              <Text tone="secondary">{formatCount(sameNameHistory.visitCount, 'ordered visit')}</Text>
-              <Text tone="secondary">{formatCount(sameNameHistory.locationCount, 'location')}</Text>
-              <Text tone="secondary">{formatCount(sameNameHistory.itemCount, 'item')}</Text>
+              <Text tone="secondary">{formatCount(allLocationsHistory.visitCount, 'ordered visit')}</Text>
+              <Text tone="secondary">{formatCount(allLocationsHistory.locationCount, 'location')}</Text>
+              <Text tone="secondary">{formatCount(allLocationsHistory.itemCount, 'item')}</Text>
             </View>
           ) : null}
-          {sameNameHistoryQuery.isLoading ? (
+          {allLocationsHistoryQuery.isLoading ? (
             <LoadingState label="Loading orders..." />
-          ) : sameNameHistoryQuery.isError ? (
+          ) : allLocationsHistoryQuery.isError ? (
             <PageErrorToast
               actionLabel="Retry"
               errorMessage="Could not load orders across locations."
               onAction={() => {
-                void sameNameHistoryQuery.refetch();
+                void allLocationsHistoryQuery.refetch();
               }}
               title="Orders unavailable"
             />
-          ) : sameNameHistory && sameNameHistory.items.length > 0 ? (
-            sameNameHistory.items.map((item) => {
+          ) : allLocationsHistory && allLocationsHistory.items.length > 0 ? (
+            allLocationsHistory.items.map((item) => {
               const latestLocationLabel = buildLatestLocationLabel(item);
 
               return (
                 <ListItem
                   description={
                     <View style={styles.itemDescription}>
-                      <Text tone="secondary">
-                        {formatCount(item.orderCount, 'order')} • {formatAverageRating(item.averageRating)}
-                      </Text>
+                      <View style={styles.itemMetaRow}>
+                        <Text tone="secondary">{formatCount(item.orderCount, 'order')}</Text>
+                        {item.latestRating > 0 ? (
+                          <RatingPill rating={item.latestRating} />
+                        ) : (
+                          <Text tone="secondary">unrated</Text>
+                        )}
+                      </View>
                       {latestLocationLabel ? (
                         <Text numberOfLines={1} tone="secondary" variant="bodySm">
                           {latestLocationLabel}

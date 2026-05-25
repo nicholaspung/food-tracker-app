@@ -934,23 +934,40 @@ describe('RestaurantDiscoveryScreen', () => {
   it('passes Food Discovery-only sheet tabs for the selected map restaurant', () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
-      if (queryKey.includes('restaurantOrderedItems')) {
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: { id: 'restaurant-1', name: 'Erewhon West Hollywood' },
+            itemCount: 1,
+            items: [
+              {
+                averageRating: 4.5,
+                displayName: 'Double Double',
+                latestRating: 5,
+                latestRestaurantId: 'restaurant-2',
+                latestRestaurantLocation: '333 Jefferson St',
+                latestRestaurantName: 'In-N-Out Burger',
+                latestVisitedAt: '2026-04-03T18:30:00.000Z',
+                normalizedItemName: 'double double',
+                orderCount: 2,
+                restaurants: [],
+              },
+            ],
+            locationCount: 2,
+            normalizedName: 'in n out burger',
+            restaurants: [],
+            visitCount: 2,
+          },
+          error: null,
+          isPending: false,
+        } as never;
+      }
+
+      if (queryKey.includes('menuItems')) {
         return {
           data: [
-            {
-              createdAt: '2026-04-03T18:30:00.000Z',
-              foodItemId: 'food-item-1',
-              id: 'visit-item:food-item-1',
-              name: 'Burger',
-              notes: 'Extra pickles',
-              photoCount: 2,
-              photoPreviewId: 'photo-1',
-              photoPreviewPhoto: 'burger.jpg',
-              rating: 5,
-              source: 'visit-item',
-              trackedAt: '2026-04-03T18:30:00.000Z',
-              visitId: 'visit-1',
-            },
+            { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
+            { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
           ],
           error: null,
           isPending: false,
@@ -958,10 +975,7 @@ describe('RestaurantDiscoveryScreen', () => {
       }
 
       return {
-        data: [
-          { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
-          { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
-        ],
+        data: [],
         error: null,
         isPending: false,
       } as never;
@@ -974,13 +988,18 @@ describe('RestaurantDiscoveryScreen', () => {
     });
 
     const tabs = renderer.root.findByType('RestaurantMapView').props.selectedGroupTabs;
-    expect(tabs.activeTab).toBe('orderedItems');
-    expect(tabs.orderedItems.items[0]).toMatchObject({
-      name: 'Burger',
-      notes: 'Extra pickles',
-      photoCount: 2,
+    expect(tabs.activeTab).toBe('location');
+    expect(tabs.allLocations.items[0]).toMatchObject({
+      name: 'Double Double',
+      meta: [
+        {
+          dateLabel: 'Latest at In-N-Out Burger • 333 Jefferson St',
+          label: '2 orders',
+          rating: 5,
+        },
+      ],
     });
-    expect(tabs.menuItems.items.map((item: any) => item.name)).toEqual(['Aguachile', 'Ziti']);
+    expect(tabs.location.items.map((item: any) => item.name)).toEqual(['Aguachile', 'Ziti']);
   });
 
   it('clears map selection and resets map when search results are cleared', () => {

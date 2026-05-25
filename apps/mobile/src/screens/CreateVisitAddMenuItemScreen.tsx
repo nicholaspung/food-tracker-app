@@ -64,7 +64,6 @@ export function CreateVisitAddMenuItemScreen({
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitAddMenuItemScreen',
         reason: 'offline',
-        restaurantId,
       });
       setErrorMessage('Adding menu items requires internet connection.');
       return;
@@ -75,7 +74,6 @@ export function CreateVisitAddMenuItemScreen({
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitAddMenuItemScreen',
         reason: 'missing_user',
-        restaurantId,
       });
       setErrorMessage('Please sign in again to add items.');
       return;
@@ -86,7 +84,6 @@ export function CreateVisitAddMenuItemScreen({
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitAddMenuItemScreen',
         reason: 'missing_name',
-        restaurantId,
         visibility,
       });
       setErrorMessage('Item name is required.');
@@ -96,7 +93,6 @@ export function CreateVisitAddMenuItemScreen({
     setErrorMessage(null);
     trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_STARTED', {
       source: 'CreateVisitAddMenuItemScreen',
-      restaurantId,
       visibility,
       isOnline,
     });
@@ -123,8 +119,6 @@ export function CreateVisitAddMenuItemScreen({
         : await menuItemCatalogWrites.createMenuItem(baseCreateInput);
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddMenuItemScreen',
-        restaurantId,
-        menuItemId: createdItem.id,
         visibility,
       });
 
@@ -147,7 +141,6 @@ export function CreateVisitAddMenuItemScreen({
       setErrorMessage(message);
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_FAILED', {
         source: 'CreateVisitAddMenuItemScreen',
-        restaurantId,
         visibility,
         error: message,
       });
@@ -205,7 +198,6 @@ export function CreateVisitAddMenuItemScreen({
                   nextVisibility === 'private' ? 'private' : 'friends';
                 trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_VISIBILITY_CHANGED', {
                   source: 'CreateVisitAddMenuItemScreen',
-                  restaurantId,
                   previousVisibility: visibility,
                   nextVisibility: resolvedVisibility,
                 });

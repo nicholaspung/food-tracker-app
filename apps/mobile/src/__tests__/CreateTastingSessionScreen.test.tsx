@@ -298,10 +298,13 @@ describe('CreateTastingSessionScreen', () => {
         },
         status: 'completed',
       }),
+      deleteSession: jest.fn(),
       dismissInvite: jest.fn(),
       joinSession: jest.fn(),
       lockLobby: jest.fn(),
+      reopenInviteWindow: jest.fn(),
       removeParticipant: jest.fn(),
+      resendInvite: jest.fn(),
     } as unknown as ReturnType<typeof useTastingSessionWrites>);
 
     mockedUseAuth.mockReset();

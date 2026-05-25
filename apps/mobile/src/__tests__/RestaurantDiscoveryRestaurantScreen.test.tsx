@@ -36,6 +36,7 @@ jest.mock('../components/shared', () => ({
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  RatingPill: (props: Record<string, unknown>) => mockReact.createElement('RatingPill', props),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
@@ -46,7 +47,7 @@ jest.mock('../features', () => ({
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
-  getSameNameRestaurantHistory: jest.fn(),
+  getAllLocationsHistory: jest.fn(),
   listMenuItemsForRestaurant: jest.fn(),
 }));
 
@@ -115,7 +116,8 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
-  ListItem: (props: Record<string, unknown>) => mockReact.createElement('ListItem', props),
+  ListItem: ({ description, ...props }: Record<string, unknown>) =>
+    mockReact.createElement('ListItem', props, description as React.ReactNode),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -160,7 +162,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     } as never);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
-      if (queryKey.includes('sameNameHistory')) {
+      if (queryKey.includes('allLocationsHistory')) {
         return {
           data: {
             anchorRestaurant: {
@@ -281,10 +283,10 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     );
   });
 
-  it('shows all locations scope when same-name history spans multiple locations', () => {
+  it('shows all locations scope when history spans multiple locations', () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
-      if (queryKey.includes('sameNameHistory')) {
+      if (queryKey.includes('allLocationsHistory')) {
         return {
           data: {
             anchorRestaurant: {
@@ -340,13 +342,83 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     const listItem = renderer.root.findByType('ListItem');
     expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Ordered Across Locations')).toBe(true);
     expect(listItem.props.title).toBe('Tonic Bar Smoothie');
+    expect(renderer.root.findByType('RatingPill').props.rating).toBe(5);
+  });
+
+  it('shows all locations scope when the only ordered location is a matching different restaurant', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 1,
+            items: [
+              {
+                averageRating: 5,
+                displayName: 'Coconut Yogurt',
+                latestRating: 5,
+                latestRestaurantId: 'restaurant-2',
+                latestRestaurantLocation: 'Venice, CA',
+                latestRestaurantName: 'Erewhon West Hollywood',
+                latestVisitedAt: '2026-04-05T18:30:00.000Z',
+                normalizedItemName: 'coconut yogurt',
+                orderCount: 1,
+                restaurants: [
+                  {
+                    orderCount: 1,
+                    restaurantId: 'restaurant-2',
+                    restaurantLocation: 'Venice, CA',
+                    restaurantName: 'Erewhon West Hollywood',
+                  },
+                ],
+              },
+            ],
+            latestVisitedAt: '2026-04-05T18:30:00.000Z',
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [
+              {
+                latestVisitedAt: '2026-04-05T18:30:00.000Z',
+                restaurantId: 'restaurant-2',
+                restaurantLocation: 'Venice, CA',
+                restaurantName: 'Erewhon West Hollywood',
+                visitCount: 1,
+              },
+            ],
+            visitCount: 1,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    const segmentedControl = renderer.root.findByType('SegmentedControl');
+    act(() => {
+      segmentedControl.props.onChange('allLocations');
+    });
+
+    expect(renderer.root.findByType('ListItem').props.title).toBe('Coconut Yogurt');
   });
 
   it('renders a retryable all locations error without blocking the screen', () => {
     const refetch = jest.fn();
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
-      if (queryKey.includes('sameNameHistory')) {
+      if (queryKey.includes('allLocationsHistory')) {
         return {
           data: {
             anchorRestaurant: {

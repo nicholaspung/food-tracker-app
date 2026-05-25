@@ -5,14 +5,18 @@ import type { TastingSessionRecord } from '../models';
 import type {
   CreateTastingSessionInput,
   JoinTastingSessionInput,
+  ReopenTastingInviteWindowInput,
 } from './featureStore';
 import {
   acceptTastingInvite,
   createTastingSession,
+  deleteTastingSession,
   dismissTastingInvite,
   joinTastingSession,
   kickTastingParticipant,
   lockTastingSessionMembership,
+  reopenTastingInviteWindow,
+  resendTastingInvite,
 } from './tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 
@@ -27,6 +31,12 @@ interface TastingSessionIdInput extends OnlineOnlyTastingWriteInput {
 interface RemoveTastingParticipantInput extends TastingSessionIdInput {
   participantId: string;
 }
+
+interface ResendTastingInviteInput extends TastingSessionIdInput {
+  inviteId: string;
+}
+
+interface ReopenTastingInviteWindowWriteInput extends TastingSessionIdInput, ReopenTastingInviteWindowInput {}
 
 type TastingSessionWriteResult<T> =
   | {
@@ -147,6 +157,65 @@ export function useTastingSessionWrites() {
     [queryClient],
   );
 
+  const deleteSession = useCallback(
+    async ({
+      isOnline,
+      sessionId,
+    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
+      if (!isOnline) {
+        return blocked('Connect to the internet to delete this tasting session.');
+      }
+
+      const result = await deleteTastingSession(sessionId);
+      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
+      return {
+        result,
+        status: 'completed',
+      };
+    },
+    [queryClient],
+  );
+
+  const resendInvite = useCallback(
+    async ({
+      inviteId,
+      isOnline,
+      sessionId,
+    }: ResendTastingInviteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+      if (!isOnline) {
+        return blocked('Connect to the internet to resend this invite.');
+      }
+
+      const session = await resendTastingInvite(sessionId, inviteId);
+      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
+      return {
+        result: session,
+        status: 'completed',
+      };
+    },
+    [queryClient],
+  );
+
+  const reopenInviteWindow = useCallback(
+    async ({
+      isOnline,
+      joinDurationMinutes,
+      sessionId,
+    }: ReopenTastingInviteWindowWriteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+      if (!isOnline) {
+        return blocked('Connect to the internet to reopen the invite window.');
+      }
+
+      const session = await reopenTastingInviteWindow(sessionId, { joinDurationMinutes });
+      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
+      return {
+        result: session,
+        status: 'completed',
+      };
+    },
+    [queryClient],
+  );
+
   const lockLobby = useCallback(
     async ({
       isOnline,
@@ -189,10 +258,13 @@ export function useTastingSessionWrites() {
   return {
     acceptInvite,
     createSession,
+    deleteSession,
     dismissInvite,
     joinSession,
     lockLobby,
+    reopenInviteWindow,
     removeParticipant,
+    resendInvite,
   };
 }
 

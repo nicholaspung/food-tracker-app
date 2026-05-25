@@ -3,7 +3,9 @@ package handlers_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -25,7 +27,14 @@ type tastingSessionResponse struct {
 	LeaderUserID string                           `json:"leaderUserId"`
 	Status       string                           `json:"status"`
 	Participants []tastingSessionParticipantEntry `json:"participants"`
+	Invites      []tastingSessionInviteEntry      `json:"invites"`
 	Restaurants  []tastingSessionRestaurantEntry  `json:"restaurants"`
+}
+
+type tastingSessionInviteEntry struct {
+	ID            string `json:"id"`
+	InvitedUserID string `json:"invitedUserId"`
+	Status        string `json:"status"`
 }
 
 type tastingSessionRestaurantEntry struct {
@@ -153,7 +162,7 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, authToken := createAuthUser(t, server.app, true, false)
+	leader, authToken := createAuthUser(t, server.app, false, false)
 
 	createResponse := performJSONRequest(
 		t,
@@ -205,12 +214,560 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 	}
 }
 
+func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	joiner, joinerToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Expired Flight","joinDurationMinutes":60,"invitedUserIds":["`+joiner.Id+`"]}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	oldCode := createdSession.InviteCode
+	if len(oldCode) != 6 {
+		t.Fatalf("expected create response to include invite code, got %#v", createdSession)
+	}
+
+	sessionRecord, err := server.app.FindRecordById("tasting_sessions", createdSession.ID)
+	if err != nil {
+		t.Fatalf("failed to load tasting session: %v", err)
+	}
+	sessionRecord.Set("join_expires_at", time.Now().UTC().Add(-time.Hour))
+	if err := server.app.Save(sessionRecord); err != nil {
+		t.Fatalf("failed to expire tasting session: %v", err)
+	}
+
+	expiredJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		joinerToken,
+		`{"code":"`+oldCode+`"}`,
+	)
+	if expiredJoinResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected expired join to fail, got %d: %s", expiredJoinResponse.Code, expiredJoinResponse.Body.String())
+	}
+	if !strings.Contains(strings.ToLower(expiredJoinResponse.Body.String()), "invite code has expired") {
+		t.Fatalf("expected expired invite message, got %s", expiredJoinResponse.Body.String())
+	}
+
+	dismissResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/dismiss-invite",
+		joinerToken,
+		`{}`,
+	)
+	if dismissResponse.Code != http.StatusOK {
+		t.Fatalf("expected dismiss invite to succeed, got %d: %s", dismissResponse.Code, dismissResponse.Body.String())
+	}
+
+	expiredInviteeDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		joinerToken,
+		"",
+	)
+	if expiredInviteeDetailResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected expired invitee detail to be hidden, got %d: %s", expiredInviteeDetailResponse.Code, expiredInviteeDetailResponse.Body.String())
+	}
+
+	expiredInviteeListResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions",
+		joinerToken,
+		"",
+	)
+	if expiredInviteeListResponse.Code != http.StatusOK {
+		t.Fatalf("expected expired invitee list to load, got %d: %s", expiredInviteeListResponse.Code, expiredInviteeListResponse.Body.String())
+	}
+	expiredInviteeList := parseJSONResponse[[]tastingSessionResponse](t, expiredInviteeListResponse.Body.Bytes())
+	if len(expiredInviteeList) != 0 {
+		t.Fatalf("expected expired invitee list to hide invite-only sessions, got %#v", expiredInviteeList)
+	}
+
+	expiredDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		leaderToken,
+		"",
+	)
+	if expiredDetailResponse.Code != http.StatusOK {
+		t.Fatalf("expected expired detail to load, got %d: %s", expiredDetailResponse.Code, expiredDetailResponse.Body.String())
+	}
+	expiredDetail := parseJSONResponse[tastingSessionResponse](t, expiredDetailResponse.Body.Bytes())
+	if expiredDetail.InviteCode != "" {
+		t.Fatalf("expected expired leader detail to hide invite code, got %#v", expiredDetail)
+	}
+
+	expiredListResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions",
+		leaderToken,
+		"",
+	)
+	if expiredListResponse.Code != http.StatusOK {
+		t.Fatalf("expected expired list to load, got %d: %s", expiredListResponse.Code, expiredListResponse.Body.String())
+	}
+	expiredList := parseJSONResponse[[]tastingSessionResponse](t, expiredListResponse.Body.Bytes())
+	if len(expiredList) != 1 || expiredList[0].InviteCode != "" {
+		t.Fatalf("expected expired leader list to hide invite code, got %#v", expiredList)
+	}
+
+	reopenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/reopen-invite-window",
+		leaderToken,
+		`{"joinDurationMinutes":60}`,
+	)
+	if reopenResponse.Code != http.StatusOK {
+		t.Fatalf("expected reopen to succeed, got %d: %s", reopenResponse.Code, reopenResponse.Body.String())
+	}
+	reopenedSession := parseJSONResponse[tastingSessionResponse](t, reopenResponse.Body.Bytes())
+	if len(reopenedSession.InviteCode) != 6 {
+		t.Fatalf("expected reopen response to include a fresh invite code, got %#v", reopenedSession)
+	}
+	if reopenedSession.InviteCode == oldCode {
+		t.Fatalf("expected reopen to rotate invite code, got old code %q", oldCode)
+	}
+	if len(reopenedSession.Invites) != 1 ||
+		reopenedSession.Invites[0].InvitedUserID != joiner.Id ||
+		reopenedSession.Invites[0].Status != "pending" {
+		t.Fatalf("expected reopen to reactivate dismissed invite, got %#v", reopenedSession.Invites)
+	}
+
+	reopenedInviteeDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		joinerToken,
+		"",
+	)
+	if reopenedInviteeDetailResponse.Code != http.StatusOK {
+		t.Fatalf("expected reopened invitee detail to be visible, got %d: %s", reopenedInviteeDetailResponse.Code, reopenedInviteeDetailResponse.Body.String())
+	}
+
+	oldCodeJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		joinerToken,
+		`{"code":"`+oldCode+`"}`,
+	)
+	if oldCodeJoinResponse.Code == http.StatusOK {
+		t.Fatalf("expected old code to stop working after reopen, got %d: %s", oldCodeJoinResponse.Code, oldCodeJoinResponse.Body.String())
+	}
+
+	newCodeJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		joinerToken,
+		`{"code":"`+reopenedSession.InviteCode+`"}`,
+	)
+	if newCodeJoinResponse.Code != http.StatusOK {
+		t.Fatalf("expected fresh code join to succeed, got %d: %s", newCodeJoinResponse.Code, newCodeJoinResponse.Body.String())
+	}
+}
+
+func TestTastingSessionReopenInviteWindowRequiresLeaderExpiredLobby(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	_, participantToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Guarded Flight","joinDurationMinutes":60}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+
+	openWindowResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/reopen-invite-window",
+		leaderToken,
+		`{"joinDurationMinutes":60}`,
+	)
+	if openWindowResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected open window reopen to fail, got %d: %s", openWindowResponse.Code, openWindowResponse.Body.String())
+	}
+
+	joinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		participantToken,
+		`{"code":"`+createdSession.InviteCode+`"}`,
+	)
+	if joinResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant join to succeed, got %d: %s", joinResponse.Code, joinResponse.Body.String())
+	}
+
+	sessionRecord, err := server.app.FindRecordById("tasting_sessions", createdSession.ID)
+	if err != nil {
+		t.Fatalf("failed to load tasting session: %v", err)
+	}
+	sessionRecord.Set("join_expires_at", time.Now().UTC().Add(-time.Hour))
+	if err := server.app.Save(sessionRecord); err != nil {
+		t.Fatalf("failed to expire tasting session: %v", err)
+	}
+
+	participantReopenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/reopen-invite-window",
+		participantToken,
+		`{"joinDurationMinutes":60}`,
+	)
+	if participantReopenResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected participant reopen to fail, got %d: %s", participantReopenResponse.Code, participantReopenResponse.Body.String())
+	}
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		leaderToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock membership to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	planningReopenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/reopen-invite-window",
+		leaderToken,
+		`{"joinDurationMinutes":60}`,
+	)
+	if planningReopenResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected planning reopen to fail, got %d: %s", planningReopenResponse.Code, planningReopenResponse.Body.String())
+	}
+}
+
+func TestTastingSessionDeleteRequiresLeaderLobby(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	_, participantToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Delete Guard","joinDurationMinutes":60}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+
+	joinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		participantToken,
+		`{"code":"`+createdSession.InviteCode+`"}`,
+	)
+	if joinResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant join to succeed, got %d: %s", joinResponse.Code, joinResponse.Body.String())
+	}
+
+	participantDeleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/tasting-sessions/"+createdSession.ID,
+		participantToken,
+		"",
+	)
+	if participantDeleteResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected participant delete to fail, got %d: %s", participantDeleteResponse.Code, participantDeleteResponse.Body.String())
+	}
+
+	leaderDeleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/tasting-sessions/"+createdSession.ID,
+		leaderToken,
+		"",
+	)
+	if leaderDeleteResponse.Code != http.StatusOK {
+		t.Fatalf("expected leader delete to succeed, got %d: %s", leaderDeleteResponse.Code, leaderDeleteResponse.Body.String())
+	}
+
+	deletedDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		leaderToken,
+		"",
+	)
+	if deletedDetailResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected deleted session detail to be missing, got %d: %s", deletedDetailResponse.Code, deletedDetailResponse.Body.String())
+	}
+
+	planningCreateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Planning Delete Guard","joinDurationMinutes":60}`,
+	)
+	if planningCreateResponse.Code != http.StatusOK {
+		t.Fatalf("expected planning create session to succeed, got %d: %s", planningCreateResponse.Code, planningCreateResponse.Body.String())
+	}
+	planningSession := parseJSONResponse[tastingSessionResponse](t, planningCreateResponse.Body.Bytes())
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+planningSession.ID+"/lock-membership",
+		leaderToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	planningDeleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/tasting-sessions/"+planningSession.ID,
+		leaderToken,
+		"",
+	)
+	if planningDeleteResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected planning delete to fail, got %d: %s", planningDeleteResponse.Code, planningDeleteResponse.Body.String())
+	}
+}
+
+func TestTastingSessionLeaderCanResendDismissedInviteDuringOpenLobby(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Resend Guard","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	if len(createdSession.Invites) != 1 || createdSession.Invites[0].Status != "pending" {
+		t.Fatalf("expected pending invite, got %#v", createdSession.Invites)
+	}
+
+	dismissResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/dismiss-invite",
+		inviteeToken,
+		`{}`,
+	)
+	if dismissResponse.Code != http.StatusOK {
+		t.Fatalf("expected dismiss to succeed, got %d: %s", dismissResponse.Code, dismissResponse.Body.String())
+	}
+
+	resendResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/invites/"+createdSession.Invites[0].ID+"/resend",
+		leaderToken,
+		`{}`,
+	)
+	if resendResponse.Code != http.StatusOK {
+		t.Fatalf("expected resend to succeed, got %d: %s", resendResponse.Code, resendResponse.Body.String())
+	}
+	resentSession := parseJSONResponse[tastingSessionResponse](t, resendResponse.Body.Bytes())
+	if len(resentSession.Invites) != 1 || resentSession.Invites[0].Status != "pending" {
+		t.Fatalf("expected resend to reactivate invite, got %#v", resentSession.Invites)
+	}
+
+	inviteeDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		inviteeToken,
+		"",
+	)
+	if inviteeDetailResponse.Code != http.StatusOK {
+		t.Fatalf("expected resent invite to make session visible, got %d: %s", inviteeDetailResponse.Code, inviteeDetailResponse.Body.String())
+	}
+}
+
+func TestTastingSessionLeaderCanResendRevokedInviteAfterRemovingParticipant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Revoked Resend","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	if len(createdSession.Invites) != 1 {
+		t.Fatalf("expected invite to be created, got %#v", createdSession.Invites)
+	}
+
+	acceptResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/accept-invite",
+		inviteeToken,
+		`{}`,
+	)
+	if acceptResponse.Code != http.StatusOK {
+		t.Fatalf("expected accept to succeed, got %d: %s", acceptResponse.Code, acceptResponse.Body.String())
+	}
+	acceptedSession := parseJSONResponse[tastingSessionResponse](t, acceptResponse.Body.Bytes())
+	var inviteeParticipantID string
+	for _, participant := range acceptedSession.Participants {
+		if participant.UserID == invitee.Id {
+			inviteeParticipantID = participant.ID
+		}
+	}
+	if inviteeParticipantID == "" {
+		t.Fatalf("expected invitee participant after accept, got %#v", acceptedSession.Participants)
+	}
+
+	kickResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/participants/"+inviteeParticipantID+"/kick",
+		leaderToken,
+		`{}`,
+	)
+	if kickResponse.Code != http.StatusOK {
+		t.Fatalf("expected kick to succeed, got %d: %s", kickResponse.Code, kickResponse.Body.String())
+	}
+	kickedSession := parseJSONResponse[tastingSessionResponse](t, kickResponse.Body.Bytes())
+	if len(kickedSession.Invites) != 1 || kickedSession.Invites[0].Status != "revoked" {
+		t.Fatalf("expected kick to revoke invite, got %#v", kickedSession.Invites)
+	}
+
+	revokedInviteeDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+createdSession.ID,
+		inviteeToken,
+		"",
+	)
+	if revokedInviteeDetailResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected revoked invitee detail to be hidden, got %d: %s", revokedInviteeDetailResponse.Code, revokedInviteeDetailResponse.Body.String())
+	}
+
+	resendResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/invites/"+createdSession.Invites[0].ID+"/resend",
+		leaderToken,
+		`{}`,
+	)
+	if resendResponse.Code != http.StatusOK {
+		t.Fatalf("expected revoked invite resend to succeed, got %d: %s", resendResponse.Code, resendResponse.Body.String())
+	}
+	resentSession := parseJSONResponse[tastingSessionResponse](t, resendResponse.Body.Bytes())
+	if len(resentSession.Invites) != 1 || resentSession.Invites[0].Status != "pending" {
+		t.Fatalf("expected resend to reactivate revoked invite, got %#v", resentSession.Invites)
+	}
+
+	reacceptResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/accept-invite",
+		inviteeToken,
+		`{}`,
+	)
+	if reacceptResponse.Code != http.StatusOK {
+		t.Fatalf("expected reaccept after revoked resend to succeed, got %d: %s", reacceptResponse.Code, reacceptResponse.Body.String())
+	}
+}
+
 func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, authToken := createAuthUser(t, server.app, true, false)
+	_, authToken := createAuthUser(t, server.app, false, false)
 
 	createResponse := performJSONRequest(
 		t,
@@ -364,8 +921,8 @@ func TestTastingSessionPlanningAddEndpointsRequireLeader(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, true, false)
-	_, participantToken := createAuthUser(t, server.app, true, false)
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	_, participantToken := createAuthUser(t, server.app, false, false)
 
 	createResponse := performJSONRequest(
 		t,
@@ -476,8 +1033,8 @@ func TestTastingSessionDetailHidesOtherRatingsUntilCompleted(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	leader, leaderToken := createAuthUser(t, server.app, true, false)
-	participant, participantToken := createAuthUser(t, server.app, true, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
 		"name":        "Reveal Counter",

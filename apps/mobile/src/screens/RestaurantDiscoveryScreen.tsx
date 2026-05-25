@@ -33,26 +33,22 @@ import {
   extractRestaurantNamesFromImage,
   formatLimitExceededMessage,
   parseLimitExceededError,
+  type AllLocationsHistoryRecord,
   type RestaurantNameExtractionResponse,
   type RestaurantRecord,
   type MenuItemRecord,
   useMonthlyUsage,
 } from '../features';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import {
-  menuItemsQueryKeys,
-  restaurantOrderedItemsQueryKeys,
-} from '../features/store/menuItemsQuery';
-import {
+  getAllLocationsHistory,
   listMenuItemsForRestaurant,
-  listRestaurantOrderedItems,
-  type RestaurantOrderedItemRecord,
 } from '../features/store/restaurantsStore';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
-import { formatDisplayDate } from '../lib/dateFormatting';
 import { calculateDistance, formatDistance } from '../lib/googlePlaces';
-import { buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -359,40 +355,6 @@ function buildDiscoveryMapGroups(
   });
 }
 
-function formatOrderedItemDate(value: string): string {
-  return formatDisplayDate(value, {
-    fallback: '',
-    options: {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    },
-  });
-}
-
-function buildOrderedItemMapRows(items: readonly RestaurantOrderedItemRecord[]): RestaurantMapItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    meta: [
-      {
-        dateLabel: formatOrderedItemDate(item.trackedAt),
-        rating: item.rating,
-      },
-    ],
-    name: item.name,
-    notes: item.notes,
-    photoCount: item.photoCount,
-    photoThumbnailUrl:
-      item.photoPreviewId && item.photoPreviewPhoto
-        ? buildPhotoThumbnailUrl({
-            collectionName: 'visit_photos',
-            id: item.photoPreviewId,
-            photo: item.photoPreviewPhoto,
-          })
-        : null,
-  }));
-}
-
 function buildMenuItemMapRows(items: readonly MenuItemRecord[]): RestaurantMapItem[] {
   return [...items]
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
@@ -401,6 +363,46 @@ function buildMenuItemMapRows(items: readonly MenuItemRecord[]): RestaurantMapIt
       meta: [],
       name: item.name,
     }));
+}
+
+function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): AllLocationsHistoryRecord {
+  return {
+    anchorRestaurant: {
+      id: restaurant.id,
+      name: restaurant.name,
+      city: restaurant.city,
+      cuisineType: restaurant.cuisineType,
+      location: restaurant.location,
+    },
+    normalizedName: '',
+    locationCount: 1,
+    visitCount: 0,
+    itemCount: 0,
+    restaurants: [],
+    items: [],
+  };
+}
+
+function buildAllLocationsHistoryMapRows(
+  history: AllLocationsHistoryRecord | undefined,
+): RestaurantMapItem[] {
+  return (history?.items ?? []).map((item) => {
+    const latestLocationParts = [item.latestRestaurantName, item.latestRestaurantLocation].filter(Boolean);
+
+    return {
+      id: item.normalizedItemName,
+      meta: [
+        {
+          dateLabel: latestLocationParts.length > 0
+            ? `Latest at ${latestLocationParts.join(' • ')}`
+            : null,
+          label: pluralize(item.orderCount, 'order', 'orders'),
+          rating: item.latestRating,
+        },
+      ],
+      name: item.displayName,
+    };
+  });
 }
 
 function resolveConfidenceTone(confidence: string): 'success' | 'info' | 'warning' {
@@ -499,8 +501,7 @@ export function RestaurantDiscoveryScreen({
   const [searchHereButtonHeight, setSearchHereButtonHeight] = useState(0);
   const [preserveMapRegionOnGroupsChange, setPreserveMapRegionOnGroupsChange] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
-  const [mapSheetTab, setMapSheetTab] = useState<RestaurantMapSheetTabId>('menuItems');
-  const [mapSheetTabChangedByUser, setMapSheetTabChangedByUser] = useState(false);
+  const [mapSheetTab, setMapSheetTab] = useState<RestaurantMapSheetTabId>('location');
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const [showStorefrontPhotoSources, setShowStorefrontPhotoSources] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -570,30 +571,9 @@ export function RestaurantDiscoveryScreen({
   const selectedMenuItemsQueryKey = selectedMapRestaurantId
     ? menuItemsQueryKeys.restaurant(selectedMapRestaurantId)
     : menuItemsQueryKeys.restaurant('');
-  const selectedOrderedItemsQueryKey = selectedMapRestaurantId
-    ? restaurantOrderedItemsQueryKeys.restaurant(selectedMapRestaurantId)
-    : restaurantOrderedItemsQueryKeys.restaurant('');
-  const orderedItemsQuery = useQuery({
-    enabled: isSearchMapMode && Boolean(selectedMapRestaurantId),
-    queryFn: async ({ signal }) => {
-      if (!selectedMapRestaurantId) {
-        return [];
-      }
-
-      if (!isOnline) {
-        const cached = queryClient.getQueryData<RestaurantOrderedItemRecord[]>(
-          restaurantOrderedItemsQueryKeys.restaurant(selectedMapRestaurantId),
-        );
-        if (cached) {
-          return cached;
-        }
-        throw new Error('Ordered items need internet connection.');
-      }
-
-      return listRestaurantOrderedItems(selectedMapRestaurantId, { signal });
-    },
-    queryKey: selectedOrderedItemsQueryKey,
-  });
+  const selectedAllLocationsHistoryQueryKey = selectedMapRestaurantId
+    ? restaurantsQueryKeys.allLocationsHistory(selectedMapRestaurantId)
+    : restaurantsQueryKeys.allLocationsHistory('');
   const menuItemsQuery = useQuery({
     enabled: isSearchMapMode && Boolean(selectedMapRestaurantId),
     queryFn: async ({ signal }) => {
@@ -615,18 +595,45 @@ export function RestaurantDiscoveryScreen({
     },
     queryKey: selectedMenuItemsQueryKey,
   });
+  const allLocationsHistoryQuery = useQuery({
+    enabled: isSearchMapMode && Boolean(selectedMapRestaurantId),
+    queryFn: ({ signal }): Promise<AllLocationsHistoryRecord> => {
+      if (!selectedMapRestaurantId || !selectedMapRestaurant) {
+        return Promise.resolve({
+          anchorRestaurant: { id: '', name: '' },
+          normalizedName: '',
+          locationCount: 0,
+          visitCount: 0,
+          itemCount: 0,
+          restaurants: [],
+          items: [],
+        });
+      }
+
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<AllLocationsHistoryRecord>(
+            restaurantsQueryKeys.allLocationsHistory(selectedMapRestaurantId),
+          ) ?? buildEmptyAllLocationsHistory(selectedMapRestaurant),
+        );
+      }
+
+      return getAllLocationsHistory(selectedMapRestaurantId, { signal });
+    },
+    queryKey: selectedAllLocationsHistoryQueryKey,
+  });
   const discoveryMapGroups = useMemo(
     () => buildDiscoveryMapGroups(currentMapRestaurants),
     [currentMapRestaurants],
   );
   const omittedDiscoveryMapRestaurants = currentMapRestaurants.length - discoveryMapGroups.length;
-  const orderedItemRows = useMemo(
-    () => buildOrderedItemMapRows(orderedItemsQuery.data ?? []),
-    [orderedItemsQuery.data],
-  );
   const menuItemRows = useMemo(
     () => buildMenuItemMapRows(menuItemsQuery.data ?? []),
     [menuItemsQuery.data],
+  );
+  const allLocationsRows = useMemo(
+    () => buildAllLocationsHistoryMapRows(allLocationsHistoryQuery.data),
+    [allLocationsHistoryQuery.data],
   );
   const discoveryUserCoordinates = gpsReferenceCoords
     ? { latitude: gpsReferenceCoords.lat, longitude: gpsReferenceCoords.lng }
@@ -649,7 +656,6 @@ export function RestaurantDiscoveryScreen({
 
   const handleSelectRestaurant = useCallback((restaurant: RestaurantRecord) => {
     trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_SELECTED', {
-      restaurantId: restaurant.id,
       isGooglePlace: restaurant.isGooglePlace === true,
       source: 'RestaurantDiscoveryScreen',
     });
@@ -673,8 +679,7 @@ export function RestaurantDiscoveryScreen({
   const handleSearchViewModeChange = useCallback((nextViewMode: DiscoverySearchViewMode) => {
     setSearchViewMode(nextViewMode);
     setSelectedMapGroupId(null);
-    setMapSheetTab('menuItems');
-    setMapSheetTabChangedByUser(false);
+    setMapSheetTab('location');
     setMapResetSignal((value) => value + 1);
     setShowSearchHereButton(false);
     setPreserveMapRegionOnGroupsChange(false);
@@ -688,8 +693,7 @@ export function RestaurantDiscoveryScreen({
     setActiveTab(nextTab);
     if (nextTab !== 'search') {
       setSelectedMapGroupId(null);
-      setMapSheetTab('menuItems');
-      setMapSheetTabChangedByUser(false);
+      setMapSheetTab('location');
       setShowSearchHereButton(false);
       setPreserveMapRegionOnGroupsChange(false);
     }
@@ -697,8 +701,7 @@ export function RestaurantDiscoveryScreen({
 
   const handleSelectedMapGroupChange = useCallback((groupId: string | null) => {
     setSelectedMapGroupId(groupId);
-    setMapSheetTab('menuItems');
-    setMapSheetTabChangedByUser(false);
+    setMapSheetTab('location');
 
     if (!groupId) {
       return;
@@ -727,25 +730,26 @@ export function RestaurantDiscoveryScreen({
   const selectedMapGroupTabs = selectedMapRestaurantId
     ? ({
         activeTab: mapSheetTab,
-        menuItems: {
+        allLocations: {
+          emptyDescription: 'Track a visit at this restaurant name to build your history.',
+          emptyTitle: 'No orders across locations yet',
+          errorMessage: allLocationsHistoryQuery.error instanceof Error
+            ? allLocationsHistoryQuery.error.message
+            : null,
+          items: allLocationsRows,
+          loading: allLocationsHistoryQuery.isPending,
+          title: 'All Locations',
+        },
+        location: {
           emptyDescription: 'Open this restaurant to scan a menu or add items.',
           emptyTitle: 'No menu items yet',
           errorMessage: menuItemsQuery.error instanceof Error ? menuItemsQuery.error.message : null,
           items: menuItemRows,
           loading: menuItemsQuery.isPending,
-          title: 'Menu Items',
+          title: 'This Location',
         },
         onTabChange: (tabId: RestaurantMapSheetTabId) => {
           setMapSheetTab(tabId);
-          setMapSheetTabChangedByUser(true);
-        },
-        orderedItems: {
-          emptyDescription: 'Track a visit at this exact restaurant location to see ordered items here.',
-          emptyTitle: 'No ordered items yet',
-          errorMessage: orderedItemsQuery.error instanceof Error ? orderedItemsQuery.error.message : null,
-          items: orderedItemRows,
-          loading: orderedItemsQuery.isPending,
-          title: 'Your Ordered Items',
         },
       } satisfies RestaurantMapSheetTabs)
     : null;
@@ -912,8 +916,7 @@ export function RestaurantDiscoveryScreen({
   const handleClearPlacesSearchState = useCallback(() => {
     clearPlacesSearchState();
     setSelectedMapGroupId(null);
-    setMapSheetTab('menuItems');
-    setMapSheetTabChangedByUser(false);
+    setMapSheetTab('location');
     setMapResetSignal((value) => value + 1);
     setLatestUserMapRegion(null);
     setLastMapSearchRegion(null);
@@ -1052,24 +1055,6 @@ export function RestaurantDiscoveryScreen({
     searchNearby,
     searchViewMode,
     showNearbyPlaces,
-  ]);
-
-  useEffect(() => {
-    if (
-      !selectedMapRestaurantId ||
-      mapSheetTabChangedByUser ||
-      orderedItemsQuery.isPending ||
-      (orderedItemsQuery.data?.length ?? 0) === 0
-    ) {
-      return;
-    }
-
-    setMapSheetTab('orderedItems');
-  }, [
-    mapSheetTabChangedByUser,
-    orderedItemsQuery.data,
-    orderedItemsQuery.isPending,
-    selectedMapRestaurantId,
   ]);
 
   const discoveryTabControl = (

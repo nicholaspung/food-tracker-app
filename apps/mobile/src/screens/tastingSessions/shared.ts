@@ -1,4 +1,4 @@
-import type { TastingSessionRecord, TastingSessionStatus } from '../../features';
+import type { TastingInviteRecord, TastingSessionRecord, TastingSessionStatus } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
 export interface TastingNavigation {
@@ -70,6 +70,26 @@ export function formatCountdown(expiresAt: string): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest > 0 ? `${hours} hr ${rest} min remaining` : `${hours} hr remaining`;
+}
+
+export function isTastingInviteWindowOpen(joinExpiresAt: string, nowMs = Date.now()): boolean {
+  const expiresTime = new Date(joinExpiresAt).getTime();
+  return Number.isFinite(expiresTime) && nowMs < expiresTime;
+}
+
+export function isTastingInviteWindowExpired(joinExpiresAt: string, nowMs = Date.now()): boolean {
+  return !isTastingInviteWindowOpen(joinExpiresAt, nowMs);
+}
+
+export function getTastingInviteDisplayStatus(
+  invite: TastingInviteRecord,
+  session: Pick<TastingSessionRecord, 'joinExpiresAt'>,
+  nowMs = Date.now(),
+): TastingInviteRecord['status'] | 'expired' {
+  if (invite.status === 'pending' && isTastingInviteWindowExpired(session.joinExpiresAt, nowMs)) {
+    return 'expired';
+  }
+  return invite.status;
 }
 
 export function getApprovedItemCount(session: TastingSessionRecord): number {
