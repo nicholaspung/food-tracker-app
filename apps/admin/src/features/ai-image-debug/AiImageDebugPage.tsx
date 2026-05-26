@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 
 import {
   runMenuScanDebug,
+  runReceiptScanDebug,
   runStorefrontDebug,
   type AiImageDebugApiError,
   type AiImageDebugMode,
   type AiImageDebugRunMetadata,
   type MenuScanDebugResponse,
+  type ReceiptScanDebugResponse,
   type StorefrontDebugResponse,
 } from '@/features/ai-image-debug/api';
 import {
@@ -33,6 +35,13 @@ type DebugResult =
       errorPayload: null;
     }
   | {
+      mode: 'receipt-scan';
+      metadata: AiImageDebugRunMetadata;
+      response: ReceiptScanDebugResponse;
+      errorMessage: null;
+      errorPayload: null;
+    }
+  | {
       mode: AiImageDebugMode;
       metadata: AiImageDebugRunMetadata;
       response: null;
@@ -43,6 +52,7 @@ type DebugResult =
 const modeOptions: Array<{ label: string; value: AiImageDebugMode }> = [
   { label: 'Read a Storefront', value: 'storefront' },
   { label: 'Scan Menu Items', value: 'menu-scan' },
+  { label: 'Scan Receipt', value: 'receipt-scan' },
 ];
 
 function buildRequestId() {
@@ -51,7 +61,10 @@ function buildRequestId() {
 }
 
 function getEndpoint(mode: AiImageDebugMode): AiImageDebugRunMetadata['endpoint'] {
-  return mode === 'storefront' ? '/api/find-restaurant-name' : '/api/parse-menu';
+  if (mode === 'storefront') {
+    return '/api/find-restaurant-name';
+  }
+  return mode === 'receipt-scan' ? '/api/parse-receipt' : '/api/parse-menu';
 }
 
 function getErrorMessage(error: unknown) {
@@ -230,6 +243,61 @@ function MenuScanPreview({ response }: { response: MenuScanDebugResponse }) {
   );
 }
 
+function ReceiptScanPreview({ response }: { response: ReceiptScanDebugResponse }) {
+  return (
+    <div className="ai-debug-phone-preview">
+      <div className="summary-row">
+        <div>
+          <p className="eyebrow">Mobile preview</p>
+          <h3>{response.title || response.restaurantName || 'Receipt scan completed'}</h3>
+        </div>
+        <ConfidenceTag confidence={response.confidence} />
+      </div>
+
+      <p className="text-muted">
+        Items would be added to the Bill Draft unassigned so the user can choose who had each one.
+      </p>
+
+      <div className="inline-list">
+        <strong>Would add these bill items</strong>
+        {response.items.length > 0 ? (
+          response.items.map((item, index) => (
+            <div className="list-item" key={`${item.name}-${index}`}>
+              <div className="summary-row">
+                <strong>{item.name}</strong>
+                <span>${item.price.toFixed(2)}</span>
+              </div>
+              <div className="tag-row tag-row-start">
+                <ConfidenceTag confidence={item.confidence} />
+                {item.quantityText ? <span className="tag">Qty {item.quantityText}</span> : null}
+                <span className="tag">Unassigned</span>
+              </div>
+              {item.warning ? <span className="text-muted">{item.warning}</span> : null}
+            </div>
+          ))
+        ) : (
+          <div className="state-panel">
+            <strong>No receipt items were extracted.</strong>
+            <span className="text-muted">Review totals and raw JSON below.</span>
+          </div>
+        )}
+      </div>
+
+      <pre className="json-block">
+        {formatJson({
+          subtotal: response.subtotal ?? null,
+          tax: response.tax ?? null,
+          tip: response.tip ?? null,
+          fees: response.fees ?? null,
+          discount: response.discount ?? null,
+          finalTotal: response.finalTotal ?? null,
+          warnings: response.warnings,
+        })}
+      </pre>
+    </div>
+  );
+}
+
 function RawDebugPanels({ result }: { result: DebugResult }) {
   const responseJson = result.response ?? result.errorPayload;
   const parsedPreview =
@@ -330,12 +398,14 @@ export function AiImageDebugPage() {
       const response =
         mode === 'storefront'
           ? await runStorefrontDebug({ file, requestId })
-          : await runMenuScanDebug({
-              file,
-              requestId,
-              restaurantId,
-              restaurantName,
-            });
+          : mode === 'receipt-scan'
+            ? await runReceiptScanDebug({ file, requestId })
+            : await runMenuScanDebug({
+                file,
+                requestId,
+                restaurantId,
+                restaurantName,
+              });
 
       const metadata: AiImageDebugRunMetadata = {
         requestId,
@@ -356,6 +426,14 @@ export function AiImageDebugPage() {
               errorMessage: null,
               errorPayload: null,
             }
+          : mode === 'receipt-scan'
+            ? {
+                mode,
+                metadata,
+                response: response as ReceiptScanDebugResponse,
+                errorMessage: null,
+                errorPayload: null,
+              }
           : {
               mode,
               metadata,
@@ -392,11 +470,11 @@ export function AiImageDebugPage() {
     <>
       <section className="panel">
         <p className="eyebrow">AI image debug</p>
-        <h2 style={{ marginBottom: 0 }}>Test storefront and menu image parsing</h2>
+        <h2 style={{ marginBottom: 0 }}>Test storefront, menu, and receipt image parsing</h2>
         <p className="text-muted" style={{ margin: 0 }}>
           Upload one image and run the same production parsing endpoints used by mobile. These
-          runs may consume AI usage. Menu scans on this page are read-only and do not create menu
-          item records.
+          runs may consume AI usage. Menu and receipt scans on this page are read-only and do not
+          create app records.
         </p>
       </section>
 
@@ -485,7 +563,9 @@ export function AiImageDebugPage() {
               ? 'Running...'
               : mode === 'storefront'
                 ? 'Run Storefront Read'
-                : 'Run Menu Scan'}
+                : mode === 'receipt-scan'
+                  ? 'Run Receipt Scan'
+                  : 'Run Menu Scan'}
           </button>
           <button className="button ghost" disabled={isRunning} onClick={clearState} type="button">
             Clear
@@ -500,7 +580,13 @@ export function AiImageDebugPage() {
               <p className="eyebrow">Run summary</p>
               <h3>{result.errorMessage ? 'Request failed' : 'Request completed'}</h3>
             </div>
-            <span className="tag">{result.mode === 'storefront' ? 'Storefront' : 'Menu scan'}</span>
+            <span className="tag">
+              {result.mode === 'storefront'
+                ? 'Storefront'
+                : result.mode === 'receipt-scan'
+                  ? 'Receipt scan'
+                  : 'Menu scan'}
+            </span>
           </div>
           <MetadataGrid metadata={result.metadata} />
           {result.errorMessage ? (
@@ -518,6 +604,8 @@ export function AiImageDebugPage() {
         <section className="panel">
           {result.mode === 'storefront' ? (
             <StorefrontPreview response={result.response as StorefrontDebugResponse} />
+          ) : result.mode === 'receipt-scan' ? (
+            <ReceiptScanPreview response={result.response as ReceiptScanDebugResponse} />
           ) : (
             <MenuScanPreview response={result.response as MenuScanDebugResponse} />
           )}

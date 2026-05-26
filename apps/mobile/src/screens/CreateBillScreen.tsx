@@ -40,6 +40,7 @@ import {
   type DraftCustomParticipant,
   type OwedAmountEntry,
 } from '../features/bills/billDraft';
+import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 import { useBillWrites } from '../features/store/useBillWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -111,6 +112,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   itemPrice: {
     color: theme.colors.text.primary,
+  },
+  itemExpandIndicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+    minWidth: 24,
   },
   removeItemButton: {
     alignItems: 'center',
@@ -345,6 +352,31 @@ const useStyles = createThemedStyles((theme) => ({
   loadingRow: {
     gap: theme.spacing.xs,
   },
+  receiptScanAction: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    minHeight: theme.sizes.inputMinHeight,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  receiptScanActionDisabled: {
+    opacity: 0.5,
+  },
+  receiptScanActionText: {
+    flex: 1,
+    gap: 2,
+  },
+  receiptScanWarningCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+  },
 }));
 
 export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
@@ -375,10 +407,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
+  const [pendingReceiptScanResult, setPendingReceiptScanResult] = useState<ReceiptScanDraftResult | null>(null);
+  const [receiptScanWarnings, setReceiptScanWarnings] = useState<string[]>([]);
   const hasTrackedFlowOpenRef = useRef(false);
   const hasTrackedFlowExitRef = useRef(false);
   const hasCompletedFlowRef = useRef(false);
   const exitMethodRef = useRef<CreateBillExitMethod | null>(null);
+  const appliedReceiptScanCorrelationRef = useRef<string | null>(null);
 
   const currentUserName = sanitizeParticipantName(
     user?.name?.trim() || user?.email?.split('@')[0] || 'You',
@@ -457,6 +492,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setParticipantRecordIdByDraftId({});
     setErrorMessage(null);
     setIsEditHydrated(false);
+    setPendingReceiptScanResult(null);
+    setReceiptScanWarnings([]);
   }, [editBillId, isEditMode]);
 
   useEffect(() => {
@@ -925,6 +962,102 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   );
 
   const styles = useStyles();
+
+  const hasReceiptReplaceableDraftData = useCallback(
+    () =>
+      items.length > 0 ||
+      Boolean(taxInput.trim()) ||
+      Boolean(tipInput.trim()) ||
+      Boolean(feesInput.trim()) ||
+      Boolean(finalTotalInput.trim()),
+    [feesInput, finalTotalInput, items.length, taxInput, tipInput],
+  );
+
+  const applyReceiptScanResult = useCallback(
+    (scanResult: ReceiptScanDraftResult) => {
+      const scannedItems: DraftBillItem[] = scanResult.items.map((item, index) => ({
+        id: createEntityId('bill_item_draft'),
+        name: item.name.trim() || `Receipt Item ${index + 1}`,
+        price: toCurrencyInput(roundToCurrency(item.price)),
+        splitMode: 'simple',
+        assignedParticipantIds: [],
+        advancedSplitType: 'percentage',
+        advancedSplits: [],
+      }));
+      const scannedWarnings = [
+        ...scanResult.warnings,
+        ...scanResult.items
+          .map((item) => item.warning?.trim())
+          .filter((warning): warning is string => Boolean(warning)),
+        ...scanResult.items
+          .filter((item) => item.confidence === 'low' || item.confidence === 'unknown')
+          .map((item) => `Review "${item.name}" before saving.`),
+      ];
+      const uniqueWarnings = Array.from(new Set(scannedWarnings));
+
+      setSplitMode('custom');
+      setItems(scannedItems);
+      setExpandedItemIds(scannedItems.map((item) => item.id));
+      setDraftItemName('');
+      setDraftItemPrice('');
+      setTaxInput(typeof scanResult.tax === 'number' ? toCurrencyInput(roundToCurrency(scanResult.tax)) : '');
+      setTipInput(typeof scanResult.tip === 'number' ? toCurrencyInput(roundToCurrency(scanResult.tip)) : '');
+      setFeesInput(typeof scanResult.fees === 'number' ? toCurrencyInput(roundToCurrency(scanResult.fees)) : '');
+
+      const scannedSubtotal = scanResult.items.reduce((sum, item) => sum + item.price, 0);
+      const computedReceiptTotal = roundToCurrency(
+        scannedSubtotal +
+          (scanResult.tax ?? 0) +
+          (scanResult.tip ?? 0) +
+          (scanResult.fees ?? 0) -
+          (scanResult.discount ?? 0),
+      );
+      const hasDiscount = typeof scanResult.discount === 'number' && scanResult.discount > 0;
+      const hasTotalMismatch =
+        typeof scanResult.finalTotal === 'number' &&
+        Math.abs(roundToCurrency(scanResult.finalTotal) - computedReceiptTotal) > 0.01;
+      setFinalTotalInput(
+        (hasDiscount || hasTotalMismatch) && typeof scanResult.finalTotal === 'number'
+          ? toCurrencyInput(roundToCurrency(scanResult.finalTotal))
+          : '',
+      );
+
+      if (!billTitle.trim()) {
+        setBillTitle(scanResult.title?.trim() || scanResult.restaurantName?.trim() || 'Receipt Split');
+      }
+      setIsCustomTipEnabled(false);
+      setCustomTipSplits([]);
+      setCustomTipSplitType('amount');
+      setReceiptScanWarnings(uniqueWarnings);
+      setErrorMessage(null);
+      setPendingReceiptScanResult(null);
+      appliedReceiptScanCorrelationRef.current = scanResult.requestCorrelation;
+      trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_APPLIED', {
+        source: 'CreateBillScreen',
+        isEditMode,
+        itemCount: scannedItems.length,
+        warningCount: uniqueWarnings.length,
+        confidence: scanResult.confidence,
+      });
+    },
+    [billTitle, isEditMode],
+  );
+
+  useEffect(() => {
+    const scanResult = route.params?.receiptScanResult;
+    if (!scanResult || appliedReceiptScanCorrelationRef.current === scanResult.requestCorrelation) {
+      return;
+    }
+
+    navigation.setParams({ receiptScanResult: undefined });
+
+    if (hasReceiptReplaceableDraftData()) {
+      setPendingReceiptScanResult(scanResult);
+      return;
+    }
+
+    applyReceiptScanResult(scanResult);
+  }, [applyReceiptScanResult, hasReceiptReplaceableDraftData, navigation, route.params?.receiptScanResult]);
 
   const trackSubmitValidationFailed = (reason: string) => {
     trackObservabilityEvent('CREATE_BILL_SUBMIT_VALIDATION_FAILED', {
@@ -1557,6 +1690,44 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           Custom mode: add items, then choose simple or complex assignment per item.
         </Text>
 
+        <Pressable
+          accessibilityRole="button"
+          disabled={!isOnline}
+          onPress={() => {
+            trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_TAPPED', {
+              source: 'CreateBillScreen',
+              isEditMode,
+              isOnline,
+              itemCount: items.length,
+            });
+            navigation.navigate('ReceiptScan', {
+              billId: editBillId,
+              returnTo: 'CreateBill',
+            });
+          }}
+          style={({ pressed }) => [
+            styles.receiptScanAction,
+            !isOnline ? styles.receiptScanActionDisabled : null,
+            pressed ? { opacity: 0.8 } : null,
+          ]}
+          testID="bill-receipt-scan-button"
+        >
+          <Ionicons
+            color={isOnline ? theme.colors.text.info : theme.colors.text.muted}
+            name="receipt-outline"
+            size={22}
+          />
+          <View style={styles.receiptScanActionText}>
+            <Text variant="labelStrong">Scan Receipt</Text>
+            <Text tone="secondary" variant="bodySmCompact">
+              {isOnline
+                ? 'Use a receipt photo to fill itemized draft details.'
+                : 'Receipt scanning requires an internet connection.'}
+            </Text>
+          </View>
+          <Ionicons color={theme.colors.text.secondary} name="chevron-forward" size={18} />
+        </Pressable>
+
         <View style={styles.itemComposerRow}>
           <Input
             containerStyle={styles.itemNameInput}
@@ -1611,10 +1782,25 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               return (
                 <Fragment key={item.id}>
                   <OptionListRow
-                    chevron={isExpanded ? 'up' : 'down'}
+                    accessibilityHint={
+                      isExpanded
+                        ? 'Collapses item split details'
+                        : 'Expands item split details'
+                    }
+                    accessibilityState={{ expanded: isExpanded }}
+                    chevron={false}
                     connected={showSplitEditor}
                     isLast={!showSplitEditor && isLast}
                     key={item.id}
+                    leading={
+                      <View style={styles.itemExpandIndicator}>
+                        <Ionicons
+                          color={theme.colors.text.muted}
+                          name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                        />
+                      </View>
+                    }
                     onPress={() => {
                       toggleItemExpanded(item.id);
                     }}
@@ -1629,6 +1815,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                             setPendingDeleteItem(item);
                           }}
                           style={styles.removeItemButton}
+                          testID={`bill-item-remove-${index}`}
                         >
                           <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
                         </Pressable>
@@ -1991,6 +2178,23 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
+      {receiptScanWarnings.length > 0 ? (
+        <Card style={styles.receiptScanWarningCard}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons color={theme.colors.text.warning} name="alert-circle-outline" size={16} />
+            <Text tone="warning" variant="labelStrong">Review receipt scan</Text>
+          </View>
+          <Text tone="warning" variant="bodySm">
+            Scanned items start unassigned. Assign each item before saving.
+          </Text>
+          {receiptScanWarnings.slice(0, 3).map((warning) => (
+            <Text key={warning} tone="warning" variant="bodySm">
+              {warning}
+            </Text>
+          ))}
+        </Card>
+      ) : null}
+
       <BillPayerAndTotalsSection
         isEqualSplitMode={isEqualSplitMode}
         isManualSplitMode={isManualSplitMode}
@@ -2060,6 +2264,22 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         }}
         title="Delete Bill Item?"
         visible={pendingDeleteItem !== null}
+      />
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Current Draft"
+        confirmLabel="Replace Details"
+        description="This will replace current items and totals from the receipt scan. Participants and payer will stay selected."
+        onCancel={() => {
+          setPendingReceiptScanResult(null);
+        }}
+        onConfirm={() => {
+          if (pendingReceiptScanResult) {
+            applyReceiptScanResult(pendingReceiptScanResult);
+          }
+        }}
+        testID="replace-bill-details-confirmation-modal"
+        title="Replace scanned bill details?"
+        visible={pendingReceiptScanResult !== null}
       />
     </FeatureFormScreenScaffold>
   );

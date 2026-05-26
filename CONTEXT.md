@@ -28,6 +28,14 @@ _Avoid_: food product submit helper, food product mutation wrapper
 The in-progress bill split state before a Bill is saved, including participants, items, split modes, custom tip splits, derived totals, and submit payload construction.
 _Avoid_: bill form state, bill helper functions
 
+**Receipt Scan**:
+AI-assisted extraction from a transient receipt photo into a Custom **Bill Draft**.
+_Avoid_: receipt OCR, bill photo import
+
+**Receipt Line Item**:
+A purchasable row extracted from a receipt and represented as one Bill item with a line-total price.
+_Avoid_: dish, OCR row
+
 **Source Note Completion**:
 The workflow that marks a source Note as used after a Visit or Food Product entry is completed or queued.
 _Avoid_: note mark-used helper, note usage side effect
@@ -124,6 +132,11 @@ _Avoid_: tutorial flags
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
+- A **Receipt Scan** populates a Custom **Bill Draft** but does not save a Bill.
+- A **Receipt Scan** may create zero or more **Receipt Line Items**.
+- A **Receipt Line Item** starts unassigned until the user chooses participants.
+- Receipt images are not saved with Bills.
+- Raw receipt extraction debug output may be stored for admin debugging for failures, invalid responses, and low-confidence extractions, with a 30-day retention window.
 - **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.

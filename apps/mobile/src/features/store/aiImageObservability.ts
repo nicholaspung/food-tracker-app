@@ -2,7 +2,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import type { EventProperties } from '../../observability';
 
-export function createAIRequestCorrelation(prefix: 'menu-scan' | 'storefront'): string {
+export function createAIRequestCorrelation(prefix: 'menu-scan' | 'receipt-scan' | 'storefront'): string {
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `mobile-${prefix}-${Date.now().toString(36)}-${randomPart}`;
 }

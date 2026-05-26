@@ -63,6 +63,7 @@ import {
   PrivacyPolicyScreen,
   ProfileScreen,
   QRScannerScreen,
+  ReceiptScanScreen,
   FoodProductScreen,
   ResetPasswordScreen,
   SettingsScreen,
@@ -86,6 +87,7 @@ import {
 } from '../screens';
 import { useTheme } from '../theme';
 import { Screen } from '../ui';
+import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -275,7 +277,8 @@ export type RootStackParamList = {
   TastingSessionTasting: { sessionId: string };
   TastingSessionResults: { sessionId: string };
   Bills: undefined;
-  CreateBill: { billId?: string } | undefined;
+  CreateBill: { billId?: string; receiptScanResult?: ReceiptScanDraftResult } | undefined;
+  ReceiptScan: { billId?: string; returnTo: 'CreateBill' };
   BillDetail: { billId: string };
   TipCalculator: undefined;
 };
@@ -346,6 +349,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'NoteEditor',
   'Bills',
   'CreateBill',
+  'ReceiptScan',
   'BillDetail',
   'TipCalculator',
   'TastingSessions',
@@ -879,6 +883,7 @@ export function RootNavigator() {
                   />
                   <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
                   <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
+                  <Stack.Screen component={ReceiptScanScreen} name="ReceiptScan" options={{ headerShown: false }} />
                   <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
                   <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
                   <Stack.Screen

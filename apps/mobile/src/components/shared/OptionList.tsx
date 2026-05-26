@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
-import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
+import type { PressableProps, StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
@@ -30,6 +30,8 @@ export interface OptionListRowProps {
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityState?: PressableProps['accessibilityState'];
   testID?: string;
 }
 
@@ -135,6 +137,8 @@ export function OptionListRow({
   titleStyle,
   subtitleStyle,
   accessibilityLabel,
+  accessibilityHint,
+  accessibilityState,
   testID,
 }: OptionListRowProps) {
   const theme = useTheme();
@@ -182,8 +186,10 @@ export function OptionListRow({
 
   return (
     <Pressable
+      accessibilityHint={accessibilityHint}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={accessibilityState}
       onPress={onPress}
       style={rowStyle}
       testID={testID}

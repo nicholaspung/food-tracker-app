@@ -116,7 +116,8 @@ jest.mock('react-native', () => {
 });
 
 jest.mock('../components/shared', () => ({
-  ConfirmDestructiveModal: () => null,
+  ConfirmDestructiveModal: (props: Record<string, unknown>) =>
+    mockReact.createElement('ConfirmDestructiveModal', props),
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
@@ -320,6 +321,17 @@ function findOptionRowByTitle(renderer: TestRenderer, title: string) {
   return match;
 }
 
+function findBillItemRowByTitle(renderer: TestRenderer, title: string) {
+  const match = renderer.root.findAllByType('OptionListRow').find(
+    (node: any) => node.props.title === title && node.props.accessibilityState,
+  );
+  if (!match) {
+    throw new Error(`Could not find bill item OptionListRow with title "${title}".`);
+  }
+
+  return match;
+}
+
 function getTextContent(node: any): string {
   return node.children
     .map((child: any) => {
@@ -474,6 +486,42 @@ describe('CreateBillScreen', () => {
     await flushMicrotasks();
   }
 
+  async function switchToCustomSplitMode(renderer: TestRenderer) {
+    const splitModeControl = renderer.root.findAllByType('SegmentedControl').find(
+      (node: any) => node.props.value === 'equal',
+    );
+    if (!splitModeControl) {
+      throw new Error('Could not find split mode control.');
+    }
+
+    await act(async () => {
+      splitModeControl.props.onChange('custom');
+    });
+  }
+
+  async function addBillItem(renderer: TestRenderer, name: string, price: string) {
+    const itemNameInput = findByTestId(renderer, 'Input', 'bill-item-name-input');
+    await act(async () => {
+      itemNameInput.props.onChangeText(name);
+    });
+
+    const itemPriceInput = findByTestId(renderer, 'Input', 'bill-item-price-input');
+    await act(async () => {
+      itemPriceInput.props.onChangeText(price);
+    });
+
+    const addItemButton = renderer.root.findAllByType('Pressable').find(
+      (node: any) => node.props.children?.props?.children === '+ Add Item',
+    );
+    if (!addItemButton) {
+      throw new Error('Could not find add item button.');
+    }
+
+    await act(async () => {
+      addItemButton.props.onPress();
+    });
+  }
+
   it('accepts a typed participant with zero selected friends', async () => {
     const renderer = await renderScreen();
 
@@ -561,5 +609,52 @@ describe('CreateBillScreen', () => {
     });
 
     expect(hasExactText(renderer, 'Alex')).toBe(false);
+  });
+
+  it('shows custom bill item disclosure on the left and toggles row accessibility state', async () => {
+    const renderer = await renderScreen();
+
+    await switchToCustomSplitMode(renderer);
+    await addBillItem(renderer, 'Sparkling Water', '0.99');
+
+    let itemRow = findBillItemRowByTitle(renderer, 'Sparkling Water');
+    expect(itemRow.props.chevron).toBe(false);
+    expect(itemRow.props.leading).toBeTruthy();
+    expect(itemRow.props.accessibilityHint).toBe('Expands item split details');
+    expect(itemRow.props.accessibilityState).toEqual({ expanded: false });
+
+    await act(async () => {
+      itemRow.props.onPress();
+    });
+
+    itemRow = findBillItemRowByTitle(renderer, 'Sparkling Water');
+    expect(itemRow.props.accessibilityHint).toBe('Collapses item split details');
+    expect(itemRow.props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  it('keeps custom bill item delete separate from row expansion', async () => {
+    const renderer = await renderScreen();
+
+    await switchToCustomSplitMode(renderer);
+    await addBillItem(renderer, 'Sparkling Water', '0.99');
+
+    const itemRowBeforeDelete = findBillItemRowByTitle(renderer, 'Sparkling Water');
+    const removeButton = itemRowBeforeDelete.props.rightAccessory.props.children.find(
+      (child: any) => child?.props?.testID === 'bill-item-remove-0',
+    );
+    expect(removeButton).toBeTruthy();
+
+    await act(async () => {
+      removeButton.props.onPress();
+    });
+
+    const itemRow = findBillItemRowByTitle(renderer, 'Sparkling Water');
+    expect(itemRow.props.accessibilityState).toEqual({ expanded: false });
+
+    const deleteModal = renderer.root.findAllByType('ConfirmDestructiveModal').find(
+      (node: any) => node.props.title === 'Delete Bill Item?',
+    );
+    expect(deleteModal?.props.visible).toBe(true);
+    expect(deleteModal?.props.description).toBe('Delete "Sparkling Water" from this bill?');
   });
 });

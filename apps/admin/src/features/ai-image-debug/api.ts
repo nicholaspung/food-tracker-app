@@ -1,10 +1,10 @@
 import { pb } from '@/lib/pocketbase';
 
-export type AiImageDebugMode = 'storefront' | 'menu-scan';
+export type AiImageDebugMode = 'storefront' | 'menu-scan' | 'receipt-scan';
 
 export interface AiImageDebugRunMetadata {
   requestId: string;
-  endpoint: '/api/find-restaurant-name' | '/api/parse-menu';
+  endpoint: '/api/find-restaurant-name' | '/api/parse-menu' | '/api/parse-receipt';
   status: number | null;
   durationMs: number;
   fileName: string;
@@ -44,6 +44,28 @@ export interface MenuScanDebugResponse {
     observedRestaurantNames: string[];
     reason?: string;
   };
+  debug?: unknown;
+}
+
+export interface ReceiptScanDebugResponse {
+  requestCorrelation: string;
+  restaurantName?: string;
+  title?: string;
+  items: {
+    name: string;
+    price: number;
+    quantityText?: string;
+    confidence: 'high' | 'medium' | 'low' | 'unknown';
+    warning?: string;
+  }[];
+  subtotal?: number;
+  tax?: number;
+  tip?: number;
+  fees?: number;
+  discount?: number;
+  finalTotal?: number;
+  confidence: 'high' | 'medium' | 'low' | 'unknown';
+  warnings: string[];
   debug?: unknown;
 }
 
@@ -196,5 +218,21 @@ export async function runMenuScanDebug(input: MenuScanDebugInput) {
     });
   } catch (error) {
     throw toAiImageDebugApiError(error, 'Could not scan menu image.');
+  }
+}
+
+export async function runReceiptScanDebug(input: StorefrontDebugInput) {
+  const formData = buildImageFormData(input.file);
+
+  try {
+    return await pb.send<ReceiptScanDebugResponse>('/api/parse-receipt', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Request-ID': input.requestId,
+      },
+    });
+  } catch (error) {
+    throw toAiImageDebugApiError(error, 'Could not scan receipt image.');
   }
 }
