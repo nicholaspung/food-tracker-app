@@ -103,9 +103,6 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  footerButton: {
-    marginTop: theme.spacing.sm,
-  },
   errorActionsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -337,11 +334,6 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
               {receiptScanFlow.result.warnings[0]}
             </Text>
           ) : null}
-          <Button
-            label="Apply to Bill Draft"
-            onPress={returnToBillDraft}
-            style={styles.footerButton}
-          />
         </Card>
       ) : null}
 

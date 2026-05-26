@@ -1,6 +1,7 @@
 import {
   billDraftFacade,
   calculateSuggestedBillAmounts,
+  sanitizeBillNumericInput,
   type DraftBillItem,
   type DraftParticipant,
 } from '../features/bills/billDraft';
@@ -23,6 +24,15 @@ const participants: DraftParticipant[] = [
     isCurrentUser: false,
   },
 ];
+
+describe('bill numeric input sanitization', () => {
+  it('keeps only digits and one decimal point', () => {
+    expect(sanitizeBillNumericInput('$12.3a4')).toBe('12.34');
+    expect(sanitizeBillNumericInput('1.2.3')).toBe('1.23');
+    expect(sanitizeBillNumericInput('-10 apples')).toBe('10');
+    expect(sanitizeBillNumericInput('abc')).toBe('');
+  });
+});
 
 function buildBaseSubmissionInput(
   overrides: Partial<Parameters<typeof billDraftFacade.buildSubmission>[0]> = {},

@@ -175,6 +175,25 @@ export function toCurrencyInput(value: number): string {
   return value.toFixed(2);
 }
 
+export function sanitizeBillNumericInput(value: string): string {
+  let sanitizedValue = '';
+  let hasDecimalPoint = false;
+
+  for (const character of value) {
+    if (character >= '0' && character <= '9') {
+      sanitizedValue += character;
+      continue;
+    }
+
+    if (character === '.' && !hasDecimalPoint) {
+      sanitizedValue += character;
+      hasDecimalPoint = true;
+    }
+  }
+
+  return sanitizedValue;
+}
+
 export function roundToCurrency(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -627,9 +646,10 @@ function updateAdvancedSplitValue({
   totalAmount,
   value,
 }: UpdateAdvancedSplitValueInput): DraftAdvancedSplitEntry[] {
+  const sanitizedValue = sanitizeBillNumericInput(value);
   const nextSplits = splits.map((split) =>
     split.participantId === participantId
-      ? setAdvancedSplitRawValue(split, splitType, value)
+      ? setAdvancedSplitRawValue(split, splitType, sanitizedValue)
       : split,
   );
   const editedSplit = nextSplits.find(

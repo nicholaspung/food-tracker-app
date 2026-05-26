@@ -11,6 +11,7 @@ import {
   PageErrorToast,
   SegmentedControl,
   StatusPill,
+  StepProgressBar,
 } from '../components/shared';
 import {
   createEntityId,
@@ -31,6 +32,7 @@ import {
   isAdvancedSplitLocked,
   resolveSplitTarget,
   roundToCurrency,
+  sanitizeBillNumericInput,
   sanitizeParticipantName,
   toCurrencyInput,
   type CreateBillSplitMode,
@@ -47,7 +49,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Card, Input, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
 import { BillPayerAndTotalsSection } from './createBill/BillPayerAndTotalsSection';
 import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
@@ -58,6 +60,34 @@ type CreateBillExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
+type CreateBillWizardStep = 'splitType' | 'source' | 'details' | 'items' | 'review';
+
+const BASIC_BILL_STEPS = [
+  { label: 'Split Type' },
+  { label: 'Details' },
+  { label: 'Review' },
+];
+const CUSTOM_BILL_STEPS = [
+  { label: 'Split Type' },
+  { label: 'Source' },
+  { label: 'Details' },
+  { label: 'Items' },
+  { label: 'Review' },
+];
+const BASIC_BILL_STEP_INDEX: Record<CreateBillWizardStep, number> = {
+  splitType: 0,
+  source: 0,
+  details: 1,
+  items: 1,
+  review: 2,
+};
+const CUSTOM_BILL_STEP_INDEX: Record<CreateBillWizardStep, number> = {
+  splitType: 0,
+  source: 1,
+  details: 2,
+  items: 3,
+  review: 4,
+};
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -352,30 +382,20 @@ const useStyles = createThemedStyles((theme) => ({
   loadingRow: {
     gap: theme.spacing.xs,
   },
-  receiptScanAction: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    minHeight: theme.sizes.inputMinHeight,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-  },
-  receiptScanActionDisabled: {
-    opacity: 0.5,
-  },
-  receiptScanActionText: {
-    flex: 1,
-    gap: 2,
-  },
   receiptScanWarningCard: {
     backgroundColor: theme.colors.status.warningBg,
     borderColor: theme.colors.border.warning,
     borderWidth: 1,
     gap: theme.spacing.xs,
+  },
+  sourceActions: {
+    gap: theme.spacing.sm,
+  },
+  sourceActionButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'flex-start',
   },
 }));
 
@@ -387,6 +407,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const editBillId = route.params?.billId;
   const isEditMode = Boolean(editBillId);
 
+  const [createStep, setCreateStep] = useState<CreateBillWizardStep>('splitType');
   const [splitMode, setSplitMode] = useState<CreateBillSplitMode>('equal');
   const [billTitle, setBillTitle] = useState('');
   const [equalTotalInput, setEqualTotalInput] = useState('');
@@ -464,16 +485,77 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     showInlineKeyboardDismissButton: false,
     useDefaultReturnKeyType: false,
   } as const;
+  const handleEqualTotalInputChange = useCallback((value: string) => {
+    setEqualTotalInput(sanitizeBillNumericInput(value));
+  }, []);
+  const handleDraftItemPriceChange = useCallback((value: string) => {
+    setDraftItemPrice(sanitizeBillNumericInput(value));
+  }, []);
+  const handleTaxInputChange = useCallback((value: string) => {
+    setTaxInput(sanitizeBillNumericInput(value));
+  }, []);
+  const handleFeesInputChange = useCallback((value: string) => {
+    setFeesInput(sanitizeBillNumericInput(value));
+  }, []);
+  const handleTipInputChange = useCallback((value: string) => {
+    setTipInput(sanitizeBillNumericInput(value));
+  }, []);
+  const handleFinalTotalInputChange = useCallback((value: string) => {
+    setFinalTotalInput(sanitizeBillNumericInput(value));
+  }, []);
   const isEqualSplitMode = splitMode === 'equal';
   const isCustomSplitMode = splitMode === 'custom';
   const isManualSplitMode = splitMode === 'manual';
   const extrasSplitMode: 'equal' | 'proportional' = isCustomSplitMode ? 'proportional' : 'equal';
+
+  const resetCustomCalculationFields = useCallback(() => {
+    setDraftItemName('');
+    setDraftItemPrice('');
+    setItems([]);
+    setExpandedItemIds([]);
+    setTaxInput('');
+    setTipInput('');
+    setFeesInput('');
+    setFinalTotalInput('');
+    setIsCustomTipEnabled(false);
+    setCustomTipSplitType('amount');
+    setCustomTipSplits([]);
+    setReceiptScanWarnings([]);
+    setPendingReceiptScanResult(null);
+  }, []);
+
+  const handleSplitModeChange = useCallback(
+    (nextSplitMode: CreateBillSplitMode) => {
+      if (nextSplitMode === splitMode) {
+        return;
+      }
+
+      trackObservabilityEvent('CREATE_BILL_SPLIT_MODE_CHANGED', {
+        source: 'CreateBillScreen',
+        previousSplitMode: splitMode,
+        nextSplitMode,
+      });
+
+      if (splitMode === 'custom' || nextSplitMode === 'custom') {
+        resetCustomCalculationFields();
+      }
+
+      if (nextSplitMode !== 'manual') {
+        setOwedAmountOverrides({});
+      }
+
+      setErrorMessage(null);
+      setSplitMode(nextSplitMode);
+    },
+    [resetCustomCalculationFields, splitMode],
+  );
 
   useEffect(() => {
     if (!isEditMode) {
       return;
     }
 
+    setCreateStep('splitType');
     setSplitMode('equal');
     setBillTitle('');
     setEqualTotalInput('');
@@ -986,6 +1068,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       }));
       const scannedWarnings = [
         ...scanResult.warnings,
+        ...(scanResult.items.length === 0
+          ? ['No receipt items were found. Add at least one item before review.']
+          : []),
         ...scanResult.items
           .map((item) => item.warning?.trim())
           .filter((warning): warning is string => Boolean(warning)),
@@ -1025,12 +1110,20 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       if (!billTitle.trim()) {
         setBillTitle(scanResult.title?.trim() || scanResult.restaurantName?.trim() || 'Receipt Split');
       }
+      const hasResolvedBillTitle = Boolean(
+        billTitle.trim() ||
+          scanResult.title?.trim() ||
+          scanResult.restaurantName?.trim(),
+      );
       setIsCustomTipEnabled(false);
       setCustomTipSplits([]);
       setCustomTipSplitType('amount');
       setReceiptScanWarnings(uniqueWarnings);
       setErrorMessage(null);
       setPendingReceiptScanResult(null);
+      if (!isEditMode) {
+        setCreateStep(hasResolvedBillTitle && participants.length > 1 ? 'items' : 'details');
+      }
       appliedReceiptScanCorrelationRef.current = scanResult.requestCorrelation;
       trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_APPLIED', {
         source: 'CreateBillScreen',
@@ -1040,7 +1133,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         confidence: scanResult.confidence,
       });
     },
-    [billTitle, isEditMode],
+    [billTitle, isEditMode, participants.length],
   );
 
   useEffect(() => {
@@ -1282,6 +1375,89 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     return `Simple split • assigned to ${assignedCount} participants`;
   };
 
+  const getCustomItemsStepError = useCallback((): string | null => {
+    if (items.length === 0) {
+      return 'Add at least one item before review.';
+    }
+
+    for (const [itemIndex, item] of items.entries()) {
+      const itemName = item.name.trim() || `Item ${itemIndex + 1}`;
+      const parsedPrice = Number(item.price);
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+        return `Enter a valid price for ${itemName}.`;
+      }
+
+      if (item.splitMode === 'advanced') {
+        if (item.advancedSplits.length === 0) {
+          return `Add participants for complex split on ${itemName}.`;
+        }
+
+        const splitTotal = roundToCurrency(
+          item.advancedSplits.reduce((sum, split) => {
+            const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+            return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
+          }, 0),
+        );
+
+        if (
+          item.advancedSplits.some((split) => {
+            const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+            return !Number.isFinite(parsedValue) || parsedValue <= 0;
+          })
+        ) {
+          return `Split value is invalid for ${itemName}.`;
+        }
+
+        if (item.advancedSplitType === 'percentage' && Math.abs(splitTotal - 100) > 0.01) {
+          return `${itemName} percentages must total 100%.`;
+        }
+
+        if (
+          item.advancedSplitType === 'amount' &&
+          Math.abs(splitTotal - roundToCurrency(parsedPrice)) > 0.01
+        ) {
+          return `${itemName} amount splits must equal item price.`;
+        }
+
+        continue;
+      }
+
+      if (item.assignedParticipantIds.length === 0) {
+        return `Assign at least one participant for ${itemName}.`;
+      }
+    }
+
+    if (
+      !Number.isFinite(parsedTax) ||
+      parsedTax < 0 ||
+      !Number.isFinite(parsedTip) ||
+      parsedTip < 0 ||
+      !Number.isFinite(parsedFees) ||
+      parsedFees < 0
+    ) {
+      return 'Tax, tip, and fees must be valid non-negative values.';
+    }
+
+    if (hasFinalTotalOverride && (!Number.isFinite(parsedFinalTotal) || parsedFinalTotal <= 0)) {
+      return 'Final price must be a valid amount greater than zero.';
+    }
+
+    if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
+      return 'Custom tip split must match the tip total.';
+    }
+
+    return null;
+  }, [
+    hasFinalTotalOverride,
+    isCustomTipEnabled,
+    isCustomTipSplitBalanced,
+    items,
+    parsedFees,
+    parsedFinalTotal,
+    parsedTax,
+    parsedTip,
+  ]);
+
   const existingEvenModeItemId = isEditMode
     ? (billQuery.data?.items.find((item) => item.splitMode !== 'advanced')?.id ?? billQuery.data?.items[0]?.id)
     : undefined;
@@ -1291,6 +1467,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     : 'Build a split bill and confirm who owes what.';
   const primaryActionLabel = isCreating ? (isEditMode ? 'Saving...' : 'Creating...') : (isEditMode ? 'Save Bill' : 'Create Bill');
   const errorToastTitle = isEditMode ? 'Save bill failed' : 'Create bill failed';
+  const createSteps = isCustomSplitMode ? CUSTOM_BILL_STEPS : BASIC_BILL_STEPS;
+  const currentCreateStepIndex = isCustomSplitMode
+    ? CUSTOM_BILL_STEP_INDEX[createStep]
+    : BASIC_BILL_STEP_INDEX[createStep];
+  const createHeaderProgress = !isEditMode ? (
+    <StepProgressBar compact currentStep={currentCreateStepIndex} steps={createSteps} />
+  ) : null;
   const hasUnsavedChanges = useMemo(() => {
     if (isEditMode) {
       if (!isEditHydrated || !billQuery.data) {
@@ -1500,7 +1683,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         isEditMode,
         splitMode,
         queued: false,
-        billId: savedBill.id,
       });
       hasCompletedFlowRef.current = true;
       navigation.reset({
@@ -1528,11 +1710,154 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     }
   };
 
+  const handleCreateBackPress = () => {
+    if (createStep === 'splitType') {
+      exitMethodRef.current = 'header_back';
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+        return;
+      }
+      navigation.navigate('Bills');
+      return;
+    }
+
+    setErrorMessage(null);
+    if (createStep === 'source') {
+      setCreateStep('splitType');
+      return;
+    }
+
+    if (createStep === 'details') {
+      setCreateStep(isCustomSplitMode ? 'source' : 'splitType');
+      return;
+    }
+
+    if (createStep === 'items') {
+      setCreateStep('details');
+      return;
+    }
+
+    setCreateStep(isCustomSplitMode ? 'items' : 'details');
+  };
+
+  const validateDetailsStep = () => {
+    if (!billTitle.trim()) {
+      setErrorMessage('Bill name is required.');
+      return false;
+    }
+
+    if (participants.length <= 1) {
+      setErrorMessage('Add at least one other person to split with.');
+      return false;
+    }
+
+    if ((isEqualSplitMode || isManualSplitMode) && (!Number.isFinite(parsedEqualTotal) || parsedEqualTotal <= 0)) {
+      setErrorMessage('Enter a valid total bill price.');
+      return false;
+    }
+
+    setErrorMessage(null);
+    return true;
+  };
+
+  const handleCreatePrimaryPress = () => {
+    if (createStep === 'splitType') {
+      setErrorMessage(null);
+      setCreateStep(isCustomSplitMode ? 'source' : 'details');
+      return;
+    }
+
+    if (createStep === 'source') {
+      setErrorMessage(null);
+      setCreateStep('details');
+      return;
+    }
+
+    if (createStep === 'details') {
+      if (!validateDetailsStep()) {
+        return;
+      }
+      setCreateStep(isCustomSplitMode ? 'items' : 'review');
+      return;
+    }
+
+    if (createStep === 'items') {
+      const itemStepError = getCustomItemsStepError();
+      if (itemStepError) {
+        setErrorMessage(itemStepError);
+        return;
+      }
+      setErrorMessage(null);
+      setCreateStep('review');
+      return;
+    }
+
+    void handleCreateBill();
+  };
+
+  const createPrimaryAction = isEditMode
+    ? {
+        label: primaryActionLabel,
+        onPress: () => {
+          void handleCreateBill();
+        },
+        disabled: isCreating || (isEditMode && (!isEditHydrated || !billQuery.data)),
+      }
+    : {
+        label:
+          createStep === 'review'
+            ? isCreating ? 'Creating...' : 'Create Bill'
+            : createStep === 'source'
+              ? 'Enter Items Manually'
+              : 'Continue',
+        onPress: handleCreatePrimaryPress,
+        disabled: isCreating,
+        loading: createStep === 'review' && isCreating,
+      };
+
+  const createSecondaryAction = isEditMode
+    ? {
+        label: 'Cancel',
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          navigation.goBack();
+        },
+        disabled: isCreating,
+        variant: 'secondary' as const,
+      }
+    : createStep === 'splitType'
+      ? {
+          label: 'Cancel',
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              return;
+            }
+            navigation.navigate('Bills');
+          },
+          disabled: isCreating,
+          variant: 'secondary' as const,
+        }
+      : {
+          label: 'Back',
+          onPress: handleCreateBackPress,
+          disabled: isCreating,
+          variant: 'secondary' as const,
+        };
+
   return (
     <FeatureFormScreenScaffold
       bodyStyle={styles.body}
+      headerBottomCompact={!isEditMode}
+      headerBottomContent={createHeaderProgress}
       keyboardAware
       onBackPress={() => {
+        if (!isEditMode) {
+          handleCreateBackPress();
+          return;
+        }
+
         exitMethodRef.current = 'header_back';
         if (navigation.canGoBack()) {
           navigation.goBack();
@@ -1540,27 +1865,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         }
         navigation.navigate('Bills');
       }}
-      primaryAction={{
-        label: primaryActionLabel,
-        onPress: () => {
-          void handleCreateBill();
-        },
-        disabled: isCreating || (isEditMode && (!isEditHydrated || !billQuery.data)),
-      }}
-      secondaryAction={{
-        label: 'Cancel',
-        onPress: () => {
-          exitMethodRef.current = 'secondary_cancel';
-          navigation.goBack();
-        },
-        disabled: isCreating,
-        variant: 'secondary',
-      }}
+      primaryAction={createPrimaryAction}
+      secondaryAction={createSecondaryAction}
       subtitle={screenSubtitle}
       testID={isEditMode ? 'edit-bill-screen' : 'create-bill-screen'}
       title={screenTitle}
     >
-      {!isEditMode ? (
+      {!isEditMode && createStep === 'splitType' ? (
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="options-outline" size={16} />
@@ -1569,12 +1880,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           <SegmentedControl
             getOptionTestID={(value) => `bill-split-mode-${value}`}
             onChange={(value: CreateBillSplitMode) => {
-              trackObservabilityEvent('CREATE_BILL_SPLIT_MODE_CHANGED', {
-                source: 'CreateBillScreen',
-                previousSplitMode: splitMode,
-                nextSplitMode: value,
-              });
-              setSplitMode(value);
+              handleSplitModeChange(value);
             }}
             options={[
               { label: 'Equal', value: 'equal' },
@@ -1593,6 +1899,55 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
+      {!isEditMode && createStep === 'source' ? (
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={16} />
+            <Text style={styles.sectionTitle} variant="titleSm">Custom Split Source</Text>
+          </View>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
+            Start from a receipt photo or enter itemized bill details yourself.
+          </Text>
+          <View style={styles.sourceActions}>
+            <Button
+              disabled={!isOnline}
+              label="Scan Receipt"
+              onPress={() => {
+                trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_TAPPED', {
+                  source: 'CreateBillScreen',
+                  isEditMode,
+                  isOnline,
+                  itemCount: items.length,
+                });
+                navigation.navigate('ReceiptScan', {
+                  billId: editBillId,
+                  returnTo: 'CreateBill',
+                });
+              }}
+              style={styles.sourceActionButton}
+              testID="bill-source-scan-receipt-button"
+              variant="secondary"
+            />
+            <Button
+              label="Enter Items Manually"
+              onPress={() => {
+                setErrorMessage(null);
+                setCreateStep('details');
+              }}
+              style={styles.sourceActionButton}
+              testID="bill-source-manual-items-button"
+              variant="secondary"
+            />
+          </View>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
+            {isOnline
+              ? 'Receipt scans fill item and total details, then you assign participants in the bill draft.'
+              : 'Receipt scanning requires an internet connection. You can still enter items manually.'}
+          </Text>
+        </Card>
+      ) : null}
+
+      {isEditMode || createStep === 'details' ? (
       <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow}>
           <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
@@ -1605,7 +1960,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           value={billTitle}
         />
       </Card>
+      ) : null}
 
+      {isEditMode || createStep === 'details' ? (
       <BillParticipantPickerSection
         customParticipants={customParticipants}
         friendSearchQuery={friendSearchQuery}
@@ -1637,7 +1994,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
             trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
               source: 'CreateBillScreen',
-              friendId: friend.id,
               selected: nextSelectedFriendIdSet.has(friendId),
               selectedFriendCount: nextSelectedFriendIds.length,
             });
@@ -1657,8 +2013,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         }}
         showLoadMore={visibleFriends.length > 0 && Boolean(friendsQuery.hasNextPage)}
       />
+      ) : null}
 
-      {(isEqualSplitMode || isManualSplitMode) ? (
+      {(isEditMode || createStep === 'details') && (isEqualSplitMode || isManualSplitMode) ? (
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="cash-outline" size={16} />
@@ -1666,7 +2023,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           </View>
           <Input
             keyboardType="decimal-pad"
-            onChangeText={setEqualTotalInput}
+            onChangeText={handleEqualTotalInputChange}
             placeholder="0.00"
             testID="bill-total-bill-price-input"
             {...billNumericInputProps}
@@ -1680,7 +2037,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
-      {isCustomSplitMode ? (
+      {(isEditMode || createStep === 'items') && isCustomSplitMode ? (
         <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow}>
           <Ionicons color={theme.colors.text.secondary} name="cash-outline" size={16} />
@@ -1689,44 +2046,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Text style={styles.sectionHint} variant="bodySmCompact">
           Custom mode: add items, then choose simple or complex assignment per item.
         </Text>
-
-        <Pressable
-          accessibilityRole="button"
-          disabled={!isOnline}
-          onPress={() => {
-            trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_TAPPED', {
-              source: 'CreateBillScreen',
-              isEditMode,
-              isOnline,
-              itemCount: items.length,
-            });
-            navigation.navigate('ReceiptScan', {
-              billId: editBillId,
-              returnTo: 'CreateBill',
-            });
-          }}
-          style={({ pressed }) => [
-            styles.receiptScanAction,
-            !isOnline ? styles.receiptScanActionDisabled : null,
-            pressed ? { opacity: 0.8 } : null,
-          ]}
-          testID="bill-receipt-scan-button"
-        >
-          <Ionicons
-            color={isOnline ? theme.colors.text.info : theme.colors.text.muted}
-            name="receipt-outline"
-            size={22}
-          />
-          <View style={styles.receiptScanActionText}>
-            <Text variant="labelStrong">Scan Receipt</Text>
-            <Text tone="secondary" variant="bodySmCompact">
-              {isOnline
-                ? 'Use a receipt photo to fill itemized draft details.'
-                : 'Receipt scanning requires an internet connection.'}
-            </Text>
-          </View>
-          <Ionicons color={theme.colors.text.secondary} name="chevron-forward" size={18} />
-        </Pressable>
 
         <View style={styles.itemComposerRow}>
           <Input
@@ -1739,7 +2058,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           <Input
             containerStyle={styles.itemPriceInput}
             keyboardType="decimal-pad"
-            onChangeText={setDraftItemPrice}
+            onChangeText={handleDraftItemPriceChange}
             placeholder="0.00"
             testID="bill-item-price-input"
             {...billNumericInputProps}
@@ -1977,7 +2296,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                                         item.id,
                                         participant.id,
                                         item.advancedSplitType,
-                                        value,
+                                        sanitizeBillNumericInput(value),
                                       );
                                     }}
                                     placeholder="0.00"
@@ -2008,7 +2327,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
-      {isCustomSplitMode ? (
+      {(isEditMode || createStep === 'items') && isCustomSplitMode ? (
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="calculator-outline" size={16} />
@@ -2020,7 +2339,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               containerStyle={styles.tripleInputItem}
               keyboardType="decimal-pad"
               label="Tax"
-              onChangeText={setTaxInput}
+              onChangeText={handleTaxInputChange}
               placeholder="0.00"
               testID="bill-tax-input"
               {...billNumericInputProps}
@@ -2030,7 +2349,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               containerStyle={styles.tripleInputItem}
               keyboardType="decimal-pad"
               label="Fees"
-              onChangeText={setFeesInput}
+              onChangeText={handleFeesInputChange}
               placeholder="0.00"
               testID="bill-fees-input"
               {...billNumericInputProps}
@@ -2041,7 +2360,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 containerStyle={styles.tripleInputItem}
                 keyboardType="decimal-pad"
                 label="Tip"
-                onChangeText={setTipInput}
+                onChangeText={handleTipInputChange}
                 placeholder="0.00"
                 testID="bill-tip-input"
                 {...billNumericInputProps}
@@ -2076,7 +2395,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               <Input
                 keyboardType="decimal-pad"
                 label="Tip"
-                onChangeText={setTipInput}
+                onChangeText={handleTipInputChange}
                 placeholder="0.00"
                 testID="bill-custom-tip-input"
                 {...billNumericInputProps}
@@ -2128,7 +2447,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                         containerStyle={styles.advancedSplitInput}
                         keyboardType="decimal-pad"
                         onChangeText={(value) => {
-                          updateCustomTipSplitValue(participant.id, value);
+                          updateCustomTipSplitValue(participant.id, sanitizeBillNumericInput(value));
                         }}
                         placeholder="0.00"
                         testID={`bill-custom-tip-split-input-${participantIndex}`}
@@ -2150,7 +2469,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
-      {isCustomSplitMode ? (
+      {(isEditMode || createStep === 'items') && isCustomSplitMode ? (
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow} testID="bill-final-price-section">
             <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={16} />
@@ -2161,7 +2480,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           <Input
             keyboardType="decimal-pad"
             label="Final Price"
-            onChangeText={setFinalTotalInput}
+            onChangeText={handleFinalTotalInputChange}
             placeholder="0.00"
             testID="bill-final-price-input"
             {...billNumericInputProps}
@@ -2178,7 +2497,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
-      {receiptScanWarnings.length > 0 ? (
+      {(isEditMode || createStep === 'items') && receiptScanWarnings.length > 0 ? (
         <Card style={styles.receiptScanWarningCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.warning} name="alert-circle-outline" size={16} />
@@ -2195,6 +2514,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
+      {isEditMode || createStep === 'review' ? (
       <BillPayerAndTotalsSection
         isEqualSplitMode={isEqualSplitMode}
         isManualSplitMode={isManualSplitMode}
@@ -2208,7 +2528,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         onChangeOwedAmount={(participantId, value) => {
           setOwedAmountOverrides((currentValue) => ({
             ...currentValue,
-            [participantId]: value,
+            [participantId]: sanitizeBillNumericInput(value),
           }));
         }}
         onSelectPayer={(participantId) => {
@@ -2219,6 +2539,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           setIsPayerDropdownOpen((currentValue) => !currentValue);
         }}
       />
+      ) : null}
 
       <PageErrorToast
         actionLabel="Retry"

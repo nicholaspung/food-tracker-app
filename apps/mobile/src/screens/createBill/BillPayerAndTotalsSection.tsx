@@ -3,7 +3,11 @@ import { Pressable, View } from 'react-native';
 
 import { StatusPill, OptionList, OptionListRow } from '../../components/shared';
 import { formatCurrency } from '../../features/bills/billCalculations';
-import type { OwedAmountEntry, DraftParticipant } from '../../features/bills/billDraft';
+import {
+  sanitizeBillNumericInput,
+  type OwedAmountEntry,
+  type DraftParticipant,
+} from '../../features/bills/billDraft';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Input, Text } from '../../ui';
 
@@ -30,6 +34,19 @@ const billNumericInputProps = {
 const useStyles = createThemedStyles((theme) => ({
   owedAmountInput: {
     width: 120,
+  },
+  owedBalanceCallout: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  owedBalanceCalloutCopy: {
+    flex: 1,
   },
   owedAmountValue: {
     color: theme.colors.text.primary,
@@ -179,6 +196,31 @@ export function BillPayerAndTotalsSection({
     participants.find((participant) => participant.id === payerParticipantId) ??
     null;
   const selectedPayerLabel = selectedPayer?.name ?? 'Select payer';
+  const owedDelta = Math.round((previewTotal - owedTotal) * 100) / 100;
+  const balanceAmount = Math.abs(owedDelta);
+  const isOverTotal = owedDelta < -0.009;
+  const balanceTone = totalsMatch ? 'success' : isOverTotal ? 'danger' : 'warning';
+  const balanceLabel = isOverTotal ? 'Over assigned' : 'Remaining to assign';
+  const balanceMessage = totalsMatch
+    ? 'Owed amounts match the bill total.'
+    : isOverTotal
+      ? `${formatCurrency(balanceAmount)} over the bill total.`
+      : `${formatCurrency(balanceAmount)} left to assign.`;
+  const balanceIconName = totalsMatch
+    ? 'checkmark-circle-outline'
+    : isOverTotal
+      ? 'alert-circle-outline'
+      : 'information-circle-outline';
+  const balanceColor = totalsMatch
+    ? theme.colors.text.success
+    : isOverTotal
+      ? theme.colors.text.danger
+      : theme.colors.text.warning;
+  const balanceBorderColor = totalsMatch
+    ? theme.colors.border.success
+    : isOverTotal
+      ? theme.colors.fill.danger
+      : theme.colors.border.warning;
 
   return (
     <Card style={styles.sectionCard}>
@@ -306,7 +348,7 @@ export function BillPayerAndTotalsSection({
                   containerStyle={styles.owedAmountInput}
                   keyboardType="decimal-pad"
                   onChangeText={(value) => {
-                    onChangeOwedAmount(entry.participant.id, value);
+                    onChangeOwedAmount(entry.participant.id, sanitizeBillNumericInput(value));
                   }}
                   placeholder="0.00"
                   testID={`bill-owed-amount-input-${index}`}
@@ -355,11 +397,29 @@ export function BillPayerAndTotalsSection({
             {formatCurrency(owedTotal)}
           </Text>
         </View>
-        <Text tone={totalsMatch ? 'success' : 'danger'}>
-          {totalsMatch
-            ? 'Owed amounts match the bill total.'
-            : 'Owed amounts must match the bill total.'}
-        </Text>
+        <View style={styles.totalsRow}>
+          <Text style={styles.totalsLabel} variant="label">
+            {balanceLabel}
+          </Text>
+          <Text tone={balanceTone} variant="labelStrong">
+            {formatCurrency(balanceAmount)}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.owedBalanceCallout,
+            { borderColor: balanceBorderColor },
+          ]}
+        >
+          <Ionicons color={balanceColor} name={balanceIconName} size={18} />
+          <Text
+            style={styles.owedBalanceCalloutCopy}
+            tone={balanceTone}
+            variant="bodyLgBold"
+          >
+            {balanceMessage}
+          </Text>
+        </View>
       </View>
     </Card>
   );

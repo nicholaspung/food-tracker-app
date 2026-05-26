@@ -19,13 +19,27 @@ import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBr
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { formatCurrency } from '../features/bills/billCalculations';
+import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles } from '../theme';
-import { Card } from '../ui';
+import { Card, Text } from '../ui';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
-type BillFilter = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
+type BillFilter = 'you_owe' | 'you_are_owed' | 'settled';
+
+function formatBillListCreatedDate(createdAt: string): string {
+  const dateLabel = formatDisplayDate(createdAt, {
+    fallback: 'Recently',
+    options: {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    },
+  });
+
+  return `Created ${dateLabel}`;
+}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -33,6 +47,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   filterCard: {
     padding: theme.spacing.xs,
+  },
+  totalCard: {
+    gap: theme.spacing.xxs,
   },
   listCard: {
     borderColor: theme.colors.border.subtle,
@@ -82,6 +99,25 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
     return bills;
   }, [activeFilter, billsState.items]);
+  const activeBillTotal = useMemo(() => {
+    return filteredBills.reduce((sum, bill) => {
+      if (activeFilter === 'you_owe') {
+        return sum + bill.youOwe;
+      }
+
+      if (activeFilter === 'you_are_owed') {
+        return sum + bill.youAreOwed;
+      }
+
+      return sum;
+    }, 0);
+  }, [activeFilter, filteredBills]);
+  const showActiveBillTotal = activeFilter === 'you_owe' || activeFilter === 'you_are_owed';
+  const activeBillTotalTitle = activeFilter === 'you_owe' ? 'You owe' : "You're owed";
+  const activeBillTotalDescription =
+    activeFilter === 'you_owe'
+      ? `Across ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`
+      : `From ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`;
   const styles = useStyles();
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
@@ -142,7 +178,6 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
               setActiveFilter(nextFilter);
             }}
             options={[
-              { label: 'All', value: 'all' },
               { label: 'You Owe', value: 'you_owe' },
               { label: "You're Owed", value: 'you_are_owed' },
               { label: 'Settled', value: 'settled' },
@@ -150,6 +185,18 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
             value={activeFilter}
           />
         </Card>
+
+        {showActiveBillTotal ? (
+          <Card style={styles.totalCard} testID={`bills-total-${activeFilter}`}>
+            <Text tone="muted" variant="bodySmSemiBold">
+              {activeBillTotalTitle}
+            </Text>
+            <Text variant="displaySm">{formatCurrency(activeBillTotal)}</Text>
+            <Text tone="muted" variant="bodySm">
+              {activeBillTotalDescription}
+            </Text>
+          </Card>
+        ) : null}
 
         {pendingBillWrites.length > 0 ? (
           <View style={styles.pendingStack}>
@@ -180,13 +227,9 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           analyticsSource="BillsScreen"
           blockingErrorMessage="Could not load bills."
           emptyDescription={
-            activeFilter === 'all'
-              ? 'Create a split bill to get started.'
-              : activeFilter === 'you_owe'
-                ? 'No unpaid bills right now.'
-                : 'No bills found for this filter.'
+            activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
           }
-          emptyTitle={activeFilter === 'all' ? 'No bills yet' : 'No matching bills'}
+          emptyTitle="No matching bills"
           hasBlockingError={billsState.hasBlockingError}
           hasRefreshError={billsState.hasRefreshError}
           isLoading={billsQuery.isLoading}
@@ -204,14 +247,15 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
                 const statusLabel = bill.status === 'settled' ? 'Settled' : 'Active';
                 const participantLabel =
                   `${bill.participantCount} participant${bill.participantCount === 1 ? '' : 's'}`;
+                const createdLabel = formatBillListCreatedDate(bill.createdAt);
                 const summaryLabel =
                   bill.youOwe > 0
-                    ? `${participantLabel} • Owe ${formatCurrency(bill.youOwe)}`
+                    ? `${createdLabel} • ${participantLabel} • Owe ${formatCurrency(bill.youOwe)}`
                     : bill.youAreOwed > 0
-                      ? `${participantLabel} • Owed ${formatCurrency(bill.youAreOwed)}`
+                      ? `${createdLabel} • ${participantLabel} • Owed ${formatCurrency(bill.youAreOwed)}`
                       : bill.status === 'settled'
-                        ? `${participantLabel} • All settled`
-                        : `${participantLabel} • ${bill.pendingOtherParticipantCount} pending`;
+                        ? `${createdLabel} • ${participantLabel} • All settled`
+                        : `${createdLabel} • ${participantLabel} • ${bill.pendingOtherParticipantCount} pending`;
 
                 return (
                   <OptionListRow

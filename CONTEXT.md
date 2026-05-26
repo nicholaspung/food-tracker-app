@@ -28,6 +28,18 @@ _Avoid_: food product submit helper, food product mutation wrapper
 The in-progress bill split state before a Bill is saved, including participants, items, split modes, custom tip splits, derived totals, and submit payload construction.
 _Avoid_: bill form state, bill helper functions
 
+**Equal Split**:
+A **Bill Draft** mode where one total bill price is divided evenly across participants.
+_Avoid_: even split, simple split
+
+**Manual Split**:
+A **Bill Draft** mode where participants are chosen from the same basic setup as an **Equal Split**, but each participant's owed amount is entered manually and must match the total bill price.
+_Avoid_: custom split, equal split
+
+**Custom Split**:
+A **Bill Draft** mode where receipt line items, extras, and optional final-price adjustments determine participant owed amounts.
+_Avoid_: receipt split, manual split
+
 **Receipt Scan**:
 AI-assisted extraction from a transient receipt photo into a Custom **Bill Draft**.
 _Avoid_: receipt OCR, bill photo import
@@ -132,9 +144,22 @@ _Avoid_: tutorial flags
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
+- An **Equal Split** and **Manual Split** share bill name, participants, and total bill price setup.
+- A **Manual Split** differs from an **Equal Split** at review because the user enters each participant's owed amount instead of accepting an automatic even calculation.
+- **Equal Split** and **Custom Split** owed amounts are review-only; **Manual Split** is the only split mode where owed amounts are edited directly.
+- The Bill payer is the participant who initially paid the bill; new Bills mark the payer paid and other participants unpaid.
+- New Bills start with split mode selection; direct shortcuts into deeper split paths are deferred until the step-by-step Bill creation workflow is stable.
+- Switching Bill split modes preserves compatible identity and participant details, but resets calculation details that belong only to the previous mode.
+- A **Custom Split** starts by choosing between **Receipt Scan** and manual item entry.
+- Manual Bill creation paths may continue while offline, but **Receipt Scan** is online-only.
 - A **Receipt Scan** populates a Custom **Bill Draft** but does not save a Bill.
+- A **Receipt Scan** previews extraction results but leaves item editing, participant selection, and assignment inside the **Bill Draft** workflow.
+- A **Receipt Scan** may prefill **Custom Split** item details, but it does not change the **Custom Split** step order.
+- Returning from **Receipt Scan** lands on Bill details when bill name or participants are missing, otherwise it lands on item assignment.
 - A **Receipt Scan** may create zero or more **Receipt Line Items**.
 - A **Receipt Line Item** starts unassigned until the user chooses participants.
+- A **Receipt Scan** with no extracted line items may still prefill totals, but the **Custom Split** still requires at least one Bill item before review.
+- A positive-price **Receipt Line Item** must be assigned to at least one participant before a **Custom Split** can be reviewed.
 - Receipt images are not saved with Bills.
 - Raw receipt extraction debug output may be stored for admin debugging for failures, invalid responses, and low-confidence extractions, with a 30-day retention window.
 - **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
@@ -212,3 +237,6 @@ _Avoid_: tutorial flags
 - "next" in tasting planning was ambiguous between navigation and planning progress - resolved: it advances the **Tasting Plan** from restaurant selection to menu item selection.
 - "scanned menu items" was ambiguous between discovered catalog entries and selected tasting items - resolved: scanned items become restaurant menu catalog entries first, then the leader selects items into the **Tasting Plan**.
 - "remove" in tasting planning was ambiguous between restaurant removal and menu item removal - resolved: restaurant removal belongs to restaurant selection, while menu item removal belongs to the menu item picker.
+- "manual" in bill splitting was ambiguous with **Equal Split** because the setup screens are the same - resolved: **Manual Split** keeps the same setup but requires manually entered owed amounts at review.
+- "custom" in bill splitting was ambiguous with receipt scanning - resolved: **Custom Split** may start from a **Receipt Scan** or from manual item entry.
+- "receipt review" was ambiguous between extraction preview and draft editing - resolved: **Receipt Scan** only previews extraction results; **Bill Draft** owns editing and assignment.

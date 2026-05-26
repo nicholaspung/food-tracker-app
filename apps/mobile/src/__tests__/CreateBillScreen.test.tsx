@@ -132,6 +132,7 @@ jest.mock('../components/shared', () => ({
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
+  StepProgressBar: (props: Record<string, unknown>) => mockReact.createElement('StepProgressBar', props),
 }));
 
 jest.mock('../features', () => ({
@@ -384,7 +385,8 @@ describe('CreateBillScreen', () => {
     };
 
     mockedUseInfiniteQuery.mockReset();
-    mockedUseInfiniteQuery.mockImplementation(() => buildInfiniteQueryResult(friendsItems));
+    const friendsQueryResult = buildInfiniteQueryResult(friendsItems);
+    mockedUseInfiniteQuery.mockImplementation(() => friendsQueryResult);
 
     mockedUseQuery.mockReset();
     mockedUseQuery.mockImplementation(() => buildBillQueryResult(billQueryData));
@@ -463,7 +465,16 @@ describe('CreateBillScreen', () => {
   }
 
   async function addTypedParticipant(renderer: TestRenderer, name: string) {
-    const pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
+    let pickerTrigger = renderer.root.findAllByType('OptionListRow').find(
+      (node: any) => node.props.testID === 'bill-friends-picker-trigger',
+    );
+    if (!pickerTrigger) {
+      const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+      await act(async () => {
+        scaffold.props.primaryAction.onPress();
+      });
+      pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
+    }
 
     await act(async () => {
       pickerTrigger.props.onPress();
@@ -499,6 +510,45 @@ describe('CreateBillScreen', () => {
     });
   }
 
+  async function switchToManualSplitMode(renderer: TestRenderer) {
+    const splitModeControl = renderer.root.findAllByType('SegmentedControl').find(
+      (node: any) => node.props.value === 'equal',
+    );
+    if (!splitModeControl) {
+      throw new Error('Could not find split mode control.');
+    }
+
+    await act(async () => {
+      splitModeControl.props.onChange('manual');
+    });
+  }
+
+  async function goToCustomItemsStep(renderer: TestRenderer) {
+    await switchToCustomSplitMode(renderer);
+
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    const manualItemsButton = findByTestId(renderer, 'Button', 'bill-source-manual-items-button');
+    await act(async () => {
+      manualItemsButton.props.onPress();
+    });
+
+    const billNameInput = findByTestId(renderer, 'Input', 'bill-name-input');
+    await act(async () => {
+      billNameInput.props.onChangeText('Custom Dinner');
+    });
+
+    await addTypedParticipant(renderer, 'Alex');
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+  }
+
   async function addBillItem(renderer: TestRenderer, name: string, price: string) {
     const itemNameInput = findByTestId(renderer, 'Input', 'bill-item-name-input');
     await act(async () => {
@@ -527,7 +577,7 @@ describe('CreateBillScreen', () => {
 
     await addTypedParticipant(renderer, 'Alex');
 
-    expect(hasExactText(renderer, 'Alex')).toBe(true);
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe('Alex');
   });
 
   it('submits a typed participant in the bill payload', async () => {
@@ -546,6 +596,9 @@ describe('CreateBillScreen', () => {
     });
 
     const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
     await act(async () => {
       scaffold.props.primaryAction.onPress();
     });
@@ -572,6 +625,68 @@ describe('CreateBillScreen', () => {
     );
   });
 
+  it('filters non-numeric characters from bill total input', async () => {
+    const renderer = await renderScreen();
+
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    const totalInput = findByTestId(renderer, 'Input', 'bill-total-bill-price-input');
+    await act(async () => {
+      totalInput.props.onChangeText('$4a0..50');
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-total-bill-price-input').props.value).toBe('40.50');
+  });
+
+  it('filters non-numeric characters from custom split numeric inputs', async () => {
+    const renderer = await renderScreen();
+
+    await goToCustomItemsStep(renderer);
+
+    const itemPriceInput = findByTestId(renderer, 'Input', 'bill-item-price-input');
+    await act(async () => {
+      itemPriceInput.props.onChangeText('$1a2.3.4');
+    });
+    expect(findByTestId(renderer, 'Input', 'bill-item-price-input').props.value).toBe('12.34');
+
+    const taxInput = findByTestId(renderer, 'Input', 'bill-tax-input');
+    const feesInput = findByTestId(renderer, 'Input', 'bill-fees-input');
+    const tipInput = findByTestId(renderer, 'Input', 'bill-tip-input');
+    const finalTotalInput = findByTestId(renderer, 'Input', 'bill-final-price-input');
+    await act(async () => {
+      taxInput.props.onChangeText('tax 1.2.3');
+      feesInput.props.onChangeText('fee 4.5.6');
+      tipInput.props.onChangeText('tip 7.8.9');
+      finalTotalInput.props.onChangeText('total 10.1.2');
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-tax-input').props.value).toBe('1.23');
+    expect(findByTestId(renderer, 'Input', 'bill-fees-input').props.value).toBe('4.56');
+    expect(findByTestId(renderer, 'Input', 'bill-tip-input').props.value).toBe('7.89');
+    expect(findByTestId(renderer, 'Input', 'bill-final-price-input').props.value).toBe('10.12');
+
+    const customTipButton = findByTestId(renderer, 'Pressable', 'bill-enable-custom-tip-button');
+    await act(async () => {
+      customTipButton.props.onPress();
+    });
+
+    const customTipInput = findByTestId(renderer, 'Input', 'bill-custom-tip-input');
+    await act(async () => {
+      customTipInput.props.onChangeText('$8x.9.0');
+    });
+
+    const customTipSplitInput = findByTestId(renderer, 'Input', 'bill-custom-tip-split-input-0');
+    await act(async () => {
+      customTipSplitInput.props.onChangeText('split 1.2.5');
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-custom-tip-input').props.value).toBe('8.90');
+    expect(findByTestId(renderer, 'Input', 'bill-custom-tip-split-input-0').props.value).toBe('1.25');
+  });
+
   it('preserves a non-friend participant in edit mode', async () => {
     billQueryData = buildBill();
 
@@ -587,11 +702,27 @@ describe('CreateBillScreen', () => {
     ).toBe(false);
   });
 
+  it('does not show receipt scanning when editing a custom bill', async () => {
+    billQueryData = buildBill({
+      extrasSplitMode: 'proportional',
+      splitMode: 'itemized',
+    });
+
+    const renderer = await renderScreen({ billId: 'bill_1' });
+
+    expect(
+      renderer.root.findAllByType('Pressable').some(
+        (node: any) => node.props.testID === 'bill-receipt-scan-button',
+      ),
+    ).toBe(false);
+    expect(hasExactText(renderer, 'Scan Receipt')).toBe(false);
+  });
+
   it('removes a typed participant and updates the participant-dependent UI', async () => {
     const renderer = await renderScreen();
 
     await addTypedParticipant(renderer, 'Alex');
-    expect(hasExactText(renderer, 'Alex')).toBe(true);
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe('Alex');
 
     const pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
     await act(async () => {
@@ -608,13 +739,13 @@ describe('CreateBillScreen', () => {
       participantPickerModal.props.primaryAction.onPress();
     });
 
-    expect(hasExactText(renderer, 'Alex')).toBe(false);
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).not.toBe('Alex');
   });
 
   it('shows custom bill item disclosure on the left and toggles row accessibility state', async () => {
     const renderer = await renderScreen();
 
-    await switchToCustomSplitMode(renderer);
+    await goToCustomItemsStep(renderer);
     await addBillItem(renderer, 'Sparkling Water', '0.99');
 
     let itemRow = findBillItemRowByTitle(renderer, 'Sparkling Water');
@@ -635,7 +766,7 @@ describe('CreateBillScreen', () => {
   it('keeps custom bill item delete separate from row expansion', async () => {
     const renderer = await renderScreen();
 
-    await switchToCustomSplitMode(renderer);
+    await goToCustomItemsStep(renderer);
     await addBillItem(renderer, 'Sparkling Water', '0.99');
 
     const itemRowBeforeDelete = findBillItemRowByTitle(renderer, 'Sparkling Water');
@@ -656,5 +787,51 @@ describe('CreateBillScreen', () => {
     );
     expect(deleteModal?.props.visible).toBe(true);
     expect(deleteModal?.props.description).toBe('Delete "Sparkling Water" from this bill?');
+  });
+
+  it('shows the remaining or over amount while editing manual owed amounts', async () => {
+    const renderer = await renderScreen();
+
+    await switchToManualSplitMode(renderer);
+
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    const billNameInput = findByTestId(renderer, 'Input', 'bill-name-input');
+    await act(async () => {
+      billNameInput.props.onChangeText('Manual Dinner');
+    });
+
+    await addTypedParticipant(renderer, 'Alex');
+
+    const totalInput = findByTestId(renderer, 'Input', 'bill-total-bill-price-input');
+    await act(async () => {
+      totalInput.props.onChangeText('40.00');
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    const firstOwedInput = findByTestId(renderer, 'Input', 'bill-owed-amount-input-0');
+    const secondOwedInput = findByTestId(renderer, 'Input', 'bill-owed-amount-input-1');
+    await act(async () => {
+      firstOwedInput.props.onChangeText('$1a0');
+      secondOwedInput.props.onChangeText('15');
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-owed-amount-input-0').props.value).toBe('10');
+    expect(hasExactText(renderer, 'Remaining to assign')).toBe(true);
+    expect(hasExactText(renderer, '$15.00 left to assign.')).toBe(true);
+
+    await act(async () => {
+      secondOwedInput.props.onChangeText('35');
+    });
+
+    expect(hasExactText(renderer, 'Over assigned')).toBe(true);
+    expect(hasExactText(renderer, '$5.00 over the bill total.')).toBe(true);
   });
 });

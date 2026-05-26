@@ -547,7 +547,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                 onPress={() => {
                   trackObservabilityEvent('BILL_DETAIL_EDIT_TAPPED', {
                     source: 'BillDetailScreen',
-                    billId: bill.id,
                     status: bill.status,
                   });
                   navigation.navigate('CreateBill', { billId: bill.id });
