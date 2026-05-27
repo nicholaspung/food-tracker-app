@@ -1,7 +1,8 @@
-import { ClientResponseError, type RecordModel } from 'pocketbase';
+import type { RecordModel } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import { trackObservabilityEvent } from '../../observability';
+import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -331,35 +332,8 @@ export async function confirmUserEmailVerification(token: string): Promise<void>
   }
 }
 
-function resolveErrorProperties(error: unknown): {
-  errorMessage: string;
-  errorType: string;
-  statusCode?: number;
-} {
-  if (error instanceof ClientResponseError) {
-    const statusCode = Number.isFinite(error.status) && error.status > 0 ? error.status : undefined;
-
-    return {
-      errorMessage:
-        typeof error.response?.message === 'string' && error.response.message.trim().length > 0
-          ? error.response.message
-          : error.message,
-      errorType: 'ClientResponseError',
-      statusCode,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      errorMessage: error.message,
-      errorType: error.name,
-    };
-  }
-
-  return {
-    errorMessage: String(error),
-    errorType: 'unknown_error',
-  };
+function resolveErrorProperties(error: unknown) {
+  return buildSafeTelemetryErrorProperties(error);
 }
 
 function resolveApiRequestHeaders(init: ApiRequestInit): Record<string, string> | undefined {

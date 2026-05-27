@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { useFriendWrites } from '../features';
+import { resolveOwnFriendCode, sanitizeFriendCode, useFriendWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -29,19 +29,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function sanitizeFriendCode(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8);
-}
-
-function generateFriendCode(userId: string | undefined): string {
-  if (!userId) {
-    return 'LOCAL000';
-  }
-
-  const cleanId = userId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return cleanId.slice(0, 8).padEnd(8, 'X');
-}
-
 export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const styles = useStyles();
   const friendWrites = useFriendWrites();
@@ -52,7 +39,10 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const myFriendCode = useMemo(() => generateFriendCode(user?.id), [user?.id]);
+  const myFriendCode = useMemo(
+    () => resolveOwnFriendCode(user?.id, user?.friendCode),
+    [user?.friendCode, user?.id],
+  );
 
   const handleBack = () => {
     if (navigation.canGoBack()) {

@@ -1,11 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PENDING_FRIEND_SUGGESTION_STORAGE_KEY = 'pending_friend_suggestion_v1';
+export const PENDING_FRIEND_SUGGESTION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PendingFriendSuggestion {
   inviterId: string;
   inviterDisplayName?: string;
-  newUserEmail: string;
+  invitedUserId: string;
+  createdAt: number;
+  expiresAt: number;
 }
 
 function isPendingFriendSuggestion(value: unknown): value is PendingFriendSuggestion {
@@ -17,13 +20,41 @@ function isPendingFriendSuggestion(value: unknown): value is PendingFriendSugges
   return (
     typeof candidate.inviterId === 'string' &&
     candidate.inviterId.trim().length > 0 &&
-    typeof candidate.newUserEmail === 'string' &&
-    candidate.newUserEmail.trim().length > 0 &&
+    typeof candidate.invitedUserId === 'string' &&
+    candidate.invitedUserId.trim().length > 0 &&
+    typeof candidate.createdAt === 'number' &&
+    Number.isFinite(candidate.createdAt) &&
+    typeof candidate.expiresAt === 'number' &&
+    Number.isFinite(candidate.expiresAt) &&
+    candidate.expiresAt > candidate.createdAt &&
     (candidate.inviterDisplayName === undefined || typeof candidate.inviterDisplayName === 'string')
   );
 }
 
-export async function savePendingFriendSuggestion(suggestion: PendingFriendSuggestion): Promise<void> {
+export function createPendingFriendSuggestion(input: {
+  inviterId: string;
+  inviterDisplayName?: string;
+  invitedUserId: string;
+  now?: number;
+}): PendingFriendSuggestion {
+  const createdAt = input.now ?? Date.now();
+  return {
+    inviterId: input.inviterId,
+    inviterDisplayName: input.inviterDisplayName,
+    invitedUserId: input.invitedUserId,
+    createdAt,
+    expiresAt: createdAt + PENDING_FRIEND_SUGGESTION_TTL_MS,
+  };
+}
+
+export async function savePendingFriendSuggestion(
+  input: Omit<PendingFriendSuggestion, 'createdAt' | 'expiresAt'> | PendingFriendSuggestion,
+): Promise<void> {
+  const suggestion =
+    'createdAt' in input && 'expiresAt' in input
+      ? input
+      : createPendingFriendSuggestion(input);
+
   await AsyncStorage.setItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY, JSON.stringify(suggestion));
 }
 
@@ -36,6 +67,11 @@ export async function getPendingFriendSuggestion(): Promise<PendingFriendSuggest
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isPendingFriendSuggestion(parsed)) {
+      await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+      return null;
+    }
+
+    if (parsed.expiresAt <= Date.now()) {
       await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
       return null;
     }

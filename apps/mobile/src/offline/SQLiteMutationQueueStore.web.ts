@@ -1,6 +1,7 @@
 import type {
   EnqueueMutationInput,
   MutationStatus,
+  MutationQueueRetentionCleanupResult,
   MutationQueueStats,
   MutationQueueStore,
   QueuedMutation,
@@ -137,6 +138,21 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     const existingMutations = this.readMutations();
     this.writeMutations([]);
     return existingMutations.length;
+  }
+
+  async cleanupRetainedMutations(
+    cutoffTimestamp: number,
+  ): Promise<MutationQueueRetentionCleanupResult> {
+    const existingMutations = this.readMutations();
+    const retainedMutations = existingMutations.filter(
+      (mutation) => mutation.status !== 'failed' || mutation.updatedAt >= cutoffTimestamp,
+    );
+
+    this.writeMutations(retainedMutations);
+
+    return {
+      removedCount: existingMutations.length - retainedMutations.length,
+    };
   }
 
   async getStats(): Promise<MutationQueueStats> {

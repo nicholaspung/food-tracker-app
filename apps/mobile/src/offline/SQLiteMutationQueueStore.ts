@@ -4,6 +4,7 @@ import { getEnvironmentDatabaseName } from '../config/persistence';
 import type {
   EnqueueMutationInput,
   MutationMethod,
+  MutationQueueRetentionCleanupResult,
   MutationQueueStats,
   MutationQueueStore,
   MutationStatus,
@@ -262,6 +263,24 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     const database = await this.getDatabase();
     const result = await database.runAsync(`DELETE FROM ${TABLE_NAME};`);
     return result.changes;
+  }
+
+  async cleanupRetainedMutations(
+    cutoffTimestamp: number,
+  ): Promise<MutationQueueRetentionCleanupResult> {
+    const database = await this.getDatabase();
+    const result = await database.runAsync(
+      `
+      DELETE FROM ${TABLE_NAME}
+      WHERE status = 'failed'
+        AND updated_at < ?;
+      `,
+      cutoffTimestamp,
+    );
+
+    return {
+      removedCount: result.changes,
+    };
   }
 
   async getStats(): Promise<MutationQueueStats> {

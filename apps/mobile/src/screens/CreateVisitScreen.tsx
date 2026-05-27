@@ -737,7 +737,7 @@ export function CreateVisitScreen({
       setCrossLocationItemErrorMessage(null);
 
       try {
-        const createdItem = await menuItemCatalogWrites.createMenuItem({
+        const createResult = await menuItemCatalogWrites.createMenuItem({
           restaurantId: selectedRestaurantId,
           name: historyItem.name,
           createdBy: authenticatedUserId,
@@ -745,7 +745,14 @@ export function CreateVisitScreen({
           isFromOCR: false,
         });
 
-        toggleMenuItemSelection(createdItem);
+        if (createResult.status === 'blocked') {
+          setCrossLocationItemErrorMessage(
+            'Adding menu items from matching locations requires internet connection.',
+          );
+          return;
+        }
+
+        toggleMenuItemSelection(createResult.result);
       } catch {
         setCrossLocationItemErrorMessage('Could not add this item to the restaurant menu.');
       } finally {

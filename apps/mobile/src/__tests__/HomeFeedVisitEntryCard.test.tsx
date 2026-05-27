@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { HomeFeedVisitEntryCard } from '../components/shared/HomeFeedVisitEntryCard';
+import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 
 const mockReact = React;
 const theme = {
@@ -117,6 +118,21 @@ jest.mock('../components/shared/StatusPill', () => ({
     mockReact.createElement('StatusPill', props),
 }));
 
+function flattenStyle(style: unknown) {
+  const entries = Array.isArray(style) ? style : [style];
+
+  return entries.reduce<Record<string, unknown>>((accumulator, entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return accumulator;
+    }
+
+    return {
+      ...accumulator,
+      ...entry,
+    };
+  }, {});
+}
+
 function createVisitRecord() {
   return {
     createdAt: '2026-04-18T08:00:00.000Z',
@@ -180,5 +196,37 @@ describe('HomeFeedVisitEntryCard', () => {
         testID: 'home-feed-visit-item-item-1',
       }),
     ).toHaveLength(0);
+  });
+
+  it('renders item ratings through the shared feed rating display', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={createVisitRecord()}
+        />,
+      );
+    });
+
+    const ratingDisplay = renderer.root.findByProps({
+      testID: 'home-feed-visit-item-rating-item-1',
+    });
+    const ratingDot = ratingDisplay.findAllByType('View')[1];
+
+    expect(getRatingColor).toHaveBeenCalledWith(theme, 4);
+    expect(getRatingLabel).toHaveBeenCalledWith(4);
+    expect(flattenStyle(ratingDot.props.style)).toMatchObject({
+      backgroundColor: 'rating-color',
+      height: 10,
+      width: 10,
+    });
+    expect(
+      ratingDisplay.findAll(
+        (node: { type: unknown; props: { children?: React.ReactNode } }) =>
+          node.type === 'Text' && node.props.children === 'Great',
+      ),
+    ).toHaveLength(1);
   });
 });

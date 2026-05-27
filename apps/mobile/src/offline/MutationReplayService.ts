@@ -1,4 +1,5 @@
 import { trackObservabilityEvent } from '../observability';
+import { buildSafeTelemetryErrorProperties } from '../observability/telemetryError';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { computeRetryDelayMs } from './retryPolicy';
 import type {
@@ -12,6 +13,8 @@ import type {
 
 type SyncListener = (snapshot: SyncSnapshot) => void;
 type QueueClearTrigger = 'auth_change' | 'logout';
+
+export const OFFLINE_QUEUE_FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_SNAPSHOT: SyncSnapshot = {
   isInitialized: false,
@@ -62,6 +65,7 @@ export class MutationReplayService {
       await this.refreshSnapshot({
         isInitialized: true,
       });
+      void this.runRetentionCleanup();
     } catch (error) {
       this.started = false;
       throw error;
@@ -93,7 +97,10 @@ export class MutationReplayService {
         method: input.method,
         mutationTarget: resolveMutationTarget(input.url),
         operationName,
-        ...resolveErrorProperties(error),
+        ...buildSafeTelemetryErrorProperties({
+          error,
+          sourceOperation: operationName,
+        }),
       });
       throw error;
     }
@@ -241,15 +248,18 @@ export class MutationReplayService {
           shouldStopRetrying ? 'SYNC_MUTATION_FAILED_TERMINAL' : 'SYNC_MUTATION_FAILED_RETRYABLE',
           {
             attempt: nextAttempt,
-            errorMessage,
             maxAttempts: nextMutation.maxAttempts,
             mutationId: nextMutation.id,
             mutationTarget: resolveMutationTarget(nextMutation.url),
             operationName: resolveOperationNameFromQueuedMutation(nextMutation),
             queueDepth: this.snapshot.queueDepth,
-            retryable: sendResult.retryable,
-            statusCode: sendResult.statusCode,
             trigger,
+            ...buildSafeTelemetryErrorProperties({
+              retryable: sendResult.retryable,
+              sourceOperation: resolveOperationNameFromQueuedMutation(nextMutation),
+              statusCode: sendResult.statusCode,
+              unsafeErrorMessage: errorMessage,
+            }),
           },
         );
       }
@@ -268,7 +278,7 @@ export class MutationReplayService {
       trackObservabilityEvent('SYNC_REPLAY_COMPLETED', {
         failedCount: this.snapshot.failedCount,
         hadError: replayError !== null,
-        ...resolveErrorProperties(replayError),
+        ...buildSafeTelemetryErrorProperties(replayError),
         queueDepth: this.snapshot.queueDepth,
         trigger,
       });
@@ -288,6 +298,28 @@ export class MutationReplayService {
 
     if (replayPromise) {
       await replayPromise;
+    }
+  }
+
+  private async runRetentionCleanup(): Promise<void> {
+    try {
+      const cleanupResult = await this.queueStore.cleanupRetainedMutations(
+        this.now() - OFFLINE_QUEUE_FAILED_RETENTION_MS,
+      );
+
+      if (cleanupResult.removedCount > 0) {
+        await this.refreshSnapshot();
+      }
+
+      trackObservabilityEvent('SYNC_QUEUE_RETENTION_CLEANUP_COMPLETED', {
+        removedCount: cleanupResult.removedCount,
+        queueDepth: this.snapshot.queueDepth,
+      });
+    } catch (error) {
+      trackObservabilityEvent('SYNC_QUEUE_RETENTION_CLEANUP_FAILED', {
+        ...buildSafeTelemetryErrorProperties(error),
+        queueDepth: this.snapshot.queueDepth,
+      });
     }
   }
 
@@ -377,25 +409,4 @@ function getHeaderValue(
   }
 
   return null;
-}
-
-function resolveErrorProperties(error: unknown): { errorMessage: string | null; errorType: string | null } {
-  if (!error) {
-    return {
-      errorMessage: null,
-      errorType: null,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      errorMessage: error.message,
-      errorType: error.name,
-    };
-  }
-
-  return {
-    errorMessage: String(error),
-    errorType: 'unknown_error',
-  };
 }

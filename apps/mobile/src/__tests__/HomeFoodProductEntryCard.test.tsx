@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { HomeFoodProductEntryCard } from '../components/shared/HomeFoodProductEntryCard';
+import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 
 const mockReact = React;
 const theme = {
@@ -148,6 +149,20 @@ describe('HomeFoodProductEntryCard', () => {
     expect(flattenedText).toContain('Mission District');
     expect(flattenedText).toContain('"Smooth and sweet"');
     expect(flattenedText).toContain('Great');
+    expect(getRatingColor).toHaveBeenCalledWith(theme, 4);
+    expect(getRatingLabel).toHaveBeenCalledWith(4);
+    const ratingDisplay = renderer.root.findByProps({
+      testID: 'home-food-product-entry-rating',
+    });
+    const ratingDot = ratingDisplay.findAllByType('View')[1];
+
+    expect(
+      flattenStyle(ratingDot.props.style),
+    ).toMatchObject({
+      backgroundColor: 'success',
+      height: 10,
+      width: 10,
+    });
     expect(
       renderer.root.findAll(
         (node: { type: unknown; props: { name?: string } }) =>

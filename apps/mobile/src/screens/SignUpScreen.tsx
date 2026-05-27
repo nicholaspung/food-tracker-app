@@ -220,7 +220,8 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     });
 
     try {
-      let pendingFriendSuggestion: PendingFriendSuggestion | null = null;
+      let pendingFriendSuggestionInviter: Pick<PendingFriendSuggestion, 'inviterId' | 'inviterDisplayName'> | null =
+        null;
 
       if (trimmedInviteCode) {
         try {
@@ -234,13 +235,12 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             typeof inviteLookup.inviter?.id === 'string' &&
             inviteLookup.inviter.id.trim().length > 0
           ) {
-            pendingFriendSuggestion = {
+            pendingFriendSuggestionInviter = {
               inviterId: inviteLookup.inviter.id,
               inviterDisplayName:
                 typeof inviteLookup.inviter.displayName === 'string'
                   ? inviteLookup.inviter.displayName
                   : undefined,
-              newUserEmail: trimmedEmail,
             };
           }
         } catch (inviteLookupError) {
@@ -252,7 +252,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         }
       }
 
-      await createCollectionRecord('users', {
+      const createdUser = await createCollectionRecord<{ id?: string }>('users', {
         name: trimmedName,
         email: trimmedEmail,
         ...(trimmedInviteCode ? { inviteCode: trimmedInviteCode } : {}),
@@ -272,6 +272,15 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       });
       await recordAuthRateLimitSuccess('signup', trimmedEmail);
       await refreshSignupRateLimit();
+
+      const createdUserId = typeof createdUser?.id === 'string' ? createdUser.id.trim() : '';
+      const pendingFriendSuggestion =
+        pendingFriendSuggestionInviter && createdUserId.length > 0
+          ? {
+              ...pendingFriendSuggestionInviter,
+              invitedUserId: createdUserId,
+            }
+          : null;
 
       if (pendingFriendSuggestion) {
         await savePendingFriendSuggestion(pendingFriendSuggestion);

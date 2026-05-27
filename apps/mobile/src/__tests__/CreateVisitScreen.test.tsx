@@ -681,7 +681,10 @@ describe('CreateVisitScreen', () => {
       restaurant: 'restaurant-1',
       visibility: 'friends',
     };
-    createMenuItem.mockResolvedValue(createdMenuItem);
+    createMenuItem.mockResolvedValue({
+      result: createdMenuItem,
+      status: 'completed',
+    });
     let renderer: any = null;
 
     await act(async () => {

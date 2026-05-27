@@ -23,7 +23,13 @@ import {
   markNoteUsed,
   updateVisit,
 } from '../features/store/featureStore';
+import type { CreateFeedbackInput } from '../features/store/featureStore';
 import type { QueuedMutation } from '../offline/types';
+
+const offlineFeedbackCreatePayload: CreateFeedbackInput = {
+  title: 'Offline draft feedback',
+  description: 'Offline draft feedback with details',
+};
 
 jest.mock('../features/store/featureStore', () => ({
   addRestaurantVisitRatingsToList: jest.fn(),
@@ -372,10 +378,7 @@ describe('featureOutboxOperations', () => {
     const handled = await replayFeatureOutboxMutation(
       createQueuedMutation({
         url: 'local://feature/feedback.create',
-        body: JSON.stringify({
-          kind: 'bug',
-          message: 'Offline draft feedback',
-        }),
+        body: JSON.stringify(offlineFeedbackCreatePayload),
         headers: {
           'X-Mobile-Write-Operation': 'feedback.create',
         },
@@ -384,10 +387,7 @@ describe('featureOutboxOperations', () => {
 
     expect(handled).toBe(true);
     expect(mockedCreateFeedback).toHaveBeenCalledWith(
-      {
-        kind: 'bug',
-        message: 'Offline draft feedback',
-      },
+      offlineFeedbackCreatePayload,
       {
         headers: {
           'X-Mobile-Write-Operation': 'feedback.create',

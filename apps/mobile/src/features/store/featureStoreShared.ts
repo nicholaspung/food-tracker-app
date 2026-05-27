@@ -2,6 +2,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import { trackObservabilityEvent } from '../../observability';
+import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 import type { ModerationContentStatus } from '../models';
 import type { PaginatedResult } from './featureStore';
 import type { CollectionPageResult } from './pocketbaseGateway';
@@ -36,20 +37,6 @@ function compactMutationProperties(
   return compacted;
 }
 
-function normalizeMutationError(error: unknown): { errorName: string; errorMessage: string } {
-  if (error instanceof Error) {
-    return {
-      errorName: error.name || 'Error',
-      errorMessage: error.message || 'Unknown error',
-    };
-  }
-
-  return {
-    errorName: 'UnknownError',
-    errorMessage: String(error),
-  };
-}
-
 export function nowIso(): string {
   return new Date().toISOString();
 }
@@ -75,11 +62,13 @@ export async function trackFeatureMutation<T>(
     });
     return result;
   } catch (error) {
-    const normalizedError = normalizeMutationError(error);
     trackObservabilityEvent('FEATURE_MUTATION_FAILED', {
       ...baseProperties,
       durationMs: Date.now() - startedAtMs,
-      ...normalizedError,
+      ...buildSafeTelemetryErrorProperties({
+        error,
+        sourceOperation: action,
+      }),
     });
     throw error;
   }

@@ -35,6 +35,10 @@ export interface MutationQueueStats {
   lastError: string | null;
 }
 
+export interface MutationQueueRetentionCleanupResult {
+  removedCount: number;
+}
+
 export interface MutationQueueStore {
   initialize(): Promise<void>;
   enqueue(input: EnqueueMutationInput): Promise<QueuedMutation>;
@@ -46,6 +50,7 @@ export interface MutationQueueStore {
   markTerminalFailure(id: string, error: string, at: number): Promise<void>;
   retryFailedMutations(at: number): Promise<number>;
   clearAll(): Promise<number>;
+  cleanupRetainedMutations(cutoffTimestamp: number): Promise<MutationQueueRetentionCleanupResult>;
   getStats(): Promise<MutationQueueStats>;
 }
 

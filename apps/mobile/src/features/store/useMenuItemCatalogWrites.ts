@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 
 import type { MenuItemRecord } from './featureStore';
+import { useConnectivity } from '../../providers/ConnectivityProvider';
 import {
   createCollectionRecord,
   updateCollectionRecord,
@@ -33,6 +34,25 @@ interface ApplyScannedMenuItemsInput {
 interface CreateMenuItemAndAddToTastingPlanInput extends CreateMenuItemInput {
   tastingRestaurantSuggestionId: string;
   tastingSessionId: string;
+}
+
+export type MenuItemCatalogWriteResult<T> =
+  | {
+      result: T;
+      status: 'completed';
+    }
+  | {
+      message: string;
+      status: 'blocked';
+    };
+
+function blocked(
+  message = 'Menu item catalog changes require internet connection.',
+): MenuItemCatalogWriteResult<never> {
+  return {
+    message,
+    status: 'blocked',
+  };
 }
 
 function upsertMenuItems(
@@ -96,6 +116,7 @@ function patchMenuItemInCache(
 
 export function useMenuItemCatalogWrites() {
   const queryClient = useQueryClient();
+  const { isOnline } = useConnectivity();
 
   const createMenuItem = useCallback(
     async ({
@@ -104,7 +125,11 @@ export function useMenuItemCatalogWrites() {
       name,
       restaurantId,
       visibility,
-    }: CreateMenuItemInput): Promise<MenuItemRecord> => {
+    }: CreateMenuItemInput): Promise<MenuItemCatalogWriteResult<MenuItemRecord>> => {
+      if (!isOnline) {
+        return blocked();
+      }
+
       const createdItem = await createCollectionRecord<MenuItemRecord>('menu_items', {
         restaurant: restaurantId,
         name,
@@ -115,13 +140,20 @@ export function useMenuItemCatalogWrites() {
 
       applyMenuItemsToCache(queryClient, restaurantId, [createdItem]);
       await invalidateRestaurantMenuItems(queryClient, restaurantId);
-      return createdItem;
+      return {
+        result: createdItem,
+        status: 'completed',
+      };
     },
-    [queryClient],
+    [isOnline, queryClient],
   );
 
   const updateMenuItem = useCallback(
-    async (input: UpdateMenuItemInput): Promise<void> => {
+    async (input: UpdateMenuItemInput): Promise<MenuItemCatalogWriteResult<void>> => {
+      if (!isOnline) {
+        return blocked();
+      }
+
       await updateCollectionRecord('menu_items', input.menuItemId, {
         name: input.name,
         ...(input.visibility ? { visibility: input.visibility } : {}),
@@ -129,8 +161,12 @@ export function useMenuItemCatalogWrites() {
 
       patchMenuItemInCache(queryClient, input);
       await invalidateRestaurantMenuItems(queryClient, input.restaurantId);
+      return {
+        result: undefined,
+        status: 'completed',
+      };
     },
-    [queryClient],
+    [isOnline, queryClient],
   );
 
   const applyScannedMenuItems = useCallback(
@@ -142,8 +178,15 @@ export function useMenuItemCatalogWrites() {
   );
 
   const createMenuItemAndAddToTastingPlan = useCallback(
-    async (input: CreateMenuItemAndAddToTastingPlanInput): Promise<MenuItemRecord> => {
-      const createdItem = await createMenuItem(input);
+    async (
+      input: CreateMenuItemAndAddToTastingPlanInput,
+    ): Promise<MenuItemCatalogWriteResult<MenuItemRecord>> => {
+      const createResult = await createMenuItem(input);
+      if (createResult.status === 'blocked') {
+        return createResult;
+      }
+
+      const createdItem = createResult.result;
       await suggestTastingMenuItem(input.tastingSessionId, input.tastingRestaurantSuggestionId, {
         menuItemId: createdItem.id,
         name: createdItem.name,
@@ -151,7 +194,10 @@ export function useMenuItemCatalogWrites() {
       await queryClient.invalidateQueries({
         queryKey: tastingSessionsQueryKeys.detail(input.tastingSessionId),
       });
-      return createdItem;
+      return {
+        result: createdItem,
+        status: 'completed',
+      };
     },
     [createMenuItem, queryClient],
   );

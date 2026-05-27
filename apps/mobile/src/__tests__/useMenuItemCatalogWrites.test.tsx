@@ -7,6 +7,7 @@ import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { suggestTastingMenuItem } from '../features/store/tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { useMenuItemCatalogWrites } from '../features/store/useMenuItemCatalogWrites';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
@@ -21,10 +22,15 @@ jest.mock('../features/store/tastingSessionsApiStore', () => ({
   suggestTastingMenuItem: jest.fn(),
 }));
 
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
+}));
+
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFunction<typeof createCollectionRecord>;
 const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 const mockedSuggestTastingMenuItem = suggestTastingMenuItem as jest.MockedFunction<typeof suggestTastingMenuItem>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
 describe('useMenuItemCatalogWrites', () => {
   const queryClient = {
@@ -36,6 +42,7 @@ describe('useMenuItemCatalogWrites', () => {
     jest.clearAllMocks();
     queryClient.invalidateQueries.mockResolvedValue(undefined);
     mockedUseQueryClient.mockReturnValue(queryClient as never);
+    mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
     mockedCreateCollectionRecord.mockResolvedValue({
       id: 'item_1',
       name: 'Shoyu Ramen',
@@ -77,13 +84,22 @@ describe('useMenuItemCatalogWrites', () => {
   it('creates menu items and updates restaurant menu item caches', async () => {
     const { hook, renderer } = await renderHook();
 
-    await hook.createMenuItem({
+    const result = await hook.createMenuItem({
       createdBy: 'user_1',
       name: 'Shoyu Ramen',
       restaurantId: 'restaurant_1',
       visibility: 'friends',
     });
 
+    expect(result).toEqual({
+      result: {
+        id: 'item_1',
+        name: 'Shoyu Ramen',
+        restaurant: 'restaurant_1',
+        visibility: 'friends',
+      },
+      status: 'completed',
+    });
     expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('menu_items', {
       createdBy: 'user_1',
       isFromOCR: false,
@@ -107,13 +123,17 @@ describe('useMenuItemCatalogWrites', () => {
   it('updates menu items and patches cached names and visibility', async () => {
     const { hook, renderer } = await renderHook();
 
-    await hook.updateMenuItem({
+    const result = await hook.updateMenuItem({
       menuItemId: 'item_1',
       name: 'Miso Ramen',
       restaurantId: 'restaurant_1',
       visibility: 'private',
     });
 
+    expect(result).toEqual({
+      result: undefined,
+      status: 'completed',
+    });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith('menu_items', 'item_1', {
       name: 'Miso Ramen',
       visibility: 'private',
@@ -158,7 +178,7 @@ describe('useMenuItemCatalogWrites', () => {
   it('creates menu items and adds them to a Tasting Plan behind the catalog Interface', async () => {
     const { hook, renderer } = await renderHook();
 
-    await hook.createMenuItemAndAddToTastingPlan({
+    const result = await hook.createMenuItemAndAddToTastingPlan({
       createdBy: 'user_1',
       name: 'Shoyu Ramen',
       restaurantId: 'restaurant_1',
@@ -167,6 +187,15 @@ describe('useMenuItemCatalogWrites', () => {
       visibility: 'friends',
     });
 
+    expect(result).toEqual({
+      result: {
+        id: 'item_1',
+        name: 'Shoyu Ramen',
+        restaurant: 'restaurant_1',
+        visibility: 'friends',
+      },
+      status: 'completed',
+    });
     expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('menu_items', {
       createdBy: 'user_1',
       isFromOCR: false,
@@ -185,6 +214,48 @@ describe('useMenuItemCatalogWrites', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.detail('session_1'),
     });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('blocks online-only menu item writes while offline', async () => {
+    mockedUseConnectivity.mockReturnValue({ isOnline: false } as ReturnType<typeof useConnectivity>);
+    const { hook, renderer } = await renderHook();
+
+    const createResult = await hook.createMenuItem({
+      createdBy: 'user_1',
+      name: 'Shoyu Ramen',
+      restaurantId: 'restaurant_1',
+      visibility: 'friends',
+    });
+    const updateResult = await hook.updateMenuItem({
+      menuItemId: 'item_1',
+      name: 'Miso Ramen',
+      restaurantId: 'restaurant_1',
+      visibility: 'private',
+    });
+    const tastingPlanResult = await hook.createMenuItemAndAddToTastingPlan({
+      createdBy: 'user_1',
+      name: 'Shoyu Ramen',
+      restaurantId: 'restaurant_1',
+      tastingRestaurantSuggestionId: 'restaurant_suggestion_1',
+      tastingSessionId: 'session_1',
+      visibility: 'friends',
+    });
+
+    expect(createResult).toEqual({
+      message: 'Menu item catalog changes require internet connection.',
+      status: 'blocked',
+    });
+    expect(updateResult).toEqual(createResult);
+    expect(tastingPlanResult).toEqual(createResult);
+    expect(mockedCreateCollectionRecord).not.toHaveBeenCalled();
+    expect(mockedUpdateCollectionRecord).not.toHaveBeenCalled();
+    expect(mockedSuggestTastingMenuItem).not.toHaveBeenCalled();
+    expect(queryClient.setQueryData).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
 
     await act(async () => {
       renderer.unmount();

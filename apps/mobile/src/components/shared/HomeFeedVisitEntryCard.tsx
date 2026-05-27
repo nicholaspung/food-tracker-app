@@ -3,11 +3,11 @@ import { Pressable, View } from 'react-native';
 
 import type { VisitRecord } from '../../features';
 import { buildPhotoThumbnailUrl } from '../../lib/photoUrls';
-import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { CachedRemoteImage } from './CachedRemoteImage';
 import { ExpandableText } from './ExpandableText';
+import { FeedRatingDisplay } from './FeedRatingDisplay';
 import { StatusPill } from './StatusPill';
 
 export interface HomeFeedPhotoRecord {
@@ -192,19 +192,6 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     minHeight: 56,
   },
-  ratingRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  ratingDot: {
-    borderRadius: theme.radii.pill,
-    height: 10,
-    width: 10,
-  },
-  ratingLabel: {
-    color: theme.colors.text.secondary,
-  },
   entryMeta: {
     color: theme.colors.text.muted,
   },
@@ -367,17 +354,10 @@ export function HomeFeedVisitEntryCard({
                 </View>
 
                 <View style={styles.foodItemRight}>
-                  <View style={styles.ratingRow}>
-                    <View
-                      style={[
-                        styles.ratingDot,
-                        { backgroundColor: getRatingColor(theme, item.rating) },
-                      ]}
-                    />
-                    <Text style={styles.ratingLabel} variant="bodySmTightMedium">
-                      {getRatingLabel(item.rating)}
-                    </Text>
-                  </View>
+                  <FeedRatingDisplay
+                    rating={item.rating}
+                    testID={`home-feed-visit-item-rating-${item.id}`}
+                  />
                   {primaryPhoto && onSharePhoto ? (
                     <Pressable
                       accessibilityLabel={`Share ${item.name}`}

@@ -619,7 +619,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     let isMounted = true;
 
     const loadPendingFriendSuggestion = async () => {
-      if (!user?.email) {
+      if (!user?.id) {
         return;
       }
 
@@ -628,7 +628,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         return;
       }
 
-      if (pendingSuggestion.newUserEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+      if (pendingSuggestion.invitedUserId.trim() !== user.id.trim()) {
+        await clearPendingFriendSuggestion();
         return;
       }
 
@@ -642,7 +643,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     return () => {
       isMounted = false;
     };
-  }, [user?.email]);
+  }, [user?.id]);
 
   const photosByFoodItem = useMemo(() => {
     const map = new Map<string, VisitPhotoRecord[]>();

@@ -13,6 +13,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { HomeScreen } from '../screens/HomeScreen';
 import {
+  clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
 import { useHomeFeedActionController } from '../screens/home/useHomeFeedActionController';
@@ -319,6 +320,9 @@ const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof 
 const mockedGetPendingFriendSuggestion = getPendingFriendSuggestion as jest.MockedFunction<
   typeof getPendingFriendSuggestion
 >;
+const mockedClearPendingFriendSuggestion = clearPendingFriendSuggestion as jest.MockedFunction<
+  typeof clearPendingFriendSuggestion
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseHomeFeedActionController = useHomeFeedActionController as jest.MockedFunction<
@@ -454,6 +458,8 @@ describe('HomeScreen', () => {
     mockedUseWriteTelemetry.mockReturnValue(jest.fn());
     mockedGetPendingFriendSuggestion.mockReset();
     mockedGetPendingFriendSuggestion.mockResolvedValue(null);
+    mockedClearPendingFriendSuggestion.mockReset();
+    mockedClearPendingFriendSuggestion.mockResolvedValue();
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
       user: {
@@ -1180,6 +1186,34 @@ describe('HomeScreen', () => {
     });
 
     expect(renderer.root.findAllByType('PageErrorToast')).toHaveLength(0);
+  });
+
+  it('clears pending friend suggestions for a different signed-in user', async () => {
+    mockedGetPendingFriendSuggestion.mockResolvedValueOnce({
+      inviterId: 'inviter-1',
+      invitedUserId: 'other-user',
+      createdAt: 1_000,
+      expiresAt: 2_000,
+    });
+
+    await act(async () => {
+      create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockedClearPendingFriendSuggestion).toHaveBeenCalled();
   });
 
   it('adds the first-row spacing path only to the first mine feed item', async () => {

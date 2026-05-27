@@ -32,6 +32,7 @@ import {
   type OfflineAwareFeatureWriteResult,
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
+import { useFeatureWriteSubmit } from './useFeatureWriteSubmit';
 
 interface DeleteRestaurantListWriteInput {
   listId: string;
@@ -114,33 +115,35 @@ async function syncRestaurantListSaveTargetCaches(
 export function useRestaurantListWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const {
+    errorMessage,
+    isSubmitting,
+    setErrorMessage,
+    submitFeatureWrite,
+  } = useFeatureWriteSubmit();
 
   const createListWrite = useCallback(
     async ({
       input,
       optimisticQueuedList,
-    }: CreateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> => {
-      const result = await writeFeature({
+    }: CreateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> =>
+      submitFeatureWrite({
         operationName: 'list.create',
         offline: {
           strategy: 'outbox',
           payload: input,
         },
         execute: () => createRestaurantList(input),
-      });
-
-      if (result.status === 'queued') {
-        await syncCreatedRestaurantListCaches(queryClient, { optimisticQueuedList });
-        showQueuedOfflineAlert('List');
-        return result;
-      }
-
-      await syncCreatedRestaurantListCaches(queryClient, { createdList: result.result });
-      return result;
-    },
-    [queryClient, writeFeature],
+        fallbackErrorMessage: 'Could not create list.',
+        onQueued: () => syncCreatedRestaurantListCaches(queryClient, { optimisticQueuedList }),
+        onSuccess: (createdList) => syncCreatedRestaurantListCaches(queryClient, { createdList }),
+        queuedToast: 'List',
+      }),
+    [queryClient, submitFeatureWrite],
   );
 
+  // TODO: Migrate the remaining Restaurant List write paths to useFeatureWriteSubmit
+  // after create proves the shared lifecycle preserves their existing cache and queue behavior.
   const updateListWrite = useCallback(
     async ({
       currentList,
@@ -400,11 +403,14 @@ export function useRestaurantListWrites() {
     createDefaultRestaurantList: createDefaultListWrite,
     createRestaurantList: createListWrite,
     deleteRestaurantList: deleteListWrite,
+    errorMessage,
+    isSubmitting,
     reorderRestaurant: reorderRestaurantWrite,
     removeRestaurantListSourceRating: removeSourceRatingWrite,
     removeRestaurantListUserRating: removeUserRatingWrite,
     saveBookmarkToDefaultList: saveBookmarkToDefaultListWrite,
     saveBookmarkToLists: saveBookmarkToListsWrite,
+    setErrorMessage,
     updateRestaurantList: updateListWrite,
   };
 }

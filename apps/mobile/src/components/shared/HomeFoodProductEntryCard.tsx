@@ -3,11 +3,11 @@ import { Pressable, View } from 'react-native';
 
 import type { FoodProductRecord } from '../../features';
 import { buildPhotoThumbnailUrl } from '../../lib/photoUrls';
-import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { CachedRemoteImage } from './CachedRemoteImage';
 import { ExpandableText } from './ExpandableText';
+import { FeedRatingDisplay } from './FeedRatingDisplay';
 import type { HomeFeedPhotoRecord } from './HomeFeedVisitEntryCard';
 import { StatusPill } from './StatusPill';
 
@@ -193,19 +193,6 @@ const useStyles = createThemedStyles((theme) => ({
   foodItemRightCompact: {
     minHeight: 0,
   },
-  ratingDot: {
-    borderRadius: theme.radii.pill,
-    height: 10,
-    width: 10,
-  },
-  ratingLabel: {
-    color: theme.colors.text.secondary,
-  },
-  ratingRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
   entryMeta: {
     color: theme.colors.text.muted,
   },
@@ -354,17 +341,10 @@ export function HomeFoodProductEntryCard({
           style={[styles.foodItemRight, !hasPhoto && styles.foodItemRightCompact]}
           testID="home-food-product-entry-right"
         >
-          <View style={styles.ratingRow}>
-            <View
-              style={[
-                styles.ratingDot,
-                { backgroundColor: getRatingColor(theme, resolvedFoodProduct.rating) },
-              ]}
-            />
-            <Text style={styles.ratingLabel} variant="bodySmTightMedium">
-              {getRatingLabel(resolvedFoodProduct.rating)}
-            </Text>
-          </View>
+          <FeedRatingDisplay
+            rating={resolvedFoodProduct.rating}
+            testID="home-food-product-entry-rating"
+          />
           {primaryPhoto && onSharePhoto ? (
             <Pressable
               accessibilityLabel={`Share ${resolvedFoodProduct.itemName}`}

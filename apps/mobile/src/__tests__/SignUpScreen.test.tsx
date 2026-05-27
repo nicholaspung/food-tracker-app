@@ -267,6 +267,46 @@ describe('SignUpScreen', () => {
     );
   });
 
+  it('saves pending friend suggestions without persisting the invited email', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword,
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedSendApiRequest.mockResolvedValueOnce({
+      hasInviter: true,
+      inviter: {
+        displayName: 'Taylor',
+        id: 'inviter-1',
+      },
+    });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<SignUpScreen navigation={navigation as never} route={inviteCodeRoute} />);
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-email-input', 'USER@example.com');
+    setInputValue(renderer, 'signup-invite-code-input', 'invite123');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'signup-submit-button' }).props.onPress();
+    });
+
+    expect(mockedSavePendingFriendSuggestion).toHaveBeenCalledWith({
+      inviterId: 'inviter-1',
+      inviterDisplayName: 'Taylor',
+      invitedUserId: 'user_1',
+    });
+    expect(mockedSavePendingFriendSuggestion).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        newUserEmail: expect.any(String),
+      }),
+    );
+  });
+
   it('falls back to VerifyEmail when the post-signup sign-in fails', async () => {
     const signInWithPassword = jest.fn().mockRejectedValue(new Error('sign in failed'));
     mockedUseAuth.mockReturnValue({

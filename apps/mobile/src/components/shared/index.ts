@@ -18,6 +18,7 @@ export * from './FeatureListFooter';
 export * from './FeatureIntroScreenContent';
 export * from './FeedbackStatus';
 export * from './FeedbackThreadCard';
+export * from './FeedRatingDisplay';
 export * from './FeedHeaderControls';
 export * from './FoodItemRatingRecordCard';
 export * from './FormResultBanner';

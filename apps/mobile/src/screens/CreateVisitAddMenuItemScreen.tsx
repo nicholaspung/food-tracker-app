@@ -110,13 +110,24 @@ export function CreateVisitAddMenuItemScreen({
         returnTo === 'TastingSessionPlanning' &&
         Boolean(tastingSessionId) &&
         Boolean(tastingRestaurantSuggestionId);
-      const createdItem = shouldAddToTastingPlan
+      const createResult = shouldAddToTastingPlan
         ? await menuItemCatalogWrites.createMenuItemAndAddToTastingPlan({
             ...baseCreateInput,
             tastingRestaurantSuggestionId: tastingRestaurantSuggestionId!,
             tastingSessionId: tastingSessionId!,
           })
         : await menuItemCatalogWrites.createMenuItem(baseCreateInput);
+
+      if (createResult.status === 'blocked') {
+        setErrorMessage('Adding menu items requires internet connection.');
+        trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+          source: 'CreateVisitAddMenuItemScreen',
+          reason: 'offline',
+        });
+        return;
+      }
+
+      const createdItem = createResult.result;
       trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddMenuItemScreen',
         visibility,

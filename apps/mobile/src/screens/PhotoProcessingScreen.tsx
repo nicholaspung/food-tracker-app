@@ -1246,7 +1246,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setErrorMessage(null);
     setIsCreatingMenuItem(true);
     try {
-      const createdItem = await menuItemCatalogWrites.createMenuItem({
+      const createResult = await menuItemCatalogWrites.createMenuItem({
         restaurantId: currentRestaurantForm.restaurantId,
         name: menuItemName,
         createdBy: currentUserId,
@@ -1254,7 +1254,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         isFromOCR: false,
       });
 
-      handleSelectMenuItem(createdItem);
+      if (createResult.status === 'blocked') {
+        setErrorMessage('Creating menu items requires internet connection.');
+        return;
+      }
+
+      handleSelectMenuItem(createResult.result);
       setMenuItemMode('existing');
       setNewMenuItemName('');
     } catch (error) {
@@ -1285,11 +1290,16 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setIsUpdatingMenuItem(true);
 
     try {
-      await menuItemCatalogWrites.updateMenuItem({
+      const updateResult = await menuItemCatalogWrites.updateMenuItem({
         menuItemId: selectedMenuItem.id,
         restaurantId: currentRestaurantForm.restaurantId,
         name: trimmedName,
       });
+
+      if (updateResult.status === 'blocked') {
+        setErrorMessage('Editing menu items requires internet connection.');
+        return;
+      }
 
       setRestaurantForms((current) => {
         const next: Record<string, RestaurantPhotoForm> = {};

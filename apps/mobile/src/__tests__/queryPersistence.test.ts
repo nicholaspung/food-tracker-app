@@ -354,7 +354,7 @@ describe('React Query persistence', () => {
     queryClient.clear();
   });
 
-  it('redacts sensitive fields from persisted notes and feedback browse data', async () => {
+  it('redacts sensitive fields and retains offline browse fields in persisted query data', async () => {
     const persistedClient = sanitizePersistedClient({
       buster: '',
       timestamp: Date.now(),
@@ -500,9 +500,11 @@ describe('React Query persistence', () => {
       ((persistedClient.clientState.queries[0]?.state.data as {
         pages?: {
           items?: {
+            content?: string;
             latitude?: number;
             locationText?: string;
             longitude?: number;
+            title?: string;
           }[];
         }[];
       })?.pages ?? [])[0]?.items ?? []
@@ -511,8 +513,12 @@ describe('React Query persistence', () => {
       ((persistedClient.clientState.queries[2]?.state.data as {
         pages?: {
           items?: {
-            userEmail?: string;
             assignedAdminId?: string;
+            description?: string;
+            status?: string;
+            title?: string;
+            userEmail?: string;
+            userId?: string;
           }[];
         }[];
       })?.pages ?? [])[0]?.items ?? []
@@ -520,6 +526,8 @@ describe('React Query persistence', () => {
 
     expect(note).toBeDefined();
     expect(feedback).toBeDefined();
+    expect(note?.title).toBe('Saved place');
+    expect(note?.content).toBe('Try the noodles');
     expect(note?.locationText).toBe('Mission District');
     expect(note?.latitude).toBeUndefined();
     expect(note?.longitude).toBeUndefined();
@@ -537,6 +545,10 @@ describe('React Query persistence', () => {
     expect(searchedNote?.locationText).toBe('Mission District');
     expect(searchedNote?.latitude).toBeUndefined();
     expect(searchedNote?.longitude).toBeUndefined();
+    expect(feedback?.userId).toBe('user_1');
+    expect(feedback?.title).toBe('Bug');
+    expect(feedback?.description).toBe('App crashed');
+    expect(feedback?.status).toBe('open');
     expect(feedback?.userEmail).toBeUndefined();
     expect(feedback?.assignedAdminId).toBeUndefined();
   });

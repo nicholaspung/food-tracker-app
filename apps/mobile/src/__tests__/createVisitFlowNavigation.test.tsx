@@ -227,12 +227,18 @@ describe('create visit flow navigation', () => {
     mockedUseMenuItemCatalogWrites.mockReturnValue({
       applyScannedMenuItems: jest.fn(),
       createMenuItemAndAddToTastingPlan: jest.fn().mockResolvedValue({
-        id: 'item_9',
-        name: 'Miso Ramen',
+        result: {
+          id: 'item_9',
+          name: 'Miso Ramen',
+        },
+        status: 'completed',
       }),
       createMenuItem: jest.fn().mockResolvedValue({
-        id: 'item_9',
-        name: 'Miso Ramen',
+        result: {
+          id: 'item_9',
+          name: 'Miso Ramen',
+        },
+        status: 'completed',
       }),
       updateMenuItem: jest.fn(),
     } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
@@ -581,10 +587,59 @@ describe('create visit flow navigation', () => {
     });
   });
 
+  it('handles a catalog write blocked result with add-menu offline copy', async () => {
+    mockedUseMenuItemCatalogWrites.mockReturnValue({
+      applyScannedMenuItems: jest.fn(),
+      createMenuItemAndAddToTastingPlan: jest.fn(),
+      createMenuItem: jest.fn().mockResolvedValue({
+        message: 'Menu item catalog changes require internet connection.',
+        status: 'blocked',
+      }),
+      updateMenuItem: jest.fn(),
+    } as unknown as ReturnType<typeof useMenuItemCatalogWrites>);
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitAddMenuItemScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              restaurantId: 'restaurant_42',
+              restaurantName: 'Cafe Test',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer!.root.findByType('Input').props.onChangeText('Miso Ramen');
+    });
+
+    await act(async () => {
+      renderer!.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(navigation.popTo).not.toHaveBeenCalled();
+    expect(renderer!.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Adding menu items requires internet connection.',
+    );
+  });
+
   it('uses the catalog write handoff after adding a menu item for a Tasting Plan', async () => {
     const createMenuItemAndAddToTastingPlan = jest.fn().mockResolvedValue({
-      id: 'item_10',
-      name: 'Tonkotsu Ramen',
+      result: {
+        id: 'item_10',
+        name: 'Tonkotsu Ramen',
+      },
+      status: 'completed',
     });
     mockedUseMenuItemCatalogWrites.mockReturnValue({
       applyScannedMenuItems: jest.fn(),

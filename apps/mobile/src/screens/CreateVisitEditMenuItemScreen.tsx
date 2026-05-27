@@ -93,12 +93,21 @@ export function CreateVisitEditMenuItemScreen({
     setIsSubmitting(true);
 
     try {
-      await menuItemCatalogWrites.updateMenuItem({
+      const updateResult = await menuItemCatalogWrites.updateMenuItem({
         menuItemId,
         restaurantId,
         name: trimmedName,
         visibility,
       });
+
+      if (updateResult.status === 'blocked') {
+        setErrorMessage('Editing menu items requires internet connection.');
+        trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+          source: 'CreateVisitEditMenuItemScreen',
+          reason: 'offline',
+        });
+        return;
+      }
 
       trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitEditMenuItemScreen',

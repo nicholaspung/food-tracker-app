@@ -55,6 +55,7 @@ type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type ExpandablePanel = 'account' | 'invite' | 'danger';
 
 const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
+const HTTP_STATUS_ERROR_PATTERN = /^HTTP\s+(\d{3})\b/i;
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
@@ -230,7 +231,8 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     verificationGraceEndsAt,
     verificationStatus,
   } = useAuth();
-  const { failedCount, getQueuedMutations, isSyncing, nextRetryAt, queueDepth } = useSync();
+  const { failedCount, getQueuedMutations, isSyncing, lastError, nextRetryAt, queueDepth } =
+    useSync();
   const authRecord = getAuthRecord();
   const isAdmin = actualUser?.isAdmin === true;
   const isSubscriber = actualUser?.isSubscriber === true;
@@ -449,6 +451,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       const diagnostics = {
         failedCount,
         isSyncing,
+        latestError: buildSyncDiagnosticsError(lastError),
         nextRetryAt,
         operationNames,
         queueDepth,
@@ -1140,4 +1143,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       </ConfirmDestructiveModal>
     </TabRootScreenScaffold>
   );
+}
+
+function buildSyncDiagnosticsError(lastError: string | null): {
+  errorMessage: string;
+  errorMessageRedacted: true;
+  statusCode: number | null;
+} | null {
+  if (!lastError) {
+    return null;
+  }
+
+  const statusCodeMatch = lastError.match(HTTP_STATUS_ERROR_PATTERN);
+  const statusCode = statusCodeMatch ? Number(statusCodeMatch[1]) : null;
+
+  return {
+    errorMessage: statusCode ? `HTTP ${statusCode}` : 'Queued mutation replay failed',
+    errorMessageRedacted: true,
+    statusCode,
+  };
 }

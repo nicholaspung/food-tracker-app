@@ -42,6 +42,7 @@ pnpm mobile:doctor
 - Confirm destructive actions still show confirmation modals before deletion.
 - Confirm online-only actions are disabled or clearly labeled while offline.
 - Review `docs/mobile-store-readiness.md` for store metadata, privacy, credentials, and policy checks.
+- Review `docs/mobile-local-persistence.md` when release changes touch offline browsing, queued writes, auth storage, redirects, or analytics first-use markers.
 
 ## 3. Backend Production Deploy
 

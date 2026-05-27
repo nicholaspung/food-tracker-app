@@ -1,12 +1,20 @@
 import { MutationReplayService } from '../offline/MutationReplayService';
+import { trackObservabilityEvent } from '../observability';
 import type {
   EnqueueMutationInput,
+  MutationQueueRetentionCleanupResult,
   MutationQueueStats,
   MutationQueueStore,
   MutationSendResult,
   MutationTransport,
   QueuedMutation,
 } from '../offline/types';
+
+jest.mock('../observability', () => ({
+  identifyObservabilityUser: jest.fn(),
+  setObservabilityContext: jest.fn(),
+  trackObservabilityEvent: jest.fn(),
+}));
 
 interface SharedQueueState {
   rows: Map<string, QueuedMutation>;
@@ -32,6 +40,10 @@ class InMemoryQueueStore implements MutationQueueStore {
   constructor(
     private readonly sharedState: SharedQueueState = { rows: new Map() },
     private readonly onInitialize?: (sharedState: SharedQueueState) => Promise<void> | void,
+    private readonly onCleanupRetainedMutations?: (
+      cutoffTimestamp: number,
+      sharedState: SharedQueueState,
+    ) => Promise<MutationQueueRetentionCleanupResult> | MutationQueueRetentionCleanupResult,
   ) {}
 
   async initialize(): Promise<void> {
@@ -157,6 +169,22 @@ class InMemoryQueueStore implements MutationQueueStore {
     return clearedCount;
   }
 
+  async cleanupRetainedMutations(cutoffTimestamp: number): Promise<MutationQueueRetentionCleanupResult> {
+    if (this.onCleanupRetainedMutations) {
+      return this.onCleanupRetainedMutations(cutoffTimestamp, this.sharedState);
+    }
+
+    let removedCount = 0;
+    for (const [id, mutation] of this.sharedState.rows.entries()) {
+      if (mutation.status === 'failed' && mutation.updatedAt < cutoffTimestamp) {
+        this.sharedState.rows.delete(id);
+        removedCount += 1;
+      }
+    }
+
+    return { removedCount };
+  }
+
   async getStats(): Promise<MutationQueueStats> {
     const rows = [...this.sharedState.rows.values()];
     const queueDepth = rows.length;
@@ -226,6 +254,14 @@ function buildQueuedMutation(overrides?: Partial<QueuedMutation>): QueuedMutatio
 }
 
 describe('MutationReplayService', () => {
+  const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+    typeof trackObservabilityEvent
+  >;
+
+  beforeEach(() => {
+    mockedTrackObservabilityEvent.mockClear();
+  });
+
   it('replays retryable failures after backoff and eventually succeeds', async () => {
     let now = 1000;
     const store = new InMemoryQueueStore();
@@ -304,6 +340,50 @@ describe('MutationReplayService', () => {
     expect(service.getSnapshot().failedCount).toBe(0);
   });
 
+  it('sanitizes replay failure telemetry while preserving queue diagnostics', async () => {
+    const rawResponseMessage =
+      'HTTP 400: Could not save note "private dinner with jane@example.com"';
+    const store = new InMemoryQueueStore();
+    const transport = createTransport([
+      {
+        ok: false,
+        retryable: false,
+        statusCode: 400,
+        errorMessage: rawResponseMessage,
+      },
+    ]);
+    const service = new MutationReplayService(store, transport, () => 5000);
+
+    await service.start();
+    await service.enqueue({
+      method: 'POST',
+      url: 'https://api.example.com/notes',
+      body: { note: 'private dinner with jane@example.com' },
+      headers: {
+        'X-Mobile-Write-Operation': 'note.create',
+      },
+    });
+
+    await service.replay('manual');
+
+    const failedMutation = (await service.getQueuedMutations(1))[0];
+    expect(failedMutation?.lastError).toBe(rawResponseMessage);
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'SYNC_MUTATION_FAILED_TERMINAL',
+      expect.objectContaining({
+        errorMessage: 'HTTP 400',
+        errorMessageRedacted: true,
+        operationName: 'note.create',
+        retryable: false,
+        statusCode: 400,
+      }),
+    );
+
+    const emittedTelemetry = JSON.stringify(mockedTrackObservabilityEvent.mock.calls);
+    expect(emittedTelemetry).not.toContain('private dinner');
+    expect(emittedTelemetry).not.toContain('jane@example.com');
+  });
+
   it('retains queued writes across service restarts', async () => {
     const sharedState: SharedQueueState = {
       rows: new Map(),
@@ -358,6 +438,35 @@ describe('MutationReplayService', () => {
 
     expect(restartedService.getSnapshot().queueDepth).toBe(0);
     expect(transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts queue recovery before retention cleanup finishes', async () => {
+    const cleanupDeferred = createDeferredPromise<MutationQueueRetentionCleanupResult>();
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_seeded_1',
+          buildQueuedMutation({
+            status: 'pending',
+            updatedAt: 8500,
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(
+      sharedState,
+      undefined,
+      () => cleanupDeferred.promise,
+    );
+    const service = new MutationReplayService(store, createTransport([]), () => 9000);
+
+    await service.start();
+
+    expect(service.getSnapshot().isInitialized).toBe(true);
+    expect(service.getSnapshot().queueDepth).toBe(1);
+
+    cleanupDeferred.resolve({ removedCount: 0 });
+    await cleanupDeferred.promise;
   });
 
   it('clears queued writes and keeps the queue empty after restart', async () => {
