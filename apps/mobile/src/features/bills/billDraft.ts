@@ -7,6 +7,7 @@ import type {
 } from '../models';
 import type { ReceiptScanDraftResult } from '../store/receiptParsingGateway';
 import type { CreateBillInput, UpdateBillInput } from '../store/featureStore';
+import { formatCurrency } from './billCalculations';
 
 export type CreateBillSplitMode = 'equal' | 'custom' | 'manual';
 export type DraftAdvancedSplitType = 'percentage' | 'amount';
@@ -27,6 +28,20 @@ export interface DraftBillItem {
   assignedParticipantIds: string[];
   advancedSplitType: DraftAdvancedSplitType;
   advancedSplits: DraftAdvancedSplitEntry[];
+}
+
+export interface DraftBillItemAdvancedSplitBalanceFact {
+  displayText: string;
+  isBalanced: boolean;
+  splitTarget: number;
+  splitTotal: number;
+  tone: 'success' | 'warning';
+}
+
+export interface DraftBillItemValidationFact {
+  itemId: string;
+  isValid: boolean;
+  message: string | null;
 }
 
 export interface DraftParticipant {
@@ -693,6 +708,17 @@ interface ToggleDraftBillItemAdvancedSplitLockInput
   splitType: DraftAdvancedSplitType;
 }
 
+interface ValidateCustomBillItemsStepInput {
+  hasFinalTotalOverride: boolean;
+  isCustomTipEnabled: boolean;
+  isCustomTipSplitBalanced: boolean;
+  items: DraftBillItem[];
+  parsedFees: number;
+  parsedFinalTotal: number;
+  parsedTax: number;
+  parsedTip: number;
+}
+
 interface SyncAdvancedSplitsToParticipantsInput {
   participantIds: string[];
   splits: DraftAdvancedSplitEntry[];
@@ -928,6 +954,71 @@ function toggleSimpleDraftBillItemParticipant(
   });
 }
 
+function isSimpleDraftBillItemParticipantAssigned(
+  item: DraftBillItem,
+  participantId: string,
+): boolean {
+  return item.assignedParticipantIds.includes(participantId);
+}
+
+function buildDraftBillItemAdvancedSplitBalanceFact(
+  item: DraftBillItem,
+): DraftBillItemAdvancedSplitBalanceFact | null {
+  if (item.splitMode !== 'advanced') {
+    return null;
+  }
+
+  const splitTotal = item.advancedSplits.reduce((sum, split) => {
+    const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+    return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
+  }, 0);
+  const splitTarget =
+    item.advancedSplitType === 'percentage'
+      ? 100
+      : getNormalizedDraftItemPrice(item);
+  const isBalanced = Math.abs(splitTotal - splitTarget) < 0.01;
+  const displayText =
+    item.advancedSplitType === 'percentage'
+      ? `${formatPercentageDisplay(splitTotal)} of 100%`
+      : `${formatCurrency(splitTotal)} of ${formatCurrency(splitTarget)}`;
+
+  return {
+    displayText,
+    isBalanced,
+    splitTarget,
+    splitTotal,
+    tone: isBalanced ? 'success' : 'warning',
+  };
+}
+
+function buildDraftBillItemSplitSummary(
+  item: DraftBillItem,
+  participants: DraftParticipant[],
+): string {
+  if (item.splitMode === 'advanced') {
+    const balanceFact = buildDraftBillItemAdvancedSplitBalanceFact(item);
+    return `Complex split • ${balanceFact?.displayText ?? '0% of 100%'}`;
+  }
+
+  const assignedCount = item.assignedParticipantIds.length;
+  if (assignedCount === 0) {
+    return 'Simple split • no participants assigned';
+  }
+
+  if (assignedCount === 1) {
+    const assignedParticipant = participants.find(
+      (participant) => participant.id === item.assignedParticipantIds[0],
+    );
+    return `Simple split • assigned to ${assignedParticipant?.name ?? '1 participant'}`;
+  }
+
+  if (assignedCount === participants.length) {
+    return 'Simple split • shared by everyone';
+  }
+
+  return `Simple split • assigned to ${assignedCount} participants`;
+}
+
 function updateDraftBillItemAdvancedSplitType(
   items: DraftBillItem[],
   { itemId, nextType }: UpdateDraftBillItemAdvancedSplitTypeInput,
@@ -1015,6 +1106,133 @@ function toggleDraftBillItemAdvancedSplitLock(
       }),
     };
   });
+}
+
+function validateDraftBillItem(
+  item: DraftBillItem,
+  itemIndex: number,
+): DraftBillItemValidationFact {
+  const itemName = item.name.trim() || `Item ${itemIndex + 1}`;
+  const parsedPrice = Number(item.price);
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    return {
+      itemId: item.id,
+      isValid: false,
+      message: `Enter a valid price for ${itemName}.`,
+    };
+  }
+
+  if (item.splitMode === 'advanced') {
+    if (item.advancedSplits.length === 0) {
+      return {
+        itemId: item.id,
+        isValid: false,
+        message: `Add participants for complex split on ${itemName}.`,
+      };
+    }
+
+    const splitTotal = roundToCurrency(
+      item.advancedSplits.reduce((sum, split) => {
+        const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+        return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
+      }, 0),
+    );
+
+    if (
+      item.advancedSplits.some((split) => {
+        const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
+        return !Number.isFinite(parsedValue) || parsedValue <= 0;
+      })
+    ) {
+      return {
+        itemId: item.id,
+        isValid: false,
+        message: `Split value is invalid for ${itemName}.`,
+      };
+    }
+
+    if (item.advancedSplitType === 'percentage' && Math.abs(splitTotal - 100) > 0.01) {
+      return {
+        itemId: item.id,
+        isValid: false,
+        message: `${itemName} percentages must total 100%.`,
+      };
+    }
+
+    if (
+      item.advancedSplitType === 'amount' &&
+      Math.abs(splitTotal - roundToCurrency(parsedPrice)) > 0.01
+    ) {
+      return {
+        itemId: item.id,
+        isValid: false,
+        message: `${itemName} amount splits must equal item price.`,
+      };
+    }
+
+    return {
+      itemId: item.id,
+      isValid: true,
+      message: null,
+    };
+  }
+
+  if (item.assignedParticipantIds.length === 0) {
+    return {
+      itemId: item.id,
+      isValid: false,
+      message: `Assign at least one participant for ${itemName}.`,
+    };
+  }
+
+  return {
+    itemId: item.id,
+    isValid: true,
+    message: null,
+  };
+}
+
+function validateCustomBillItemsStep({
+  hasFinalTotalOverride,
+  isCustomTipEnabled,
+  isCustomTipSplitBalanced,
+  items,
+  parsedFees,
+  parsedFinalTotal,
+  parsedTax,
+  parsedTip,
+}: ValidateCustomBillItemsStepInput): string | null {
+  if (items.length === 0) {
+    return 'Add at least one item before review.';
+  }
+
+  for (const [itemIndex, item] of items.entries()) {
+    const validationFact = validateDraftBillItem(item, itemIndex);
+    if (!validationFact.isValid) {
+      return validationFact.message;
+    }
+  }
+
+  if (
+    !Number.isFinite(parsedTax) ||
+    parsedTax < 0 ||
+    !Number.isFinite(parsedTip) ||
+    parsedTip < 0 ||
+    !Number.isFinite(parsedFees) ||
+    parsedFees < 0
+  ) {
+    return 'Tax, tip, and fees must be valid non-negative values.';
+  }
+
+  if (hasFinalTotalOverride && (!Number.isFinite(parsedFinalTotal) || parsedFinalTotal <= 0)) {
+    return 'Final price must be a valid amount greater than zero.';
+  }
+
+  if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
+    return 'Custom tip split must match the tip total.';
+  }
+
+  return null;
 }
 
 function normalizeDraftBillItemsForParticipants(
@@ -2029,6 +2247,12 @@ export const billDraftFacade = {
   derivePreviewState: deriveBillDraftPreviewState,
   hydrateEditDraft: hydrateBillDraftForEdit,
   inferEditSplitMode,
+  getAdvancedSplitInputValue: getAdvancedSplitRawValue,
+  getAdvancedSplitBalanceFact: buildDraftBillItemAdvancedSplitBalanceFact,
+  getItemValidationFact: validateDraftBillItem,
+  isSimpleItemParticipantAssigned: isSimpleDraftBillItemParticipantAssigned,
+  isAdvancedSplitValueLocked: isAdvancedSplitLocked,
+  buildItemSplitSummary: buildDraftBillItemSplitSummary,
   normalizeItemsForParticipants: normalizeDraftBillItemsForParticipants,
   removeItem: removeDraftBillItem,
   syncCustomTipSplitsToParticipants: syncAdvancedSplitsToParticipants,
@@ -2040,4 +2264,5 @@ export const billDraftFacade = {
   updateAdvancedSplitValue: updateDraftBillItemAdvancedSplitValue,
   updateCustomTipSplitValue: updateAdvancedSplitValue,
   updateItemSplitMode: updateDraftBillItemSplitMode,
+  validateCustomItemsStep: validateCustomBillItemsStep,
 } as const;

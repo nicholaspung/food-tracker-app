@@ -113,6 +113,13 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
+    mockReact.createElement(
+      'LightweightStatusCard',
+      props,
+      mockReact.createElement('Text', { tone: 'warning' }, message),
+    ),
+  OFFLINE_USAGE_WARNING_MESSAGE: 'Offline estimate may be stale. Backend limits are enforced when sync runs.',
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoInputField: (props: Record<string, unknown>) => mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),

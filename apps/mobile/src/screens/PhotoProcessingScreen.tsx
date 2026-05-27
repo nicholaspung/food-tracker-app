@@ -13,10 +13,12 @@ import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controlle
 import {
   EmptyState,
   ErrorState,
+  FeatureActionCard,
   FeatureFormScreenScaffold,
-  IconActionCard,
   LinkedNoteCard,
+  LightweightStatusCard,
   LoadingState,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
   PhotoViewerModal,
   PhotoSourcePickerCard,
@@ -1406,7 +1408,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
           {!isBlockingNotePhotoLoad && !hasBlockingNotePhotoError ? (
             <>
-              <IconActionCard
+              <FeatureActionCard
                 description={
                   isNoteDrivenFlow
                     ? 'Full experience with restaurant, menu items, and ratings'
@@ -1433,10 +1435,9 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 }}
                 testID={isNoteDrivenFlow ? 'note-use-choice-restaurant' : undefined}
                 title="Track Restaurant Visit"
-                trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
               />
 
-              <IconActionCard
+              <FeatureActionCard
                 description={
                   isNoteDrivenFlow
                     ? 'Rate a grocery, convenience-store, or market item'
@@ -1466,7 +1467,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 }}
                 testID={isNoteDrivenFlow ? 'note-use-choice-food-product' : undefined}
                 title={isNoteDrivenFlow ? 'Food Product' : 'Food Products'}
-                trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
               />
 
               {isPreparingNotePhotos ? <Text tone="secondary">Preparing note photos...</Text> : null}
@@ -1598,11 +1598,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         {linkedNoteCard}
 
         {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Offline estimate may be stale. Backend limits are enforced when sync runs.
-            </Text>
-          </Card>
+          <LightweightStatusCard message={OFFLINE_USAGE_WARNING_MESSAGE} style={styles.sectionCard} />
         ) : null}
 
         {hasSelectedPhotos ? photoSelectionCard : photoSourceCard}

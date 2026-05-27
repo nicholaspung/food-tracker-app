@@ -3,6 +3,8 @@ import { useCallback, useState } from 'react';
 import {
   ConfirmDestructiveModal,
   EmptyState,
+  LightweightStatusCard,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PhotoInputField,
   PhotoViewerModal,
   RatingLegend,
@@ -11,7 +13,7 @@ import {
   type VisibilityOptionValue,
 } from '../../components/shared';
 import { createThemedStyles } from '../../theme';
-import { Card, Text } from '../../ui';
+import { Text } from '../../ui';
 import type { DraftVisitItem, DraftVisitItemPhoto } from './shared';
 
 type DraftVisitItemUpdates = Partial<
@@ -102,18 +104,15 @@ export function CreateVisitReviewStep({
   return (
     <>
       {showOfflineUsageWarning ? (
-        <Card style={styles.statusCard}>
-          <Text tone="warning">
-            Offline estimate may be stale. Backend limits are enforced when sync
-            runs.
-          </Text>
-        </Card>
+        <LightweightStatusCard
+          cardTone="default"
+          message={OFFLINE_USAGE_WARNING_MESSAGE}
+          style={styles.statusCard}
+        />
       ) : null}
 
       {photoLoadWarningMessage ? (
-        <Card style={styles.statusCard} tone="muted">
-          <Text tone="warning">{photoLoadWarningMessage}</Text>
-        </Card>
+        <LightweightStatusCard message={photoLoadWarningMessage} style={styles.statusCard} />
       ) : null}
 
       <VisitMetadataCard

@@ -377,6 +377,7 @@ describe('CreateBillScreen', () => {
     goBack: jest.Mock;
     navigate: jest.Mock;
     reset: jest.Mock;
+    setParams: jest.Mock;
   };
   let queryClient: {
     invalidateQueries: jest.Mock;
@@ -391,6 +392,7 @@ describe('CreateBillScreen', () => {
       goBack: jest.fn(),
       navigate: jest.fn(),
       reset: jest.fn(),
+      setParams: jest.fn(),
     };
     queryClient = {
       invalidateQueries: jest.fn(async () => undefined),
@@ -452,7 +454,26 @@ describe('CreateBillScreen', () => {
     } as ReturnType<typeof useConnectivity>);
   });
 
-  async function renderScreen(routeParams?: { billId?: string }): Promise<TestRenderer> {
+  async function renderScreen(routeParams?: {
+    billId?: string;
+    receiptScanResult?: {
+      requestCorrelation: string;
+      restaurantName?: string;
+      title?: string;
+      items: {
+        name: string;
+        price: number;
+        confidence: 'high' | 'medium' | 'low' | 'unknown';
+        warning?: string;
+      }[];
+      tax?: number;
+      tip?: number;
+      fees?: number;
+      finalTotal?: number;
+      confidence: 'high' | 'medium' | 'low' | 'unknown';
+      warnings: string[];
+    };
+  }): Promise<TestRenderer> {
     let renderer: TestRenderer | null = null;
 
     await act(async () => {
@@ -801,6 +822,35 @@ describe('CreateBillScreen', () => {
     expect(deleteModal?.props.description).toBe('Delete "Sparkling Water" from this bill?');
   });
 
+  it('removes a custom bill item only after destructive confirmation', async () => {
+    const renderer = await renderScreen();
+
+    await goToCustomItemsStep(renderer);
+    await addBillItem(renderer, 'Sparkling Water', '0.99');
+
+    const itemRowBeforeDelete = findBillItemRowByTitle(renderer, 'Sparkling Water');
+    const removeButton = itemRowBeforeDelete.props.rightAccessory.props.children.find(
+      (child: any) => child?.props?.testID === 'bill-item-remove-0',
+    );
+
+    await act(async () => {
+      removeButton.props.onPress();
+    });
+
+    const deleteModal = renderer.root.findAllByType('ConfirmDestructiveModal').find(
+      (node: any) => node.props.title === 'Delete Bill Item?',
+    );
+    await act(async () => {
+      deleteModal?.props.onConfirm();
+    });
+
+    expect(
+      renderer.root.findAllByType('OptionListRow').some(
+        (node: any) => node.props.title === 'Sparkling Water',
+      ),
+    ).toBe(false);
+  });
+
   it('updates simple custom item assignments through the bill draft item editor', async () => {
     const renderer = await renderScreen();
 
@@ -932,5 +982,131 @@ describe('CreateBillScreen', () => {
 
     expect(hasExactText(renderer, 'Over assigned')).toBe(true);
     expect(hasExactText(renderer, '$5.00 over the bill total.')).toBe(true);
+  });
+
+  it('blocks manual split save from review when owed amounts do not match the bill total', async () => {
+    const renderer = await renderScreen();
+
+    await switchToManualSplitMode(renderer);
+
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    const billNameInput = findByTestId(renderer, 'Input', 'bill-name-input');
+    await act(async () => {
+      billNameInput.props.onChangeText('Manual Dinner');
+    });
+
+    await addTypedParticipant(renderer, 'Alex');
+
+    const totalInput = findByTestId(renderer, 'Input', 'bill-total-bill-price-input');
+    await act(async () => {
+      totalInput.props.onChangeText('40.00');
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    await act(async () => {
+      findByTestId(renderer, 'Input', 'bill-owed-amount-input-0').props.onChangeText('10');
+      findByTestId(renderer, 'Input', 'bill-owed-amount-input-1').props.onChangeText('15');
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+    await flushMicrotasks();
+
+    expect(mockedCreateBill).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByType('PageErrorToast').some(
+        (node: any) => node.props.errorMessage === 'Amounts owed must match the total bill amount.',
+      ),
+    ).toBe(true);
+  });
+
+  it('applies a receipt scan draft without regressing item review inputs', async () => {
+    const renderer = await renderScreen({
+      receiptScanResult: {
+        requestCorrelation: 'scan-1',
+        restaurantName: 'Receipt Cafe',
+        title: 'Receipt Cafe',
+        items: [
+          {
+            name: 'Latte',
+            price: 5.5,
+            confidence: 'high',
+          },
+        ],
+        tax: 0.5,
+        tip: 1,
+        finalTotal: 7,
+        confidence: 'high',
+        warnings: [],
+      },
+    });
+
+    expect(navigation.setParams).toHaveBeenCalledWith({ receiptScanResult: undefined });
+    expect(findByTestId(renderer, 'Input', 'bill-name-input').props.value).toBe('Receipt Cafe');
+
+    await addTypedParticipant(renderer, 'Alex');
+
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    expect(findBillItemRowByTitle(renderer, 'Latte').props.subtitle).toBe(
+      'Simple split • no participants assigned',
+    );
+    expect(findByTestId(renderer, 'Input', 'bill-tax-input').props.value).toBe('0.50');
+    expect(findByTestId(renderer, 'Input', 'bill-tip-input').props.value).toBe('1.00');
+    expect(findByTestId(renderer, 'Input', 'bill-final-price-input').props.value).toBe('');
+  });
+
+  it('navigates back to Bills after a queued equal split save', async () => {
+    mockedUseBillWrites.mockReturnValue({
+      createBill: jest.fn(async () => ({
+        result: undefined,
+        status: 'queued' as const,
+      })),
+      deleteBill: jest.fn(),
+      updateBill: jest.fn(),
+      updateBillStatus: jest.fn(),
+      updateParticipantPaidStatus: jest.fn(),
+    } as unknown as ReturnType<typeof useBillWrites>);
+
+    const renderer = await renderScreen();
+
+    await addTypedParticipant(renderer, 'Alex');
+
+    const billNameInput = findByTestId(renderer, 'Input', 'bill-name-input');
+    await act(async () => {
+      billNameInput.props.onChangeText('Queued Dinner');
+    });
+
+    const totalInput = findByTestId(renderer, 'Input', 'bill-total-bill-price-input');
+    await act(async () => {
+      totalInput.props.onChangeText('40.00');
+    });
+
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+    await flushMicrotasks();
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Bills');
+    expect(navigation.reset).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   FeatureFormScreenScaffold,
   LinkedNoteCard,
+  LightweightStatusCard,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
   PhotoInputField,
   PhotoViewerModal,
@@ -35,7 +37,7 @@ import {
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Text } from '../ui';
 
 type FoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'FoodProduct'>;
 type FoodProductEditorExitMethod =
@@ -317,11 +319,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         />
 
         {!isOnline && isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Offline estimate may be stale. Backend limits are enforced when sync runs.
-            </Text>
-          </Card>
+          <LightweightStatusCard message={OFFLINE_USAGE_WARNING_MESSAGE} style={styles.sectionCard} />
         ) : null}
 
         {sourceNoteId ? (

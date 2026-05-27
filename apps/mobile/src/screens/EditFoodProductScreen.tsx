@@ -7,6 +7,8 @@ import {
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
+  LightweightStatusCard,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
   PhotoInputField,
   PhotoViewerModal,
@@ -429,19 +431,14 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         />
 
         {!isOnline && isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Offline estimate may be stale. Backend limits are enforced when sync runs.
-            </Text>
-          </Card>
+          <LightweightStatusCard message={OFFLINE_USAGE_WARNING_MESSAGE} style={styles.sectionCard} />
         ) : null}
 
         {foodProductPhotosQuery.isError ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Could not load the current food product photo. You can still upload a new one.
-            </Text>
-          </Card>
+          <LightweightStatusCard
+            message="Could not load the current food product photo. You can still upload a new one."
+            style={styles.sectionCard}
+          />
         ) : null}
 
         {extraLegacyPhotoCount > 0 ? (

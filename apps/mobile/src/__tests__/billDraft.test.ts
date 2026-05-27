@@ -339,6 +339,87 @@ describe('bill draft item transitions', () => {
       }),
     ]);
   });
+
+  it('builds complex item balance and validation facts', () => {
+    const [advancedItem] = billDraftFacade.updateItemSplitMode(
+      [buildDraftItem()],
+      {
+        itemId: 'draft_item_1',
+        nextSplitMode: 'advanced',
+        participantIds: ['user:self', 'custom:alex'],
+      },
+    );
+
+    expect(billDraftFacade.getAdvancedSplitBalanceFact(advancedItem)).toEqual({
+      displayText: '100% of 100%',
+      isBalanced: true,
+      splitTarget: 100,
+      splitTotal: 100,
+      tone: 'success',
+    });
+    expect(billDraftFacade.getItemValidationFact(advancedItem, 0)).toEqual({
+      itemId: 'draft_item_1',
+      isValid: true,
+      message: null,
+    });
+
+    const invalidItem = {
+      ...advancedItem,
+      advancedSplits: advancedItem.advancedSplits.map((split) =>
+        split.participantId === 'custom:alex'
+          ? { ...split, percentageValue: '20' }
+          : split,
+      ),
+    };
+
+    expect(billDraftFacade.getAdvancedSplitBalanceFact(invalidItem)).toMatchObject({
+      displayText: '70% of 100%',
+      isBalanced: false,
+      tone: 'warning',
+    });
+    expect(billDraftFacade.getItemValidationFact(invalidItem, 0)).toEqual({
+      itemId: 'draft_item_1',
+      isValid: false,
+      message: 'Sushi percentages must total 100%.',
+    });
+  });
+
+  it('validates custom item review state through the draft module', () => {
+    const [advancedItem] = billDraftFacade.updateItemSplitMode(
+      [buildDraftItem()],
+      {
+        itemId: 'draft_item_1',
+        nextSplitMode: 'advanced',
+        participantIds: ['user:self', 'custom:alex'],
+      },
+    );
+
+    expect(
+      billDraftFacade.validateCustomItemsStep({
+        hasFinalTotalOverride: false,
+        isCustomTipEnabled: false,
+        isCustomTipSplitBalanced: true,
+        items: [advancedItem],
+        parsedFees: 0,
+        parsedFinalTotal: 0,
+        parsedTax: 0,
+        parsedTip: 0,
+      }),
+    ).toBeNull();
+
+    expect(
+      billDraftFacade.validateCustomItemsStep({
+        hasFinalTotalOverride: false,
+        isCustomTipEnabled: true,
+        isCustomTipSplitBalanced: false,
+        items: [advancedItem],
+        parsedFees: 0,
+        parsedFinalTotal: 0,
+        parsedTax: 0,
+        parsedTip: 5,
+      }),
+    ).toBe('Custom tip split must match the tip total.');
+  });
 });
 
 describe('bill draft participant and custom tip split transitions', () => {

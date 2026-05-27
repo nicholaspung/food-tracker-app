@@ -8,11 +8,8 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
-  ExpandableText,
   FeatureDetailScreenScaffold,
   PhotoViewerModal,
-  RatingPill,
-  SectionHeader,
   SegmentedControl,
   type SegmentedControlOption,
   Skeleton,
@@ -47,9 +44,10 @@ import {
   trackNoSelectedSaveTarget,
   type ListDetailActionDependencies,
 } from './listDetail/listDetailActions';
-import { formatMonthYearLabel } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailOwnerItemCard } from './listDetail/ListDetailOwnerItemCard';
+import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
+import { SaveRecommendationToListModal } from './listDetail/SaveRecommendationToListModal';
 import { buildListDetailReadModel } from './listDetail/listDetailReadModel';
 import type {
   GroupedBookmarkedItem,
@@ -126,59 +124,6 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.button.primaryText,
     ...theme.typography.bodyLgBold,
   },
-  listCard: {
-    gap: theme.spacing.sm,
-  },
-  restaurantHeaderRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    justifyContent: 'space-between',
-  },
-  restaurantTitleRow: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  restaurantIndex: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodyLgMedium,
-  },
-  restaurantTitle: {
-    color: theme.colors.text.primary,
-    ...theme.typography.bodyLgBold,
-  },
-  locationRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.xxs,
-  },
-  locationIcon: {
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  locationPrimaryText: {
-    color: theme.colors.text.secondary,
-    flex: 1,
-    minWidth: 0,
-    ...theme.typography.bodyMd,
-  },
-  section: {
-    borderTopColor: theme.colors.border.subtle,
-    borderTopWidth: 1,
-    gap: theme.spacing.xs,
-    paddingTop: theme.spacing.sm,
-  },
-  metaDot: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  bookmarkedDate: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
   reorderControls: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -196,87 +141,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   reorderButtonPressed: {
     backgroundColor: theme.colors.background.muted,
-  },
-  noteText: {
-    color: theme.colors.text.secondary,
-    fontStyle: 'italic',
-    ...theme.typography.bodyMd,
-  },
-  emptyItemsText: {
-    color: theme.colors.text.muted,
-    ...theme.typography.label,
-  },
-  saveModalItemCard: {
-    borderColor: theme.colors.border.info,
-    gap: theme.spacing.xs,
-  },
-  saveModalItemRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xxs,
-  },
-  saveModalItemName: {
-    color: theme.colors.text.primary,
-    ...theme.typography.bodyLgTightBold,
-  },
-  saveModalCaption: {
-    color: theme.colors.text.secondary,
-    ...theme.typography.label,
-  },
-  saveListHeader: {
-    marginTop: theme.spacing.xs,
-  },
-  saveListRows: {
-    gap: theme.spacing.xs,
-    marginTop: theme.spacing.xs,
-  },
-  saveListRow: {
-    alignItems: 'center',
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    minHeight: 46,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  saveListRowSelected: {
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.border.info,
-  },
-  saveListRowDisabled: {
-    backgroundColor: theme.colors.background.muted,
-    opacity: 0.7,
-  },
-  saveListLabelWrap: {
-    flex: 1,
-    gap: 2,
-  },
-  saveListLabelTop: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  saveListName: {
-    color: theme.colors.text.primary,
-    ...theme.typography.labelMdBold,
-  },
-  saveListDescription: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  saveListAlreadyLabel: {
-    color: theme.colors.text.success,
-    ...theme.typography.bodySmTightSemiBold,
-  },
-  saveModalFooter: {
-    marginTop: theme.spacing.sm,
-  },
-  saveModalError: {
-    color: theme.colors.text.danger,
-    ...theme.typography.bodySm,
   },
   viewModeControl: {
     backgroundColor: theme.colors.background.muted,
@@ -313,47 +177,6 @@ const useStyles = createThemedStyles((theme) => ({
     overflow: 'hidden',
   },
 }));
-
-type ListDetailStyles = ReturnType<typeof useStyles>;
-
-interface RestaurantMetaRowProps {
-  primaryMetaLabel: string;
-  secondaryMetaLabel: string | null;
-  iconColor: string;
-  isLocked?: boolean;
-  lockTestID?: string;
-  styles: ListDetailStyles;
-}
-
-function RestaurantMetaRow({
-  primaryMetaLabel,
-  secondaryMetaLabel,
-  iconColor,
-  isLocked = false,
-  lockTestID,
-  styles,
-}: RestaurantMetaRowProps) {
-  const metadataLabel = secondaryMetaLabel
-    ? `${primaryMetaLabel} • ${secondaryMetaLabel}`
-    : primaryMetaLabel;
-
-  return (
-    <View style={styles.locationRow}>
-      {isLocked ? (
-        <Ionicons
-          accessibilityLabel="Private restaurant"
-          color={iconColor}
-          name="lock-closed-outline"
-          size={14}
-          style={styles.locationIcon}
-          testID={lockTestID}
-        />
-      ) : null}
-      <Ionicons color={iconColor} name="location-outline" size={14} style={styles.locationIcon} />
-      <Text style={styles.locationPrimaryText}>{metadataLabel}</Text>
-    </View>
-  );
-}
 
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
@@ -1101,113 +924,96 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               restaurantRows.map((row) => {
                 const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
-                return (
-                  <Card key={group.restaurantId} style={styles.listCard} tone="default">
-                    <View style={styles.restaurantHeaderRow}>
-                      <View style={styles.restaurantTitleRow}>
-                        <Text style={styles.restaurantIndex}>{`${groupIndex + 1}.`}</Text>
-                        <Text style={styles.restaurantTitle}>{group.restaurantName}</Text>
-                      </View>
-                      {isOwner ? (
-                        <View style={styles.reorderControls}>
-                          {groupIndex > 0 ? (
-                            <Pressable
-                              accessibilityLabel={`Move ${group.restaurantName} up`}
-                              accessibilityRole="button"
-                              disabled={Boolean(movingRestaurantId)}
-                              onPress={() => {
-                                void handleMoveRestaurant(group.restaurantId, 'up');
-                              }}
-                              style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                              testID={`move-restaurant-up-${group.restaurantId}`}
-                            >
-                              <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
-                            </Pressable>
-                          ) : null}
-                          {groupIndex < groupedRestaurants.length - 1 ? (
-                            <Pressable
-                              accessibilityLabel={`Move ${group.restaurantName} down`}
-                              accessibilityRole="button"
-                              disabled={Boolean(movingRestaurantId)}
-                              onPress={() => {
-                                void handleMoveRestaurant(group.restaurantId, 'down');
-                              }}
-                              style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                              testID={`move-restaurant-down-${group.restaurantId}`}
-                            >
-                              <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-
-                    <RestaurantMetaRow
-                      iconColor={theme.colors.text.muted}
-                      isLocked={isRestaurantLocked}
-                      lockTestID={`locked-restaurant-${group.restaurantId}`}
-                      primaryMetaLabel={primaryMetaLabel}
-                      secondaryMetaLabel={secondaryMetaLabel}
-                      styles={styles}
-                    />
-
-                    <View style={styles.section}>
-                      <SectionHeader
-                        title={isOwner ? 'Bookmarked Items' : 'Recommended Items'}
-                        titleTone="secondary"
+                return isOwner ? (
+                  <ListDetailRestaurantRecommendationGroupCard
+                    groupIndex={groupIndex}
+                    isLocked={isRestaurantLocked}
+                    items={row.ownerItems}
+                    key={group.restaurantId}
+                    lockTestID={`locked-restaurant-${group.restaurantId}`}
+                    mode="owner"
+                    notes={group.notes}
+                    primaryMetaLabel={primaryMetaLabel}
+                    renderItem={(item, itemIndex) => (
+                      <ListDetailOwnerItemCard
+                        canCreateVisitFromRestaurant={!isRestaurantLocked}
+                        groupIndex={groupIndex}
+                        item={item}
+                        itemIndex={itemIndex}
+                        key={item.key}
+                        onConfirmDeleteItem={confirmDeleteItem}
+                        onIWentThere={(input) => {
+                          handleIWentThere(group, input);
+                        }}
+                        onOpenPhotos={openPhotoViewer}
+                        photoEntries={item.photoEntries}
                       />
-                      {group.items.length === 0 ? (
-                        <Text style={styles.emptyItemsText}>No items added yet.</Text>
-                      ) : isOwner ? (
-                        row.ownerItems.map((item, itemIndex) => {
-                          return (
-                            <ListDetailOwnerItemCard
-                              canCreateVisitFromRestaurant={!isRestaurantLocked}
-                              groupIndex={groupIndex}
-                              item={item}
-                              itemIndex={itemIndex}
-                              key={item.key}
-                              onConfirmDeleteItem={confirmDeleteItem}
-                              onIWentThere={(input) => {
-                                handleIWentThere(group, input);
-                              }}
-                              onOpenPhotos={openPhotoViewer}
-                              photoEntries={item.photoEntries}
-                            />
-                          );
-                        })
-                      ) : (
-                        row.bookmarkedItems.map((item, itemIndex) => {
-                          return (
-                            <ListDetailBookmarkedItemRow
-                              canSave={!isRestaurantLocked}
-                              groupIndex={groupIndex}
-                              isSaved={item.isSaved}
-                              item={item}
-                              itemIndex={itemIndex}
-                              key={item.key}
-                              onOpenPhotos={openPhotoViewer}
-                              onSave={(targetItem) => {
-                                openSaveModal(group, targetItem);
-                              }}
-                              photoEntries={item.photoEntries}
-                            />
-                          );
-                        })
-                      )}
-                    </View>
-
-                    {group.notes.length > 0 ? (
-                      <View style={styles.section}>
-                        <SectionHeader title="Notes" titleTone="secondary" />
-                        {group.notes.map((note, noteIndex) => (
-                          <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
-                            "{note}"
-                          </Text>
-                        ))}
+                    )}
+                    restaurantId={group.restaurantId}
+                    restaurantName={group.restaurantName}
+                    reorderControls={
+                      <View style={styles.reorderControls}>
+                        {groupIndex > 0 ? (
+                          <Pressable
+                            accessibilityLabel={`Move ${group.restaurantName} up`}
+                            accessibilityRole="button"
+                            disabled={Boolean(movingRestaurantId)}
+                            onPress={() => {
+                              void handleMoveRestaurant(group.restaurantId, 'up');
+                            }}
+                            style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                            testID={`move-restaurant-up-${group.restaurantId}`}
+                          >
+                            <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
+                          </Pressable>
+                        ) : null}
+                        {groupIndex < groupedRestaurants.length - 1 ? (
+                          <Pressable
+                            accessibilityLabel={`Move ${group.restaurantName} down`}
+                            accessibilityRole="button"
+                            disabled={Boolean(movingRestaurantId)}
+                            onPress={() => {
+                              void handleMoveRestaurant(group.restaurantId, 'down');
+                            }}
+                            style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                            testID={`move-restaurant-down-${group.restaurantId}`}
+                          >
+                            <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
+                          </Pressable>
+                        ) : null}
                       </View>
-                    ) : null}
-                  </Card>
+                    }
+                    secondaryMetaLabel={secondaryMetaLabel}
+                  />
+                ) : (
+                  <ListDetailRestaurantRecommendationGroupCard
+                    groupIndex={groupIndex}
+                    isLocked={isRestaurantLocked}
+                    items={row.bookmarkedItems}
+                    key={group.restaurantId}
+                    lockTestID={`locked-restaurant-${group.restaurantId}`}
+                    mode="viewer"
+                    notes={group.notes}
+                    primaryMetaLabel={primaryMetaLabel}
+                    renderItem={(item, itemIndex) => (
+                      <ListDetailBookmarkedItemRow
+                        canSave={!isRestaurantLocked}
+                        groupIndex={groupIndex}
+                        isSaved={item.isSaved}
+                        item={item}
+                        itemIndex={itemIndex}
+                        key={item.key}
+                        onOpenPhotos={openPhotoViewer}
+                        onSave={(targetItem) => {
+                          openSaveModal(group, targetItem);
+                        }}
+                        photoEntries={item.photoEntries}
+                      />
+                    )}
+                    restaurantId={group.restaurantId}
+                    restaurantName={group.restaurantName}
+                    secondaryMetaLabel={secondaryMetaLabel}
+                  />
                 );
               })
             )}
@@ -1323,130 +1129,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         visible={Boolean(pendingDeleteItem)}
       />
 
-      <Modal
-        description="Choose where to save this bookmarked item."
-        onRequestClose={closeSaveModal}
-        primaryAction={{
-          disabled: isSavingBookmark || selectedSaveListIds.size === 0,
-          label:
-            selectedSaveListIds.size === 1
-              ? 'Save to 1 list'
-              : `Save to ${selectedSaveListIds.size} lists`,
-          loading: isSavingBookmark,
-          onPress: () => {
-            void handleSaveToSelectedLists();
-          },
+      <SaveRecommendationToListModal
+        alreadySavedListIds={alreadySavedListIdsForTarget}
+        defaultList={defaultList}
+        errorMessage={saveModalError}
+        isLoadingLists={isLoadingMyLists}
+        isSaving={isSavingBookmark}
+        onClose={closeSaveModal}
+        onQuickSave={() => {
+          void handleQuickSaveToDefaultList();
         }}
-        secondaryAction={{
-          disabled: isSavingBookmark,
-          label: 'Cancel',
-          onPress: closeSaveModal,
+        onSaveSelectedLists={() => {
+          void handleSaveToSelectedLists();
         }}
-        title={saveBookmarkTarget ? `Save from "${saveBookmarkTarget.restaurantName}"` : undefined}
-        visible={Boolean(saveBookmarkTarget)}
-      >
-        {saveBookmarkTarget ? (
-          <Card style={styles.saveModalItemCard} tone="info">
-            <Text style={styles.saveModalCaption}>Selected item</Text>
-            <View style={styles.saveModalItemRow}>
-              <Text style={styles.saveModalItemName}>{saveBookmarkTarget.foodItemName}</Text>
-              <Text style={styles.metaDot}>•</Text>
-              <RatingPill rating={saveBookmarkTarget.foodItemRating} />
-              {formatMonthYearLabel(saveBookmarkTarget.visitedAt) ? (
-                <>
-                  <Text style={styles.metaDot}>•</Text>
-                  <Text style={styles.bookmarkedDate}>{formatMonthYearLabel(saveBookmarkTarget.visitedAt)}</Text>
-                </>
-              ) : null}
-            </View>
-          </Card>
-        ) : null}
-
-        <Button
-          disabled={
-            isSavingBookmark ||
-            !saveBookmarkTarget ||
-            isLoadingMyLists ||
-            Boolean(defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id))
-          }
-          label={
-            isLoadingMyLists
-              ? 'Loading your lists...'
-              : defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)
-              ? 'Already in "Saved" list'
-              : defaultList
-                ? 'Quick Save to "Saved" list'
-                : 'Create & Save to "Saved" list'
-          }
-          onPress={() => {
-            void handleQuickSaveToDefaultList();
-          }}
-          variant="secondary"
-        />
-
-        {isLoadingMyLists ? (
-          <Text tone="secondary">Loading your lists...</Text>
-        ) : nonDefaultLists.length > 0 ? (
-          <>
-            <SectionHeader style={styles.saveListHeader} title="Or choose lists" titleTone="secondary" />
-            <View style={styles.saveListRows}>
-              {nonDefaultLists.map((targetList) => {
-                const alreadySavedInList = alreadySavedListIdsForTarget.has(targetList.id);
-                const isSelected = selectedSaveListIds.has(targetList.id);
-                const visibilityIconName =
-                  targetList.visibility === 'friends' ? 'people-outline' : 'lock-closed-outline';
-
-                return (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={alreadySavedInList}
-                    key={targetList.id}
-                    onPress={() => {
-                      toggleSaveListSelection(targetList.id);
-                    }}
-                    style={[
-                      styles.saveListRow,
-                      isSelected ? styles.saveListRowSelected : null,
-                      alreadySavedInList ? styles.saveListRowDisabled : null,
-                    ]}
-                  >
-                    <Ionicons
-                      color={alreadySavedInList ? theme.colors.text.success : theme.colors.text.muted}
-                      name={alreadySavedInList || isSelected ? 'checkbox' : 'square-outline'}
-                      size={20}
-                    />
-                    <View style={styles.saveListLabelWrap}>
-                      <View style={styles.saveListLabelTop}>
-                        <Text style={styles.saveListName}>{targetList.name}</Text>
-                        <Ionicons color={theme.colors.text.muted} name={visibilityIconName} size={13} />
-                      </View>
-                      {targetList.description ? (
-                        <ExpandableText
-                          collapsedNumberOfLines={1}
-                          interactionMode="inline-toggle"
-                          stopPropagationOnToggle
-                          style={styles.saveListDescription}
-                        >
-                          {targetList.description}
-                        </ExpandableText>
-                      ) : null}
-                      {alreadySavedInList ? <Text style={styles.saveListAlreadyLabel}>Already saved in this list</Text> : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : (
-          <SectionHeader
-            style={styles.saveListHeader}
-            title="No additional lists yet. Use quick save or create a list."
-            titleTone="secondary"
-          />
-        )}
-
-        {saveModalError ? <Text style={styles.saveModalError}>{saveModalError}</Text> : null}
-      </Modal>
+        onToggleList={toggleSaveListSelection}
+        selectedListIds={selectedSaveListIds}
+        target={saveBookmarkTarget}
+        targetLists={nonDefaultLists}
+      />
     </FeatureDetailScreenScaffold>
   );
 }

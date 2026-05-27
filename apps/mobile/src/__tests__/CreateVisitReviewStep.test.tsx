@@ -18,6 +18,13 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('ConfirmDestructiveModal', props, children),
   EmptyState: (props: Record<string, unknown>) =>
     mockReact.createElement('EmptyState', props),
+  LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
+    mockReact.createElement(
+      'LightweightStatusCard',
+      props,
+      mockReact.createElement('Text', { tone: 'warning' }, message),
+    ),
+  OFFLINE_USAGE_WARNING_MESSAGE: 'Offline estimate may be stale. Backend limits are enforced when sync runs.',
   PhotoInputField: (props: Record<string, unknown>) =>
     mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) =>

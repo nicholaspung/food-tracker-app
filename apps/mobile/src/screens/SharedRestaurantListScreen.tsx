@@ -1,16 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import {
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
   PhotoViewerModal,
-  RatingPill,
-  SectionHeader,
   Skeleton,
 } from '../components/shared';
 import {
@@ -29,11 +26,13 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
-import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Modal, Text } from '../ui';
+import { createThemedStyles } from '../theme';
+import { Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
-import { formatMonthYearLabel, buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
+import { buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
+import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
+import { SaveRecommendationToListModal } from './listDetail/SaveRecommendationToListModal';
 import type { GroupedBookmarkedItem, OwnerItemPhotoEntry, SaveBookmarkTarget } from './listDetail/listDetailTypes';
 
 type SharedRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'SharedRestaurantList'>;
@@ -52,135 +51,6 @@ interface GroupedSharedRestaurant {
 const useStyles = createThemedStyles((theme) => ({
   container: {
     gap: theme.spacing.md,
-  },
-  listCard: {
-    gap: theme.spacing.sm,
-  },
-  restaurantHeaderRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    justifyContent: 'space-between',
-  },
-  restaurantTitleRow: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  restaurantIndex: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodyLgMedium,
-  },
-  restaurantTitle: {
-    color: theme.colors.text.primary,
-    ...theme.typography.bodyLgBold,
-  },
-  locationRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: theme.spacing.xxs,
-  },
-  locationIcon: {
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  locationPrimaryText: {
-    color: theme.colors.text.secondary,
-    flex: 1,
-    minWidth: 0,
-    ...theme.typography.bodyMd,
-  },
-  section: {
-    borderTopColor: theme.colors.border.subtle,
-    borderTopWidth: 1,
-    gap: theme.spacing.xs,
-    paddingTop: theme.spacing.sm,
-  },
-  emptyItemsText: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodyMd,
-  },
-  noteText: {
-    color: theme.colors.text.secondary,
-    fontStyle: 'italic',
-    ...theme.typography.bodyMd,
-  },
-  metaDot: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  bookmarkedDate: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySm,
-  },
-  saveModalItemCard: {
-    gap: theme.spacing.xs,
-  },
-  saveModalCaption: {
-    color: theme.colors.text.muted,
-    ...theme.typography.bodySmTightBold,
-  },
-  saveModalItemRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  saveModalItemName: {
-    color: theme.colors.text.primary,
-    flexShrink: 1,
-    ...theme.typography.bodyLgTightMedium,
-  },
-  saveListHeader: {
-    marginTop: theme.spacing.xs,
-  },
-  saveListRows: {
-    gap: theme.spacing.xs,
-  },
-  saveListRow: {
-    alignItems: 'flex-start',
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    padding: theme.spacing.sm,
-  },
-  saveListRowSelected: {
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.border.info,
-  },
-  saveListRowDisabled: {
-    opacity: 0.72,
-  },
-  saveListLabelWrap: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
-  },
-  saveListLabelTop: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  saveListName: {
-    color: theme.colors.text.primary,
-    flexShrink: 1,
-    ...theme.typography.bodyMdMedium,
-  },
-  saveListDescription: {
-    color: theme.colors.text.secondary,
-    ...theme.typography.bodySm,
-  },
-  saveListAlreadyLabel: {
-    color: theme.colors.text.success,
-    ...theme.typography.bodySmTightBold,
-  },
-  saveModalError: {
-    color: theme.colors.text.danger,
-    ...theme.typography.bodySm,
   },
 }));
 
@@ -275,7 +145,6 @@ function buildSharedPhotoEntries(
 export function SharedRestaurantListScreen({ navigation, route }: SharedRestaurantListScreenProps) {
   const { shareToken } = route.params;
   const { status } = useAuth();
-  const theme = useTheme();
   const styles = useStyles();
   const [ctaModalVisible, setCtaModalVisible] = useState(false);
   const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
@@ -509,12 +378,6 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       }`
     : undefined;
 
-  const isDefaultListAlreadySaved = Boolean(defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id));
-  const saveModalPrimaryLabel =
-    selectedSaveListIds.size === 1
-      ? 'Save to 1 list'
-      : `Save to ${selectedSaveListIds.size} lists`;
-
   return (
     <FeatureDetailScreenScaffold
       headerScrollMode="fixed"
@@ -586,67 +449,39 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                   group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null;
 
                 return (
-                  <Card key={group.restaurantId} style={styles.listCard} tone="default">
-                    <View style={styles.restaurantHeaderRow}>
-                      <View style={styles.restaurantTitleRow}>
-                        <Text style={styles.restaurantIndex}>{`${groupIndex + 1}.`}</Text>
-                        <Text style={styles.restaurantTitle}>{group.restaurantName}</Text>
-                      </View>
-                    </View>
+                  <ListDetailRestaurantRecommendationGroupCard
+                    groupIndex={groupIndex}
+                    items={group.items}
+                    key={group.restaurantId}
+                    mode="viewer"
+                    notes={group.notes}
+                    primaryMetaLabel={primaryMetaLabel}
+                    renderItem={(item, itemIndex) => {
+                      const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
+                        savedBookmarkLookupIds.has(bookmarkLookupId),
+                      );
+                      const photoEntries = buildSharedPhotoEntries(item, photosByFoodItemId);
 
-                    <View style={styles.locationRow}>
-                      <Ionicons
-                        color={theme.colors.text.muted}
-                        name="location-outline"
-                        size={14}
-                        style={styles.locationIcon}
-                      />
-                      <Text style={styles.locationPrimaryText}>
-                        {secondaryMetaLabel ? `${primaryMetaLabel} • ${secondaryMetaLabel}` : primaryMetaLabel}
-                      </Text>
-                    </View>
-
-                    <View style={styles.section}>
-                      <SectionHeader title="Recommended Items" titleTone="secondary" />
-                      {group.items.length === 0 ? (
-                        <Text style={styles.emptyItemsText}>No items added yet.</Text>
-                      ) : (
-                        group.items.map((item, itemIndex) => {
-                          const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
-                            savedBookmarkLookupIds.has(bookmarkLookupId),
-                          );
-                          const photoEntries = buildSharedPhotoEntries(item, photosByFoodItemId);
-
-                          return (
-                            <ListDetailBookmarkedItemRow
-                              canSave={isAuthenticated}
-                              groupIndex={groupIndex}
-                              isSaved={isSaved}
-                              item={item}
-                              itemIndex={itemIndex}
-                              key={item.key}
-                              onOpenPhotos={openPhotoViewer}
-                              onSave={(targetItem) => {
-                                openSaveModal(group, targetItem);
-                              }}
-                              photoEntries={photoEntries}
-                            />
-                          );
-                        })
-                      )}
-                    </View>
-
-                    {group.notes.length > 0 ? (
-                      <View style={styles.section}>
-                        <SectionHeader title="Notes" titleTone="secondary" />
-                        {group.notes.map((note, noteIndex) => (
-                          <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
-                            "{note}"
-                          </Text>
-                        ))}
-                      </View>
-                    ) : null}
-                  </Card>
+                      return (
+                        <ListDetailBookmarkedItemRow
+                          canSave={isAuthenticated}
+                          groupIndex={groupIndex}
+                          isSaved={isSaved}
+                          item={item}
+                          itemIndex={itemIndex}
+                          key={item.key}
+                          onOpenPhotos={openPhotoViewer}
+                          onSave={(targetItem) => {
+                            openSaveModal(group, targetItem);
+                          }}
+                          photoEntries={photoEntries}
+                        />
+                      );
+                    }}
+                    restaurantId={group.restaurantId}
+                    restaurantName={group.restaurantName}
+                    secondaryMetaLabel={secondaryMetaLabel}
+                  />
                 );
               })
             )}
@@ -689,113 +524,23 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         visible={ctaModalVisible}
       />
 
-      <Modal
-        description="Choose where to save this bookmarked item."
-        onRequestClose={closeSaveModal}
-        primaryAction={{
-          disabled: isSavingBookmark || selectedSaveListIds.size === 0,
-          label: saveModalPrimaryLabel,
-          loading: isSavingBookmark,
-          onPress: () => {
-            void handleSaveToSelectedLists();
-          },
+      <SaveRecommendationToListModal
+        alreadySavedListIds={alreadySavedListIdsForTarget}
+        defaultList={defaultList}
+        errorMessage={saveModalError}
+        isSaving={isSavingBookmark}
+        onClose={closeSaveModal}
+        onQuickSave={() => {
+          void handleQuickSaveToDefaultList();
         }}
-        secondaryAction={{
-          disabled: isSavingBookmark,
-          label: 'Cancel',
-          onPress: closeSaveModal,
+        onSaveSelectedLists={() => {
+          void handleSaveToSelectedLists();
         }}
-        title={saveBookmarkTarget ? `Save from "${saveBookmarkTarget.restaurantName}"` : undefined}
-        visible={Boolean(saveBookmarkTarget)}
-      >
-        {saveBookmarkTarget ? (
-          <Card style={styles.saveModalItemCard} tone="info">
-            <Text style={styles.saveModalCaption}>Selected item</Text>
-            <View style={styles.saveModalItemRow}>
-              <Text style={styles.saveModalItemName}>{saveBookmarkTarget.foodItemName}</Text>
-              <Text style={styles.metaDot}>•</Text>
-              <RatingPill rating={saveBookmarkTarget.foodItemRating} />
-              {formatMonthYearLabel(saveBookmarkTarget.visitedAt) ? (
-                <>
-                  <Text style={styles.metaDot}>•</Text>
-                  <Text style={styles.bookmarkedDate}>{formatMonthYearLabel(saveBookmarkTarget.visitedAt)}</Text>
-                </>
-              ) : null}
-            </View>
-          </Card>
-        ) : null}
-
-        <Button
-          disabled={isSavingBookmark || !saveBookmarkTarget || isDefaultListAlreadySaved}
-          label={
-            isDefaultListAlreadySaved
-              ? 'Already in "Saved" list'
-              : defaultList
-                ? 'Quick Save to "Saved" list'
-                : 'Create & Save to "Saved" list'
-          }
-          onPress={() => {
-            void handleQuickSaveToDefaultList();
-          }}
-          variant="secondary"
-        />
-
-        {nonDefaultLists.length > 0 ? (
-          <>
-            <SectionHeader style={styles.saveListHeader} title="Or choose lists" titleTone="secondary" />
-            <View style={styles.saveListRows}>
-              {nonDefaultLists.map((targetList) => {
-                const alreadySavedInList = alreadySavedListIdsForTarget.has(targetList.id);
-                const isSelected = selectedSaveListIds.has(targetList.id);
-                const visibilityIconName =
-                  targetList.visibility === 'friends' ? 'people-outline' : 'lock-closed-outline';
-
-                return (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={alreadySavedInList}
-                    key={targetList.id}
-                    onPress={() => {
-                      toggleSaveListSelection(targetList.id);
-                    }}
-                    style={[
-                      styles.saveListRow,
-                      isSelected ? styles.saveListRowSelected : null,
-                      alreadySavedInList ? styles.saveListRowDisabled : null,
-                    ]}
-                  >
-                    <Ionicons
-                      color={alreadySavedInList ? theme.colors.text.success : theme.colors.text.muted}
-                      name={alreadySavedInList || isSelected ? 'checkbox' : 'square-outline'}
-                      size={20}
-                    />
-                    <View style={styles.saveListLabelWrap}>
-                      <View style={styles.saveListLabelTop}>
-                        <Text style={styles.saveListName}>{targetList.name}</Text>
-                        <Ionicons color={theme.colors.text.muted} name={visibilityIconName} size={13} />
-                      </View>
-                      {targetList.description ? (
-                        <Text numberOfLines={1} style={styles.saveListDescription}>
-                          {targetList.description}
-                        </Text>
-                      ) : null}
-                      {alreadySavedInList ? <Text style={styles.saveListAlreadyLabel}>Already saved in this list</Text> : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : (
-          <SectionHeader
-            style={styles.saveListHeader}
-            title="No additional lists yet. Use quick save or create a list."
-            titleTone="secondary"
-          />
-        )}
-
-        {saveModalError ? <Text style={styles.saveModalError}>{saveModalError}</Text> : null}
-      </Modal>
+        onToggleList={toggleSaveListSelection}
+        selectedListIds={selectedSaveListIds}
+        target={saveBookmarkTarget}
+        targetLists={nonDefaultLists}
+      />
     </FeatureDetailScreenScaffold>
   );
 }

@@ -5,8 +5,8 @@ import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import {
+  FeatureActionListRow,
   OptionList,
-  OptionListRow,
   ScreenContentSection,
   TabBrandHeader,
   TabRootScreenScaffold,
@@ -112,18 +112,8 @@ const useStyles = createThemedStyles((theme) => ({
     borderWidth: 1,
     overflow: 'hidden',
   },
-  featureRow: {
-    backgroundColor: theme.colors.background.app,
-  },
   sectionActions: {
     gap: theme.spacing.sm,
-  },
-  featureIconWrap: {
-    alignItems: 'center',
-    borderRadius: theme.radii.md,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
   },
   tipCard: {
     backgroundColor: theme.colors.status.warningBg,
@@ -292,17 +282,14 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
           >
             <OptionList style={styles.optionList}>
               {restaurantListActions.map((action, index) => (
-                <OptionListRow
+                <FeatureActionListRow
+                  description={action.description}
+                  iconBackground={action.iconBackground}
+                  iconColor={action.iconColor}
+                  iconName={action.icon}
                   isLast={index === restaurantListActions.length - 1}
                   key={action.title}
-                  leading={
-                    <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                      <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                    </View>
-                  }
                   onPress={action.onPress}
-                  style={styles.featureRow}
-                  subtitle={action.description}
                   testID={action.testID}
                   title={action.title}
                 />
@@ -319,17 +306,14 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
           >
             <OptionList style={styles.optionList}>
               {groupTastingsActions.map((action, index) => (
-                <OptionListRow
+                <FeatureActionListRow
+                  description={action.description}
+                  iconBackground={action.iconBackground}
+                  iconColor={action.iconColor}
+                  iconName={action.icon}
                   isLast={index === groupTastingsActions.length - 1}
                   key={action.title}
-                  leading={
-                    <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                      <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                    </View>
-                  }
                   onPress={action.onPress}
-                  style={styles.featureRow}
-                  subtitle={action.description}
                   testID={action.testID}
                   title={action.title}
                 />
@@ -346,17 +330,14 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
           >
             <OptionList style={styles.optionList}>
               {billsAndTipsActions.map((action, index) => (
-                <OptionListRow
+                <FeatureActionListRow
+                  description={action.description}
+                  iconBackground={action.iconBackground}
+                  iconColor={action.iconColor}
+                  iconName={action.icon}
                   isLast={index === billsAndTipsActions.length - 1}
                   key={action.title}
-                  leading={
-                    <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                      <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                    </View>
-                  }
                   onPress={action.onPress}
-                  style={styles.featureRow}
-                  subtitle={action.description}
                   testID={action.testID}
                   title={action.title}
                 />

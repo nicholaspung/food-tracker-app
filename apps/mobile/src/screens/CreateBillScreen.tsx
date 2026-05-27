@@ -43,6 +43,7 @@ import { Button, Card, Input, Text } from '../ui';
 import { BillDraftItemEditor } from './createBill/BillDraftItemEditor';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
 import { BillPayerAndTotalsSection } from './createBill/BillPayerAndTotalsSection';
+import { useCreateBillItemCompositionController } from './createBill/useCreateBillItemCompositionController';
 import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
@@ -325,10 +326,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [splitMode, setSplitMode] = useState<CreateBillSplitMode>('equal');
   const [billTitle, setBillTitle] = useState('');
   const [equalTotalInput, setEqualTotalInput] = useState('');
-  const [draftItemName, setDraftItemName] = useState('');
-  const [draftItemPrice, setDraftItemPrice] = useState('');
-  const [items, setItems] = useState<DraftBillItem[]>([]);
-  const [expandedItemIds, setExpandedItemIds] = useState<string[]>([]);
   const [taxInput, setTaxInput] = useState('');
   const [tipInput, setTipInput] = useState('');
   const [feesInput, setFeesInput] = useState('');
@@ -394,6 +391,32 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         .filter((friend): friend is FriendRecord => Boolean(friend)),
     [acceptedFriendById, selectedFriendIds],
   );
+  const participantIds = useMemo(
+    () => participants.map((participant) => participant.id),
+    [participants],
+  );
+
+  const itemCompositionController = useCreateBillItemCompositionController({
+    createEntityId,
+    isCustomSplitMode: splitMode === 'custom',
+    onClearError: () => {
+      setErrorMessage(null);
+    },
+    onValidationError: setErrorMessage,
+    participantIds,
+    splitMode,
+  });
+  const {
+    draftItemName,
+    draftItemPrice,
+    expandedItemIds,
+    items,
+    clearExpandedItems,
+    normalizeItemsForParticipants,
+    removeConfirmedItem,
+    replaceDraftState,
+    resetDraftState,
+  } = itemCompositionController;
 
   const billNumericInputProps = {
     showInlineKeyboardDismissButton: false,
@@ -401,9 +424,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   } as const;
   const handleEqualTotalInputChange = useCallback((value: string) => {
     setEqualTotalInput(sanitizeBillNumericInput(value));
-  }, []);
-  const handleDraftItemPriceChange = useCallback((value: string) => {
-    setDraftItemPrice(sanitizeBillNumericInput(value));
   }, []);
   const handleTaxInputChange = useCallback((value: string) => {
     setTaxInput(sanitizeBillNumericInput(value));
@@ -454,10 +474,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         },
       });
 
-      setDraftItemName(transition.draftItemName);
-      setDraftItemPrice(transition.draftItemPrice);
-      setItems(transition.items);
-      setExpandedItemIds(transition.expandedItemIds);
+      replaceDraftState({
+        draftItemName: transition.draftItemName,
+        draftItemPrice: transition.draftItemPrice,
+        items: transition.items,
+        expandedItemIds: transition.expandedItemIds,
+      });
       setTaxInput(transition.taxInput);
       setTipInput(transition.tipInput);
       setFeesInput(transition.feesInput);
@@ -483,6 +505,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       items,
       owedAmountOverrides,
       receiptScanWarnings,
+      replaceDraftState,
       splitMode,
       taxInput,
       tipInput,
@@ -498,10 +521,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setSplitMode('equal');
     setBillTitle('');
     setEqualTotalInput('');
-    setDraftItemName('');
-    setDraftItemPrice('');
-    setItems([]);
-    setExpandedItemIds([]);
+    resetDraftState();
     setTaxInput('');
     setTipInput('');
     setFeesInput('');
@@ -515,7 +535,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setIsEditHydrated(false);
     setPendingReceiptScanResult(null);
     setReceiptScanWarnings([]);
-  }, [editBillId, isEditMode]);
+  }, [
+    editBillId,
+    isEditMode,
+    resetDraftState,
+  ]);
 
   useEffect(() => {
     if (!isEditMode || isEditHydrated) {
@@ -547,10 +571,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setCustomParticipants(hydratedDraft.customParticipants);
     setFriendSearchQuery('');
     setEqualTotalInput(hydratedDraft.equalTotalInput);
-    setDraftItemName(hydratedDraft.draftItemName);
-    setDraftItemPrice(hydratedDraft.draftItemPrice);
-    setItems(hydratedDraft.items);
-    setExpandedItemIds(hydratedDraft.expandedItemIds);
+    replaceDraftState({
+      draftItemName: hydratedDraft.draftItemName,
+      draftItemPrice: hydratedDraft.draftItemPrice,
+      items: hydratedDraft.items,
+      expandedItemIds: hydratedDraft.expandedItemIds,
+    });
     setTaxInput(hydratedDraft.taxInput);
     setTipInput(hydratedDraft.tipInput);
     setFeesInput(hydratedDraft.feesInput);
@@ -577,29 +603,23 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setIsPayerDropdownOpen,
     setPayerParticipantId,
     setSelectedFriendIds,
+    replaceDraftState,
     user?.id,
   ]);
-
-  const participantIds = useMemo(
-    () => participants.map((participant) => participant.id),
-    [participants],
-  );
 
   useEffect(() => {
     if (isEditMode && !isEditHydrated) {
       return;
     }
 
-    setItems((currentItems) =>
-      billDraftFacade.normalizeItemsForParticipants(currentItems, participantIds),
-    );
-  }, [isEditHydrated, isEditMode, participantIds]);
+    normalizeItemsForParticipants(participantIds);
+  }, [isEditHydrated, isEditMode, normalizeItemsForParticipants, participantIds]);
 
   useEffect(() => {
     if (!isCustomSplitMode) {
-      setExpandedItemIds([]);
+      clearExpandedItems();
     }
-  }, [isCustomSplitMode]);
+  }, [clearExpandedItems, isCustomSplitMode]);
 
   useEffect(() => {
     const participantIdSet = new Set(participantIds);
@@ -708,10 +728,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       });
 
       setSplitMode(receiptDraft.splitMode);
-      setItems(receiptDraft.items);
-      setExpandedItemIds(receiptDraft.expandedItemIds);
-      setDraftItemName(receiptDraft.draftItemName);
-      setDraftItemPrice(receiptDraft.draftItemPrice);
+      replaceDraftState({
+        draftItemName: receiptDraft.draftItemName,
+        draftItemPrice: receiptDraft.draftItemPrice,
+        items: receiptDraft.items,
+        expandedItemIds: receiptDraft.expandedItemIds,
+      });
       setTaxInput(receiptDraft.taxInput);
       setTipInput(receiptDraft.tipInput);
       setFeesInput(receiptDraft.feesInput);
@@ -735,7 +757,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         confidence: scanResult.confidence,
       });
     },
-    [billTitle, isEditMode, participants.length],
+    [
+      billTitle,
+      isEditMode,
+      participants.length,
+      replaceDraftState,
+    ],
   );
 
   useEffect(() => {
@@ -753,117 +780,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
     applyReceiptScanResult(scanResult);
   }, [applyReceiptScanResult, hasReceiptReplaceableDraftData, navigation, route.params?.receiptScanResult]);
-
-  const toggleItemExpanded = (itemId: string) => {
-    setExpandedItemIds((currentIds) =>
-      currentIds.includes(itemId)
-        ? currentIds.filter((currentId) => currentId !== itemId)
-        : [...currentIds, itemId],
-    );
-  };
-
-  const addItem = () => {
-    const result = billDraftFacade.addItem({
-      createEntityId,
-      draftItemName,
-      draftItemPrice,
-      isCustomSplitMode,
-      items,
-      participantIds,
-    });
-
-    if (!result.ok) {
-      setErrorMessage(result.message);
-      return;
-    }
-
-    setItems(result.items);
-    setDraftItemName('');
-    setDraftItemPrice('');
-    setErrorMessage(null);
-    trackObservabilityEvent('CREATE_BILL_ITEM_ADDED', {
-      source: 'CreateBillScreen',
-      splitMode,
-      itemCount: items.length + 1,
-    });
-  };
-
-  const removeItem = (itemId: string) => {
-    setItems((currentItems) => billDraftFacade.removeItem(currentItems, { itemId }));
-    setExpandedItemIds((currentIds) => currentIds.filter((currentId) => currentId !== itemId));
-    trackObservabilityEvent('CREATE_BILL_ITEM_REMOVED', {
-      source: 'CreateBillScreen',
-      splitMode,
-      itemCount: Math.max(0, items.length - 1),
-    });
-  };
-
-  const updateItemSplitMode = (itemId: string, nextSplitMode: 'simple' | 'advanced') => {
-    setItems((currentItems) =>
-      billDraftFacade.updateItemSplitMode(currentItems, {
-        itemId,
-        nextSplitMode,
-        participantIds,
-      }),
-    );
-  };
-
-  const toggleSimpleItemParticipant = (itemId: string, participantId: string) => {
-    setItems((currentItems) =>
-      billDraftFacade.toggleSimpleItemParticipant(currentItems, {
-        itemId,
-        participantId,
-      }),
-    );
-  };
-
-  const updateAdvancedSplitType = (itemId: string, nextType: DraftAdvancedSplitType) => {
-    setItems((currentItems) =>
-      billDraftFacade.updateAdvancedSplitType(currentItems, {
-        itemId,
-        nextType,
-      }),
-    );
-  };
-
-  const toggleAdvancedItemParticipant = (itemId: string, participantId: string) => {
-    setItems((currentItems) =>
-      billDraftFacade.toggleAdvancedItemParticipant(currentItems, {
-        itemId,
-        participantId,
-      }),
-    );
-  };
-
-  const updateAdvancedSplitValue = (
-    itemId: string,
-    participantId: string,
-    splitType: DraftAdvancedSplitType,
-    value: string,
-  ) => {
-    setItems((currentItems) =>
-      billDraftFacade.updateAdvancedSplitValue(currentItems, {
-        itemId,
-        participantId,
-        splitType,
-        value,
-      }),
-    );
-  };
-
-  const toggleAdvancedSplitLock = (
-    itemId: string,
-    participantId: string,
-    splitType: DraftAdvancedSplitType,
-  ) => {
-    setItems((currentItems) =>
-      billDraftFacade.toggleAdvancedSplitLock(currentItems, {
-        itemId,
-        participantId,
-        splitType,
-      }),
-    );
-  };
 
   const enableCustomTipSplit = () => {
     trackObservabilityEvent('CREATE_BILL_CUSTOM_TIP_TOGGLED', {
@@ -926,88 +842,28 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     );
   };
 
-  const getCustomItemsStepError = useCallback((): string | null => {
-    if (items.length === 0) {
-      return 'Add at least one item before review.';
-    }
-
-    for (const [itemIndex, item] of items.entries()) {
-      const itemName = item.name.trim() || `Item ${itemIndex + 1}`;
-      const parsedPrice = Number(item.price);
-      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-        return `Enter a valid price for ${itemName}.`;
-      }
-
-      if (item.splitMode === 'advanced') {
-        if (item.advancedSplits.length === 0) {
-          return `Add participants for complex split on ${itemName}.`;
-        }
-
-        const splitTotal = roundToCurrency(
-          item.advancedSplits.reduce((sum, split) => {
-            const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
-            return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
-          }, 0),
-        );
-
-        if (
-          item.advancedSplits.some((split) => {
-            const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
-            return !Number.isFinite(parsedValue) || parsedValue <= 0;
-          })
-        ) {
-          return `Split value is invalid for ${itemName}.`;
-        }
-
-        if (item.advancedSplitType === 'percentage' && Math.abs(splitTotal - 100) > 0.01) {
-          return `${itemName} percentages must total 100%.`;
-        }
-
-        if (
-          item.advancedSplitType === 'amount' &&
-          Math.abs(splitTotal - roundToCurrency(parsedPrice)) > 0.01
-        ) {
-          return `${itemName} amount splits must equal item price.`;
-        }
-
-        continue;
-      }
-
-      if (item.assignedParticipantIds.length === 0) {
-        return `Assign at least one participant for ${itemName}.`;
-      }
-    }
-
-    if (
-      !Number.isFinite(parsedTax) ||
-      parsedTax < 0 ||
-      !Number.isFinite(parsedTip) ||
-      parsedTip < 0 ||
-      !Number.isFinite(parsedFees) ||
-      parsedFees < 0
-    ) {
-      return 'Tax, tip, and fees must be valid non-negative values.';
-    }
-
-    if (hasFinalTotalOverride && (!Number.isFinite(parsedFinalTotal) || parsedFinalTotal <= 0)) {
-      return 'Final price must be a valid amount greater than zero.';
-    }
-
-    if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
-      return 'Custom tip split must match the tip total.';
-    }
-
-    return null;
-  }, [
-    hasFinalTotalOverride,
-    isCustomTipEnabled,
-    isCustomTipSplitBalanced,
-    items,
-    parsedFees,
-    parsedFinalTotal,
-    parsedTax,
-    parsedTip,
-  ]);
+  const getCustomItemsStepError = useCallback(
+    (): string | null =>
+      itemCompositionController.getCustomItemsStepError({
+        hasFinalTotalOverride,
+        isCustomTipEnabled,
+        isCustomTipSplitBalanced,
+        parsedFees,
+        parsedFinalTotal,
+        parsedTax,
+        parsedTip,
+      }),
+    [
+      hasFinalTotalOverride,
+      isCustomTipEnabled,
+      isCustomTipSplitBalanced,
+      itemCompositionController,
+      parsedFees,
+      parsedFinalTotal,
+      parsedTax,
+      parsedTip,
+    ],
+  );
 
   const existingEvenModeItemId = isEditMode
     ? (billQuery.data?.items.find((item) => item.splitMode !== 'advanced')?.id ?? billQuery.data?.items[0]?.id)
@@ -1549,21 +1405,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       {(isEditMode || createStep === 'items') && isCustomSplitMode ? (
         <Card style={styles.sectionCard}>
           <BillDraftItemEditor
-            draftItemName={draftItemName}
-            draftItemPrice={draftItemPrice}
-            expandedItemIds={expandedItemIds}
-            items={items}
-            onAddItem={addItem}
-            onDraftItemNameChange={setDraftItemName}
-            onDraftItemPriceChange={handleDraftItemPriceChange}
+            controller={itemCompositionController.editor}
             onRemoveItemRequest={setPendingDeleteItem}
-            onToggleAdvancedParticipant={toggleAdvancedItemParticipant}
-            onToggleAdvancedSplitLock={toggleAdvancedSplitLock}
-            onToggleExpanded={toggleItemExpanded}
-            onToggleSimpleParticipant={toggleSimpleItemParticipant}
-            onUpdateAdvancedSplitType={updateAdvancedSplitType}
-            onUpdateAdvancedSplitValue={updateAdvancedSplitValue}
-            onUpdateItemSplitMode={updateItemSplitMode}
             participants={participants}
           />
         </Card>
@@ -1822,7 +1665,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             return;
           }
 
-          removeItem(pendingDeleteItem.id);
+          removeConfirmedItem(pendingDeleteItem.id);
           setPendingDeleteItem(null);
         }}
         title="Delete Bill Item?"

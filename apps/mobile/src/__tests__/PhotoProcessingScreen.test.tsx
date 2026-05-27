@@ -97,12 +97,20 @@ jest.mock('react-native', () => {
 jest.mock('../components/shared', () => ({
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
+  FeatureActionCard: (props: Record<string, unknown>) => mockReact.createElement('IconActionCard', props),
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
   IconActionCard: (props: Record<string, unknown>) => mockReact.createElement('IconActionCard', props),
   LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
+  LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
+    mockReact.createElement(
+      'LightweightStatusCard',
+      props,
+      mockReact.createElement('Text', { tone: 'warning' }, message),
+    ),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
+  OFFLINE_USAGE_WARNING_MESSAGE: 'Offline estimate may be stale. Backend limits are enforced when sync runs.',
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
   PhotoSourcePicker: (props: Record<string, unknown>) =>

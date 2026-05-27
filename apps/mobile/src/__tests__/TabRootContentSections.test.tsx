@@ -51,6 +51,7 @@ jest.mock('../components/shared', () => ({
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('ConfirmDestructiveModal', props, children),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
+  FeatureActionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),
   OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('OptionList', props, children),
   OptionListInlineBody: (

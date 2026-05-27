@@ -1,11 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
 
-import { createThemedStyles, useTheme } from '../../theme';
-import { IconActionCard } from '../shared';
-import type { IconActionCardProps } from '../shared';
+import { FeatureActionCard } from '../shared';
+import type { FeatureActionCardProps } from '../shared';
 
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type IoniconName = ComponentProps<typeof FeatureActionCard>['iconName'];
 
 interface AddOptionCardProps {
   title: string;
@@ -17,16 +15,10 @@ interface AddOptionCardProps {
   disabled?: boolean;
   testID?: string;
   titleAccessory?: ReactNode;
-  layout?: IconActionCardProps['layout'];
+  layout?: FeatureActionCardProps['layout'];
   showTrailing?: boolean;
-  tone?: IconActionCardProps['tone'];
+  tone?: FeatureActionCardProps['tone'];
 }
-
-const useStyles = createThemedStyles(() => ({
-  chevron: {
-    marginTop: 0,
-  },
-}));
 
 export function AddOptionCard({
   title,
@@ -42,29 +34,20 @@ export function AddOptionCard({
   showTrailing = true,
   tone = 'default',
 }: AddOptionCardProps) {
-  const theme = useTheme();
-  const styles = useStyles();
-
   return (
-    <IconActionCard
+    <FeatureActionCard
       description={description}
       iconBackground={iconBackground}
       iconColor={iconColor}
-      iconName={icon}
       disabled={disabled}
+      iconName={icon}
       layout={layout}
       onPress={onPress}
+      showTrailing={showTrailing}
       testID={testID}
       title={title}
       titleAccessory={titleAccessory}
       tone={tone}
-      trailing={
-        disabled
-          ? <Ionicons color={theme.colors.text.muted} name="lock-closed-outline" size={18} style={styles.chevron} />
-          : showTrailing
-            ? <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={18} style={styles.chevron} />
-          : undefined
-      }
     />
   );
 }

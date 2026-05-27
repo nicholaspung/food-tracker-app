@@ -21,6 +21,7 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('../components/shared', () => ({
+  FeatureActionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),
   OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('OptionList', props, children),
   OptionListRow: (props: Record<string, unknown>) => mockReact.createElement('OptionListRow', props),

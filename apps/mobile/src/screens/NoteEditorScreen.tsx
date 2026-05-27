@@ -10,6 +10,8 @@ import {
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
+  LightweightStatusCard,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PhotoInputField,
   type PhotoInputFieldAttachment,
   PhotoViewerModal,
@@ -970,11 +972,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         </Card>
 
         {!isOnline && isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Offline estimate may be stale. Backend limits are enforced when sync runs.
-            </Text>
-          </Card>
+          <LightweightStatusCard message={OFFLINE_USAGE_WARNING_MESSAGE} style={styles.sectionCard} />
         ) : null}
 
         {isEditing && noteDetailQuery.data?.note.status === 'used' ? (

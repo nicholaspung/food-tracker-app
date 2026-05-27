@@ -11,43 +11,17 @@ import {
   formatCurrency,
 } from '../../features/bills/billCalculations';
 import {
-  formatPercentageDisplay,
-  getAdvancedSplitRawValue,
-  isAdvancedSplitLocked,
-  roundToCurrency,
-  sanitizeBillNumericInput,
   type DraftAdvancedSplitType,
   type DraftBillItem,
   type DraftParticipant,
 } from '../../features/bills/billDraft';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Input, Text } from '../../ui';
+import type { BillDraftItemEditorController } from './useCreateBillItemCompositionController';
 
 interface BillDraftItemEditorProps {
-  draftItemName: string;
-  draftItemPrice: string;
-  expandedItemIds: string[];
-  items: DraftBillItem[];
-  onAddItem: () => void;
-  onDraftItemNameChange: (value: string) => void;
-  onDraftItemPriceChange: (value: string) => void;
+  controller: BillDraftItemEditorController;
   onRemoveItemRequest: (item: DraftBillItem) => void;
-  onToggleAdvancedParticipant: (itemId: string, participantId: string) => void;
-  onToggleAdvancedSplitLock: (
-    itemId: string,
-    participantId: string,
-    splitType: DraftAdvancedSplitType,
-  ) => void;
-  onToggleExpanded: (itemId: string) => void;
-  onToggleSimpleParticipant: (itemId: string, participantId: string) => void;
-  onUpdateAdvancedSplitType: (itemId: string, nextType: DraftAdvancedSplitType) => void;
-  onUpdateAdvancedSplitValue: (
-    itemId: string,
-    participantId: string,
-    splitType: DraftAdvancedSplitType,
-    value: string,
-  ) => void;
-  onUpdateItemSplitMode: (itemId: string, nextSplitMode: DraftBillItem['splitMode']) => void;
   participants: DraftParticipant[];
 }
 
@@ -183,64 +157,34 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function buildItemSplitSummary(
-  item: DraftBillItem,
-  participants: DraftParticipant[],
-): string {
-  if (item.splitMode === 'advanced') {
-    const total = item.advancedSplits.reduce((sum, split) => {
-      const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
-      return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
-    }, 0);
-
-    if (item.advancedSplitType === 'percentage') {
-      return `Complex split • ${formatPercentageDisplay(total)} of 100%`;
-    }
-
-    const parsedPrice = Number(item.price);
-    const targetPrice = Number.isFinite(parsedPrice) ? roundToCurrency(parsedPrice) : 0;
-    return `Complex split • ${formatCurrency(total)} of ${formatCurrency(targetPrice)}`;
-  }
-
-  const assignedCount = item.assignedParticipantIds.length;
-  if (assignedCount === 0) {
-    return 'Simple split • no participants assigned';
-  }
-
-  if (assignedCount === 1) {
-    const assignedParticipant = participants.find(
-      (participant) => participant.id === item.assignedParticipantIds[0],
-    );
-    return `Simple split • assigned to ${assignedParticipant?.name ?? '1 participant'}`;
-  }
-
-  if (assignedCount === participants.length) {
-    return 'Simple split • shared by everyone';
-  }
-
-  return `Simple split • assigned to ${assignedCount} participants`;
-}
-
 export function BillDraftItemEditor({
-  draftItemName,
-  draftItemPrice,
-  expandedItemIds,
-  items,
-  onAddItem,
-  onDraftItemNameChange,
-  onDraftItemPriceChange,
+  controller,
   onRemoveItemRequest,
-  onToggleAdvancedParticipant,
-  onToggleAdvancedSplitLock,
-  onToggleExpanded,
-  onToggleSimpleParticipant,
-  onUpdateAdvancedSplitType,
-  onUpdateAdvancedSplitValue,
-  onUpdateItemSplitMode,
   participants,
 }: BillDraftItemEditorProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const {
+    draftItemName,
+    draftItemPrice,
+    expandedItemIds,
+    items,
+    addItem,
+    buildItemSplitSummary,
+    getAdvancedItemBalanceFact,
+    getAdvancedSplitInputValue,
+    handleDraftItemPriceChange,
+    isAdvancedSplitValueLocked,
+    isSimpleItemParticipantAssigned,
+    setDraftItemName,
+    toggleAdvancedItemParticipant,
+    toggleAdvancedSplitLock,
+    toggleItemExpanded,
+    toggleSimpleItemParticipant,
+    updateAdvancedSplitType,
+    updateAdvancedSplitValue,
+    updateItemSplitMode,
+  } = controller;
   const isAddDisabled = !draftItemName.trim() || !draftItemPrice.trim();
 
   return (
@@ -256,7 +200,7 @@ export function BillDraftItemEditor({
       <View style={styles.itemComposerRow}>
         <Input
           containerStyle={styles.itemNameInput}
-          onChangeText={onDraftItemNameChange}
+          onChangeText={setDraftItemName}
           placeholder="Item name"
           testID="bill-item-name-input"
           value={draftItemName}
@@ -264,7 +208,7 @@ export function BillDraftItemEditor({
         <Input
           containerStyle={styles.itemPriceInput}
           keyboardType="decimal-pad"
-          onChangeText={onDraftItemPriceChange}
+          onChangeText={handleDraftItemPriceChange}
           placeholder="0.00"
           showInlineKeyboardDismissButton={false}
           testID="bill-item-price-input"
@@ -274,7 +218,7 @@ export function BillDraftItemEditor({
         <Pressable
           accessibilityRole="button"
           disabled={isAddDisabled}
-          onPress={onAddItem}
+          onPress={addItem}
           style={({ pressed }) => [
             styles.addItemButton,
             isAddDisabled ? styles.addItemButtonDisabled : null,
@@ -290,19 +234,7 @@ export function BillDraftItemEditor({
           {items.map((item, index) => {
             const isLast = index === items.length - 1;
             const isExpanded = expandedItemIds.includes(item.id);
-            const advancedTotal =
-              item.splitMode === 'advanced'
-                ? item.advancedSplits.reduce((sum, split) => {
-                  const parsedValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
-                  return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
-                }, 0)
-                : 0;
-            const parsedItemPrice = Number(item.price);
-            const advancedTarget =
-              item.advancedSplitType === 'percentage'
-                ? 100
-                : Number.isFinite(parsedItemPrice) ? parsedItemPrice : 0;
-            const isAdvancedBalanced = Math.abs(advancedTotal - advancedTarget) < 0.01;
+            const advancedBalanceFact = getAdvancedItemBalanceFact(item);
 
             return (
               <Fragment key={item.id}>
@@ -326,7 +258,7 @@ export function BillDraftItemEditor({
                     </View>
                   }
                   onPress={() => {
-                    onToggleExpanded(item.id);
+                    toggleItemExpanded(item.id);
                   }}
                   rightAccessory={
                     <View style={styles.itemRowAccessory}>
@@ -357,7 +289,7 @@ export function BillDraftItemEditor({
                         containerStyle={styles.splitControl}
                         fill={false}
                         onChange={(value: DraftBillItem['splitMode']) => {
-                          onUpdateItemSplitMode(item.id, value);
+                          updateItemSplitMode(item.id, value);
                         }}
                         options={[
                           { label: 'Simple', value: 'simple' },
@@ -372,13 +304,13 @@ export function BillDraftItemEditor({
                         <Text style={styles.sectionHint} variant="bodySmCompact">Choose who shares this item.</Text>
                         <View style={styles.assignmentChipWrap}>
                           {participants.map((participant) => {
-                            const isAssigned = item.assignedParticipantIds.includes(participant.id);
+                            const isAssigned = isSimpleItemParticipantAssigned(item, participant.id);
                             return (
                               <Pressable
                                 accessibilityRole="button"
                                 key={participant.id}
                                 onPress={() => {
-                                  onToggleSimpleParticipant(item.id, participant.id);
+                                  toggleSimpleItemParticipant(item.id, participant.id);
                                 }}
                                 style={[
                                   styles.assignmentChip,
@@ -407,7 +339,7 @@ export function BillDraftItemEditor({
                             containerStyle={styles.splitControl}
                             fill={false}
                             onChange={(value: DraftAdvancedSplitType) => {
-                              onUpdateAdvancedSplitType(item.id, value);
+                              updateAdvancedSplitType(item.id, value);
                             }}
                             options={[
                               { label: '%', value: 'percentage' },
@@ -429,7 +361,7 @@ export function BillDraftItemEditor({
                                 accessibilityRole="button"
                                 key={participant.id}
                                 onPress={() => {
-                                  onToggleAdvancedParticipant(item.id, participant.id);
+                                  toggleAdvancedItemParticipant(item.id, participant.id);
                                 }}
                                 style={[
                                   styles.assignmentChip,
@@ -458,7 +390,7 @@ export function BillDraftItemEditor({
                             return null;
                           }
 
-                          const isLocked = isAdvancedSplitLocked(split, item.advancedSplitType);
+                          const isLocked = isAdvancedSplitValueLocked(split, item.advancedSplitType);
                           return (
                             <View key={`${item.id}:${participant.id}`} style={styles.advancedSplitValueRow}>
                               <Text style={styles.advancedSplitLabel} variant="label">{participant.name}</Text>
@@ -467,7 +399,7 @@ export function BillDraftItemEditor({
                                   accessibilityLabel={isLocked ? 'Unlock split value' : 'Lock split value'}
                                   accessibilityRole="button"
                                   onPress={() => {
-                                    onToggleAdvancedSplitLock(
+                                    toggleAdvancedSplitLock(
                                       item.id,
                                       participant.id,
                                       item.advancedSplitType,
@@ -488,27 +420,25 @@ export function BillDraftItemEditor({
                                   containerStyle={styles.advancedSplitInput}
                                   keyboardType="decimal-pad"
                                   onChangeText={(value) => {
-                                    onUpdateAdvancedSplitValue(
+                                    updateAdvancedSplitValue(
                                       item.id,
                                       participant.id,
                                       item.advancedSplitType,
-                                      sanitizeBillNumericInput(value),
+                                      value,
                                     );
                                   }}
                                   placeholder="0.00"
                                   showInlineKeyboardDismissButton={false}
                                   useDefaultReturnKeyType={false}
-                                  value={getAdvancedSplitRawValue(split, item.advancedSplitType)}
+                                  value={getAdvancedSplitInputValue(split, item.advancedSplitType)}
                                 />
                               </View>
                             </View>
                           );
                         })}
 
-                        <Text tone={isAdvancedBalanced ? 'success' : 'warning'}>
-                          {item.advancedSplitType === 'percentage'
-                            ? `Current split: ${formatPercentageDisplay(advancedTotal)} of 100%`
-                            : `Current split: ${formatCurrency(advancedTotal)} of ${formatCurrency(advancedTarget)}`}
+                        <Text tone={advancedBalanceFact?.tone ?? 'warning'}>
+                          {`Current split: ${advancedBalanceFact?.displayText ?? '0% of 100%'}`}
                         </Text>
                       </>
                     )}

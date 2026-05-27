@@ -4,6 +4,8 @@ import { View } from 'react-native';
 import {
   HomeFeedVisitEntryCard,
   HomeFoodProductEntryCard,
+  LightweightStatusCard,
+  OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
   PhotoViewerModal,
   type HomeFeedPhotoRecord,
@@ -82,12 +84,7 @@ export function PhotoProcessingReviewStep({
       <PageErrorToast errorMessage={errorMessage} title="Review issue" />
 
       {showOfflineUsageWarning ? (
-        <Card style={styles.sectionCard} tone="muted">
-          <Text tone="warning">
-            Offline estimate may be stale. Backend limits are enforced when sync
-            runs.
-          </Text>
-        </Card>
+        <LightweightStatusCard message={OFFLINE_USAGE_WARNING_MESSAGE} style={styles.sectionCard} />
       ) : null}
 
       {processType === 'restaurant' ? (
