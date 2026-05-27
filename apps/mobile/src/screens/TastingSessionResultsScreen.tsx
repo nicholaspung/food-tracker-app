@@ -11,7 +11,8 @@ import {
   PhotoViewerModal,
   type RecordPhotoEntry,
 } from '../components/shared';
-import { listVisitItemPhotos, type TastingItemRatingRecord } from '../features';
+import { listVisitItemPhotos, type TastingItemRatingRecord, type TastingSessionRecord } from '../features';
+import { formatStoredCalendarDateLabel } from '../lib/dateFormatting';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -42,6 +43,35 @@ function uniquePhotoEntries(entries: RecordPhotoEntry[]): RecordPhotoEntry[] {
     byId.set(entry.id, entry);
   }
   return Array.from(byId.values());
+}
+
+function getApprovedRestaurantCount(session: TastingSessionRecord): number {
+  return session.restaurants.filter((restaurant) => restaurant.status === 'approved').length;
+}
+
+function getApprovedItemCount(session: TastingSessionRecord): number {
+  return session.restaurants
+    .filter((restaurant) => restaurant.status === 'approved')
+    .reduce((count, restaurant) => count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length, 0);
+}
+
+function formatCount(value: number, singular: string, plural: string): string {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function formatCompletedSessionSubtitle(session: TastingSessionRecord): string {
+  const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
+    fallback: 'Unknown date',
+    locale: 'en-US',
+  });
+
+  const summary = [
+    formatCount(getApprovedRestaurantCount(session), 'restaurant', 'restaurants'),
+    formatCount(getApprovedItemCount(session), 'item', 'items'),
+    formatCount(session.participants.length, 'taster', 'tasters'),
+  ].join(', ');
+
+  return `${sessionDate} - ${summary}`;
 }
 
 export function TastingSessionResultsScreen({ navigation, route }: TastingSessionResultsScreenProps) {
@@ -131,7 +161,11 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
   return (
     <FeatureDetailScreenScaffold
       onBackPress={() => navigation.navigate('TastingSessions')}
-      subtitle={session.status === 'completed' ? 'Group ratings, notes, and photos' : 'Results appear after completion.'}
+      subtitle={
+        session.status === 'completed'
+          ? formatCompletedSessionSubtitle(session)
+          : 'Results appear after the leader completes the tasting.'
+      }
       title={session.name}
     >
       {session.status !== 'completed' ? (

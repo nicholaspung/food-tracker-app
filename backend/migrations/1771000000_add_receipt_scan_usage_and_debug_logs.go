@@ -40,7 +40,7 @@ func init() {
 			Name:      "status",
 			Required:  true,
 			MaxSelect: 1,
-			Values:    []string{"failed", "invalid_response", "empty_response", "not_receipt", "low_confidence"},
+			Values:    []string{"success", "failed", "invalid_response", "empty_response", "not_receipt", "low_confidence"},
 		})
 		debugCollection.Fields.Add(&core.TextField{Name: "model", Required: false, Max: 100})
 		debugCollection.Fields.Add(&core.TextField{Name: "errorType", Required: false, Max: 255})

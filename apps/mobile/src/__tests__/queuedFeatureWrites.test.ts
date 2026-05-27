@@ -82,6 +82,43 @@ describe('queuedFeatureWrites', () => {
     expect(parsed[0]?.id).toBe('mut_1');
   });
 
+  it('excludes malformed display payloads before patching pending-write UI caches', () => {
+    const parsed = parseQueuedFeatureWrites([
+      createQueuedMutation({
+        id: 'mut_bad_bill',
+        headers: {
+          'X-Mobile-Write-Operation': 'bill.create',
+        },
+        url: 'local://feature/bill.create',
+        body: JSON.stringify({
+          title: 'Dinner',
+        }),
+      }),
+      createQueuedMutation({
+        id: 'mut_bad_visit',
+        headers: {
+          'X-Mobile-Write-Operation': 'visit.create',
+        },
+        url: 'local://feature/visit.create',
+        body: JSON.stringify({
+          restaurantName: 'Ramen Shop',
+        }),
+      }),
+      createQueuedMutation({
+        id: 'mut_note',
+        headers: {
+          'X-Mobile-Write-Operation': 'note.create',
+        },
+        url: 'local://feature/note.create',
+        body: JSON.stringify({
+          content: 'Try the noodles',
+        }),
+      }),
+    ]);
+
+    expect(parsed.map((write) => write.id)).toEqual(['mut_note']);
+  });
+
   it('returns null for malformed JSON bodies', () => {
     expect(parseQueuedMutationBody(createQueuedMutation({ body: '{bad-json' }))).toBeNull();
   });

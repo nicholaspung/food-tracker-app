@@ -170,12 +170,13 @@ function createPendingRestaurantList(write: QueuedFeatureWrite<'list.create'>): 
 function createPendingBillSummary(write: QueuedFeatureWrite<'bill.create'>): BillListSummary {
   const payload = write.payload as CreateBillInput;
   const now = new Date(write.createdAt).toISOString();
+  const participants = Array.isArray(payload.participants) ? payload.participants : [];
   return {
     id: createQueuedId(write),
     title: payload.title,
     status: 'open',
-    participantCount: payload.participants.length,
-    pendingOtherParticipantCount: payload.participants.length,
+    participantCount: participants.length,
+    pendingOtherParticipantCount: participants.length,
     youOwe: 0,
     youAreOwed: 0,
     isCreator: true,
@@ -187,12 +188,13 @@ function createPendingBillSummary(write: QueuedFeatureWrite<'bill.create'>): Bil
 function createPendingVisit(write: QueuedFeatureWrite<'visit.create'>): VisitRecord {
   const payload = write.payload as CreateVisitInput;
   const now = new Date(write.createdAt).toISOString();
+  const items = Array.isArray(payload.items) ? payload.items : [];
   return {
     id: createQueuedId(write),
     restaurantId: payload.restaurantId,
     restaurantName: payload.restaurantName,
     visitedAt: payload.visitedAt ?? payload.visitedOn ?? now,
-    items: payload.items.map((item, index) => ({
+    items: items.map((item, index) => ({
       id: `${createQueuedId(write)}:item:${index}`,
       name: item.name,
       rating: item.rating,

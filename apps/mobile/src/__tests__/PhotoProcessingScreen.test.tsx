@@ -105,6 +105,22 @@ jest.mock('../components/shared', () => ({
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  PhotoSourcePicker: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'PhotoSourcePicker',
+      props,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
+  PhotoSourcePickerCard: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'Card',
+      { style: props.cardStyle, tone: props.cardTone },
+      props.title as React.ReactNode,
+      props.description as React.ReactNode,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
   FoodProductFormFields: (props: Record<string, unknown>) => mockReact.createElement('FoodProductFormFields', props),
   RatingLegend: (props: Record<string, unknown>) => mockReact.createElement('RatingLegend', props),

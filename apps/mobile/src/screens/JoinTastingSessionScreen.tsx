@@ -41,12 +41,13 @@ export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScree
           void handleJoin();
         },
       }}
-      subtitle="Enter the temporary code from the leader."
+      subtitle="Enter the 6-character code from the leader. After joining, you’ll wait in the lobby until the leader starts planning."
       title="Join Tasting"
     >
       {!isOnline ? <Text tone="warning">Joining requires a connection.</Text> : null}
       <PageErrorToast errorMessage={errorMessage} title="Join failed" />
       <Card>
+        <Text tone="secondary">Use the temporary invite code before the join window closes.</Text>
         <Input
           autoCapitalize="characters"
           autoCorrect={false}

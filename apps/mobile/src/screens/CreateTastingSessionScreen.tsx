@@ -185,7 +185,7 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
           void handleCreate();
         },
       }}
-      subtitle="Open a lobby and invite friends."
+      subtitle="Name the session, choose how long friends can join, and invite friends. You’ll open a lobby next."
       title="Create Tasting"
     >
       {!isOnline ? <Text tone="warning">Creating a group tasting requires a connection.</Text> : null}
@@ -193,6 +193,7 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
       <Card>
         <Input label="Session name" onChangeText={setName} placeholder="Friday ramen tasting" value={name} />
         <Text variant="label">Join window</Text>
+        <Text tone="secondary">Friends can join the lobby until this window closes.</Text>
         {DURATION_OPTIONS.map((option) => (
           <Button
             key={option}

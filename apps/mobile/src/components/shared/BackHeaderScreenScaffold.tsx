@@ -23,6 +23,8 @@ export interface BackHeaderScreenScaffoldProps {
   subtitle?: ReactNode;
   onBackPress: () => void;
   rightAccessory?: ReactNode;
+  headerBottomContent?: ReactNode;
+  headerBottomCompact?: boolean;
   backAccessibilityLabel?: string;
   headerVariant?: 'large' | 'compact';
   scroll?: boolean;
@@ -35,6 +37,7 @@ export interface BackHeaderScreenScaffoldProps {
   adjustKeyboardSpaceForFixedHeader?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
+  stickyHeaderIndices?: number[];
   primaryAction?: StickyActionFooterAction;
   secondaryAction?: StickyActionFooterAction;
   children: ReactNode;
@@ -46,6 +49,7 @@ const useStyles = createThemedStyles((
   screenContentBackgroundColor: string,
   bodyBackgroundColor: string,
   growBody: boolean,
+  headerBottomCompact: boolean,
 ) => ({
   screenContent: {
     backgroundColor: screenContentBackgroundColor,
@@ -65,6 +69,13 @@ const useStyles = createThemedStyles((
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
   },
+  headerBottom: {
+    backgroundColor: theme.colors.background.app,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: headerBottomCompact ? theme.spacing.xs : theme.spacing.sm,
+  },
 }));
 
 export function BackHeaderScreenScaffold({
@@ -72,6 +83,8 @@ export function BackHeaderScreenScaffold({
   subtitle,
   onBackPress,
   rightAccessory,
+  headerBottomContent,
+  headerBottomCompact = false,
   backAccessibilityLabel,
   headerVariant = 'large',
   scroll = true,
@@ -84,6 +97,7 @@ export function BackHeaderScreenScaffold({
   adjustKeyboardSpaceForFixedHeader = false,
   contentStyle,
   bodyStyle,
+  stickyHeaderIndices,
   primaryAction,
   secondaryAction,
   children,
@@ -109,6 +123,7 @@ export function BackHeaderScreenScaffold({
     usesFixedHeaderScroll ? theme.colors.background.surface : backgroundColor,
     backgroundColor,
     usesFixedHeaderScroll,
+    headerBottomCompact,
   );
   const footerContent = primaryAction ? (
     <StickyActionFooter primaryAction={primaryAction} secondaryAction={secondaryAction} />
@@ -145,6 +160,7 @@ export function BackHeaderScreenScaffold({
           title={title}
           variant={headerVariant}
         />
+        {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       </View>
       {usesFixedHeaderScroll ? (
         <>
@@ -167,6 +183,7 @@ export function BackHeaderScreenScaffold({
                 />
               ) : undefined
             }
+            stickyHeaderIndices={stickyHeaderIndices}
             style={styles.scrollBody}
           >
             {children}

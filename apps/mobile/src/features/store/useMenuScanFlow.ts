@@ -125,6 +125,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
       trackObservabilityEvent('MENU_SCAN_STARTED', eventProperties);
 
       let imageInput: Awaited<ReturnType<typeof stageLocalPhotoFile>> | null = null;
+      let hasPickedImage = false;
       try {
         const pickResult = await pickImageAssets({ source });
         if (pickResult.status === 'permission_denied') {
@@ -143,6 +144,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
           return null;
         }
 
+        hasPickedImage = true;
         imageInput = await stageLocalPhotoFile(pickResult.assets[0], {
           fallbackPrefix:
             options.fallbackPrefix ?? (source === 'camera' ? 'menu-camera' : 'menu-image'),
@@ -212,6 +214,13 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         await options.onSuccess?.(flowResult);
         return flowResult;
       } catch (error) {
+        if (!hasPickedImage) {
+          trackObservabilityEvent('MENU_SCAN_IMAGE_PICK_CANCELED', eventProperties);
+          setErrorMessage(null);
+          setStatus('idle');
+          return null;
+        }
+
         const limitPayload = parseLimitExceededError(error);
         if (limitPayload) {
           trackObservabilityEvent('USAGE_LIMIT_REACHED', {

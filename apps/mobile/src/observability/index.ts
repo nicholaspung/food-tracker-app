@@ -229,7 +229,7 @@ function sanitizeEventProperties(
   const redactedKeys: string[] = [];
 
   Object.entries(properties).forEach(([key, value]) => {
-    if (shouldRedactObservabilityKey(key)) {
+    if (shouldRedactObservabilityKey(key, value)) {
       redactedKeys.push(key);
       return;
     }
@@ -260,10 +260,14 @@ function warnOnRedactedEventProperties(eventName: string, redactedKeys: string[]
   });
 }
 
-function shouldRedactObservabilityKey(key: string): boolean {
+function shouldRedactObservabilityKey(key: string, value?: JsonValue): boolean {
   const normalizedKey = key.trim().toLowerCase();
 
   if (allowedIdentifierAnalyticsKeys.has(normalizedKey) || normalizedKey === 'cardid') {
+    return false;
+  }
+
+  if (typeof value === 'boolean' && normalizedKey.startsWith('has') && normalizedKey.endsWith('id')) {
     return false;
   }
 
@@ -316,7 +320,7 @@ function sanitizeJsonValue(
     const nextObject: Record<string, JsonValue> = {};
     Object.entries(value).forEach(([key, item]) => {
       const nextPath = path ? `${path}.${key}` : key;
-      if (shouldRedactObservabilityKey(key)) {
+      if (shouldRedactObservabilityKey(key, item)) {
         redactedKeys?.push(nextPath);
         return;
       }

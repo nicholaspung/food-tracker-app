@@ -243,7 +243,7 @@ module.exports = ({ config }) => {
     appIdentity.scheme === 'yummyrecs-preview'
       ? ['beta.app.yummyrecs.com']
       : ['app.yummyrecs.com'];
-  const authLinkPathPrefixes = ['/reset-password', '/verify-email', '/signup'];
+  const appLinkPathPrefixes = ['/reset-password', '/verify-email', '/signup', '/lists/shared'];
   const updatesConfig =
     appVariant === 'preview'
       ? {
@@ -280,7 +280,7 @@ module.exports = ({ config }) => {
           action: 'VIEW',
           autoVerify: true,
           data: authLinkHosts.flatMap((host) =>
-            authLinkPathPrefixes.map((pathPrefix) => ({
+            appLinkPathPrefixes.map((pathPrefix) => ({
               scheme: 'https',
               host,
               pathPrefix,

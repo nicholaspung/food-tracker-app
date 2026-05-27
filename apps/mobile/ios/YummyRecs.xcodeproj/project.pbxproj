@@ -396,6 +396,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
+				YUMMYRECS_IOS_APP_LINK_HOST = app.yummyrecs.com;
 			};
 			name = Debug;
 		};
@@ -432,6 +433,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
+				YUMMYRECS_IOS_APP_LINK_HOST = app.yummyrecs.com;
 			};
 			name = Release;
 		};
@@ -468,6 +470,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
+				YUMMYRECS_IOS_APP_LINK_HOST = beta.app.yummyrecs.com;
 				YUMMYRECS_IOS_BUNDLE_IDENTIFIER_SUFFIX = .preview;
 				YUMMYRECS_IOS_DISPLAY_NAME_SUFFIX = " Preview";
 				YUMMYRECS_IOS_URL_SCHEME_SUFFIX = "-preview";

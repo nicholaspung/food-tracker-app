@@ -115,6 +115,22 @@ jest.mock('../components/shared', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) =>
     mockReact.createElement('PhotoSourceActionCards', props),
+  PhotoSourcePicker: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'PhotoSourcePicker',
+      props,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
+  PhotoSourcePickerCard: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'Card',
+      { style: props.cardStyle, tone: props.cardTone },
+      props.title as React.ReactNode,
+      props.description as React.ReactNode,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
   VisibilityOptionSelector: (props: Record<string, unknown>) =>
     mockReact.createElement('VisibilityOptionSelector', props),
 }));
@@ -328,6 +344,54 @@ describe('create visit flow navigation', () => {
     );
   });
 
+  it('returns from the menu scan helper screen to food discovery restaurant detail', async () => {
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    const detailParams = {
+      cuisineType: 'Cafe',
+      location: 'West Hollywood, CA',
+      restaurantId: 'restaurant_1',
+      restaurantName: 'Cafe Test',
+      userVisitCount: 2,
+    };
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <MenuScanPhotoProcessingScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              mode: 'menu_scan',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Cafe Test',
+              returnTo: 'RestaurantDiscoveryRestaurant',
+              returnToRestaurantDiscoveryRestaurantParams: detailParams,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer!.root.findByType('FeatureFormScreenScaffold').props.onBackPress();
+    });
+
+    expect(navigation.popTo).toHaveBeenCalledWith(
+      'RestaurantDiscoveryRestaurant',
+      detailParams,
+    );
+    expect(mockUseMenuScanFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analyticsSource: 'FoodDiscoveryRestaurant',
+        restaurantId: 'restaurant_1',
+        restaurantName: 'Cafe Test',
+      }),
+    );
+  });
+
   it('keeps the photo source picker visible after a non-menu scan rejection', async () => {
     const navigation = {
       goBack: jest.fn(),
@@ -365,8 +429,63 @@ describe('create visit flow navigation', () => {
 
     expect(renderer!.root.findAllByType('PhotoSourceActionCards')).toHaveLength(1);
     expect(
+      renderer!.root.findAllByType('Text').some((textNode: any) =>
+        textNode.props.children === 'Tip: clear, well-lit menu photos produce better item extraction.',
+      ),
+    ).toBe(true);
+    expect(
       renderer!.root.findAllByType('PageErrorToast').some((toast: any) =>
         toast.props.errorMessage === 'Image is not a menu' && toast.props.title === 'Menu scan failed',
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps the photo source picker visible after a recoverable menu scan failure', async () => {
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    mockUseMenuScanFlow.mockReturnValue({
+      createdItemNames: [],
+      errorMessage: 'Something went wrong.',
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: '',
+      status: 'error',
+      verification: null,
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <MenuScanPhotoProcessingScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              mode: 'menu_scan',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Cafe Test',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer!.root.findAllByType('PhotoSourceActionCards')).toHaveLength(1);
+    expect(
+      renderer!.root.findAllByType('Text').some((textNode: any) =>
+        textNode.props.children === 'Tip: clear, well-lit menu photos produce better item extraction.',
+      ),
+    ).toBe(true);
+    expect(
+      renderer!.root.findAllByType('PageErrorToast').some((toast: any) =>
+        toast.props.errorMessage === 'Something went wrong.' &&
+        toast.props.title === 'Menu scan failed' &&
+        toast.props.actionLabel === 'Try Again',
       ),
     ).toBe(true);
   });

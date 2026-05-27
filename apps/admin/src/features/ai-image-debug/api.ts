@@ -1,6 +1,14 @@
 import { pb } from '@/lib/pocketbase';
+import type { AdminUser } from '@/features/auth/types';
 
 export type AiImageDebugMode = 'storefront' | 'menu-scan' | 'receipt-scan';
+export type ReceiptScanDebugLogStatus =
+  | 'success'
+  | 'failed'
+  | 'invalid_response'
+  | 'empty_response'
+  | 'not_receipt'
+  | 'low_confidence';
 
 export interface AiImageDebugRunMetadata {
   requestId: string;
@@ -67,6 +75,30 @@ export interface ReceiptScanDebugResponse {
   confidence: 'high' | 'medium' | 'low' | 'unknown';
   warnings: string[];
   debug?: unknown;
+}
+
+export interface ReceiptScanDebugLogRecord {
+  id: string;
+  requestId: string;
+  status: ReceiptScanDebugLogStatus;
+  model?: string;
+  errorType?: string;
+  errorMessage?: string;
+  confidence?: 'high' | 'medium' | 'low' | 'unknown';
+  httpStatusCode?: number;
+  durationMs?: number;
+  promptTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  imageMimeType?: string;
+  imageSizeBytes?: number;
+  rawOutputJson?: unknown;
+  metadataJson?: unknown;
+  user?: string;
+  created: string;
+  expand?: {
+    user?: AdminUser;
+  };
 }
 
 export interface AiImageDebugApiError extends Error {
@@ -235,4 +267,15 @@ export async function runReceiptScanDebug(input: StorefrontDebugInput) {
   } catch (error) {
     throw toAiImageDebugApiError(error, 'Could not scan receipt image.');
   }
+}
+
+export async function listReceiptScanDebugLogs() {
+  const response = await pb
+    .collection('receipt_scan_debug_logs')
+    .getList<ReceiptScanDebugLogRecord>(1, 100, {
+      expand: 'user',
+      sort: '-created',
+    });
+
+  return response.items;
 }

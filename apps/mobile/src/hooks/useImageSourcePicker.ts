@@ -6,6 +6,10 @@ import {
   type PhotoPickerPermissionResult,
   type PhotoPickerPermissionSource,
 } from './usePhotoPickerPermissions';
+import {
+  launchCameraPickerAsync,
+  launchImageLibraryPickerAsync,
+} from '../lib/guardedImagePicker';
 
 interface UseImageSourcePickerOptions {
   cameraBlockedMessage: string;
@@ -80,13 +84,13 @@ export function useImageSourcePicker({
 
       const pickerResult =
         source === 'camera'
-          ? await ImagePicker.launchCameraAsync({
+          ? await launchCameraPickerAsync({
               mediaTypes: ['images'],
               allowsEditing: false,
               quality,
               exif,
             })
-          : await ImagePicker.launchImageLibraryAsync({
+          : await launchImageLibraryPickerAsync({
               mediaTypes: ['images'],
               allowsEditing: false,
               allowsMultipleSelection,
@@ -95,7 +99,7 @@ export function useImageSourcePicker({
               exif,
             });
 
-      if (pickerResult.canceled || pickerResult.assets.length === 0) {
+      if (!pickerResult || pickerResult.canceled || pickerResult.assets.length === 0) {
         return {
           status: 'canceled',
         };

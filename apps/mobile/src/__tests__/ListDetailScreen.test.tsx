@@ -1,11 +1,14 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Share } from 'react-native';
 
 import {
   buildPocketBaseFileUrl,
   getRestaurantListDetail,
+  getOrCreateRestaurantListShareLink,
   invalidateRestaurantListContentQueries,
+  regenerateRestaurantListShareLink,
   useRestaurantListWrites,
 } from '../features';
 import type { RestaurantListDetailRecord } from '../features/store/featureStore';
@@ -90,11 +93,15 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
   createDefaultRestaurantList: jest.fn(),
+  disableRestaurantListShareLink: jest.fn(),
   getRestaurantListDetail: jest.fn(),
+  getOrCreateRestaurantListShareLink: jest.fn(),
   invalidateRestaurantListContentQueries: jest.fn(),
   invalidateRestaurantListSaveTargetQueries: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
+  regenerateRestaurantListShareLink: jest.fn(),
   restaurantListQueryKeys: {
+    root: ['feature', 'restaurantLists'],
     detail: (listId: string) => ['feature', 'restaurantListDetail', listId],
   },
   saveRestaurantFoodItemToList: jest.fn(),
@@ -228,8 +235,14 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<typeof getRestaurantListDetail>;
+const mockedGetOrCreateRestaurantListShareLink = getOrCreateRestaurantListShareLink as jest.MockedFunction<
+  typeof getOrCreateRestaurantListShareLink
+>;
 const mockedInvalidateRestaurantListContentQueries = invalidateRestaurantListContentQueries as jest.MockedFunction<
   typeof invalidateRestaurantListContentQueries
+>;
+const mockedRegenerateRestaurantListShareLink = regenerateRestaurantListShareLink as jest.MockedFunction<
+  typeof regenerateRestaurantListShareLink
 >;
 const mockedUseRestaurantListWrites = useRestaurantListWrites as jest.MockedFunction<typeof useRestaurantListWrites>;
 const mockedUseFeatureOutboxQueue = useFeatureOutboxQueue as jest.MockedFunction<typeof useFeatureOutboxQueue>;
@@ -370,7 +383,9 @@ describe('ListDetailScreen', () => {
     navigate: jest.fn(),
     replace: jest.fn(),
   };
-  const queryClient = {};
+  const queryClient = {
+    invalidateQueries: jest.fn(),
+  };
   const restaurantListWrites = {
     addRestaurant: jest.fn(),
     createDefaultRestaurantList: jest.fn(),
@@ -396,9 +411,24 @@ describe('ListDetailScreen', () => {
     jest.clearAllMocks();
     mockedBuildPocketBaseFileUrl.mockReturnValue('photo-url');
     mockedUseQuery.mockReturnValue(buildQueryResult());
-    mockedUseQueryClient.mockReturnValue(queryClient as ReturnType<typeof useQueryClient>);
+    mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
+    mockedGetOrCreateRestaurantListShareLink.mockResolvedValue({
+      listId: 'list_1',
+      path: '/lists/shared/share-token-123',
+      shareToken: 'share-token-123',
+      url: 'https://server.example/lists/shared/share-token-123',
+    });
     mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
+    mockedRegenerateRestaurantListShareLink.mockResolvedValue({
+      listId: 'list_1',
+      path: '/lists/shared/regenerated-share-token',
+      shareToken: 'regenerated-share-token',
+      url: 'https://server.example/lists/shared/regenerated-share-token',
+    });
+    jest.spyOn(Share, 'share').mockResolvedValue({
+      action: Share.sharedAction,
+    } as Awaited<ReturnType<typeof Share.share>>);
     restaurantListWrites.deleteRestaurantList.mockResolvedValue({ status: 'completed' });
     restaurantListWrites.reorderRestaurant.mockResolvedValue({
       result: [],
@@ -472,6 +502,42 @@ describe('ListDetailScreen', () => {
 
     expect(locationRowStyle.alignItems).toBe('flex-start');
     expect(locationIconStyle.marginTop).toBe(1);
+  });
+
+  it('shares list links once in the message payload', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            name: 'Random',
+            shareEnabled: true,
+          }),
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      findRightAccessoryElementByTestID(renderer.root, 'list-detail-share-button').props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'share-list-modal' }).props.primaryAction.onPress();
+    });
+
+    expect(Share.share).toHaveBeenCalledWith({
+      message: 'View my Yummy Recs list "Random": http://localhost:8081/lists/shared/share-token-123',
+    });
   });
 
   it('renders single-value metadata without a bullet and preserves the fallback label', async () => {

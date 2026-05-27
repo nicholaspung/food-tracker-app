@@ -721,7 +721,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       await Share.share({
         message: `View my Yummy Recs list "${list.name}": ${shareUrl}`,
-        url: shareUrl,
       });
       await detailQuery.refetch();
       await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root });

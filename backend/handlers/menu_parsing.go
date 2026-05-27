@@ -1137,11 +1137,16 @@ Rules:
 			ItemsExtracted: len(normalizedReceipt.Items),
 		})
 
-		if shouldPersistReceiptScanDebug(normalizedReceipt) {
+		shouldPersistDebug := shouldPersistReceiptScanDebug(normalizedReceipt)
+		if shouldPersistDebug || isAdmin {
+			status := "low_confidence"
+			if !shouldPersistDebug {
+				status = "success"
+			}
 			recordReceiptScanDebugLog(e.App, receiptScanDebugLogInput{
 				UserID:         authRecord.Id,
 				RequestID:      requestID,
-				Status:         "low_confidence",
+				Status:         status,
 				Model:          resolvedModel,
 				HTTPStatusCode: 200,
 				Confidence:     normalizedReceipt.Confidence,

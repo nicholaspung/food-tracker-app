@@ -58,6 +58,10 @@ export function parseQueuedFeatureWrite(
     return null;
   }
 
+  if (!isDisplayableQueuedFeaturePayload(operationName, payload)) {
+    return null;
+  }
+
   return {
     id: mutation.id,
     operationName,
@@ -67,6 +71,34 @@ export function parseQueuedFeatureWrite(
     idempotencyKey: mutation.idempotencyKey,
     lastError: mutation.lastError,
   };
+}
+
+function isDisplayableQueuedFeaturePayload(
+  operationName: FeatureOutboxOperationName,
+  payload: object,
+): boolean {
+  switch (operationName) {
+    case 'bill.create':
+      return hasString(payload, 'title') && hasArray(payload, 'participants');
+    case 'food-product.create':
+      return hasString(payload, 'itemName');
+    case 'list.create':
+      return hasString(payload, 'name');
+    case 'note.create':
+      return hasString(payload, 'content');
+    case 'visit.create':
+      return hasString(payload, 'restaurantName') && hasArray(payload, 'items');
+    default:
+      return true;
+  }
+}
+
+function hasArray(payload: object, key: string): boolean {
+  return Array.isArray((payload as Record<string, unknown>)[key]);
+}
+
+function hasString(payload: object, key: string): boolean {
+  return typeof (payload as Record<string, unknown>)[key] === 'string';
 }
 
 export function parseQueuedFeatureWrites(

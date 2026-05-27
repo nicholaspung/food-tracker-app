@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -9,13 +9,12 @@ import {
   FeatureDetailScreenScaffold,
   LoadingState,
   PageErrorToast,
-  PhotoSourceActionCards,
   RatingPill,
   SegmentedControl,
   type SegmentedControlOption,
   VisitRestaurantOptionTrailing,
 } from '../components/shared';
-import { type AllLocationsHistoryRecord, type MenuItemRecord, useMenuScanFlow } from '../features';
+import { type AllLocationsHistoryRecord, type MenuItemRecord } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { getAllLocationsHistory, listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
@@ -45,11 +44,6 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xs,
   },
-  itemRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
   itemDescription: {
     gap: theme.spacing.xxs,
   },
@@ -63,22 +57,6 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
-  },
-  warningPanel: {
-    backgroundColor: theme.colors.status.warningBg,
-    borderColor: theme.colors.status.warningBorder,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    gap: theme.spacing.xs,
-    padding: theme.spacing.md,
-  },
-  successPanel: {
-    backgroundColor: theme.colors.status.successBg,
-    borderColor: theme.colors.status.successBorder,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    gap: theme.spacing.xs,
-    padding: theme.spacing.md,
   },
 }));
 
@@ -140,15 +118,6 @@ export function RestaurantDiscoveryRestaurantScreen({
     }
     return parts.filter(Boolean).join(' • ');
   }, [restaurant]);
-  const [showPhotoSources, setShowPhotoSources] = useState(false);
-  const menuScanFlow = useMenuScanFlow({
-    analyticsSource: 'FoodDiscoveryRestaurant',
-    restaurantId: restaurant.id,
-    restaurantName: restaurant.name,
-    onSuccess: () => {
-      setShowPhotoSources(false);
-    },
-  });
 
   const menuItemsQuery = useQuery({
     queryKey: menuItemsQueryKeys.restaurant(restaurant.id),
@@ -194,15 +163,6 @@ export function RestaurantDiscoveryRestaurantScreen({
     enabled: Boolean(restaurant.id),
   });
 
-  const verificationNeedsAttention =
-    menuScanFlow.verification?.matched === false ||
-    (menuScanFlow.verification?.checked === true &&
-      (menuScanFlow.verification.matched === null ||
-        menuScanFlow.verification.confidence === 'low' ||
-        menuScanFlow.verification.confidence === 'unknown'));
-
-  const isMenuScanProcessing =
-    menuScanFlow.status === 'selecting' || menuScanFlow.status === 'processing';
   const allLocationsHistory = allLocationsHistoryQuery.data;
   const hasOrderedHistoryAtAnotherLocation = Boolean(
     allLocationsHistory?.restaurants.some(
@@ -230,38 +190,20 @@ export function RestaurantDiscoveryRestaurantScreen({
           <Text variant="label">Actions</Text>
         </View>
         <Button
-          disabled={!isOnline || isMenuScanProcessing}
+          disabled={!isOnline}
           label="Scan Menu Items"
-          loading={isMenuScanProcessing}
           onPress={() => {
-            setShowPhotoSources((visible) => !visible);
+            navigation.navigate('ProcessPhotos', {
+              autoStartSourcePicker: false,
+              mode: 'menu_scan',
+              restaurantId: restaurant.id,
+              restaurantName: restaurant.name,
+              returnTo: 'RestaurantDiscoveryRestaurant',
+              returnToRestaurantDiscoveryRestaurantParams: route.params,
+            });
           }}
         />
         {!isOnline ? <Text tone="warning">Menu scanning requires internet connection.</Text> : null}
-        {showPhotoSources ? (
-          <PhotoSourceActionCards
-            cameraSubtitle="Menu"
-            cameraTitle="Take Photo"
-            disabled={!isOnline || isMenuScanProcessing}
-            gallerySubtitle="Photo Library"
-            galleryTitle="Upload"
-            onCameraPress={() => {
-              void menuScanFlow.scanMenu('camera');
-            }}
-            onGalleryPress={() => {
-              void menuScanFlow.scanMenu('gallery');
-            }}
-          />
-        ) : null}
-        {menuScanFlow.permissionNeedsSettings ? (
-          <Button
-            label="Open Settings"
-            onPress={() => {
-              void Linking.openSettings();
-            }}
-            variant="secondary"
-          />
-        ) : null}
         <Button
           label="Track Visit With This Restaurant"
           onPress={() => {
@@ -272,54 +214,6 @@ export function RestaurantDiscoveryRestaurantScreen({
           }}
           variant="secondary"
         />
-        <PageErrorToast
-          errorMessage={menuScanFlow.status === 'error' ? menuScanFlow.errorMessage : null}
-          title="Menu scan failed"
-        />
-
-        {verificationNeedsAttention ? (
-          <View style={styles.warningPanel}>
-            <Text tone="warning" variant="label">Check the restaurant match</Text>
-            <Text tone="secondary">
-              {menuScanFlow.verification?.reason ?? 'The menu photo did not clearly match the selected restaurant.'}
-            </Text>
-            {menuScanFlow.verification?.observedRestaurantNames.length ? (
-              <Text tone="secondary">
-                Seen: {menuScanFlow.verification.observedRestaurantNames.join(', ')}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        {menuScanFlow.status === 'success' ? (
-          <View style={styles.successPanel}>
-            <Text tone="success" variant="label">Menu items processed</Text>
-            {menuScanFlow.createdItemNames.length > 0 ? (
-              <>
-                <Text tone="secondary">Added items:</Text>
-                {menuScanFlow.createdItemNames.map((itemName) => (
-                  <View key={itemName} style={styles.itemRow}>
-                    <Ionicons color={theme.colors.text.success} name="checkmark-outline" size={14} />
-                    <Text>{itemName}</Text>
-                  </View>
-                ))}
-              </>
-            ) : null}
-            {menuScanFlow.existingItemNames.length > 0 ? (
-              <>
-                <Text tone="secondary">
-                  {menuScanFlow.createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
-                </Text>
-                {menuScanFlow.existingItemNames.map((itemName) => (
-                  <View key={itemName} style={styles.itemRow}>
-                    <Ionicons color={theme.colors.text.info} name="checkmark-done-outline" size={14} />
-                    <Text>{itemName}</Text>
-                  </View>
-                ))}
-              </>
-            ) : null}
-          </View>
-        ) : null}
       </Card>
 
       {canShowAllLocations ? (

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
@@ -55,6 +54,10 @@ import {
   getTodayLocalDateString,
   isValidLocalDate,
 } from '../lib/dateFormatting';
+import {
+  launchCameraPickerAsync,
+  launchImageLibraryPickerAsync,
+} from '../lib/guardedImagePicker';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
@@ -1303,13 +1306,13 @@ export function CreateVisitScreen({
 
     const result =
       source === "camera"
-        ? await ImagePicker.launchCameraAsync({
+        ? await launchCameraPickerAsync({
             mediaTypes: ["images"],
             allowsEditing: false,
             exif: true,
             quality: 0.8,
           })
-        : await ImagePicker.launchImageLibraryAsync({
+        : await launchImageLibraryPickerAsync({
             mediaTypes: ["images"],
             allowsEditing: false,
             exif: true,
@@ -1317,7 +1320,7 @@ export function CreateVisitScreen({
             selectionLimit: 1,
           });
 
-    if (result.canceled || result.assets.length === 0) {
+    if (!result || result.canceled || result.assets.length === 0) {
       trackObservabilityEvent("CREATE_VISIT_PHOTO_PICK_CANCELED", {
         photoSource: source,
         source: "CreateVisitScreen",

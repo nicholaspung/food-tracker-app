@@ -32,6 +32,10 @@ import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
+import {
+  launchCameraPickerAsync,
+  launchImageLibraryPickerAsync,
+} from '../lib/guardedImagePicker';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
   cleanupStagedPhotoFiles,
@@ -363,7 +367,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
 
       const pickerResult =
         source === 'camera'
-          ? await ImagePicker.launchCameraAsync({
+          ? await launchCameraPickerAsync({
               mediaTypes: ['images'],
               allowsEditing: false,
               exif: true,
@@ -373,7 +377,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
                   ? ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
                   : undefined,
             })
-          : await ImagePicker.launchImageLibraryAsync({
+          : await launchImageLibraryPickerAsync({
               mediaTypes: ['images'],
               allowsEditing: false,
               exif: true,
@@ -389,7 +393,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
                   : undefined,
             });
 
-      if (pickerResult.canceled) {
+      if (!pickerResult || pickerResult.canceled) {
         trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_CANCELED', {
           photoSource: source,
           source: 'EditFoodProductScreen',

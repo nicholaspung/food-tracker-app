@@ -13,6 +13,7 @@ import {
   OptionListRow,
   PageErrorToast,
   StatusPill,
+  StepProgressBar,
 } from '../components/shared';
 import {
   type TastingInviteRecord,
@@ -31,6 +32,8 @@ import {
   getTastingInviteDisplayStatus,
   isTastingInviteWindowExpired,
   isTastingInviteWindowOpen,
+  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
+  TASTING_SESSION_LIFECYCLE_STEPS,
 } from './tastingSessions/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
@@ -123,6 +126,9 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const isLeader = Boolean(session && user?.id === session.leaderUserId);
   const inviteWindowOpen = session ? isTastingInviteWindowOpen(session.joinExpiresAt) : false;
   const inviteWindowExpired = session ? isTastingInviteWindowExpired(session.joinExpiresAt) : false;
+  const lobbyInstruction = isLeader
+    ? 'Invite people, share the code, and start planning when the group is ready.'
+    : 'You are in the lobby. Wait for the leader to lock the group and start planning.';
 
   useEffect(() => {
     if (hasHandledRevokedAccessRef.current || session || sessionQuery.isLoading || sessionQuery.isError) {
@@ -274,6 +280,14 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
 
   return (
     <FeatureDetailScreenScaffold
+      headerBottomCompact
+      headerBottomContent={
+        <StepProgressBar
+          compact
+          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.lobby}
+          steps={TASTING_SESSION_LIFECYCLE_STEPS}
+        />
+      }
       onBackPress={() => navigation.navigate('TastingSessions')}
       rightAccessory={
         isLeader ? (
@@ -289,7 +303,12 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
           </Pressable>
         ) : undefined
       }
-      subtitle={formatCountdown(session.joinExpiresAt)}
+      subtitle={
+        <View>
+          <Text tone="muted">{formatCountdown(session.joinExpiresAt)}</Text>
+          <Text tone="muted">{lobbyInstruction}</Text>
+        </View>
+      }
       title={session.name}
     >
       {!isOnline ? <Text tone="warning">Lobby actions require a connection.</Text> : null}

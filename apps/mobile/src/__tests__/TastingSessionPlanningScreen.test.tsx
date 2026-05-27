@@ -144,6 +144,8 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Card', props, children),
   Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   ListItem: (props: Record<string, unknown>) => mockReact.createElement('ListItem', props),
+  Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Modal', props, children),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -212,6 +214,22 @@ const sessionWithRestaurant = {
       ],
       restaurantId: 'restaurant-1',
       restaurantName: 'Corner Ramen',
+      status: 'approved',
+      suggestedByParticipantId: 'participant-1',
+    },
+  ],
+};
+
+const sessionWithPartialRestaurantItems = {
+  ...planningSession,
+  restaurants: [
+    ...sessionWithRestaurant.restaurants,
+    {
+      createdAt: '2026-05-16T10:06:00.000Z',
+      id: 'suggestion-2',
+      items: [],
+      restaurantId: 'restaurant-2',
+      restaurantName: 'Sushi Stand',
       status: 'approved',
       suggestedByParticipantId: 'participant-1',
     },
@@ -470,6 +488,42 @@ describe('TastingSessionPlanningScreen', () => {
     });
   });
 
+  it('asks the leader to confirm before starting when a selected restaurant has no menu items', async () => {
+    mockedUseTastingSessionDetail.mockReturnValue({
+      data: sessionWithPartialRestaurantItems,
+    } as never);
+
+    const renderer = renderScreen();
+
+    act(() => {
+      renderer.root.findByType('FeatureDetailScreenScaffold').props.primaryAction.onPress();
+    });
+
+    act(() => {
+      renderer.root.findByType('FeatureDetailScreenScaffold').props.primaryAction.onPress();
+    });
+
+    const modal = renderer.root.findByType('Modal');
+    expect(modal.props.visible).toBe(true);
+    expect(modal.props.title).toBe('Continue without menu items?');
+    expect(modal.props.description).toBe(
+      'Are you sure you want to continue? Sushi Stand does not have a menu item to rate.',
+    );
+    expect(mockStartTasting).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await modal.props.primaryAction.onPress();
+    });
+
+    expect(mockStartTasting).toHaveBeenCalledWith({
+      isOnline: true,
+      sessionId: 'session-1',
+    });
+    expect(mockReplace).toHaveBeenCalledWith('TastingSessionTasting', {
+      sessionId: 'session-1',
+    });
+  });
+
   it('renders the plan read-only for non-leaders', () => {
     mockedUseAuth.mockReturnValue({
       actualUser: { isAdmin: false },
@@ -490,7 +544,7 @@ describe('TastingSessionPlanningScreen', () => {
     expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Add New Item')).toBe(false);
     expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Corner Ramen')).toBe(true);
     expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.subtitle).toBe(
-      'Waiting for the leader to finalize the tasting plan.',
+      'Waiting for the leader to choose restaurants and menu items for the tasting plan.',
     );
   });
 

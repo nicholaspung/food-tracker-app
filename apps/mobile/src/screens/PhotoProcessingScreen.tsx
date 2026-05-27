@@ -19,7 +19,7 @@ import {
   LoadingState,
   PageErrorToast,
   PhotoViewerModal,
-  PhotoSourceActionCards,
+  PhotoSourcePickerCard,
   FoodProductFormFields,
   RatingLegend,
   RatingSelector,
@@ -1480,38 +1480,31 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   if (step === 'upload' && processType) {
     const hasSelectedPhotos = photos.length > 0;
     const photoSourceCard = (
-      <Card style={styles.uploadCard} tone={hasSelectedPhotos ? 'muted' : 'default'}>
-        <Text variant="label">
-          {hasSelectedPhotos ? 'Add more photos' : 'Choose Photo Source'}
-        </Text>
-        <Text tone="secondary">
-          {hasSelectedPhotos
+      <PhotoSourcePickerCard
+        cardStyle={styles.uploadCard}
+        cardTone={hasSelectedPhotos ? 'muted' : 'default'}
+        description={
+          hasSelectedPhotos
             ? 'Take another photo or upload more saved photos.'
-            : 'Take a new photo or upload multiple saved photos.'}
-        </Text>
-        {!shouldHidePhotoSourceActions ? (
-          <PhotoSourceActionCards
-            cameraSubtitle="Camera"
-            cameraTitle="Take Photo"
-            disabled={isSelectingSource}
-            gallerySubtitle="Photo Library"
-            galleryTitle="Upload Images"
-            onCameraPress={() => {
-              void pickPhotos('camera');
-            }}
-            onGalleryPress={() => {
-              void pickPhotos('gallery');
-            }}
-            tone={hasSelectedPhotos ? 'muted' : 'default'}
-          />
-        ) : null}
-        {photoQuotaStatusMessage ? (
+            : 'Take a new photo or upload multiple saved photos.'
+        }
+        footer={photoQuotaStatusMessage ? (
           <Text tone="secondary" variant="bodySm">
             {photoQuotaStatusMessage}
           </Text>
         ) : null}
-        {isSelectingSource ? <Text tone="secondary">Opening source picker...</Text> : null}
-      </Card>
+        galleryTitle="Upload Images"
+        hideSourceActions={shouldHidePhotoSourceActions}
+        isSelecting={isSelectingSource}
+        onCameraPress={() => {
+          void pickPhotos('camera');
+        }}
+        onGalleryPress={() => {
+          void pickPhotos('gallery');
+        }}
+        title={hasSelectedPhotos ? 'Add more photos' : 'Choose Photo Source'}
+        tone={hasSelectedPhotos ? 'muted' : 'default'}
+      />
     );
     const photoSelectionCard = !hasSelectedPhotos ? (
       <Card>

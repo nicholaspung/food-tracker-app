@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   FeatureDetailScreenScaffold,
   PageErrorToast,
   RestaurantMenuItemPicker,
+  StepProgressBar,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchHeaderToggle,
   VisitRestaurantSearchOptionDescription,
@@ -25,9 +28,13 @@ import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles } from '../theme';
-import { Button, Card, Text } from '../ui';
-import { getApprovedItemCount } from './tastingSessions/shared';
+import { createThemedStyles, useTheme } from '../theme';
+import { Button, Card, Modal, Text } from '../ui';
+import {
+  getApprovedItemCount,
+  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
+  TASTING_SESSION_LIFECYCLE_STEPS,
+} from './tastingSessions/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
@@ -36,6 +43,9 @@ type PlanningPhase = 'restaurants' | 'items';
 const useStyles = createThemedStyles((theme) => ({
   headerDescription: {
     gap: theme.spacing.xs,
+  },
+  stickySummary: {
+    backgroundColor: theme.colors.background.app,
   },
   card: {
     gap: theme.spacing.sm,
@@ -46,15 +56,30 @@ const useStyles = createThemedStyles((theme) => ({
   planHeaderRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: theme.spacing.sm,
     justifyContent: 'space-between',
+  },
+  planHeaderContent: {
+    flex: 1,
+    gap: theme.spacing.xxs,
   },
   planMetricsRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
+  },
+  iconButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  iconButtonDisabled: {
+    opacity: 0.5,
   },
   compactRestaurantRow: {
     alignItems: 'center',
@@ -69,13 +94,6 @@ const useStyles = createThemedStyles((theme) => ({
   compactRestaurantContent: {
     flex: 1,
     gap: theme.spacing.xxs,
-  },
-  compactRemoveButton: {
-    borderColor: theme.colors.button.secondaryBorder,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
   },
   row: {
     alignItems: 'center',
@@ -92,6 +110,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function TastingSessionPlanningScreen({ navigation, route }: TastingSessionPlanningScreenProps) {
   const styles = useStyles();
+  const theme = useTheme();
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const { isOnline } = useConnectivity();
@@ -105,6 +124,10 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [activeRestaurantSuggestionId, setActiveRestaurantSuggestionId] = useState<string | null>(null);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
+  const [isMissingItemsDialogVisible, setIsMissingItemsDialogVisible] = useState(false);
+  const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(true);
+  const [isMenuSummaryExpanded, setIsMenuSummaryExpanded] = useState(true);
+  const [pendingRemoveRestaurantId, setPendingRemoveRestaurantId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
   const isLeader = Boolean(session && user?.id === session.leaderUserId);
@@ -140,9 +163,20 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     () => new Set((activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').map((item) => item.menuItemId)),
     [activeRestaurant?.items],
   );
+  const restaurantsWithoutItems = useMemo(
+    () =>
+      selectedRestaurants.filter(
+        (restaurant) => (restaurant.items ?? []).filter((item) => item.status === 'approved').length === 0,
+      ),
+    [selectedRestaurants],
+  );
   const selectedItemCount = session ? getApprovedItemCount(session) : 0;
   const canStart = isLeader && selectedRestaurants.length > 0 && selectedItemCount > 0;
   const activeSelectedItemCount = (activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').length;
+  const pendingRemoveRestaurant = useMemo(
+    () => selectedRestaurants.find((restaurant) => restaurant.id === pendingRemoveRestaurantId) ?? null,
+    [pendingRemoveRestaurantId, selectedRestaurants],
+  );
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -260,6 +294,26 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     });
   };
 
+  const handleStartTastingPress = () => {
+    if (restaurantsWithoutItems.length > 0) {
+      setIsMissingItemsDialogVisible(true);
+      return;
+    }
+
+    void handleStartTasting();
+  };
+
+  const missingItemsDescription = useMemo(() => {
+    if (restaurantsWithoutItems.length === 0) {
+      return '';
+    }
+
+    const restaurantNames = restaurantsWithoutItems.map((restaurant) => restaurant.restaurantName).join(', ');
+    const predicate = restaurantsWithoutItems.length === 1 ? 'does' : 'do';
+
+    return `Are you sure you want to continue? ${restaurantNames} ${predicate} not have a menu item to rate.`;
+  }, [restaurantsWithoutItems]);
+
   const handleAddRestaurant = async (restaurant: RestaurantRecord) => {
     if (selectedRestaurantIds.has(restaurant.id) || addingRestaurantId) {
       return;
@@ -293,6 +347,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       }
       return removeResult;
     });
+    setPendingRemoveRestaurantId(null);
   };
 
   const handleToggleMenuItem = async (menuItem: MenuItemRecord) => {
@@ -391,19 +446,133 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     <View style={styles.headerDescription}>
       <Text tone="muted">
         {phase === 'restaurants'
-          ? selectedRestaurants.length > 0
-            ? `${selectedRestaurants.length} selected. Add menu items to start.`
-            : 'Select restaurants for this tasting.'
-          : `${selectedRestaurants.length} selected restaurants, ${selectedItemCount} selected items.`}
+          ? 'Choose one or more restaurants for this tasting, then continue to menu items.'
+          : 'Choose menu items from each selected restaurant. Start tasting when the plan is ready.'}
       </Text>
     </View>
   ) : (
-    'Waiting for the leader to finalize the tasting plan.'
+    'Waiting for the leader to choose restaurants and menu items for the tasting plan.'
+  );
+
+  const summaryCard = phase === 'restaurants' ? (
+    <View style={styles.stickySummary}>
+      <Card style={styles.compactPlanCard}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isPlanSummaryExpanded }}
+          onPress={() => setIsPlanSummaryExpanded((expanded) => !expanded)}
+          style={styles.planHeaderRow}
+        >
+          <View style={styles.planHeaderContent}>
+            <Text variant="label">Tasting Plan</Text>
+            <View style={styles.planMetricsRow}>
+              <Text tone={selectedRestaurants.length > 0 ? 'success' : 'warning'}>
+                {selectedRestaurants.length} {selectedRestaurants.length === 1 ? 'restaurant' : 'restaurants'}
+              </Text>
+              <Text tone={selectedItemCount > 0 ? 'success' : 'warning'}>
+                {selectedItemCount} {selectedItemCount === 1 ? 'item' : 'items'}
+              </Text>
+            </View>
+          </View>
+          <Ionicons
+            color={theme.colors.text.primary}
+            name={isPlanSummaryExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+            size={18}
+          />
+        </Pressable>
+        {isPlanSummaryExpanded ? (
+          selectedRestaurants.length > 0 ? (
+            selectedRestaurants.map((restaurant) => {
+              const restaurantSelectedItems = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
+
+              return (
+                <View key={restaurant.id} style={styles.compactRestaurantRow}>
+                  <View style={styles.compactRestaurantContent}>
+                    <Text variant="label">{restaurant.restaurantName}</Text>
+                    <Text tone="secondary">
+                      {restaurantSelectedItems} selected {restaurantSelectedItems === 1 ? 'item' : 'items'}
+                    </Text>
+                  </View>
+                  {isLeader && session.status === 'planning' ? (
+                    <Pressable
+                      accessibilityLabel={`Remove ${restaurant.restaurantName} from tasting plan`}
+                      accessibilityRole="button"
+                      disabled={!isOnline}
+                      onPress={() => setPendingRemoveRestaurantId(restaurant.id)}
+                      style={[styles.iconButton, !isOnline ? styles.iconButtonDisabled : null]}
+                    >
+                      <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })
+          ) : (
+            <Text tone="secondary">Selected restaurants will appear here.</Text>
+          )
+        ) : null}
+      </Card>
+    </View>
+  ) : (
+    <View style={styles.stickySummary}>
+      <Card style={styles.card}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isMenuSummaryExpanded }}
+          onPress={() => setIsMenuSummaryExpanded((expanded) => !expanded)}
+          style={styles.planHeaderRow}
+        >
+          <View style={styles.planHeaderContent}>
+            <Text variant="label">Select Menu Items</Text>
+            <Text tone="secondary">
+              {activeRestaurant
+                ? `${activeRestaurant.restaurantName} (${activeSelectedItemCount} selected)`
+                : 'No restaurant selected'}
+            </Text>
+          </View>
+          <Ionicons
+            color={theme.colors.text.primary}
+            name={isMenuSummaryExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+            size={18}
+          />
+        </Pressable>
+        {isMenuSummaryExpanded ? (
+          <>
+            <Text tone="secondary">Choose one restaurant, then select items for the tasting plan.</Text>
+            <View style={styles.switcherRow}>
+              {selectedRestaurants.map((restaurant) => {
+                const itemCount = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
+                const active = activeRestaurant?.id === restaurant.id;
+                return (
+                  <Button
+                    key={restaurant.id}
+                    label={`${restaurant.restaurantName} (${itemCount})`}
+                    onPress={() => {
+                      setActiveRestaurantSuggestionId(restaurant.id);
+                    }}
+                    variant={active ? 'primary' : 'secondary'}
+                  />
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+      </Card>
+    </View>
   );
 
   return (
     <FeatureDetailScreenScaffold
+      headerBottomCompact
+      headerBottomContent={
+        <StepProgressBar
+          compact
+          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.plan}
+          steps={TASTING_SESSION_LIFECYCLE_STEPS}
+        />
+      }
       headerScrollMode="fixed"
+      stickyHeaderIndices={isLeader ? [0] : undefined}
       onBackPress={() => navigation.navigate('TastingSessions')}
       primaryAction={
         isLeader
@@ -418,9 +587,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             : {
                 disabled: !canStart || !isOnline,
                 label: 'Start Tasting',
-                onPress: () => {
-                  void handleStartTasting();
-                },
+                onPress: handleStartTastingPress,
               }
           : undefined
       }
@@ -437,54 +604,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       subtitle={headerDescription}
       title={session.name}
     >
+      {isLeader ? summaryCard : null}
       {!isOnline ? <Text tone="warning">Planning actions require a connection.</Text> : null}
       <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
-
-      {phase === 'restaurants' ? (
-        <Card style={styles.compactPlanCard}>
-          <View style={styles.planHeaderRow}>
-            <Text variant="label">Tasting Plan</Text>
-            <View style={styles.planMetricsRow}>
-              <Text tone={selectedRestaurants.length > 0 ? 'success' : 'warning'}>
-                {selectedRestaurants.length} {selectedRestaurants.length === 1 ? 'restaurant' : 'restaurants'}
-              </Text>
-              <Text tone={selectedItemCount > 0 ? 'success' : 'warning'}>
-                {selectedItemCount} {selectedItemCount === 1 ? 'item' : 'items'}
-              </Text>
-            </View>
-          </View>
-          {selectedRestaurants.length > 0 ? (
-            selectedRestaurants.map((restaurant) => {
-              const restaurantSelectedItems = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
-
-              return (
-                <View key={restaurant.id} style={styles.compactRestaurantRow}>
-                  <View style={styles.compactRestaurantContent}>
-                    <Text variant="label">{restaurant.restaurantName}</Text>
-                    <Text tone="secondary">
-                      {restaurantSelectedItems} selected {restaurantSelectedItems === 1 ? 'item' : 'items'}
-                    </Text>
-                  </View>
-                  {isLeader && session.status === 'planning' ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={!isOnline}
-                      onPress={() => {
-                        void handleRemoveRestaurant(restaurant.id);
-                      }}
-                      style={styles.compactRemoveButton}
-                    >
-                      <Text variant="button">Remove</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              );
-            })
-          ) : (
-            <Text tone="secondary">Selected restaurants will appear here.</Text>
-          )}
-        </Card>
-      ) : null}
 
       {isLeader && phase === 'restaurants' ? (
         <>
@@ -571,27 +693,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
       {isLeader && phase === 'items' ? (
         <>
-          <Card style={styles.card}>
-            <Text variant="label">Select menu items</Text>
-            <Text tone="secondary">Choose one restaurant, then select items for the tasting plan.</Text>
-            <View style={styles.switcherRow}>
-              {selectedRestaurants.map((restaurant) => {
-                const itemCount = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
-                const active = activeRestaurant?.id === restaurant.id;
-                return (
-                  <Button
-                    key={restaurant.id}
-                    label={`${restaurant.restaurantName} (${itemCount})`}
-                    onPress={() => {
-                      setActiveRestaurantSuggestionId(restaurant.id);
-                    }}
-                    variant={active ? 'primary' : 'secondary'}
-                  />
-                );
-              })}
-            </View>
-          </Card>
-
           {activeRestaurant ? (
             <>
               <RestaurantMenuItemPicker
@@ -656,6 +757,47 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
           <Text tone="secondary">The leader is building the tasting plan.</Text>
         </Card>
       ) : null}
+      <ConfirmDestructiveModal
+        cancelLabel="Keep"
+        confirmLabel="Remove"
+        description={
+          pendingRemoveRestaurant
+            ? `Remove ${pendingRemoveRestaurant.restaurantName} and its selected menu items from this tasting plan?`
+            : 'Remove this restaurant and its selected menu items from this tasting plan?'
+        }
+        onCancel={() => setPendingRemoveRestaurantId(null)}
+        onConfirm={() => {
+          if (pendingRemoveRestaurant) {
+            void handleRemoveRestaurant(pendingRemoveRestaurant.id);
+          }
+        }}
+        title="Remove Restaurant?"
+        visible={Boolean(pendingRemoveRestaurant)}
+      />
+      <Modal
+        description={missingItemsDescription}
+        onRequestClose={() => {
+          setIsMissingItemsDialogVisible(false);
+        }}
+        primaryAction={{
+          label: 'Continue',
+          onPress: () => {
+            setIsMissingItemsDialogVisible(false);
+            void handleStartTasting();
+          },
+          testID: 'tasting-missing-items-continue-button',
+        }}
+        secondaryAction={{
+          label: 'Go Back',
+          onPress: () => {
+            setIsMissingItemsDialogVisible(false);
+          },
+          testID: 'tasting-missing-items-cancel-button',
+        }}
+        testID="tasting-missing-items-dialog"
+        title="Continue without menu items?"
+        visible={isMissingItemsDialogVisible}
+      />
     </FeatureDetailScreenScaffold>
   );
 }

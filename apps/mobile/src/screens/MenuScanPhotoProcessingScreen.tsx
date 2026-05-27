@@ -6,7 +6,7 @@ import {
   FeatureFormScreenScaffold,
   LinearProgressBar,
   PageErrorToast,
-  PhotoSourceActionCards,
+  PhotoSourcePickerCard,
 } from '../components/shared';
 import { useMenuScanFlow, useMonthlyUsage } from '../features';
 import {
@@ -116,6 +116,8 @@ export function MenuScanPhotoProcessingScreen({
   const restaurantId = route.params?.restaurantId;
   const restaurantName = route.params?.restaurantName?.trim() ?? 'this restaurant';
   const returnTo = route.params?.returnTo;
+  const returnToRestaurantDiscoveryRestaurantParams =
+    route.params?.returnToRestaurantDiscoveryRestaurantParams;
   const sourceNoteId = route.params?.sourceNoteId;
   const tastingSessionId = route.params?.tastingSessionId;
   const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
@@ -145,13 +147,31 @@ export function MenuScanPhotoProcessingScreen({
       return;
     }
 
+    if (returnTo === 'RestaurantDiscoveryRestaurant') {
+      navigation.popTo('RestaurantDiscoveryRestaurant', {
+        ...(returnToRestaurantDiscoveryRestaurantParams ?? {
+          restaurantId,
+          restaurantName,
+        }),
+      });
+      return;
+    }
+
     navigation.popTo('CreateVisit', {
       preselectedRestaurantId: restaurantId,
       preselectedRestaurantName: restaurantName,
       returnToStep: 1,
       sourceNoteId,
     });
-  }, [navigation, restaurantId, restaurantName, returnTo, sourceNoteId, tastingSessionId]);
+  }, [
+    navigation,
+    restaurantId,
+    restaurantName,
+    returnTo,
+    returnToRestaurantDiscoveryRestaurantParams,
+    sourceNoteId,
+    tastingSessionId,
+  ]);
 
   const startCountdown = useCallback(() => {
     if (countdownIntervalRef.current) {
@@ -176,7 +196,10 @@ export function MenuScanPhotoProcessingScreen({
   }, []);
 
   const menuScanFlow = useMenuScanFlow({
-    analyticsSource: 'CreateVisitMenuScan',
+    analyticsSource:
+      returnTo === 'RestaurantDiscoveryRestaurant'
+        ? 'FoodDiscoveryRestaurant'
+        : 'CreateVisitMenuScan',
     restaurantId: restaurantId ?? '',
     restaurantName,
     onSuccess: startCountdown,
@@ -335,6 +358,9 @@ export function MenuScanPhotoProcessingScreen({
     : monthlyUsage.isLoading
       ? 'Checking monthly menu scan usage...'
       : 'Free accounts include 25 menu scans per month. Subscribers include 100.';
+  const shouldShowSourcePicker =
+    phase === 'choose' ||
+    (phase === 'error' && !menuScanFlow.permissionNeedsSettings);
 
   return (
     <FeatureFormScreenScaffold
@@ -352,7 +378,7 @@ export function MenuScanPhotoProcessingScreen({
       subtitle={menuScanSubtitle}
       title={menuScanTitle}
     >
-      {phase === 'choose' ? (
+      {shouldShowSourcePicker ? (
         <>
           <Card style={styles.tipCard}>
             <Text tone="info" variant="bodySm">
@@ -366,30 +392,17 @@ export function MenuScanPhotoProcessingScreen({
             </Text>
           </Card>
 
-          <Card style={styles.chooseCard}>
-            <Text variant="label">Choose Photo Source</Text>
-            <Text tone="secondary">
-              Take a new photo or upload an existing menu image.
-            </Text>
-            {menuScanFlow.status === 'selecting' ? (
-              <Text tone="secondary" variant="bodySm">
-                Opening source picker...
-              </Text>
-            ) : null}
-            <PhotoSourceActionCards
-              cameraSubtitle="Camera"
-              cameraTitle="Take Photo"
-              disabled={menuScanFlow.status === 'selecting'}
-              gallerySubtitle="Photo Library"
-              galleryTitle="Upload Image"
-              onCameraPress={() => {
-                void menuScanFlow.scanMenu('camera');
-              }}
-              onGalleryPress={() => {
-                void menuScanFlow.scanMenu('gallery');
-              }}
-            />
-          </Card>
+          <PhotoSourcePickerCard
+            cardStyle={styles.chooseCard}
+            description="Take a new photo or upload an existing menu image."
+            isSelecting={menuScanFlow.status === 'selecting'}
+            onCameraPress={() => {
+              void menuScanFlow.scanMenu('camera');
+            }}
+            onGalleryPress={() => {
+              void menuScanFlow.scanMenu('gallery');
+            }}
+          />
         </>
       ) : null}
 

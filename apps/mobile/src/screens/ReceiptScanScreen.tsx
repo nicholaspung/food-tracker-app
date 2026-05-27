@@ -7,7 +7,7 @@ import {
   FeatureFormScreenScaffold,
   LinearProgressBar,
   PageErrorToast,
-  PhotoSourceActionCards,
+  PhotoSourcePickerCard,
 } from '../components/shared';
 import { useMonthlyUsage, useReceiptScanFlow } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -238,30 +238,17 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
             </Text>
           </Card>
 
-          <Card style={styles.card}>
-            <Text variant="label">Choose Photo Source</Text>
-            <Text tone="secondary">
-              Take a new photo or upload an existing receipt image.
-            </Text>
-            {receiptScanFlow.status === 'selecting' ? (
-              <Text tone="secondary" variant="bodySm">
-                Opening source picker...
-              </Text>
-            ) : null}
-            <PhotoSourceActionCards
-              cameraSubtitle="Camera"
-              cameraTitle="Take Photo"
-              disabled={receiptScanFlow.status === 'selecting'}
-              gallerySubtitle="Photo Library"
-              galleryTitle="Upload Image"
-              onCameraPress={() => {
-                void receiptScanFlow.scanReceipt('camera');
-              }}
-              onGalleryPress={() => {
-                void receiptScanFlow.scanReceipt('gallery');
-              }}
-            />
-          </Card>
+          <PhotoSourcePickerCard
+            cardStyle={styles.card}
+            description="Take a new photo or upload an existing receipt image."
+            isSelecting={receiptScanFlow.status === 'selecting'}
+            onCameraPress={() => {
+              void receiptScanFlow.scanReceipt('camera');
+            }}
+            onGalleryPress={() => {
+              void receiptScanFlow.scanReceipt('gallery');
+            }}
+          />
         </>
       ) : null}
 

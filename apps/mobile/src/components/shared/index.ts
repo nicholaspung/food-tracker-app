@@ -35,6 +35,7 @@ export * from './PageErrorToast';
 export * from './PendingQueuedWriteRow';
 export * from './PhotoDetectedDateField';
 export * from './PhotoInputField';
+export * from './PhotoSourcePicker';
 export * from './PhotoSourceActionCards';
 export * from './PhotoAttachmentRow';
 export * from './FoodProductFormFields';

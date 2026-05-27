@@ -307,6 +307,28 @@ describe('useMenuScanFlow', () => {
     );
     expect(mockedParseMenuImage).not.toHaveBeenCalled();
     expect(controller.status).toBe('idle');
+    expect(controller.errorMessage).toBeNull();
+  });
+
+  it('resets to the picker state when photo picking fails before an image is selected', async () => {
+    pickImageAssets.mockRejectedValue(new Error('Something went wrong.'));
+
+    renderHookProbe((nextController) => {
+      controller = nextController;
+    });
+
+    await act(async () => {
+      await controller.scanMenu('gallery');
+    });
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'MENU_SCAN_IMAGE_PICK_CANCELED',
+      expect.objectContaining({ photoSource: 'gallery' }),
+    );
+    expect(mockedParseMenuImage).not.toHaveBeenCalled();
+    expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
+    expect(controller.status).toBe('idle');
+    expect(controller.errorMessage).toBeNull();
   });
 
   it('tracks usage limits without exception capture', async () => {

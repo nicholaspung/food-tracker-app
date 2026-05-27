@@ -57,6 +57,22 @@ jest.mock('../components/shared', () => ({
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  PhotoSourcePicker: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'PhotoSourcePicker',
+      props,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
+  PhotoSourcePickerCard: (props: Record<string, unknown>) =>
+    mockReact.createElement(
+      'Card',
+      { style: props.cardStyle, tone: props.cardTone },
+      props.title as React.ReactNode,
+      props.description as React.ReactNode,
+      props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
+      props.footer as React.ReactNode,
+    ),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
@@ -458,7 +474,7 @@ describe('RestaurantDiscoveryScreen', () => {
     const renderer = renderScreen();
 
     const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
-    const footer = searchSection.props.footerContent;
+    const footer = searchSection.props.footerContent as React.ReactElement;
     let footerRenderer: any;
     act(() => {
       footerRenderer = create(footer);

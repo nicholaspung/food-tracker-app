@@ -812,4 +812,16 @@ describe('RootNavigator', () => {
       },
     });
   });
+
+  it('parses shared restaurant list links', () => {
+    const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
+    const state = getStateFromPath('/lists/shared/share-token-123', AUTH_LINKING.config);
+
+    expect(state?.routes[0]).toMatchObject({
+      name: 'SharedRestaurantList',
+      params: {
+        shareToken: 'share-token-123',
+      },
+    });
+  });
 });

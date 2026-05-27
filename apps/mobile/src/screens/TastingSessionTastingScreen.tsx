@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,6 +12,7 @@ import {
   PhotoInputField,
   PhotoViewerModal,
   RatingLegend,
+  StepProgressBar,
   VisitItemRatingCard,
 } from '../components/shared';
 import {
@@ -27,6 +27,10 @@ import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
+import {
+  launchCameraPickerAsync,
+  launchImageLibraryPickerAsync,
+} from '../lib/guardedImagePicker';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
 import { resolveDisplayPhotoUploadsPerRecordLimit } from '../lib/usageUiRules';
@@ -37,6 +41,10 @@ import { createThemedStyles } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './createVisit/shared';
 import { formatReviewEntryFooterLabel } from './photoProcessing/shared';
+import {
+  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
+  TASTING_SESSION_LIFECYCLE_STEPS,
+} from './tastingSessions/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
 type TastingSessionTastingScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionTasting'>;
@@ -364,13 +372,13 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
 
     const result =
       source === 'camera'
-        ? await ImagePicker.launchCameraAsync({
+        ? await launchCameraPickerAsync({
             mediaTypes: ['images'],
             allowsEditing: false,
             exif: true,
             quality: 0.8,
           })
-        : await ImagePicker.launchImageLibraryAsync({
+        : await launchImageLibraryPickerAsync({
             mediaTypes: ['images'],
             allowsEditing: false,
             exif: true,
@@ -378,7 +386,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
             selectionLimit: 1,
           });
 
-    if (result.canceled || result.assets.length === 0) {
+    if (!result || result.canceled || result.assets.length === 0) {
       return;
     }
 
@@ -494,6 +502,14 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     return (
       <FeatureFormScreenScaffold
         keyboardAware={false}
+        headerBottomCompact
+        headerBottomContent={
+          <StepProgressBar
+            compact
+            currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.review}
+            steps={TASTING_SESSION_LIFECYCLE_STEPS}
+          />
+        }
         onBackPress={() => {
           setStep('rating');
           setErrorMessage(null);
@@ -521,7 +537,11 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
           testID: 'tasting-update-ratings-button',
           variant: 'secondary',
         }}
-        subtitle={`${reviewItemCount} item${reviewItemCount === 1 ? '' : 's'} ready to complete`}
+        subtitle={
+          isLeader
+            ? `${reviewItemCount} item${reviewItemCount === 1 ? '' : 's'} ready. Complete when you are ready to reveal group results.`
+            : `${reviewItemCount} item${reviewItemCount === 1 ? '' : 's'} ready. You can update ratings until the leader completes the session.`
+        }
         title="Review Your Ratings"
       >
         {!isOnline ? <Text tone="warning">Completing the tasting requires a connection.</Text> : null}
@@ -602,6 +622,14 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
 
   return (
     <FeatureFormScreenScaffold
+      headerBottomCompact
+      headerBottomContent={
+        <StepProgressBar
+          compact
+          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.rate}
+          steps={TASTING_SESSION_LIFECYCLE_STEPS}
+        />
+      }
       onBackPress={() => navigation.navigate('TastingSessions')}
       primaryAction={{
         disabled: approvedItems.length === 0 || !isOnline || isSubmittingRatings,
@@ -615,7 +643,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       subtitle={
         <View style={styles.headerSubtitleRow}>
           <Text style={styles.headerSubtitleText} tone="muted" variant="bodyMd">
-            Rate the items you tried.
+            Rate the items you tried. Remove anything you skipped, add notes or photos if useful, then submit.
           </Text>
           {removedItems.length > 0 ? (
             <Pressable

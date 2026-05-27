@@ -9,6 +9,20 @@ export interface TastingNavigation {
   ): void;
 }
 
+export const TASTING_SESSION_LIFECYCLE_STEPS = [
+  { label: 'Lobby' },
+  { label: 'Plan' },
+  { label: 'Rate' },
+  { label: 'Review' },
+];
+
+export const TASTING_SESSION_LIFECYCLE_STEP_INDEX = {
+  lobby: 0,
+  plan: 1,
+  rate: 2,
+  review: 3,
+} as const;
+
 export function formatTastingSessionStatusLabel(status: TastingSessionStatus): string {
   switch (status) {
     case 'lobby':

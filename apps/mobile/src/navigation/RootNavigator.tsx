@@ -89,6 +89,22 @@ import { useTheme } from '../theme';
 import { Screen } from '../ui';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 
+export type RestaurantDiscoveryRestaurantRouteParams = {
+  restaurantId: string;
+  restaurantName: string;
+  location?: string;
+  city?: string;
+  cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  isGooglePlace?: boolean;
+  userVisitCount?: number;
+  friendCount?: number;
+  hasPendingMenuReview?: boolean;
+};
+
 export type RootStackParamList = {
   Onboarding: undefined;
   Login:
@@ -157,21 +173,7 @@ export type RootStackParamList = {
   };
   AddVisit: undefined;
   RestaurantDiscovery: undefined;
-  RestaurantDiscoveryRestaurant: {
-    restaurantId: string;
-    restaurantName: string;
-    location?: string;
-    city?: string;
-    cuisineType?: string;
-    visibility?: 'private' | 'friends' | 'public';
-    latitude?: number;
-    longitude?: number;
-    placeId?: string;
-    isGooglePlace?: boolean;
-    userVisitCount?: number;
-    friendCount?: number;
-    hasPendingMenuReview?: boolean;
-  };
+  RestaurantDiscoveryRestaurant: RestaurantDiscoveryRestaurantRouteParams;
   AddFeatureOnboarding: {
     cardId: AddOnboardingCardId;
     mode?: 'firstRun' | 'replay';
@@ -228,7 +230,8 @@ export type RootStackParamList = {
         restaurantId?: string;
         restaurantName?: string;
         autoStartSourcePicker?: boolean;
-        returnTo?: 'CreateVisit' | 'TastingSessionPlanning';
+        returnTo?: 'CreateVisit' | 'TastingSessionPlanning' | 'RestaurantDiscoveryRestaurant';
+        returnToRestaurantDiscoveryRestaurantParams?: RestaurantDiscoveryRestaurantRouteParams;
         sourceNoteId?: string;
         tastingSessionId?: string;
       }

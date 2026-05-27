@@ -84,6 +84,10 @@ _Avoid_: Suggestions, readiness
 A participant's personal ratings for the selected menu items they tried during a group tasting session.
 _Avoid_: Assigned items
 
+**Tasting Session Lifecycle**:
+The shared in-progress progression of a group tasting session from lobby, to planning, to rating, to review.
+_Avoid_: leader steps, invitee steps
+
 **Tasting Session Writes**:
 The mobile module that owns group tasting session lifecycle writes, including creating sessions, joining sessions, invite actions, lobby membership changes, cache effects, and online-only action handling.
 _Avoid_: tasting session mutation helper, group tasting action wrapper
@@ -180,10 +184,15 @@ _Avoid_: tutorial flags
 - If nearby exploration cannot use the user's location, **Food Discovery** may still show saved restaurant fallback content with a non-blocking error.
 - Clearing exploratory results in **Food Discovery** stops nearby exploration for that screen session until the user explicitly searches again.
 - A **Tasting Plan** contains one or more selected restaurants.
+- A **Tasting Session Lifecycle** starts when a concrete group tasting session lobby exists.
+- The visible **Tasting Session Lifecycle** steps are the same for leaders and invitees, but each role needs different guidance for the current action.
+- Active group tasting session screens show **Tasting Session Lifecycle** progress in the screen header, while entry forms explain the upcoming lifecycle in body or subtitle copy.
+- The visible **Tasting Session Lifecycle** step labels are Lobby, Plan, Rate, and Review.
 - A selected restaurant in a **Tasting Plan** contains zero or more selected menu items until the plan is ready to start.
 - A leader selecting a restaurant during tasting planning adds it to the **Tasting Plan** immediately.
 - A leader selecting a menu item during tasting planning adds it to the **Tasting Plan** immediately.
 - A **Tasting Plan** is built in ordered planning phases: restaurant selection first, then menu item selection.
+- Tasting planning phases are leader-facing guidance inside the **Tasting Session Lifecycle**, not a separate lifecycle.
 - Menu item selection in a **Tasting Plan** is scoped to one selected restaurant at a time.
 - A menu scan enriches a restaurant's saved menu item catalog; it does not directly add menu items to the **Tasting Plan**.
 - The leader may remove selected restaurants and menu items from the **Tasting Plan** before tasting starts.
@@ -193,9 +202,11 @@ _Avoid_: tutorial flags
 - A **Tasting Plan** is ready to start when it has at least one selected restaurant and at least one selected menu item.
 - Every participant sees all selected menu items in the **Tasting Plan** and chooses which items to include in their own **Tasting Rating Submission**.
 - Saving a **Tasting Rating Submission** creates or updates the participant's own restaurant visit records immediately.
+- Reviewing a **Tasting Rating Submission** is the final in-progress stage of the **Tasting Session Lifecycle** before completion.
 - A participant may edit and resubmit their **Tasting Rating Submission** until the group tasting session is completed.
 - Participants save **Tasting Rating Submissions**; only the leader completes the group tasting session.
 - The leader may complete a group tasting session before every participant has submitted, with confirmation that missing submissions are omitted from results.
+- The **Tasting Session Lifecycle** is shared by leaders and invitees, while screen instructions vary by role.
 - **Tasting Session Writes** preserve the write lifecycle for group tasting creation, joining, invite actions, lobby changes, and session status movement.
 - **Tasting Plan Writes** preserve the write lifecycle for leader-selected restaurants and menu items inside a **Tasting Plan**.
 - **Tasting Rating Submission Writes** preserve the write lifecycle for participant ratings and generated Visit photo handoff.

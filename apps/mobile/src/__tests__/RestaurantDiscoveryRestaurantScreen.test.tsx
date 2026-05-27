@@ -9,8 +9,6 @@ const mockReact = React;
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 let mockIsOnline = true;
-const mockScanMenu = jest.fn();
-const mockUseMenuScanFlow = jest.fn();
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
@@ -35,15 +33,10 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('FeatureDetailScreenScaffold', props, children),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
-  PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
   RatingPill: (props: Record<string, unknown>) => mockReact.createElement('RatingPill', props),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
-}));
-
-jest.mock('../features', () => ({
-  useMenuScanFlow: (...args: unknown[]) => mockUseMenuScanFlow(...args),
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
@@ -189,20 +182,6 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
         refetch: jest.fn(),
       } as never;
     });
-    mockScanMenu.mockReset();
-    mockUseMenuScanFlow.mockReset();
-    mockUseMenuScanFlow.mockReturnValue({
-      createdItemNames: [],
-      errorMessage: null,
-      existingItemNames: [],
-      lastRequestedSource: 'gallery',
-      permissionNeedsSettings: false,
-      reset: jest.fn(),
-      scanMenu: mockScanMenu,
-      selectedImageName: '',
-      status: 'idle',
-      verification: null,
-    });
   });
 
   it('renders restaurant context and queries restaurant-scoped menu items', () => {
@@ -254,7 +233,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     });
   });
 
-  it('delegates menu photo source actions to the shared menu scan flow', () => {
+  it('opens the shared menu scan screen for food discovery restaurants', () => {
     const renderer = renderScreen();
 
     const scanButton = renderer.root
@@ -265,40 +244,17 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       scanButton?.props.onPress();
     });
 
-    const photoSourceActions = renderer.root.findByType('PhotoSourceActionCards');
-    act(() => {
-      photoSourceActions.props.onCameraPress();
-    });
-
-    expect(mockUseMenuScanFlow).toHaveBeenCalledWith(
-      expect.objectContaining({
-        analyticsSource: 'FoodDiscoveryRestaurant',
+    expect(mockNavigate).toHaveBeenCalledWith('ProcessPhotos', {
+      autoStartSourcePicker: false,
+      mode: 'menu_scan',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Erewhon West Hollywood',
+      returnTo: 'RestaurantDiscoveryRestaurant',
+      returnToRestaurantDiscoveryRestaurantParams: expect.objectContaining({
         restaurantId: 'restaurant-1',
         restaurantName: 'Erewhon West Hollywood',
       }),
-    );
-    expect(mockScanMenu).toHaveBeenCalledWith('camera');
-  });
-
-  it('reads menu scan errors from the shared menu scan flow', () => {
-    mockUseMenuScanFlow.mockReturnValue({
-      createdItemNames: [],
-      errorMessage: 'failed to parse menu with Gemini',
-      existingItemNames: [],
-      lastRequestedSource: 'gallery',
-      permissionNeedsSettings: false,
-      reset: jest.fn(),
-      scanMenu: mockScanMenu,
-      selectedImageName: '',
-      status: 'error',
-      verification: null,
     });
-
-    const renderer = renderScreen();
-
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
-      'failed to parse menu with Gemini',
-    );
   });
 
   it('shows all locations scope when history spans multiple locations', () => {

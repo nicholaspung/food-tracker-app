@@ -908,6 +908,24 @@ button {
   color: var(--danger);
 }
 
+.status-pill.success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.status-pill.failed,
+.status-pill.invalid_response,
+.status-pill.empty_response,
+.status-pill.not_receipt {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.status-pill.low_confidence {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
 /* ─── Table ──────────────────────────────────────────────────────────────── */
 
 .table-wrap {

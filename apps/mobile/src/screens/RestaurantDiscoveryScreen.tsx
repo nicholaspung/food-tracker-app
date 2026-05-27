@@ -19,7 +19,7 @@ import {
   CurrentLocationButton,
   LoadingState,
   PageErrorToast,
-  PhotoSourceActionCards,
+  PhotoSourcePicker,
   SegmentedControl,
   UpgradePromptCard,
   VisitRestaurantOptionTrailing,
@@ -1370,12 +1370,13 @@ export function RestaurantDiscoveryScreen({
               }}
             />
             {showStorefrontPhotoSources ? (
-              <PhotoSourceActionCards
+              <PhotoSourcePicker
                 cameraSubtitle="Storefront"
                 cameraTitle="Take Photo"
                 disabled={!isOnline || isBusyWithImage}
                 gallerySubtitle="Photo Library"
                 galleryTitle="Upload"
+                title=""
                 onCameraPress={() => {
                   void extractStorefrontName('camera');
                 }}
