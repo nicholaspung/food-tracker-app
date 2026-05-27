@@ -60,6 +60,7 @@ jest.mock('../components/shared', () => ({
   ScreenContentSection: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('ScreenContentSection', props, children),
+  SectionHeader: (props: Record<string, unknown>) => mockReact.createElement('SectionHeader', props),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
   TabBrandHeader: (props: Record<string, unknown>) => mockReact.createElement('TabBrandHeader', props),

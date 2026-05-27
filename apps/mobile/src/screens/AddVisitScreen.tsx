@@ -1,9 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
 import {
+  SectionHeader,
   ScreenContentSection,
   StatusPill,
   TabBrandHeader,
@@ -56,6 +57,17 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.md,
   },
+  section: {
+    gap: theme.spacing.sm,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  quickGridItem: {
+    flex: 1,
+    minWidth: 0,
+  },
 }));
 
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
@@ -94,16 +106,16 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       id: 'restaurant-visit',
       onboardingCardId: 'trackRestaurantVisit',
       title: 'Track Restaurant Visit',
-      description: 'Full experience with restaurant, menu items, and ratings',
+      description: 'Restaurant, dishes, photos, and ratings',
       icon: 'restaurant-outline',
       iconBackground: optionColors.restaurant,
       iconColor: optionColors.iconOnColor,
     },
     ...(canAccessFoodDiscovery
       ? [{
-          id: 'food-discovery',
-          title: 'Food Discovery',
-          description: 'Find restaurants abroad, scan menus, and add menu items',
+      id: 'food-discovery',
+      title: 'Food Discovery',
+      description: 'Find restaurants and scan menus',
           icon: 'compass-outline',
           iconBackground: optionColors.foodDiscovery,
           iconColor: optionColors.iconOnColor,
@@ -114,7 +126,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       id: 'food-product',
       onboardingCardId: 'trackFoodProduct',
       title: 'Track Food Product',
-      description: 'Rate a grocery, convenience-store, or market item',
+      description: 'Rate a grocery or market item',
       icon: 'flash-outline',
       iconBackground: optionColors.foodProduct,
       iconColor: optionColors.iconOnColor,
@@ -123,7 +135,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       id: 'log-note',
       onboardingCardId: 'logNote',
       title: 'Log a Note',
-      description: 'Jot down notes about food/places for later',
+      description: 'Save a food or place note',
       icon: 'document-text-outline',
       iconBackground: optionColors.logNote,
       iconColor: optionColors.iconOnColor,
@@ -134,7 +146,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Process Saved Photos',
       description: shouldDisableProcessPhotos
         ? "You've reached this month's free photo limit. Photo processing unlocks again next month."
-        : 'Upload multiple photos and rate each one',
+        : 'Rate items from saved photos',
       icon: 'images-outline',
       iconBackground: optionColors.processPhotos,
       iconColor: optionColors.iconOnColor,
@@ -147,12 +159,47 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       id: 'manage-notes',
       onboardingCardId: 'manageNotes',
       title: 'Manage Notes',
-      description: 'View, edit, or delete your saved notes',
+      description: 'View and edit saved notes',
       icon: 'folder-open-outline',
       iconBackground: optionColors.manageNotes,
       iconColor: optionColors.iconOnColor,
     },
   ];
+  const getOption = (optionId: AddOptionId) => options.find((option) => option.id === optionId);
+  const primaryOption = getOption('restaurant-visit');
+  const quickOptions = [
+    getOption('food-product'),
+    getOption('log-note'),
+  ].filter((option): option is AddOptionConfig => Boolean(option));
+  const processPhotosOption = getOption('process-photos');
+  const foodDiscoveryOption = getOption('food-discovery');
+  const manageNotesOption = getOption('manage-notes');
+
+  const renderOptionCard = (
+    option: AddOptionConfig,
+    cardOptions?: Pick<ComponentProps<typeof AddOptionCard>, 'layout' | 'showTrailing' | 'tone'> & {
+      description?: string;
+      title?: string;
+    },
+  ) => (
+    <AddOptionCard
+      description={cardOptions?.description ?? option.description}
+      disabled={option.disabled}
+      icon={option.icon}
+      iconBackground={option.iconBackground}
+      iconColor={option.iconColor}
+      key={option.id}
+      layout={cardOptions?.layout}
+      onPress={() => {
+        handleOptionPress(option.id);
+      }}
+      showTrailing={cardOptions?.showTrailing ?? false}
+      testID={`add-option-${option.id}`}
+      title={cardOptions?.title ?? option.title}
+      titleAccessory={option.titleAccessory}
+      tone={cardOptions?.tone}
+    />
+  );
 
   const handleOptionPress = (optionId: AddOptionId) => {
     const selectedOption = options.find((option) => option.id === optionId);
@@ -270,22 +317,49 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
           keyboardShouldPersistTaps="handled"
           style={styles.bodyScroll}
         >
-          {options.map((option) => (
-            <AddOptionCard
-              description={option.description}
-              disabled={option.disabled}
-              icon={option.icon}
-              iconBackground={option.iconBackground}
-              iconColor={option.iconColor}
-              key={option.id}
-              onPress={() => {
-                handleOptionPress(option.id);
-              }}
-              testID={`add-option-${option.id}`}
-              title={option.title}
-              titleAccessory={option.titleAccessory}
-            />
-          ))}
+          {primaryOption ? (
+            <View style={styles.section}>
+              <SectionHeader title="Track" />
+              {renderOptionCard(primaryOption)}
+            </View>
+          ) : null}
+
+          <View style={styles.section}>
+            <SectionHeader title="Quick Add" />
+            <View style={styles.quickGrid}>
+              {quickOptions.map((option) => (
+                <View key={option.id} style={styles.quickGridItem}>
+                  {renderOptionCard(option, {
+                    description: option.id === 'food-product' ? 'Grocery or market item' : 'Food or place note',
+                    layout: 'compact',
+                    showTrailing: false,
+                    title: option.id === 'food-product' ? 'Food Product' : 'Note',
+                  })}
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {processPhotosOption ? (
+            <View style={styles.section}>
+              <SectionHeader title="Use Photos" />
+              {renderOptionCard(processPhotosOption)}
+            </View>
+          ) : null}
+
+          {foodDiscoveryOption ? (
+            <View style={styles.section}>
+              <SectionHeader title="Explore" />
+              {renderOptionCard(foodDiscoveryOption)}
+            </View>
+          ) : null}
+
+          {manageNotesOption ? (
+            <View style={styles.section}>
+              <SectionHeader title="Manage" />
+              {renderOptionCard(manageNotesOption, { tone: 'muted' })}
+            </View>
+          ) : null}
         </ScrollView>
       </ScreenContentSection>
     </TabRootScreenScaffold>

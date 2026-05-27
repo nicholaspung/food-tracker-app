@@ -382,7 +382,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   FeatureOnboarding: 'Onboarding',
   RestaurantDiscovery: 'Food Discovery',
   RestaurantDiscoveryRestaurant: 'Food Discovery',
-  AddFeatureOnboarding: 'Feature Intro',
+  AddFeatureOnboarding: 'How It Works',
   CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',
 };

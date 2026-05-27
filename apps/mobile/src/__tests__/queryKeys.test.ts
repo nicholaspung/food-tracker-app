@@ -10,7 +10,6 @@ import {
 import {
   isRestaurantMenuItemsQueryKey,
   menuItemsQueryKeys,
-  restaurantOrderedItemsQueryKeys,
 } from '../features/store/menuItemsQuery';
 import {
   getCachedTastingSessionDetail,
@@ -86,11 +85,6 @@ describe('mobile feature query keys', () => {
     expect(menuItemsQueryKeys.restaurant('restaurant_1')).toEqual([
       'feature',
       'menuItems',
-      'restaurant_1',
-    ]);
-    expect(restaurantOrderedItemsQueryKeys.restaurant(' restaurant_1 ')).toEqual([
-      'feature',
-      'restaurantOrderedItems',
       'restaurant_1',
     ]);
     expect(isRestaurantMenuItemsQueryKey(menuItemsQueryKeys.restaurant('restaurant_1'))).toBe(true);

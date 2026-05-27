@@ -172,7 +172,7 @@ export function AddFeatureOnboardingScreen({ navigation, route }: AddFeatureOnbo
       onBackPress={handleBack}
       subtitle={config.subtitle}
       testID="add-feature-onboarding-screen"
-      title={mode === 'replay' ? 'Tutorial' : 'Feature Intro'}
+      title={mode === 'replay' ? 'Tutorial' : 'How It Works'}
     >
       <FeatureIntroScreenContent
         config={config}
