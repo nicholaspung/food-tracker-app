@@ -4,7 +4,6 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import {
   buildFoodProductCreatedHomeParams,
   buildVisitCreatedHomeParams,
@@ -232,10 +231,6 @@ jest.mock('../features/store/useWriteTelemetry', () => ({
   useWriteTelemetry: jest.fn(),
 }));
 
-jest.mock('../hooks/useListQueryState', () => ({
-  usePaginatedQueryState: jest.fn(),
-}));
-
 jest.mock('../hooks/useDebouncedValue', () => ({
   useDebouncedValue: (value: unknown) => value,
 }));
@@ -321,7 +316,6 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
   typeof useOfflineAwareFeatureWrite
 >;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
-const mockedUsePaginatedQueryState = usePaginatedQueryState as jest.MockedFunction<typeof usePaginatedQueryState>;
 const mockedGetPendingFriendSuggestion = getPendingFriendSuggestion as jest.MockedFunction<
   typeof getPendingFriendSuggestion
 >;
@@ -365,6 +359,47 @@ function createDeferred<T>() {
     reject,
     resolve,
   };
+}
+
+function mockHomeFeedQuery({
+  fetchNextPage = jest.fn(),
+  hasNextPage = false,
+  isError = false,
+  items = [],
+  photoPreviews = [],
+  refetch = jest.fn(),
+}: {
+  fetchNextPage?: jest.Mock;
+  hasNextPage?: boolean;
+  isError?: boolean;
+  items?: unknown[];
+  photoPreviews?: unknown[];
+  refetch?: jest.Mock;
+} = {}) {
+  mockedUseInfiniteQuery.mockReturnValue({
+    data: {
+      pageParams: [undefined],
+      pages: [
+        {
+          cursor: hasNextPage ? { page: 2 } : undefined,
+          hasNextPage,
+          items,
+          photoPreviews,
+          totalFoodProducts: items.filter((item: any) => item.source === 'food_product').length,
+          totalVisits: items.filter((item: any) => item.source === 'visit').length,
+        },
+      ],
+    },
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetching: false,
+    isFetchingNextPage: false,
+    isLoading: false,
+    isRefetching: false,
+    isSuccess: !isError,
+    refetch,
+  } as never);
 }
 
 describe('HomeScreen', () => {
@@ -417,12 +452,6 @@ describe('HomeScreen', () => {
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
     mockedUseWriteTelemetry.mockReset();
     mockedUseWriteTelemetry.mockReturnValue(jest.fn());
-    mockedUsePaginatedQueryState.mockReset();
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
-      items: [],
-    } as never);
     mockedGetPendingFriendSuggestion.mockReset();
     mockedGetPendingFriendSuggestion.mockResolvedValue(null);
     mockedUseAuth.mockReset();
@@ -721,9 +750,7 @@ describe('HomeScreen', () => {
     const setParams = jest.fn();
     let renderer: any = null;
 
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
+    mockHomeFeedQuery({
       items: [
         {
           eventAt: '2026-04-20T08:00:00.000Z',
@@ -754,7 +781,7 @@ describe('HomeScreen', () => {
           },
         },
       ],
-    } as never);
+    });
 
     await act(async () => {
       renderer = create(
@@ -803,32 +830,9 @@ describe('HomeScreen', () => {
         pages: [],
       },
     });
-    mockedUseInfiniteQuery.mockReturnValue({
-      data: {
-        pageParams: [undefined],
-        pages: [
-          {
-            cursor: { page: 2 },
-            hasNextPage: true,
-            items: [],
-            totalFoodProducts: 0,
-            totalVisits: 2,
-          },
-        ],
-      },
+    mockHomeFeedQuery({
       fetchNextPage,
       hasNextPage: true,
-      isError: false,
-      isFetching: false,
-      isFetchingNextPage: false,
-      isLoading: false,
-      isRefetching: false,
-      isSuccess: true,
-      refetch: jest.fn(),
-    } as never);
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
       items: [
         {
           eventAt: '2026-04-20T08:00:00.000Z',
@@ -845,7 +849,7 @@ describe('HomeScreen', () => {
           },
         },
       ],
-    } as never);
+    });
 
     await act(async () => {
       create(
@@ -872,9 +876,7 @@ describe('HomeScreen', () => {
   it('only enables visit-item move affordances for owned visits and passes owned fallbacks', async () => {
     let renderer: any = null;
 
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
+    mockHomeFeedQuery({
       items: [
         {
           eventAt: '2026-04-18T08:00:00.000Z',
@@ -906,7 +908,7 @@ describe('HomeScreen', () => {
           },
         },
       ],
-    } as never);
+    });
 
     await act(async () => {
       renderer = create(
@@ -949,75 +951,49 @@ describe('HomeScreen', () => {
   it('only passes share callbacks to owned home records', async () => {
     let renderer: any = null;
 
-    mockedUseInfiniteQuery.mockReturnValue({
-      data: {
-        pageParams: [undefined],
-        pages: [
-          {
-            cursor: undefined,
-            hasNextPage: false,
-            items: [],
-            photoPreviews: [
-              {
-                id: 'photo-own-item-one',
-                collectionId: 'visit_photos',
-                collectionName: 'visit_photos',
-                created: '2026-04-18T08:01:00.000Z',
-                food_item: 'own-item-one',
-                photo: 'own-item-one.jpg',
-              },
-              {
-                id: 'photo-own-item-two',
-                collectionId: 'visit_photos',
-                collectionName: 'visit_photos',
-                created: '2026-04-18T08:02:00.000Z',
-                food_item: 'own-item-two',
-                photo: 'own-item-two.jpg',
-              },
-              {
-                id: 'photo-friend-item-one',
-                collectionId: 'visit_photos',
-                collectionName: 'visit_photos',
-                created: '2026-04-18T09:01:00.000Z',
-                food_item: 'friend-item-one',
-                photo: 'friend-item-one.jpg',
-              },
-              {
-                id: 'photo-own-product',
-                collectionId: 'visit_photos',
-                collectionName: 'visit_photos',
-                created: '2026-04-18T10:01:00.000Z',
-                food_item: 'product-own',
-                photo: 'own-product.jpg',
-              },
-              {
-                id: 'photo-friend-product',
-                collectionId: 'visit_photos',
-                collectionName: 'visit_photos',
-                created: '2026-04-18T11:01:00.000Z',
-                food_item: 'product-friend',
-                photo: 'friend-product.jpg',
-              },
-            ],
-            totalFoodProducts: 2,
-            totalVisits: 2,
-          },
-        ],
-      },
-      fetchNextPage: jest.fn(),
-      hasNextPage: false,
-      isError: false,
-      isFetching: false,
-      isFetchingNextPage: false,
-      isLoading: false,
-      isRefetching: false,
-      isSuccess: true,
-      refetch: jest.fn(),
-    } as never);
-
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
+    mockHomeFeedQuery({
+      photoPreviews: [
+        {
+          id: 'photo-own-item-one',
+          collectionId: 'visit_photos',
+          collectionName: 'visit_photos',
+          created: '2026-04-18T08:01:00.000Z',
+          food_item: 'own-item-one',
+          photo: 'own-item-one.jpg',
+        },
+        {
+          id: 'photo-own-item-two',
+          collectionId: 'visit_photos',
+          collectionName: 'visit_photos',
+          created: '2026-04-18T08:02:00.000Z',
+          food_item: 'own-item-two',
+          photo: 'own-item-two.jpg',
+        },
+        {
+          id: 'photo-friend-item-one',
+          collectionId: 'visit_photos',
+          collectionName: 'visit_photos',
+          created: '2026-04-18T09:01:00.000Z',
+          food_item: 'friend-item-one',
+          photo: 'friend-item-one.jpg',
+        },
+        {
+          id: 'photo-own-product',
+          collectionId: 'visit_photos',
+          collectionName: 'visit_photos',
+          created: '2026-04-18T10:01:00.000Z',
+          food_item: 'product-own',
+          photo: 'own-product.jpg',
+        },
+        {
+          id: 'photo-friend-product',
+          collectionId: 'visit_photos',
+          collectionName: 'visit_photos',
+          created: '2026-04-18T11:01:00.000Z',
+          food_item: 'product-friend',
+          photo: 'friend-product.jpg',
+        },
+      ],
       items: [
         {
           eventAt: '2026-04-18T08:00:00.000Z',
@@ -1093,7 +1069,7 @@ describe('HomeScreen', () => {
           source: 'food_product',
         },
       ],
-    } as never);
+    });
 
     await act(async () => {
       renderer = create(
@@ -1209,9 +1185,7 @@ describe('HomeScreen', () => {
   it('adds the first-row spacing path only to the first mine feed item', async () => {
     let renderer: any = null;
 
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
+    mockHomeFeedQuery({
       items: [
         {
           eventAt: '2026-04-20T08:00:00.000Z',
@@ -1242,7 +1216,7 @@ describe('HomeScreen', () => {
           },
         },
       ],
-    } as never);
+    });
 
     await act(async () => {
       renderer = create(

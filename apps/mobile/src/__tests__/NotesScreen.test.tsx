@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useNoteWrites } from '../features/store/useNoteWrites';
+import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { NotesScreen } from '../screens/NotesScreen';
@@ -56,6 +57,10 @@ jest.mock('../features/store/useNoteWrites', () => ({
   useNoteWrites: jest.fn(),
 }));
 
+jest.mock('../features/store/useQueuedFeatureWrites', () => ({
+  useQueuedFeatureWrites: jest.fn(),
+}));
+
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
 }));
@@ -93,7 +98,9 @@ jest.mock('../components/shared', () => {
     FeatureDetailScreenScaffold: (
       { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
     ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
+    FeatureListFooter: (props: Record<string, unknown>) => mockReact.createElement('FeatureListFooter', props),
     HeaderAccessoryButton: () => null,
+    PendingQueuedWriteRow: (props: Record<string, unknown>) => mockReact.createElement('PendingQueuedWriteRow', props),
     PhotoViewerModal: () => null,
     SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('MockSegmentedControl', props),
     Skeleton: () => null,
@@ -102,12 +109,15 @@ jest.mock('../components/shared', () => {
 });
 
 jest.mock('../components/shared/PageErrorToast', () => ({
-  PageErrorToast: () => null,
+  PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
 }));
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseNoteWrites = useNoteWrites as jest.MockedFunction<typeof useNoteWrites>;
+const mockedUseQueuedFeatureWrites = useQueuedFeatureWrites as jest.MockedFunction<
+  typeof useQueuedFeatureWrites
+>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent
@@ -278,6 +288,10 @@ describe('NotesScreen', () => {
       fetchQuery: jest.fn(),
       invalidateQueries: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites: [],
+      refreshQueuedWrites: jest.fn().mockResolvedValue(undefined),
+    });
     mockedUseNoteWrites.mockReturnValue({
       createNote: jest.fn(),
       deleteNote: jest.fn().mockResolvedValue({ status: 'completed' }),
@@ -461,6 +475,47 @@ describe('NotesScreen', () => {
     expect(emptyState.props.description).toBe('Try a different search term.');
     expect(emptyState.props.actionLabel).toBe('Clear Search');
     expect(emptyState.props.tone).toBe('muted');
+  });
+
+  it('renders pending note rows from the browse interface', async () => {
+    let renderer: any = null;
+
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites: [
+        {
+          id: 'queued_note_1',
+          operationName: 'note.create',
+          payload: {
+            content: 'Try the cardamom bun',
+            locationText: 'Bakery counter',
+            title: 'Try the cardamom bun',
+          },
+          status: 'pending',
+          createdAt: 123,
+          idempotencyKey: 'idem_note_1',
+          lastError: null,
+        },
+      ],
+      refreshQueuedWrites: jest.fn().mockResolvedValue(undefined),
+    } as ReturnType<typeof useQueuedFeatureWrites<'note.create'>>);
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const pendingRow = renderer?.root.findByType('PendingQueuedWriteRow');
+
+    expect(pendingRow.props.title).toBe('Try the cardamom bun');
+    expect(pendingRow.props.description).toBe('Bakery counter');
+    expect(pendingRow.props.status).toBe('pending');
+    expect(pendingRow.props.idempotencyKey).toBe('idem_note_1');
   });
 
   it('renders note descriptions as multiline text with preserved paragraph breaks', async () => {
@@ -816,6 +871,88 @@ describe('NotesScreen', () => {
     ).toHaveLength(1);
   });
 
+  it('routes load-more through server search pagination once search results are accepted', async () => {
+    const searchFetchNextPage = jest.fn().mockResolvedValue({
+      data: {
+        pages: [
+          {
+            items: [
+              buildNote({
+                id: 'server_note_page_2',
+                content: 'Bo second page result',
+              }),
+            ],
+          },
+        ],
+      },
+    });
+    let renderer: any = null;
+
+    mockedUseInfiniteQuery.mockImplementation((queryOptions: Record<string, any>) => {
+      const queryKey = queryOptions.queryKey;
+      const enabled = queryOptions.enabled ?? true;
+      const searchTerm =
+        Array.isArray(queryKey) && queryKey.length === 5 && typeof queryKey[4] === 'string'
+          ? queryKey[4]
+          : '';
+
+      if (!enabled) {
+        return buildDisabledNotesQueryResult();
+      }
+
+      if (searchTerm === 'bo') {
+        return buildNotesQueryResult(
+          [
+            buildNote({
+              id: 'server_note',
+              content: 'Bo server result',
+            }),
+          ],
+          {
+            fetchNextPage: searchFetchNextPage,
+            hasNextPage: true,
+          },
+        );
+      }
+
+      return buildNotesQueryResult([
+        buildNote({
+          id: 'local_note',
+          content: 'Cab ride',
+          locationText: 'Booth seat',
+        }),
+      ]);
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer?.root.findByType('Input').props.onChangeText('bo');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+
+    const footer = renderer?.root.findByType('FeatureListFooter');
+    expect(footer.props.label).toBe('Load more notes');
+
+    await act(async () => {
+      await footer.props.onLoadMore();
+    });
+
+    expect(searchFetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
   it('matches the visible location field during immediate local search', async () => {
     let renderer: any = null;
 
@@ -908,6 +1045,46 @@ describe('NotesScreen', () => {
         returnedItemCount: 1,
         hasNonMatchingItem: true,
       }),
+    );
+  });
+
+  it('shows a non-blocking search fallback refresh error while rendering local matches', async () => {
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [
+        buildNote({
+          content: 'Alpha note',
+          locationText: 'Window booth',
+        }),
+      ],
+      errorSearchTerms: ['al'],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer?.root.findByType('Input').props.onChangeText('al');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(
+      renderer?.root.findAll((node: any) => node.type === 'Text' && node.props.children === 'Alpha note'),
+    ).toHaveLength(1);
+    expect(renderer?.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Could not refresh search results. Showing local matches.',
     );
   });
 

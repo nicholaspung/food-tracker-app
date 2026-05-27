@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
+import { Platform } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -74,6 +75,8 @@ jest.mock('../lib/photoFiles', () => ({
 
 jest.mock('../lib/photoStaging', () => ({
   cleanupStagedPhotoFiles: jest.fn(() => Promise.resolve()),
+  hasNativeImageManipulatorModule: jest.fn(() => true),
+  PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE: 'Photo resizing is unavailable.',
   stageLocalPhotoFile: jest.fn((asset, options) => {
     const { buildLocalPhotoFile } = jest.requireMock('../lib/photoFiles');
     return Promise.resolve(buildLocalPhotoFile(asset, options));
@@ -151,18 +154,35 @@ function buildQueryResult<T>(data: T) {
 
 describe('FoodProductScreen', () => {
   let invalidateQueries: jest.Mock;
+  let requestPermission: jest.Mock;
   let setQueryData: jest.Mock;
   let writeFeature: jest.Mock;
+  const originalPlatformOS = Platform.OS;
+
+  function setPlatformOS(os: typeof Platform.OS) {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => os,
+    });
+  }
 
   beforeEach(() => {
     invalidateQueries = jest.fn().mockResolvedValue(undefined);
     setQueryData = jest.fn();
     writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    requestPermission = jest.fn().mockResolvedValue({
+      granted: true,
+      canAskAgain: true,
+      message: '',
+    });
+    setPlatformOS(originalPlatformOS);
 
     mockedAsyncStorage.getItem.mockReset();
     mockedAsyncStorage.getItem.mockResolvedValue(null);
     mockedAsyncStorage.setItem.mockReset();
     mockedAsyncStorage.setItem.mockResolvedValue(undefined);
+    (ImagePicker.getPendingResultAsync as jest.Mock).mockReset();
+    (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue(null);
     (ImagePicker.launchCameraAsync as jest.Mock).mockReset();
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockReset();
     mockedUseQuery.mockReset();
@@ -183,11 +203,7 @@ describe('FoodProductScreen', () => {
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
     mockedUsePhotoPickerPermissions.mockReturnValue({
       permissionNeedsSettings: false,
-      requestPermission: jest.fn().mockResolvedValue({
-        granted: true,
-        canAskAgain: true,
-        message: '',
-      }),
+      requestPermission,
       resetPermissionNeedsSettings: jest.fn(),
     });
     mockedBuildLocalPhotoFile.mockReset();
@@ -211,6 +227,10 @@ describe('FoodProductScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
+  });
+
+  afterAll(() => {
+    setPlatformOS(originalPlatformOS);
   });
 
   it('starts with an empty location field', async () => {
@@ -320,6 +340,98 @@ describe('FoodProductScreen', () => {
     });
   });
 
+  it('adds a draft photo from the gallery and applies the capture date', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///selected-food-product.jpg',
+          fileName: 'selected-food-product.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'file:///food-product.jpg',
+        label: 'Apr 15, 2026',
+        uri: 'file:///food-product.jpg',
+      }),
+    ]);
+    expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBe('2026-04-15');
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-15');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICKED', {
+      photoSource: 'gallery',
+      source: 'FoodProductScreen',
+    });
+  });
+
+  it('surfaces permission denial without launching the picker', async () => {
+    requestPermission.mockResolvedValueOnce({
+      granted: false,
+      canAskAgain: false,
+      message: 'Photo library permission is blocked. Enable it in device settings.',
+    });
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: true,
+      requestPermission,
+      resetPermissionNeedsSettings: jest.fn(),
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    expect(ImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PERMISSION_DENIED', {
+      canAskAgain: false,
+      photoSource: 'gallery',
+      source: 'FoodProductScreen',
+    });
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Photo library permission is blocked. Enable it in device settings.',
+    );
+  });
+
   it('hides photo source actions and blocks picker launch at the free monthly photo limit', async () => {
     mockedUseAuth.mockReturnValue({
       actualUser: {
@@ -379,6 +491,101 @@ describe('FoodProductScreen', () => {
       source: 'FoodProductScreen',
       used: 100,
     });
+  });
+
+  it('restores an Android pending picker result as a draft photo', async () => {
+    setPlatformOS('android');
+    (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///pending-food-product.jpg',
+          fileName: 'pending-food-product.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(ImagePicker.getPendingResultAsync).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'file:///food-product.jpg',
+        uri: 'file:///food-product.jpg',
+      }),
+    ]);
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-15');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICKED', {
+      photoSource: 'gallery',
+      restoredPendingResult: true,
+      source: 'FoodProductScreen',
+    });
+  });
+
+  it('opens the draft photo viewer and removes the draft photo', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///food-product.jpg',
+          fileName: 'food-product.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('PhotoInputField').props.attachments[0].onPress();
+    });
+
+    expect(renderer.root.findByType('PhotoViewerModal').props.visible).toBe(true);
+
+    await act(async () => {
+      renderer.root.findByType('PhotoInputField').props.attachments[0].onRemove();
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([]);
+    expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBeNull();
+    expect(renderer.root.findByType('PhotoViewerModal').props.visible).toBe(false);
   });
 
   it('reads and writes only the current food product rated-before key', async () => {

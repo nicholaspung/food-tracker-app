@@ -6,7 +6,7 @@ import { useTastingSessionWrites, type TastingSessionRecord } from '../features'
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionLobbyScreen } from '../screens/TastingSessionLobbyScreen';
-import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSessionDetail';
+import { useTastingSessionLifecycleReadState } from '../screens/tastingSessions/useTastingSessionLifecycleReadState';
 
 const mockReact = React;
 
@@ -64,8 +64,8 @@ jest.mock('../providers/ConnectivityProvider', () => ({
   useConnectivity: jest.fn(),
 }));
 
-jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
-  useTastingSessionDetail: jest.fn(),
+jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () => ({
+  useTastingSessionLifecycleReadState: jest.fn(),
 }));
 
 jest.mock('../theme', () => ({
@@ -124,8 +124,8 @@ const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunc
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-const mockedUseTastingSessionDetail = useTastingSessionDetail as jest.MockedFunction<
-  typeof useTastingSessionDetail
+const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
+  typeof useTastingSessionLifecycleReadState
 >;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 
@@ -178,19 +178,61 @@ function buildSession(
 
 function renderScreen(
   session: TastingSessionRecord | null,
-  queryState?: Partial<ReturnType<typeof useTastingSessionDetail>>,
+  queryState?: Partial<ReturnType<typeof useTastingSessionLifecycleReadState>['query']>,
 ) {
   const navigation = {
     navigate: jest.fn(),
     replace: jest.fn(),
   };
 
-  mockedUseTastingSessionDetail.mockReturnValue({
-    data: session,
-    isError: false,
-    isLoading: false,
-    ...queryState,
-  } as unknown as ReturnType<typeof useTastingSessionDetail>);
+  const applyMissingAccessPolicy = jest.fn(() => {
+    setQueryData(['feature', 'tasting-sessions'], expect.any(Function));
+    setQueryData(['feature', 'tasting-sessions', 'session_1'], null);
+    invalidateQueries({ queryKey: ['feature', 'tasting-sessions'] });
+  });
+  mockedUseTastingSessionLifecycleReadState.mockReturnValue({
+    applyMissingAccessPolicy,
+    missingAccess: {
+      message: 'Your invite was revoked.',
+      redirectDestination: {
+        name: 'TastingSessions',
+        params: {
+          errorMessage: 'Your invite was revoked.',
+        },
+      },
+      shouldHandle: !session && !queryState?.isError && !queryState?.isLoading,
+    },
+    onlineOnly: {
+      actionsDisabled: !mockedUseConnectivity().isOnline,
+      isOnline: mockedUseConnectivity().isOnline,
+      warningMessage: mockedUseConnectivity().isOnline ? null : 'Lobby actions require a connection.',
+    },
+    query: {
+      data: session,
+      isError: false,
+      isLoading: false,
+      ...queryState,
+    },
+    redirectDestination: session?.status === 'planning'
+      ? { name: 'TastingSessionPlanning', params: { sessionId: session.id } }
+      : session?.status === 'tasting' || session?.status === 'rating'
+        ? { name: 'TastingSessionTasting', params: { sessionId: session.id } }
+        : session?.status === 'completed'
+          ? { name: 'TastingSessionResults', params: { sessionId: session.id } }
+          : null,
+    roles: {
+      currentParticipant: session?.participants.find((participant) => participant.userId === mockedUseAuth().user?.id) ?? null,
+      isInvitee: false,
+      isLeader: Boolean(session && mockedUseAuth().user?.id === session.leaderUserId),
+      isParticipant: false,
+    },
+    shouldPoll: true,
+    step: {
+      currentStep: 0,
+      label: 'Lobby',
+      stage: 'lobby',
+    },
+  } as unknown as ReturnType<typeof useTastingSessionLifecycleReadState>);
 
   let renderer: TestRenderer;
   act(() => {

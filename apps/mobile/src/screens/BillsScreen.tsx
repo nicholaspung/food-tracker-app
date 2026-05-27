@@ -15,9 +15,9 @@ import {
 } from '../components/shared';
 import { listBillSummaries } from '../features';
 import { billsQueryKeys } from '../features/store/billsQuery';
-import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
-import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
-import { useQueryListState } from '../hooks/useListQueryState';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
+import type { BillListSummary } from '../features/store/featureStore';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { formatCurrency } from '../features/bills/billCalculations';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -27,6 +27,8 @@ import { Card, Text } from '../ui';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
 type BillFilter = 'you_owe' | 'you_are_owed' | 'settled';
+
+const BILL_PENDING_OPERATION_NAMES = ['bill.create'] as const;
 
 function formatBillListCreatedDate(createdAt: string): string {
   const dateLabel = formatDisplayDate(createdAt, {
@@ -67,19 +69,11 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     queryKey: billsQueryKeys.root,
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
-  const billsState = useQueryListState({
-    data: billsQuery.data,
-    isError: billsQuery.isError,
-    isFetching: billsQuery.isFetching,
-    isLoading: billsQuery.isLoading,
-    isSuccess: billsQuery.isSuccess,
-  });
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
-  const { queuedWrites: pendingBillWrites } = useQueuedFeatureWrites(['bill.create']);
-
+  const styles = useStyles();
   const filteredBills = useMemo(() => {
-    const bills = billsState.items;
+    const bills = billsQuery.data ?? [];
 
     if (activeFilter === 'settled') {
       return bills.filter((bill) => bill.status === 'settled');
@@ -98,7 +92,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     }
 
     return bills;
-  }, [activeFilter, billsState.items]);
+  }, [activeFilter, billsQuery.data]);
   const activeBillTotal = useMemo(() => {
     return filteredBills.reduce((sum, bill) => {
       if (activeFilter === 'you_owe') {
@@ -118,7 +112,6 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     activeFilter === 'you_owe'
       ? `Across ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`
       : `From ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`;
-  const styles = useStyles();
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
       source: 'BillsScreen',
@@ -128,13 +121,36 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     }),
     [activeFilter, filteredBills.length],
   );
-  const browseState = useFeatureInfiniteBrowse({
+  const browseState = useFeatureBrowse<BillListSummary[], BillListSummary, 'bill.create'>({
     analyticsSource: 'BillsScreen',
     buildAnalyticsPayload: buildBrowseAnalyticsPayload,
-    getResultCountFromData: (data, fallbackCount) => data?.length ?? fallbackCount,
+    emptyWhen: () => filteredBills.length === 0,
+    getItemsFromData: useCallback((data: BillListSummary[] | undefined) => data ?? [], []),
+    getResultCountFromData: useCallback(
+      (data: BillListSummary[] | undefined, fallbackCount: number) => data?.length ?? fallbackCount,
+      [],
+    ),
+    pendingQueuedWriteOperationNames: BILL_PENDING_OPERATION_NAMES,
     query: billsQuery,
     refreshEventPrefix: 'BILLS_REFRESH',
     resultCount: filteredBills.length,
+    toPendingRow: useCallback((write: QueuedFeatureWrite<'bill.create'>) => {
+      const payload = write.payload as { title?: string; participants?: unknown[] };
+      const participantCount = Array.isArray(payload.participants) ? payload.participants.length : 0;
+
+      return {
+        id: write.id,
+        createdAt: write.createdAt,
+        description:
+          participantCount > 0
+            ? `${participantCount} participant${participantCount === 1 ? '' : 's'}`
+            : undefined,
+        idempotencyKey: write.idempotencyKey,
+        lastError: write.lastError,
+        status: write.status,
+        title: payload.title?.trim() || 'New bill',
+      };
+    }, []),
   });
 
   return (
@@ -198,24 +214,18 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           </Card>
         ) : null}
 
-        {pendingBillWrites.length > 0 ? (
+        {browseState.pendingRows.length > 0 ? (
           <View style={styles.pendingStack}>
-            {pendingBillWrites.map((write) => {
-              const payload = write.payload as { title?: string; participants?: unknown[] };
-              const participantCount = Array.isArray(payload.participants) ? payload.participants.length : 0;
+            {browseState.pendingRows.map((row) => {
               return (
                 <PendingQueuedWriteRow
-                  key={write.id}
-                  createdAt={write.createdAt}
-                  description={
-                    participantCount > 0
-                      ? `${participantCount} participant${participantCount === 1 ? '' : 's'}`
-                      : undefined
-                  }
-                  idempotencyKey={write.idempotencyKey}
-                  lastError={write.lastError}
-                  status={write.status}
-                  title={payload.title?.trim() || 'New bill'}
+                  key={row.id}
+                  createdAt={row.createdAt}
+                  description={row.description}
+                  idempotencyKey={row.idempotencyKey}
+                  lastError={row.lastError}
+                  status={row.status}
+                  title={row.title}
                 />
               );
             })}
@@ -230,9 +240,9 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
             activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
           }
           emptyTitle="No matching bills"
-          hasBlockingError={billsState.hasBlockingError}
-          hasRefreshError={billsState.hasRefreshError}
-          isLoading={billsQuery.isLoading}
+          hasBlockingError={browseState.hasBlockingError}
+          hasRefreshError={browseState.hasRefreshError}
+          isLoading={browseState.isLoading}
           onRetry={() => {
             void billsQuery.refetch();
           }}

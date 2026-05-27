@@ -3,12 +3,12 @@ import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { ListsScreen } from '../screens/ListsScreen';
 
 const mockReact = React;
+let mockQueuedWrites: Record<string, unknown>[] = [];
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
@@ -28,6 +28,7 @@ jest.mock('../components/shared', () => ({
   FeatureListFooter: (props: Record<string, unknown>) => mockReact.createElement('FeatureListFooter', props),
   HeaderAccessoryButton: (props: Record<string, unknown>) => mockReact.createElement('HeaderAccessoryButton', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+  PendingQueuedWriteRow: (props: Record<string, unknown>) => mockReact.createElement('PendingQueuedWriteRow', props),
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
 }));
@@ -37,7 +38,7 @@ jest.mock('../features', () => ({
   invalidateRestaurantListCollectionQueries: jest.fn(),
   listRestaurantListsPage: jest.fn(),
   restaurantListQueryKeys: {
-    paginated: jest.fn(() => ['feature', 'lists', 'paginated']),
+    paginated: jest.fn((scope: string, search: string) => ['feature', 'restaurantLists', scope, 'paginated', search]),
   },
 }));
 
@@ -47,13 +48,13 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 jest.mock('../features/store/useQueuedFeatureWrites', () => ({
   useQueuedFeatureWrites: () => ({
-    queuedWrites: [],
+    queuedWrites: mockQueuedWrites,
     refreshQueuedWrites: jest.fn(),
   }),
 }));
 
-jest.mock('../hooks/useListQueryState', () => ({
-  usePaginatedQueryState: jest.fn(),
+jest.mock('../hooks/useDebouncedValue', () => ({
+  useDebouncedValue: (value: unknown) => value,
 }));
 
 jest.mock('../observability', () => ({
@@ -168,19 +169,21 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
-const mockedUsePaginatedQueryState = usePaginatedQueryState as jest.MockedFunction<typeof usePaginatedQueryState>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
-function buildQueryResult(overrides: Record<string, unknown> = {}) {
+function buildQueryResult(overrides: Record<string, unknown> = {}, items: Record<string, unknown>[] = []) {
   return {
     data: {
       pageParams: [1],
       pages: [
         {
           hasNextPage: false,
-          items: [],
+          items,
           page: 1,
+          pageSize: 20,
+          totalItems: items.length,
+          totalPages: items.length > 0 ? 1 : 0,
         },
       ],
     },
@@ -228,17 +231,9 @@ function renderListsScreen() {
   );
 }
 
-function mockPaginatedStates(myState: Record<string, unknown>, friendsState: Record<string, unknown>) {
-  let callIndex = 0;
-  mockedUsePaginatedQueryState.mockImplementation(() => {
-    const state = callIndex % 2 === 0 ? myState : friendsState;
-    callIndex += 1;
-    return state as never;
-  });
-}
-
 describe('ListsScreen', () => {
   beforeEach(() => {
+    mockQueuedWrites = [];
     mockedUseInfiniteQuery.mockReset();
     mockedUseInfiniteQuery.mockImplementation((options) =>
       options.enabled === false ? buildQueryResult({ isSuccess: false }) : buildQueryResult(),
@@ -249,21 +244,6 @@ describe('ListsScreen', () => {
     } as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
-    mockedUsePaginatedQueryState.mockReset();
-    mockPaginatedStates(
-      {
-        hasBlockingError: false,
-        hasRefreshError: false,
-        items: [],
-        totalItems: 0,
-      },
-      {
-        hasBlockingError: false,
-        hasRefreshError: false,
-        items: [],
-        totalItems: 0,
-      },
-    );
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
       user: null,
@@ -278,21 +258,7 @@ describe('ListsScreen', () => {
     mockedUseInfiniteQuery.mockImplementation((options) =>
       options.enabled === false
         ? buildQueryResult({ hasNextPage: false, isSuccess: false })
-        : buildQueryResult({ hasNextPage: true }),
-    );
-    mockPaginatedStates(
-      {
-        hasBlockingError: false,
-        hasRefreshError: false,
-        items: [buildList()],
-        totalItems: 1,
-      },
-      {
-        hasBlockingError: false,
-        hasRefreshError: false,
-        items: [],
-        totalItems: 0,
-      },
+        : buildQueryResult({ hasNextPage: true }, [buildList()]),
     );
 
     let renderer: any = null;
@@ -326,20 +292,6 @@ describe('ListsScreen', () => {
         ? buildQueryResult({ isSuccess: false })
         : buildQueryResult({ data: undefined, isError: true, isSuccess: false }),
     );
-    mockPaginatedStates(
-      {
-        hasBlockingError: true,
-        hasRefreshError: false,
-        items: [],
-        totalItems: 0,
-      },
-      {
-        hasBlockingError: false,
-        hasRefreshError: false,
-        items: [],
-        totalItems: 0,
-      },
-    );
 
     let renderer: any = null;
 
@@ -348,5 +300,149 @@ describe('ListsScreen', () => {
     });
 
     expect(renderer.root.findByType('ErrorState').props.title).toBe('Lists unavailable');
+  });
+
+  it('switches to friends lists and clears search', async () => {
+    mockedUseInfiniteQuery.mockImplementation((options) => {
+      const queryKey = options.queryKey as unknown[];
+      const scope = queryKey[2];
+      const search = queryKey[4];
+
+      if (scope === 'friends') {
+        return buildQueryResult({ isSuccess: options.enabled !== false }, [
+          buildList({ id: `friend-${search || 'all'}`, name: 'Friends picks' }),
+        ]);
+      }
+
+      return buildQueryResult({ isSuccess: options.enabled !== false }, [
+        buildList({ id: `my-${search || 'all'}`, name: 'My picks' }),
+      ]);
+    });
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'lists-search-input' }).props.onChangeText('ramen');
+    });
+
+    await act(async () => {
+      renderer.root.findByType('SegmentedControl').props.onChange('friends');
+    });
+
+    expect(renderer.root.findByProps({ testID: 'lists-search-input' }).props.value).toBe('');
+    expect(renderer.root.findByProps({ testID: 'lists-list-card-friends-0' }).props.title).toBe('Friends picks');
+  });
+
+  it('passes debounced search into the active browse query and clears from the no-results state', async () => {
+    mockedUseInfiniteQuery.mockImplementation((options) => buildQueryResult({ isSuccess: options.enabled !== false }));
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'lists-search-input' }).props.onChangeText('tacos');
+    });
+
+    expect(mockedUseInfiniteQuery).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      queryKey: ['feature', 'restaurantLists', 'my', 'paginated', 'tacos'],
+    }));
+
+    await act(async () => {
+      renderer.root.findByType('EmptyState').props.onAction();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'lists-search-input' }).props.value).toBe('');
+  });
+
+  it('surfaces default Saved list auto-create failures', async () => {
+    const createDefaultList = jest.fn().mockRejectedValue(new Error('Could not create Saved'));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(createDefaultList as never);
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+    } as never);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+      await Promise.resolve();
+    });
+
+    const toastMessages = renderer.root.findAllByType('PageErrorToast').map((toast: any) => toast.props.errorMessage);
+    expect(createDefaultList).toHaveBeenCalledWith(expect.objectContaining({
+      operationName: 'list.default.create',
+    }));
+    expect(toastMessages).toContain('Could not create Saved');
+  });
+
+  it('renders pending list rows only on My Lists', async () => {
+    mockQueuedWrites = [
+      {
+        id: 'queued-list-1',
+        createdAt: 123,
+        idempotencyKey: 'idem-1',
+        lastError: null,
+        payload: {
+          name: 'Dinner ideas',
+          visibility: 'friends',
+        },
+        status: 'pending',
+      },
+    ];
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    expect(renderer.root.findByType('PendingQueuedWriteRow').props.title).toBe('Dinner ideas');
+
+    await act(async () => {
+      renderer.root.findByType('SegmentedControl').props.onChange('friends');
+    });
+
+    expect(renderer.root.findAllByType('PendingQueuedWriteRow')).toHaveLength(0);
+  });
+
+  it('preserves friends and search empty states', async () => {
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('SegmentedControl').props.onChange('friends');
+    });
+
+    expect(renderer.root.findByType('EmptyState').props.title).toBe("No friends' lists");
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'lists-search-input' }).props.onChangeText('pizza');
+    });
+
+    expect(renderer.root.findByType('EmptyState').props.title).toBe('No matching lists');
+  });
+
+  it('keeps cached list rows visible during refresh errors', async () => {
+    mockedUseInfiniteQuery.mockImplementation((options) =>
+      options.enabled === false
+        ? buildQueryResult({ isSuccess: false })
+        : buildQueryResult({ isError: true, isSuccess: false }, [buildList()]),
+    );
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    const toastMessages = renderer.root.findAllByType('PageErrorToast').map((toast: any) => toast.props.errorMessage);
+    expect(renderer.root.findByProps({ testID: 'lists-list-card-my-0' })).toBeTruthy();
+    expect(renderer.root.findAllByType('ErrorState')).toHaveLength(0);
+    expect(toastMessages).toContain('Could not refresh lists. Showing saved data.');
   });
 });

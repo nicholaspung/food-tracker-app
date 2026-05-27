@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -18,13 +17,10 @@ import {
 import {
   type TastingInviteRecord,
   type TastingParticipantRecord,
-  type TastingSessionRecord,
-  tastingSessionsQueryKeys,
   useTastingSessionWrites,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, ListItem, Modal, Text } from '../ui';
 import {
@@ -32,10 +28,9 @@ import {
   getTastingInviteDisplayStatus,
   isTastingInviteWindowExpired,
   isTastingInviteWindowOpen,
-  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
   TASTING_SESSION_LIFECYCLE_STEPS,
 } from './tastingSessions/shared';
-import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
+import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionLobbyScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionLobby'>;
 
@@ -108,10 +103,14 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const theme = useTheme();
   const { sessionId } = route.params;
   const { user } = useAuth();
-  const { isOnline } = useConnectivity();
   const tastingSessionWrites = useTastingSessionWrites();
-  const queryClient = useQueryClient();
-  const sessionQuery = useTastingSessionDetail(sessionId, true);
+  const lifecycle = useTastingSessionLifecycleReadState({
+    currentUserId: user?.id,
+    screen: 'lobby',
+    sessionId,
+  });
+  const sessionQuery = lifecycle.query;
+  const isOnline = lifecycle.onlineOnly.isOnline;
   const hasHandledRevokedAccessRef = useRef(false);
   const [pendingKick, setPendingKick] = useState<TastingParticipantRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -121,9 +120,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const session = sessionQuery.data;
-  const currentSessionId = session?.id;
-  const currentSessionStatus = session?.status;
-  const isLeader = Boolean(session && user?.id === session.leaderUserId);
+  const isLeader = lifecycle.roles.isLeader;
   const inviteWindowOpen = session ? isTastingInviteWindowOpen(session.joinExpiresAt) : false;
   const inviteWindowExpired = session ? isTastingInviteWindowExpired(session.joinExpiresAt) : false;
   const lobbyInstruction = isLeader
@@ -131,41 +128,29 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     : 'You are in the lobby. Wait for the leader to lock the group and start planning.';
 
   useEffect(() => {
-    if (hasHandledRevokedAccessRef.current || session || sessionQuery.isLoading || sessionQuery.isError) {
+    if (hasHandledRevokedAccessRef.current || !lifecycle.missingAccess.shouldHandle) {
       return;
     }
     hasHandledRevokedAccessRef.current = true;
-
-    queryClient.setQueryData<TastingSessionRecord[]>(tastingSessionsQueryKeys.root, (cachedSessions) =>
-      cachedSessions?.filter((cachedSession) => cachedSession.id !== sessionId),
-    );
-    queryClient.setQueryData(tastingSessionsQueryKeys.detail(sessionId), null);
-    void queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
+    lifecycle.applyMissingAccessPolicy();
 
     navigation.navigate('TastingSessions', {
-      errorMessage: 'Your invite was revoked.',
+      errorMessage: lifecycle.missingAccess.message,
     });
-  }, [navigation, queryClient, session, sessionId, sessionQuery.isError, sessionQuery.isLoading]);
+  }, [lifecycle, navigation]);
 
   useEffect(() => {
-    if (!currentSessionId) {
+    const destination = lifecycle.redirectDestination;
+    if (!destination) {
       return;
     }
 
-    if (currentSessionStatus === 'planning') {
-      navigation.replace('TastingSessionPlanning', { sessionId: currentSessionId });
-      return;
+    if (destination.name === 'TastingSessions') {
+      navigation.navigate(destination.name, destination.params);
+    } else {
+      navigation.replace(destination.name, destination.params);
     }
-
-    if (currentSessionStatus === 'tasting' || currentSessionStatus === 'rating') {
-      navigation.replace('TastingSessionTasting', { sessionId: currentSessionId });
-      return;
-    }
-
-    if (currentSessionStatus === 'completed') {
-      navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
-    }
-  }, [currentSessionId, currentSessionStatus, navigation]);
+  }, [lifecycle.redirectDestination, navigation]);
 
   const handleShare = async () => {
     if (!session?.inviteCode || !inviteWindowOpen) {
@@ -284,7 +269,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       headerBottomContent={
         <StepProgressBar
           compact
-          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.lobby}
+          currentStep={lifecycle.step.currentStep}
           steps={TASTING_SESSION_LIFECYCLE_STEPS}
         />
       }
@@ -311,7 +296,9 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       }
       title={session.name}
     >
-      {!isOnline ? <Text tone="warning">Lobby actions require a connection.</Text> : null}
+      {lifecycle.onlineOnly.warningMessage ? (
+        <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+      ) : null}
       <PageErrorToast errorMessage={errorMessage} title="Lobby action failed" />
       <Card>
         <View style={styles.row}>

@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ConfirmDestructiveModal,
   EmptyState,
+  ErrorState,
   FeatureDetailScreenScaffold,
   PageErrorToast,
   RestaurantMenuItemPicker,
@@ -28,14 +29,10 @@ import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSel
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
-import {
-  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
-  TASTING_SESSION_LIFECYCLE_STEPS,
-} from './tastingSessions/shared';
-import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
+import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
+import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
 
@@ -112,13 +109,16 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const theme = useTheme();
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
-  const { isOnline } = useConnectivity();
   const tastingPlanWrites = useTastingPlanWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
-  const sessionQuery = useTastingSessionDetail(sessionId, true);
+  const lifecycle = useTastingSessionLifecycleReadState({
+    currentUserId: user?.id,
+    screen: 'planning',
+    sessionId,
+  });
+  const sessionQuery = lifecycle.query;
   const session = sessionQuery.data;
-  const currentSessionId = session?.id;
-  const currentSessionStatus = session?.status;
+  const isOnline = lifecycle.onlineOnly.isOnline;
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [isMissingItemsDialogVisible, setIsMissingItemsDialogVisible] = useState(false);
@@ -127,7 +127,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [pendingRemoveRestaurantId, setPendingRemoveRestaurantId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
-  const isLeader = Boolean(session && user?.id === session.leaderUserId);
+  const isLeader = lifecycle.roles.isLeader;
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
   const isDisplaySubscriberUser = user?.isSubscriber === true;
@@ -169,19 +169,17 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   );
 
   useEffect(() => {
-    if (!currentSessionId) {
+    const destination = lifecycle.redirectDestination;
+    if (!destination) {
       return;
     }
 
-    if (currentSessionStatus === 'tasting' || currentSessionStatus === 'rating') {
-      navigation.replace('TastingSessionTasting', { sessionId: currentSessionId });
-      return;
+    if (destination.name === 'TastingSessions') {
+      navigation.navigate(destination.name, destination.params);
+    } else {
+      navigation.replace(destination.name, destination.params);
     }
-
-    if (currentSessionStatus === 'completed') {
-      navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
-    }
-  }, [currentSessionId, currentSessionStatus, navigation]);
+  }, [lifecycle.redirectDestination, navigation]);
 
   const restaurantSelection = useTastingPlanRestaurantSelectionFlow({
     autoCaptureReferenceLocation: true,
@@ -397,6 +395,14 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     };
   };
 
+  if (sessionQuery.isError && !session) {
+    return (
+      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Planning">
+        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
+      </FeatureDetailScreenScaffold>
+    );
+  }
+
   if (!session) {
     return (
       <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Planning">
@@ -527,7 +533,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       headerBottomContent={
         <StepProgressBar
           compact
-          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.plan}
+          currentStep={lifecycle.step.currentStep}
           steps={TASTING_SESSION_LIFECYCLE_STEPS}
         />
       }
@@ -565,7 +571,11 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       title={session.name}
     >
       {summaryCard}
-      {onlineActions.message ? <Text tone="warning">{onlineActions.message}</Text> : null}
+      {lifecycle.onlineOnly.warningMessage ? (
+        <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+      ) : onlineActions.message ? (
+        <Text tone="warning">{onlineActions.message}</Text>
+      ) : null}
       <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
 
       {isLeader && phase === 'restaurants' ? (

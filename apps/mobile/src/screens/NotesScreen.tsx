@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -20,15 +20,15 @@ import {
   listNotePhotosForNote,
   listNotesOverviewPage,
   type NoteOverviewItemRecord,
+  type NoteOverviewPage,
   type NotePhotoRecord,
   type NoteRecord,
 } from '../features';
 import { buildPhotoViewerState } from '../lib/photoUrls';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { useNoteWrites } from '../features/store/useNoteWrites';
-import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -49,6 +49,17 @@ import {
 import type { NotesFilter } from './notes/notesTypes';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
+type NotesInfiniteData = InfiniteData<NoteOverviewPage, unknown>;
+
+const NOTE_PENDING_OPERATION_NAMES = ['note.create'] as const;
+
+function getNotesFromData(data: NotesInfiniteData | undefined): NoteOverviewItemRecord[] {
+  return data?.pages.flatMap((page) => page.items) ?? [];
+}
+
+function getNoteCountFromData(data: NotesInfiniteData | undefined, fallbackCount: number): number {
+  return data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount;
+}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -184,7 +195,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const noteWrites = useNoteWrites();
-  const { queuedWrites: pendingNoteWrites } = useQueuedFeatureWrites(['note.create']);
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
@@ -237,28 +247,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const baseNotesState = usePaginatedQueryState({
-    data: baseNotesQuery.data,
-    isError: baseNotesQuery.isError,
-    isFetching: baseNotesQuery.isFetching,
-    isLoading: baseNotesQuery.isLoading,
-    isSuccess: baseNotesQuery.isSuccess,
-  });
-  const searchedNotesState = usePaginatedQueryState({
-    data: searchedNotesQuery.data,
-    enabled: shouldQueryNotesBySearch,
-    isError: searchedNotesQuery.isError,
-    isFetching: searchedNotesQuery.isFetching,
-    isLoading: searchedNotesQuery.isLoading,
-    isSuccess: searchedNotesQuery.isSuccess,
-  });
   const baseNotes = useMemo(
-    () => [...baseNotesState.items].sort(compareNotesByCreatedAtDesc),
-    [baseNotesState.items],
+    () => getNotesFromData(baseNotesQuery.data).sort(compareNotesByCreatedAtDesc),
+    [baseNotesQuery.data],
   );
   const searchedNotes = useMemo(
-    () => [...searchedNotesState.items].sort(compareNotesByCreatedAtDesc),
-    [searchedNotesState.items],
+    () => getNotesFromData(searchedNotesQuery.data).sort(compareNotesByCreatedAtDesc),
+    [searchedNotesQuery.data],
   );
   const locallyFilteredBaseNotes = useMemo(
     () => (hasSearch ? baseNotes.filter((note) => matchesNoteSearch(note, trimmedSearchQuery)) : baseNotes),
@@ -483,32 +478,79 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     }
   }, [isOnline, noteWrites, pendingDeleteNote]);
 
+  const activePaginationQuery =
+    shouldQueryNotesBySearch
+      ? searchedNotesQuery
+      : baseNotesQuery;
+  const browseQuery = useMemo(
+    () => ({
+      data: activePaginationQuery.data,
+      fetchNextPage: activePaginationQuery.fetchNextPage,
+      hasNextPage: activePaginationQuery.hasNextPage,
+      isError: baseNotesQuery.isError,
+      isFetching: activePaginationQuery.isFetching,
+      isFetchingNextPage: activePaginationQuery.isFetchingNextPage,
+      isLoading: baseNotesQuery.isLoading,
+      isRefetching: activePaginationQuery.isRefetching,
+      isSuccess: baseNotesQuery.isSuccess,
+      refetch: activePaginationQuery.refetch,
+    }),
+    [
+      activePaginationQuery.data,
+      activePaginationQuery.fetchNextPage,
+      activePaginationQuery.hasNextPage,
+      activePaginationQuery.isFetching,
+      activePaginationQuery.isFetchingNextPage,
+      activePaginationQuery.isRefetching,
+      activePaginationQuery.refetch,
+      baseNotesQuery.isError,
+      baseNotesQuery.isLoading,
+      baseNotesQuery.isSuccess,
+    ],
+  );
   const hasSearchFallbackError =
     shouldQueryNotesBySearch &&
     searchedNotesQuery.isError &&
     baseNotes.length > 0;
-  const notesErrorMessage =
-    baseNotesState.hasBlockingError
-      ? 'Could not load notes.'
-      : baseNotesState.hasRefreshError
-        ? 'Could not refresh notes. Showing saved data.'
-        : hasSearchFallbackError
-          ? 'Could not refresh search results. Showing local matches.'
-          : null;
-  const activePaginationQuery =
-    shouldUseServerSearchResults
-      ? searchedNotesQuery
-      : baseNotesQuery;
-  const browseState = useFeatureInfiniteBrowse({
+  const browseState = useFeatureBrowse<NotesInfiniteData, NoteOverviewItemRecord, 'note.create'>({
     analyticsSource: 'NotesScreen',
     buildAnalyticsPayload: buildBrowseAnalyticsPayload,
-    getResultCountFromData: (data, fallbackCount) =>
-      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    emptyWhen: () => notes.length === 0,
+    extraRefreshError: hasSearchFallbackError,
+    getItemsFromData: useCallback(() => notes, [notes]),
+    getResultCountFromData: getNoteCountFromData,
+    getTotalItemsFromData: useCallback(() => notes.length, [notes.length]),
     loadMoreEventPrefix: 'NOTES_LOAD_MORE',
-    query: activePaginationQuery,
+    pendingQueuedWriteOperationNames: NOTE_PENDING_OPERATION_NAMES,
+    query: browseQuery,
     refreshEventPrefix: 'NOTES_REFRESH',
     resultCount: notes.length,
+    toPendingRow: useCallback((write: QueuedFeatureWrite<'note.create'>) => {
+      const payload = write.payload as {
+        content: string;
+        locationText?: string;
+        title?: string;
+      };
+
+      return {
+        id: write.id,
+        createdAt: write.createdAt,
+        description: payload.locationText,
+        idempotencyKey: write.idempotencyKey,
+        lastError: write.lastError,
+        status: write.status,
+        title: payload.title?.trim() || payload.content.trim().slice(0, 80) || 'New note',
+      };
+    }, []),
   });
+  const notesErrorMessage =
+    browseState.hasBlockingError
+      ? 'Could not load notes.'
+      : hasSearchFallbackError
+        ? 'Could not refresh search results. Showing local matches.'
+        : browseState.hasRefreshError
+          ? 'Could not refresh notes. Showing saved data.'
+          : null;
 
   const renderNoteCard = useCallback(
     (note: NoteOverviewItemRecord) => (
@@ -599,24 +641,19 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         </View>
       ) : null}
 
-      {pendingNoteWrites.length > 0 ? (
+      {browseState.pendingRows.length > 0 ? (
         <View style={styles.headerStack}>
           <Text variant="label">Pending notes</Text>
-          {pendingNoteWrites.map((write) => {
-            const payload = write.payload as {
-              content: string;
-              locationText?: string;
-              title?: string;
-            };
+          {browseState.pendingRows.map((row) => {
             return (
               <PendingQueuedWriteRow
-                key={write.id}
-                createdAt={write.createdAt}
-                description={payload.locationText}
-                idempotencyKey={write.idempotencyKey}
-                lastError={write.lastError}
-                status={write.status}
-                title={payload.title?.trim() || payload.content.trim().slice(0, 80) || 'New note'}
+                key={row.id}
+                createdAt={row.createdAt}
+                description={row.description}
+                idempotencyKey={row.idempotencyKey}
+                lastError={row.lastError}
+                status={row.status}
+                title={row.title}
               />
             );
           })}
@@ -651,7 +688,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   );
 
   const notesListEmptyComponent = (() => {
-    if (baseNotesQuery.isLoading) {
+    if (browseState.isLoading) {
       return (
         <View style={styles.body}>
           <Skeleton height={20} />
@@ -661,7 +698,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       );
     }
 
-    if (baseNotesState.hasBlockingError) {
+    if (browseState.hasBlockingError) {
       return (
         <ErrorState
           analyticsProps={buildBrowseAnalyticsPayload()}
@@ -717,9 +754,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   })();
 
   const notesListFooter =
-    !baseNotesQuery.isLoading &&
-    !baseNotesState.hasBlockingError &&
-    notes.length > 0 &&
+    !browseState.isLoading &&
+    !browseState.hasBlockingError &&
+    browseState.hasItems &&
     browseState.hasNextPage ? (
       <FeatureListFooter
         isFetchingNextPage={browseState.isFetchingNextPage}
@@ -729,7 +766,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     ) : null;
 
   const notesBodyContent = (() => {
-    if (baseNotesQuery.isLoading) {
+    if (browseState.isLoading) {
       return (
         <View style={styles.body}>
           <Skeleton height={20} />
@@ -739,7 +776,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       );
     }
 
-    if (baseNotesState.hasBlockingError) {
+    if (browseState.hasBlockingError) {
       return (
         <ErrorState
           analyticsProps={buildBrowseAnalyticsPayload()}
@@ -753,7 +790,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       );
     }
 
-    if (notes.length === 0) {
+    if (browseState.showEmpty) {
       return notesListEmptyComponent;
     }
 

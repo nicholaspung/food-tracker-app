@@ -16,6 +16,7 @@ import {
   type OfflineAwareFeatureWriteResult,
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
+import { useFeatureWriteSubmit } from './useFeatureWriteSubmit';
 
 interface SourceNoteCompletionOptions {
   noteId?: string;
@@ -98,17 +99,70 @@ export async function createFoodProductWithOfflineSupport({
 export function useFoodProductWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const {
+    errorMessage,
+    isSubmitting,
+    setErrorMessage,
+    submitFeatureWrite,
+  } = useFeatureWriteSubmit();
 
   const createFoodProductWrite = useCallback(
-    async (
-      input: CreateFoodProductWriteInput,
-    ): Promise<OfflineAwareFeatureWriteResult<FoodProductRecord>> =>
-      createFoodProductWithOfflineSupport({
-        ...input,
-        queryClient,
-        writeFeature,
+    async ({
+      includeUsage,
+      input,
+      queuedAlert,
+      sourceNote,
+    }: CreateFoodProductWriteInput): Promise<OfflineAwareFeatureWriteResult<FoodProductRecord>> =>
+      submitFeatureWrite({
+        operationName: 'food-product.create',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+        execute: () => createFoodProduct(input),
+        fallbackErrorMessage: 'Could not save food product.',
+        onQueued: async () => {
+          if (sourceNote?.noteId && sourceNote.usedAt) {
+            await completeSourceNoteAfterEntryWrite({
+              entryWriteStatus: 'queued',
+              noteId: sourceNote.noteId,
+              queryClient,
+              usedAt: sourceNote.usedAt,
+              writeFeature,
+            });
+          }
+
+          await syncFoodProductMutationCaches(queryClient, {
+            includeUsage,
+            sourceNoteId: sourceNote?.noteId,
+          });
+        },
+        onSuccess: async (foodProduct) => {
+          if (sourceNote?.noteId && sourceNote.usedAt) {
+            await completeSourceNoteAfterEntryWrite({
+              entryWriteStatus: 'completed',
+              noteId: sourceNote.noteId,
+              queryClient,
+              usedAt: sourceNote.usedAt,
+              writeFeature,
+            });
+          }
+
+          await syncFoodProductMutationCaches(queryClient, {
+            foodProduct,
+            includeUsage,
+            sourceNoteId: sourceNote?.noteId,
+          });
+        },
+        queuedToast:
+          queuedAlert === false
+            ? undefined
+            : queuedAlert ?? {
+                analyticsSource: 'useFoodProductWrites',
+                subject: 'Food product',
+              },
       }),
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite, writeFeature],
   );
 
   const updateFoodProductWrite = useCallback(
@@ -119,7 +173,7 @@ export function useFoodProductWrites() {
       queuedAlert,
       updates,
     }: UpdateFoodProductWriteInput): Promise<OfflineAwareFeatureWriteResult<FoodProductRecord>> => {
-      const result = await writeFeature({
+      return submitFeatureWrite({
         operationName: 'food-product.update',
         offline: {
           strategy: 'outbox',
@@ -129,64 +183,63 @@ export function useFoodProductWrites() {
           },
         },
         execute: () => updateFoodProduct(foodProductId, updates),
+        fallbackErrorMessage: 'Could not update food product.',
+        onQueued: () =>
+          syncFoodProductMutationCaches(queryClient, {
+            foodProductId,
+            includeFoodProductPhotos,
+            includeUsage,
+          }),
+        onSuccess: (foodProduct) =>
+          syncFoodProductMutationCaches(queryClient, {
+            foodProduct,
+            includeFoodProductPhotos,
+            includeUsage,
+          }),
+        queuedToast:
+          queuedAlert === false
+            ? undefined
+            : queuedAlert ?? {
+                analyticsSource: 'useFoodProductWrites',
+                subject: 'Food product update',
+              },
       });
-
-      if (result.status === 'queued') {
-        await syncFoodProductMutationCaches(queryClient, {
-          foodProductId,
-          includeFoodProductPhotos,
-          includeUsage,
-        });
-        if (queuedAlert !== false) {
-          showQueuedOfflineAlert(
-            queuedAlert ?? {
-              analyticsSource: 'useFoodProductWrites',
-              subject: 'Food product update',
-            },
-          );
-        }
-        return result;
-      }
-
-      await syncFoodProductMutationCaches(queryClient, {
-        foodProduct: result.result,
-        includeFoodProductPhotos,
-        includeUsage,
-      });
-      return result;
     },
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite],
   );
 
   const deleteFoodProductWrite = useCallback(
     async ({
       foodProductId,
     }: DeleteFoodProductWriteInput): Promise<OfflineAwareFeatureWriteResult<void>> => {
-      const result = await writeFeature({
+      return submitFeatureWrite({
         operationName: 'food-product.delete',
         offline: {
           strategy: 'outbox',
           payload: { foodProductId },
         },
         execute: () => deleteFoodProduct(foodProductId),
+        fallbackErrorMessage: 'Could not delete food product.',
+        onQueued: () =>
+          syncFoodProductMutationCaches(queryClient, {
+            foodProductId,
+          }),
+        onSuccess: () =>
+          syncFoodProductMutationCaches(queryClient, {
+            foodProductId,
+          }),
+        queuedToast: 'Food product delete',
       });
-
-      await syncFoodProductMutationCaches(queryClient, {
-        foodProductId,
-      });
-
-      if (result.status === 'queued') {
-        showQueuedOfflineAlert('Food product delete');
-      }
-
-      return result;
     },
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite],
   );
 
   return {
     createFoodProduct: createFoodProductWrite,
     deleteFoodProduct: deleteFoodProductWrite,
+    errorMessage,
+    isSubmitting,
+    setErrorMessage,
     updateFoodProduct: updateFoodProductWrite,
   };
 }

@@ -1,5 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useCallback } from 'react';
 import { Pressable, View } from 'react-native';
+import type { InfiniteData } from '@tanstack/react-query';
 import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
@@ -10,9 +12,10 @@ import {
   QueryListStateView,
 } from '../components/shared';
 import { feedbackQueryKeys, listFeedbackPage } from '../features';
-import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
+import type { FeedbackRecord } from '../features/models';
+import type { PaginatedResult } from '../features/store/featureStore';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -20,6 +23,9 @@ import { createThemedStyles } from '../theme';
 import { Button, Text } from '../ui';
 
 type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'>;
+type FeedbackBrowseData = InfiniteData<PaginatedResult<FeedbackRecord>, unknown>;
+
+const FEEDBACK_PENDING_OPERATION_NAMES = ['feedback.create', 'feedback.message.send'] as const;
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -55,53 +61,52 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const feedbackState = usePaginatedQueryState({
-    data: feedbackQuery.data,
-    isError: feedbackQuery.isError,
-    isFetching: feedbackQuery.isFetching,
-    isLoading: feedbackQuery.isLoading,
-    isSuccess: feedbackQuery.isSuccess,
-  });
-  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(feedbackQuery.isRefetching);
-  const displayedFeedback = feedbackState.items;
-  const visibleFeedbackCount = displayedFeedback.length;
-  const { queuedWrites: pendingFeedbackWrites } = useQueuedFeatureWrites([
-    'feedback.create',
-    'feedback.message.send',
-  ]);
   const styles = useStyles();
-  const buildBrowseAnalyticsPayload = (overrides?: Record<string, string | number | boolean | null>) => ({
-    source: 'FeedbackScreen',
-    resultCount: visibleFeedbackCount,
-    ...overrides,
+  const browseState = useFeatureBrowse<FeedbackBrowseData, FeedbackRecord, 'feedback.create' | 'feedback.message.send'>({
+    analyticsSource: 'FeedbackScreen',
+    buildAnalyticsPayload: useCallback((overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'FeedbackScreen',
+      resultCount: feedbackQuery.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? 0,
+      ...overrides,
+    }), [feedbackQuery.data]),
+    getHasCachedData: useCallback((data: FeedbackBrowseData | undefined) => (data?.pages.length ?? 0) > 0, []),
+    getItemsFromData: useCallback(
+      (data: FeedbackBrowseData | undefined) => data?.pages.flatMap((page) => page.items) ?? [],
+      [],
+    ),
+    getResultCountFromData: useCallback(
+      (data: FeedbackBrowseData | undefined, fallbackCount: number) =>
+        data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+      [],
+    ),
+    getTotalItemsFromData: useCallback(
+      (data: FeedbackBrowseData | undefined, items: readonly FeedbackRecord[]) =>
+        data?.pages[0]?.totalItems ?? items.length,
+      [],
+    ),
+    loadMoreEventPrefix: 'FEEDBACK_LOAD_MORE',
+    pendingQueuedWriteOperationNames: FEEDBACK_PENDING_OPERATION_NAMES,
+    query: feedbackQuery,
+    refreshEventPrefix: 'FEEDBACK_REFRESH',
+    toPendingRow: useCallback((write: QueuedFeatureWrite<'feedback.create' | 'feedback.message.send'>) => {
+      const payload = write.payload as { title?: string; message?: string; description?: string };
+
+      return {
+        id: write.id,
+        createdAt: write.createdAt,
+        description: payload.description ?? payload.message,
+        idempotencyKey: write.idempotencyKey,
+        lastError: write.lastError,
+        status: write.status,
+        title: payload.title?.trim() || 'Feedback message',
+      };
+    }, []),
   });
+  const displayedFeedback = browseState.items;
+  const visibleFeedbackCount = displayedFeedback.length;
 
   const handleBackToProfile = () => {
     navigation.navigate('Profile');
-  };
-  const handleRefresh = async () => {
-    await runPullRefresh(async () => {
-      const resultCountBefore = visibleFeedbackCount;
-      trackObservabilityEvent('FEEDBACK_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-      }));
-
-      try {
-        const result = await feedbackQuery.refetch();
-        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-        trackObservabilityEvent('FEEDBACK_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          resultCountAfter,
-          deltaCount: resultCountAfter - resultCountBefore,
-        }));
-      } catch (error) {
-        trackObservabilityEvent('FEEDBACK_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-          resultCountBefore,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-        }));
-        throw error;
-      }
-    });
   };
 
   return (
@@ -110,9 +115,9 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       contentBackgroundTone="app"
       headerScrollMode="fixed"
       keyboardAware
-      onRefresh={handleRefresh}
+      onRefresh={browseState.onRefresh}
       onBackPress={handleBackToProfile}
-      refreshing={isPullRefreshing}
+      refreshing={browseState.isRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create feedback"
@@ -133,24 +138,23 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     >
       {feedbackQuery.isSuccess ? (
         <Text style={styles.countSummaryText} variant="bodySmTightSemiBold">
-          {feedbackState.totalItems} {feedbackState.totalItems === 1 ? 'feedback thread' : 'feedback threads'} total
+          {browseState.totalItems} {browseState.totalItems === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
       ) : null}
 
-      {pendingFeedbackWrites.length > 0 ? (
+      {browseState.pendingRows.length > 0 ? (
         <View style={styles.pendingStack}>
           <Text variant="label">Pending feedback</Text>
-          {pendingFeedbackWrites.map((write) => {
-            const payload = write.payload as { title?: string; message?: string; description?: string };
+          {browseState.pendingRows.map((row) => {
             return (
               <PendingQueuedWriteRow
-                key={write.id}
-                createdAt={write.createdAt}
-                description={payload.description ?? payload.message}
-                idempotencyKey={write.idempotencyKey}
-                lastError={write.lastError}
-                status={write.status}
-                title={payload.title?.trim() || 'Feedback message'}
+                key={row.id}
+                createdAt={row.createdAt}
+                description={row.description}
+                idempotencyKey={row.idempotencyKey}
+                lastError={row.lastError}
+                status={row.status}
+                title={row.title}
               />
             );
           })}
@@ -159,19 +163,19 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
 
       <View style={styles.historySection}>
         <QueryListStateView
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="FeedbackScreen"
+          analyticsProps={browseState.analyticsProps}
+          analyticsSource={browseState.analyticsSource}
           blockingErrorMessage="Could not load feedback history."
           emptyDescription="Your submitted feedback will appear here. Tap the plus button above to start a new thread."
           emptyTitle="No feedback yet"
-          hasBlockingError={feedbackState.hasBlockingError}
-          hasRefreshError={feedbackState.hasRefreshError}
-          isLoading={feedbackQuery.isLoading}
+          hasBlockingError={browseState.hasBlockingError}
+          hasRefreshError={browseState.hasRefreshError}
+          isLoading={browseState.isLoading}
           onRetry={() => {
             void feedbackQuery.refetch();
           }}
           refreshErrorMessage="Could not refresh feedback history. Showing saved data."
-          showEmpty={feedbackState.hasResolvedData && visibleFeedbackCount === 0}
+          showEmpty={browseState.showEmpty}
           title="Feedback unavailable"
         >
           {feedbackQuery.isSuccess && visibleFeedbackCount > 0
@@ -219,31 +223,12 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             : null}
         </QueryListStateView>
 
-        {!feedbackQuery.isLoading && !feedbackState.hasBlockingError && visibleFeedbackCount > 0 && feedbackQuery.hasNextPage ? (
+        {!browseState.isLoading && !browseState.hasBlockingError && visibleFeedbackCount > 0 && browseState.hasNextPage ? (
           <Button
-            label={feedbackQuery.isFetchingNextPage ? 'Loading more...' : 'Load more feedback'}
-            loading={feedbackQuery.isFetchingNextPage}
+            label={browseState.isFetchingNextPage ? 'Loading more...' : 'Load more feedback'}
+            loading={browseState.isFetchingNextPage}
             onPress={() => {
-              const resultCountBefore = visibleFeedbackCount;
-              trackObservabilityEvent('FEEDBACK_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-                resultCountBefore,
-              }));
-              void feedbackQuery.fetchNextPage()
-                .then((result) => {
-                  const resultCountAfter =
-                    result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-                  trackObservabilityEvent('FEEDBACK_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                    resultCountBefore,
-                    resultCountAfter,
-                    deltaCount: resultCountAfter - resultCountBefore,
-                  }));
-                })
-                .catch((error) => {
-                  trackObservabilityEvent('FEEDBACK_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                    resultCountBefore,
-                    errorType: error instanceof Error ? error.name : 'unknown_error',
-                  }));
-                });
+              void browseState.onEndReached();
             }}
             variant="secondary"
           />

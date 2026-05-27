@@ -6,7 +6,7 @@ import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionTastingScreen } from '../screens/TastingSessionTastingScreen';
-import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSessionDetail';
+import { useTastingSessionLifecycleReadState } from '../screens/tastingSessions/useTastingSessionLifecycleReadState';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
@@ -147,16 +147,16 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, children),
 }));
 
-jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
-  useTastingSessionDetail: jest.fn(),
+jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () => ({
+  useTastingSessionLifecycleReadState: jest.fn(),
 }));
 
 const mockedUseTastingRatingSubmissionWrites =
   useTastingRatingSubmissionWrites as jest.MockedFunction<typeof useTastingRatingSubmissionWrites>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-const mockedUseTastingSessionDetail = useTastingSessionDetail as jest.MockedFunction<
-  typeof useTastingSessionDetail
+const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
+  typeof useTastingSessionLifecycleReadState
 >;
 
 interface TestRendererHandle {
@@ -220,6 +220,42 @@ const tastingSession: TastingSessionRecord = {
 };
 
 describe('TastingSessionTastingScreen', () => {
+  function mockLifecycleSession(session: TastingSessionRecord | null) {
+    mockedUseTastingSessionLifecycleReadState.mockReturnValue({
+      applyMissingAccessPolicy: jest.fn(),
+      missingAccess: {
+        message: 'Your invite was revoked.',
+        redirectDestination: { name: 'TastingSessions', params: { errorMessage: 'Your invite was revoked.' } },
+        shouldHandle: false,
+      },
+      onlineOnly: {
+        actionsDisabled: !mockedUseConnectivity().isOnline,
+        isOnline: mockedUseConnectivity().isOnline,
+        warningMessage: mockedUseConnectivity().isOnline ? null : 'Rating actions require a connection.',
+      },
+      query: {
+        data: session,
+        isError: false,
+        isLoading: false,
+      },
+      redirectDestination: session?.status === 'completed'
+        ? { name: 'TastingSessionResults', params: { sessionId: session.id } }
+        : null,
+      roles: {
+        currentParticipant: session?.participants.find((participant) => participant.userId === mockedUseAuth().user?.id) ?? null,
+        isInvitee: false,
+        isLeader: Boolean(session && mockedUseAuth().user?.id === session.leaderUserId),
+        isParticipant: Boolean(session?.participants.some((participant) => participant.userId === mockedUseAuth().user?.id)),
+      },
+      shouldPoll: true,
+      step: {
+        currentStep: session?.status === 'completed' ? 3 : 2,
+        label: session?.status === 'completed' ? 'Review' : 'Rate',
+        stage: session?.status === 'completed' ? 'review' : 'rate',
+      },
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleReadState>);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockedUseAuth.mockReturnValue({
@@ -231,9 +267,7 @@ describe('TastingSessionTastingScreen', () => {
       },
     } as ReturnType<typeof useAuth>);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: tastingSession,
-    } as unknown as ReturnType<typeof useTastingSessionDetail>);
+    mockLifecycleSession(tastingSession);
     mockSubmitRatingDraft.mockResolvedValue({
       result: tastingSession,
       status: 'completed',
@@ -304,12 +338,10 @@ describe('TastingSessionTastingScreen', () => {
         isSubscriber: false,
       },
     } as ReturnType<typeof useAuth>);
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: {
+    mockLifecycleSession({
         ...tastingSession,
         status: 'completed',
-      },
-    } as unknown as ReturnType<typeof useTastingSessionDetail>);
+      });
 
     await act(async () => {
       create(

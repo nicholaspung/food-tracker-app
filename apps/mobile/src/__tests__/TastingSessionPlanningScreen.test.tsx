@@ -1,12 +1,12 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { useTastingPlanMenuCatalog, useTastingPlanWrites } from '../features';
+import { type TastingSessionRecord, useTastingPlanMenuCatalog, useTastingPlanWrites } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionPlanningScreen } from '../screens/TastingSessionPlanningScreen';
-import { useTastingSessionDetail } from '../screens/tastingSessions/useTastingSessionDetail';
+import { useTastingSessionLifecycleReadState } from '../screens/tastingSessions/useTastingSessionLifecycleReadState';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
@@ -177,8 +177,8 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, children),
 }));
 
-jest.mock('../screens/tastingSessions/useTastingSessionDetail', () => ({
-  useTastingSessionDetail: jest.fn(),
+jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () => ({
+  useTastingSessionLifecycleReadState: jest.fn(),
 }));
 
 const mockedUseTastingPlanWrites = useTastingPlanWrites as jest.MockedFunction<typeof useTastingPlanWrites>;
@@ -190,8 +190,8 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 const mockedUseRestaurantSelectionFlow = useTastingPlanRestaurantSelectionFlow as jest.MockedFunction<
   typeof useTastingPlanRestaurantSelectionFlow
 >;
-const mockedUseTastingSessionDetail = useTastingSessionDetail as jest.MockedFunction<
-  typeof useTastingSessionDetail
+const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
+  typeof useTastingSessionLifecycleReadState
 >;
 
 const savedRestaurant = {
@@ -205,7 +205,7 @@ const savedRestaurant = {
   },
 };
 
-const planningSession = {
+const planningSession: TastingSessionRecord = {
   id: 'session-1',
   createdAt: '2026-05-16T10:00:00.000Z',
   invites: [],
@@ -222,7 +222,7 @@ const planningSession = {
   updatedAt: '2026-05-16T10:00:00.000Z',
 };
 
-const sessionWithRestaurant = {
+const sessionWithRestaurant: TastingSessionRecord = {
   ...planningSession,
   restaurants: [
     {
@@ -230,6 +230,7 @@ const sessionWithRestaurant = {
       id: 'suggestion-1',
       items: [
         {
+          createdAt: '2026-05-16T10:06:00.000Z',
           id: 'item-1',
           menuItemId: 'menu-item-1',
           name: 'Shoyu Ramen',
@@ -247,7 +248,7 @@ const sessionWithRestaurant = {
   ],
 };
 
-const sessionWithPartialRestaurantItems = {
+const sessionWithPartialRestaurantItems: TastingSessionRecord = {
   ...planningSession,
   restaurants: [
     ...sessionWithRestaurant.restaurants,
@@ -308,6 +309,44 @@ function buildRestaurantSelectionFlowResult(
 }
 
 describe('TastingSessionPlanningScreen', () => {
+  function mockLifecycleSession(session: TastingSessionRecord | null) {
+    mockedUseTastingSessionLifecycleReadState.mockReturnValue({
+      applyMissingAccessPolicy: jest.fn(),
+      missingAccess: {
+        message: 'Your invite was revoked.',
+        redirectDestination: { name: 'TastingSessions', params: { errorMessage: 'Your invite was revoked.' } },
+        shouldHandle: false,
+      },
+      onlineOnly: {
+        actionsDisabled: !mockedUseConnectivity().isOnline,
+        isOnline: mockedUseConnectivity().isOnline,
+        warningMessage: mockedUseConnectivity().isOnline ? null : 'Planning actions require a connection.',
+      },
+      query: {
+        data: session,
+        isError: false,
+        isLoading: false,
+      },
+      redirectDestination: session?.status === 'tasting' || session?.status === 'rating'
+        ? { name: 'TastingSessionTasting', params: { sessionId: session.id } }
+        : session?.status === 'completed'
+          ? { name: 'TastingSessionResults', params: { sessionId: session.id } }
+          : null,
+      roles: {
+        currentParticipant: null,
+        isInvitee: false,
+        isLeader: Boolean(session && mockedUseAuth().user?.id === session.leaderUserId),
+        isParticipant: false,
+      },
+      shouldPoll: true,
+      step: {
+        currentStep: 1,
+        label: 'Plan',
+        stage: 'plan',
+      },
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleReadState>);
+  }
+
   beforeEach(() => {
     mockNavigate.mockReset();
     mockReplace.mockReset();
@@ -356,9 +395,7 @@ describe('TastingSessionPlanningScreen', () => {
       menuReviewSubmitted: false,
       requestMenuReview: jest.fn().mockResolvedValue({ status: 'completed' }),
     } as unknown as ReturnType<typeof useTastingPlanMenuCatalog>);
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: planningSession,
-    } as never);
+    mockLifecycleSession(planningSession);
     mockedUseRestaurantSelectionFlow.mockReturnValue(buildRestaurantSelectionFlowResult());
   });
 
@@ -410,6 +447,7 @@ describe('TastingSessionPlanningScreen', () => {
 
   it('passes offline state and search errors through to restaurant search', () => {
     mockedUseConnectivity.mockReturnValue({ isOnline: false } as never);
+    mockLifecycleSession(planningSession);
     mockedUseRestaurantSelectionFlow.mockReturnValueOnce(buildRestaurantSelectionFlowResult({
       search: {
         ...buildRestaurantSelectionFlowResult().search,
@@ -426,8 +464,7 @@ describe('TastingSessionPlanningScreen', () => {
   });
 
   it('renders newly added restaurants when the API returns null items', () => {
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: {
+    mockLifecycleSession({
         ...planningSession,
         restaurants: [
           {
@@ -440,8 +477,7 @@ describe('TastingSessionPlanningScreen', () => {
             suggestedByParticipantId: 'participant-1',
           },
         ],
-      },
-    } as never);
+      } as unknown as TastingSessionRecord);
 
     const renderer = renderScreen();
 
@@ -452,9 +488,7 @@ describe('TastingSessionPlanningScreen', () => {
   });
 
   it('renders add item controls for leaders on non-rejected restaurants', async () => {
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: sessionWithRestaurant,
-    } as never);
+    mockLifecycleSession(sessionWithRestaurant);
     mockedUseTastingPlanMenuCatalog.mockReturnValue({
       menuItemsQuery: {
         data: [
@@ -516,9 +550,7 @@ describe('TastingSessionPlanningScreen', () => {
   });
 
   it('asks the leader to confirm before starting when a selected restaurant has no menu items', async () => {
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: sessionWithPartialRestaurantItems,
-    } as never);
+    mockLifecycleSession(sessionWithPartialRestaurantItems);
 
     const renderer = renderScreen();
 
@@ -560,9 +592,7 @@ describe('TastingSessionPlanningScreen', () => {
         isSubscriber: false,
       },
     } as never);
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: sessionWithRestaurant,
-    } as never);
+    mockLifecycleSession(sessionWithRestaurant);
 
     const renderer = renderScreen();
 
@@ -584,12 +614,10 @@ describe('TastingSessionPlanningScreen', () => {
         isSubscriber: false,
       },
     } as never);
-    mockedUseTastingSessionDetail.mockReturnValue({
-      data: {
+    mockLifecycleSession({
         ...sessionWithRestaurant,
         status: 'tasting',
-      },
-    } as never);
+      });
 
     renderScreen();
 

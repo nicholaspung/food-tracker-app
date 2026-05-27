@@ -334,6 +334,17 @@ function findBillItemRowByTitle(renderer: TestRenderer, title: string) {
   return match;
 }
 
+function findPressableByText(renderer: TestRenderer, value: string) {
+  const match = renderer.root.findAllByType('Pressable').find(
+    (node: any) => getTextContent(node) === value,
+  );
+  if (!match) {
+    throw new Error(`Could not find Pressable with text "${value}".`);
+  }
+
+  return match;
+}
+
 function getTextContent(node: any): string {
   return node.children
     .map((child: any) => {
@@ -788,6 +799,93 @@ describe('CreateBillScreen', () => {
     );
     expect(deleteModal?.props.visible).toBe(true);
     expect(deleteModal?.props.description).toBe('Delete "Sparkling Water" from this bill?');
+  });
+
+  it('updates simple custom item assignments through the bill draft item editor', async () => {
+    const renderer = await renderScreen();
+
+    await goToCustomItemsStep(renderer);
+    await addBillItem(renderer, 'Dumplings', '12.00');
+
+    let itemRow = findBillItemRowByTitle(renderer, 'Dumplings');
+    expect(itemRow.props.subtitle).toBe('Simple split • shared by everyone');
+
+    await act(async () => {
+      itemRow.props.onPress();
+    });
+
+    const alexChip = findPressableByText(renderer, 'Alex');
+    await act(async () => {
+      alexChip.props.onPress();
+    });
+
+    itemRow = findBillItemRowByTitle(renderer, 'Dumplings');
+    expect(itemRow.props.subtitle).toBe('Simple split • assigned to Pat');
+  });
+
+  it('updates complex custom item split values and lock balancing through the bill draft item editor', async () => {
+    const renderer = await renderScreen();
+
+    await goToCustomItemsStep(renderer);
+    await addBillItem(renderer, 'Dumplings', '12.00');
+
+    let itemRow = findBillItemRowByTitle(renderer, 'Dumplings');
+    await act(async () => {
+      itemRow.props.onPress();
+    });
+
+    const splitModeControl = renderer.root.findAllByType('SegmentedControl').find(
+      (node: any) => node.props.value === 'simple',
+    );
+    if (!splitModeControl) {
+      throw new Error('Could not find item split mode control.');
+    }
+
+    await act(async () => {
+      splitModeControl.props.onChange('advanced');
+    });
+
+    itemRow = findBillItemRowByTitle(renderer, 'Dumplings');
+    expect(itemRow.props.subtitle).toBe('Complex split • 100% of 100%');
+
+    const splitTypeControl = renderer.root.findAllByType('SegmentedControl').find(
+      (node: any) => node.props.value === 'percentage',
+    );
+    if (!splitTypeControl) {
+      throw new Error('Could not find complex split type control.');
+    }
+
+    await act(async () => {
+      splitTypeControl.props.onChange('amount');
+    });
+
+    expect(hasExactText(renderer, 'Current split: $12.00 of $12.00')).toBe(true);
+
+    const patSplitInput = renderer.root.findAllByType('Input').find(
+      (node: any) => node.props.containerStyle?.width === 120 && !node.props.testID,
+    );
+    if (!patSplitInput) {
+      throw new Error('Could not find advanced split value input.');
+    }
+
+    await act(async () => {
+      patSplitInput.props.onChangeText('2');
+    });
+
+    expect(hasExactText(renderer, 'Current split: $8.00 of $12.00')).toBe(true);
+
+    const lockButton = renderer.root.findAllByType('Pressable').find(
+      (node: any) => node.props.accessibilityLabel === 'Lock split value',
+    );
+    if (!lockButton) {
+      throw new Error('Could not find split lock button.');
+    }
+
+    await act(async () => {
+      lockButton.props.onPress();
+    });
+
+    expect(hasExactText(renderer, 'Current split: $12.00 of $12.00')).toBe(true);
   });
 
   it('shows the remaining or over amount while editing manual owed amounts', async () => {

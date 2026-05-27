@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   EmptyState,
+  ErrorState,
   FeatureDetailScreenScaffold,
   FoodItemRatingRecordCard,
   type FoodItemRatingRecordRow,
@@ -18,7 +19,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Card, Text } from '../ui';
-import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
+import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionResults'>;
 
@@ -78,7 +79,12 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
   const styles = useStyles();
   const { user } = useAuth();
   const { sessionId } = route.params;
-  const sessionQuery = useTastingSessionDetail(sessionId, false);
+  const lifecycle = useTastingSessionLifecycleReadState({
+    currentUserId: user?.id,
+    screen: 'results',
+    sessionId,
+  });
+  const sessionQuery = lifecycle.query;
   const session = sessionQuery.data;
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
@@ -149,6 +155,14 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
   const closePhotoViewer = useCallback(() => {
     setPhotoViewerVisible(false);
   }, []);
+
+  if (sessionQuery.isError && !session) {
+    return (
+      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Results">
+        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
+      </FeatureDetailScreenScaffold>
+    );
+  }
 
   if (!session) {
     return (

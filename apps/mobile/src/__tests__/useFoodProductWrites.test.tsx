@@ -72,6 +72,7 @@ describe('useFoodProductWrites', () => {
   });
 
   async function renderHook(): Promise<{
+    getHook: () => ReturnType<typeof useFoodProductWrites>;
     hook: ReturnType<typeof useFoodProductWrites>;
     renderer: ReactTestRenderer;
   }> {
@@ -91,7 +92,16 @@ describe('useFoodProductWrites', () => {
       throw new Error('Expected hook to render.');
     }
 
-    return { hook, renderer };
+    return {
+      getHook: () => {
+        if (!hook) {
+          throw new Error('Expected hook to render.');
+        }
+        return hook;
+      },
+      hook,
+      renderer,
+    };
   }
 
   it('creates Food Products through the outbox payload and syncs completed caches', async () => {
@@ -104,9 +114,12 @@ describe('useFoodProductWrites', () => {
     );
     const { hook, renderer } = await renderHook();
 
-    const result = await hook.createFoodProduct({
-      input: createInput,
-      includeUsage: false,
+    let result: Awaited<ReturnType<typeof hook.createFoodProduct>> | undefined;
+    await act(async () => {
+      result = await hook.createFoodProduct({
+        input: createInput,
+        includeUsage: false,
+      });
     });
 
     expect(writeFeature).toHaveBeenCalledWith(
@@ -141,13 +154,16 @@ describe('useFoodProductWrites', () => {
     );
     const { hook, renderer } = await renderHook();
 
-    const result = await hook.createFoodProduct({
-      input: { ...createInput, sourceNoteId: 'note_1' },
-      includeUsage: true,
-      sourceNote: {
-        noteId: 'note_1',
-        usedAt: '2026-05-20T00:00:00.000Z',
-      },
+    let result: Awaited<ReturnType<typeof hook.createFoodProduct>> | undefined;
+    await act(async () => {
+      result = await hook.createFoodProduct({
+        input: { ...createInput, sourceNoteId: 'note_1' },
+        includeUsage: true,
+        sourceNote: {
+          noteId: 'note_1',
+          usedAt: '2026-05-20T00:00:00.000Z',
+        },
+      });
     });
 
     expect(writeFeature).toHaveBeenCalledWith(
@@ -196,11 +212,13 @@ describe('useFoodProductWrites', () => {
       rating: 5,
     };
 
-    await hook.updateFoodProduct({
-      foodProductId: 'food_product_1',
-      updates,
-      includeFoodProductPhotos: true,
-      includeUsage: true,
+    await act(async () => {
+      await hook.updateFoodProduct({
+        foodProductId: 'food_product_1',
+        updates,
+        includeFoodProductPhotos: true,
+        includeUsage: true,
+      });
     });
 
     expect(writeFeature).toHaveBeenCalledWith(
@@ -234,13 +252,15 @@ describe('useFoodProductWrites', () => {
     );
     const { hook, renderer } = await renderHook();
 
-    await hook.updateFoodProduct({
-      foodProductId: 'food_product_1',
-      updates: { rating: 3 },
-      includeFoodProductPhotos: false,
-      includeUsage: false,
+    await act(async () => {
+      await hook.updateFoodProduct({
+        foodProductId: 'food_product_1',
+        updates: { rating: 3 },
+        includeFoodProductPhotos: false,
+        includeUsage: false,
+      });
+      await hook.deleteFoodProduct({ foodProductId: 'food_product_1' });
     });
-    await hook.deleteFoodProduct({ foodProductId: 'food_product_1' });
 
     expect(writeFeature).toHaveBeenNthCalledWith(
       1,
@@ -278,6 +298,72 @@ describe('useFoodProductWrites', () => {
       subject: 'Food product update',
     });
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Food product delete');
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('deletes Food Products through the shared submit lifecycle and syncs completed caches', async () => {
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.deleteFoodProduct>> | undefined;
+    await act(async () => {
+      result = await hook.deleteFoodProduct({ foodProductId: 'food_product_1' });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'food-product.delete',
+        offline: {
+          strategy: 'outbox',
+          payload: { foodProductId: 'food_product_1' },
+        },
+      }),
+    );
+    expect(mockedDeleteFoodProduct).toHaveBeenCalledWith('food_product_1');
+    expect(mockedSyncFoodProductMutationCaches).toHaveBeenCalledWith(queryClient, {
+      foodProductId: 'food_product_1',
+    });
+    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 'completed',
+      result: undefined,
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('surfaces failed Food Product writes through the shared submit lifecycle', async () => {
+    const writeError = new Error('Network write failed');
+    const writeFeature = jest.fn().mockRejectedValue(writeError);
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { getHook, hook, renderer } = await renderHook();
+
+    await act(async () => {
+      await expect(
+        hook.createFoodProduct({
+          input: createInput,
+          includeUsage: true,
+        }),
+      ).rejects.toThrow('Network write failed');
+    });
+
+    expect(getHook().errorMessage).toBe('Network write failed');
+    expect(getHook().isSubmitting).toBe(false);
+    expect(mockedSyncFoodProductMutationCaches).not.toHaveBeenCalled();
+    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
 
     await act(async () => {
       renderer.unmount();

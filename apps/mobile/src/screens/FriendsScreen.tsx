@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 
 import { FriendListItemCard } from '../components/friends';
@@ -29,8 +29,8 @@ import {
   useFriendWrites,
   type FriendRecord,
 } from '../features';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
+import type { FriendsPageResult } from '../features/store/friendsStore';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -52,6 +52,7 @@ import {
 } from './friends/friendsScreenTypes';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
+type FriendsInfiniteData = InfiniteData<FriendsPageResult, unknown>;
 
 const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   {
@@ -241,22 +242,21 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     refetchOnReconnect: 'always',
   });
-  const friendsState = usePaginatedQueryState({
-    data: friendsQuery.data,
-    enabled: mainTab === 'friends-list',
-    isError: friendsQuery.isError,
-    isFetching: friendsQuery.isFetching,
-    isLoading: friendsQuery.isLoading,
-    isSuccess: friendsQuery.isSuccess,
-  });
-  const visibleFriends = friendsState.items;
+  const getFriendsItemsFromData = useCallback(
+    (data: FriendsInfiniteData | undefined) => data?.pages.flatMap((page) => page.items) ?? [],
+    [],
+  );
+  const friendsResultCount = useMemo(
+    () => getFriendsItemsFromData(friendsQuery.data).length,
+    [friendsQuery.data, getFriendsItemsFromData],
+  );
   const friendsSummary = selectFriendsSummary(friendsQuery.data);
   const acceptedFriendsCount =
-    friendsSummary?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
+    friendsSummary?.friendsCount ?? (friendsSubTab === 'friends' ? friendsResultCount : 0);
   const pendingReceivedCount =
-    friendsSummary?.requestsCount ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
+    friendsSummary?.requestsCount ?? (friendsSubTab === 'requests' ? friendsResultCount : 0);
   const pendingSentCount =
-    friendsSummary?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
+    friendsSummary?.sentCount ?? (friendsSubTab === 'sent' ? friendsResultCount : 0);
 
   useEffect(() => {
     hydrateFriendsSummaryFromPaginatedData(queryClient, userId, friendsQuery.data);
@@ -319,19 +319,24 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     source: 'FriendsScreen',
     mainTab,
     friendsSubTab,
-    resultCount: visibleFriends.length,
+    resultCount: friendsResultCount,
     ...overrides,
-  }), [friendsSubTab, mainTab, visibleFriends.length]);
-  const browseState = useFeatureInfiniteBrowse({
+  }), [friendsResultCount, friendsSubTab, mainTab]);
+  const browseState = useFeatureBrowse({
     analyticsSource: 'FriendsScreen',
     buildAnalyticsPayload: buildBrowseAnalyticsPayload,
+    enabled: mainTab === 'friends-list',
+    getHasCachedData: (data) => (data?.pages.length ?? 0) > 0,
+    getItemsFromData: getFriendsItemsFromData,
     getResultCountFromData: (data, fallbackCount) =>
       data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    getTotalItemsFromData: (data, items) => data?.pages[0]?.totalItems ?? items.length,
     loadMoreEventPrefix: 'FRIENDS_LOAD_MORE',
     query: friendsQuery,
     refreshEventPrefix: 'FRIENDS_REFRESH',
-    resultCount: visibleFriends.length,
+    resultCount: friendsResultCount,
   });
+  const visibleFriends = browseState.items;
 
   useEffect(() => {
     if (mainTab !== 'friends-list') {
@@ -686,7 +691,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         <PageErrorToast
           analyticsProps={buildBrowseAnalyticsPayload()}
           analyticsSource="FriendsScreen"
-          errorMessage={friendsState.hasRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
+          errorMessage={browseState.hasRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
           title="Friends unavailable"
           actionLabel="Retry"
           onAction={() => {
@@ -726,7 +731,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       );
     }
 
-    if (friendsQuery.isLoading) {
+    if (browseState.isLoading) {
       return (
         <View style={styles.body}>
           <View style={styles.skeletonList}>
@@ -738,7 +743,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       );
     }
 
-    if (friendsState.hasBlockingError) {
+    if (browseState.hasBlockingError) {
       return (
         <View style={styles.body}>
           <EmptyState
@@ -788,8 +793,8 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
   const friendsListFooter =
     mainTab === 'friends-list' &&
-    !friendsQuery.isLoading &&
-    !friendsState.hasBlockingError &&
+    !browseState.isLoading &&
+    !browseState.hasBlockingError &&
     visibleFriends.length > 0 &&
     browseState.hasNextPage ? (
       <FeatureListFooter
@@ -830,7 +835,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         <FlatList
           contentContainerStyle={styles.listContent}
           data={
-            mainTab === 'friends-list' && !friendsQuery.isLoading && !friendsState.hasBlockingError
+            mainTab === 'friends-list' && !browseState.isLoading && !browseState.hasBlockingError
               ? visibleFriends
               : []
           }

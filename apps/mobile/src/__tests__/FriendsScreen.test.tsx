@@ -5,7 +5,6 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { evictFriendshipDependentQueries, removeFriend, useFriendWrites } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -201,10 +200,6 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
 }));
 
-jest.mock('../hooks/useListQueryState', () => ({
-  usePaginatedQueryState: jest.fn(),
-}));
-
 jest.mock('../lib/offlineAlerts', () => ({
   showQueuedOfflineAlert: jest.fn(),
 }));
@@ -244,7 +239,6 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
-const mockedUsePaginatedQueryState = usePaginatedQueryState as jest.MockedFunction<typeof usePaginatedQueryState>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedEvictFriendshipDependentQueries =
@@ -311,12 +305,6 @@ describe('FriendsScreen', () => {
     mockedUseQueryClient.mockReturnValue(queryClient as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
-    mockedUsePaginatedQueryState.mockReset();
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
-      items: [],
-    } as never);
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
       user: {
@@ -416,18 +404,34 @@ describe('FriendsScreen', () => {
   });
 
   it('evicts friend-gated caches after confirming friend removal', async () => {
-    mockedUsePaginatedQueryState.mockReturnValue({
-      hasBlockingError: false,
-      hasRefreshError: false,
-      items: [
-        {
-          createdAt: '2026-04-18T08:00:00.000Z',
-          id: 'friendship-1',
-          name: 'Sam',
-          status: 'friend',
-          userId: 'user-2',
-        },
-      ],
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [1],
+        pages: [
+          {
+            hasNextPage: false,
+            items: [
+              {
+                createdAt: '2026-04-18T08:00:00.000Z',
+                id: 'friendship-1',
+                name: 'Sam',
+                status: 'friend',
+                userId: 'user-2',
+              },
+            ],
+            page: 1,
+          },
+        ],
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isError: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: true,
+      refetch: jest.fn(),
     } as never);
     let renderer: any = null;
     await act(async () => {
@@ -451,5 +455,49 @@ describe('FriendsScreen', () => {
     expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-1');
     expect(mockedEvictFriendshipDependentQueries).toHaveBeenCalledTimes(1);
     expect(mockedEvictFriendshipDependentQueries).toHaveBeenCalledWith(queryClient, { removedUserId: 'user-2' });
+  });
+
+  it('keeps cached friends visible while surfacing a refresh error', async () => {
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [1],
+        pages: [
+          {
+            hasNextPage: false,
+            items: [
+              {
+                createdAt: '2026-04-18T08:00:00.000Z',
+                id: 'friendship-1',
+                name: 'Sam',
+                status: 'friend',
+                userId: 'user-2',
+              },
+            ],
+            page: 1,
+          },
+        ],
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isError: true,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: false,
+      refetch: jest.fn(),
+    } as never);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderFriendsScreen();
+    });
+
+    expect(renderer.root.findAllByType('FriendListItemCard')).toHaveLength(1);
+    expect(
+      renderer.root.findAllByType('PageErrorToast').some(
+        (toast: any) => toast.props.errorMessage === 'Could not refresh friendship data. Showing saved data.',
+      ),
+    ).toBe(true);
   });
 });

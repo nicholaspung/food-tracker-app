@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import type { InfiniteData } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -23,11 +24,11 @@ import {
   listRestaurantListsPage,
   restaurantListQueryKeys,
   type RestaurantListRecord,
+  type PaginatedResult,
 } from '../features';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
-import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -41,6 +42,7 @@ type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
 type ListTab = 'my' | 'friends';
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type RestaurantListsInfiniteData = InfiniteData<PaginatedResult<RestaurantListRecord>, unknown>;
 type ListCountSummary = {
   restaurantCount: number;
   menuItemCount: number;
@@ -177,6 +179,7 @@ const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'Friends', value: 'friends' },
 ];
 const LIST_SEARCH_DEBOUNCE_MS = 300;
+const LIST_PENDING_OPERATION_NAMES = ['list.create'] as const;
 
 function toSafeNonNegativeInteger(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -328,13 +331,36 @@ function getUpdatedLabel(list: RestaurantListRecord): string {
   return 'recently';
 }
 
+function getRestaurantListsFromInfiniteData(
+  data: RestaurantListsInfiniteData | undefined,
+): readonly RestaurantListRecord[] {
+  return data?.pages.flatMap((page) => page.items) ?? [];
+}
+
+function getRestaurantListsTotalFromInfiniteData(
+  data: RestaurantListsInfiniteData | undefined,
+  items: readonly RestaurantListRecord[],
+): number {
+  return data?.pages[0]?.totalItems ?? items.length;
+}
+
+function getRestaurantListsResultCountFromInfiniteData(
+  data: RestaurantListsInfiniteData | undefined,
+  fallbackCount: number,
+): number {
+  return data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount;
+}
+
+function hasRestaurantListsCachedPages(data: RestaurantListsInfiniteData | undefined): boolean {
+  return (data?.pages.length ?? 0) > 0;
+}
+
 export function ListsScreen({ navigation }: ListsScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const { createDefaultRestaurantList: createDefaultRestaurantListWrite } = useRestaurantListWrites();
-  const { queuedWrites: pendingListWrites } = useQueuedFeatureWrites(['list.create']);
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
@@ -374,19 +400,68 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     enabled: activeTab === 'friends',
   });
-  const myListsState = usePaginatedQueryState({
-    data: myListsQuery.data,
-    isError: myListsQuery.isError,
-    isFetching: myListsQuery.isFetching,
-    isLoading: myListsQuery.isLoading,
-    isSuccess: myListsQuery.isSuccess,
+  const buildBaseBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'ListsScreen',
+      activeTab,
+      queryLength: trimmedSearchQuery.length,
+      ...overrides,
+    }),
+    [activeTab, trimmedSearchQuery.length],
+  );
+  const myListsBrowseState = useFeatureBrowse<
+    RestaurantListsInfiniteData,
+    RestaurantListRecord,
+    'list.create'
+  >({
+    analyticsSource: 'ListsScreen',
+    buildAnalyticsPayload: useCallback(
+      (overrides?: Record<string, string | number | boolean | null>) =>
+        buildBaseBrowseAnalyticsPayload({
+          resultCount: getRestaurantListsFromInfiniteData(myListsQuery.data).length,
+          ...overrides,
+        }),
+      [buildBaseBrowseAnalyticsPayload, myListsQuery.data],
+    ),
+    getHasCachedData: hasRestaurantListsCachedPages,
+    getItemsFromData: getRestaurantListsFromInfiniteData,
+    getResultCountFromData: getRestaurantListsResultCountFromInfiniteData,
+    getTotalItemsFromData: getRestaurantListsTotalFromInfiniteData,
+    loadMoreEventPrefix: 'LISTS_LOAD_MORE',
+    pendingQueuedWriteOperationNames: LIST_PENDING_OPERATION_NAMES,
+    query: myListsQuery,
+    refreshEventPrefix: 'LISTS_REFRESH',
+    toPendingRow: useCallback((write: QueuedFeatureWrite<'list.create'>) => {
+      const payload = write.payload as { name?: string; visibility?: string };
+
+      return {
+        id: write.id,
+        createdAt: write.createdAt,
+        description: payload.visibility ? `Visibility: ${payload.visibility}` : undefined,
+        idempotencyKey: write.idempotencyKey,
+        lastError: write.lastError,
+        status: write.status,
+        title: payload.name?.trim() || 'New list',
+      };
+    }, []),
   });
-  const friendsListsState = usePaginatedQueryState({
-    data: friendsListsQuery.data,
-    isError: friendsListsQuery.isError,
-    isFetching: friendsListsQuery.isFetching,
-    isLoading: friendsListsQuery.isLoading,
-    isSuccess: friendsListsQuery.isSuccess,
+  const friendsListsBrowseState = useFeatureBrowse<RestaurantListsInfiniteData, RestaurantListRecord>({
+    analyticsSource: 'ListsScreen',
+    buildAnalyticsPayload: useCallback(
+      (overrides?: Record<string, string | number | boolean | null>) =>
+        buildBaseBrowseAnalyticsPayload({
+          resultCount: getRestaurantListsFromInfiniteData(friendsListsQuery.data).length,
+          ...overrides,
+        }),
+      [buildBaseBrowseAnalyticsPayload, friendsListsQuery.data],
+    ),
+    getHasCachedData: hasRestaurantListsCachedPages,
+    getItemsFromData: getRestaurantListsFromInfiniteData,
+    getResultCountFromData: getRestaurantListsResultCountFromInfiniteData,
+    getTotalItemsFromData: getRestaurantListsTotalFromInfiniteData,
+    loadMoreEventPrefix: 'LISTS_LOAD_MORE',
+    query: friendsListsQuery,
+    refreshEventPrefix: 'LISTS_REFRESH',
   });
 
   useEffect(() => {
@@ -409,7 +484,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return;
     }
 
-    const myLists = myListsState.items;
+    const myLists = myListsBrowseState.items;
     const hasDefault = myLists.some((list) => list.isDefault);
     if (hasDefault) {
       return;
@@ -456,7 +531,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           trigger: 'missing_default_list',
         });
         setErrorMessage(message);
-        hasTriedCreatingDefault.current = false;
       } finally {
         setIsCreatingDefaultList(false);
       }
@@ -465,7 +539,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     user?.id,
     debouncedTrimmedSearchQuery,
     isCreatingDefaultList,
-    myListsState.items,
+    myListsBrowseState.items,
     myListsQuery.data,
     myListsQuery.isError,
     myListsQuery.isLoading,
@@ -473,14 +547,22 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     createDefaultRestaurantListWrite,
   ]);
 
-  const myLists = myListsState.items;
-  const friendLists = friendsListsState.items;
+  const myLists = myListsBrowseState.items;
+  const friendLists = friendsListsBrowseState.items;
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
-  const activeState = activeTab === 'my' ? myListsState : friendsListsState;
+  const activeBrowseState = activeTab === 'my' ? myListsBrowseState : friendsListsBrowseState;
 
   const visibleLists = useMemo(
     () => (activeTab === 'friends' ? friendLists : myLists),
     [activeTab, friendLists, myLists],
+  );
+  const buildBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) =>
+      buildBaseBrowseAnalyticsPayload({
+        resultCount: visibleLists.length,
+        ...overrides,
+      }),
+    [buildBaseBrowseAnalyticsPayload, visibleLists.length],
   );
 
   const tabOptions = useMemo<readonly SegmentedControlOption<ListTab>[]>(
@@ -490,36 +572,17 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         value: tab.value,
         badgeCount:
           tab.value === 'my'
-            ? (myListsState.totalItems ?? (activeTab === 'my' ? myLists.length : undefined))
+            ? (myListsBrowseState.totalItems ?? (activeTab === 'my' ? myLists.length : undefined))
             : tab.value === 'friends'
-              ? (friendsListsState.totalItems ?? (activeTab === 'friends' ? friendLists.length : undefined))
+              ? (friendsListsBrowseState.totalItems ?? (activeTab === 'friends' ? friendLists.length : undefined))
               : 0,
       })),
-    [activeTab, friendLists.length, friendsListsState.totalItems, myLists.length, myListsState.totalItems],
+    [activeTab, friendLists.length, friendsListsBrowseState.totalItems, myLists.length, myListsBrowseState.totalItems],
   );
 
-  const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
+  const isLoading = activeBrowseState.isLoading || (activeTab === 'my' && isCreatingDefaultList);
   const hasSearch = trimmedSearchQuery.length > 0;
-  const buildBrowseAnalyticsPayload = useCallback(
-    (overrides?: Record<string, string | number | boolean | null>) => ({
-      source: 'ListsScreen',
-      activeTab,
-      queryLength: trimmedSearchQuery.length,
-      resultCount: visibleLists.length,
-      ...overrides,
-    }),
-    [activeTab, trimmedSearchQuery.length, visibleLists.length],
-  );
-  const browseState = useFeatureInfiniteBrowse({
-    analyticsSource: 'ListsScreen',
-    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
-    getResultCountFromData: (data, fallbackCount) =>
-      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
-    loadMoreEventPrefix: 'LISTS_LOAD_MORE',
-    query: activeQuery,
-    refreshEventPrefix: 'LISTS_REFRESH',
-    resultCount: visibleLists.length,
-  });
+  const browseState = activeBrowseState;
 
   useEffect(() => {
     if (!hasSearch) {
@@ -699,20 +762,19 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         title="List operation failed"
       />
 
-      {activeTab === 'my' && pendingListWrites.length > 0 ? (
+      {activeTab === 'my' && browseState.pendingRows.length > 0 ? (
         <View style={styles.headerStack}>
           <Text variant="label">Pending lists</Text>
-          {pendingListWrites.map((write) => {
-            const payload = write.payload as { name: string; visibility?: string };
+          {browseState.pendingRows.map((row) => {
             return (
               <PendingQueuedWriteRow
-                key={write.id}
-                createdAt={write.createdAt}
-                description={payload.visibility ? `Visibility: ${payload.visibility}` : undefined}
-                idempotencyKey={write.idempotencyKey}
-                lastError={write.lastError}
-                status={write.status}
-                title={payload.name}
+                key={row.id}
+                createdAt={row.createdAt}
+                description={row.description}
+                idempotencyKey={row.idempotencyKey}
+                lastError={row.lastError}
+                status={row.status}
+                title={row.title}
               />
             );
           })}
@@ -757,9 +819,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         analyticsProps={buildBrowseAnalyticsPayload()}
         analyticsSource="ListsScreen"
         errorMessage={
-          activeState.hasBlockingError
+          browseState.hasBlockingError
             ? 'Could not load lists.'
-            : activeState.hasRefreshError
+            : browseState.hasRefreshError
               ? 'Could not refresh lists. Showing saved data.'
               : null
         }
@@ -772,7 +834,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   );
 
   const listsFooter =
-    !isLoading && !activeState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (
+    !isLoading && !browseState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (
       <FeatureListFooter
         isFetchingNextPage={browseState.isFetchingNextPage}
         label="Load more lists"
@@ -791,7 +853,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       );
     }
 
-    if (activeState.hasBlockingError) {
+    if (browseState.hasBlockingError) {
       return (
         <ErrorState
           analyticsProps={buildBrowseAnalyticsPayload()}

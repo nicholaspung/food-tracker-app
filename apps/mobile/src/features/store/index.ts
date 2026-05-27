@@ -25,6 +25,7 @@ export * from './queuedFeatureWrites';
 export * from './usageQuery';
 export * from './usageLimitsGateway';
 export * from './useQueuedFeatureWrites';
+export * from './useFeatureBrowse';
 export * from './useFeatureInfiniteBrowse';
 export * from './useBillWrites';
 export * from './useFeedbackWrites';

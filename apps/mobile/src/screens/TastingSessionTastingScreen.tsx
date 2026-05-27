@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ConfirmDestructiveModal,
   EmptyState,
+  ErrorState,
   FeatureFormScreenScaffold,
   HomeFeedVisitEntryCard,
   type HomeFeedPhotoRecord,
@@ -36,16 +37,12 @@ import { stageLocalPhotoFile } from '../lib/photoStaging';
 import { resolveDisplayPhotoUploadsPerRecordLimit } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './createVisit/shared';
 import { formatReviewEntryFooterLabel } from './photoProcessing/shared';
-import {
-  TASTING_SESSION_LIFECYCLE_STEP_INDEX,
-  TASTING_SESSION_LIFECYCLE_STEPS,
-} from './tastingSessions/shared';
-import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
+import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
+import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionTastingScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionTasting'>;
 type TastingSessionTastingStep = 'rating' | 'review';
@@ -122,10 +119,15 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const styles = useStyles();
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
-  const { isOnline } = useConnectivity();
   const tastingRatingWrites = useTastingRatingSubmissionWrites();
-  const sessionQuery = useTastingSessionDetail(sessionId, true);
+  const lifecycle = useTastingSessionLifecycleReadState({
+    currentUserId: user?.id,
+    screen: 'tasting',
+    sessionId,
+  });
+  const sessionQuery = lifecycle.query;
   const session = sessionQuery.data;
+  const isOnline = lifecycle.onlineOnly.isOnline;
   const [drafts, setDrafts] = useState<Record<string, TastingRatingDraft>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmittingRatings, setIsSubmittingRatings] = useState(false);
@@ -138,10 +140,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
-  const isLeader = Boolean(session && user?.id === session.leaderUserId);
-  const currentSessionId = session?.id;
-  const currentSessionStatus = session?.status;
-  const currentParticipant = session?.participants.find((participant) => participant.userId === user?.id);
+  const isLeader = lifecycle.roles.isLeader;
+  const currentParticipant = lifecycle.roles.currentParticipant;
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
   const isDisplaySubscriberUser = user?.isSubscriber === true;
@@ -170,12 +170,17 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   });
 
   useEffect(() => {
-    if (!currentSessionId || currentSessionStatus !== 'completed') {
+    const destination = lifecycle.redirectDestination;
+    if (!destination) {
       return;
     }
 
-    navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
-  }, [currentSessionId, currentSessionStatus, navigation]);
+    if (destination.name === 'TastingSessions') {
+      navigation.navigate(destination.name, destination.params);
+    } else {
+      navigation.replace(destination.name, destination.params);
+    }
+  }, [lifecycle.redirectDestination, navigation]);
 
   const approvedRestaurants = useMemo(
     () => session?.restaurants.filter((restaurant) => restaurant.status === 'approved') ?? [],
@@ -484,6 +489,18 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     }
   };
 
+  if (sessionQuery.isError && !session) {
+    return (
+      <FeatureFormScreenScaffold
+        onBackPress={() => navigation.navigate('TastingSessions')}
+        primaryAction={{ disabled: true, label: 'Submit Ratings', onPress: () => undefined }}
+        title="Tasting"
+      >
+        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
   if (!session) {
     return (
       <FeatureFormScreenScaffold
@@ -506,7 +523,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         headerBottomContent={
           <StepProgressBar
             compact
-            currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.review}
+            currentStep={lifecycle.step.stage === 'review' ? lifecycle.step.currentStep : 3}
             steps={TASTING_SESSION_LIFECYCLE_STEPS}
           />
         }
@@ -626,7 +643,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       headerBottomContent={
         <StepProgressBar
           compact
-          currentStep={TASTING_SESSION_LIFECYCLE_STEP_INDEX.rate}
+          currentStep={lifecycle.step.currentStep}
           steps={TASTING_SESSION_LIFECYCLE_STEPS}
         />
       }
@@ -658,7 +675,9 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       }
       title={session.name}
     >
-      {!isOnline ? <Text tone="warning">Rating actions require a connection.</Text> : null}
+      {lifecycle.onlineOnly.warningMessage ? (
+        <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+      ) : null}
       {photoPermissionNeedsSettings ? (
         <Text
           onPress={() => {

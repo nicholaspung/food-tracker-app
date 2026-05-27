@@ -3,20 +3,32 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { EmptyState, FeatureDetailScreenScaffold } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { navigateToTastingSession } from './tastingSessions/shared';
-import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
+import { useAuth } from '../providers/AuthProvider';
+import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionDetail'>;
 
 export function TastingSessionDetailScreen({ navigation, route }: TastingSessionDetailScreenProps) {
   const { sessionId } = route.params;
-  const sessionQuery = useTastingSessionDetail(sessionId, false);
+  const { user } = useAuth();
+  const lifecycle = useTastingSessionLifecycleReadState({
+    currentUserId: user?.id,
+    screen: 'detail',
+    sessionId,
+  });
 
   useEffect(() => {
-    if (sessionQuery.data) {
-      navigateToTastingSession(navigation, sessionQuery.data);
+    const destination = lifecycle.redirectDestination;
+    if (!destination) {
+      return;
     }
-  }, [navigation, sessionQuery.data]);
+
+    if (destination.name === 'TastingSessions') {
+      navigation.navigate(destination.name, destination.params);
+    } else {
+      navigation.navigate(destination.name, destination.params);
+    }
+  }, [lifecycle.redirectDestination, navigation]);
 
   return (
     <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Tasting Session">

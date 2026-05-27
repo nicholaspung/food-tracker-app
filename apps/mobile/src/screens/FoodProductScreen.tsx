@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -14,41 +13,22 @@ import {
   FoodProductFormFields,
 } from '../components/shared';
 import {
-  formatLimitExceededMessage,
   getNoteDetail,
-  parseLimitExceededError,
   useMonthlyUsage,
-  type VisitPhotoUploadInput,
 } from '../features';
+import { submitCreateFoodProductEditor } from '../features/foodProducts/foodProductEditorSubmissionLifecycle';
+import {
+  useFoodProductEditorPhotoDraft,
+} from '../features/foodProducts/useFoodProductEditorPhotoDraft';
 import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
-  formatDateToLocalDateString,
-  formatPhotoAttachmentDateLabel,
-} from '../lib/dateFormatting';
-import {
-  launchCameraPickerAsync,
-  launchImageLibraryPickerAsync,
-} from '../lib/guardedImagePicker';
-import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
-import {
-  cleanupStagedPhotoFiles,
-  hasNativeImageManipulatorModule,
-  PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE,
-  stageLocalPhotoFile,
-} from '../lib/photoStaging';
-import {
-  buildCreateFoodProductInput,
   buildDefaultFoodProductForm,
-  validateFoodProductForm,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
-import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import {
-  trackFirstFoodLogged,
   trackProductEvent,
   type TrackingEntryProperties,
 } from '../observability/productAnalytics';
@@ -63,18 +43,7 @@ type FoodProductEditorExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
-interface DraftFoodProductPhoto {
-  label: string;
-  upload: VisitPhotoUploadInput;
-}
-
 const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
-const FREE_MONTHLY_PHOTO_LIMIT = 100;
-type PhotoSource = 'camera' | 'gallery';
-
-function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
-  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -85,16 +54,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
 }));
-
-async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promise<VisitPhotoUploadInput | null> {
-  if (!hasNativeImageManipulatorModule()) {
-    throw new Error(PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE);
-  }
-
-  return stageLocalPhotoFile(asset, {
-    fallbackPrefix: 'food-product',
-  });
-}
 
 export function FoodProductScreen({ navigation, route }: FoodProductScreenProps) {
   const styles = useStyles();
@@ -114,17 +73,6 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const sourceNoteId = route.params?.sourceNoteId;
 
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
-  const estimatedFreePhotoRemaining = isDisplayFreeUser
-    ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
-    : null;
-  const shouldHidePhotoSourceActions =
-    isDisplayFreeUser &&
-    shouldEnforceUsageLimitsClientSide &&
-    typeof estimatedFreePhotoRemaining === 'number' &&
-    estimatedFreePhotoRemaining <= 0;
-  const photoQuotaStatusMessage = shouldHidePhotoSourceActions
-    ? formatFreeMonthlyPhotoLimitStatus(estimatedFreePhotoRemaining)
-    : null;
 
   const linkedNoteQuery = useQuery({
     queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),
@@ -135,27 +83,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const returnToPrevious = route.params?.returnToPrevious === true;
 
   const [form, setForm] = useState<FoodProductFormValues>(() => buildDefaultFoodProductForm());
-  const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
-  const [photo, setPhoto] = useState<DraftFoodProductPhoto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
-  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasTrackedEditorOpenRef = useRef(false);
   const hasTrackedEditorExitRef = useRef(false);
   const hasCompletedEditorFlowRef = useRef(false);
   const exitMethodRef = useRef<FoodProductEditorExitMethod | null>(null);
-  const {
-    permissionNeedsSettings: photoPermissionNeedsSettings,
-    requestPermission: requestPhotoPickerPermission,
-    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
-  } = usePhotoPickerPermissions({
-    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
-    cameraRequiredMessage: 'Camera permission is required to take a photo.',
-    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
-    galleryRequiredMessage: 'Photo library permission is required to upload an image.',
-  });
 
   useEffect(() => {
     let isMounted = true;
@@ -189,370 +124,71 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
 
-  const applyPhotoCaptureDate = useCallback((captureDate: Date | null) => {
-    if (!captureDate) {
-      return;
-    }
-
-    const nextDetectedDateValue = formatDateToLocalDateString(captureDate);
-    setForm((currentForm) => ({
-      ...currentForm,
-      date: nextDetectedDateValue,
-    }));
-    setDetectedItemDateValue(nextDetectedDateValue);
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    let isMounted = true;
-
-    const restorePendingPickerResult = async () => {
-      try {
-        const pendingResult = await ImagePicker.getPendingResultAsync();
-        if (!isMounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled) {
-          return;
-        }
-
-        const pendingAsset = pendingResult.assets?.[0];
-        const nextUpload = pendingAsset ? await buildDraftPhotoInput(pendingAsset) : null;
-        if (!nextUpload) {
-          return;
-        }
-
-        const captureDate = pendingAsset
-          ? await resolvePhotoCaptureDate(pendingAsset)
-          : null;
-        applyPhotoCaptureDate(captureDate);
-        setIsPhotoViewerVisible(false);
-        setPhoto({
-          label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
-          upload: nextUpload,
-        });
-        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
-          photoSource: 'gallery',
-          restoredPendingResult: true,
-          source: 'FoodProductScreen',
-        });
-        trackProductEvent('tracking.photo_added', {
-          entryType: 'food_product',
-          source: sourceNoteId ? 'note' : 'add_tab',
-          hasPhoto: true,
-          itemCount: 1,
-          ratingCount: form.rating > 0 ? 1 : 0,
-          visibility: form.visibility,
-          completed: false,
-        });
-      } catch (error) {
-        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
-          errorMessage: error instanceof Error ? error.message : String(error),
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-          photoSource: 'gallery',
-          restoredPendingResult: true,
-          source: 'FoodProductScreen',
-        });
-      }
-    };
-
-    void restorePendingPickerResult();
-    return () => {
-      isMounted = false;
-    };
-  }, [applyPhotoCaptureDate, form.rating, form.visibility, sourceNoteId]);
-
-  const handlePhotoPick = async (source: PhotoSource) => {
-    trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
-      photoSource: source,
-      source: 'FoodProductScreen',
-    });
-    setErrorMessage(null);
-    resetPhotoPermissionNeedsSettings();
-
-    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining: estimatedFreePhotoRemaining,
-          source: 'FoodProductScreen',
-          used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
-        });
-        trackProductEvent('quality.usage_limit_reached', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining: estimatedFreePhotoRemaining,
-          source: 'FoodProductScreen',
-          used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
-        });
-      setErrorMessage(formatFreeMonthlyPhotoLimitStatus(estimatedFreePhotoRemaining));
-      return;
-    }
-
-    try {
-      const permission = await requestPhotoPickerPermission(source);
-      if (!permission.granted) {
-        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          photoSource: source,
-          source: 'FoodProductScreen',
-        });
-        setErrorMessage(permission.message);
-        return;
-      }
-
-      const pickerResult =
-        source === 'camera'
-          ? await launchCameraPickerAsync({
-              mediaTypes: ['images'],
-              allowsEditing: false,
-              exif: true,
-              quality: 0.8,
-              presentationStyle:
-                Platform.OS === 'ios'
-                  ? ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
-                  : undefined,
-            })
-          : await launchImageLibraryPickerAsync({
-              mediaTypes: ['images'],
-              allowsEditing: false,
-              exif: true,
-              quality: 1,
-              selectionLimit: 1,
-              presentationStyle:
-                Platform.OS === 'ios'
-                  ? ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
-                  : undefined,
-              preferredAssetRepresentationMode:
-                Platform.OS === 'ios'
-                  ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
-                  : undefined,
-            });
-
-      if (!pickerResult || pickerResult.canceled) {
-        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_CANCELED', {
-          photoSource: source,
-          source: 'FoodProductScreen',
-        });
-        return;
-      }
-
-      const selectedAsset = pickerResult.assets?.[0];
-      const nextUpload = selectedAsset ? await buildDraftPhotoInput(selectedAsset) : null;
-      if (!nextUpload) {
-        throw new Error('Could not read the selected image.');
-      }
-
-      setDetectedItemDateValue(null);
-      const captureDate = await resolvePhotoCaptureDate(selectedAsset);
-      applyPhotoCaptureDate(captureDate);
-      setIsPhotoViewerVisible(false);
-      setPhoto({
-        label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
-        upload: nextUpload,
-      });
-      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
-        photoSource: source,
-        source: 'FoodProductScreen',
-      });
-      trackProductEvent('tracking.photo_added', {
-        entryType: 'food_product',
-        source: sourceNoteId ? 'note' : 'add_tab',
-        hasPhoto: true,
-        itemCount: 1,
-        ratingCount: form.rating > 0 ? 1 : 0,
-        visibility: form.visibility,
-        completed: false,
-      });
-      resetPhotoPermissionNeedsSettings();
-    } catch (error) {
-      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        photoSource: source,
-        source: 'FoodProductScreen',
-      });
-      setErrorMessage(error instanceof Error ? error.message : 'Could not select a photo.');
-    }
-  };
-
-  const handleCreate = async () => {
-    const validationMessage = validateFoodProductForm(form);
-    if (validationMessage) {
-      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED', {
-        source: 'FoodProductScreen',
-        validationMessage,
-        visibility: form.visibility,
-        hasPhoto: Boolean(photo),
-        sourceNoteAttached: Boolean(sourceNoteId),
-      });
-      setErrorMessage(validationMessage);
-      return;
-    }
-
-    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && photo && monthlyUsage.snapshot) {
-      const estimatedTotalAfterSubmit = monthlyUsage.snapshot.usage.photoUploads + 1;
-      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
-        const remaining = Math.max(
-          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
-          0,
-        );
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining,
-          source: 'FoodProductScreen',
-          used: monthlyUsage.snapshot.usage.photoUploads,
-        });
-        trackProductEvent('quality.usage_limit_reached', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining,
-          source: 'FoodProductScreen',
-          used: monthlyUsage.snapshot.usage.photoUploads,
-        });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
-        );
-        return;
-      }
-    }
-
-    setErrorMessage(null);
-    const productTrackingProperties: TrackingEntryProperties = {
+  const photoTrackingProperties: TrackingEntryProperties = useMemo(
+    () => ({
       entryType: 'food_product',
       source: sourceNoteId ? 'note' : 'add_tab',
-      hasPhoto: Boolean(photo),
+      hasPhoto: true,
       itemCount: 1,
       ratingCount: form.rating > 0 ? 1 : 0,
       visibility: form.visibility,
       completed: false,
-    };
-    trackProductEvent('tracking.rating_added', productTrackingProperties);
-    trackProductEvent('tracking.visibility_selected', productTrackingProperties);
-    trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_STARTED', {
-      source: 'FoodProductScreen',
-      isOnline,
-      hasPhoto: Boolean(photo),
-      hasNotes: form.notes.trim().length > 0,
-      rating: form.rating,
-      sourceNoteAttached: Boolean(sourceNoteId),
-      visibility: form.visibility,
-    });
+    }),
+    [form.rating, form.visibility, sourceNoteId],
+  );
+  const handlePhotoCaptureDateDetected = useCallback((dateValue: string) => {
+    setForm((currentForm) => ({
+      ...currentForm,
+      date: dateValue,
+    }));
+  }, []);
+  const photoDraft = useFoodProductEditorPhotoDraft({
+    analyticsSource: 'FoodProductScreen',
+    isDisplayFreeUser,
+    monthlyUsageSnapshot: monthlyUsage.snapshot,
+    onCaptureDateDetected: handlePhotoCaptureDateDetected,
+    shouldEnforceUsageLimitsClientSide,
+    trackingProperties: photoTrackingProperties,
+  });
+  const photo = photoDraft.photo;
+  const shouldHidePhotoSourceActions = photoDraft.hideSourceActions;
+  const photoQuotaStatusMessage = photoDraft.quotaStatusMessage;
+
+  useEffect(() => {
+    if (photoDraft.errorMessage) {
+      setErrorMessage(photoDraft.errorMessage);
+    }
+  }, [photoDraft.errorMessage]);
+
+  const handleCreate = async () => {
+    setErrorMessage(null);
     setIsSubmitting(true);
 
-    try {
-      const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
-      const foodProductInput = buildCreateFoodProductInput(form, {
-        photo: photo?.upload,
-        sourceNoteId,
-      });
+    const result = await submitCreateFoodProductEditor({
+      foodProductWrites,
+      form,
+      isDisplayFreeUser,
+      isOnline,
+      markRatedBefore: () => AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1'),
+      monthlyUsageSnapshot: monthlyUsage.snapshot,
+      photo,
+      shouldEnforceUsageLimitsClientSide,
+      source: 'FoodProductScreen',
+      sourceNoteId,
+    });
 
-      const createResult = await foodProductWrites.createFoodProduct({
-        input: foodProductInput,
-        includeUsage: Boolean(photo),
-        sourceNote: {
-          noteId: sourceNoteId,
-          usedAt: noteUsedAt,
-        },
-        queuedAlert: {
-          analyticsSource: 'FoodProductScreen',
-          subject: 'Food product',
-        },
-      });
+    setIsSubmitting(false);
 
-      if (createResult.status === 'queued') {
-        trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
-          source: 'FoodProductScreen',
-          queued: true,
-          hasPhoto: Boolean(photo),
-          sourceNoteAttached: Boolean(sourceNoteId),
-          visibility: form.visibility,
-        });
-        trackProductEvent('tracking.entry_completed', {
-          ...productTrackingProperties,
-          completed: true,
-          queued: true,
-        });
-        trackFirstFoodLogged({
-          ...productTrackingProperties,
-          completed: true,
-        });
-        hasCompletedEditorFlowRef.current = true;
-        navigation.navigate('Home', buildFoodProductCreatedHomeParams());
-        return;
-      }
+    if (result.status === 'blocked' || result.status === 'failed') {
+      setErrorMessage(result.errorMessage);
+      return;
+    }
 
-      await cleanupStagedPhotoFiles(photo ? [photo.upload] : []);
-      await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
-      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
-        source: 'FoodProductScreen',
-        queued: false,
-        hasPhoto: Boolean(photo),
-        sourceNoteAttached: Boolean(sourceNoteId),
-        visibility: form.visibility,
-      });
-      trackProductEvent('tracking.entry_completed', {
-        ...productTrackingProperties,
-        completed: true,
-        queued: false,
-      });
-      trackFirstFoodLogged({
-        ...productTrackingProperties,
-        completed: true,
-      });
+    if ('destination' in result) {
       hasCompletedEditorFlowRef.current = true;
-      navigation.navigate('Home', buildFoodProductCreatedHomeParams());
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'server',
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
-          source: 'FoodProductScreen',
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
-        });
-        trackProductEvent('quality.usage_limit_reached', {
-          enforcement: 'server',
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
-          source: 'FoodProductScreen',
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
-        });
+      if (result.destination.name === 'Home') {
+        navigation.navigate('Home', result.destination.params);
       }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : 'Could not save food product.';
-      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_FAILED', {
-        source: 'FoodProductScreen',
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        hasPhoto: Boolean(photo),
-        isOnline,
-        sourceNoteAttached: Boolean(sourceNoteId),
-        visibility: form.visibility,
-      });
-      trackProductEvent('tracking.entry_failed', {
-        ...productTrackingProperties,
-        completed: false,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      });
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -578,12 +214,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           uri: photo.upload.uri,
           accessibilityLabel: 'View attached photo full screen',
           onPress: () => {
-            setIsPhotoViewerVisible(true);
+            photoDraft.openViewer();
           },
           onRemove: () => {
-            setIsPhotoViewerVisible(false);
-            setDetectedItemDateValue(null);
-            setPhoto(null);
+            photoDraft.removePhoto();
           },
         },
       ]
@@ -699,7 +333,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         ) : null}
 
         <FoodProductFormFields
-          detectedDateValue={detectedItemDateValue}
+          detectedDateValue={photoDraft.detectedDateValue}
           onChange={(updates) => {
             setForm((currentForm) => ({
               ...currentForm,
@@ -711,14 +345,14 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
               attachments={photoInputAttachments}
               cameraSubtitle="Camera"
               cameraTitle="Take Photo"
-              countLabel={shouldHidePhotoSourceActions && !photo ? null : photo ? '1/1' : '0/1'}
+              countLabel={photoDraft.countLabel}
               disabled={isSubmitting}
               footerAction={
                 photoQuotaStatusMessage ? (
                   <Text tone="secondary" variant="bodySm">
                     {photoQuotaStatusMessage}
                   </Text>
-                ) : photoPermissionNeedsSettings ? (
+                ) : photoDraft.permissionNeedsSettings ? (
                   <Button
                     label="Open Settings"
                     onPress={() => {
@@ -733,10 +367,12 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
               hideSourceActions={shouldHidePhotoSourceActions}
               label="Photo (Optional)"
               onCameraPress={() => {
-                void handlePhotoPick('camera');
+                setErrorMessage(null);
+                void photoDraft.pickPhoto('camera');
               }}
               onGalleryPress={() => {
-                void handlePhotoPick('gallery');
+                setErrorMessage(null);
+                void photoDraft.pickPhoto('gallery');
               }}
             />
           }
@@ -747,10 +383,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       </View>
       <PhotoViewerModal
         onRequestClose={() => {
-          setIsPhotoViewerVisible(false);
+          photoDraft.closeViewer();
         }}
         urls={photo ? [photo.upload.uri] : []}
-        visible={Boolean(photo) && isPhotoViewerVisible}
+        visible={Boolean(photo) && photoDraft.isViewerVisible}
       />
     </FeatureFormScreenScaffold>
   );

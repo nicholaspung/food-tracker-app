@@ -40,14 +40,12 @@ import {
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
-import { useFeatureInfiniteBrowse } from '../features/store/useFeatureInfiniteBrowse';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -58,6 +56,7 @@ import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { HomeFeedActionModals } from './home/HomeFeedActionModals';
 import { HomePendingEntriesSection } from './home/HomePendingEntriesSection';
 import {
@@ -83,6 +82,8 @@ import { useHomeFeedActionController } from './home/useHomeFeedActionController'
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
+type HomeFeedRecord = HomeFeedPageResult['items'][number];
+type HomeFeedInfiniteData = InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>;
 
 const useStyles = createThemedStyles((theme) => {
   const feedGap = theme.spacing.xs;
@@ -370,14 +371,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         typeFilter,
       }),
   });
-  const homeFeedState = usePaginatedQueryState({
-    data: homeFeedQuery.data,
-    isError: homeFeedQuery.isError,
-    isFetching: homeFeedQuery.isFetching,
-    isLoading: homeFeedQuery.isLoading,
-    isSuccess: homeFeedQuery.isSuccess,
-  });
-
   const resetMapState = useCallback(() => {
     setSelectedMapGroupId(null);
     setMapResetSignal((value) => value + 1);
@@ -461,14 +454,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     initialHomeFeedDefaults.homeFeedTypeFilter,
   ]);
 
-  const loadedFeed = useMemo(
-    () =>
-      homeFeedState.items.map((item) =>
-        item.source === 'visit'
-          ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
-          : buildFoodProductFeedItem(item.foodProduct, currentUserId, item.eventAt),
-      ),
-    [currentUserId, homeFeedState.items],
+  const getHomeFeedRecordsFromData = useCallback(
+    (data: HomeFeedInfiniteData | undefined) => data?.pages.flatMap((page) => page.items) ?? [],
+    [],
+  );
+  const homeFeedResultCount = useMemo(
+    () => getHomeFeedRecordsFromData(homeFeedQuery.data).length,
+    [getHomeFeedRecordsFromData, homeFeedQuery.data],
   );
   const loadedPhotoPreviews = useMemo(
     () => homeFeedQuery.data?.pages.flatMap((page) => page.photoPreviews ?? []) ?? [],
@@ -477,9 +469,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const mapPoints = homeFeedMapQuery.data?.points ?? [];
   const mapPhotoPreviews = homeFeedMapQuery.data?.photoPreviews ?? [];
 
-  const isLoading = homeFeedQuery.isLoading;
-  const hasBlockingFeedError = homeFeedState.hasBlockingError;
-  const hasFeedRefreshError = homeFeedState.hasRefreshError;
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
       source: 'HomeScreen',
@@ -487,11 +476,36 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       typeFilter,
       sortFilter,
       queryLength: debouncedTrimmedSearchQuery.length,
-      resultCount: loadedFeed.length,
+      resultCount: homeFeedResultCount,
       ...overrides,
     }),
-    [debouncedTrimmedSearchQuery.length, feedMode, loadedFeed.length, sortFilter, typeFilter],
+    [debouncedTrimmedSearchQuery.length, feedMode, homeFeedResultCount, sortFilter, typeFilter],
   );
+  const browseState = useFeatureBrowse<HomeFeedInfiniteData, HomeFeedRecord>({
+    analyticsSource: 'HomeScreen',
+    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
+    getHasCachedData: (data) => (data?.pages.length ?? 0) > 0,
+    getItemsFromData: getHomeFeedRecordsFromData,
+    getResultCountFromData: (data, fallbackCount) =>
+      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
+    loadMoreEventPrefix: 'HOME_FEED_LOAD_MORE',
+    query: homeFeedQuery,
+    refreshEventPrefix: 'HOME_FEED_REFRESH',
+    resultCount: homeFeedResultCount,
+  });
+  const loadedFeed = useMemo(
+    () =>
+      browseState.items.map((item) =>
+        item.source === 'visit'
+          ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
+          : buildFoodProductFeedItem(item.foodProduct, currentUserId, item.eventAt),
+      ),
+    [browseState.items, currentUserId],
+  );
+
+  const isLoading = browseState.isLoading;
+  const hasBlockingFeedError = browseState.hasBlockingError;
+  const hasFeedRefreshError = browseState.hasRefreshError;
 
   useEffect(() => {
     trackProductEvent('social.feed_viewed', {
@@ -600,17 +614,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     pendingFocusVisitId,
     typeFilter,
   ]);
-
-  const browseState = useFeatureInfiniteBrowse({
-    analyticsSource: 'HomeScreen',
-    buildAnalyticsPayload: buildBrowseAnalyticsPayload,
-    getResultCountFromData: (data, fallbackCount) =>
-      data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? fallbackCount,
-    loadMoreEventPrefix: 'HOME_FEED_LOAD_MORE',
-    query: homeFeedQuery,
-    refreshEventPrefix: 'HOME_FEED_REFRESH',
-    resultCount: loadedFeed.length,
-  });
 
   useEffect(() => {
     let isMounted = true;

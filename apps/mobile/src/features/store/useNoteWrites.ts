@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 
-import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import type { NoteRecord } from '../models';
 import type { CreateNoteInput, MarkNoteUsedInput, UpdateNoteInput } from './featureStore';
 import { applyNoteUsedCacheEffects, writeNoteUsedWithOfflineSupport } from './noteUsedWrite';
@@ -16,6 +15,7 @@ import {
   type OfflineAwareFeatureWriteResult,
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
+import { useFeatureWriteSubmit } from './useFeatureWriteSubmit';
 
 interface UpdateNoteWriteInput {
   noteId: string;
@@ -71,34 +71,36 @@ async function syncSavedNoteCaches(
 export function useNoteWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const {
+    errorMessage,
+    isSubmitting,
+    setErrorMessage,
+    submitFeatureWrite,
+  } = useFeatureWriteSubmit();
 
   const createNoteWrite = useCallback(
     async (input: CreateNoteInput): Promise<OfflineAwareFeatureWriteResult<NoteRecord>> => {
-      const result = await writeFeature({
+      return submitFeatureWrite({
         operationName: 'note.create',
         offline: {
           strategy: 'outbox',
           payload: input,
         },
         execute: () => createNote(input),
-      });
-
-      if (result.status === 'queued') {
-        await invalidateNoteBrowseQueries(queryClient);
-        showQueuedOfflineAlert({
+        fallbackErrorMessage: 'Could not create note.',
+        onQueued: () => invalidateNoteBrowseQueries(queryClient),
+        onSuccess: (note) =>
+          syncSavedNoteCaches(queryClient, {
+            hasNewPhotos: (input.photos?.length ?? 0) > 0,
+            note,
+          }),
+        queuedToast: {
           analyticsSource: 'useNoteWrites',
           subject: 'Note',
-        });
-        return result;
-      }
-
-      await syncSavedNoteCaches(queryClient, {
-        hasNewPhotos: (input.photos?.length ?? 0) > 0,
-        note: result.result,
+        },
       });
-      return result;
     },
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite],
   );
 
   const updateNoteWrite = useCallback(
@@ -106,7 +108,7 @@ export function useNoteWrites() {
       noteId,
       updates,
     }: UpdateNoteWriteInput): Promise<OfflineAwareFeatureWriteResult<NoteRecord>> => {
-      const result = await writeFeature({
+      return submitFeatureWrite({
         operationName: 'note.update',
         offline: {
           strategy: 'outbox',
@@ -116,50 +118,46 @@ export function useNoteWrites() {
           },
         },
         execute: () => updateNote(noteId, updates),
+        fallbackErrorMessage: 'Could not update note.',
+        onQueued: () => invalidateNoteBrowseQueries(queryClient),
+        onSuccess: (note) =>
+          syncSavedNoteCaches(queryClient, {
+            hasNewPhotos: (updates.newPhotos?.length ?? 0) > 0,
+            note,
+          }),
+        queuedToast: 'Note update',
       });
-
-      if (result.status === 'queued') {
-        await invalidateNoteBrowseQueries(queryClient);
-        showQueuedOfflineAlert('Note update');
-        return result;
-      }
-
-      await syncSavedNoteCaches(queryClient, {
-        hasNewPhotos: (updates.newPhotos?.length ?? 0) > 0,
-        note: result.result,
-      });
-      return result;
     },
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite],
   );
 
   const deleteNoteWrite = useCallback(
     async ({ noteId }: DeleteNoteWriteInput): Promise<OfflineAwareFeatureWriteResult<void>> => {
-      const result = await writeFeature({
+      const syncDeletedNoteCaches = async () => {
+        removeCachedNote(queryClient, noteId);
+        await Promise.all([
+          invalidateNoteBrowseQueries(queryClient),
+          invalidateNotePhotoQueries(queryClient),
+        ]);
+      };
+
+      return submitFeatureWrite({
         operationName: 'note.delete',
         offline: {
           strategy: 'outbox',
           payload: { noteId },
         },
         execute: () => deleteNote(noteId),
-      });
-
-      removeCachedNote(queryClient, noteId);
-      await Promise.all([
-        invalidateNoteBrowseQueries(queryClient),
-        invalidateNotePhotoQueries(queryClient),
-      ]);
-
-      if (result.status === 'queued') {
-        showQueuedOfflineAlert({
+        fallbackErrorMessage: 'Could not delete note.',
+        onQueued: syncDeletedNoteCaches,
+        onSuccess: syncDeletedNoteCaches,
+        queuedToast: {
           analyticsSource: 'useNoteWrites',
           subject: 'Note delete',
-        });
-      }
-
-      return result;
+        },
+      });
     },
-    [queryClient, writeFeature],
+    [queryClient, submitFeatureWrite],
   );
 
   const markNoteUsedWrite = useCallback(
@@ -180,7 +178,10 @@ export function useNoteWrites() {
   return {
     createNote: createNoteWrite,
     deleteNote: deleteNoteWrite,
+    errorMessage,
+    isSubmitting,
     markNoteUsed: markNoteUsedWrite,
+    setErrorMessage,
     updateNote: updateNoteWrite,
   };
 }

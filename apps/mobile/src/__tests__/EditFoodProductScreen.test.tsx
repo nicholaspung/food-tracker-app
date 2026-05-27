@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,7 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
   buildPocketBaseFileUrl: jest.fn(({ recordId, filename, thumb }) =>
     `pb://${recordId}/${filename}${thumb ? `?thumb=${thumb}` : ''}`,
   ),
+  resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
 }));
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
@@ -69,6 +71,8 @@ jest.mock('../lib/photoFiles', () => ({
 
 jest.mock('../lib/photoStaging', () => ({
   cleanupStagedPhotoFiles: jest.fn(() => Promise.resolve()),
+  hasNativeImageManipulatorModule: jest.fn(() => true),
+  PHOTO_RESIZE_NATIVE_MODULE_UNAVAILABLE_MESSAGE: 'Photo resizing is unavailable.',
   stageLocalPhotoFile: jest.fn((asset, options) => {
     const { buildLocalPhotoFile } = jest.requireMock('../lib/photoFiles');
     return Promise.resolve(buildLocalPhotoFile(asset, options));
@@ -151,7 +155,17 @@ function buildQueryResult<T>(input: {
 }
 
 describe('EditFoodProductScreen', () => {
+  const originalPlatformOS = Platform.OS;
+
+  function setPlatformOS(os: typeof Platform.OS) {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => os,
+    });
+  }
+
   beforeEach(() => {
+    setPlatformOS(originalPlatformOS);
     mockedUseQuery.mockImplementation(({ queryKey }) => {
       if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
         return buildQueryResult({
@@ -234,6 +248,7 @@ describe('EditFoodProductScreen', () => {
     } as ReturnType<typeof useConnectivity>);
     (ImagePicker.launchCameraAsync as jest.Mock).mockReset();
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockReset();
+    (ImagePicker.getPendingResultAsync as jest.Mock).mockReset();
     (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue(null);
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
       canceled: false,
@@ -245,6 +260,10 @@ describe('EditFoodProductScreen', () => {
         },
       ],
     });
+  });
+
+  afterAll(() => {
+    setPlatformOS(originalPlatformOS);
   });
 
   it('preloads the shared food product form and current primary photo', async () => {
@@ -341,6 +360,275 @@ describe('EditFoodProductScreen', () => {
     ]);
     expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBeNull();
     expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-12');
+  });
+
+  it('keeps the existing primary photo when saving without photo changes', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        id: 'food-product-1',
+      },
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(expect.objectContaining({
+      offline: {
+        strategy: 'outbox',
+        payload: expect.objectContaining({
+          foodProductId: 'food-product-1',
+          updates: expect.not.objectContaining({
+            deletePhotoIds: expect.anything(),
+            newPhoto: expect.anything(),
+          }),
+        }),
+      },
+    }));
+  });
+
+  it('saves a replacement photo by deleting the current primary photo and uploading the draft', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        id: 'food-product-1',
+      },
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+    await act(async () => {
+      await renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(expect.objectContaining({
+      offline: {
+        strategy: 'outbox',
+        payload: expect.objectContaining({
+          foodProductId: 'food-product-1',
+          updates: expect.objectContaining({
+            deletePhotoIds: ['photo-1'],
+            newPhoto: {
+              uri: 'file:///replacement.jpg',
+              name: 'replacement.jpg',
+              mimeType: 'image/jpeg',
+            },
+          }),
+        }),
+      },
+    }));
+  });
+
+  it('saves primary-photo removal without uploading a replacement', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        id: 'food-product-1',
+      },
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByType('PhotoInputField').props.attachments[0].onRemove();
+    });
+    await act(async () => {
+      await renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([]);
+    expect(writeFeature).toHaveBeenCalledWith(expect.objectContaining({
+      offline: {
+        strategy: 'outbox',
+        payload: expect.objectContaining({
+          foodProductId: 'food-product-1',
+          updates: expect.objectContaining({
+            deletePhotoIds: ['photo-1'],
+          }),
+        }),
+      },
+    }));
+    expect(writeFeature.mock.calls[0][0].offline.payload.updates.newPhoto).toBeUndefined();
+  });
+
+  it('restores an Android pending picker result for the current food product edit', async () => {
+    setPlatformOS('android');
+    (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///pending-food-product.jpg',
+          fileName: 'pending-food-product.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(ImagePicker.getPendingResultAsync).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'file:///replacement.jpg',
+        uri: 'file:///replacement.jpg',
+      }),
+    ]);
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-15');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICKED', {
+      photoSource: 'gallery',
+      restoredPendingResult: true,
+      source: 'EditFoodProductScreen',
+    });
+  });
+
+  it('preserves current-photo load failure messaging while allowing a replacement upload', async () => {
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
+        return buildQueryResult({
+          data: {
+            id: 'food-product-1',
+            restaurantName: 'Food Product',
+            itemCategory: 'Packaged food',
+            itemName: 'Iced Coffee',
+            locationText: 'Mission District',
+            rating: 4,
+            notes: 'Smooth and sweet',
+            visibility: 'friends',
+            itemDate: '2026-04-12T18:30:00.000Z',
+            createdAt: '2026-04-12T18:30:00.000Z',
+            updatedAt: '2026-04-12T18:30:00.000Z',
+          },
+        });
+      }
+
+      if (Array.isArray(queryKey) && queryKey[1] === 'visitPhotos') {
+        return buildQueryResult({
+          data: undefined,
+          isError: true,
+        });
+      }
+
+      return buildQueryResult({ data: null });
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType('Text')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          props: expect.objectContaining({
+            children: 'Could not load the current food product photo. You can still upload a new one.',
+          }),
+        }),
+      ]),
+    );
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'file:///replacement.jpg',
+        uri: 'file:///replacement.jpg',
+      }),
+    ]);
   });
 
   it('hides replacement photo actions and blocks picker launch at the free monthly photo limit', async () => {
