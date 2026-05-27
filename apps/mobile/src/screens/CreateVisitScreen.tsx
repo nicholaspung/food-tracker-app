@@ -784,6 +784,14 @@ export function CreateVisitScreen({
     () => editVisitQuery.data?.items.map((item) => item.id).filter(Boolean) ?? [],
     [editVisitQuery.data?.items],
   );
+  const hasDeletedPersistedVisitItem = useMemo(() => {
+    if (!editVisitQuery.data) {
+      return false;
+    }
+
+    const draftItemIds = new Set(draftItems.map((item) => item.id));
+    return editVisitQuery.data.items.some((item) => !draftItemIds.has(item.id));
+  }, [draftItems, editVisitQuery.data]);
   const editVisitPhotosQuery = useQuery({
     queryKey: visitPhotosQueryKeys.visit(editVisitId ?? ''),
     queryFn: ({ signal }) => listVisitItemPhotos(editVisitItemIds, { signal }),
@@ -1381,6 +1389,7 @@ export function CreateVisitScreen({
   const { isSubmitting, submitVisit } = useCreateVisitSubmission({
     draftItems,
     editVisitId,
+    hasDeletedPersistedVisitItem,
     isDisplayFreeUser,
     isEditMode,
     isOnline,

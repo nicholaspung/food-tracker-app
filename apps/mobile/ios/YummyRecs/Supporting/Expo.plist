@@ -3,13 +3,13 @@
 <plist version="1.0">
   <dict>
     <key>EXUpdatesCheckOnLaunch</key>
-    <string>ALWAYS</string>
+    <string>ERROR_RECOVERY_ONLY</string>
     <key>EXUpdatesEnabled</key>
     <true/>
     <key>EXUpdatesLaunchWaitMs</key>
     <integer>0</integer>
     <key>EXUpdatesRuntimeVersion</key>
-    <string>1.0.1</string>
+    <string>1.0.1-preview-embedded-1</string>
     <key>EXUpdatesURL</key>
     <string>https://u.expo.dev/437930fd-d813-492b-bd18-c545de345b95</string>
   </dict>

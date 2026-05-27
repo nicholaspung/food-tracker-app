@@ -410,6 +410,7 @@ describe('CreateVisitScreen', () => {
       }),
       createVisit: jest.fn(),
       deleteVisit: jest.fn(),
+      deleteVisitItem: jest.fn(),
       moveVisitItem: jest.fn(),
       updateVisit: jest.fn(),
     } as unknown as ReturnType<typeof useVisitWrites>);

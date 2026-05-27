@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
@@ -8,10 +8,7 @@ import {
   type VisitRecord,
 } from '../../features';
 import { useFoodProductWrites } from '../../features/store/useFoodProductWrites';
-import {
-  deleteVisitWithOfflineSupport,
-  moveVisitItemWithOfflineSupport,
-} from '../../features/store/useVisitWrites';
+import { createVisitActionWrites } from '../../features/store/visitActionWrites';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { buildPhotoViewerState } from '../../lib/photoUrls';
 import { trackObservabilityEvent } from '../../observability';
@@ -98,6 +95,14 @@ export function useHomeFeedActionController({
   );
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const foodProductWrites = useFoodProductWrites();
+  const visitActionWrites = useMemo(
+    () =>
+      createVisitActionWrites({
+        queryClient,
+        writeFeature,
+      }),
+    [queryClient, writeFeature],
+  );
 
   const invalidateHomeFeed = useCallback(async () => {
     await invalidateHomeFeedQueries(queryClient);
@@ -127,11 +132,9 @@ export function useHomeFeedActionController({
 
   const handleDeleteVisit = useCallback(
     async (visitId: string) => {
-      const deleteResult = await deleteVisitWithOfflineSupport({
+      const deleteResult = await visitActionWrites.deleteVisit({
         includeVisitPhotos: true,
-        queryClient,
         visitId,
-        writeFeature,
       });
 
       if (deleteResult.status === 'queued') {
@@ -149,7 +152,7 @@ export function useHomeFeedActionController({
         queued: false,
       });
     },
-    [queryClient, writeFeature],
+    [visitActionWrites],
   );
 
   const promptDeleteFoodProduct = useCallback(
@@ -274,12 +277,10 @@ export function useHomeFeedActionController({
       setIsMovingVisitItem(true);
 
       try {
-        const moveResult = await moveVisitItemWithOfflineSupport({
+        const moveResult = await visitActionWrites.moveVisitItem({
           destinationVisit,
           item: pendingMoveItem.item,
-          queryClient,
           sourceVisitId: pendingMoveItem.sourceVisitId,
-          writeFeature,
         });
 
         setPendingMoveItem(null);
@@ -307,8 +308,7 @@ export function useHomeFeedActionController({
       isOnline,
       isMovingVisitItem,
       pendingMoveItem,
-      queryClient,
-      writeFeature,
+      visitActionWrites,
     ],
   );
 

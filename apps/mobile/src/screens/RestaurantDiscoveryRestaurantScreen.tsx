@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -14,10 +13,8 @@ import {
   type SegmentedControlOption,
   VisitRestaurantOptionTrailing,
 } from '../components/shared';
-import { type AllLocationsHistoryRecord, type MenuItemRecord } from '../features';
-import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
-import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
-import { getAllLocationsHistory, listMenuItemsForRestaurant } from '../features/store/restaurantsStore';
+import { type AllLocationsHistoryRecord } from '../features';
+import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { buildVisitRestaurantDescription } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -99,7 +96,6 @@ export function RestaurantDiscoveryRestaurantScreen({
 }: RestaurantDiscoveryRestaurantScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
   const restaurant = useMemo(() => buildRestaurantFromRoute(route.params), [route.params]);
   const [detailScope, setDetailScope] = useState<RestaurantDetailScope>('location');
@@ -119,60 +115,12 @@ export function RestaurantDiscoveryRestaurantScreen({
     return parts.filter(Boolean).join(' • ');
   }, [restaurant]);
 
-  const menuItemsQuery = useQuery({
-    queryKey: menuItemsQueryKeys.restaurant(restaurant.id),
-    queryFn: ({ signal }) => {
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<MenuItemRecord[]>(menuItemsQueryKeys.restaurant(restaurant.id)) ?? [],
-        );
-      }
-
-      return listMenuItemsForRestaurant(restaurant.id, { signal });
-    },
-    enabled: Boolean(restaurant.id),
+  const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
+    isOnline,
+    restaurant,
   });
 
-  const allLocationsHistoryQuery = useQuery({
-    queryKey: restaurantsQueryKeys.allLocationsHistory(restaurant.id),
-    queryFn: ({ signal }): Promise<AllLocationsHistoryRecord> => {
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<AllLocationsHistoryRecord>(
-            restaurantsQueryKeys.allLocationsHistory(restaurant.id),
-          ) ?? {
-            anchorRestaurant: {
-              id: restaurant.id,
-              name: restaurant.name,
-              city: restaurant.city,
-              cuisineType: restaurant.cuisineType,
-              location: restaurant.location,
-            },
-            normalizedName: '',
-            locationCount: 1,
-            visitCount: 0,
-            itemCount: 0,
-            restaurants: [],
-            items: [],
-          },
-        );
-      }
-
-      return getAllLocationsHistory(restaurant.id, { signal });
-    },
-    enabled: Boolean(restaurant.id),
-  });
-
-  const allLocationsHistory = allLocationsHistoryQuery.data;
-  const hasOrderedHistoryAtAnotherLocation = Boolean(
-    allLocationsHistory?.restaurants.some(
-      (historyRestaurant) => historyRestaurant.restaurantId !== restaurant.id,
-    ),
-  );
-  const canShowAllLocations =
-    Boolean(allLocationsHistory) &&
-    (allLocationsHistory?.visitCount ?? 0) > 0 &&
-    ((allLocationsHistory?.locationCount ?? 0) > 1 || hasOrderedHistoryAtAnotherLocation);
+  const allLocationsHistory = restaurantDetail.allLocationsHistory;
 
   return (
     <FeatureDetailScreenScaffold
@@ -216,7 +164,7 @@ export function RestaurantDiscoveryRestaurantScreen({
         />
       </Card>
 
-      {canShowAllLocations ? (
+      {restaurantDetail.canShowAllLocations ? (
         <SegmentedControl
           onChange={setDetailScope}
           options={RESTAURANT_DETAIL_SCOPE_OPTIONS}
@@ -224,7 +172,7 @@ export function RestaurantDiscoveryRestaurantScreen({
         />
       ) : null}
 
-      {detailScope === 'allLocations' && canShowAllLocations ? (
+      {detailScope === 'allLocations' && restaurantDetail.canShowAllLocations ? (
         <Card style={styles.card}>
           <Text variant="label">Ordered Across Locations</Text>
           {allLocationsHistory ? (
@@ -234,14 +182,14 @@ export function RestaurantDiscoveryRestaurantScreen({
               <Text tone="secondary">{formatCount(allLocationsHistory.itemCount, 'item')}</Text>
             </View>
           ) : null}
-          {allLocationsHistoryQuery.isLoading ? (
+          {restaurantDetail.allLocationsHistoryLoading ? (
             <LoadingState label="Loading orders..." />
-          ) : allLocationsHistoryQuery.isError ? (
+          ) : restaurantDetail.allLocationsHistoryErrorMessage ? (
             <PageErrorToast
               actionLabel="Retry"
               errorMessage="Could not load orders across locations."
               onAction={() => {
-                void allLocationsHistoryQuery.refetch();
+                void restaurantDetail.refetchAllLocationsHistory();
               }}
               title="Orders unavailable"
             />
@@ -283,19 +231,19 @@ export function RestaurantDiscoveryRestaurantScreen({
       ) : (
         <Card style={styles.card}>
           <Text variant="label">Saved Menu Items</Text>
-          {menuItemsQuery.isLoading ? (
+          {restaurantDetail.menuCatalogLoading ? (
             <LoadingState label="Loading menu items..." />
-          ) : menuItemsQuery.isError ? (
+          ) : restaurantDetail.menuCatalogErrorMessage ? (
             <PageErrorToast
               actionLabel="Retry"
               errorMessage="Could not load menu items."
               onAction={() => {
-                void menuItemsQuery.refetch();
+                void restaurantDetail.refetchMenuCatalog();
               }}
               title="Menu items unavailable"
             />
-          ) : menuItemsQuery.data && menuItemsQuery.data.length > 0 ? (
-            menuItemsQuery.data.map((item) => (
+          ) : restaurantDetail.menuItems.length > 0 ? (
+            restaurantDetail.menuItems.map((item) => (
               <ListItem
                 key={item.id}
                 title={item.name}

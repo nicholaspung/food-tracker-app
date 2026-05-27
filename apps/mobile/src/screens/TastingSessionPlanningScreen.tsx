@@ -21,6 +21,7 @@ import {
   type RestaurantRecord,
   useMonthlyUsage,
   useTastingPlanMenuCatalog,
+  useTastingPlanPlanningState,
   useTastingPlanWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -31,14 +32,12 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import {
-  getApprovedItemCount,
   TASTING_SESSION_LIFECYCLE_STEP_INDEX,
   TASTING_SESSION_LIFECYCLE_STEPS,
 } from './tastingSessions/shared';
 import { useTastingSessionDetail } from './tastingSessions/useTastingSessionDetail';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
-type PlanningPhase = 'restaurants' | 'items';
 
 const useStyles = createThemedStyles((theme) => ({
   headerDescription: {
@@ -120,8 +119,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const session = sessionQuery.data;
   const currentSessionId = session?.id;
   const currentSessionStatus = session?.status;
-  const [phase, setPhase] = useState<PlanningPhase>('restaurants');
-  const [activeRestaurantSuggestionId, setActiveRestaurantSuggestionId] = useState<string | null>(null);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [isMissingItemsDialogVisible, setIsMissingItemsDialogVisible] = useState(false);
@@ -143,36 +140,29 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
-
-  const selectedRestaurants = useMemo(
-    () => session?.restaurants.filter((restaurant) => restaurant.status === 'approved') ?? [],
-    [session?.restaurants],
-  );
-  const selectedRestaurantIds = useMemo(
-    () => new Set(selectedRestaurants.map((restaurant) => restaurant.restaurantId)),
-    [selectedRestaurants],
-  );
-  const activeRestaurant = useMemo(
-    () =>
-      selectedRestaurants.find((restaurant) => restaurant.id === activeRestaurantSuggestionId) ??
-      selectedRestaurants[0] ??
-      null,
-    [activeRestaurantSuggestionId, selectedRestaurants],
-  );
-  const selectedItemIds = useMemo(
-    () => new Set((activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').map((item) => item.menuItemId)),
-    [activeRestaurant?.items],
-  );
-  const restaurantsWithoutItems = useMemo(
-    () =>
-      selectedRestaurants.filter(
-        (restaurant) => (restaurant.items ?? []).filter((item) => item.status === 'approved').length === 0,
-      ),
-    [selectedRestaurants],
-  );
-  const selectedItemCount = session ? getApprovedItemCount(session) : 0;
-  const canStart = isLeader && selectedRestaurants.length > 0 && selectedItemCount > 0;
-  const activeSelectedItemCount = (activeRestaurant?.items ?? []).filter((item) => item.status === 'approved').length;
+  const tastingPlanPlanning = useTastingPlanPlanningState({
+    isLeader,
+    isOnline,
+    session,
+  });
+  const {
+    activeRestaurant,
+    activeRestaurantFact,
+    activeRestaurantSuggestionId,
+    activeSelectedItemCount,
+    missingItemConfirmation,
+    onlineActions,
+    phase,
+    scanHandoff,
+    selectedItemCount,
+    selectedItemIds,
+    selectedRestaurantFacts,
+    selectedRestaurantIds,
+    selectedRestaurants,
+    setActiveRestaurantSuggestionId,
+    setPhase,
+    startReadiness,
+  } = tastingPlanPlanning;
   const pendingRemoveRestaurant = useMemo(
     () => selectedRestaurants.find((restaurant) => restaurant.id === pendingRemoveRestaurantId) ?? null,
     [pendingRemoveRestaurantId, selectedRestaurants],
@@ -192,22 +182,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       navigation.replace('TastingSessionResults', { sessionId: currentSessionId });
     }
   }, [currentSessionId, currentSessionStatus, navigation]);
-
-  useEffect(() => {
-    if (selectedRestaurants.length === 0 && phase === 'items') {
-      setPhase('restaurants');
-    }
-  }, [phase, selectedRestaurants.length]);
-
-  useEffect(() => {
-    if (!activeRestaurant && selectedRestaurants[0]) {
-      setActiveRestaurantSuggestionId(selectedRestaurants[0].id);
-      return;
-    }
-    if (activeRestaurant && activeRestaurant.id !== activeRestaurantSuggestionId) {
-      setActiveRestaurantSuggestionId(activeRestaurant.id);
-    }
-  }, [activeRestaurant, activeRestaurantSuggestionId, selectedRestaurants]);
 
   const restaurantSelection = useTastingPlanRestaurantSelectionFlow({
     autoCaptureReferenceLocation: true,
@@ -295,24 +269,13 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   };
 
   const handleStartTastingPress = () => {
-    if (restaurantsWithoutItems.length > 0) {
+    if (missingItemConfirmation.required) {
       setIsMissingItemsDialogVisible(true);
       return;
     }
 
     void handleStartTasting();
   };
-
-  const missingItemsDescription = useMemo(() => {
-    if (restaurantsWithoutItems.length === 0) {
-      return '';
-    }
-
-    const restaurantNames = restaurantsWithoutItems.map((restaurant) => restaurant.restaurantName).join(', ');
-    const predicate = restaurantsWithoutItems.length === 1 ? 'does' : 'do';
-
-    return `Are you sure you want to continue? ${restaurantNames} ${predicate} not have a menu item to rate.`;
-  }, [restaurantsWithoutItems]);
 
   const handleAddRestaurant = async (restaurant: RestaurantRecord) => {
     if (selectedRestaurantIds.has(restaurant.id) || addingRestaurantId) {
@@ -389,15 +352,15 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   };
 
   const handleScanMenuPhoto = () => {
-    if (!activeRestaurant || !isOnline) {
+    if (scanHandoff.disabled || !scanHandoff.restaurantId || !scanHandoff.restaurantName) {
       return;
     }
 
     navigation.navigate('ProcessPhotos', {
       autoStartSourcePicker: false,
       mode: 'menu_scan',
-      restaurantId: activeRestaurant.restaurantId,
-      restaurantName: activeRestaurant.restaurantName,
+      restaurantId: scanHandoff.restaurantId,
+      restaurantName: scanHandoff.restaurantName,
       returnTo: 'TastingSessionPlanning',
       tastingSessionId: sessionId,
     });
@@ -482,15 +445,13 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         </Pressable>
         {isPlanSummaryExpanded ? (
           selectedRestaurants.length > 0 ? (
-            selectedRestaurants.map((restaurant) => {
-              const restaurantSelectedItems = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
-
+            selectedRestaurantFacts.map((restaurant) => {
               return (
                 <View key={restaurant.id} style={styles.compactRestaurantRow}>
                   <View style={styles.compactRestaurantContent}>
                     <Text variant="label">{restaurant.restaurantName}</Text>
                     <Text tone="secondary">
-                      {restaurantSelectedItems} selected {restaurantSelectedItems === 1 ? 'item' : 'items'}
+                      {restaurant.selectedItemCount} selected {restaurant.selectedItemCount === 1 ? 'item' : 'items'}
                     </Text>
                   </View>
                   {isLeader && session.status === 'planning' ? (
@@ -526,7 +487,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             <Text variant="label">Select Menu Items</Text>
             <Text tone="secondary">
               {activeRestaurant
-                ? `${activeRestaurant.restaurantName} (${activeSelectedItemCount} selected)`
+                ? `${activeRestaurant.restaurantName} (${activeRestaurantFact?.selectedItemCount ?? activeSelectedItemCount} selected)`
                 : 'No restaurant selected'}
             </Text>
           </View>
@@ -540,13 +501,12 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
           <>
             <Text tone="secondary">Choose one restaurant, then select items for the tasting plan.</Text>
             <View style={styles.switcherRow}>
-              {selectedRestaurants.map((restaurant) => {
-                const itemCount = (restaurant.items ?? []).filter((item) => item.status === 'approved').length;
+              {selectedRestaurantFacts.map((restaurant) => {
                 const active = activeRestaurant?.id === restaurant.id;
                 return (
                   <Button
                     key={restaurant.id}
-                    label={`${restaurant.restaurantName} (${itemCount})`}
+                    label={`${restaurant.restaurantName} (${restaurant.selectedItemCount})`}
                     onPress={() => {
                       setActiveRestaurantSuggestionId(restaurant.id);
                     }}
@@ -585,7 +545,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 },
               }
             : {
-                disabled: !canStart || !isOnline,
+                disabled: !startReadiness.canStart,
                 label: 'Start Tasting',
                 onPress: handleStartTastingPress,
               }
@@ -604,8 +564,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       subtitle={headerDescription}
       title={session.name}
     >
-      {isLeader ? summaryCard : null}
-      {!isOnline ? <Text tone="warning">Planning actions require a connection.</Text> : null}
+      {summaryCard}
+      {onlineActions.message ? <Text tone="warning">{onlineActions.message}</Text> : null}
       <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
 
       {isLeader && phase === 'restaurants' ? (
@@ -740,7 +700,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 onToggleItem={(item) => {
                   void handleToggleMenuItem(item);
                 }}
-                scanDisabled={!isOnline}
+                scanDisabled={scanHandoff.disabled}
                 searchQuery={menuItemSearchQuery}
                 selectedCount={activeSelectedItemCount}
                 testIDPrefix="tasting-planning"
@@ -775,7 +735,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         visible={Boolean(pendingRemoveRestaurant)}
       />
       <Modal
-        description={missingItemsDescription}
+        description={missingItemConfirmation.description}
         onRequestClose={() => {
           setIsMissingItemsDialogVisible(false);
         }}

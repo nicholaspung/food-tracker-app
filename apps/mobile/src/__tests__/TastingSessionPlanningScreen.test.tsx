@@ -24,6 +24,10 @@ const mockRemoveMenuItem = jest.fn();
 const mockRemoveRestaurant = jest.fn();
 const mockStartTasting = jest.fn();
 
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
+}));
+
 jest.mock('react-native', () => ({
   Linking: {
     openSettings: jest.fn(),
@@ -35,6 +39,8 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('../components/shared', () => ({
+  ConfirmDestructiveModal: (props: Record<string, unknown>) =>
+    mockReact.createElement('ConfirmDestructiveModal', props),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   FeatureDetailScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
@@ -43,6 +49,7 @@ jest.mock('../components/shared', () => ({
   RestaurantMenuItemPicker: (props: Record<string, unknown>) =>
     mockReact.createElement('RestaurantMenuItemPicker', props),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
+  StepProgressBar: (props: Record<string, unknown>) => mockReact.createElement('StepProgressBar', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
   VisitRestaurantSearchHeaderToggle: (props: Record<string, unknown>) =>
@@ -53,35 +60,40 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('VisitRestaurantSearchSection', props),
 }));
 
-jest.mock('../features', () => ({
-  menuItemsQueryKeys: {
-    restaurant: jest.fn((restaurantId: string) => ['feature', 'menuItems', restaurantId]),
-  },
-  tastingSessionsQueryKeys: {
-    detail: jest.fn((sessionId: string) => ['feature', 'tastingSessions', sessionId]),
-  },
-  useMonthlyUsage: jest.fn(() => ({
-    snapshot: {
-      remaining: {
-        placesQueriesMonthly: 10,
-      },
+jest.mock('../features', () => {
+  const planningState = jest.requireActual('../features/store/useTastingPlanPlanningState');
+
+  return {
+    menuItemsQueryKeys: {
+      restaurant: jest.fn((restaurantId: string) => ['feature', 'menuItems', restaurantId]),
     },
-  })),
-  useMenuScanFlow: jest.fn(() => ({
-    createdItemNames: [],
-    errorMessage: null,
-    existingItemNames: [],
-    lastRequestedSource: 'gallery',
-    permissionNeedsSettings: false,
-    reset: jest.fn(),
-    scanMenu: jest.fn(),
-    selectedImageName: '',
-    status: 'idle',
-    verification: null,
-  })),
-  useTastingPlanMenuCatalog: jest.fn(),
-  useTastingPlanWrites: jest.fn(),
-}));
+    tastingSessionsQueryKeys: {
+      detail: jest.fn((sessionId: string) => ['feature', 'tastingSessions', sessionId]),
+    },
+    useMonthlyUsage: jest.fn(() => ({
+      snapshot: {
+        remaining: {
+          placesQueriesMonthly: 10,
+        },
+      },
+    })),
+    useMenuScanFlow: jest.fn(() => ({
+      createdItemNames: [],
+      errorMessage: null,
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: '',
+      status: 'idle',
+      verification: null,
+    })),
+    useTastingPlanMenuCatalog: jest.fn(),
+    useTastingPlanPlanningState: planningState.useTastingPlanPlanningState,
+    useTastingPlanWrites: jest.fn(),
+  };
+});
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
   useTastingPlanRestaurantSelectionFlow: jest.fn(),
@@ -109,6 +121,9 @@ jest.mock('../theme', () => ({
       factory(
         {
           colors: {
+            background: {
+              app: '#appBackground',
+            },
             border: {
               subtle: '#borderSubtle',
             },
@@ -120,6 +135,10 @@ jest.mock('../theme', () => ({
               successBorder: '#successBorder',
               warningBg: '#warningBg',
               warningBorder: '#warningBorder',
+            },
+            text: {
+              danger: '#dangerText',
+              primary: '#primaryText',
             },
           },
           radii: {
@@ -136,6 +155,14 @@ jest.mock('../theme', () => ({
         },
         ...args,
       ),
+  useTheme: () => ({
+    colors: {
+      text: {
+        danger: '#dangerText',
+        primary: '#primaryText',
+      },
+    },
+  }),
 }));
 
 jest.mock('../ui', () => ({

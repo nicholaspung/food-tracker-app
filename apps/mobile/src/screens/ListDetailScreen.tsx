@@ -27,7 +27,6 @@ import {
   useRestaurantListWrites,
 } from '../features';
 import { env } from '../config/env';
-import { useQueryListState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -38,22 +37,23 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
-  buildBookmarkLookupIds,
-  formatFullDateLabel,
-  formatMonthYearLabel,
-} from './listDetail/listDetailFormatters';
-import { buildOwnerDisplayItems } from './listDetail/listDetailDisplayItems';
+  disableShareLinkAction,
+  removeSourceRatingAction,
+  removeUserRatingAction,
+  reorderRestaurantAction,
+  saveBookmarkToDefaultListAction,
+  saveBookmarkToListsAction,
+  shareListLinkAction,
+  trackNoSelectedSaveTarget,
+  type ListDetailActionDependencies,
+} from './listDetail/listDetailActions';
+import { formatMonthYearLabel } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailOwnerItemCard } from './listDetail/ListDetailOwnerItemCard';
-import {
-  buildBookmarkedItemPhotoEntries as buildBookmarkedPhotoEntries,
-  buildOwnerItemPhotoEntries as buildOwnerPhotoEntries,
-  groupListDetailPhotosByFoodItemId,
-} from './listDetail/listDetailPhotoEntries';
+import { buildListDetailReadModel } from './listDetail/listDetailReadModel';
 import type {
   GroupedBookmarkedItem,
   GroupedRestaurant,
-  OwnerDisplayItem,
   OwnerItemPhotoEntry,
   PendingDeleteListItem,
   SaveBookmarkTarget,
@@ -325,27 +325,6 @@ interface RestaurantMetaRowProps {
   styles: ListDetailStyles;
 }
 
-function hasUsableCoordinates(group: GroupedRestaurant): group is GroupedRestaurant & {
-  latitude: number;
-  longitude: number;
-} {
-  return (
-    typeof group.latitude === 'number' &&
-    typeof group.longitude === 'number' &&
-    Number.isFinite(group.latitude) &&
-    Number.isFinite(group.longitude) &&
-    group.latitude >= -90 &&
-    group.latitude <= 90 &&
-    group.longitude >= -180 &&
-    group.longitude <= 180 &&
-    !(group.latitude === 0 && group.longitude === 0)
-  );
-}
-
-function pluralize(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 function RestaurantMetaRow({
   primaryMetaLabel,
   secondaryMetaLabel,
@@ -413,142 +392,42 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     queryFn: ({ signal }) => getRestaurantListDetail(listId, { signal }),
   });
 
-  const listItemsState = useQueryListState({
-    data: detailQuery.data?.items,
-    enabled: true,
-    isError: detailQuery.isError,
-    isFetching: detailQuery.isFetching,
-    isLoading: detailQuery.isLoading,
-    isSuccess: detailQuery.isSuccess,
-  });
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(detailQuery.isRefetching);
 
-  const list = detailQuery.data?.list ?? null;
-  const isOwner = Boolean(list && user?.id && list.userId === user.id);
-
-  const listItems = listItemsState.items;
-  const hasBlockingListItemsError = listItemsState.hasBlockingError;
-  const hasListItemsRefreshError = listItemsState.hasRefreshError;
-  const savedListIdsByBookmarkLookupId = useMemo(() => {
-    const mapping = new Map<string, Set<string>>();
-    for (const [bookmarkLookupId, rawListIds] of Object.entries(
-      detailQuery.data?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
-    )) {
-      const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
-      for (const candidateListId of rawListIds) {
-        if (!candidateListId?.trim()) {
-          continue;
-        }
-        listIds.add(candidateListId);
-      }
-      mapping.set(bookmarkLookupId, listIds);
-    }
-    return mapping;
-  }, [detailQuery.data]);
-
-  const savedBookmarkLookupIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const bookmarkLookupId of savedListIdsByBookmarkLookupId.keys()) {
-      ids.add(bookmarkLookupId);
-    }
-    return ids;
-  }, [savedListIdsByBookmarkLookupId]);
-
-  const myLists = useMemo(() => detailQuery.data?.viewerLists ?? [], [detailQuery.data?.viewerLists]);
-  const defaultList = useMemo(() => myLists.find((candidate) => candidate.isDefault), [myLists]);
-  const nonDefaultLists = useMemo(() => myLists.filter((candidate) => !candidate.isDefault), [myLists]);
-  const isLoadingMyLists = Boolean(saveBookmarkTarget && !isOwner && detailQuery.isLoading && myLists.length === 0);
-  const alreadySavedListIdsForTarget = useMemo(() => {
-    if (!saveBookmarkTarget) {
-      return new Set<string>();
-    }
-
-    const listIds = new Set<string>();
-    for (const bookmarkLookupId of saveBookmarkTarget.bookmarkLookupIds) {
-      const existingListIds = savedListIdsByBookmarkLookupId.get(bookmarkLookupId);
-      if (!existingListIds) {
-        continue;
-      }
-
-      for (const listId of existingListIds) {
-        listIds.add(listId);
-      }
-    }
-
-    return listIds;
-  }, [saveBookmarkTarget, savedListIdsByBookmarkLookupId]);
-
-  const groupedRestaurants = useMemo<GroupedRestaurant[]>(() => {
-    const groups = new Map<string, GroupedRestaurant>();
-
-    for (const listItem of listItems ?? []) {
-      const normalizedBookmarkedItems = Array.isArray(listItem.bookmarkedItems)
-        ? listItem.bookmarkedItems
-        : [];
-      const existingGroup = groups.get(listItem.restaurantId);
-      const group =
-        existingGroup ??
-        {
-          restaurantId: listItem.restaurantId,
-          restaurantName: listItem.restaurantName,
-          restaurantLocation: listItem.restaurantLocation,
-          restaurantCity: listItem.restaurantCity,
-          restaurantCuisineType: listItem.restaurantCuisineType,
-          restaurantVisibility: listItem.restaurantVisibility,
-          latitude: listItem.latitude,
-          longitude: listItem.longitude,
-          notes: [],
-          firstPosition: listItem.position,
-          items: [],
-        };
-
-      group.firstPosition = Math.min(group.firstPosition, listItem.position);
-      group.restaurantName = listItem.restaurantName;
-      group.restaurantLocation = listItem.restaurantLocation;
-      group.restaurantCity = listItem.restaurantCity;
-      group.restaurantCuisineType = listItem.restaurantCuisineType;
-      group.restaurantVisibility = listItem.restaurantVisibility;
-      group.latitude = listItem.latitude;
-      group.longitude = listItem.longitude;
-
-      if (listItem.note && !group.notes.includes(listItem.note)) {
-        group.notes.push(listItem.note);
-      }
-
-      for (const item of normalizedBookmarkedItems) {
-        group.items.push({
-          key: `${listItem.id}:${item.id}`,
-          bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
-          foodItemId: item.id,
-          listItemId: listItem.id,
-          name: item.name,
-          rating: item.rating,
-          visitedAt: item.visitedAt,
-          sourceUserId: item.sourceUserId ?? listItem.sourceUserId,
-          sourceUserName: item.sourceUserName ?? listItem.sourceUserName,
-          sourceNote: listItem.note,
-          userFoodItemId: item.userFoodItemId,
-          userFoodItemRating: item.userFoodItemRating,
-          userFoodItemVisitedAt: item.userFoodItemVisitedAt,
-        });
-      }
-
-      groups.set(listItem.restaurantId, group);
-    }
-
-    return Array.from(groups.values()).sort((left, right) => left.firstPosition - right.firstPosition);
-  }, [listItems]);
-
-  const photosByFoodItemId = useMemo(
-    () => groupListDetailPhotosByFoodItemId(detailQuery.data?.photoPreviews ?? []),
-    [detailQuery.data],
+  const readModel = useMemo(
+    () =>
+      buildListDetailReadModel({
+        detail: detailQuery.data,
+        isError: detailQuery.isError,
+        isLoading: detailQuery.isLoading,
+        saveBookmarkTarget,
+        userId: user?.id,
+      }),
+    [
+      detailQuery.data,
+      detailQuery.isError,
+      detailQuery.isLoading,
+      saveBookmarkTarget,
+      user?.id,
+    ],
   );
 
-  const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] =>
-    buildOwnerPhotoEntries(item, photosByFoodItemId);
-
-  const buildBookmarkedItemPhotoEntries = (item: GroupedBookmarkedItem): OwnerItemPhotoEntry[] =>
-    buildBookmarkedPhotoEntries(item, photosByFoodItemId);
+  const {
+    alreadySavedListIdsForTarget,
+    analyticsContext: listAnalyticsContext,
+    defaultList,
+    groupedRestaurants,
+    hasBlockingListItemsError,
+    hasListItemsRefreshError,
+    hasListsRefreshError,
+    isLoadingMyLists,
+    isOwner,
+    list,
+    nonDefaultLists,
+    omittedMapRestaurantCount,
+    restaurantRows,
+    subtitle,
+  } = readModel;
 
   const openPhotoViewer = useCallback((entries: OwnerItemPhotoEntry[], initialIndex = 0) => {
     if (entries.length === 0) {
@@ -574,109 +453,54 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   }, []);
 
   const listDetailMapGroups = useMemo<RestaurantMapGroup[]>(() => {
-    return groupedRestaurants.filter(hasUsableCoordinates).map((group, groupIndex) => {
-      const items = isOwner
-        ? buildOwnerDisplayItems(group.items).map((item) => {
-            const photoEntries = buildOwnerPhotoEntries(item, photosByFoodItemId);
-            const sourceDateLabel = formatMonthYearLabel(item.source?.visitedAt);
-            const userDateLabel =
-              formatFullDateLabel(item.user?.visitedAt) ?? formatMonthYearLabel(item.user?.visitedAt);
-            const primaryPhoto = photoEntries[0] ?? null;
-
-            return {
-              id: item.key,
-              meta: [
-                {
-                  dateLabel: sourceDateLabel,
-                  label: item.source?.sourceUserName,
-                  rating: item.source?.rating,
-                },
-                {
-                  dateLabel: userDateLabel,
-                  label: item.user ? 'You' : undefined,
-                  rating: item.user?.rating,
-                },
-              ],
-              name: item.name,
-              onOpenPhotos:
-                photoEntries.length > 0
-                  ? () => {
-                      openPhotoViewer(photoEntries);
-                    }
-                  : undefined,
-              photoCount: photoEntries.length,
-              photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
-            };
-          })
-        : group.items.map((item) => {
-            const photoEntries = buildBookmarkedPhotoEntries(item, photosByFoodItemId);
-            const primaryPhoto = photoEntries[0] ?? null;
-            const sourceUserDisplayName = item.sourceUserName?.trim() || (item.sourceUserId ? 'Friend' : undefined);
-
-            return {
-              id: item.key,
-              meta: [
-                {
-                  dateLabel: formatMonthYearLabel(item.visitedAt),
-                  label: sourceUserDisplayName,
-                  rating: item.rating,
-                },
-              ],
-              name: item.name,
-              notes: item.sourceNote,
-              onOpenPhotos:
-                photoEntries.length > 0
-                  ? () => {
-                      openPhotoViewer(photoEntries);
-                    }
-                  : undefined,
-              photoCount: photoEntries.length,
-              photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
-            };
-          });
-
-      return {
-        id: group.restaurantId,
-        items,
-        latitude: group.latitude,
-        longitude: group.longitude,
-        notes: group.notes,
-        restaurantLocation: group.restaurantLocation ?? group.restaurantCity,
-        restaurantName: group.restaurantName,
-        summary: `${groupIndex + 1}. ${pluralize(items.length, isOwner ? 'bookmarked item' : 'recommended item', isOwner ? 'bookmarked items' : 'recommended items')}`,
-      };
-    });
-  }, [groupedRestaurants, isOwner, openPhotoViewer, photosByFoodItemId]);
-
-  const omittedListMapRestaurants = groupedRestaurants.length - listDetailMapGroups.length;
+    return readModel.mapGroups.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({
+        id: item.id,
+        meta: item.meta,
+        name: item.name,
+        notes: item.notes,
+        onOpenPhotos:
+          item.photoEntries.length > 0
+            ? () => {
+                openPhotoViewer(item.photoEntries);
+              }
+            : undefined,
+        photoCount: item.photoCount,
+        photoThumbnailUrl: item.photoThumbnailUrl,
+      })),
+    }));
+  }, [openPhotoViewer, readModel.mapGroups]);
 
   const styles = useStyles();
 
-  const subtitle = useMemo(() => {
-    const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
-    const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
-    if (!list) {
-      return countLabel;
-    }
-
-    const descriptionLabel = list.description?.trim();
-
-    if (isOwner) {
-      return descriptionLabel ? `${countLabel}\n${descriptionLabel}` : countLabel;
-    }
-
-    const ownerName = list.ownerName ?? 'Unknown user';
-    const baseLabel = `${ownerName}'s list · ${countLabel}`;
-    return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
-  }, [groupedRestaurants.length, isOwner, list]);
-
-  const listAnalyticsContext = useMemo(
+  const listDetailActionDependencies = useMemo<ListDetailActionDependencies>(
     () => ({
-      source: 'ListDetailScreen',
-      isDefaultList: Boolean(list?.isDefault),
-      restaurantCount: list?.restaurantCount ?? groupedRestaurants.length,
+      analyticsContext: listAnalyticsContext,
+      isOnline,
+      listId,
+      queryClient,
+      queryKeys: restaurantListQueryKeys,
+      refetchDetail: detailQuery.refetch,
+      restaurantListWrites,
+      share: Share.share,
+      shareLinkService: {
+        disable: disableRestaurantListShareLink,
+        getOrCreate: getOrCreateRestaurantListShareLink,
+        regenerate: regenerateRestaurantListShareLink,
+      },
+      shareUrlBase: env.appWebUrl,
+      trackObservabilityEvent,
+      trackProductEvent,
     }),
-    [groupedRestaurants.length, list?.isDefault, list?.restaurantCount],
+    [
+      detailQuery.refetch,
+      isOnline,
+      listAnalyticsContext,
+      listId,
+      queryClient,
+      restaurantListWrites,
+    ],
   );
 
   const handleBack = () => {
@@ -686,15 +510,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
 
     navigation.navigate('Lists');
-  };
-
-  const resolveShareUrl = (shareLink: { path?: string; url?: string }) => {
-    const path = shareLink.path?.trim();
-    if (path) {
-      return `${env.appWebUrl.replace(/\/$/, '')}${path}`;
-    }
-
-    return shareLink.url?.trim() ?? '';
   };
 
   const shareListLink = async (mode: 'create' | 'regenerate' = 'create') => {
@@ -711,24 +526,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
-      const shareLink = isRegenerate
-        ? await regenerateRestaurantListShareLink(list.id)
-        : await getOrCreateRestaurantListShareLink(list.id);
-      const shareUrl = resolveShareUrl(shareLink);
-      if (!shareUrl) {
-        throw new Error('Could not create a share link.');
-      }
-
-      await Share.share({
-        message: `View my Yummy Recs list "${list.name}": ${shareUrl}`,
+      await shareListLinkAction({
+        deps: listDetailActionDependencies,
+        isOwner,
+        list,
+        mode,
       });
-      await detailQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root });
       setShareSheetVisible(false);
-      trackProductEvent('social.invite_shared', {
-        source: 'ListDetailScreen',
-        shareMethod: 'restaurant_list_link',
-      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not share list.');
     } finally {
@@ -748,9 +552,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsDisablingShareLink(true);
     setErrorMessage(null);
     try {
-      await disableRestaurantListShareLink(list.id);
-      await detailQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root });
+      await disableShareLinkAction({
+        deps: listDetailActionDependencies,
+        isOwner,
+        list,
+      });
       setShareSheetVisible(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not disable sharing.');
@@ -823,39 +629,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
-    trackObservabilityEvent('LIST_DETAIL_REORDER_TAPPED', {
-      ...listAnalyticsContext,
-      direction,
-      isOnline,
-    });
-    trackObservabilityEvent('LIST_DETAIL_REORDER_STARTED', {
-      ...listAnalyticsContext,
-      direction,
-      isOnline,
-    });
     setErrorMessage(null);
     setMovingRestaurantId(restaurantId);
 
     try {
-      const result = await restaurantListWrites.reorderRestaurant({
-        listId,
+      await reorderRestaurantAction({
+        deps: listDetailActionDependencies,
+        isOwner,
         restaurantId,
         direction,
       });
-      trackObservabilityEvent('LIST_DETAIL_REORDER_SUCCEEDED', {
-        ...listAnalyticsContext,
-        direction,
-        queued: result.status === 'queued',
-      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not reorder restaurant.';
-      trackObservabilityEvent('LIST_DETAIL_REORDER_FAILED', {
-        ...listAnalyticsContext,
-        direction,
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        isOnline,
-      });
       setErrorMessage(message);
     } finally {
       setMovingRestaurantId(null);
@@ -870,41 +655,19 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return false;
     }
 
-    trackObservabilityEvent(
-      itemKind === 'source' ? 'LIST_DETAIL_SOURCE_RATING_REMOVE_TAPPED' : 'LIST_DETAIL_USER_RATING_REMOVE_TAPPED',
-      {
-        ...listAnalyticsContext,
-        isOnline,
-      },
-    );
-    trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_STARTED', {
-      ...listAnalyticsContext,
-      isOnline,
-      itemKind,
-    });
     setErrorMessage(null);
 
     try {
-      const result = await restaurantListWrites.removeRestaurantListSourceRating({
-        listId,
+      await removeSourceRatingAction({
+        deps: listDetailActionDependencies,
+        isOwner,
         listItemId: input.listItemId,
         foodItemId: input.foodItemId,
-      });
-      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
-        ...listAnalyticsContext,
         itemKind,
-        queued: result.status === 'queued',
       });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
-      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_FAILED', {
-        ...listAnalyticsContext,
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        isOnline,
-        itemKind,
-      });
       setErrorMessage(message);
       return false;
     }
@@ -915,34 +678,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return false;
     }
 
-    trackObservabilityEvent('LIST_DETAIL_USER_RATING_REMOVE_TAPPED', {
-      ...listAnalyticsContext,
-      isOnline,
-    });
-    trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_STARTED', {
-      ...listAnalyticsContext,
-      isOnline,
-      itemKind: 'user_linked',
-    });
     setErrorMessage(null);
 
     try {
-      const result = await restaurantListWrites.removeRestaurantListUserRating({ listId, listItemId });
-      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
-        ...listAnalyticsContext,
-        itemKind: 'user_linked',
-        queued: result.status === 'queued',
+      await removeUserRatingAction({
+        deps: listDetailActionDependencies,
+        isOwner,
+        listItemId,
       });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
-      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_FAILED', {
-        ...listAnalyticsContext,
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        isOnline,
-        itemKind: 'user_linked',
-      });
       setErrorMessage(message);
       return false;
     }
@@ -1079,57 +825,25 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
-    trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {
-      source: 'ListDetailScreen',
-      targetListCount: targetListIds.length,
-      isOnline,
-    });
     setSaveModalError(null);
     setIsSavingBookmark(true);
 
     try {
-      const result = await restaurantListWrites.saveBookmarkToLists({
-        listIds: targetListIds,
-        sourceListId: listId,
-        bookmark: {
-          restaurantId: saveBookmarkTarget.restaurantId,
-          foodItemId: saveBookmarkTarget.foodItemId,
-          note: saveBookmarkTarget.sourceNote,
-          sourceUserId: list.userId,
-        },
+      const result = await saveBookmarkToListsAction({
+        deps: listDetailActionDependencies,
+        isOwner,
+        list,
+        saveBookmarkTarget,
+        targetListIds,
+        trackingContext,
       });
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
-        source: 'ListDetailScreen',
-        entryMethod: trackingContext.entryMethod,
-        queued: result.status === 'queued',
-        targetListCount: targetListIds.length,
-        createdDefaultList: trackingContext.createdDefaultList,
-        isOnline,
-      });
-      trackProductEvent('social.recommendation_saved', {
-        source: 'ListDetailScreen',
-        entryMethod: trackingContext.entryMethod,
-        queued: result.status === 'queued',
-        targetListCount: targetListIds.length,
-        createdDefaultList: trackingContext.createdDefaultList,
-      });
-
-      setSaveBookmarkTarget(null);
-      setSelectedSaveListIds(new Set());
-      setSaveModalError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
-        source: 'ListDetailScreen',
-        entryMethod: trackingContext.entryMethod,
-        stage: 'bookmark_save',
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        targetListCount: targetListIds.length,
-        createdDefaultList: trackingContext.createdDefaultList,
-        isOnline,
-      });
-      setSaveModalError(message);
+      if (result.saved) {
+        setSaveBookmarkTarget(null);
+        setSelectedSaveListIds(new Set());
+        setSaveModalError(null);
+      } else if (result.errorMessage) {
+        setSaveModalError(result.errorMessage);
+      }
     } finally {
       setIsSavingBookmark(false);
     }
@@ -1140,90 +854,25 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
-    trackObservabilityEvent('LIST_DETAIL_SAVE_QUICK_DEFAULT_TAPPED', {
-      source: 'ListDetailScreen',
-      isOnline,
-      hasDefaultList: Boolean(defaultList?.id),
-    });
-    const targetDefaultListId = defaultList?.id;
-
-    if (!targetDefaultListId && !list?.userId) {
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
-        source: 'ListDetailScreen',
-        entryMethod: 'quick_default',
-        reason: 'default_list_unavailable',
-        targetListCount: 1,
-        hasDefaultList: Boolean(defaultList?.id),
-        isOnline,
-      });
-      setSaveModalError('Saved list is not available.');
-      return;
-    }
-
-    if (targetDefaultListId && alreadySavedListIdsForTarget.has(targetDefaultListId)) {
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
-        source: 'ListDetailScreen',
-        entryMethod: 'quick_default',
-        reason: 'already_saved_in_default_list',
-        targetListCount: 1,
-        hasDefaultList: Boolean(defaultList?.id),
-        isOnline,
-      });
-      setSaveModalError('This item is already in your Saved list.');
-      return;
-    }
-
-    trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {
-      source: 'ListDetailScreen',
-      targetListCount: 1,
-      isOnline,
-    });
     setSaveModalError(null);
     setIsSavingBookmark(true);
 
     try {
-      const result = await restaurantListWrites.saveBookmarkToDefaultList({
-        defaultListId: targetDefaultListId,
-        sourceListId: listId,
-        bookmark: {
-          restaurantId: saveBookmarkTarget.restaurantId,
-          foodItemId: saveBookmarkTarget.foodItemId,
-          note: saveBookmarkTarget.sourceNote,
-          sourceUserId: list?.userId,
-        },
+      const result = await saveBookmarkToDefaultListAction({
+        alreadySavedListIdsForTarget,
+        defaultList,
+        deps: listDetailActionDependencies,
+        isOwner,
+        list,
+        saveBookmarkTarget,
       });
-
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
-        source: 'ListDetailScreen',
-        entryMethod: 'quick_default',
-        queued: result.status === 'queued',
-        targetListCount: 1,
-        createdDefaultList: !defaultList?.id,
-        isOnline,
-      });
-      trackProductEvent('social.recommendation_saved', {
-        source: 'ListDetailScreen',
-        entryMethod: 'quick_default',
-        queued: result.status === 'queued',
-        targetListCount: 1,
-        createdDefaultList: !defaultList?.id,
-      });
-      setSaveBookmarkTarget(null);
-      setSelectedSaveListIds(new Set());
-      setSaveModalError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
-        source: 'ListDetailScreen',
-        entryMethod: 'quick_default',
-        stage: targetDefaultListId ? 'bookmark_save' : 'default_list_create',
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        targetListCount: 1,
-        createdDefaultList: !defaultList?.id,
-        isOnline,
-      });
-      setSaveModalError(message);
+      if (result.saved) {
+        setSaveBookmarkTarget(null);
+        setSelectedSaveListIds(new Set());
+        setSaveModalError(null);
+      } else if (result.errorMessage) {
+        setSaveModalError(result.errorMessage);
+      }
     } finally {
       setIsSavingBookmark(false);
     }
@@ -1236,15 +885,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       selectedListCount: targetListIds.length,
     });
     if (targetListIds.length === 0) {
-      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
-        source: 'ListDetailScreen',
-        entryMethod: 'selected_lists',
-        reason: 'no_target_lists',
-        targetListCount: 0,
-        hasDefaultList: Boolean(defaultList?.id),
-        isOnline,
-      });
-      setSaveModalError('Select at least one list.');
+      setSaveModalError(
+        trackNoSelectedSaveTarget(listDetailActionDependencies, {
+          hasDefaultList: Boolean(defaultList?.id),
+        }),
+      );
       return;
     }
 
@@ -1377,7 +1022,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         />
         <PageErrorToast
           actionLabel="Retry"
-          errorMessage={saveBookmarkTarget && !isOwner && detailQuery.isError ? 'Could not load your lists.' : null}
+          errorMessage={hasListsRefreshError ? 'Could not load your lists.' : null}
           onAction={() => {
             void detailQuery.refetch();
           }}
@@ -1417,7 +1062,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             hiddenLocationSingularLabel="restaurant"
             loading={false}
             mapTestID="list-detail-map"
-            omittedWithoutCoordinates={omittedListMapRestaurants}
+            omittedWithoutCoordinates={omittedMapRestaurantCount}
             onRetry={() => {
               void detailQuery.refetch();
             }}
@@ -1448,141 +1093,123 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
             {groupedRestaurants.length === 0 ? (
               <EmptyState
-                description={
-                  isOwner
-                    ? 'Use Add Visit Ratings to List to save your first restaurant.'
-                    : 'No restaurants have been added to this list yet.'
-                }
+                description={readModel.emptyRestaurantsDescription}
                 tone="default"
                 title="No restaurants yet"
               />
             ) : (
-              groupedRestaurants.map((group, groupIndex) => {
-            const primaryMetaLabel =
-              group.restaurantCity || group.restaurantCuisineType || 'Location not set';
-            const secondaryMetaLabel =
-              group.restaurantCity && group.restaurantCuisineType
-                ? group.restaurantCuisineType
-                : null;
-            const isRestaurantLocked = group.restaurantVisibility === 'private';
-            const ownerDisplayItems = isOwner ? buildOwnerDisplayItems(group.items) : [];
+              restaurantRows.map((row) => {
+                const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
-            return (
-              <Card key={group.restaurantId} style={styles.listCard} tone="default">
-                <View style={styles.restaurantHeaderRow}>
-                  <View style={styles.restaurantTitleRow}>
-                    <Text style={styles.restaurantIndex}>{`${groupIndex + 1}.`}</Text>
-                    <Text style={styles.restaurantTitle}>{group.restaurantName}</Text>
-                  </View>
-                  {isOwner ? (
-                    <View style={styles.reorderControls}>
-                      {groupIndex > 0 ? (
-                        <Pressable
-                          accessibilityLabel={`Move ${group.restaurantName} up`}
-                          accessibilityRole="button"
-                          disabled={Boolean(movingRestaurantId)}
-                          onPress={() => {
-                            void handleMoveRestaurant(group.restaurantId, 'up');
-                          }}
-                          style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                          testID={`move-restaurant-up-${group.restaurantId}`}
-                        >
-                          <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
-                        </Pressable>
-                      ) : null}
-                      {groupIndex < groupedRestaurants.length - 1 ? (
-                        <Pressable
-                          accessibilityLabel={`Move ${group.restaurantName} down`}
-                          accessibilityRole="button"
-                          disabled={Boolean(movingRestaurantId)}
-                          onPress={() => {
-                            void handleMoveRestaurant(group.restaurantId, 'down');
-                          }}
-                          style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                          testID={`move-restaurant-down-${group.restaurantId}`}
-                        >
-                          <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
-                        </Pressable>
+                return (
+                  <Card key={group.restaurantId} style={styles.listCard} tone="default">
+                    <View style={styles.restaurantHeaderRow}>
+                      <View style={styles.restaurantTitleRow}>
+                        <Text style={styles.restaurantIndex}>{`${groupIndex + 1}.`}</Text>
+                        <Text style={styles.restaurantTitle}>{group.restaurantName}</Text>
+                      </View>
+                      {isOwner ? (
+                        <View style={styles.reorderControls}>
+                          {groupIndex > 0 ? (
+                            <Pressable
+                              accessibilityLabel={`Move ${group.restaurantName} up`}
+                              accessibilityRole="button"
+                              disabled={Boolean(movingRestaurantId)}
+                              onPress={() => {
+                                void handleMoveRestaurant(group.restaurantId, 'up');
+                              }}
+                              style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                              testID={`move-restaurant-up-${group.restaurantId}`}
+                            >
+                              <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
+                            </Pressable>
+                          ) : null}
+                          {groupIndex < groupedRestaurants.length - 1 ? (
+                            <Pressable
+                              accessibilityLabel={`Move ${group.restaurantName} down`}
+                              accessibilityRole="button"
+                              disabled={Boolean(movingRestaurantId)}
+                              onPress={() => {
+                                void handleMoveRestaurant(group.restaurantId, 'down');
+                              }}
+                              style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                              testID={`move-restaurant-down-${group.restaurantId}`}
+                            >
+                              <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
+                            </Pressable>
+                          ) : null}
+                        </View>
                       ) : null}
                     </View>
-                  ) : null}
-                </View>
 
-                <RestaurantMetaRow
-                  iconColor={theme.colors.text.muted}
-                  isLocked={isRestaurantLocked}
-                  lockTestID={`locked-restaurant-${group.restaurantId}`}
-                  primaryMetaLabel={primaryMetaLabel}
-                  secondaryMetaLabel={secondaryMetaLabel}
-                  styles={styles}
-                />
+                    <RestaurantMetaRow
+                      iconColor={theme.colors.text.muted}
+                      isLocked={isRestaurantLocked}
+                      lockTestID={`locked-restaurant-${group.restaurantId}`}
+                      primaryMetaLabel={primaryMetaLabel}
+                      secondaryMetaLabel={secondaryMetaLabel}
+                      styles={styles}
+                    />
 
-                <View style={styles.section}>
-                  <SectionHeader
-                    title={isOwner ? 'Bookmarked Items' : 'Recommended Items'}
-                    titleTone="secondary"
-                  />
-                  {group.items.length === 0 ? (
-                    <Text style={styles.emptyItemsText}>No items added yet.</Text>
-                  ) : isOwner ? (
-                    ownerDisplayItems.map((item, itemIndex) => {
-                      const itemPhotoEntries = buildOwnerItemPhotoEntries(item);
+                    <View style={styles.section}>
+                      <SectionHeader
+                        title={isOwner ? 'Bookmarked Items' : 'Recommended Items'}
+                        titleTone="secondary"
+                      />
+                      {group.items.length === 0 ? (
+                        <Text style={styles.emptyItemsText}>No items added yet.</Text>
+                      ) : isOwner ? (
+                        row.ownerItems.map((item, itemIndex) => {
+                          return (
+                            <ListDetailOwnerItemCard
+                              canCreateVisitFromRestaurant={!isRestaurantLocked}
+                              groupIndex={groupIndex}
+                              item={item}
+                              itemIndex={itemIndex}
+                              key={item.key}
+                              onConfirmDeleteItem={confirmDeleteItem}
+                              onIWentThere={(input) => {
+                                handleIWentThere(group, input);
+                              }}
+                              onOpenPhotos={openPhotoViewer}
+                              photoEntries={item.photoEntries}
+                            />
+                          );
+                        })
+                      ) : (
+                        row.bookmarkedItems.map((item, itemIndex) => {
+                          return (
+                            <ListDetailBookmarkedItemRow
+                              canSave={!isRestaurantLocked}
+                              groupIndex={groupIndex}
+                              isSaved={item.isSaved}
+                              item={item}
+                              itemIndex={itemIndex}
+                              key={item.key}
+                              onOpenPhotos={openPhotoViewer}
+                              onSave={(targetItem) => {
+                                openSaveModal(group, targetItem);
+                              }}
+                              photoEntries={item.photoEntries}
+                            />
+                          );
+                        })
+                      )}
+                    </View>
 
-                      return (
-                        <ListDetailOwnerItemCard
-                          canCreateVisitFromRestaurant={!isRestaurantLocked}
-                          groupIndex={groupIndex}
-                          item={item}
-                          itemIndex={itemIndex}
-                          key={item.key}
-                          onConfirmDeleteItem={confirmDeleteItem}
-                          onIWentThere={(input) => {
-                            handleIWentThere(group, input);
-                          }}
-                          onOpenPhotos={openPhotoViewer}
-                          photoEntries={itemPhotoEntries}
-                        />
-                      );
-                    })
-                  ) : (
-                    group.items.map((item, itemIndex) => {
-                      const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
-                        savedBookmarkLookupIds.has(bookmarkLookupId),
-                      );
-                      const itemPhotoEntries = buildBookmarkedItemPhotoEntries(item);
-
-                      return (
-                        <ListDetailBookmarkedItemRow
-                          canSave={!isRestaurantLocked}
-                          groupIndex={groupIndex}
-                          isSaved={isSaved}
-                          item={item}
-                          itemIndex={itemIndex}
-                          key={item.key}
-                          onOpenPhotos={openPhotoViewer}
-                          onSave={(targetItem) => {
-                            openSaveModal(group, targetItem);
-                          }}
-                          photoEntries={itemPhotoEntries}
-                        />
-                      );
-                    })
-                  )}
-                </View>
-
-                {group.notes.length > 0 ? (
-                  <View style={styles.section}>
-                    <SectionHeader title="Notes" titleTone="secondary" />
-                    {group.notes.map((note, noteIndex) => (
-                      <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
-                        "{note}"
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-              </Card>
-            );
-          })
+                    {group.notes.length > 0 ? (
+                      <View style={styles.section}>
+                        <SectionHeader title="Notes" titleTone="secondary" />
+                        {group.notes.map((note, noteIndex) => (
+                          <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
+                            "{note}"
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                  </Card>
+                );
+              })
             )}
           </>
         )}

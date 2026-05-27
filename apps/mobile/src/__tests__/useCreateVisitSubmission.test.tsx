@@ -23,6 +23,7 @@ jest.mock('../features', () => ({
 
 const mockVisitWrites = {
   createVisit: jest.fn(),
+  deleteVisitItem: jest.fn(),
   updateVisit: jest.fn(),
 };
 
@@ -76,6 +77,16 @@ describe('useCreateVisitSubmission', () => {
       },
       status: 'completed',
     });
+    mockVisitWrites.deleteVisitItem.mockReset();
+    mockVisitWrites.deleteVisitItem.mockResolvedValue({
+      result: {
+        createdAt: '2026-04-20T18:00:00.000Z',
+        id: 'visit-123',
+        items: [],
+        updatedAt: '2026-04-20T18:00:00.000Z',
+      },
+      status: 'completed',
+    });
     mockVisitWrites.updateVisit.mockReset();
     mockVisitWrites.updateVisit.mockResolvedValue({
       result: {
@@ -114,6 +125,7 @@ describe('useCreateVisitSubmission', () => {
             rating: 4,
           },
         ],
+        hasDeletedPersistedVisitItem: false,
         isDisplayFreeUser: false,
         isEditMode: false,
         monthlyUsageSnapshot: null,

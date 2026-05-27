@@ -15,32 +15,25 @@ import {
 } from '../components/shared';
 import {
   createEntityId,
+  submitCreateBill,
   type FriendRecord,
 } from '../features';
 import {
   formatCurrency,
-  validateBillTotal,
 } from '../features/bills/billCalculations';
 import {
   areStringArraysEqual,
   billDraftFacade,
-  buildDefaultAdvancedSplits,
-  calculateSuggestedBillAmounts,
   formatPercentageDisplay,
   getAdvancedSplitRawValue,
-  inferEditSplitMode,
   isAdvancedSplitLocked,
-  resolveSplitTarget,
   roundToCurrency,
   sanitizeBillNumericInput,
   sanitizeParticipantName,
-  toCurrencyInput,
   type CreateBillSplitMode,
   type DraftAdvancedSplitEntry,
   type DraftAdvancedSplitType,
   type DraftBillItem,
-  type DraftCustomParticipant,
-  type OwedAmountEntry,
 } from '../features/bills/billDraft';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 import { useBillWrites } from '../features/store/useBillWrites';
@@ -508,22 +501,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const isManualSplitMode = splitMode === 'manual';
   const extrasSplitMode: 'equal' | 'proportional' = isCustomSplitMode ? 'proportional' : 'equal';
 
-  const resetCustomCalculationFields = useCallback(() => {
-    setDraftItemName('');
-    setDraftItemPrice('');
-    setItems([]);
-    setExpandedItemIds([]);
-    setTaxInput('');
-    setTipInput('');
-    setFeesInput('');
-    setFinalTotalInput('');
-    setIsCustomTipEnabled(false);
-    setCustomTipSplitType('amount');
-    setCustomTipSplits([]);
-    setReceiptScanWarnings([]);
-    setPendingReceiptScanResult(null);
-  }, []);
-
   const handleSplitModeChange = useCallback(
     (nextSplitMode: CreateBillSplitMode) => {
       if (nextSplitMode === splitMode) {
@@ -536,18 +513,59 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         nextSplitMode,
       });
 
-      if (splitMode === 'custom' || nextSplitMode === 'custom') {
-        resetCustomCalculationFields();
-      }
+      const transition = billDraftFacade.changeSplitMode({
+        currentSplitMode: splitMode,
+        nextSplitMode,
+        draft: {
+          customTipSplits,
+          customTipSplitType,
+          draftItemName,
+          draftItemPrice,
+          expandedItemIds,
+          feesInput,
+          finalTotalInput,
+          isCustomTipEnabled,
+          items,
+          owedAmountOverrides,
+          receiptScanWarnings,
+          taxInput,
+          tipInput,
+        },
+      });
 
-      if (nextSplitMode !== 'manual') {
-        setOwedAmountOverrides({});
-      }
-
+      setDraftItemName(transition.draftItemName);
+      setDraftItemPrice(transition.draftItemPrice);
+      setItems(transition.items);
+      setExpandedItemIds(transition.expandedItemIds);
+      setTaxInput(transition.taxInput);
+      setTipInput(transition.tipInput);
+      setFeesInput(transition.feesInput);
+      setFinalTotalInput(transition.finalTotalInput);
+      setIsCustomTipEnabled(transition.isCustomTipEnabled);
+      setCustomTipSplitType(transition.customTipSplitType);
+      setCustomTipSplits(transition.customTipSplits);
+      setOwedAmountOverrides(transition.owedAmountOverrides);
+      setReceiptScanWarnings(transition.receiptScanWarnings);
+      setPendingReceiptScanResult(null);
       setErrorMessage(null);
-      setSplitMode(nextSplitMode);
+      setSplitMode(transition.splitMode);
     },
-    [resetCustomCalculationFields, splitMode],
+    [
+      customTipSplitType,
+      customTipSplits,
+      draftItemName,
+      draftItemPrice,
+      expandedItemIds,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      items,
+      owedAmountOverrides,
+      receiptScanWarnings,
+      splitMode,
+      taxInput,
+      tipInput,
+    ],
   );
 
   useEffect(() => {
@@ -594,178 +612,35 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    const friendByUserId = new Map(
-      acceptedFriends
-        .filter((friend) => Boolean(friend.userId?.trim()))
-        .map((friend) => [friend.userId as string, friend]),
-    );
-    const nextSelectedFriendIds: string[] = [];
-    const nextCustomParticipants: DraftCustomParticipant[] = [];
-    const draftIdByParticipantRecordId = new Map<string, string>();
-    const nextParticipantRecordIdByDraftId: Record<string, string> = {};
-    const nextOwedOverrides: Record<string, string> = {};
-    let paidDraftParticipantId = '';
-
-    bill.participants.forEach((participant, participantIndex) => {
-      let draftParticipantId = '';
-      if (participant.userId && participant.userId === user?.id) {
-        draftParticipantId = currentUserDraftId;
-      } else if (participant.userId) {
-        const friend = friendByUserId.get(participant.userId);
-        if (friend) {
-          if (!nextSelectedFriendIds.includes(friend.id)) {
-            nextSelectedFriendIds.push(friend.id);
-          }
-          draftParticipantId = `user:${friend.id}`;
-        }
-      }
-
-      if (!draftParticipantId) {
-        draftParticipantId = `custom:${participant.id}`;
-        nextCustomParticipants.push({
-          id: draftParticipantId,
-          name: sanitizeParticipantName(participant.name, `Person ${participantIndex + 1}`),
-          userId: participant.userId?.trim() || undefined,
-        });
-      }
-
-      draftIdByParticipantRecordId.set(participant.id, draftParticipantId);
-      nextParticipantRecordIdByDraftId[draftParticipantId] = participant.id;
-      nextOwedOverrides[draftParticipantId] = toCurrencyInput(roundToCurrency(participant.amountOwed));
-
-      if (!paidDraftParticipantId && participant.paidStatus === 'paid') {
-        paidDraftParticipantId = draftParticipantId;
-      }
+    const hydratedDraft = billDraftFacade.hydrateEditDraft({
+      acceptedFriends,
+      bill,
+      createEntityId,
+      currentUserDraftId,
+      currentUserId: user?.id,
     });
 
-    const inferredSplitMode = inferEditSplitMode(bill);
-    const resolvedDraftParticipantIds = Array.from(
-      new Set(Array.from(draftIdByParticipantRecordId.values())),
-    );
-    const computedCustomTotal = roundToCurrency(
-      bill.items.reduce((sum, item) => sum + item.price, 0) + bill.tax + bill.tip + bill.fees,
-    );
-    const totalAmount = roundToCurrency(bill.totalAmount ?? computedCustomTotal);
-
-    const nextDraftItems: DraftBillItem[] =
-      inferredSplitMode === 'custom'
-        ? bill.items.map((item, itemIndex) => {
-            const itemPrice = roundToCurrency(item.price);
-            const assignedDraftParticipantIds = item.assignedToParticipantIds
-              .map((participantRecordId) => draftIdByParticipantRecordId.get(participantRecordId))
-              .filter((candidate): candidate is string => Boolean(candidate));
-
-            if (item.splitMode === 'advanced' && item.splitConfig && item.splitConfig.length > 0) {
-              const advancedSplitType = item.splitConfig[0]?.type === 'amount' ? 'amount' : 'percentage';
-              const advancedSplits = item.splitConfig
-                .map((split) => {
-                  const draftParticipantId = draftIdByParticipantRecordId.get(split.participantId);
-                  if (!draftParticipantId) {
-                    return null;
-                  }
-
-                  const amountValue =
-                    split.type === 'amount'
-                      ? roundToCurrency(split.value)
-                      : roundToCurrency(itemPrice * (split.value / 100));
-                  const percentageValue =
-                    split.type === 'percentage'
-                      ? roundToCurrency(split.value)
-                      : itemPrice > 0
-                        ? roundToCurrency((split.value / itemPrice) * 100)
-                        : 0;
-
-                  return {
-                    participantId: draftParticipantId,
-                    percentageValue: toCurrencyInput(percentageValue),
-                    amountValue: toCurrencyInput(amountValue),
-                    percentageLocked: false,
-                    amountLocked: false,
-                  };
-                })
-                .filter((candidate): candidate is DraftAdvancedSplitEntry => candidate !== null);
-              const normalizedAdvancedSplits =
-                advancedSplits.length > 0
-                  ? advancedSplits
-                  : buildDefaultAdvancedSplits(assignedDraftParticipantIds, itemPrice);
-
-              return {
-                id: item.id || createEntityId('bill_item_draft'),
-                name: item.itemName.trim() || `Item ${itemIndex + 1}`,
-                price: toCurrencyInput(itemPrice),
-                splitMode: 'advanced',
-                assignedParticipantIds: Array.from(
-                  new Set(normalizedAdvancedSplits.map((split) => split.participantId)),
-                ),
-                advancedSplitType,
-                advancedSplits: normalizedAdvancedSplits,
-              };
-            }
-
-            return {
-              id: item.id || createEntityId('bill_item_draft'),
-              name: item.itemName.trim() || `Item ${itemIndex + 1}`,
-              price: toCurrencyInput(itemPrice),
-              splitMode: 'simple',
-              assignedParticipantIds:
-                assignedDraftParticipantIds.length > 0 ? assignedDraftParticipantIds : [...resolvedDraftParticipantIds],
-              advancedSplitType: 'percentage',
-              advancedSplits: [],
-            };
-          })
-        : [];
-
-    const hasCustomTipContributions = bill.participants.some(
-      (participant) => (participant.customTipContribution ?? 0) > 0,
-    );
-    const nextCustomTipSplits: DraftAdvancedSplitEntry[] = hasCustomTipContributions
-      ? bill.participants
-          .map((participant) => {
-            const draftParticipantId = draftIdByParticipantRecordId.get(participant.id);
-            if (!draftParticipantId) {
-              return null;
-            }
-
-            const tipAmount = roundToCurrency(participant.customTipContribution ?? 0);
-            const tipPercentage =
-              bill.tip > 0 ? roundToCurrency((tipAmount / roundToCurrency(bill.tip)) * 100) : 0;
-
-            return {
-              participantId: draftParticipantId,
-              percentageValue: toCurrencyInput(tipPercentage),
-              amountValue: toCurrencyInput(tipAmount),
-              percentageLocked: false,
-              amountLocked: false,
-            };
-          })
-          .filter((candidate): candidate is DraftAdvancedSplitEntry => candidate !== null)
-      : [];
-
-    setSplitMode(inferredSplitMode);
-    setBillTitle(bill.title);
-    setSelectedFriendIds(nextSelectedFriendIds);
-    setCustomParticipants(nextCustomParticipants);
+    setSplitMode(hydratedDraft.splitMode);
+    setBillTitle(hydratedDraft.billTitle);
+    setSelectedFriendIds(hydratedDraft.selectedFriendIds);
+    setCustomParticipants(hydratedDraft.customParticipants);
     setFriendSearchQuery('');
-    setEqualTotalInput(toCurrencyInput(totalAmount));
-    setDraftItemName('');
-    setDraftItemPrice('');
-    setItems(nextDraftItems);
-    setExpandedItemIds([]);
-    setTaxInput(bill.tax > 0 ? toCurrencyInput(roundToCurrency(bill.tax)) : '');
-    setTipInput(bill.tip > 0 ? toCurrencyInput(roundToCurrency(bill.tip)) : '');
-    setFeesInput(bill.fees > 0 ? toCurrencyInput(roundToCurrency(bill.fees)) : '');
-    setFinalTotalInput(
-      inferredSplitMode === 'custom' && Math.abs(totalAmount - computedCustomTotal) > 0.01
-        ? toCurrencyInput(totalAmount)
-        : '',
-    );
-    setIsCustomTipEnabled(inferredSplitMode === 'custom' && hasCustomTipContributions);
-    setCustomTipSplitType('amount');
-    setCustomTipSplits(nextCustomTipSplits);
-    setPayerParticipantId(paidDraftParticipantId || currentUserDraftId);
+    setEqualTotalInput(hydratedDraft.equalTotalInput);
+    setDraftItemName(hydratedDraft.draftItemName);
+    setDraftItemPrice(hydratedDraft.draftItemPrice);
+    setItems(hydratedDraft.items);
+    setExpandedItemIds(hydratedDraft.expandedItemIds);
+    setTaxInput(hydratedDraft.taxInput);
+    setTipInput(hydratedDraft.tipInput);
+    setFeesInput(hydratedDraft.feesInput);
+    setFinalTotalInput(hydratedDraft.finalTotalInput);
+    setIsCustomTipEnabled(hydratedDraft.isCustomTipEnabled);
+    setCustomTipSplitType(hydratedDraft.customTipSplitType);
+    setCustomTipSplits(hydratedDraft.customTipSplits);
+    setPayerParticipantId(hydratedDraft.payerParticipantId);
     setIsPayerDropdownOpen(false);
-    setOwedAmountOverrides(nextOwedOverrides);
-    setParticipantRecordIdByDraftId(nextParticipantRecordIdByDraftId);
+    setOwedAmountOverrides(hydratedDraft.owedAmountOverrides);
+    setParticipantRecordIdByDraftId(hydratedDraft.participantRecordIdByDraftId);
     setErrorMessage(null);
     setIsEditHydrated(true);
   }, [
@@ -783,19 +658,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setSelectedFriendIds,
     user?.id,
   ]);
-
-  const parsedTax = useMemo(() => Number(taxInput || '0'), [taxInput]);
-  const parsedTip = useMemo(() => Number(tipInput || '0'), [tipInput]);
-  const parsedFees = useMemo(() => Number(feesInput || '0'), [feesInput]);
-  const parsedFinalTotal = useMemo(() => Number(finalTotalInput || '0'), [finalTotalInput]);
-  const parsedEqualTotal = useMemo(() => Number(equalTotalInput || '0'), [equalTotalInput]);
-  const normalizedTax = Number.isFinite(parsedTax) ? parsedTax : 0;
-  const normalizedTip = Number.isFinite(parsedTip) ? parsedTip : 0;
-  const normalizedFees = Number.isFinite(parsedFees) ? parsedFees : 0;
-  const distributableExtrasTotal = useMemo(
-    () => normalizedTax + normalizedFees + (isCustomTipEnabled ? 0 : normalizedTip),
-    [isCustomTipEnabled, normalizedFees, normalizedTax, normalizedTip],
-  );
 
   const participantIds = useMemo(
     () => participants.map((participant) => participant.id),
@@ -838,6 +700,56 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
   }, [participantIds]);
 
+  const draftPreview = useMemo(
+    () => billDraftFacade.derivePreviewState({
+      customTipSplitType,
+      customTipSplits,
+      equalTotalInput,
+      extrasSplitMode,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      items,
+      owedAmountOverrides,
+      participants,
+      splitMode,
+      taxInput,
+      tipInput,
+    }),
+    [
+      customTipSplitType,
+      customTipSplits,
+      equalTotalInput,
+      extrasSplitMode,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      items,
+      owedAmountOverrides,
+      participants,
+      splitMode,
+      taxInput,
+      tipInput,
+    ],
+  );
+  const {
+    computedCustomTotal,
+    customTipSplitTarget,
+    customTipSplitTotal,
+    hasFinalTotalOverride,
+    isCustomTipSplitBalanced,
+    normalizedTip,
+    owedAmountEntries,
+    owedTotal,
+    parsedEqualTotal,
+    parsedFees,
+    parsedFinalTotal,
+    parsedTax,
+    parsedTip,
+    previewTotal,
+    totalsMatch,
+  } = draftPreview;
+
   useEffect(() => {
     if (!isCustomTipEnabled) {
       return;
@@ -851,197 +763,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       });
     });
   }, [isCustomTipEnabled, normalizedTip, participantIds]);
-
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
-    [items],
-  );
-
-  const computedCustomTotal = useMemo(
-    () => subtotal + normalizedTax + normalizedTip + normalizedFees,
-    [normalizedFees, normalizedTax, normalizedTip, subtotal],
-  );
-
-  const hasFinalTotalOverride = useMemo(
-    () => finalTotalInput.trim().length > 0,
-    [finalTotalInput],
-  );
-
-  const resolvedCustomTotal = useMemo(
-    () =>
-      hasFinalTotalOverride && Number.isFinite(parsedFinalTotal)
-        ? roundToCurrency(parsedFinalTotal)
-        : roundToCurrency(computedCustomTotal),
-    [computedCustomTotal, hasFinalTotalOverride, parsedFinalTotal],
-  );
-
-  const customTotalAdjustment = useMemo(
-    () => roundToCurrency(resolvedCustomTotal - roundToCurrency(computedCustomTotal)),
-    [computedCustomTotal, resolvedCustomTotal],
-  );
-
-  const effectiveDistributableExtrasTotal = useMemo(
-    () => roundToCurrency(distributableExtrasTotal + customTotalAdjustment),
-    [customTotalAdjustment, distributableExtrasTotal],
-  );
-
-  const previewTotal = useMemo(
-    () =>
-      (isEqualSplitMode || isManualSplitMode)
-        ? (Number.isFinite(parsedEqualTotal) ? parsedEqualTotal : 0)
-        : resolvedCustomTotal,
-    [isEqualSplitMode, isManualSplitMode, parsedEqualTotal, resolvedCustomTotal],
-  );
-
-  const suggestedAmounts = useMemo(() => {
-    return calculateSuggestedBillAmounts({
-      customTipSplitType,
-      customTipSplits,
-      effectiveDistributableExtrasTotal,
-      extrasSplitMode,
-      isCustomSplitMode,
-      isCustomTipEnabled,
-      items,
-      normalizedTip,
-      participantIds,
-      previewTotal,
-    });
-  }, [
-    customTipSplitType,
-    customTipSplits,
-    effectiveDistributableExtrasTotal,
-    extrasSplitMode,
-    isCustomSplitMode,
-    isCustomTipEnabled,
-    items,
-    normalizedTip,
-    participantIds,
-    previewTotal,
-  ]);
-
-  const owedAmountEntries = useMemo<OwedAmountEntry[]>(
-    () =>
-      participants.map((participant) => {
-        const fallbackValue = toCurrencyInput(suggestedAmounts.get(participant.id) ?? 0);
-        const rawValue = isManualSplitMode ? (owedAmountOverrides[participant.id] ?? '') : fallbackValue;
-        const parsedValue = Number(rawValue);
-        const hasInputValue = rawValue.trim().length > 0;
-        const isValidInput = isManualSplitMode
-          ? hasInputValue && Number.isFinite(parsedValue) && parsedValue >= 0
-          : true;
-        const amount = isValidInput && Number.isFinite(parsedValue) ? parsedValue : 0;
-
-        return {
-          participant,
-          inputValue: rawValue,
-          amount,
-          isValidInput,
-          hasInputValue,
-        };
-      }),
-    [isManualSplitMode, owedAmountOverrides, participants, suggestedAmounts],
-  );
-
-  const owedTotal = useMemo(
-    () => owedAmountEntries.reduce((sum, entry) => sum + entry.amount, 0),
-    [owedAmountEntries],
-  );
-
-  const customTipSplitTotal = useMemo(
-    () =>
-      customTipSplits.reduce((sum, split) => {
-        const parsedValue = Number(getAdvancedSplitRawValue(split, customTipSplitType));
-        return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
-      }, 0),
-    [customTipSplitType, customTipSplits],
-  );
-
-  const customTipSplitTarget = useMemo(
-    () => resolveSplitTarget(customTipSplitType, normalizedTip),
-    [customTipSplitType, normalizedTip],
-  );
-
-  const isCustomTipSplitBalanced = useMemo(
-    () => Math.abs(roundToCurrency(customTipSplitTotal - customTipSplitTarget)) < 0.01,
-    [customTipSplitTarget, customTipSplitTotal],
-  );
-
-  const customTipContributionMap = useMemo(() => {
-    const contributionMap = new Map<string, number>();
-    participants.forEach((participant) => {
-      contributionMap.set(participant.id, 0);
-    });
-
-    if (!isCustomSplitMode || !isCustomTipEnabled || !Number.isFinite(normalizedTip) || normalizedTip <= 0) {
-      return contributionMap;
-    }
-
-    customTipSplits.forEach((split) => {
-      if (!contributionMap.has(split.participantId)) {
-        return;
-      }
-
-      const splitValue = Number(getAdvancedSplitRawValue(split, customTipSplitType));
-      if (!Number.isFinite(splitValue) || splitValue < 0) {
-        return;
-      }
-
-      const contribution =
-        customTipSplitType === 'percentage'
-          ? (normalizedTip * splitValue) / 100
-          : splitValue;
-      contributionMap.set(split.participantId, (contributionMap.get(split.participantId) ?? 0) + contribution);
-    });
-
-    let roundedTotal = 0;
-    participants.forEach((participant) => {
-      const roundedAmount = roundToCurrency(contributionMap.get(participant.id) ?? 0);
-      contributionMap.set(participant.id, roundedAmount);
-      roundedTotal += roundedAmount;
-    });
-
-    const difference = roundToCurrency(normalizedTip - roundedTotal);
-    if (Math.abs(difference) > 0 && participants.length > 0) {
-      const firstParticipantId = participants[0].id;
-      contributionMap.set(
-        firstParticipantId,
-        roundToCurrency((contributionMap.get(firstParticipantId) ?? 0) + difference),
-      );
-    }
-
-    return contributionMap;
-  }, [
-    customTipSplitType,
-    customTipSplits,
-    isCustomSplitMode,
-    isCustomTipEnabled,
-    normalizedTip,
-    participants,
-  ]);
-
-  const totalsMatch = useMemo(
-    () => {
-      const baseMatch = validateBillTotal(
-        owedAmountEntries.map((entry) => ({
-          id: entry.participant.id,
-          amountOwed: entry.amount,
-          paidStatus: 'pending',
-        })),
-        previewTotal,
-      );
-
-      if (owedAmountEntries.some((entry) => entry.amount < 0)) {
-        return false;
-      }
-
-      if (!isManualSplitMode) {
-        return baseMatch;
-      }
-
-      return baseMatch && owedAmountEntries.every((entry) => entry.isValidInput);
-    },
-    [isManualSplitMode, owedAmountEntries, previewTotal],
-  );
 
   const styles = useStyles();
 
@@ -1057,79 +778,39 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const applyReceiptScanResult = useCallback(
     (scanResult: ReceiptScanDraftResult) => {
-      const scannedItems: DraftBillItem[] = scanResult.items.map((item, index) => ({
-        id: createEntityId('bill_item_draft'),
-        name: item.name.trim() || `Receipt Item ${index + 1}`,
-        price: toCurrencyInput(roundToCurrency(item.price)),
-        splitMode: 'simple',
-        assignedParticipantIds: [],
-        advancedSplitType: 'percentage',
-        advancedSplits: [],
-      }));
-      const scannedWarnings = [
-        ...scanResult.warnings,
-        ...(scanResult.items.length === 0
-          ? ['No receipt items were found. Add at least one item before review.']
-          : []),
-        ...scanResult.items
-          .map((item) => item.warning?.trim())
-          .filter((warning): warning is string => Boolean(warning)),
-        ...scanResult.items
-          .filter((item) => item.confidence === 'low' || item.confidence === 'unknown')
-          .map((item) => `Review "${item.name}" before saving.`),
-      ];
-      const uniqueWarnings = Array.from(new Set(scannedWarnings));
+      const receiptDraft = billDraftFacade.applyReceiptScan({
+        billTitle,
+        createEntityId,
+        isEditMode,
+        participantCount: participants.length,
+        scanResult,
+      });
 
-      setSplitMode('custom');
-      setItems(scannedItems);
-      setExpandedItemIds(scannedItems.map((item) => item.id));
-      setDraftItemName('');
-      setDraftItemPrice('');
-      setTaxInput(typeof scanResult.tax === 'number' ? toCurrencyInput(roundToCurrency(scanResult.tax)) : '');
-      setTipInput(typeof scanResult.tip === 'number' ? toCurrencyInput(roundToCurrency(scanResult.tip)) : '');
-      setFeesInput(typeof scanResult.fees === 'number' ? toCurrencyInput(roundToCurrency(scanResult.fees)) : '');
-
-      const scannedSubtotal = scanResult.items.reduce((sum, item) => sum + item.price, 0);
-      const computedReceiptTotal = roundToCurrency(
-        scannedSubtotal +
-          (scanResult.tax ?? 0) +
-          (scanResult.tip ?? 0) +
-          (scanResult.fees ?? 0) -
-          (scanResult.discount ?? 0),
-      );
-      const hasDiscount = typeof scanResult.discount === 'number' && scanResult.discount > 0;
-      const hasTotalMismatch =
-        typeof scanResult.finalTotal === 'number' &&
-        Math.abs(roundToCurrency(scanResult.finalTotal) - computedReceiptTotal) > 0.01;
-      setFinalTotalInput(
-        (hasDiscount || hasTotalMismatch) && typeof scanResult.finalTotal === 'number'
-          ? toCurrencyInput(roundToCurrency(scanResult.finalTotal))
-          : '',
-      );
-
-      if (!billTitle.trim()) {
-        setBillTitle(scanResult.title?.trim() || scanResult.restaurantName?.trim() || 'Receipt Split');
-      }
-      const hasResolvedBillTitle = Boolean(
-        billTitle.trim() ||
-          scanResult.title?.trim() ||
-          scanResult.restaurantName?.trim(),
-      );
-      setIsCustomTipEnabled(false);
-      setCustomTipSplits([]);
-      setCustomTipSplitType('amount');
-      setReceiptScanWarnings(uniqueWarnings);
+      setSplitMode(receiptDraft.splitMode);
+      setItems(receiptDraft.items);
+      setExpandedItemIds(receiptDraft.expandedItemIds);
+      setDraftItemName(receiptDraft.draftItemName);
+      setDraftItemPrice(receiptDraft.draftItemPrice);
+      setTaxInput(receiptDraft.taxInput);
+      setTipInput(receiptDraft.tipInput);
+      setFeesInput(receiptDraft.feesInput);
+      setFinalTotalInput(receiptDraft.finalTotalInput);
+      setBillTitle(receiptDraft.billTitle);
+      setIsCustomTipEnabled(receiptDraft.isCustomTipEnabled);
+      setCustomTipSplits(receiptDraft.customTipSplits);
+      setCustomTipSplitType(receiptDraft.customTipSplitType);
+      setReceiptScanWarnings(receiptDraft.receiptScanWarnings);
       setErrorMessage(null);
       setPendingReceiptScanResult(null);
-      if (!isEditMode) {
-        setCreateStep(hasResolvedBillTitle && participants.length > 1 ? 'items' : 'details');
+      if (receiptDraft.createStep) {
+        setCreateStep(receiptDraft.createStep);
       }
       appliedReceiptScanCorrelationRef.current = scanResult.requestCorrelation;
       trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_APPLIED', {
         source: 'CreateBillScreen',
         isEditMode,
-        itemCount: scannedItems.length,
-        warningCount: uniqueWarnings.length,
+        itemCount: receiptDraft.items.length,
+        warningCount: receiptDraft.receiptScanWarnings.length,
         confidence: scanResult.confidence,
       });
     },
@@ -1151,19 +832,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
     applyReceiptScanResult(scanResult);
   }, [applyReceiptScanResult, hasReceiptReplaceableDraftData, navigation, route.params?.receiptScanResult]);
-
-  const trackSubmitValidationFailed = (reason: string) => {
-    trackObservabilityEvent('CREATE_BILL_SUBMIT_VALIDATION_FAILED', {
-      source: 'CreateBillScreen',
-      reason,
-      isEditMode,
-      splitMode,
-      customParticipantCount: customParticipants.length,
-      participantCount: participants.length,
-      selectedFriendCount: selectedFriendIds.length,
-      itemCount: items.length,
-    });
-  };
 
   const toggleItemExpanded = (itemId: string) => {
     setExpandedItemIds((currentIds) =>
@@ -1482,7 +1150,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       return (
         billTitle.trim() !== billQuery.data.title.trim() ||
-        splitMode !== inferEditSplitMode(billQuery.data) ||
+        splitMode !== billDraftFacade.inferEditSplitMode(billQuery.data) ||
         participants.length !== billQuery.data.participants.length ||
         items.length !== billQuery.data.items.length ||
         payerParticipantId !== participants[0]?.id ||
@@ -1573,137 +1241,95 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     [buildFlowAnalyticsPayload],
   );
 
-  const handleCreateBill = async () => {
-    if (!billTitle.trim()) {
-      trackSubmitValidationFailed('missing_bill_name');
-      setErrorMessage('Bill name is required.');
-      return;
-    }
-
-    if (participants.length <= 1) {
-      trackSubmitValidationFailed('missing_participants');
-      setErrorMessage('Add at least one other person to split with.');
-      return;
-    }
-
-    if (
-      selectedFriendIds.some((friendId) => {
-        const friend = acceptedFriendById.get(friendId);
-        return !friend?.userId?.trim();
-      })
-    ) {
-      trackSubmitValidationFailed('friend_resolution_failed');
-      setErrorMessage('Could not resolve one or more selected friends. Refresh and try again.');
-      return;
-    }
-
-    if (owedAmountEntries.some((entry) => entry.amount < 0)) {
-      trackSubmitValidationFailed('negative_participant_amount');
-      setErrorMessage('Final price cannot reduce any participant below $0.00.');
-      return;
-    }
-
-    const submission = billDraftFacade.buildSubmission({
+  const billSubmissionDraft = useMemo(
+    () => ({
       billTitle,
-      createEntityId,
-      customTipContributionMap,
-      customTipSplitBalanced: isCustomTipSplitBalanced,
+      customTipSplits,
+      customTipSplitType,
       editBill: billQuery.data,
       editBillId,
+      equalTotalInput,
       existingEvenModeItemId,
       extrasSplitMode,
-      hasFinalTotalOverride,
-      isCustomSplitMode,
+      feesInput,
+      finalTotalInput,
       isCustomTipEnabled,
       isEditHydrated,
       isEditMode,
-      isEqualSplitMode,
-      isManualSplitMode,
       items,
       owedAmountOverrides,
-      participantIds,
       participantRecordIdByDraftId,
       participants,
       payerParticipantId,
-      parsedEqualTotal,
-      parsedFees,
-      parsedFinalTotal,
-      parsedTax,
-      parsedTip,
-      previewTotal,
-      suggestedAmounts,
-    });
-
-    if (!submission.ok) {
-      trackSubmitValidationFailed(submission.reason);
-      setErrorMessage(submission.message);
-      return;
-    }
-
-    const billPayload = submission.payload;
-
-    setErrorMessage(null);
-    trackObservabilityEvent('CREATE_BILL_SUBMIT_STARTED', {
-      source: 'CreateBillScreen',
-      isEditMode,
       splitMode,
-      itemCount: billPayload.items?.length ?? 0,
-      participantCount: billPayload.participants?.length ?? 0,
-      isOnline,
-    });
+      taxInput,
+      tipInput,
+    }),
+    [
+      billQuery.data,
+      billTitle,
+      customTipSplits,
+      customTipSplitType,
+      editBillId,
+      equalTotalInput,
+      existingEvenModeItemId,
+      extrasSplitMode,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      isEditHydrated,
+      isEditMode,
+      items,
+      owedAmountOverrides,
+      participantRecordIdByDraftId,
+      participants,
+      payerParticipantId,
+      splitMode,
+      taxInput,
+      tipInput,
+    ],
+  );
+
+  const handleCreateBill = async () => {
+    setErrorMessage(null);
     setIsCreating(true);
 
     try {
-      const writeResult = isEditMode && editBillId
-        ? await billWrites.updateBill({
-            billId: editBillId,
-            updates: billPayload,
-          })
-        : await billWrites.createBill({
-            ...billPayload,
-            createdByUserId: user?.id ?? 'unknown_user',
-          });
+      const result = await submitCreateBill({
+        billWrites,
+        createEntityId,
+        createdByUserId: user?.id ?? 'unknown_user',
+        draft: billSubmissionDraft,
+        hasNegativeParticipantAmount: owedAmountEntries.some((entry) => entry.amount < 0),
+        hasUnresolvedSelectedFriends: selectedFriendIds.some((friendId) => {
+          const friend = acceptedFriendById.get(friendId);
+          return !friend?.userId?.trim();
+        }),
+        isOnline,
+        selectedFriendCount: selectedFriendIds.length,
+      });
 
-      if (writeResult.status === 'queued') {
-        trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
-          source: 'CreateBillScreen',
-          isEditMode,
-          splitMode,
-          queued: true,
-        });
-        hasCompletedFlowRef.current = true;
+      if (result.status === 'blocked' || result.status === 'failed') {
+        setErrorMessage(result.errorMessage);
+        return;
+      }
+
+      hasCompletedFlowRef.current = true;
+
+      if (result.destination.name === 'Bills') {
         navigation.navigate('Bills');
         return;
       }
 
-      const savedBill = writeResult.result;
-
-      trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
-        source: 'CreateBillScreen',
-        isEditMode,
-        splitMode,
-        queued: false,
-      });
-      hasCompletedFlowRef.current = true;
       navigation.reset({
         index: 1,
         routes: [
           { name: 'Bills' },
           {
             name: 'BillDetail',
-            params: { billId: savedBill.id },
+            params: result.destination.params,
           },
         ],
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : (isEditMode ? 'Could not save bill.' : 'Could not create bill.');
-      setErrorMessage(message);
-      trackObservabilityEvent('CREATE_BILL_SUBMIT_FAILED', {
-        source: 'CreateBillScreen',
-        isEditMode,
-        splitMode,
-        isOnline,
-        error: message,
       });
     } finally {
       setIsCreating(false);

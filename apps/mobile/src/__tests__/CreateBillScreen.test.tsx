@@ -147,6 +147,7 @@ jest.mock('../features', () => ({
   getBillById: jest.fn(),
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),
   listFriendsPage: jest.fn(),
+  submitCreateBill: jest.requireActual('../features/bills/createBillSubmissionLifecycle').submitCreateBill,
   updateBill: jest.fn(),
 }));
 
