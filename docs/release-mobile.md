@@ -84,7 +84,8 @@ plutil -p apps/mobile/ios/YummyRecs/Info.plist | rg "CFBundleShortVersionString|
 ```
 
 ```sh
-npx eas-cli@latest build --profile production
+cd apps/mobile
+pnpm exec eas build --platform ios --profile production
 ```
 
 - Record the EAS build links in the release record.
@@ -101,8 +102,8 @@ npx eas-cli@latest build --profile production
 Common commands:
 
 ```sh
-npx eas-cli@latest submit -p ios --profile production
-npx eas-cli@latest submit -p android --profile production
+cd apps/mobile
+pnpm exec eas submit --platform ios --profile production --latest
 ```
 
 ## 6. Final Production Smoke Test
