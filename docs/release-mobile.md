@@ -67,6 +67,8 @@ bash scripts/deploy.sh production
 - Bump the mobile app version for the release before creating store builds:
   - Update `expo.version` in `apps/mobile/app.json`.
   - Update `expo.ios.runtimeVersion` in `apps/mobile/app.json` when the release should use a new iOS OTA runtime.
+  - Update preview runtime expectations in `scripts/assert-mobile-preview-config.mjs` when the release should use a new preview OTA runtime.
+  - Update `EXUpdatesRuntimeVersion` in `apps/mobile/ios/YummyRecs/Supporting/Expo.plist` when the embedded preview runtime changes.
   - Update `CFBundleShortVersionString` in `apps/mobile/ios/YummyRecs/Info.plist` to match the intended iOS marketing version.
   - Leave native build numbers/version codes to EAS `autoIncrement` unless the release explicitly needs manual values.
 - Confirm mobile version/build numbers are correct.
