@@ -200,6 +200,8 @@ jest.mock('../lib/dateFormatting', () => ({
   formatDateToLocalDateString: jest.fn(() => '2026-04-18'),
   getTodayLocalDateString: jest.fn(() => '2026-04-18'),
   isValidLocalDate: jest.fn(() => true),
+  formatPhotoAttachmentDateLabel: jest.fn(() => 'Apr 13, 2026'),
+  formatStoredCalendarDateLabel: jest.fn(() => 'Apr 12, 2026'),
 }));
 
 jest.mock('../lib/photoFiles', () => ({
@@ -998,6 +1000,83 @@ describe('CreateVisitScreen', () => {
 
     expect(renderer.root.findByProps({ testID: 'edit-visit-conversion-picker-modal' }).props.visible).toBe(false);
     expect(renderer.root.findByProps({ testID: 'edit-visit-convert-item-confirmation-modal' }).props.visible).toBe(true);
+  });
+
+  it('labels existing edit visit photos with the visit date instead of the upload date', async () => {
+    const setDraftItems = jest.fn();
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'visit') {
+        return buildQueryResult({
+          id: 'visit-1',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Corner Market',
+          visitedAt: '2026-04-12T18:00:00Z',
+          visibility: 'friends',
+          items: [
+            {
+              id: 'item-1',
+              name: 'Bottled Tea',
+              rating: 4,
+            },
+          ],
+        });
+      }
+
+      if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'visitPhotos') {
+        return buildQueryResult({
+          'item-1': [
+            {
+              id: 'photo-1',
+              food_item: 'item-1',
+              photo: 'bottled-tea.jpg',
+              collectionName: 'visit_photos',
+              created: '2026-04-13T18:31:00.000Z',
+            },
+          ],
+        });
+      }
+
+      return buildQueryResult(null);
+    });
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn(() => false),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 0,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    await act(async () => {
+      create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              editVisitId: 'visit-1',
+              returnToStep: 2,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(setDraftItems).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'item-1',
+        photos: [
+          expect.objectContaining({
+            id: 'photo-1',
+            labelDate: 'Apr 12, 2026',
+            thumbnailUri: 'pb://photo-1/bottled-tea.jpg?thumb=100x100',
+            viewerUri: 'pb://photo-1/bottled-tea.jpg',
+          }),
+        ],
+      }),
+    ]);
   });
 
   it('converts an edit visit item through the header overflow conversion flow', async () => {

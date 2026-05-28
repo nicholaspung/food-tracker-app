@@ -200,7 +200,7 @@ describe('EditFoodProductScreen', () => {
               food_item: 'food-product-1',
               photo: 'iced-coffee.jpg',
               collectionName: 'visit_photos',
-              created: '2026-04-12T18:31:00.000Z',
+              created: '2026-04-13T18:31:00.000Z',
             },
           ],
         });

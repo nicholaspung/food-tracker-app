@@ -2,7 +2,7 @@
   "expo": {
     "name": "Yummy Recs",
     "slug": "food-tracker-mobile",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "scheme": "yummyrecs",
     "userInterfaceStyle": "automatic",
@@ -25,7 +25,7 @@
         "CFBundleName": "Yummy Recs",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "runtimeVersion": "1.0.1"
+      "runtimeVersion": "1.0.2"
     },
     "android": {
       "package": "com.yummyrecs.mobile",

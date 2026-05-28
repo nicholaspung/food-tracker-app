@@ -51,6 +51,7 @@ import { useCreateVisitRestaurantSelectionFlow } from '../hooks/useRestaurantSel
 import {
   formatDateToLocalDateString,
   formatPhotoAttachmentDateLabel,
+  formatStoredCalendarDateLabel,
   getTodayLocalDateString,
   isValidLocalDate,
 } from '../lib/dateFormatting';
@@ -468,6 +469,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 function buildExistingDraftVisitPhoto(
   photo: VisitPhotoRecord,
+  visitedAt?: string,
 ): DraftVisitItemPhoto {
   const collectionName = photo.collectionName ?? 'visit_photos';
 
@@ -477,7 +479,9 @@ function buildExistingDraftVisitPhoto(
     photoId: photo.id,
     thumbnailUri: buildPhotoThumbnailUrl({ ...photo, collectionName }),
     viewerUri: buildPhotoFileUrl({ ...photo, collectionName }),
-    labelDate: formatPhotoAttachmentDateLabel(photo.created),
+    labelDate: visitedAt
+      ? formatStoredCalendarDateLabel(visitedAt)
+      : formatPhotoAttachmentDateLabel(photo.created),
   };
 }
 
@@ -913,9 +917,10 @@ export function CreateVisitScreen({
       return;
     }
 
+    const editVisit = editVisitQuery.data;
     const editVisitPhotosByItemId = editVisitPhotosQuery.data;
     const areEditVisitPhotosReady =
-      editVisitQuery.data.items.length === 0 ||
+      editVisit.items.length === 0 ||
       editVisitPhotosQuery.isError ||
       editVisitPhotosByItemId !== undefined;
     if (!areEditVisitPhotosReady) {
@@ -923,14 +928,14 @@ export function CreateVisitScreen({
     }
 
     const hydratedVisitDate = formatDateToLocalDateString(
-      new Date(editVisitQuery.data.visitedAt),
+      new Date(editVisit.visitedAt),
     );
     const requestedStep = route.params?.returnToStep;
 
-    setRestaurantName(editVisitQuery.data.restaurantName);
-    setSelectedRestaurantId(editVisitQuery.data.restaurantId ?? null);
+    setRestaurantName(editVisit.restaurantName);
+    setSelectedRestaurantId(editVisit.restaurantId ?? null);
     setDraftItems(
-      editVisitQuery.data.items.map((item: VisitItem) => ({
+      editVisit.items.map((item: VisitItem) => ({
         id: item.id,
         name: item.name,
         rating: item.rating,
@@ -938,7 +943,7 @@ export function CreateVisitScreen({
         notes: item.notes?.trim() ?? "",
         photos:
           editVisitPhotosByItemId?.[item.id]?.map((photo) =>
-            buildExistingDraftVisitPhoto(photo),
+            buildExistingDraftVisitPhoto(photo, editVisit.visitedAt),
           ) ?? [],
         deletedPhotoIds: [],
       })),
@@ -950,7 +955,7 @@ export function CreateVisitScreen({
     );
     setDetectedVisitDateValue(null);
     setVisitVisibility(
-      editVisitQuery.data.visibility === "private" ? "private" : "friends",
+      editVisit.visibility === "private" ? "private" : "friends",
     );
     setStep(requestedStep ?? 2);
     setErrorMessage(null);

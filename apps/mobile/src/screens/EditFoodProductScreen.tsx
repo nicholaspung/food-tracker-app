@@ -29,7 +29,10 @@ import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
 import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
-import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
+import {
+  formatPhotoAttachmentDateLabel,
+  formatStoredCalendarDateLabel,
+} from '../lib/dateFormatting';
 import {
   buildDefaultFoodProductForm,
   buildFoodProductFormFromRecord,
@@ -61,10 +64,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function buildExistingPhotoAttachment(photo: VisitPhotoRecord) {
+function buildExistingPhotoAttachment(photo: VisitPhotoRecord, itemDate?: string) {
   return {
     id: photo.id,
-    label: formatPhotoAttachmentDateLabel(photo.created),
+    label: itemDate
+      ? formatStoredCalendarDateLabel(itemDate)
+      : formatPhotoAttachmentDateLabel(photo.created),
     thumbnailUri: buildPhotoThumbnailUrl(photo),
     viewerUri: buildPhotoFileUrl(photo),
   };
@@ -126,8 +131,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const primaryExistingPhoto = foodProductPhotosQuery.data?.[0] ?? null;
   const extraLegacyPhotoCount = Math.max((foodProductPhotosQuery.data?.length ?? 0) - 1, 0);
   const existingPhotoAttachment = useMemo(
-    () => (primaryExistingPhoto ? buildExistingPhotoAttachment(primaryExistingPhoto) : null),
-    [primaryExistingPhoto],
+    () =>
+      primaryExistingPhoto
+        ? buildExistingPhotoAttachment(primaryExistingPhoto, foodProductQuery.data?.itemDate)
+        : null,
+    [foodProductQuery.data?.itemDate, primaryExistingPhoto],
   );
   const photoTrackingProperties: TrackingEntryProperties = useMemo(
     () => ({

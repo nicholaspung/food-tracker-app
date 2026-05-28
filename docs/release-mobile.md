@@ -34,6 +34,8 @@ Run from the repo root:
 pnpm mobile:lint
 pnpm mobile:typecheck
 pnpm mobile:doctor
+pnpm mobile:unused-exports
+(cd backend && govulncheck ./...)
 ```
 
 - Confirm staging/beta backend has been deployed and smoke tested.
@@ -62,10 +64,22 @@ bash scripts/deploy.sh production
 ## 4. Mobile Release Candidate
 
 - Confirm the release candidate commit is final.
+- Bump the mobile app version for the release before creating store builds:
+  - Update `expo.version` in `apps/mobile/app.json`.
+  - Update `expo.ios.runtimeVersion` in `apps/mobile/app.json` when the release should use a new iOS OTA runtime.
+  - Update `CFBundleShortVersionString` in `apps/mobile/ios/YummyRecs/Info.plist` to match the intended iOS marketing version.
+  - Leave native build numbers/version codes to EAS `autoIncrement` unless the release explicitly needs manual values.
 - Confirm mobile version/build numbers are correct.
 - Confirm production environment variables/config point at production services.
 - Confirm EAS production profile is being used.
 - Build both platforms from the same commit unless a split release is intentional.
+
+Version verification:
+
+```sh
+APP_VARIANT=production EXPO_PUBLIC_APP_ENV=production EAS_BUILD_PROFILE=production node -e "const appJson=require('./apps/mobile/app.json').expo; const resolve=require('./apps/mobile/app.config.js'); const c=resolve({config: appJson}); console.log(JSON.stringify({version:c.version,runtimeVersion:c.runtimeVersion,iosRuntimeVersion:c.ios.runtimeVersion,iosBundleIdentifier:c.ios.bundleIdentifier}, null, 2));"
+plutil -p apps/mobile/ios/YummyRecs/Info.plist | rg "CFBundleShortVersionString|CFBundleVersion" -A1
+```
 
 ```sh
 npx eas-cli@latest build --profile production
