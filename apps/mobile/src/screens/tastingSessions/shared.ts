@@ -105,9 +105,3 @@ export function getTastingInviteDisplayStatus(
   }
   return invite.status;
 }
-
-export function getApprovedItemCount(session: TastingSessionRecord): number {
-  return session.restaurants
-    .filter((restaurant) => restaurant.status === 'approved')
-    .reduce((count, restaurant) => count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length, 0);
-}

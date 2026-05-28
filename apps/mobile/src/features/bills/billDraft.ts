@@ -321,7 +321,7 @@ export function mapBillParticipantToFriendRecord(
   };
 }
 
-export function toCurrencyInput(value: number): string {
+function toCurrencyInput(value: number): string {
   return value.toFixed(2);
 }
 
@@ -392,7 +392,7 @@ function setAdvancedSplitLocked(
     : { ...split, amountLocked: isLocked };
 }
 
-export function resolveSplitTarget(
+function resolveSplitTarget(
   splitType: DraftAdvancedSplitType,
   totalAmount: number,
 ): number {
@@ -634,7 +634,7 @@ export function calculateSuggestedBillAmounts({
   return amountMap;
 }
 
-export function buildDefaultAdvancedSplits(
+function buildDefaultAdvancedSplits(
   participantIds: string[],
   totalAmount: number,
 ): DraftAdvancedSplitEntry[] {
@@ -1295,7 +1295,7 @@ export function areStringArraysEqual(left: string[], right: string[]): boolean {
   return true;
 }
 
-export function inferEditSplitMode(bill: BillRecord): CreateBillSplitMode {
+function inferEditSplitMode(bill: BillRecord): CreateBillSplitMode {
   if (
     bill.splitMode === 'itemized' ||
     bill.extrasSplitMode === 'proportional'

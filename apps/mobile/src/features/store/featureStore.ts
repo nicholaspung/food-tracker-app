@@ -659,9 +659,7 @@ export type { FeedbackThreadDetailResult } from './feedbackStore';
 
 export {
   createBill,
-  deleteBill,
   getBillById,
   listBillSummaries,
-  markBillParticipantPaid,
   updateBill,
 } from './billsStore';

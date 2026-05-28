@@ -14,7 +14,7 @@ import type {
 type SyncListener = (snapshot: SyncSnapshot) => void;
 type QueueClearTrigger = 'auth_change' | 'logout';
 
-export const OFFLINE_QUEUE_FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const OFFLINE_QUEUE_FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_SNAPSHOT: SyncSnapshot = {
   isInitialized: false,

@@ -102,7 +102,7 @@ function buildDiscoveryRestaurantSummary({ distance, restaurant }: VisitRestaura
   return parts.join(' • ') || 'Restaurant';
 }
 
-export function buildFoodDiscoveryMapGroups(
+function buildFoodDiscoveryMapGroups(
   restaurants: readonly VisitRestaurantWithDistance[],
 ): RestaurantMapGroup[] {
   return restaurants.flatMap((entry) => {
@@ -141,7 +141,7 @@ export function buildFoodDiscoveryMapGroups(
   });
 }
 
-export function buildFoodDiscoveryMenuCatalogRows(
+function buildFoodDiscoveryMenuCatalogRows(
   items: readonly MenuItemRecord[],
 ): RestaurantMapItem[] {
   return [...items]
@@ -153,7 +153,7 @@ export function buildFoodDiscoveryMenuCatalogRows(
     }));
 }
 
-export function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): AllLocationsHistoryRecord {
+function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): AllLocationsHistoryRecord {
   return {
     anchorRestaurant: {
       id: restaurant.id,
@@ -171,7 +171,7 @@ export function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): All
   };
 }
 
-export function buildFoodDiscoveryYourOrderedItemsRows(
+function buildFoodDiscoveryYourOrderedItemsRows(
   history: AllLocationsHistoryRecord | undefined,
 ): RestaurantMapItem[] {
   return (history?.items ?? []).map((item) => {
@@ -213,7 +213,7 @@ export function canShowFoodDiscoveryAllLocationsHistory(
   return history.locationCount > 1 || hasOrderedHistoryAtAnotherLocation;
 }
 
-export function getFoodDiscoveryMapStatusLabel({
+function getFoodDiscoveryMapStatusLabel({
   displayedSavedRestaurantsCount,
   isGettingLocation,
   isSearchingNearbyRestaurants,

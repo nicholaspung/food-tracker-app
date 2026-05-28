@@ -22,7 +22,7 @@ import {
 import type { VisitRecord } from '../models';
 import type { OfflineAwareFeatureWriteResult } from '../store/useOfflineAwareFeatureWrite';
 
-export const FREE_MONTHLY_VISIT_PHOTO_LIMIT = 100;
+const FREE_MONTHLY_VISIT_PHOTO_LIMIT = 100;
 
 export type CreateVisitSubmissionDestination = {
   name: 'Home';
