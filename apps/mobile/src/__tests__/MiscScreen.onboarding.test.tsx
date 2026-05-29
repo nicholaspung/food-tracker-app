@@ -1,7 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
+import { useQuery } from '@tanstack/react-query';
 
 import { MiscScreen } from '../screens/MiscScreen';
+import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 
 const mockReact = React;
@@ -9,6 +11,10 @@ const mockNavigate = jest.fn();
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
+}));
+
+jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(),
 }));
 
 jest.mock('react-native', () => ({
@@ -37,6 +43,12 @@ jest.mock('../components/shared', () => ({
 
 jest.mock('../features', () => ({
   isMoreOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.moreCards?.[cardId]?.dismissedAt)),
+  listTastingSessions: jest.fn(),
+  summarizeTastingSessionNotificationSignal:
+    jest.requireActual('../features/store/notificationSignalSummary').summarizeTastingSessionNotificationSignal,
+  tastingSessionsQueryKeys: {
+    root: ['feature', 'tasting-sessions'],
+  },
 }));
 
 jest.mock('../observability', () => ({
@@ -57,6 +69,9 @@ jest.mock('../theme', () => ({
               app: 'app',
               muted: 'muted',
               surface: 'surface',
+            },
+            fill: {
+              danger: 'dangerFill',
             },
             border: {
               subtle: 'subtle',
@@ -79,6 +94,7 @@ jest.mock('../theme', () => ({
           },
           radii: {
             md: 8,
+            pill: 999,
           },
           spacing: {
             xxs: 2,
@@ -95,6 +111,9 @@ jest.mock('../theme', () => ({
       background: {
         app: 'app',
         muted: 'muted',
+      },
+      fill: {
+        danger: 'dangerFill',
       },
       border: {
         subtle: 'subtle',
@@ -124,6 +143,28 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+
+function buildTastingSession(overrides: Partial<TastingSessionRecord> = {}): TastingSessionRecord {
+  return {
+    createdAt: '2026-05-20T11:00:00.000Z',
+    id: 'session_1',
+    inviteCode: '',
+    invites: [],
+    joinedCount: 1,
+    joinExpiresAt: '2099-01-01T00:00:00.000Z',
+    leaderUserId: 'leader_1',
+    maxApprovedItems: 8,
+    maxParticipants: 8,
+    maxRestaurants: 3,
+    name: 'Ramen night',
+    participants: [],
+    restaurants: [],
+    status: 'lobby',
+    updatedAt: '2026-05-20T11:00:00.000Z',
+    ...overrides,
+  };
+}
 
 async function renderMiscScreen(): Promise<any> {
   let renderer: any;
@@ -149,6 +190,11 @@ function findFeatureRow(renderer: any, testID: string): any {
 describe('MiscScreen More feature onboarding routing', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
+    mockedUseQuery.mockReturnValue({
+      data: [],
+      isError: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useQuery>);
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'user_1',
@@ -179,6 +225,56 @@ describe('MiscScreen More feature onboarding routing', () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
+  it('shows a count-dot on Group Tastings for cached pending tasting invites', async () => {
+    mockedUseQuery.mockReturnValue({
+      data: [
+        buildTastingSession({
+          invites: [
+            {
+              createdAt: '2026-05-20T11:00:00.000Z',
+              id: 'invite_1',
+              invitedUserId: 'user_1',
+              invitedUserName: 'Pat',
+              status: 'pending',
+            },
+          ],
+        }),
+      ],
+      isError: true,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useQuery>);
+    const renderer = await renderMiscScreen();
+
+    const accessory = findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory;
+
+    expect(accessory?.props.indicator).toEqual({ count: 1, kind: 'count' });
+  });
+
+  it('shows a plain dot on Group Tastings for leader-owned sessions with invite signal', async () => {
+    mockedUseQuery.mockReturnValue({
+      data: [
+        buildTastingSession({
+          inviteCode: 'ABC123',
+          joinExpiresAt: '2000-01-01T00:00:00.000Z',
+          leaderUserId: 'user_1',
+        }),
+      ],
+      isError: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useQuery>);
+    const renderer = await renderMiscScreen();
+
+    const accessory = findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory;
+
+    expect(accessory?.props.indicator).toEqual({ kind: 'dot' });
+  });
+
+  it('does not show a Group Tastings indicator when there is no signal', async () => {
+    const renderer = await renderMiscScreen();
+
+    expect(findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory).toBeUndefined();
   });
 
   it.each([

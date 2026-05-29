@@ -11,6 +11,7 @@ import { isFriendsSummaryQueryKey, isPaginatedFriendsQueryKey } from '../feature
 import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
 import { isNotesSummaryQueryKey, isPaginatedNotesQueryKey } from '../features/store/notesQuery';
 import { isProfileQueryKey } from '../features/store/profileQuery';
+import { isTastingSessionsListQueryKey } from '../features/store/tastingSessionsQuery';
 
 const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
@@ -83,6 +84,8 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return true;
     case 'profile':
       return isProfileQueryKey(queryKey);
+    case 'tasting-sessions':
+      return isTastingSessionsListQueryKey(queryKey);
     case 'feedback':
       return (
         isLegacyFeedbackListQuery(queryKey) ||

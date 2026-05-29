@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { lockInviteCode, useMonthlyUsage } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
+import { scheduleVisitReminderNotification } from '../notifications/notificationInteraction';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
 import { MiscScreen } from '../screens/MiscScreen';
@@ -18,8 +19,12 @@ jest.mock('@expo/vector-icons', () => ({
 
 jest.mock('react-native', () => ({
   ActivityIndicator: (props: Record<string, unknown>) => mockReact.createElement('ActivityIndicator', props),
-  Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
-    mockReact.createElement('Pressable', props, children),
+  Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode | ((state: { pressed: boolean }) => React.ReactNode) }) =>
+    mockReact.createElement(
+      'Pressable',
+      props,
+      typeof children === 'function' ? children({ pressed: false }) : children,
+    ),
   Share: {
     sharedAction: 'sharedAction',
     share: jest.fn(),
@@ -93,6 +98,14 @@ jest.mock('../features', () => ({
     inviteCodes: jest.fn(() => ['feature', 'profile', 'invites']),
     profile: ['feature', 'profile'],
   },
+  summarizeTastingSessionNotificationSignal: jest.fn(() => ({
+    indicator: {
+      kind: 'none',
+    },
+  })),
+  tastingSessionsQueryKeys: {
+    root: ['feature', 'tastingSessions'],
+  },
   updateProfile: jest.fn(),
   useMonthlyUsage: jest.fn(),
 }));
@@ -107,6 +120,10 @@ jest.mock('../lib/emailVerificationAccess', () => ({
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../notifications/notificationInteraction', () => ({
+  scheduleVisitReminderNotification: jest.fn(),
 }));
 
 jest.mock('../hooks/useQueuedLogoutConfirmation', () => ({
@@ -140,6 +157,7 @@ jest.mock('../theme', () => ({
               surface: 'surface-background',
             },
             border: {
+              brand: 'brand-border',
               danger: 'danger-border',
               default: 'default-border',
               info: 'info-border',
@@ -190,6 +208,7 @@ jest.mock('../theme', () => ({
         surface: 'surface-background',
       },
       border: {
+        brand: 'brand-border',
         danger: 'danger-border',
         default: 'default-border',
         info: 'info-border',
@@ -237,6 +256,8 @@ jest.mock('../ui', () => ({
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
   Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
+  Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Modal', props, children),
   Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Screen', props, children),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -248,6 +269,9 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedScheduleVisitReminderNotification = scheduleVisitReminderNotification as jest.MockedFunction<
+  typeof scheduleVisitReminderNotification
+>;
 const mockedLockInviteCode = lockInviteCode as jest.MockedFunction<typeof lockInviteCode>;
 const mockedShare = Share.share as jest.MockedFunction<typeof Share.share>;
 const mockedUseQueuedLogoutConfirmation = useQueuedLogoutConfirmation as jest.MockedFunction<
@@ -289,12 +313,20 @@ describe('tab root content sections', () => {
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
     mockedUseMonthlyUsage.mockReset();
+    mockedScheduleVisitReminderNotification.mockReset();
     mockedLockInviteCode.mockReset();
     mockedShare.mockReset();
     mockedUseQueuedLogoutConfirmation.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries: jest.fn(),
+    } as never);
+    mockedUseQuery.mockReturnValue({
+      data: undefined,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      refetch: jest.fn(),
     } as never);
     mockedUseMutation.mockReturnValue({
       isPending: false,
@@ -310,6 +342,10 @@ describe('tab root content sections', () => {
       refetch: jest.fn(),
     });
     mockedLockInviteCode.mockResolvedValue(undefined);
+    mockedScheduleVisitReminderNotification.mockResolvedValue({
+      notificationId: 'notification_1',
+      status: 'scheduled',
+    });
     mockedShare.mockResolvedValue({
       action: Share.sharedAction,
     } as Awaited<ReturnType<typeof Share.share>>);
@@ -367,6 +403,95 @@ describe('tab root content sections', () => {
       }),
     );
     expect(renderer.root.findByProps({ testID: 'add-screen-content-section' })).toBeTruthy();
+  });
+
+  it('shows a dominant Track Restaurant Visit action beside an accessible visit reminder action', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    const restaurantAction = renderer.root.findByProps({ testID: 'add-option-restaurant-visit' });
+    const reminderAction = renderer.root.findByProps({ testID: 'add-option-visit-reminder' });
+
+    expect(flattenStyle(restaurantAction.parent?.props.style)).toEqual(
+      expect.objectContaining({
+        flex: 3,
+      }),
+    );
+    expect(reminderAction.props.accessibilityLabel).toBe('Schedule visit reminder');
+    expect(reminderAction.props.accessibilityRole).toBe('button');
+    expect(flattenStyle(reminderAction.props.style)).toEqual(
+      expect.objectContaining({
+        flex: 1,
+      }),
+    );
+  });
+
+  it('opens reminder choices and schedules a local visit reminder through the notification module', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(false);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'add-option-visit-reminder' }).props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-option-15' }).props.label).toBe('15 min');
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-option-30' }).props.label).toBe('30 min');
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-option-60' }).props.label).toBe('1 hr');
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'visit-reminder-option-30' }).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(mockedScheduleVisitReminderNotification).toHaveBeenCalledWith(30);
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(false);
+  });
+
+  it('surfaces visit reminder permission and scheduling failures without leaving the Add tab', async () => {
+    mockedScheduleVisitReminderNotification.mockResolvedValue({
+      errorMessage: 'Notification permission is off.',
+      status: 'permission_denied',
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'add-option-visit-reminder' }).props.onPress();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'visit-reminder-option-15' }).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(true);
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.children.includes('Notification permission is off.'))).toBe(true);
   });
 
   it('hides Food Discovery from non-beta non-admin users', async () => {

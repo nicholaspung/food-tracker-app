@@ -9,6 +9,7 @@ import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
+import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import {
   clearPersistedQueryCache,
   queryPersister,
@@ -183,6 +184,25 @@ describe('React Query persistence', () => {
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
+    sourceClient.setQueryData(tastingSessionsQueryKeys.root, [
+      {
+        createdAt: '2026-05-20T11:00:00.000Z',
+        id: 'session_1',
+        inviteCode: 'ABC123',
+        invites: [],
+        joinedCount: 1,
+        joinExpiresAt: '2099-01-01T00:00:00.000Z',
+        leaderUserId: 'user-1',
+        maxApprovedItems: 8,
+        maxParticipants: 8,
+        maxRestaurants: 3,
+        name: 'Ramen night',
+        participants: [],
+        restaurants: [],
+        status: 'lobby',
+        updatedAt: '2026-05-20T11:00:00.000Z',
+      },
+    ]);
     sourceClient.setQueryData(billsQueryKeys.detail('bill-1'), {
       id: 'bill-1',
       title: 'Persisted bill',
@@ -279,6 +299,9 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
+    );
+    expect(restoredClient.getQueryData(tastingSessionsQueryKeys.root)).toEqual(
+      sourceClient.getQueryData(tastingSessionsQueryKeys.root),
     );
     expect(restoredClient.getQueryData(billsQueryKeys.detail('bill-1'))).toEqual(
       sourceClient.getQueryData(billsQueryKeys.detail('bill-1')),

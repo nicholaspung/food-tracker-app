@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
 import type { ComponentProps } from 'react';
+import { useMemo } from 'react';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
@@ -13,7 +15,13 @@ import {
   TabSectionCard,
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { isMoreOnboardingCardDismissed } from '../features';
+import {
+  isMoreOnboardingCardDismissed,
+  listTastingSessions,
+  summarizeTastingSessionNotificationSignal,
+  tastingSessionsQueryKeys,
+  type NotificationSignalIndicator,
+} from '../features';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
@@ -130,6 +138,21 @@ const useStyles = createThemedStyles((theme) => ({
   tipDescription: {
     color: theme.colors.text.secondary,
   },
+  signalDot: {
+    backgroundColor: theme.colors.fill.danger,
+    borderRadius: theme.radii.pill,
+    height: 10,
+    width: 10,
+  },
+  signalCountDot: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.fill.danger,
+    borderRadius: theme.radii.pill,
+    height: 20,
+    justifyContent: 'center',
+    minWidth: 20,
+    paddingHorizontal: 5,
+  },
   tipsToggle: {
     alignItems: 'center',
     borderRadius: theme.radii.md,
@@ -143,11 +166,49 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+function TastingSessionSignalIndicator({ indicator }: { indicator: NotificationSignalIndicator }) {
+  const styles = useStyles();
+
+  if (indicator.kind === 'none') {
+    return null;
+  }
+
+  if (indicator.kind === 'dot') {
+    return <View accessibilityLabel="Group tasting activity" style={styles.signalDot} testID="tasting-signal-dot" />;
+  }
+
+  return (
+    <View
+      accessibilityLabel={`${indicator.count} pending tasting ${indicator.count === 1 ? 'invite' : 'invites'}`}
+      style={styles.signalCountDot}
+      testID="tasting-signal-count-dot"
+    >
+      <Text tone="inverse" variant="captionStrong">
+        {indicator.count > 9 ? '9+' : indicator.count}
+      </Text>
+    </View>
+  );
+}
+
 export function MiscScreen({ navigation }: MiscScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
   const [expandedTips, setExpandedTips] = useState(false);
+  const tastingSessionsQuery = useQuery({
+    queryKey: tastingSessionsQueryKeys.root,
+    queryFn: ({ signal }) => listTastingSessions({ signal }),
+    enabled: Boolean(user?.id),
+  });
+  const tastingSessionSignalSummary = useMemo(
+    () =>
+      summarizeTastingSessionNotificationSignal({
+        sessions: tastingSessionsQuery.data ?? [],
+        userId: user?.id,
+      }),
+    [tastingSessionsQuery.data, user?.id],
+  );
+  const tastingSessionSignalIndicator = tastingSessionSignalSummary.indicator;
 
   const sectionColors = {
     cardBorder: theme.colors.border.subtle,
@@ -314,6 +375,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                   isLast={index === groupTastingsActions.length - 1}
                   key={action.title}
                   onPress={action.onPress}
+                  rightAccessory={
+                    tastingSessionSignalIndicator.kind === 'none' ? undefined : (
+                      <TastingSessionSignalIndicator indicator={tastingSessionSignalIndicator} />
+                    )
+                  }
                   testID={action.testID}
                   title={action.title}
                 />

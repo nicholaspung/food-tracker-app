@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import type * as ExpoNotifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
 import { AppState, NativeModules, Platform } from 'react-native';
@@ -16,9 +17,21 @@ const NOTIFICATION_DEVICE_ID_STORAGE_KEY = 'notifications.deviceId';
 const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
 const NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS = 250;
 const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
+const VISIT_REMINDER_NOTIFICATION_TYPE = 'visit_reminder';
 
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
+export type VisitReminderMinutes = 15 | 30 | 60;
+
+export type ScheduleVisitReminderResult =
+  | {
+      status: 'scheduled';
+      notificationId: string;
+    }
+  | {
+      status: 'permission_denied' | 'unavailable' | 'failed';
+      errorMessage?: string;
+    };
 
 interface NavigationRefLike {
   isReady: () => boolean;
@@ -104,6 +117,16 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
 
       activeAttempt = registerRemoteNotificationDevice(trigger)
         .catch((error) => {
+          if (isIosSimulatorMissingApnsEntitlementError(error)) {
+            trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
+              errorMessage: error instanceof Error ? error.message : String(error),
+              reason: 'ios_simulator_missing_apns_entitlement',
+              source: 'NotificationInteraction',
+              trigger,
+            });
+            return;
+          }
+
           logger.warn('[NotificationInteraction] Failed to register notification device:', error);
           trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_FAILED', {
             errorMessage: error instanceof Error ? error.message : String(error),
@@ -189,6 +212,15 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
   }, [status, userId]);
 }
 
+function isIosSimulatorMissingApnsEntitlementError(error: unknown): boolean {
+  if (Platform.OS !== 'ios' || Device.isDevice) {
+    return false;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return errorMessage.includes('no valid') && errorMessage.includes('aps-environment');
+}
+
 export function useForegroundNotificationPresentation() {
   useEffect(() => {
     let isCancelled = false;
@@ -257,10 +289,11 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
       }
 
       if (retryAttemptRef.current >= NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS) {
+        const pendingRoute = resolveNotificationRoute(response);
         trackObservabilityEvent('NOTIFICATION_TAP_ROUTE_DROPPED', {
-          notificationType: 'tasting_invite',
+          notificationType: pendingRoute?.notificationType ?? 'unknown',
           reason: 'navigation_not_ready',
-          route: 'TastingSessions',
+          route: pendingRoute?.routeName ?? 'unknown',
           source: 'NotificationInteraction',
         });
         pendingResponseRef.current = null;
@@ -306,8 +339,8 @@ export function routeNotificationResponse(
   response: ExpoNotifications.NotificationResponse | null | undefined,
   navigationRef: NavigationRefLike,
 ): 'routed' | 'ignored' | 'not_ready' {
-  const data = response?.notification.request.content.data;
-  if (!data || data.notificationType !== 'tasting_invite') {
+  const route = resolveNotificationRoute(response);
+  if (!route) {
     return 'ignored';
   }
 
@@ -315,18 +348,81 @@ export function routeNotificationResponse(
     return 'not_ready';
   }
 
-  navigationRef.navigate('TastingSessions', {
-    refreshSignal: Date.now(),
-  });
+  navigationRef.navigate(route.routeName, route.params);
   trackObservabilityEvent('NOTIFICATION_TAP_ROUTED', {
-    notificationType: 'tasting_invite',
-    route: 'TastingSessions',
+    notificationType: route.notificationType,
+    route: route.routeName,
     source: 'NotificationInteraction',
   });
   return 'routed';
 }
 
+export async function scheduleVisitReminderNotification(
+  minutes: VisitReminderMinutes,
+): Promise<ScheduleVisitReminderResult> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
+    return {
+      status: 'unavailable',
+      errorMessage: 'Notifications are not available on this device.',
+    };
+  }
+
+  const hasPermission = await ensureNotificationPermission(notifications);
+  if (!hasPermission) {
+    trackObservabilityEvent('VISIT_REMINDER_NOTIFICATION_SKIPPED', {
+      reason: 'permission_denied',
+      source: 'NotificationInteraction',
+    });
+    return {
+      status: 'permission_denied',
+      errorMessage: 'Notification permission is off. Enable notifications in system settings to use reminders.',
+    };
+  }
+
+  try {
+    const notificationId = await notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Track your restaurant visit',
+        body: 'Add the dishes and ratings while they are still fresh.',
+        data: {
+          notificationType: VISIT_REMINDER_NOTIFICATION_TYPE,
+        },
+      },
+      trigger: {
+        type: 'timeInterval',
+        seconds: minutes * 60,
+        repeats: false,
+      } as ExpoNotifications.TimeIntervalTriggerInput,
+    });
+
+    trackObservabilityEvent('VISIT_REMINDER_NOTIFICATION_SCHEDULED', {
+      minutes,
+      source: 'NotificationInteraction',
+    });
+    return {
+      status: 'scheduled',
+      notificationId,
+    };
+  } catch (error) {
+    logger.warn('[NotificationInteraction] Failed to schedule visit reminder:', error);
+    trackObservabilityEvent('VISIT_REMINDER_NOTIFICATION_FAILED', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      minutes,
+      source: 'NotificationInteraction',
+    });
+    return {
+      status: 'failed',
+      errorMessage: 'Could not schedule the reminder. Try again in a moment.',
+    };
+  }
+}
+
 async function ensureRemoteNotificationPermission(notifications: NotificationsModule): Promise<boolean> {
+  return ensureNotificationPermission(notifications);
+}
+
+async function ensureNotificationPermission(notifications: NotificationsModule): Promise<boolean> {
   const existingPermission = await notifications.getPermissionsAsync();
   if (existingPermission.granted) {
     return true;
@@ -334,6 +430,46 @@ async function ensureRemoteNotificationPermission(notifications: NotificationsMo
 
   const requestedPermission = await notifications.requestPermissionsAsync();
   return requestedPermission.granted;
+}
+
+function resolveNotificationRoute(
+  response: ExpoNotifications.NotificationResponse | null | undefined,
+):
+  | {
+      notificationType: string;
+      routeName: 'TastingSessions';
+      params: RootStackParamList['TastingSessions'];
+    }
+  | {
+      notificationType: string;
+      routeName: 'CreateVisit';
+      params: RootStackParamList['CreateVisit'];
+    }
+  | null {
+  const data = response?.notification.request.content.data;
+  if (!data || typeof data.notificationType !== 'string') {
+    return null;
+  }
+
+  if (data.notificationType === 'tasting_invite') {
+    return {
+      notificationType: 'tasting_invite',
+      routeName: 'TastingSessions',
+      params: {
+        refreshSignal: Date.now(),
+      },
+    };
+  }
+
+  if (data.notificationType === VISIT_REMINDER_NOTIFICATION_TYPE) {
+    return {
+      notificationType: VISIT_REMINDER_NOTIFICATION_TYPE,
+      routeName: 'CreateVisit',
+      params: undefined,
+    };
+  }
+
+  return null;
 }
 
 function resolveExpoProjectId(): string | null {

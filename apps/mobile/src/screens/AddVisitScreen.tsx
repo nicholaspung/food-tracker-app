@@ -1,6 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
 import {
@@ -12,10 +14,12 @@ import {
 } from '../components/shared';
 import { isAddOnboardingCardDismissed, useMonthlyUsage } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { scheduleVisitReminderNotification, type VisitReminderMinutes } from '../notifications/notificationInteraction';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
+import { Button, Modal, Text } from '../ui';
 import type { AddOnboardingCardId } from '../types/auth';
 
 type AddVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'AddVisit'>;
@@ -60,6 +64,48 @@ const useStyles = createThemedStyles((theme) => ({
   section: {
     gap: theme.spacing.sm,
   },
+  trackActionRow: {
+    alignItems: 'stretch',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  trackPrimaryAction: {
+    flex: 3,
+    minWidth: 0,
+  },
+  reminderAction: {
+    flex: 1,
+    minHeight: 92,
+    minWidth: 0,
+  },
+  reminderButtonCard: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 2,
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  reminderButtonCardPressed: {
+    borderColor: theme.colors.border.brand,
+  },
+  reminderIconWrap: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.text.brand,
+    borderRadius: theme.radii.md,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  reminderOptions: {
+    gap: theme.spacing.sm,
+  },
+  reminderError: {
+    marginTop: theme.spacing.xs,
+  },
   quickGrid: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -73,6 +119,9 @@ const useStyles = createThemedStyles((theme) => ({
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const [isReminderModalVisible, setIsReminderModalVisible] = useState(false);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [schedulingReminderMinutes, setSchedulingReminderMinutes] = useState<VisitReminderMinutes | null>(null);
   const { actualUser, user } = useAuth();
   const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -201,6 +250,41 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     />
   );
 
+  const closeReminderModal = () => {
+    if (schedulingReminderMinutes) {
+      return;
+    }
+    setIsReminderModalVisible(false);
+    setReminderError(null);
+  };
+
+  const handleReminderPress = () => {
+    setReminderError(null);
+    setIsReminderModalVisible(true);
+    trackObservabilityEvent('VISIT_REMINDER_ACTION_OPENED', {
+      source: 'AddVisitScreen',
+    });
+  };
+
+  const scheduleReminder = async (minutes: VisitReminderMinutes) => {
+    setReminderError(null);
+    setSchedulingReminderMinutes(minutes);
+
+    const result = await scheduleVisitReminderNotification(minutes);
+    setSchedulingReminderMinutes(null);
+
+    if (result.status === 'scheduled') {
+      setIsReminderModalVisible(false);
+      trackObservabilityEvent('VISIT_REMINDER_ACTION_SCHEDULED', {
+        minutes,
+        source: 'AddVisitScreen',
+      });
+      return;
+    }
+
+    setReminderError(result.errorMessage ?? 'Could not schedule the reminder. Try again in a moment.');
+  };
+
   const handleOptionPress = (optionId: AddOptionId) => {
     const selectedOption = options.find((option) => option.id === optionId);
     if (selectedOption?.disabled) {
@@ -320,7 +404,26 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
           {primaryOption ? (
             <View style={styles.section}>
               <SectionHeader title="Track" />
-              {renderOptionCard(primaryOption)}
+              <View style={styles.trackActionRow}>
+                <View style={styles.trackPrimaryAction}>
+                  {renderOptionCard(primaryOption)}
+                </View>
+                <Pressable
+                  accessibilityLabel="Schedule visit reminder"
+                  accessibilityRole="button"
+                  onPress={handleReminderPress}
+                  style={styles.reminderAction}
+                  testID="add-option-visit-reminder"
+                >
+                  {({ pressed }) => (
+                    <View style={[styles.reminderButtonCard, pressed ? styles.reminderButtonCardPressed : null]}>
+                      <View style={styles.reminderIconWrap}>
+                        <Ionicons color={theme.colors.text.inverse} name="alarm-outline" size={22} />
+                      </View>
+                    </View>
+                  )}
+                </Pressable>
+              </View>
             </View>
           ) : null}
 
@@ -362,6 +465,64 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
           ) : null}
         </ScrollView>
       </ScreenContentSection>
+      <Modal
+        description="Choose when to get a one-time reminder to start a restaurant visit."
+        onRequestClose={closeReminderModal}
+        secondaryAction={{
+          accessibilityLabel: 'Cancel visit reminder',
+          disabled: Boolean(schedulingReminderMinutes),
+          label: 'Cancel',
+          onPress: closeReminderModal,
+          testID: 'visit-reminder-cancel',
+        }}
+        testID="visit-reminder-modal"
+        title="Remind me to track this visit"
+        visible={isReminderModalVisible}
+      >
+        <View style={styles.reminderOptions}>
+          {VISIT_REMINDER_OPTIONS.map((option) => (
+            <Button
+              accessibilityLabel={`Remind me in ${option.accessibilityLabel}`}
+              disabled={Boolean(schedulingReminderMinutes)}
+              key={option.minutes}
+              label={option.label}
+              loading={schedulingReminderMinutes === option.minutes}
+              onPress={() => {
+                void scheduleReminder(option.minutes);
+              }}
+              testID={`visit-reminder-option-${option.minutes}`}
+              variant="secondary"
+            />
+          ))}
+        </View>
+        {reminderError ? (
+          <Text style={styles.reminderError} tone="danger" variant="bodySm">
+            {reminderError}
+          </Text>
+        ) : null}
+      </Modal>
     </TabRootScreenScaffold>
   );
 }
+
+const VISIT_REMINDER_OPTIONS: {
+  minutes: VisitReminderMinutes;
+  label: string;
+  accessibilityLabel: string;
+}[] = [
+  {
+    minutes: 15,
+    label: '15 min',
+    accessibilityLabel: '15 minutes',
+  },
+  {
+    minutes: 30,
+    label: '30 min',
+    accessibilityLabel: '30 minutes',
+  },
+  {
+    minutes: 60,
+    label: '1 hr',
+    accessibilityLabel: '1 hour',
+  },
+];

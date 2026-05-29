@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 
 import {
   routeNotificationResponse,
+  scheduleVisitReminderNotification,
   setNotificationsModuleLoaderForTests,
   unregisterCurrentNotificationDevice,
   useForegroundNotificationPresentation,
@@ -13,6 +14,7 @@ import {
   deactivateNotificationDevice,
   registerNotificationDevice,
 } from '../features/store/notificationDevicesStore';
+import { trackObservabilityEvent } from '../observability';
 
 const mockAddNotificationResponseReceivedListener = jest.fn();
 const mockGetExpoPushTokenAsync = jest.fn();
@@ -20,10 +22,12 @@ const mockGetLastNotificationResponseAsync = jest.fn();
 const mockGetPermissionsAsync = jest.fn();
 const mockRequestPermissionsAsync = jest.fn();
 const mockRemoveNotificationListener = jest.fn();
+const mockScheduleNotificationAsync = jest.fn();
 const mockSetNotificationHandler = jest.fn();
 const mockRemoveAppStateListener = jest.fn();
 let mockAppStateListener: ((state: string) => void) | null = null;
 const mockAsyncStorageState = new Map<string, string>();
+let mockIsDevice = true;
 
 jest.mock('react-native', () => ({
   AppState: {
@@ -49,6 +53,12 @@ jest.mock('expo-constants', () => ({
   },
 }));
 
+jest.mock('expo-device', () => ({
+  get isDevice() {
+    return mockIsDevice;
+  },
+}));
+
 jest.mock('expo-notifications', () => ({
   addNotificationResponseReceivedListener: (...args: unknown[]) =>
     mockAddNotificationResponseReceivedListener(...args),
@@ -56,6 +66,7 @@ jest.mock('expo-notifications', () => ({
   getLastNotificationResponseAsync: (...args: unknown[]) => mockGetLastNotificationResponseAsync(...args),
   getPermissionsAsync: (...args: unknown[]) => mockGetPermissionsAsync(...args),
   requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissionsAsync(...args),
+  scheduleNotificationAsync: (...args: unknown[]) => mockScheduleNotificationAsync(...args),
   setNotificationHandler: (...args: unknown[]) => mockSetNotificationHandler(...args),
 }));
 
@@ -87,6 +98,7 @@ const mockedRegisterNotificationDevice = registerNotificationDevice as jest.Mock
 const mockedDeactivateNotificationDevice = deactivateNotificationDevice as jest.MockedFunction<
   typeof deactivateNotificationDevice
 >;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 
 function RegistrationHarness({ status = 'authenticated', userId = 'user_1' }) {
   useRemoteNotificationRegistration(status as 'authenticated', userId);
@@ -120,11 +132,14 @@ describe('notificationInteraction', () => {
     mockGetPermissionsAsync.mockReset();
     mockRequestPermissionsAsync.mockReset();
     mockRemoveNotificationListener.mockReset();
+    mockScheduleNotificationAsync.mockReset();
     mockSetNotificationHandler.mockReset();
     mockRemoveAppStateListener.mockReset();
     mockAppStateListener = null;
+    mockIsDevice = true;
     mockedRegisterNotificationDevice.mockReset();
     mockedDeactivateNotificationDevice.mockReset();
+    mockedTrackObservabilityEvent.mockReset();
 
     mockAddNotificationResponseReceivedListener.mockReturnValue({
       remove: mockRemoveNotificationListener,
@@ -132,6 +147,7 @@ describe('notificationInteraction', () => {
     mockGetLastNotificationResponseAsync.mockResolvedValue(null);
     mockGetPermissionsAsync.mockResolvedValue({ granted: true });
     mockRequestPermissionsAsync.mockResolvedValue({ granted: true });
+    mockScheduleNotificationAsync.mockResolvedValue('notification_1');
     mockGetExpoPushTokenAsync.mockResolvedValue({ data: 'ExponentPushToken[test]' });
     mockedRegisterNotificationDevice.mockResolvedValue(undefined);
     mockedDeactivateNotificationDevice.mockResolvedValue(undefined);
@@ -141,6 +157,7 @@ describe('notificationInteraction', () => {
       getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
       getPermissionsAsync: mockGetPermissionsAsync,
       requestPermissionsAsync: mockRequestPermissionsAsync,
+      scheduleNotificationAsync: mockScheduleNotificationAsync,
       setNotificationHandler: mockSetNotificationHandler,
     }) as any);
   });
@@ -174,6 +191,52 @@ describe('notificationInteraction', () => {
     });
 
     expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+  });
+
+  it('attempts remote push registration on supported iOS simulators', async () => {
+    mockIsDevice = false;
+
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockGetPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockGetExpoPushTokenAsync).toHaveBeenCalledWith({ projectId: 'project_1' });
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: 'ios',
+        pushToken: 'ExponentPushToken[test]',
+      }),
+    );
+  });
+
+  it('suppresses missing APNs entitlement retries on unsupported iOS simulator builds', async () => {
+    mockIsDevice = false;
+    mockGetExpoPushTokenAsync.mockRejectedValue(
+      new Error('no valid “aps-environment” entitlement string found for application'),
+    );
+
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'NOTIFICATION_DEVICE_REGISTRATION_SKIPPED',
+      expect.objectContaining({
+        reason: 'ios_simulator_missing_apns_entitlement',
+        trigger: 'auth',
+      }),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+      await flushNotificationEffects();
+    });
+
+    expect(mockGetExpoPushTokenAsync).toHaveBeenCalledTimes(1);
   });
 
   it('retries notification device registration when the app returns to foreground', async () => {
@@ -251,6 +314,90 @@ describe('notificationInteraction', () => {
     expect(navigate).toHaveBeenCalledWith('TastingSessions', {
       refreshSignal: expect.any(Number),
     });
+  });
+
+  it('schedules a one-time local visit reminder after permission is available', async () => {
+    const result = await scheduleVisitReminderNotification(30);
+
+    expect(result).toEqual({
+      notificationId: 'notification_1',
+      status: 'scheduled',
+    });
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledWith({
+      content: {
+        title: 'Track your restaurant visit',
+        body: 'Add the dishes and ratings while they are still fresh.',
+        data: {
+          notificationType: 'visit_reminder',
+        },
+      },
+      trigger: {
+        type: 'timeInterval',
+        seconds: 1800,
+        repeats: false,
+      },
+    });
+  });
+
+  it('requests permission before scheduling a local visit reminder when needed', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ granted: false });
+    mockRequestPermissionsAsync.mockResolvedValue({ granted: true });
+
+    const result = await scheduleVisitReminderNotification(15);
+
+    expect(result.status).toBe('scheduled');
+    expect(mockRequestPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: expect.objectContaining({
+          seconds: 900,
+        }),
+      }),
+    );
+  });
+
+  it('does not schedule a local visit reminder when permission is denied', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ granted: false });
+    mockRequestPermissionsAsync.mockResolvedValue({ granted: false });
+
+    const result = await scheduleVisitReminderNotification(60);
+
+    expect(result.status).toBe('permission_denied');
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns a scheduling failure instead of throwing when local reminder scheduling fails', async () => {
+    mockScheduleNotificationAsync.mockRejectedValue(new Error('scheduler unavailable'));
+
+    const result = await scheduleVisitReminderNotification(30);
+
+    expect(result).toEqual({
+      errorMessage: 'Could not schedule the reminder. Try again in a moment.',
+      status: 'failed',
+    });
+  });
+
+  it('routes visit reminder notification taps to CreateVisit', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              notificationType: 'visit_reminder',
+            },
+          },
+        },
+      },
+    };
+
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('CreateVisit', undefined);
   });
 
   it('retries notification tap routing until navigation is ready', async () => {
