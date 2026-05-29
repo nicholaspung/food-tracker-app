@@ -49,7 +49,7 @@ export function setNotificationsModuleLoaderForTests(loader: () => Promise<Notif
   };
 }
 
-export async function resolveNotificationDeviceId(): Promise<string> {
+async function resolveNotificationDeviceId(): Promise<string> {
   const existingDeviceId = await AsyncStorage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
   if (existingDeviceId?.trim()) {
     return existingDeviceId;
