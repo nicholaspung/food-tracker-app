@@ -94,6 +94,7 @@ describe('tasting session lifecycle read state', () => {
     expect(shouldPollTastingSessionLifecycleScreen('detail', true)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('results', true)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('lobby', false)).toBe(false);
+    expect(shouldPollTastingSessionLifecycleScreen('lobby', true, false)).toBe(false);
   });
 
   it('returns redirect destinations without executing navigation', () => {

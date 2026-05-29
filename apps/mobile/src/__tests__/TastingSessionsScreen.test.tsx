@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTastingSessionWrites, type TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import type { RootStackParamList } from '../navigation/RootNavigator';
 import { TastingSessionsScreen } from '../screens/TastingSessionsScreen';
 
 const mockReact = React;
@@ -243,7 +244,10 @@ function buildCompletedSession(): TastingSessionRecord {
   };
 }
 
-function renderScreen(sessions: TastingSessionRecord[]) {
+function renderScreen(
+  sessions: TastingSessionRecord[],
+  routeParams?: RootStackParamList['TastingSessions'],
+) {
   const navigation = {
     navigate: jest.fn(),
     setParams: jest.fn(),
@@ -260,7 +264,12 @@ function renderScreen(sessions: TastingSessionRecord[]) {
 
   let renderer: TestRenderer;
   act(() => {
-    renderer = create(<TastingSessionsScreen navigation={navigation as never} route={{} as never} />) as TestRenderer;
+    renderer = create(
+      <TastingSessionsScreen
+        navigation={navigation as never}
+        route={{ params: routeParams } as never}
+      />,
+    ) as TestRenderer;
   });
 
   return { navigation, refetch, renderer: renderer! };
@@ -363,6 +372,13 @@ describe('TastingSessionsScreen', () => {
     });
 
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes group tastings when notification navigation requests fresh data', () => {
+    const { navigation, refetch } = renderScreen([], { refreshSignal: 123 });
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(navigation.setParams).toHaveBeenCalledWith({ refreshSignal: undefined });
   });
 
   it('renders completed sessions as list rows with a session date', () => {

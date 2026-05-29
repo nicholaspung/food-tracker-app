@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import {
@@ -60,8 +61,9 @@ const ACTIVE_LIFECYCLE_SCREENS = new Set<TastingSessionLifecycleScreen>([
 export function shouldPollTastingSessionLifecycleScreen(
   screen: TastingSessionLifecycleScreen,
   isOnline: boolean,
+  isFocused = true,
 ): boolean {
-  return isOnline && ACTIVE_LIFECYCLE_SCREENS.has(screen);
+  return isOnline && isFocused && ACTIVE_LIFECYCLE_SCREENS.has(screen);
 }
 
 export function getTastingSessionLifecycleStepState(
@@ -223,12 +225,13 @@ export function useTastingSessionLifecycleReadState(input: {
   sessionId: string;
 }) {
   const { isOnline } = useConnectivity();
+  const isFocused = useIsFocused();
   const queryClient = useQueryClient();
-  const shouldPoll = shouldPollTastingSessionLifecycleScreen(input.screen, isOnline);
+  const shouldPoll = shouldPollTastingSessionLifecycleScreen(input.screen, isOnline, isFocused);
   const sessionQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.detail(input.sessionId),
     queryFn: ({ signal }) => getTastingSessionById(input.sessionId, { signal }),
-    refetchInterval: shouldPoll ? 3000 : false,
+    refetchInterval: (query) => (shouldPoll && query.state.data ? 3000 : false),
   });
   const session = sessionQuery.data;
   const missingAccess = getTastingSessionLifecycleMissingAccessFacts({

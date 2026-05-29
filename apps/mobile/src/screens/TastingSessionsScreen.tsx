@@ -218,6 +218,15 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     navigation.setParams({ errorMessage: undefined });
   }, [navigation, route.params?.errorMessage]);
 
+  useEffect(() => {
+    if (!route.params?.refreshSignal) {
+      return;
+    }
+
+    void refetchSessions();
+    navigation.setParams({ refreshSignal: undefined });
+  }, [navigation, refetchSessions, route.params?.refreshSignal]);
+
   const pendingInviteSessions = useMemo(
     () =>
       sessions.filter((session) =>

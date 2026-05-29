@@ -248,7 +248,9 @@ describe('notificationInteraction', () => {
     };
 
     expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
-    expect(navigate).toHaveBeenCalledWith('TastingSessions');
+    expect(navigate).toHaveBeenCalledWith('TastingSessions', {
+      refreshSignal: expect.any(Number),
+    });
   });
 
   it('retries notification tap routing until navigation is ready', async () => {
@@ -284,7 +286,9 @@ describe('notificationInteraction', () => {
       await flushNotificationEffects();
     });
 
-    expect(navigate).toHaveBeenCalledWith('TastingSessions');
+    expect(navigate).toHaveBeenCalledWith('TastingSessions', {
+      refreshSignal: expect.any(Number),
+    });
   });
 
   it('subscribes to notification response taps while authenticated', async () => {

@@ -69,6 +69,19 @@ async function invalidateTastingSessionLifecycleQueries(
   ]);
 }
 
+async function removeDeletedTastingSessionFromCache(
+  queryClient: QueryClient,
+  sessionId: string,
+): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
+  queryClient.setQueryData<TastingSessionRecord[] | undefined>(
+    tastingSessionsQueryKeys.root,
+    (cachedSessions) => cachedSessions?.filter((session) => session.id !== sessionId),
+  );
+  queryClient.setQueryData(tastingSessionsQueryKeys.detail(sessionId), null);
+  await invalidateTastingSessionList(queryClient);
+}
+
 function blocked(message: string): TastingSessionWriteResult<never> {
   return {
     message,
@@ -167,7 +180,7 @@ export function useTastingSessionWrites() {
       }
 
       const result = await deleteTastingSession(sessionId);
-      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
+      await removeDeletedTastingSessionFromCache(queryClient, sessionId);
       return {
         result,
         status: 'completed',

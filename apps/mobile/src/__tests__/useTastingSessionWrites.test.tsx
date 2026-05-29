@@ -66,11 +66,14 @@ const tastingSession = {
 
 describe('useTastingSessionWrites', () => {
   const queryClient = {
+    cancelQueries: jest.fn(),
     invalidateQueries: jest.fn(),
+    setQueryData: jest.fn(),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient.cancelQueries.mockResolvedValue(undefined);
     queryClient.invalidateQueries.mockResolvedValue(undefined);
     mockedUseQueryClient.mockReturnValue(queryClient as never);
     mockedAcceptTastingInvite.mockResolvedValue(tastingSession as never);
@@ -174,10 +177,6 @@ describe('useTastingSessionWrites', () => {
       joinDurationMinutes: 60,
       sessionId: 'session_1',
     });
-    await hook.deleteSession({
-      isOnline: true,
-      sessionId: 'session_1',
-    });
     await hook.resendInvite({
       inviteId: 'invite_1',
       isOnline: true,
@@ -189,12 +188,43 @@ describe('useTastingSessionWrites', () => {
     expect(mockedReopenTastingInviteWindow).toHaveBeenCalledWith('session_1', {
       joinDurationMinutes: 60,
     });
-    expect(mockedDeleteTastingSession).toHaveBeenCalledWith('session_1');
     expect(mockedResendTastingInvite).toHaveBeenCalledWith('session_1', 'invite_1');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: tastingSessionsQueryKeys.detail('session_1'),
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('deletes a tasting session without refetching the deleted detail query', async () => {
+    const { hook, renderer } = await renderHook();
+
+    await hook.deleteSession({
+      isOnline: true,
+      sessionId: 'session_1',
+    });
+
+    expect(mockedDeleteTastingSession).toHaveBeenCalledWith('session_1');
+    expect(queryClient.cancelQueries).toHaveBeenCalledWith({
+      queryKey: tastingSessionsQueryKeys.detail('session_1'),
+    });
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.root,
+      expect.any(Function),
+    );
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.detail('session_1'),
+      null,
+    );
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: tastingSessionsQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.detail('session_1'),
     });
 

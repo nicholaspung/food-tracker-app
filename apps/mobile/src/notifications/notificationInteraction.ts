@@ -315,7 +315,9 @@ export function routeNotificationResponse(
     return 'not_ready';
   }
 
-  navigationRef.navigate('TastingSessions');
+  navigationRef.navigate('TastingSessions', {
+    refreshSignal: Date.now(),
+  });
   trackObservabilityEvent('NOTIFICATION_TAP_ROUTED', {
     notificationType: 'tasting_invite',
     route: 'TastingSessions',

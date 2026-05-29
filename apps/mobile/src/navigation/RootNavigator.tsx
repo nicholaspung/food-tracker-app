@@ -275,6 +275,7 @@ export type RootStackParamList = {
   TastingSessions:
     | {
         errorMessage?: string;
+        refreshSignal?: number;
       }
     | undefined;
   CreateTastingSession: undefined;
