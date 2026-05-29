@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
 import { useEffect } from 'react';
-import { NativeModules, Platform } from 'react-native';
+import { AppState, NativeModules, Platform } from 'react-native';
 
 import {
   deactivateNotificationDevice,
@@ -13,6 +13,7 @@ import { trackObservabilityEvent } from '../observability';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 const NOTIFICATION_DEVICE_ID_STORAGE_KEY = 'notifications.deviceId';
+const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
 
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
@@ -76,19 +77,67 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
     }
 
     let isCancelled = false;
+    let activeAttempt: Promise<void> | null = null;
+    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const register = async () => {
+    const clearRetryTimeout = () => {
+      if (retryTimeoutId) {
+        clearTimeout(retryTimeoutId);
+        retryTimeoutId = null;
+      }
+    };
+
+    const scheduleRetry = () => {
+      clearRetryTimeout();
+      retryTimeoutId = setTimeout(() => {
+        retryTimeoutId = null;
+        runRegistrationAttempt('retry');
+      }, NOTIFICATION_REGISTRATION_RETRY_DELAY_MS);
+    };
+
+    const runRegistrationAttempt = (trigger: 'auth' | 'foreground' | 'retry') => {
+      if (isCancelled || activeAttempt) {
+        return;
+      }
+
+      activeAttempt = registerRemoteNotificationDevice(trigger)
+        .catch((error) => {
+          logger.warn('[NotificationInteraction] Failed to register notification device:', error);
+          trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_FAILED', {
+            errorMessage: error instanceof Error ? error.message : String(error),
+            source: 'NotificationInteraction',
+            trigger,
+          });
+
+          if (!isCancelled) {
+            scheduleRetry();
+          }
+        })
+        .finally(() => {
+          activeAttempt = null;
+        });
+    };
+
+    const registerRemoteNotificationDevice = async (trigger: 'auth' | 'foreground' | 'retry') => {
       const notifications = await loadNotificationsModule();
       if (!notifications) {
         trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
           reason: 'native_module_unavailable',
           source: 'NotificationInteraction',
+          trigger,
         });
         return;
       }
 
       const permission = await ensureRemoteNotificationPermission(notifications);
       if (!permission || isCancelled) {
+        if (!permission) {
+          trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
+            reason: 'permission_denied',
+            source: 'NotificationInteraction',
+            trigger,
+          });
+        }
         return;
       }
 
@@ -97,6 +146,7 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
         trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
           reason: 'missing_expo_project_id',
           source: 'NotificationInteraction',
+          trigger,
         });
         return;
       }
@@ -114,18 +164,25 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
         platform: Platform.OS,
         pushToken: pushToken.data,
       });
+      trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SUCCEEDED', {
+        platform: Platform.OS,
+        source: 'NotificationInteraction',
+        trigger,
+      });
     };
 
-    void register().catch((error) => {
-      logger.warn('[NotificationInteraction] Failed to register notification device:', error);
-      trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_FAILED', {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        source: 'NotificationInteraction',
-      });
+    runRegistrationAttempt('auth');
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        runRegistrationAttempt('foreground');
+      }
     });
 
     return () => {
       isCancelled = true;
+      clearRetryTimeout();
+      appStateSubscription.remove();
     };
   }, [status, userId]);
 }

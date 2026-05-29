@@ -21,9 +21,19 @@ const mockGetPermissionsAsync = jest.fn();
 const mockRequestPermissionsAsync = jest.fn();
 const mockRemoveNotificationListener = jest.fn();
 const mockSetNotificationHandler = jest.fn();
+const mockRemoveAppStateListener = jest.fn();
+let mockAppStateListener: ((state: string) => void) | null = null;
 const mockAsyncStorageState = new Map<string, string>();
 
 jest.mock('react-native', () => ({
+  AppState: {
+    addEventListener: jest.fn((_eventName: string, listener: (state: string) => void) => {
+      mockAppStateListener = listener;
+      return { remove: mockRemoveAppStateListener };
+    }),
+    currentState: 'active',
+  },
+  NativeModules: {},
   Platform: {
     OS: 'ios',
   },
@@ -111,6 +121,8 @@ describe('notificationInteraction', () => {
     mockRequestPermissionsAsync.mockReset();
     mockRemoveNotificationListener.mockReset();
     mockSetNotificationHandler.mockReset();
+    mockRemoveAppStateListener.mockReset();
+    mockAppStateListener = null;
     mockedRegisterNotificationDevice.mockReset();
     mockedDeactivateNotificationDevice.mockReset();
 
@@ -162,6 +174,32 @@ describe('notificationInteraction', () => {
     });
 
     expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+  });
+
+  it('retries notification device registration when the app returns to foreground', async () => {
+    mockedRegisterNotificationDevice
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(undefined);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mockAppStateListener?.('active');
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+    expect(mockRemoveAppStateListener).toHaveBeenCalledTimes(1);
   });
 
   it('shows foreground notifications as banners and notification list entries', async () => {
