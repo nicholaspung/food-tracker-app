@@ -24,6 +24,7 @@ import type { MainOnboardingCardId } from '../types/onboarding';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import {
+  useForegroundNotificationPresentation,
   useNotificationTapRouting,
   useRemoteNotificationRegistration,
 } from '../notifications/notificationInteraction';
@@ -434,6 +435,7 @@ export function RootNavigator() {
   const [isAuthenticatedChromeReady, setIsAuthenticatedChromeReady] = useState(false);
   const hasConsumedPendingAuthRedirectRef = useRef(false);
 
+  useForegroundNotificationPresentation();
   useRemoteNotificationRegistration(status, actualUser?.id);
   useNotificationTapRouting(navigationRef, status);
 

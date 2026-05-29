@@ -5,6 +5,7 @@ import {
   routeNotificationResponse,
   setNotificationsModuleLoaderForTests,
   unregisterCurrentNotificationDevice,
+  useForegroundNotificationPresentation,
   useNotificationTapRouting,
   useRemoteNotificationRegistration,
 } from '../notifications/notificationInteraction';
@@ -19,6 +20,7 @@ const mockGetLastNotificationResponseAsync = jest.fn();
 const mockGetPermissionsAsync = jest.fn();
 const mockRequestPermissionsAsync = jest.fn();
 const mockRemoveNotificationListener = jest.fn();
+const mockSetNotificationHandler = jest.fn();
 const mockAsyncStorageState = new Map<string, string>();
 
 jest.mock('react-native', () => ({
@@ -44,6 +46,7 @@ jest.mock('expo-notifications', () => ({
   getLastNotificationResponseAsync: (...args: unknown[]) => mockGetLastNotificationResponseAsync(...args),
   getPermissionsAsync: (...args: unknown[]) => mockGetPermissionsAsync(...args),
   requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissionsAsync(...args),
+  setNotificationHandler: (...args: unknown[]) => mockSetNotificationHandler(...args),
 }));
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -80,6 +83,11 @@ function RegistrationHarness({ status = 'authenticated', userId = 'user_1' }) {
   return React.createElement('RegistrationHarness');
 }
 
+function ForegroundPresentationHarness() {
+  useForegroundNotificationPresentation();
+  return React.createElement('ForegroundPresentationHarness');
+}
+
 function TapRoutingHarness({ navigationRef, status = 'authenticated' }: { navigationRef: any; status?: string }) {
   useNotificationTapRouting(navigationRef, status as 'authenticated');
   return React.createElement('TapRoutingHarness');
@@ -102,6 +110,7 @@ describe('notificationInteraction', () => {
     mockGetPermissionsAsync.mockReset();
     mockRequestPermissionsAsync.mockReset();
     mockRemoveNotificationListener.mockReset();
+    mockSetNotificationHandler.mockReset();
     mockedRegisterNotificationDevice.mockReset();
     mockedDeactivateNotificationDevice.mockReset();
 
@@ -120,6 +129,7 @@ describe('notificationInteraction', () => {
       getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
       getPermissionsAsync: mockGetPermissionsAsync,
       requestPermissionsAsync: mockRequestPermissionsAsync,
+      setNotificationHandler: mockSetNotificationHandler,
     }) as any);
   });
 
@@ -152,6 +162,25 @@ describe('notificationInteraction', () => {
     });
 
     expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+  });
+
+  it('shows foreground notifications as banners and notification list entries', async () => {
+    await act(async () => {
+      create(<ForegroundPresentationHarness />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockSetNotificationHandler).toHaveBeenCalledWith({
+      handleNotification: expect.any(Function),
+    });
+
+    const handler = mockSetNotificationHandler.mock.calls[0][0];
+    await expect(handler.handleNotification()).resolves.toEqual({
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    });
   });
 
   it('deactivates the persisted device during logout cleanup', async () => {

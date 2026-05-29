@@ -130,6 +130,40 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
   }, [status, userId]);
 }
 
+export function useForegroundNotificationPresentation() {
+  useEffect(() => {
+    let isCancelled = false;
+    let didInstallHandler = false;
+
+    void loadNotificationsModule()
+      .then((notifications) => {
+        if (!notifications || isCancelled) {
+          return;
+        }
+
+        notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
+        });
+        didInstallHandler = true;
+      })
+      .catch((error: unknown) => {
+        logger.warn('[NotificationInteraction] Failed to install notification presentation handler:', error);
+      });
+
+    return () => {
+      isCancelled = true;
+      if (didInstallHandler) {
+        void loadNotificationsModule().then((notifications) => notifications?.setNotificationHandler(null));
+      }
+    };
+  }, []);
+}
+
 export function useNotificationTapRouting(navigationRef: NavigationRefLike, status: NotificationAuthStatus) {
   useEffect(() => {
     if (status !== 'authenticated') {
