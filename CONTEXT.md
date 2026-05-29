@@ -128,6 +128,42 @@ _Avoid_: settings form values
 The saved mobile onboarding state for first-run completion and per-feature intro dismissal.
 _Avoid_: tutorial flags
 
+**Notification Signal**:
+A product event or state that should draw a user's attention through a device notification, an in-app indicator, or both.
+_Avoid_: alert, notification everywhere
+
+**Device Notification**:
+An OS-level notification delivered to a user's device from Food Tracker.
+_Avoid_: mobile notification, push notification when local notification is meant
+
+**Remote Device Notification**:
+A **Device Notification** sent because Food Tracker server state changed while the user may not be using the app.
+_Avoid_: local reminder, in-app notification
+
+**Local Device Notification**:
+A **Device Notification** scheduled by the app on a user's device for that user's own reminder.
+_Avoid_: push notification, server notification
+
+**Bill Payment Reminder**:
+A reminder sent to an app user who still owes money on an active Bill.
+_Avoid_: bill created notification, payment nag
+
+**In-App Indicator**:
+A visible badge, dot, count, or callout inside Food Tracker that points to an unresolved **Notification Signal**.
+_Avoid_: notification visual, red dot
+
+**Notification Preference**:
+A user's saved choice for whether Food Tracker may send a category of **Remote Device Notifications**.
+_Avoid_: notification permission, system setting
+
+**Notification Device**:
+An authenticated app installation that can receive **Remote Device Notifications** for one user.
+_Avoid_: push token, phone
+
+**Notification Delivery Log**:
+Backend-only operational metadata used to deduplicate, rate-limit, and debug **Remote Device Notifications**.
+_Avoid_: notification inbox, user notification history
+
 ## Relationships
 
 - A **Restaurant List** contains zero or more restaurants.
@@ -217,6 +253,50 @@ _Avoid_: tutorial flags
 - **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.
 - **Settings Preferences** include default Visit, Restaurant, Restaurant List, and Home feed preferences.
 - **Onboarding Progress** is persisted on the authenticated user record and may be updated while offline.
+- A **Notification Signal** may appear as a **Device Notification**, an **In-App Indicator**, or both.
+- A **Device Notification** is either a **Remote Device Notification** or a **Local Device Notification**.
+- An **In-App Indicator** stays tied to the unresolved product state it represents.
+- Food Tracker does not keep a notification inbox for **Notification Signals** in the first version.
+- First-version **In-App Indicators** are derived from unresolved domain state rather than notification read history.
+- Friend requests use **In-App Indicators** without **Device Notifications**.
+- More-row **In-App Indicators** use dot or count-dot badges instead of text status pills.
+- More-row **In-App Indicators** use counts when the unresolved state has a meaningful count, and a plain dot when the unresolved state is binary.
+- More-row **In-App Indicators** are backed by lightweight feature summaries and may render from cached data while offline.
+- Bill owed-money **Remote Device Notifications** are sent only to mapped app-user participants, excluding the actor, when a Bill creation or edit newly gives that participant a pending owed amount greater than zero.
+- Bill owed-money **Remote Device Notifications** are not resent for ordinary Bill edits where the participant already owed money.
+- The Bill **In-App Indicator** stays visible while the signed-in user owes money on any active Bill.
+- A **Bill Payment Reminder** is an explicit payer action, not an automatic recurring reminder.
+- A **Bill Payment Reminder** can be sent to the same Bill participant at most once per week.
+- A **Bill Payment Reminder** is unavailable for custom participants and participants who are already paid.
+- Directly invited tasting session users receive **Remote Device Notifications** when a leader creates or resends their invite.
+- Tasting session leaders receive an **In-App Indicator** when an active session has a shareable invite code or open invite window.
+- Tapping a tasting invite **Device Notification** opens the tasting sessions list for invite acceptance.
+- Tapping a Bill owed-money or **Bill Payment Reminder** **Device Notification** opens that Bill's detail.
+- Tapping a user-scheduled visit reminder **Local Device Notification** opens Visit creation.
+- Monthly friends activity **Remote Device Notifications** are sent at most once per user per month when at least one accepted friend created at least one friend-visible Visit during the previous calendar month.
+- Monthly friends activity **Remote Device Notifications** do not count private visits, food products, notes, Bills, or tasting sessions.
+- Tapping a monthly friends activity **Device Notification** opens the Home feed filtered to friends.
+- **Notification Preferences** are separate from OS notification permission.
+- Tasting invites, Bills and payment reminders, and monthly friends activity each have their own **Notification Preference**.
+- User-scheduled visit reminders are controlled by their reminder schedule rather than a global **Notification Preference**.
+- **Notification Preferences** control only **Remote Device Notification** delivery, not **In-App Indicators**.
+- A user may have multiple **Notification Devices**.
+- **Remote Device Notifications** are sent only to active **Notification Devices** for the target user.
+- Signed-out or invalid **Notification Devices** stop receiving **Remote Device Notifications**.
+- Event-driven **Remote Device Notifications** for tasting invites, Bill owed money, and **Bill Payment Reminders** are sent immediately.
+- Monthly friends activity **Remote Device Notifications** are sent during a reasonable daytime delivery window.
+- User-scheduled visit reminders fire at the chosen relative time.
+- Bill **Device Notification** copy does not include owed amounts.
+- The **Notification Delivery Log** is not user-facing.
+- The **Notification Delivery Log** does not store notification body text or push tokens.
+- The **Notification Delivery Log** keeps only the metadata needed for deduplication, rate limiting, delivery debugging, and limited retention.
+- Food Tracker asks for OS notification permission only when the user enables a notification-dependent workflow or preference.
+- **In-App Indicators** remain available when OS notification permission is denied.
+- First-version user-scheduled visit reminders are one-time **Local Device Notifications**.
+- First-version user-scheduled visit reminders are device-local and are not synced across devices.
+- First-version user-scheduled visit reminders are quick relative reminders from the Add tab, not a dedicated reminder management surface.
+- First-version user-scheduled visit reminders support 15-minute, 30-minute, and one-hour options after the user starts the reminder action.
+- First-version user-scheduled visit reminders do not collect restaurant names, notes, or other reminder details.
 
 ## Example dialogue
 

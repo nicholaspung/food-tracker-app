@@ -289,6 +289,8 @@ PODS:
     - React-Core
     - React-runtimescheduler
     - ReactCommon
+  - ExpoNotifications (55.0.23):
+    - ExpoModulesCore
   - ExpoSecureStore (55.0.14):
     - ExpoModulesCore
   - ExpoSplashScreen (55.0.21):
@@ -3480,6 +3482,7 @@ DEPENDENCIES:
   - "ExpoMediaLibrary (from `../../../node_modules/.pnpm/expo-media-library@55.0.17_expo@55.0.25_react-native@0.83.6_@babel+core@7.29.0_@react-n_6eb247a7a81a598910089051faae5541/node_modules/expo-media-library/ios`)"
   - "ExpoModulesCore (from `../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.8.1_@babel+core@7.29.0_@react-native+_37bcebd9336f4da0f359662bfb35c825/node_modules/expo-modules-core`)"
   - "ExpoModulesJSI (from `../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.8.1_@babel+core@7.29.0_@react-native+_37bcebd9336f4da0f359662bfb35c825/node_modules/expo-modules-core`)"
+  - "ExpoNotifications (from `../../../node_modules/.pnpm/expo-notifications@55.0.23_expo@55.0.25_react-native@0.83.6_@babel+core@7.29.0_@react-n_2ceec6c9ab013e19497dac4d773c3b17/node_modules/expo-notifications/ios`)"
   - "ExpoSecureStore (from `../../../node_modules/.pnpm/expo-secure-store@55.0.14_expo@55.0.25/node_modules/expo-secure-store/ios`)"
   - "ExpoSplashScreen (from `../../../node_modules/.pnpm/expo-splash-screen@55.0.21_expo@55.0.25_typescript@5.9.3/node_modules/expo-splash-screen/ios`)"
   - "ExpoSQLite (from `../../../node_modules/.pnpm/expo-sqlite@55.0.16_expo@55.0.25_react-native@0.83.6_@babel+core@7.29.0_@react-native+m_cb2be0c292bdda641adcaa431b8e9970/node_modules/expo-sqlite/ios`)"
@@ -3646,6 +3649,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.8.1_@babel+core@7.29.0_@react-native+_37bcebd9336f4da0f359662bfb35c825/node_modules/expo-modules-core"
   ExpoModulesJSI:
     :path: "../../../node_modules/.pnpm/expo-modules-core@55.0.25_react-native-worklets@0.8.1_@babel+core@7.29.0_@react-native+_37bcebd9336f4da0f359662bfb35c825/node_modules/expo-modules-core"
+  ExpoNotifications:
+    :path: "../../../node_modules/.pnpm/expo-notifications@55.0.23_expo@55.0.25_react-native@0.83.6_@babel+core@7.29.0_@react-n_2ceec6c9ab013e19497dac4d773c3b17/node_modules/expo-notifications/ios"
   ExpoSecureStore:
     :path: "../../../node_modules/.pnpm/expo-secure-store@55.0.14_expo@55.0.25/node_modules/expo-secure-store/ios"
   ExpoSplashScreen:
@@ -3868,6 +3873,7 @@ SPEC CHECKSUMS:
   ExpoMediaLibrary: d44327d3def87bff3bd00dc09a76f1105da9e028
   ExpoModulesCore: cc07ebf5b947a239f1669cb5856d905cb2b093f7
   ExpoModulesJSI: 964334271fc77832736f66ee1785761cdc778dbe
+  ExpoNotifications: 61c46aa5df088ff0ad41de0504a86a92333aec55
   ExpoSecureStore: 0e7959ad3a9fa59306d55f26a37854640dd334c2
   ExpoSplashScreen: 049301b226bce8284fcafb7923fcad3a43f23a9f
   ExpoSQLite: f590370153b853bfebec84566e8bc3eeac7c7d54

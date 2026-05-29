@@ -79,6 +79,7 @@ func main() {
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)
 		handlers.RegisterPostHogProxyHandlers(se)
+		handlers.RegisterNotificationHandlers(se, app)
 		handlers.RegisterTastingSessionHandlers(se, app)
 
 		// Serves static files from the provided public dir (if exists)

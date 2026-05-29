@@ -47,6 +47,7 @@ import {
 import { clearPersistedQueryCache } from './queryPersistence';
 import { useSync } from './SyncProvider';
 import { normalizeAuthUser, type AuthUser } from '../types/auth';
+import { unregisterCurrentNotificationDevice } from '../notifications/notificationInteraction';
 
 type AuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type RolePreviewSettingKey = keyof RolePreviewSettings;
@@ -615,6 +616,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     suppressNextAuthBoundaryResetRef.current = Boolean(actualUser?.id);
+    if (actualUser?.id) {
+      await unregisterCurrentNotificationDevice().catch((error) => {
+        logger.warn('[AuthProvider] Failed to unregister notification device on sign-out:', error);
+      });
+    }
     pb.authStore.clear();
     await resetAuthenticatedLocalState('logout');
     setActualUser(null);

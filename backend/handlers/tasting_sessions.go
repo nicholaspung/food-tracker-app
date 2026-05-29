@@ -196,6 +196,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		sessionID := ""
+		notificationUserIDs := []string{}
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionsCollection, collectionErr := txApp.FindCollectionByNameOrId("tasting_sessions")
 			if collectionErr != nil {
@@ -228,15 +229,20 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 				return participantErr
 			}
 
-			if inviteErr := upsertTastingInvites(txApp, sessionRecord.Id, requestBody.InvitedUserIDs); inviteErr != nil {
+			invitedUserIDs, inviteErr := upsertTastingInvites(txApp, sessionRecord.Id, requestBody.InvitedUserIDs)
+			if inviteErr != nil {
 				return inviteErr
 			}
 
 			sessionID = sessionRecord.Id
+			notificationUserIDs = invitedUserIDs
 			return nil
 		})
 		if err != nil {
 			return err
+		}
+		if err := deliverTastingInviteNotifications(app, sessionID, authRecord.Id, notificationUserIDs); err != nil {
+			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
@@ -369,6 +375,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		}
 		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
 		inviteID := strings.TrimSpace(e.Request.PathValue("inviteId"))
+		notificationUserIDs := []string{}
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
 			if loadErr != nil {
@@ -400,10 +407,14 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			if err := txApp.Save(inviteRecord); err != nil {
 				return apis.NewApiError(500, "failed to resend invite", err)
 			}
+			notificationUserIDs = append(notificationUserIDs, strings.TrimSpace(inviteRecord.GetString("invited_user")))
 			return nil
 		})
 		if err != nil {
 			return err
+		}
+		if err := deliverTastingInviteNotifications(app, sessionID, authRecord.Id, notificationUserIDs); err != nil {
+			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
 	}).Bind(apis.RequireAuth())
@@ -1187,15 +1198,16 @@ func findTastingInvite(app core.App, sessionID string, userID string) (*core.Rec
 	return record, nil
 }
 
-func upsertTastingInvites(app core.App, sessionID string, userIDs []string) error {
+func upsertTastingInvites(app core.App, sessionID string, userIDs []string) ([]string, error) {
 	if len(userIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 	collection, err := app.FindCollectionByNameOrId("tasting_session_invites")
 	if err != nil {
-		return apis.NewApiError(500, "internal error", err)
+		return nil, apis.NewApiError(500, "internal error", err)
 	}
 	seen := map[string]struct{}{}
+	notificationUserIDs := []string{}
 	for _, rawUserID := range userIDs {
 		userID := strings.TrimSpace(rawUserID)
 		if userID == "" {
@@ -1207,7 +1219,7 @@ func upsertTastingInvites(app core.App, sessionID string, userIDs []string) erro
 		seen[userID] = struct{}{}
 		existing, err := findTastingInvite(app, sessionID, userID)
 		if err != nil {
-			return apis.NewApiError(500, "failed to load tasting invite", err)
+			return nil, apis.NewApiError(500, "failed to load tasting invite", err)
 		}
 		if existing != nil {
 			if strings.TrimSpace(existing.GetString("status")) == tastingInviteStatusRevoked {
@@ -1215,8 +1227,9 @@ func upsertTastingInvites(app core.App, sessionID string, userIDs []string) erro
 			}
 			existing.Set("status", tastingInviteStatusPending)
 			if err := app.Save(existing); err != nil {
-				return apis.NewApiError(500, "failed to update tasting invite", err)
+				return nil, apis.NewApiError(500, "failed to update tasting invite", err)
 			}
+			notificationUserIDs = append(notificationUserIDs, userID)
 			continue
 		}
 		record := core.NewRecord(collection)
@@ -1224,10 +1237,11 @@ func upsertTastingInvites(app core.App, sessionID string, userIDs []string) erro
 		record.Set("invited_user", userID)
 		record.Set("status", tastingInviteStatusPending)
 		if err := app.Save(record); err != nil {
-			return apis.NewApiError(500, "failed to create tasting invite", err)
+			return nil, apis.NewApiError(500, "failed to create tasting invite", err)
 		}
+		notificationUserIDs = append(notificationUserIDs, userID)
 	}
-	return nil
+	return notificationUserIDs, nil
 }
 
 func reactivateDismissedTastingInvites(app core.App, sessionID string) error {

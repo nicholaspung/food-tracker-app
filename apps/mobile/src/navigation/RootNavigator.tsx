@@ -23,6 +23,10 @@ import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
 import type { MainOnboardingCardId } from '../types/onboarding';
 import { useAuth } from '../providers/AuthProvider';
 import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
+import {
+  useNotificationTapRouting,
+  useRemoteNotificationRegistration,
+} from '../notifications/notificationInteraction';
 import { trackObservabilityEvent, trackWebPageLeave, trackWebPageView } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import {
@@ -429,6 +433,9 @@ export function RootNavigator() {
   const authSubmissionWasActiveRef = useRef(false);
   const [isAuthenticatedChromeReady, setIsAuthenticatedChromeReady] = useState(false);
   const hasConsumedPendingAuthRedirectRef = useRef(false);
+
+  useRemoteNotificationRegistration(status, actualUser?.id);
+  useNotificationTapRouting(navigationRef, status);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
