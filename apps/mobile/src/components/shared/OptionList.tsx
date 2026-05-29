@@ -24,6 +24,7 @@ export interface OptionListRowProps {
   rightAccessory?: ReactNode;
   chevron?: OptionChevronDirection | false;
   onPress?: () => void;
+  disabled?: boolean;
   connected?: boolean;
   isLast?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -131,6 +132,7 @@ export function OptionListRow({
   rightAccessory,
   chevron,
   onPress,
+  disabled = false,
   connected = false,
   isLast = false,
   style,
@@ -189,7 +191,8 @@ export function OptionListRow({
       accessibilityHint={accessibilityHint}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      accessibilityState={accessibilityState}
+      accessibilityState={disabled ? { ...accessibilityState, disabled: true } : accessibilityState}
+      disabled={disabled}
       onPress={onPress}
       style={rowStyle}
       testID={testID}

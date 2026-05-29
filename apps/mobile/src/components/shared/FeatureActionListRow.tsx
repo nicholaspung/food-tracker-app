@@ -15,8 +15,10 @@ export interface FeatureActionListRowProps {
   iconColor: string;
   iconBackground: string;
   onPress: () => void;
+  disabled?: boolean;
   isLast?: boolean;
   rightAccessory?: ReactNode;
+  titleAccessory?: ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -41,8 +43,10 @@ export function FeatureActionListRow({
   iconColor,
   iconBackground,
   onPress,
+  disabled = false,
   isLast = false,
   rightAccessory,
+  titleAccessory,
   style,
   testID,
 }: FeatureActionListRowProps) {
@@ -56,12 +60,17 @@ export function FeatureActionListRow({
           <Ionicons color={iconColor} name={iconName} size={18} />
         </View>
       }
+      disabled={disabled}
       onPress={onPress}
-      rightAccessory={rightAccessory}
+      rightAccessory={
+        rightAccessory ??
+        (disabled ? <Ionicons color={iconColor} name="lock-closed-outline" size={16} /> : undefined)
+      }
       style={[styles.row, style]}
       subtitle={description}
       testID={testID}
       title={title}
+      titleAccessory={titleAccessory}
     />
   );
 }

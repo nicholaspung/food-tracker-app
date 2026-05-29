@@ -2,15 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
-import { AddOptionCard } from '../components/add';
 import {
-  SectionHeader,
+  FeatureActionListRow,
+  OptionList,
   ScreenContentSection,
   StatusPill,
   TabBrandHeader,
   TabRootScreenScaffold,
+  TabSectionCard,
 } from '../components/shared';
 import { isAddOnboardingCardDismissed, useMonthlyUsage } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -36,10 +37,10 @@ interface AddOptionConfig {
   onboardingCardId?: AddOnboardingCardId;
   title: string;
   description: string;
-  icon: ComponentProps<typeof AddOptionCard>['icon'];
+  icon: ComponentProps<typeof FeatureActionListRow>['iconName'];
   iconBackground: string;
   iconColor: string;
-  titleAccessory?: ComponentProps<typeof AddOptionCard>['titleAccessory'];
+  titleAccessory?: ComponentProps<typeof FeatureActionListRow>['titleAccessory'];
   disabled?: boolean;
 }
 
@@ -61,58 +62,23 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.md,
   },
-  section: {
-    gap: theme.spacing.sm,
+  sectionCard: {
+    borderColor: theme.colors.border.subtle,
   },
-  trackActionRow: {
-    alignItems: 'stretch',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
+  sectionDescription: {
+    color: theme.colors.text.muted,
   },
-  trackPrimaryAction: {
-    flex: 3,
-    minWidth: 0,
-  },
-  reminderAction: {
-    flex: 1,
-    minHeight: 92,
-    minWidth: 0,
-  },
-  reminderButtonCard: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
+  optionList: {
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.md,
-    borderWidth: 2,
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-  },
-  reminderButtonCardPressed: {
-    borderColor: theme.colors.border.brand,
-  },
-  reminderIconWrap: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.text.brand,
-    borderRadius: theme.radii.md,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   reminderOptions: {
     gap: theme.spacing.sm,
   },
   reminderError: {
     marginTop: theme.spacing.xs,
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  quickGridItem: {
-    flex: 1,
-    minWidth: 0,
   },
 }));
 
@@ -142,12 +108,19 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
 
   const optionColors = {
     restaurant: theme.colors.text.info,
+    restaurantSoft: theme.colors.status.infoBg,
+    reminder: theme.colors.text.brand,
+    reminderSoft: theme.colors.background.muted,
     foodDiscovery: theme.colors.text.brand,
+    foodDiscoverySoft: theme.colors.background.muted,
     foodProduct: theme.colors.text.success,
+    foodProductSoft: theme.colors.status.successBg,
     logNote: theme.colors.text.warning,
+    logNoteSoft: theme.colors.status.warningBg,
     processPhotos: theme.colors.text.brand,
+    processPhotosSoft: theme.colors.background.muted,
     manageNotes: theme.colors.text.secondary,
-    iconOnColor: theme.colors.text.inverse,
+    manageNotesSoft: theme.colors.background.muted,
   } as const;
 
   const options: AddOptionConfig[] = [
@@ -157,19 +130,21 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Track Restaurant Visit',
       description: 'Restaurant, dishes, photos, and ratings',
       icon: 'restaurant-outline',
-      iconBackground: optionColors.restaurant,
-      iconColor: optionColors.iconOnColor,
+      iconBackground: optionColors.restaurantSoft,
+      iconColor: optionColors.restaurant,
     },
     ...(canAccessFoodDiscovery
-      ? [{
-      id: 'food-discovery',
-      title: 'Food Discovery',
-      description: 'Find restaurants and scan menus',
-          icon: 'compass-outline',
-          iconBackground: optionColors.foodDiscovery,
-          iconColor: optionColors.iconOnColor,
-          titleAccessory: <StatusPill label="Beta" tone="brand" uppercase />,
-        } satisfies AddOptionConfig]
+      ? [
+          {
+            id: 'food-discovery',
+            title: 'Food Discovery',
+            description: 'Find restaurants and scan menus',
+            icon: 'compass-outline',
+            iconBackground: optionColors.foodDiscoverySoft,
+            iconColor: optionColors.foodDiscovery,
+            titleAccessory: <StatusPill label="Beta" tone="brand" uppercase />,
+          } satisfies AddOptionConfig,
+        ]
       : []),
     {
       id: 'food-product',
@@ -177,8 +152,8 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Track Food Product',
       description: 'Rate a grocery or market item',
       icon: 'flash-outline',
-      iconBackground: optionColors.foodProduct,
-      iconColor: optionColors.iconOnColor,
+      iconBackground: optionColors.foodProductSoft,
+      iconColor: optionColors.foodProduct,
     },
     {
       id: 'log-note',
@@ -186,8 +161,8 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Log a Note',
       description: 'Save a food or place note',
       icon: 'document-text-outline',
-      iconBackground: optionColors.logNote,
-      iconColor: optionColors.iconOnColor,
+      iconBackground: optionColors.logNoteSoft,
+      iconColor: optionColors.logNote,
     },
     {
       id: 'process-photos',
@@ -197,8 +172,8 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
         ? "You've reached this month's free photo limit. Photo processing unlocks again next month."
         : 'Rate items from saved photos',
       icon: 'images-outline',
-      iconBackground: optionColors.processPhotos,
-      iconColor: optionColors.iconOnColor,
+      iconBackground: optionColors.processPhotosSoft,
+      iconColor: optionColors.processPhotos,
       disabled: shouldDisableProcessPhotos,
       titleAccessory: shouldDisableProcessPhotos
         ? <StatusPill label="Limit reached" tone="warning" uppercase />
@@ -210,8 +185,8 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Manage Notes',
       description: 'View and edit saved notes',
       icon: 'folder-open-outline',
-      iconBackground: optionColors.manageNotes,
-      iconColor: optionColors.iconOnColor,
+      iconBackground: optionColors.manageNotesSoft,
+      iconColor: optionColors.manageNotes,
     },
   ];
   const getOption = (optionId: AddOptionId) => options.find((option) => option.id === optionId);
@@ -224,29 +199,28 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const foodDiscoveryOption = getOption('food-discovery');
   const manageNotesOption = getOption('manage-notes');
 
-  const renderOptionCard = (
+  const renderOptionRow = (
     option: AddOptionConfig,
-    cardOptions?: Pick<ComponentProps<typeof AddOptionCard>, 'layout' | 'showTrailing' | 'tone'> & {
+    rowOptions?: {
       description?: string;
       title?: string;
+      isLast?: boolean;
     },
   ) => (
-    <AddOptionCard
-      description={cardOptions?.description ?? option.description}
+    <FeatureActionListRow
+      description={rowOptions?.description ?? option.description}
       disabled={option.disabled}
-      icon={option.icon}
       iconBackground={option.iconBackground}
       iconColor={option.iconColor}
+      iconName={option.icon}
+      isLast={rowOptions?.isLast}
       key={option.id}
-      layout={cardOptions?.layout}
       onPress={() => {
         handleOptionPress(option.id);
       }}
-      showTrailing={cardOptions?.showTrailing ?? false}
       testID={`add-option-${option.id}`}
-      title={cardOptions?.title ?? option.title}
+      title={rowOptions?.title ?? option.title}
       titleAccessory={option.titleAccessory}
-      tone={cardOptions?.tone}
     />
   );
 
@@ -402,66 +376,87 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
           style={styles.bodyScroll}
         >
           {primaryOption ? (
-            <View style={styles.section}>
-              <SectionHeader title="Track" />
-              <View style={styles.trackActionRow}>
-                <View style={styles.trackPrimaryAction}>
-                  {renderOptionCard(primaryOption)}
-                </View>
-                <Pressable
-                  accessibilityLabel="Schedule visit reminder"
-                  accessibilityRole="button"
+            <TabSectionCard
+              description="Restaurant visits, reminders, dishes, photos, and ratings"
+              descriptionStyle={styles.sectionDescription}
+              style={styles.sectionCard}
+              title="Track"
+              titleLeading={<Ionicons color={optionColors.restaurant} name="restaurant-outline" size={20} />}
+            >
+              <OptionList style={styles.optionList}>
+                {renderOptionRow(primaryOption)}
+                <FeatureActionListRow
+                  description="Get a one-time prompt to start a visit"
+                  iconBackground={optionColors.reminderSoft}
+                  iconColor={optionColors.reminder}
+                  iconName="alarm-outline"
+                  isLast
                   onPress={handleReminderPress}
-                  style={styles.reminderAction}
                   testID="add-option-visit-reminder"
-                >
-                  {({ pressed }) => (
-                    <View style={[styles.reminderButtonCard, pressed ? styles.reminderButtonCardPressed : null]}>
-                      <View style={styles.reminderIconWrap}>
-                        <Ionicons color={theme.colors.text.inverse} name="alarm-outline" size={22} />
-                      </View>
-                    </View>
-                  )}
-                </Pressable>
-              </View>
-            </View>
+                  title="Visit Reminder"
+                />
+              </OptionList>
+            </TabSectionCard>
           ) : null}
 
-          <View style={styles.section}>
-            <SectionHeader title="Quick Add" />
-            <View style={styles.quickGrid}>
-              {quickOptions.map((option) => (
-                <View key={option.id} style={styles.quickGridItem}>
-                  {renderOptionCard(option, {
-                    description: option.id === 'food-product' ? 'Grocery or market item' : 'Food or place note',
-                    layout: 'compact',
-                    showTrailing: false,
-                    title: option.id === 'food-product' ? 'Food Product' : 'Note',
-                  })}
-                </View>
-              ))}
-            </View>
-          </View>
+          <TabSectionCard
+            description="Save simple entries without creating a restaurant visit"
+            descriptionStyle={styles.sectionDescription}
+            style={styles.sectionCard}
+            title="Quick Add"
+            titleLeading={<Ionicons color={optionColors.foodProduct} name="flash-outline" size={20} />}
+          >
+            <OptionList style={styles.optionList}>
+              {quickOptions.map((option) =>
+                renderOptionRow(option, {
+                  description: option.id === 'food-product' ? 'Grocery or market item' : 'Food or place note',
+                  isLast: option.id === quickOptions[quickOptions.length - 1]?.id,
+                  title: option.id === 'food-product' ? 'Food Product' : 'Note',
+                }),
+              )}
+            </OptionList>
+          </TabSectionCard>
 
           {processPhotosOption ? (
-            <View style={styles.section}>
-              <SectionHeader title="Use Photos" />
-              {renderOptionCard(processPhotosOption)}
-            </View>
+            <TabSectionCard
+              description="Turn saved food photos into tracked entries"
+              descriptionStyle={styles.sectionDescription}
+              style={styles.sectionCard}
+              title="Use Photos"
+              titleLeading={<Ionicons color={optionColors.processPhotos} name="images-outline" size={20} />}
+            >
+              <OptionList style={styles.optionList}>
+                {renderOptionRow(processPhotosOption, { isLast: true })}
+              </OptionList>
+            </TabSectionCard>
           ) : null}
 
           {foodDiscoveryOption ? (
-            <View style={styles.section}>
-              <SectionHeader title="Explore" />
-              {renderOptionCard(foodDiscoveryOption)}
-            </View>
+            <TabSectionCard
+              description="Find restaurants and scan menus"
+              descriptionStyle={styles.sectionDescription}
+              style={styles.sectionCard}
+              title="Explore"
+              titleLeading={<Ionicons color={optionColors.foodDiscovery} name="compass-outline" size={20} />}
+            >
+              <OptionList style={styles.optionList}>
+                {renderOptionRow(foodDiscoveryOption, { isLast: true })}
+              </OptionList>
+            </TabSectionCard>
           ) : null}
 
           {manageNotesOption ? (
-            <View style={styles.section}>
-              <SectionHeader title="Manage" />
-              {renderOptionCard(manageNotesOption, { tone: 'muted' })}
-            </View>
+            <TabSectionCard
+              description="Browse and update saved notes"
+              descriptionStyle={styles.sectionDescription}
+              style={styles.sectionCard}
+              title="Manage"
+              titleLeading={<Ionicons color={optionColors.manageNotes} name="folder-open-outline" size={20} />}
+            >
+              <OptionList style={styles.optionList}>
+                {renderOptionRow(manageNotesOption, { isLast: true })}
+              </OptionList>
+            </TabSectionCard>
           ) : null}
         </ScrollView>
       </ScreenContentSection>

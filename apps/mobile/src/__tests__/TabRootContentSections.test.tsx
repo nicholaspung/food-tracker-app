@@ -47,10 +47,6 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-jest.mock('../components/add', () => ({
-  AddOptionCard: (props: Record<string, unknown>) => mockReact.createElement('AddOptionCard', props),
-}));
-
 jest.mock('../components/shared', () => ({
   ConfirmDestructiveModal: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
@@ -405,7 +401,7 @@ describe('tab root content sections', () => {
     expect(renderer.root.findByProps({ testID: 'add-screen-content-section' })).toBeTruthy();
   });
 
-  it('shows a dominant Track Restaurant Visit action beside an accessible visit reminder action', async () => {
+  it('shows Track Restaurant Visit and visit reminder actions in a shared Track section list', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -420,18 +416,12 @@ describe('tab root content sections', () => {
     const restaurantAction = renderer.root.findByProps({ testID: 'add-option-restaurant-visit' });
     const reminderAction = renderer.root.findByProps({ testID: 'add-option-visit-reminder' });
 
-    expect(flattenStyle(restaurantAction.parent?.props.style)).toEqual(
-      expect.objectContaining({
-        flex: 3,
-      }),
-    );
-    expect(reminderAction.props.accessibilityLabel).toBe('Schedule visit reminder');
-    expect(reminderAction.props.accessibilityRole).toBe('button');
-    expect(flattenStyle(reminderAction.props.style)).toEqual(
-      expect.objectContaining({
-        flex: 1,
-      }),
-    );
+    expect(renderer.root.findByProps({ title: 'Track' })).toBeTruthy();
+    expect(restaurantAction.props.title).toBe('Track Restaurant Visit');
+    expect(restaurantAction.props.description).toBe('Restaurant, dishes, photos, and ratings');
+    expect(reminderAction.props.title).toBe('Visit Reminder');
+    expect(reminderAction.props.description).toBe('Get a one-time prompt to start a visit');
+    expect(reminderAction.props.isLast).toBe(true);
   });
 
   it('opens reminder choices and schedules a local visit reminder through the notification module', async () => {
