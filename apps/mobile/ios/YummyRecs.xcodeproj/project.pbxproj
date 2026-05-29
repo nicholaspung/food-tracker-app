@@ -365,10 +365,9 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = C0291900C759A9ACCEEFF23E /* Pods-YummyRecs.debug.xcconfig */;
 			buildSettings = {
-				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = YummyRecs/YummyRecs.entitlements;
+				CODE_SIGN_ENTITLEMENTS = YummyRecs/YummyRecsDebug.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -412,7 +411,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E2CC34151E9FCFF5B593CC81 /* Pods-YummyRecs.release.xcconfig */;
 			buildSettings = {
-				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = YummyRecs/YummyRecs.entitlements;
@@ -453,7 +451,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 6FC97BE2700BE433C9A0AF2B /* Pods-YummyRecs.releasepreview.xcconfig */;
 			buildSettings = {
-				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = YummyRecs/YummyRecs.entitlements;

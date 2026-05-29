@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, NativeModules, Platform } from 'react-native';
 
 import {
@@ -14,6 +14,8 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 
 const NOTIFICATION_DEVICE_ID_STORAGE_KEY = 'notifications.deviceId';
 const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
+const NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS = 250;
+const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
 
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
@@ -222,6 +224,10 @@ export function useForegroundNotificationPresentation() {
 }
 
 export function useNotificationTapRouting(navigationRef: NavigationRefLike, status: NotificationAuthStatus) {
+  const pendingResponseRef = useRef<ExpoNotifications.NotificationResponse | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptRef = useRef(0);
+
   useEffect(() => {
     if (status !== 'authenticated') {
       return undefined;
@@ -229,8 +235,52 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
 
     let subscription: { remove: () => void } | null = null;
 
+    const clearRetryTimeout = () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
+
+    const routePendingResponse = () => {
+      const response = pendingResponseRef.current;
+      if (!response) {
+        return;
+      }
+
+      const result = routeNotificationResponse(response, navigationRef);
+      if (result === 'routed' || result === 'ignored') {
+        pendingResponseRef.current = null;
+        retryAttemptRef.current = 0;
+        clearRetryTimeout();
+        return;
+      }
+
+      if (retryAttemptRef.current >= NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS) {
+        trackObservabilityEvent('NOTIFICATION_TAP_ROUTE_DROPPED', {
+          notificationType: 'tasting_invite',
+          reason: 'navigation_not_ready',
+          route: 'TastingSessions',
+          source: 'NotificationInteraction',
+        });
+        pendingResponseRef.current = null;
+        retryAttemptRef.current = 0;
+        clearRetryTimeout();
+        return;
+      }
+
+      retryAttemptRef.current += 1;
+      clearRetryTimeout();
+      retryTimeoutRef.current = setTimeout(routePendingResponse, NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS);
+    };
+
     const routeResponse = (response: ExpoNotifications.NotificationResponse | null | undefined) => {
-      routeNotificationResponse(response, navigationRef);
+      if (!response) {
+        return;
+      }
+      pendingResponseRef.current = response;
+      retryAttemptRef.current = 0;
+      routePendingResponse();
     };
 
     void loadNotificationsModule()
@@ -246,6 +296,7 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
       });
 
     return () => {
+      clearRetryTimeout();
       subscription?.remove();
     };
   }, [navigationRef, status]);
@@ -254,14 +305,14 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
 export function routeNotificationResponse(
   response: ExpoNotifications.NotificationResponse | null | undefined,
   navigationRef: NavigationRefLike,
-): boolean {
+): 'routed' | 'ignored' | 'not_ready' {
   const data = response?.notification.request.content.data;
   if (!data || data.notificationType !== 'tasting_invite') {
-    return false;
+    return 'ignored';
   }
 
   if (!navigationRef.isReady()) {
-    return false;
+    return 'not_ready';
   }
 
   navigationRef.navigate('TastingSessions');
@@ -270,7 +321,7 @@ export function routeNotificationResponse(
     route: 'TastingSessions',
     source: 'NotificationInteraction',
   });
-  return true;
+  return 'routed';
 }
 
 async function ensureRemoteNotificationPermission(notifications: NotificationsModule): Promise<boolean> {

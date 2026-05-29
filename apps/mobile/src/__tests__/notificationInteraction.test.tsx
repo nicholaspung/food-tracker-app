@@ -247,7 +247,43 @@ describe('notificationInteraction', () => {
       },
     };
 
-    expect(routeNotificationResponse(response as any, navigationRef)).toBe(true);
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
+  it('retries notification tap routing until navigation is ready', async () => {
+    const navigate = jest.fn();
+    let isReady = false;
+    const navigationRef = {
+      isReady: () => isReady,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              notificationType: 'tasting_invite',
+            },
+          },
+        },
+      },
+    };
+    mockGetLastNotificationResponseAsync.mockResolvedValue(response);
+
+    await act(async () => {
+      create(<TapRoutingHarness navigationRef={navigationRef} />);
+      await flushNotificationEffects();
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+
+    isReady = true;
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+      await flushNotificationEffects();
+    });
+
     expect(navigate).toHaveBeenCalledWith('TastingSessions');
   });
 
