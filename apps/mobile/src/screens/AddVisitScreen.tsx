@@ -15,7 +15,11 @@ import {
 } from '../components/shared';
 import { isAddOnboardingCardDismissed, useMonthlyUsage } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { scheduleVisitReminderNotification, type VisitReminderMinutes } from '../notifications/notificationInteraction';
+import {
+  getVisitReminderNotificationStatus,
+  scheduleVisitReminderNotification,
+  type VisitReminderMinutes,
+} from '../notifications/notificationInteraction';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
@@ -77,6 +81,9 @@ const useStyles = createThemedStyles((theme) => ({
   reminderOptions: {
     gap: theme.spacing.sm,
   },
+  reminderStatus: {
+    marginTop: theme.spacing.xs,
+  },
   reminderError: {
     marginTop: theme.spacing.xs,
   },
@@ -87,6 +94,10 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const styles = useStyles();
   const [isReminderModalVisible, setIsReminderModalVisible] = useState(false);
   const [reminderError, setReminderError] = useState<string | null>(null);
+  const [reminderModalState, setReminderModalState] = useState<
+    'checking' | 'available' | 'alreadyScheduled' | 'confirmed'
+  >('available');
+  const [reminderConfirmation, setReminderConfirmation] = useState<string | null>(null);
   const [schedulingReminderMinutes, setSchedulingReminderMinutes] = useState<VisitReminderMinutes | null>(null);
   const { actualUser, user } = useAuth();
   const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
@@ -229,14 +240,27 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       return;
     }
     setIsReminderModalVisible(false);
-    setReminderError(null);
   };
 
   const handleReminderPress = () => {
     setReminderError(null);
+    setReminderConfirmation(null);
+    setReminderModalState('checking');
     setIsReminderModalVisible(true);
     trackObservabilityEvent('VISIT_REMINDER_ACTION_OPENED', {
       source: 'AddVisitScreen',
+    });
+
+    void getVisitReminderNotificationStatus().then((result) => {
+      if (result.status === 'scheduled') {
+        setReminderModalState('alreadyScheduled');
+        return;
+      }
+
+      setReminderModalState('available');
+      if (result.status === 'failed' || result.status === 'unavailable') {
+        setReminderError(result.errorMessage ?? 'Could not check scheduled reminders. Try again in a moment.');
+      }
     });
   };
 
@@ -248,11 +272,18 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     setSchedulingReminderMinutes(null);
 
     if (result.status === 'scheduled') {
-      setIsReminderModalVisible(false);
+      setReminderConfirmation(`Reminder scheduled for ${formatReminderDelay(minutes)} from now.`);
+      setReminderModalState('confirmed');
       trackObservabilityEvent('VISIT_REMINDER_ACTION_SCHEDULED', {
         minutes,
         source: 'AddVisitScreen',
       });
+      return;
+    }
+
+    if (result.status === 'already_scheduled') {
+      setReminderError(null);
+      setReminderModalState('alreadyScheduled');
       return;
     }
 
@@ -461,12 +492,22 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
         </ScrollView>
       </ScreenContentSection>
       <Modal
-        description="Choose when to get a one-time reminder to start a restaurant visit."
+        description={
+          reminderModalState === 'confirmed' || reminderModalState === 'alreadyScheduled'
+            ? undefined
+            : 'Choose when to get a one-time reminder to start a restaurant visit.'
+        }
         onRequestClose={closeReminderModal}
         secondaryAction={{
-          accessibilityLabel: 'Cancel visit reminder',
+          accessibilityLabel:
+            reminderModalState === 'confirmed' || reminderModalState === 'alreadyScheduled'
+              ? 'Done'
+              : 'Cancel visit reminder',
           disabled: Boolean(schedulingReminderMinutes),
-          label: 'Cancel',
+          label:
+            reminderModalState === 'confirmed' || reminderModalState === 'alreadyScheduled'
+              ? 'Done'
+              : 'Cancel',
           onPress: closeReminderModal,
           testID: 'visit-reminder-cancel',
         }}
@@ -474,22 +515,39 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
         title="Remind me to track this visit"
         visible={isReminderModalVisible}
       >
-        <View style={styles.reminderOptions}>
-          {VISIT_REMINDER_OPTIONS.map((option) => (
-            <Button
-              accessibilityLabel={`Remind me in ${option.accessibilityLabel}`}
-              disabled={Boolean(schedulingReminderMinutes)}
-              key={option.minutes}
-              label={option.label}
-              loading={schedulingReminderMinutes === option.minutes}
-              onPress={() => {
-                void scheduleReminder(option.minutes);
-              }}
-              testID={`visit-reminder-option-${option.minutes}`}
-              variant="secondary"
-            />
-          ))}
-        </View>
+        {reminderModalState === 'checking' ? (
+          <Text style={styles.reminderStatus} tone="secondary" variant="bodyMd">
+            Checking scheduled reminders...
+          </Text>
+        ) : null}
+        {reminderModalState === 'alreadyScheduled' ? (
+          <Text style={styles.reminderStatus} tone="secondary" variant="bodyMd">
+            You already have a visit reminder scheduled.
+          </Text>
+        ) : null}
+        {reminderModalState === 'confirmed' ? (
+          <Text style={styles.reminderStatus} tone="secondary" variant="bodyMd">
+            {reminderConfirmation}
+          </Text>
+        ) : null}
+        {reminderModalState === 'available' ? (
+          <View style={styles.reminderOptions}>
+            {VISIT_REMINDER_OPTIONS.map((option) => (
+              <Button
+                accessibilityLabel={`Remind me in ${option.accessibilityLabel}`}
+                disabled={Boolean(schedulingReminderMinutes)}
+                key={option.minutes}
+                label={option.label}
+                loading={schedulingReminderMinutes === option.minutes}
+                onPress={() => {
+                  void scheduleReminder(option.minutes);
+                }}
+                testID={`visit-reminder-option-${option.minutes}`}
+                variant="secondary"
+              />
+            ))}
+          </View>
+        ) : null}
         {reminderError ? (
           <Text style={styles.reminderError} tone="danger" variant="bodySm">
             {reminderError}
@@ -521,3 +579,7 @@ const VISIT_REMINDER_OPTIONS: {
     accessibilityLabel: '1 hour',
   },
 ];
+
+function formatReminderDelay(minutes: VisitReminderMinutes): string {
+  return minutes === 60 ? '1 hour' : `${minutes} minutes`;
+}

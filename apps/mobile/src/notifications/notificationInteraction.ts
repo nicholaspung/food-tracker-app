@@ -29,7 +29,16 @@ export type ScheduleVisitReminderResult =
       notificationId: string;
     }
   | {
-      status: 'permission_denied' | 'unavailable' | 'failed';
+      status: 'already_scheduled' | 'permission_denied' | 'unavailable' | 'failed';
+      errorMessage?: string;
+    };
+
+export type VisitReminderNotificationStatus =
+  | {
+      status: 'scheduled' | 'none';
+    }
+  | {
+      status: 'unavailable' | 'failed';
       errorMessage?: string;
     };
 
@@ -360,12 +369,25 @@ export function routeNotificationResponse(
 export async function scheduleVisitReminderNotification(
   minutes: VisitReminderMinutes,
 ): Promise<ScheduleVisitReminderResult> {
+  const existingReminderStatus = await getVisitReminderNotificationStatus();
+  if (existingReminderStatus.status === 'scheduled') {
+    trackObservabilityEvent('VISIT_REMINDER_NOTIFICATION_SKIPPED', {
+      reason: 'already_scheduled',
+      source: 'NotificationInteraction',
+    });
+    return {
+      status: 'already_scheduled',
+      errorMessage: 'You already have a visit reminder scheduled.',
+    };
+  }
+
+  if (existingReminderStatus.status === 'unavailable' || existingReminderStatus.status === 'failed') {
+    return existingReminderStatus;
+  }
+
   const notifications = await loadNotificationsModule();
   if (!notifications) {
-    return {
-      status: 'unavailable',
-      errorMessage: 'Notifications are not available on this device.',
-    };
+    return buildNotificationsUnavailableResult();
   }
 
   const hasPermission = await ensureNotificationPermission(notifications);
@@ -381,11 +403,13 @@ export async function scheduleVisitReminderNotification(
   }
 
   try {
+    const reminderAt = new Date(Date.now() + minutes * 60 * 1000).toISOString();
     const notificationId = await notifications.scheduleNotificationAsync({
       content: {
         title: 'Track your restaurant visit',
         body: 'Add the dishes and ratings while they are still fresh.',
         data: {
+          reminderAt,
           notificationType: VISIT_REMINDER_NOTIFICATION_TYPE,
         },
       },
@@ -414,6 +438,31 @@ export async function scheduleVisitReminderNotification(
     return {
       status: 'failed',
       errorMessage: 'Could not schedule the reminder. Try again in a moment.',
+    };
+  }
+}
+
+export async function getVisitReminderNotificationStatus(): Promise<VisitReminderNotificationStatus> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
+    return buildNotificationsUnavailableResult();
+  }
+
+  try {
+    const scheduledNotifications = await notifications.getAllScheduledNotificationsAsync();
+    const existingVisitReminder = scheduledNotifications.find(isFutureVisitReminderNotificationRequest);
+    return {
+      status: existingVisitReminder ? 'scheduled' : 'none',
+    };
+  } catch (error) {
+    logger.warn('[NotificationInteraction] Failed to read scheduled visit reminders:', error);
+    trackObservabilityEvent('VISIT_REMINDER_NOTIFICATION_STATUS_FAILED', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      source: 'NotificationInteraction',
+    });
+    return {
+      status: 'failed',
+      errorMessage: 'Could not check scheduled reminders. Try again in a moment.',
     };
   }
 }
@@ -470,6 +519,27 @@ function resolveNotificationRoute(
   }
 
   return null;
+}
+
+function isFutureVisitReminderNotificationRequest(notification: ExpoNotifications.NotificationRequest): boolean {
+  if (notification.content.data?.notificationType !== VISIT_REMINDER_NOTIFICATION_TYPE) {
+    return false;
+  }
+
+  const reminderAt = notification.content.data.reminderAt;
+  if (typeof reminderAt !== 'string') {
+    return false;
+  }
+
+  const reminderAtTime = Date.parse(reminderAt);
+  return Number.isFinite(reminderAtTime) && reminderAtTime > Date.now();
+}
+
+function buildNotificationsUnavailableResult(): { status: 'unavailable'; errorMessage: string } {
+  return {
+    status: 'unavailable',
+    errorMessage: 'Notifications are not available on this device.',
+  };
 }
 
 function resolveExpoProjectId(): string | null {

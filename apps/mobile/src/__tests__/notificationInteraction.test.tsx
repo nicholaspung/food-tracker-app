@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import {
+  getVisitReminderNotificationStatus,
   routeNotificationResponse,
   scheduleVisitReminderNotification,
   setNotificationsModuleLoaderForTests,
@@ -18,6 +19,7 @@ import { trackObservabilityEvent } from '../observability';
 
 const mockAddNotificationResponseReceivedListener = jest.fn();
 const mockGetExpoPushTokenAsync = jest.fn();
+const mockGetAllScheduledNotificationsAsync = jest.fn();
 const mockGetLastNotificationResponseAsync = jest.fn();
 const mockGetPermissionsAsync = jest.fn();
 const mockRequestPermissionsAsync = jest.fn();
@@ -63,6 +65,7 @@ jest.mock('expo-notifications', () => ({
   addNotificationResponseReceivedListener: (...args: unknown[]) =>
     mockAddNotificationResponseReceivedListener(...args),
   getExpoPushTokenAsync: (...args: unknown[]) => mockGetExpoPushTokenAsync(...args),
+  getAllScheduledNotificationsAsync: (...args: unknown[]) => mockGetAllScheduledNotificationsAsync(...args),
   getLastNotificationResponseAsync: (...args: unknown[]) => mockGetLastNotificationResponseAsync(...args),
   getPermissionsAsync: (...args: unknown[]) => mockGetPermissionsAsync(...args),
   requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissionsAsync(...args),
@@ -128,6 +131,7 @@ describe('notificationInteraction', () => {
     mockAsyncStorageState.clear();
     mockAddNotificationResponseReceivedListener.mockReset();
     mockGetExpoPushTokenAsync.mockReset();
+    mockGetAllScheduledNotificationsAsync.mockReset();
     mockGetLastNotificationResponseAsync.mockReset();
     mockGetPermissionsAsync.mockReset();
     mockRequestPermissionsAsync.mockReset();
@@ -144,6 +148,7 @@ describe('notificationInteraction', () => {
     mockAddNotificationResponseReceivedListener.mockReturnValue({
       remove: mockRemoveNotificationListener,
     });
+    mockGetAllScheduledNotificationsAsync.mockResolvedValue([]);
     mockGetLastNotificationResponseAsync.mockResolvedValue(null);
     mockGetPermissionsAsync.mockResolvedValue({ granted: true });
     mockRequestPermissionsAsync.mockResolvedValue({ granted: true });
@@ -154,6 +159,7 @@ describe('notificationInteraction', () => {
     setNotificationsModuleLoaderForTests(async () => ({
       addNotificationResponseReceivedListener: mockAddNotificationResponseReceivedListener,
       getExpoPushTokenAsync: mockGetExpoPushTokenAsync,
+      getAllScheduledNotificationsAsync: mockGetAllScheduledNotificationsAsync,
       getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
       getPermissionsAsync: mockGetPermissionsAsync,
       requestPermissionsAsync: mockRequestPermissionsAsync,
@@ -329,6 +335,7 @@ describe('notificationInteraction', () => {
         title: 'Track your restaurant visit',
         body: 'Add the dishes and ratings while they are still fresh.',
         data: {
+          reminderAt: '2026-05-28T12:30:00.000Z',
           notificationType: 'visit_reminder',
         },
       },
@@ -365,6 +372,74 @@ describe('notificationInteraction', () => {
 
     expect(result.status).toBe('permission_denied');
     expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule another local visit reminder when one is already scheduled', async () => {
+    mockGetAllScheduledNotificationsAsync.mockResolvedValue([
+      {
+        content: {
+          data: {
+            reminderAt: '2026-05-28T12:30:00.000Z',
+            notificationType: 'visit_reminder',
+          },
+        },
+      },
+    ]);
+
+    const result = await scheduleVisitReminderNotification(30);
+
+    expect(result).toEqual({
+      errorMessage: 'You already have a visit reminder scheduled.',
+      status: 'already_scheduled',
+    });
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('reads scheduled local visit reminder status without requesting permission', async () => {
+    mockGetAllScheduledNotificationsAsync.mockResolvedValue([
+      {
+        content: {
+          data: {
+            reminderAt: '2026-05-28T12:30:00.000Z',
+            notificationType: 'visit_reminder',
+          },
+        },
+      },
+    ]);
+
+    const result = await getVisitReminderNotificationStatus();
+
+    expect(result).toEqual({
+      status: 'scheduled',
+    });
+    expect(mockGetPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not treat expired or unversioned local visit reminders as scheduled', async () => {
+    mockGetAllScheduledNotificationsAsync.mockResolvedValue([
+      {
+        content: {
+          data: {
+            reminderAt: '2026-05-28T11:59:00.000Z',
+            notificationType: 'visit_reminder',
+          },
+        },
+      },
+      {
+        content: {
+          data: {
+            notificationType: 'visit_reminder',
+          },
+        },
+      },
+    ]);
+
+    const result = await getVisitReminderNotificationStatus();
+
+    expect(result).toEqual({
+      status: 'none',
+    });
   });
 
   it('returns a scheduling failure instead of throwing when local reminder scheduling fails', async () => {

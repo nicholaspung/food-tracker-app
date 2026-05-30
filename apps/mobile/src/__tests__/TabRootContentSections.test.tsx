@@ -5,7 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { lockInviteCode, useMonthlyUsage } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
-import { scheduleVisitReminderNotification } from '../notifications/notificationInteraction';
+import {
+  getVisitReminderNotificationStatus,
+  scheduleVisitReminderNotification,
+} from '../notifications/notificationInteraction';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
 import { MiscScreen } from '../screens/MiscScreen';
@@ -119,6 +122,7 @@ jest.mock('../observability', () => ({
 }));
 
 jest.mock('../notifications/notificationInteraction', () => ({
+  getVisitReminderNotificationStatus: jest.fn(),
   scheduleVisitReminderNotification: jest.fn(),
 }));
 
@@ -265,6 +269,9 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedGetVisitReminderNotificationStatus = getVisitReminderNotificationStatus as jest.MockedFunction<
+  typeof getVisitReminderNotificationStatus
+>;
 const mockedScheduleVisitReminderNotification = scheduleVisitReminderNotification as jest.MockedFunction<
   typeof scheduleVisitReminderNotification
 >;
@@ -309,6 +316,7 @@ describe('tab root content sections', () => {
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
     mockedUseMonthlyUsage.mockReset();
+    mockedGetVisitReminderNotificationStatus.mockReset();
     mockedScheduleVisitReminderNotification.mockReset();
     mockedLockInviteCode.mockReset();
     mockedShare.mockReset();
@@ -338,6 +346,9 @@ describe('tab root content sections', () => {
       refetch: jest.fn(),
     });
     mockedLockInviteCode.mockResolvedValue(undefined);
+    mockedGetVisitReminderNotificationStatus.mockResolvedValue({
+      status: 'none',
+    });
     mockedScheduleVisitReminderNotification.mockResolvedValue({
       notificationId: 'notification_1',
       status: 'scheduled',
@@ -440,9 +451,11 @@ describe('tab root content sections', () => {
 
     await act(async () => {
       renderer.root.findByProps({ testID: 'add-option-visit-reminder' }).props.onPress();
+      await Promise.resolve();
     });
 
     expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(true);
+    expect(mockedGetVisitReminderNotificationStatus).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByProps({ testID: 'visit-reminder-option-15' }).props.label).toBe('15 min');
     expect(renderer.root.findByProps({ testID: 'visit-reminder-option-30' }).props.label).toBe('30 min');
     expect(renderer.root.findByProps({ testID: 'visit-reminder-option-60' }).props.label).toBe('1 hr');
@@ -453,7 +466,57 @@ describe('tab root content sections', () => {
     });
 
     expect(mockedScheduleVisitReminderNotification).toHaveBeenCalledWith(30);
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(true);
+    expect(renderer.root.findAllByProps({ testID: 'visit-reminder-option-15' })).toHaveLength(0);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.children.includes('Reminder scheduled for 30 minutes from now.')),
+    ).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.secondaryAction.label).toBe('Done');
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.secondaryAction.onPress();
+    });
+
     expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(false);
+    expect(renderer.root.findAllByProps({ testID: 'visit-reminder-option-15' })).toHaveLength(0);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.children.includes('Reminder scheduled for 30 minutes from now.')),
+    ).toBe(true);
+  });
+
+  it('shows the already scheduled visit reminder state instead of time choices when one exists', async () => {
+    mockedGetVisitReminderNotificationStatus.mockResolvedValue({
+      status: 'scheduled',
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <AddVisitScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'add', name: 'AddVisit' } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'add-option-visit-reminder' }).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'visit-reminder-modal' }).props.visible).toBe(true);
+    expect(renderer.root.findAllByProps({ testID: 'visit-reminder-option-15' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'visit-reminder-option-30' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'visit-reminder-option-60' })).toHaveLength(0);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.children.includes('You already have a visit reminder scheduled.')),
+    ).toBe(true);
   });
 
   it('surfaces visit reminder permission and scheduling failures without leaving the Add tab', async () => {
@@ -474,6 +537,7 @@ describe('tab root content sections', () => {
 
     await act(async () => {
       renderer.root.findByProps({ testID: 'add-option-visit-reminder' }).props.onPress();
+      await Promise.resolve();
     });
     await act(async () => {
       renderer.root.findByProps({ testID: 'visit-reminder-option-15' }).props.onPress();
