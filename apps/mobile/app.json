@@ -18,7 +18,7 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow Yummy Recs to scan QR codes and capture food photos.",
+        "NSCameraUsageDescription": "Yummy Recs uses the camera to scan QR codes and capture food photos.",
         "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location to find nearby restaurants during search.",
         "NSPhotoLibraryUsageDescription": "Allow Yummy Recs to select food photos from your library.",
         "CFBundleDisplayName": "Yummy Recs",
@@ -42,7 +42,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Yummy Recs to scan QR codes and capture food photos.",
+          "cameraPermission": "Yummy Recs uses the camera to scan QR codes and capture food photos.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -59,7 +59,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow Yummy Recs to select food photos from your library.",
-          "cameraPermission": "Allow Yummy Recs to scan QR codes and capture food photos.",
+          "cameraPermission": "Yummy Recs uses the camera to scan QR codes and capture food photos.",
           "microphonePermission": false
         }
       ],

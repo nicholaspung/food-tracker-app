@@ -11,6 +11,9 @@ const mockReact = React;
 
 jest.mock('react-native', () => ({
   ActivityIndicator: (props: Record<string, unknown>) => mockReact.createElement('ActivityIndicator', props),
+  Linking: {
+    openSettings: jest.fn(),
+  },
   Pressable: (props: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Pressable', props, props.children),
   StyleSheet: {
@@ -259,5 +262,27 @@ describe('QRScannerScreen', () => {
     expect(renderer.root.findByType('CameraView').props.onBarcodeScanned).toEqual(
       expect.any(Function),
     );
+  });
+
+  it('uses neutral copy before requesting camera permission', () => {
+    const requestCameraPermission = jest.fn();
+    mockedUseCameraPermissions.mockReturnValue([
+      {
+        canAskAgain: true,
+        granted: false,
+      },
+      requestCameraPermission,
+    ] as never);
+
+    const renderer = renderScanner();
+    const continueButton = renderer.root.findByProps({ label: 'Continue' });
+
+    expect(() => renderer.root.findByProps({ label: 'Allow Camera Access' })).toThrow();
+
+    act(() => {
+      continueButton.props.onPress();
+    });
+
+    expect(requestCameraPermission).toHaveBeenCalledTimes(1);
   });
 });

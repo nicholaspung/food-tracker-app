@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { FeatureDetailScreenScaffold } from '../components/shared';
@@ -156,6 +156,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   };
 
   const isCameraGranted = cameraPermission?.granted === true;
+  const isCameraBlocked = cameraPermission && !cameraPermission.canAskAgain;
   const myFriendCode = resolveOwnFriendCode(user?.id, user?.friendCode);
 
   const resetScanner = () => {
@@ -382,21 +383,25 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
         </View>
       ) : (
         <Card style={styles.permissionCard} tone="warning">
-          <Text tone="warning" variant="label">Camera permission required</Text>
+          <Text tone="warning" variant="label">
+            {isCameraBlocked ? 'Camera access is off' : 'Camera needed for QR scanning'}
+          </Text>
           <Text tone="warning">
-            Allow camera access to scan friend QR codes on this device.
+            {isCameraBlocked
+              ? 'Turn on camera access in device settings to scan friend QR codes.'
+              : 'Yummy Recs uses the camera to scan friend QR codes on this device.'}
           </Text>
           <Button
-            label="Allow Camera Access"
+            label={isCameraBlocked ? 'Open Settings' : 'Continue'}
             onPress={() => {
+              if (isCameraBlocked) {
+                void Linking.openSettings();
+                return;
+              }
+
               void requestCameraPermission();
             }}
           />
-          {cameraPermission && !cameraPermission.canAskAgain ? (
-            <Text tone="warning">
-              Camera access is blocked. Enable it in iOS/Android settings.
-            </Text>
-          ) : null}
         </Card>
       )}
     </FeatureDetailScreenScaffold>
