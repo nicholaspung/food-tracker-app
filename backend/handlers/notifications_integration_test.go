@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -539,6 +540,130 @@ func TestBillPaymentReminderRequiresActiveDevice(t *testing.T) {
 	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_no_active_device", 0)
 }
 
+func TestMonthlyFriendsActivityNotificationsSelectPreviousMonthFriendVisibleVisits(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	viewer, _ := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	privateFriend, _ := createAuthUser(t, server.app, false, false)
+	pendingFriend, _ := createAuthUser(t, server.app, false, false)
+	nonFriend, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+	createFriendshipRecord(t, server.app, viewer.Id, privateFriend.Id, "accepted")
+	createFriendshipRecord(t, server.app, viewer.Id, pendingFriend.Id, "pending")
+	createNotificationDeviceRecord(t, server.app, viewer.Id, "viewer-device", "ExponentPushToken[viewer]", true)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Monthly Cafe",
+		"location":   "Portland",
+		"visibility": "friends",
+	})
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "friends", "2026-04-15 12:00:00.000Z")
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "friends", "2026-03-31 23:59:59.000Z")
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "friends", "2026-05-01 00:00:00.000Z")
+	createVisitRecordWithDate(t, server.app, privateFriend.Id, restaurant.Id, "private", "2026-04-10 12:00:00.000Z")
+	createVisitRecordWithDate(t, server.app, pendingFriend.Id, restaurant.Id, "friends", "2026-04-11 12:00:00.000Z")
+	createVisitRecordWithDate(t, server.app, nonFriend.Id, restaurant.Id, "friends", "2026-04-12 12:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":       friend.Id,
+		"restaurant": restaurant.Id,
+		"name":       "Standalone snack",
+		"rating":     4,
+		"visibility": "friends",
+		"itemType":   "food-product",
+	})
+
+	result, err := handlers.DeliverMonthlyFriendsActivityNotifications(server.app, time.Date(2026, 5, 2, 16, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected monthly friends activity delivery to succeed: %v", err)
+	}
+	if result.Eligible != 1 || result.Sent != 1 || result.Skipped != 0 {
+		t.Fatalf("unexpected monthly delivery result: %#v", result)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one monthly friends activity notification, got %#v", sender.calls)
+	}
+	call := sender.calls[0]
+	if call.token != "ExponentPushToken[viewer]" {
+		t.Fatalf("expected viewer token, got %q", call.token)
+	}
+	if call.payload.Data["notificationType"] != "monthly_friends_activity" ||
+		call.payload.Data["route"] != "Home" ||
+		call.payload.Data["feedMode"] != "friends" ||
+		call.payload.Data["period"] != "2026-04" {
+		t.Fatalf("unexpected monthly friends activity payload: %#v", call.payload)
+	}
+
+	logRecord := assertNotificationDeliveryLogWithSignal(t, server.app, viewer.Id, "monthly_friends_activity", "sent", 1)
+	if logRecord.GetString("source_collection") != "visits" || logRecord.GetString("source_record") != "2026-04" {
+		t.Fatalf("expected month-scoped visits delivery log, got source %q/%q", logRecord.GetString("source_collection"), logRecord.GetString("source_record"))
+	}
+	for _, fieldName := range []string{"signal_type", "source_collection", "source_record", "delivery_key", "status", "provider_message_id", "error_code"} {
+		fieldValue := logRecord.GetString(fieldName)
+		if strings.Contains(fieldValue, "ExponentPushToken") || strings.Contains(fieldValue, call.payload.Body) {
+			t.Fatalf("expected delivery log field %s to omit push token and body text, got %q", fieldName, fieldValue)
+		}
+	}
+}
+
+func TestMonthlyFriendsActivityNotificationsDedupePreferenceAndDeviceSuppression(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	sentViewer, _ := createAuthUser(t, server.app, false, false)
+	disabledViewer, _ := createAuthUser(t, server.app, false, false)
+	inactiveViewer, _ := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	for _, viewer := range []*core.Record{sentViewer, disabledViewer, inactiveViewer} {
+		createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+	}
+	createNotificationDeviceRecord(t, server.app, sentViewer.Id, "sent-device", "ExponentPushToken[sent]", true)
+	createNotificationDeviceRecord(t, server.app, disabledViewer.Id, "disabled-device", "ExponentPushToken[disabled]", true)
+	createNotificationDeviceRecord(t, server.app, inactiveViewer.Id, "inactive-device", "ExponentPushToken[inactive]", false)
+	createMonthlyFriendsActivityNotificationPreferenceRecord(t, server.app, disabledViewer.Id, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Digest Diner",
+		"location":   "Seattle",
+		"visibility": "friends",
+	})
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "friends", "2026-04-08 12:00:00.000Z")
+
+	firstResult, err := handlers.DeliverMonthlyFriendsActivityNotifications(server.app, time.Date(2026, 5, 3, 16, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected first monthly friends activity delivery to succeed: %v", err)
+	}
+	if firstResult.Eligible != 3 || firstResult.Sent != 1 || firstResult.Skipped != 2 {
+		t.Fatalf("unexpected first monthly delivery result: %#v", firstResult)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one provider send after suppression, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, sentViewer.Id, "monthly_friends_activity", "sent", 1)
+	assertNotificationDeliveryLogWithSignal(t, server.app, disabledViewer.Id, "monthly_friends_activity", "skipped_preference_disabled", 0)
+	assertNotificationDeliveryLogWithSignal(t, server.app, inactiveViewer.Id, "monthly_friends_activity", "skipped_no_active_device", 0)
+
+	secondResult, err := handlers.DeliverMonthlyFriendsActivityNotifications(server.app, time.Date(2026, 5, 4, 16, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected duplicate monthly friends activity delivery to succeed: %v", err)
+	}
+	if secondResult.Eligible != 3 || secondResult.Sent != 0 || secondResult.Skipped != 0 {
+		t.Fatalf("expected duplicate run to be fully deduped, got %#v", secondResult)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected dedupe to avoid another provider send, got %#v", sender.calls)
+	}
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{
@@ -553,18 +678,40 @@ func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, d
 func createNotificationPreferenceRecord(t *testing.T, app core.App, userID string, tastingInvitesEnabled bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
-		"user":                    userID,
-		"bill_owed_enabled":       true,
-		"tasting_invites_enabled": tastingInvitesEnabled,
+		"user":                             userID,
+		"bill_owed_enabled":                true,
+		"monthly_friends_activity_enabled": true,
+		"tasting_invites_enabled":          tastingInvitesEnabled,
 	})
 }
 
 func createBillNotificationPreferenceRecord(t *testing.T, app core.App, userID string, billOwedEnabled bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
-		"user":                    userID,
-		"bill_owed_enabled":       billOwedEnabled,
-		"tasting_invites_enabled": true,
+		"user":                             userID,
+		"bill_owed_enabled":                billOwedEnabled,
+		"monthly_friends_activity_enabled": true,
+		"tasting_invites_enabled":          true,
+	})
+}
+
+func createMonthlyFriendsActivityNotificationPreferenceRecord(t *testing.T, app core.App, userID string, enabled bool) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
+		"user":                             userID,
+		"bill_owed_enabled":                true,
+		"monthly_friends_activity_enabled": enabled,
+		"tasting_invites_enabled":          true,
+	})
+}
+
+func createVisitRecordWithDate(t *testing.T, app core.App, userID string, restaurantID string, visibility string, visitDate string) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "visits", map[string]any{
+		"user":       userID,
+		"restaurant": restaurantID,
+		"visitDate":  visitDate,
+		"visibility": visibility,
 	})
 }
 

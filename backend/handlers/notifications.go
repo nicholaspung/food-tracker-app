@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ const (
 	tastingInviteNotificationSignalType = "tasting_invite"
 	billOwedNotificationSignalType      = "bill_owed"
 	billPaymentReminderSignalType       = "bill_payment_reminder"
+	monthlyFriendsActivitySignalType    = "monthly_friends_activity"
 )
 
 type notificationDeviceRegistrationRequest struct {
@@ -63,6 +65,20 @@ type billPaymentReminderResult struct {
 	Status string
 }
 
+type MonthlyFriendsActivityDeliveryResult struct {
+	MonthStart time.Time
+	MonthEnd   time.Time
+	Eligible   int
+	Sent       int
+	Skipped    int
+}
+
+type monthlyFriendsActivityCandidate struct {
+	UserID      string `db:"user_id"`
+	VisitCount  int    `db:"visit_count"`
+	FriendCount int    `db:"friend_count"`
+}
+
 type expoNotificationPushSender struct {
 	client *http.Client
 }
@@ -80,6 +96,10 @@ func SetNotificationPushSenderForTests(sender NotificationPushSender) func() {
 }
 
 func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
+	if err := RegisterMonthlyFriendsActivityNotificationJob(app); err != nil {
+		log.Printf("Warning: failed to register monthly friends activity notification job: %v", err)
+	}
+
 	se.Router.POST("/api/notification-devices", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
 		if err != nil {
@@ -161,6 +181,179 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 		}
 		return e.JSON(200, map[string]any{"success": true})
 	}).Bind(apis.RequireAuth())
+}
+
+func RegisterMonthlyFriendsActivityNotificationJob(app core.App) error {
+	return app.Cron().Add("monthly_friends_activity_notifications", "0 17 1 * *", func() {
+		if _, err := DeliverMonthlyFriendsActivityNotifications(app, time.Now().UTC()); err != nil {
+			log.Printf("Monthly friends activity notifications failed: %v", err)
+		}
+	})
+}
+
+func DeliverMonthlyFriendsActivityNotifications(app core.App, now time.Time) (MonthlyFriendsActivityDeliveryResult, error) {
+	monthStart, monthEnd := previousCalendarMonthBounds(now.UTC())
+	result := MonthlyFriendsActivityDeliveryResult{
+		MonthStart: monthStart,
+		MonthEnd:   monthEnd,
+	}
+
+	candidates, err := listMonthlyFriendsActivityCandidates(app, monthStart, monthEnd)
+	if err != nil {
+		return result, err
+	}
+	result.Eligible = len(candidates)
+
+	for _, candidate := range candidates {
+		status, err := deliverMonthlyFriendsActivityNotification(app, candidate, monthStart)
+		if err != nil {
+			return result, err
+		}
+		if status == "sent" {
+			result.Sent++
+		} else if status != "" {
+			result.Skipped++
+		}
+	}
+
+	return result, nil
+}
+
+func listMonthlyFriendsActivityCandidates(app core.App, monthStart time.Time, monthEnd time.Time) ([]monthlyFriendsActivityCandidate, error) {
+	candidates := []monthlyFriendsActivityCandidate{}
+	err := app.DB().NewQuery(`
+		SELECT
+			viewer.id AS user_id,
+			COUNT(DISTINCT visits.id) AS visit_count,
+			COUNT(DISTINCT visits.user) AS friend_count
+		FROM users viewer
+		INNER JOIN friendships friendship
+			ON friendship.status = 'accepted'
+			AND (friendship.user = viewer.id OR friendship.friend = viewer.id)
+		INNER JOIN visits
+			ON visits.user = CASE
+				WHEN friendship.user = viewer.id THEN friendship.friend
+				ELSE friendship.user
+			END
+			AND visits.visibility = 'friends'
+			AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) >= {:monthStart}
+			AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) < {:monthEnd}
+		GROUP BY viewer.id
+		HAVING COUNT(DISTINCT visits.id) > 0
+		ORDER BY viewer.id
+	`).
+		Bind(dbx.Params{
+			"monthStart": formatPocketBaseDateTime(monthStart),
+			"monthEnd":   formatPocketBaseDateTime(monthEnd),
+		}).
+		All(&candidates)
+	return candidates, err
+}
+
+func deliverMonthlyFriendsActivityNotification(app core.App, candidate monthlyFriendsActivityCandidate, monthStart time.Time) (string, error) {
+	userID := strings.TrimSpace(candidate.UserID)
+	if userID == "" {
+		return "", nil
+	}
+
+	deliveryKey := monthlyFriendsActivityDeliveryKey(userID, monthStart)
+	alreadyLogged, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
+	if err != nil {
+		return "", err
+	}
+	if alreadyLogged {
+		return "", nil
+	}
+
+	baseLog := notificationDeliveryLogInput{
+		UserID:           userID,
+		SignalType:       monthlyFriendsActivitySignalType,
+		SourceCollection: "visits",
+		SourceRecord:     monthStart.Format("2006-01"),
+		DeliveryKey:      deliveryKey,
+	}
+
+	enabled, err := isMonthlyFriendsActivityNotificationPreferenceEnabled(app, userID)
+	if err != nil {
+		return "", err
+	}
+	if !enabled {
+		baseLog.Status = "skipped_preference_disabled"
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return "", err
+		}
+		return baseLog.Status, nil
+	}
+
+	devices, err := listActiveNotificationDevices(app, userID)
+	if err != nil {
+		return "", err
+	}
+	if len(devices) == 0 {
+		baseLog.Status = "skipped_no_active_device"
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return "", err
+		}
+		return baseLog.Status, nil
+	}
+
+	payload := RemoteDeviceNotificationPayload{
+		Title: "Friends were active",
+		Body:  monthlyFriendsActivityNotificationBody(candidate),
+		Data: map[string]any{
+			"feedMode":         "friends",
+			"notificationType": monthlyFriendsActivitySignalType,
+			"period":           monthStart.Format("2006-01"),
+			"route":            "Home",
+		},
+	}
+
+	var providerMessageID string
+	for _, device := range devices {
+		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
+		if sendErr != nil {
+			baseLog.Status = "provider_failed"
+			baseLog.DeviceCount = len(devices)
+			baseLog.ErrorCode = normalizeProviderErrorCode(sendErr)
+			if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+				return "", err
+			}
+			return baseLog.Status, nil
+		}
+		if providerMessageID == "" {
+			providerMessageID = messageID
+		}
+	}
+
+	baseLog.Status = "sent"
+	baseLog.DeviceCount = len(devices)
+	baseLog.ProviderMessageID = providerMessageID
+	if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+		return "", err
+	}
+	return baseLog.Status, nil
+}
+
+func previousCalendarMonthBounds(now time.Time) (time.Time, time.Time) {
+	utc := now.UTC()
+	currentMonthStart := time.Date(utc.Year(), utc.Month(), 1, 0, 0, 0, 0, time.UTC)
+	previousMonthStart := currentMonthStart.AddDate(0, -1, 0)
+	return previousMonthStart, currentMonthStart
+}
+
+func monthlyFriendsActivityDeliveryKey(userID string, monthStart time.Time) string {
+	return fmt.Sprintf("%s:%s:%s", monthlyFriendsActivitySignalType, monthStart.UTC().Format("2006-01"), strings.TrimSpace(userID))
+}
+
+func monthlyFriendsActivityNotificationBody(candidate monthlyFriendsActivityCandidate) string {
+	if candidate.FriendCount == 1 {
+		return "A friend added restaurant visits last month."
+	}
+	return "Your friends added restaurant visits last month."
+}
+
+func formatPocketBaseDateTime(value time.Time) string {
+	return value.UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
 func deliverTastingInviteNotifications(app core.App, sessionID string, actorUserID string, invitedUserIDs []string) error {
@@ -603,6 +796,21 @@ func isBillOwedNotificationPreferenceEnabled(app core.App, userID string) (bool,
 	return record.GetBool("bill_owed_enabled"), nil
 }
 
+func isMonthlyFriendsActivityNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"notification_preferences",
+		"user = {:user}",
+		dbx.Params{"user": strings.TrimSpace(userID)},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return record.GetBool("monthly_friends_activity_enabled"), nil
+}
+
 func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, userID string, since time.Time) (bool, error) {
 	records, err := app.FindRecordsByFilter(
 		"notification_delivery_logs",
@@ -616,6 +824,21 @@ func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, us
 			"user":          strings.TrimSpace(userID),
 			"since":         since.Format(time.RFC3339Nano),
 		},
+	)
+	if err != nil {
+		return false, err
+	}
+	return len(records) > 0, nil
+}
+
+func hasNotificationDeliveryLogWithKey(app core.App, deliveryKey string) (bool, error) {
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_logs",
+		"delivery_key = {:deliveryKey}",
+		"",
+		1,
+		0,
+		dbx.Params{"deliveryKey": strings.TrimSpace(deliveryKey)},
 	)
 	if err != nil {
 		return false, err

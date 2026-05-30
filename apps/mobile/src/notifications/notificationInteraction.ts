@@ -20,6 +20,7 @@ const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
 const VISIT_REMINDER_NOTIFICATION_TYPE = 'visit_reminder';
 const BILL_OWED_NOTIFICATION_TYPE = 'bill_owed';
 const BILL_PAYMENT_REMINDER_NOTIFICATION_TYPE = 'bill_payment_reminder';
+const MONTHLY_FRIENDS_ACTIVITY_NOTIFICATION_TYPE = 'monthly_friends_activity';
 
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
@@ -492,6 +493,11 @@ function resolveNotificationRoute(
 ):
   | {
       notificationType: string;
+      routeName: 'Home';
+      params: RootStackParamList['Home'];
+    }
+  | {
+      notificationType: string;
       routeName: 'TastingSessions';
       params: RootStackParamList['TastingSessions'];
     }
@@ -516,6 +522,22 @@ function resolveNotificationRoute(
     return null;
   }
   const notificationType = resolveNotificationType(data);
+
+  if (notificationType === MONTHLY_FRIENDS_ACTIVITY_NOTIFICATION_TYPE || data.route === 'Home') {
+    return {
+      notificationType: MONTHLY_FRIENDS_ACTIVITY_NOTIFICATION_TYPE,
+      routeName: 'Home',
+      params: {
+        initialView: {
+          feedMode: 'friends',
+          filtersExpanded: true,
+          searchQuery: '',
+          sortFilter: 'created',
+          typeFilter: 'visits',
+        },
+      },
+    };
+  }
 
   if (notificationType === 'tasting_invite') {
     return {

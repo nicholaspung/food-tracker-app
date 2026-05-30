@@ -322,6 +322,37 @@ describe('notificationInteraction', () => {
     });
   });
 
+  it('routes monthly friends activity notification taps to the Home friends feed', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              notificationType: 'monthly_friends_activity',
+              route: 'Home',
+            },
+          },
+        },
+      },
+    };
+
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('Home', {
+      initialView: {
+        feedMode: 'friends',
+        filtersExpanded: true,
+        searchQuery: '',
+        sortFilter: 'created',
+        typeFilter: 'visits',
+      },
+    });
+  });
+
   it('schedules a one-time local visit reminder after permission is available', async () => {
     const result = await scheduleVisitReminderNotification(30);
 
