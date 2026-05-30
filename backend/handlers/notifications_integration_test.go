@@ -370,6 +370,175 @@ func TestBillOwedNotificationPreferenceSuppression(t *testing.T) {
 	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_owed", "skipped_preference_disabled", 0)
 }
 
+func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[participant]", true)
+	bill := seedBillRecord(t, server.app, creator.Id, "Reminder Dinner")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected payment reminder to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one payment reminder push, got %#v", sender.calls)
+	}
+	call := sender.calls[0]
+	if call.token != "ExponentPushToken[participant]" {
+		t.Fatalf("expected participant token, got %q", call.token)
+	}
+	if call.payload.Data["notificationType"] != "bill_payment_reminder" ||
+		call.payload.Data["route"] != "BillDetail" ||
+		call.payload.Data["billId"] != bill.Id {
+		t.Fatalf("unexpected payment reminder payload: %#v", call.payload)
+	}
+	if strings.Contains(call.payload.Body, "18") || strings.Contains(call.payload.Body, "$") {
+		t.Fatalf("expected reminder copy to omit amount, got %q", call.payload.Body)
+	}
+
+	logRecord := assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "sent", 1)
+	if logRecord.GetString("source_collection") != "bill_participants" || logRecord.GetString("source_record") != participantRecord.Id {
+		t.Fatalf("expected participant-scoped reminder log, got source %q/%q", logRecord.GetString("source_collection"), logRecord.GetString("source_record"))
+	}
+	for _, fieldName := range []string{"signal_type", "source_collection", "source_record", "delivery_key", "status", "provider_message_id", "error_code"} {
+		fieldValue := logRecord.GetString(fieldName)
+		if strings.Contains(fieldValue, "ExponentPushToken") || strings.Contains(fieldValue, call.payload.Body) {
+			t.Fatalf("expected delivery log field %s to omit push token and body text, got %q", fieldName, fieldValue)
+		}
+	}
+
+	rateLimitedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if rateLimitedResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected weekly rate limit response, got %d: %s", rateLimitedResponse.Code, rateLimitedResponse.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected rate limit to avoid another provider send, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_rate_limited", 0)
+}
+
+func TestBillPaymentReminderAuthorizationAndIneligibleParticipants(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	otherUser, otherToken := createAuthUser(t, server.app, false, false)
+	bill := seedBillRecord(t, server.app, creator.Id, "Reminder Dinner")
+	pendingParticipant := seedBillParticipantRecord(t, server.app, bill.Id, otherUser.Id, "Friend", 18, "pending")
+	paidParticipant := seedBillParticipantRecord(t, server.app, bill.Id, otherUser.Id, "Paid Friend", 12, "paid")
+	customParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Cash Friend", 8, "pending")
+
+	unauthorizedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+pendingParticipant.Id+"/payment-reminder",
+		otherToken,
+		"",
+	)
+	if unauthorizedResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected non-creator reminder to be forbidden, got %d: %s", unauthorizedResponse.Code, unauthorizedResponse.Body.String())
+	}
+
+	for _, participantID := range []string{paidParticipant.Id, customParticipant.Id} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/bills/"+bill.Id+"/participants/"+participantID+"/payment-reminder",
+			creatorToken,
+			"",
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected ineligible participant to be rejected, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected no provider sends for ineligible reminders, got %#v", sender.calls)
+	}
+}
+
+func TestBillPaymentReminderPreferenceSuppression(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[participant]", true)
+	createBillNotificationPreferenceRecord(t, server.app, participant.Id, false)
+	bill := seedBillRecord(t, server.app, creator.Id, "Muted Reminder")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected preference-suppressed reminder request to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected disabled bill preference to suppress provider sends, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_preference_disabled", 0)
+}
+
+func TestBillPaymentReminderRequiresActiveDevice(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[inactive]", false)
+	bill := seedBillRecord(t, server.app, creator.Id, "Inactive Device Reminder")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected no-device reminder request to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected inactive devices to suppress provider sends, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_no_active_device", 0)
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{

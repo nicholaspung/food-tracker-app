@@ -411,3 +411,29 @@ export async function markBillParticipantPaid(
     },
   );
 }
+
+export type BillPaymentReminderResult = {
+  status:
+    | 'sent'
+    | 'skipped_preference_disabled'
+    | 'skipped_no_active_device'
+    | 'provider_failed'
+    | string;
+};
+
+export async function sendBillPaymentReminder(
+  billId: string,
+  participantId: string,
+): Promise<BillPaymentReminderResult> {
+  return trackFeatureMutation(
+    'bill.participant.payment_reminder',
+    async () =>
+      sendApiRequest<BillPaymentReminderResult>(
+        `/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/payment-reminder`,
+        {
+          method: 'POST',
+        },
+      ),
+    {},
+  );
+}

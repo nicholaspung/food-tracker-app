@@ -501,7 +501,7 @@ describe('notificationInteraction', () => {
     });
   });
 
-  it('routes bill notification payloads that identify the route but omit notificationType', async () => {
+  it('routes bill detail notification payloads to bill detail', async () => {
     const navigate = jest.fn();
     const navigationRef = {
       isReady: () => true,
@@ -521,9 +521,33 @@ describe('notificationInteraction', () => {
     };
 
     expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
-    expect(navigate).toHaveBeenCalledWith('Bills', {
+    expect(navigate).toHaveBeenCalledWith('BillDetail', {
       billId: 'bill_1',
-      refreshSignal: expect.any(Number),
+    });
+  });
+
+  it('routes bill payment reminder notification taps to bill detail', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              billId: 'bill_1',
+              notificationType: 'bill_payment_reminder',
+            },
+          },
+        },
+      },
+    };
+
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('BillDetail', {
+      billId: 'bill_1',
     });
   });
 

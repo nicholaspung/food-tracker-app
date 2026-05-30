@@ -510,6 +510,69 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, responsePayload)
 	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/bills/{billId}/participants/{participantId}/payment-reminder", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		billID := strings.TrimSpace(e.Request.PathValue("billId"))
+		if billID == "" {
+			return apis.NewBadRequestError("billId is required", nil)
+		}
+
+		participantID := strings.TrimSpace(e.Request.PathValue("participantId"))
+		if participantID == "" {
+			return apis.NewBadRequestError("participantId is required", nil)
+		}
+
+		billRecord, err := app.FindRecordById("bills", billID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return apis.NewNotFoundError("bill not found", err)
+			}
+			return apis.NewApiError(500, "failed to load bill", err)
+		}
+		if strings.TrimSpace(billRecord.GetString("creator_user")) != e.Auth.Id {
+			return apis.NewForbiddenError("only the bill creator can send payment reminders", nil)
+		}
+
+		participantRecord, err := app.FindRecordById("bill_participants", participantID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return apis.NewNotFoundError("bill participant not found", err)
+			}
+			return apis.NewApiError(500, "failed to load bill participant", err)
+		}
+		if strings.TrimSpace(participantRecord.GetString("bill")) != billID {
+			return apis.NewNotFoundError("bill participant not found", nil)
+		}
+
+		recipientID := strings.TrimSpace(participantRecord.GetString("user"))
+		if recipientID == "" || recipientID == e.Auth.Id {
+			return apis.NewBadRequestError("participant is not eligible for payment reminders", nil)
+		}
+		if normalizePaidStatus(participantRecord.GetString("paid_status")) != "pending" || sanitizeCurrency(participantRecord.GetFloat("amount_owed")) <= 0 {
+			return apis.NewBadRequestError("participant is not eligible for payment reminders", nil)
+		}
+
+		result, err := deliverBillPaymentReminder(app, billPaymentReminderInput{
+			BillID:        billRecord.Id,
+			BillTitle:     billRecord.GetString("bill_name"),
+			ParticipantID: participantRecord.Id,
+			ActorUserID:   e.Auth.Id,
+			RecipientID:   recipientID,
+		})
+		if err != nil {
+			return apis.NewApiError(500, "failed to deliver payment reminder", err)
+		}
+
+		if result.Status == "skipped_rate_limited" {
+			return apis.NewBadRequestError("payment reminder already sent this week", nil)
+		}
+
+		return e.JSON(200, map[string]any{"status": result.Status})
+	}).Bind(apis.RequireAuth())
 }
 
 func createVisitTransaction(

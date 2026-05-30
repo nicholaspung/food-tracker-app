@@ -22,6 +22,7 @@ import {
   type BillRecord,
 } from '../features';
 import { billsQueryKeys, getCachedBillDetail } from '../features/store/billsQuery';
+import { sendBillPaymentReminder } from '../features/store/billsStore';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
 import { useBillWrites } from '../features/store/useBillWrites';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
@@ -212,11 +213,18 @@ const useStyles = createThemedStyles((theme) => ({
   participantActionPillDisabled: {
     opacity: 0.6,
   },
+  participantActions: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
+  },
   participantActionLabel: {
     color: theme.colors.text.success,
   },
   participantActionLabelSecondary: {
     color: theme.colors.text.secondary,
+  },
+  participantReminderLabel: {
+    color: theme.colors.text.info,
   },
   itemPrice: {
     color: theme.colors.text.primary,
@@ -268,6 +276,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const [isUpdatingBillStatus, setIsUpdatingBillStatus] = useState(false);
   const [isDeletingBill, setIsDeletingBill] = useState(false);
   const [updatingParticipantId, setUpdatingParticipantId] = useState<string | null>(null);
+  const [remindingParticipantId, setRemindingParticipantId] = useState<string | null>(null);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billQuery.isRefetching);
 
@@ -472,6 +481,54 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       });
     } finally {
       setUpdatingParticipantId(null);
+    }
+  };
+
+  const remindParticipant = async (participant: BillParticipantRecord) => {
+    if (!bill || !isCreator || !isOnline) {
+      setErrorMessage('Connect to the internet to send payment reminders.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setRemindingParticipantId(participant.id);
+    trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_STARTED', {
+      source: 'BillDetailScreen',
+      billId,
+      participantId: participant.id,
+    });
+
+    try {
+      const result = await sendBillPaymentReminder(billId, participant.id);
+      const messageByStatus: Record<string, string> = {
+        provider_failed: 'The reminder could not be sent. Try again in a moment.',
+        skipped_no_active_device: 'This person has no active notification device.',
+        skipped_preference_disabled: 'This person has payment reminders turned off.',
+      };
+      const statusMessage = messageByStatus[result.status];
+      if (statusMessage) {
+        setErrorMessage(statusMessage);
+      }
+      trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_SUCCEEDED', {
+        source: 'BillDetailScreen',
+        billId,
+        participantId: participant.id,
+        status: result.status,
+      });
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : 'Could not send payment reminder.';
+      const message = rawMessage.toLowerCase().includes('already sent this week')
+        ? 'A reminder was already sent to this person this week.'
+        : rawMessage;
+      setErrorMessage(message);
+      trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_FAILED', {
+        source: 'BillDetailScreen',
+        billId,
+        participantId: participant.id,
+        error: message,
+      });
+    } finally {
+      setRemindingParticipantId(null);
     }
   };
 
@@ -743,6 +800,15 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                   const actionLabel = nextPaidStatus === 'paid' ? 'Mark Paid' : 'Mark Unpaid';
                   const isMarkUnpaidAction = nextPaidStatus === 'pending';
                   const isUpdatingParticipant = updatingParticipantId === participant.id;
+                  const canSendReminder = Boolean(
+                    isCreator &&
+                      !isBillSettled &&
+                      !isCurrentUser &&
+                      participant.userId &&
+                      participant.paidStatus === 'pending' &&
+                      participant.amountOwed > 0,
+                  );
+                  const isSendingReminder = remindingParticipantId === participant.id;
                   const statusPill = (
                     <StatusPill
                       label={participant.paidStatus === 'paid' ? 'Paid' : 'Pending'}
@@ -756,34 +822,60 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                       key={participant.id}
                       titleAccessory={statusPill}
                       rightAccessory={
-                        canUpdateStatus ? (
-                          <Pressable
-                            accessibilityLabel={actionLabel}
-                            accessibilityRole="button"
-                            disabled={isUpdatingParticipant}
-                            onPress={() => {
-                              void updateParticipantPaidStatus(participant.id, nextPaidStatus);
-                            }}
-                            style={({ pressed }) => [
-                              styles.participantActionPill,
-                              nextPaidStatus === 'paid'
-                                ? styles.participantActionPillPositive
-                                : styles.participantActionPillSecondary,
-                              pressed && !isUpdatingParticipant ? styles.participantActionPillPressed : null,
-                              isUpdatingParticipant ? styles.participantActionPillDisabled : null,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                isMarkUnpaidAction
-                                  ? styles.participantActionLabelSecondary
-                                  : styles.participantActionLabel,
-                              ]}
-                              variant={isMarkUnpaidAction ? 'bodySmTightSemiBold' : 'bodySmTightBold'}
-                            >
-                              {isUpdatingParticipant ? 'Updating...' : actionLabel}
-                            </Text>
-                          </Pressable>
+                        canUpdateStatus || canSendReminder ? (
+                          <View style={styles.participantActions}>
+                            {canUpdateStatus ? (
+                              <Pressable
+                                accessibilityLabel={actionLabel}
+                                accessibilityRole="button"
+                                disabled={isUpdatingParticipant}
+                                onPress={() => {
+                                  void updateParticipantPaidStatus(participant.id, nextPaidStatus);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.participantActionPill,
+                                  nextPaidStatus === 'paid'
+                                    ? styles.participantActionPillPositive
+                                    : styles.participantActionPillSecondary,
+                                  pressed && !isUpdatingParticipant ? styles.participantActionPillPressed : null,
+                                  isUpdatingParticipant ? styles.participantActionPillDisabled : null,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    isMarkUnpaidAction
+                                      ? styles.participantActionLabelSecondary
+                                      : styles.participantActionLabel,
+                                  ]}
+                                  variant={isMarkUnpaidAction ? 'bodySmTightSemiBold' : 'bodySmTightBold'}
+                                >
+                                  {isUpdatingParticipant ? 'Updating...' : actionLabel}
+                                </Text>
+                              </Pressable>
+                            ) : null}
+
+                            {canSendReminder ? (
+                              <Pressable
+                                accessibilityLabel={`Remind ${displayName}`}
+                                accessibilityRole="button"
+                                disabled={isSendingReminder || !isOnline}
+                                onPress={() => {
+                                  void remindParticipant(participant);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.participantActionPill,
+                                  styles.participantActionPillSecondary,
+                                  pressed && !isSendingReminder && isOnline ? styles.participantActionPillPressed : null,
+                                  isSendingReminder || !isOnline ? styles.participantActionPillDisabled : null,
+                                ]}
+                                testID={`bill-participant-reminder-${participant.id}`}
+                              >
+                                <Text style={styles.participantReminderLabel} variant="bodySmTightSemiBold">
+                                  {isSendingReminder ? 'Sending...' : 'Remind'}
+                                </Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
                         ) : null
                       }
                       subtitle={subtitleParts.join(' • ')}

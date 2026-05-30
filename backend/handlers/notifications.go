@@ -18,6 +18,7 @@ import (
 const (
 	tastingInviteNotificationSignalType = "tasting_invite"
 	billOwedNotificationSignalType      = "bill_owed"
+	billPaymentReminderSignalType       = "bill_payment_reminder"
 )
 
 type notificationDeviceRegistrationRequest struct {
@@ -48,6 +49,18 @@ type billOwedNotificationSignalInput struct {
 	ActorUserID          string
 	PreviousParticipants []billNotificationParticipantSignal
 	NextParticipants     []billNotificationParticipantSignal
+}
+
+type billPaymentReminderInput struct {
+	BillID        string
+	BillTitle     string
+	ParticipantID string
+	ActorUserID   string
+	RecipientID   string
+}
+
+type billPaymentReminderResult struct {
+	Status string
 }
 
 type expoNotificationPushSender struct {
@@ -426,6 +439,102 @@ func deliverBillOwedNotification(app core.App, billID string, billTitle string, 
 	})
 }
 
+func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (billPaymentReminderResult, error) {
+	billID := strings.TrimSpace(input.BillID)
+	billTitle := strings.TrimSpace(input.BillTitle)
+	participantID := strings.TrimSpace(input.ParticipantID)
+	actorUserID := strings.TrimSpace(input.ActorUserID)
+	recipientID := strings.TrimSpace(input.RecipientID)
+	if billTitle == "" {
+		billTitle = "a bill"
+	}
+
+	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billPaymentReminderSignalType, participantID, recipientID, time.Now().UTC().UnixNano())
+	baseLog := notificationDeliveryLogInput{
+		UserID:           recipientID,
+		SignalType:       billPaymentReminderSignalType,
+		SourceCollection: "bill_participants",
+		SourceRecord:     participantID,
+		ActorUserID:      actorUserID,
+		DeliveryKey:      deliveryKey,
+	}
+
+	if billID == "" || participantID == "" || recipientID == "" {
+		return billPaymentReminderResult{}, nil
+	}
+
+	wasSentThisWeek, err := hasRecentBillPaymentReminderDelivery(app, participantID, recipientID, time.Now().UTC().AddDate(0, 0, -7))
+	if err != nil {
+		return billPaymentReminderResult{}, err
+	}
+	if wasSentThisWeek {
+		baseLog.Status = "skipped_rate_limited"
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return billPaymentReminderResult{}, err
+		}
+		return billPaymentReminderResult{Status: "skipped_rate_limited"}, nil
+	}
+
+	enabled, err := isBillOwedNotificationPreferenceEnabled(app, recipientID)
+	if err != nil {
+		return billPaymentReminderResult{}, err
+	}
+	if !enabled {
+		baseLog.Status = "skipped_preference_disabled"
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return billPaymentReminderResult{}, err
+		}
+		return billPaymentReminderResult{Status: "skipped_preference_disabled"}, nil
+	}
+
+	devices, err := listActiveNotificationDevices(app, recipientID)
+	if err != nil {
+		return billPaymentReminderResult{}, err
+	}
+	if len(devices) == 0 {
+		baseLog.Status = "skipped_no_active_device"
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return billPaymentReminderResult{}, err
+		}
+		return billPaymentReminderResult{Status: "skipped_no_active_device"}, nil
+	}
+
+	payload := RemoteDeviceNotificationPayload{
+		Title: "Bill payment reminder",
+		Body:  fmt.Sprintf("You have a payment reminder for %s.", billTitle),
+		Data: map[string]any{
+			"billId":           billID,
+			"notificationType": billPaymentReminderSignalType,
+			"route":            "BillDetail",
+		},
+	}
+
+	var providerMessageID string
+	for _, device := range devices {
+		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
+		if sendErr != nil {
+			baseLog.Status = "provider_failed"
+			baseLog.DeviceCount = len(devices)
+			baseLog.ErrorCode = normalizeProviderErrorCode(sendErr)
+			if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+				return billPaymentReminderResult{}, err
+			}
+			return billPaymentReminderResult{Status: "provider_failed"}, nil
+		}
+		if providerMessageID == "" {
+			providerMessageID = messageID
+		}
+	}
+
+	baseLog.Status = "sent"
+	baseLog.DeviceCount = len(devices)
+	baseLog.ProviderMessageID = providerMessageID
+	if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+		return billPaymentReminderResult{}, err
+	}
+	return billPaymentReminderResult{Status: "sent"}, nil
+}
+
 type notificationDeliveryLogInput struct {
 	UserID            string
 	SignalType        string
@@ -492,6 +601,26 @@ func isBillOwedNotificationPreferenceEnabled(app core.App, userID string) (bool,
 		return false, err
 	}
 	return record.GetBool("bill_owed_enabled"), nil
+}
+
+func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, userID string, since time.Time) (bool, error) {
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_logs",
+		"signal_type = {:signalType} && source_collection = 'bill_participants' && source_record = {:participantID} && user = {:user} && status = 'sent' && created >= {:since}",
+		"-created",
+		1,
+		0,
+		dbx.Params{
+			"signalType":    billPaymentReminderSignalType,
+			"participantID": strings.TrimSpace(participantID),
+			"user":          strings.TrimSpace(userID),
+			"since":         since.Format(time.RFC3339Nano),
+		},
+	)
+	if err != nil {
+		return false, err
+	}
+	return len(records) > 0, nil
 }
 
 func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record, error) {
