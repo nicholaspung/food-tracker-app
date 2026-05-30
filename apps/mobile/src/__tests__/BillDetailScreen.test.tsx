@@ -194,7 +194,7 @@ function buildBill(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function renderBillDetail(bill = buildBill()) {
+async function renderBillDetail(bill = buildBill()): Promise<TestRenderer> {
   mockedUseQuery.mockReturnValue({
     data: bill,
     isError: false,
@@ -203,9 +203,9 @@ async function renderBillDetail(bill = buildBill()) {
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useQuery>);
 
-  let renderer: TestRenderer | null = null;
+  const rendererRef: { current?: TestRenderer } = {};
   await act(async () => {
-    renderer = create(
+    rendererRef.current = create(
       <BillDetailScreen
         navigation={
           {
@@ -220,10 +220,7 @@ async function renderBillDetail(bill = buildBill()) {
     ) as TestRenderer;
   });
 
-  if (!renderer) {
-    throw new Error('BillDetailScreen did not render.');
-  }
-  return renderer;
+  return rendererRef.current as TestRenderer;
 }
 
 function findPressableByTestId(renderer: TestRenderer, testID: string) {
