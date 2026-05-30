@@ -271,10 +271,6 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
   const retryAttemptRef = useRef(0);
 
   useEffect(() => {
-    if (status !== 'authenticated') {
-      return undefined;
-    }
-
     let subscription: { remove: () => void } | null = null;
 
     const clearRetryTimeout = () => {
@@ -287,6 +283,10 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
     const routePendingResponse = () => {
       const response = pendingResponseRef.current;
       if (!response) {
+        return;
+      }
+
+      if (status !== 'authenticated') {
         return;
       }
 
@@ -316,6 +316,10 @@ export function useNotificationTapRouting(navigationRef: NavigationRefLike, stat
       clearRetryTimeout();
       retryTimeoutRef.current = setTimeout(routePendingResponse, NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS);
     };
+
+    if (status === 'authenticated') {
+      routePendingResponse();
+    }
 
     const routeResponse = (response: ExpoNotifications.NotificationResponse | null | undefined) => {
       if (!response) {

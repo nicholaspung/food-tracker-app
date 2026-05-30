@@ -536,6 +536,42 @@ describe('notificationInteraction', () => {
     });
   });
 
+  it('captures a cold-start notification tap before authentication is ready and routes after auth', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              billId: 'bill_1',
+              notificationType: 'bill_owed',
+            },
+          },
+        },
+      },
+    };
+    mockGetLastNotificationResponseAsync.mockResolvedValueOnce(response).mockResolvedValueOnce(null);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<TapRoutingHarness navigationRef={navigationRef} status="bootstrapping" />);
+      await flushNotificationEffects();
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.update(<TapRoutingHarness navigationRef={navigationRef} status="authenticated" />);
+      await flushNotificationEffects();
+    });
+
+    expect(navigate).toHaveBeenCalledWith('BillDetail', { billId: 'bill_1' });
+  });
+
   it('subscribes to notification response taps while authenticated', async () => {
     const navigationRef = {
       isReady: () => true,
