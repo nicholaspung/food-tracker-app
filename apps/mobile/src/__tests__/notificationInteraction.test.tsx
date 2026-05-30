@@ -475,7 +475,7 @@ describe('notificationInteraction', () => {
     expect(navigate).toHaveBeenCalledWith('CreateVisit', undefined);
   });
 
-  it('routes bill owed notification taps to BillDetail', async () => {
+  it('routes bill owed notification taps to the bills list with the target bill id', async () => {
     const navigate = jest.fn();
     const navigationRef = {
       isReady: () => true,
@@ -495,7 +495,36 @@ describe('notificationInteraction', () => {
     };
 
     expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
-    expect(navigate).toHaveBeenCalledWith('BillDetail', { billId: 'bill_1' });
+    expect(navigate).toHaveBeenCalledWith('Bills', {
+      billId: 'bill_1',
+      refreshSignal: expect.any(Number),
+    });
+  });
+
+  it('routes bill notification payloads that identify the route but omit notificationType', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              route: 'BillDetail',
+              source_record: 'bill_1',
+            },
+          },
+        },
+      },
+    };
+
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('Bills', {
+      billId: 'bill_1',
+      refreshSignal: expect.any(Number),
+    });
   });
 
   it('retries notification tap routing until navigation is ready', async () => {
@@ -569,7 +598,10 @@ describe('notificationInteraction', () => {
       await flushNotificationEffects();
     });
 
-    expect(navigate).toHaveBeenCalledWith('BillDetail', { billId: 'bill_1' });
+    expect(navigate).toHaveBeenCalledWith('Bills', {
+      billId: 'bill_1',
+      refreshSignal: expect.any(Number),
+    });
   });
 
   it('subscribes to notification response taps while authenticated', async () => {

@@ -266,7 +266,7 @@ func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
 		t.Fatalf("expected app participant token, got %q", call.token)
 	}
 	if call.payload.Data["notificationType"] != "bill_owed" ||
-		call.payload.Data["route"] != "BillDetail" ||
+		call.payload.Data["route"] != "Bills" ||
 		call.payload.Data["billId"] != createdBill.ID {
 		t.Fatalf("unexpected bill notification payload: %#v", call.payload)
 	}

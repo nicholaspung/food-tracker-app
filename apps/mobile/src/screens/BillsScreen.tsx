@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
@@ -64,14 +64,39 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-export function BillsScreen({ navigation }: BillsScreenProps) {
+export function BillsScreen({ navigation, route }: BillsScreenProps) {
   const billsQuery = useQuery({
     queryKey: billsQueryKeys.root,
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
+  const consumedNotificationRouteKeyRef = useRef<string | null>(null);
   const styles = useStyles();
+  const refetchBills = billsQuery.refetch;
+  useEffect(() => {
+    if (!route.params?.refreshSignal) {
+      return;
+    }
+
+    void refetchBills();
+  }, [refetchBills, route.params?.refreshSignal]);
+
+  useEffect(() => {
+    const billId = route.params?.billId?.trim();
+    if (!billId) {
+      return;
+    }
+
+    const routeKey = `${billId}:${route.params?.refreshSignal ?? 'direct'}`;
+    if (consumedNotificationRouteKeyRef.current === routeKey) {
+      return;
+    }
+
+    consumedNotificationRouteKeyRef.current = routeKey;
+    navigation.navigate('BillDetail', { billId });
+  }, [navigation, route.params?.billId, route.params?.refreshSignal]);
+
   const filteredBills = useMemo(() => {
     const bills = billsQuery.data ?? [];
 

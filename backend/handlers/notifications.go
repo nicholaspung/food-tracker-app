@@ -388,7 +388,7 @@ func deliverBillOwedNotification(app core.App, billID string, billTitle string, 
 		Data: map[string]any{
 			"billId":           billID,
 			"notificationType": billOwedNotificationSignalType,
-			"route":            "BillDetail",
+			"route":            "Bills",
 		},
 	}
 

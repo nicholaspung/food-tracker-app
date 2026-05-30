@@ -285,7 +285,12 @@ export type RootStackParamList = {
   TastingSessionPlanning: { sessionId: string };
   TastingSessionTasting: { sessionId: string };
   TastingSessionResults: { sessionId: string };
-  Bills: undefined;
+  Bills:
+    | {
+        billId?: string;
+        refreshSignal?: number;
+      }
+    | undefined;
   CreateBill: { billId?: string; receiptScanResult?: ReceiptScanDraftResult } | undefined;
   ReceiptScan: { billId?: string; returnTo: 'CreateBill' };
   BillDetail: { billId: string };
@@ -315,6 +320,8 @@ export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
       VerifyEmail: 'verify-email',
       Home: 'home',
       Friends: 'friends',
+      Bills: 'bills',
+      BillDetail: 'bills/:billId',
     },
   },
 };

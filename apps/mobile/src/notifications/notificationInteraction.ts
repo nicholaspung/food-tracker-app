@@ -501,16 +501,17 @@ function resolveNotificationRoute(
     }
   | {
       notificationType: string;
-      routeName: 'BillDetail';
-      params: RootStackParamList['BillDetail'];
+      routeName: 'Bills';
+      params: RootStackParamList['Bills'];
     }
   | null {
   const data = response?.notification.request.content.data;
-  if (!data || typeof data.notificationType !== 'string') {
+  if (!data) {
     return null;
   }
+  const notificationType = resolveNotificationType(data);
 
-  if (data.notificationType === 'tasting_invite') {
+  if (notificationType === 'tasting_invite') {
     return {
       notificationType: 'tasting_invite',
       routeName: 'TastingSessions',
@@ -520,7 +521,7 @@ function resolveNotificationRoute(
     };
   }
 
-  if (data.notificationType === VISIT_REMINDER_NOTIFICATION_TYPE) {
+  if (notificationType === VISIT_REMINDER_NOTIFICATION_TYPE) {
     return {
       notificationType: VISIT_REMINDER_NOTIFICATION_TYPE,
       routeName: 'CreateVisit',
@@ -528,18 +529,48 @@ function resolveNotificationRoute(
     };
   }
 
-  if (data.notificationType === BILL_OWED_NOTIFICATION_TYPE && typeof data.billId === 'string') {
-    const billId = data.billId.trim();
-    if (billId) {
-      return {
-        notificationType: BILL_OWED_NOTIFICATION_TYPE,
-        routeName: 'BillDetail',
-        params: { billId },
-      };
-    }
+  if (notificationType === BILL_OWED_NOTIFICATION_TYPE || data.route === 'BillDetail' || data.route === 'Bills') {
+    return {
+      notificationType: BILL_OWED_NOTIFICATION_TYPE,
+      routeName: 'Bills',
+      params: {
+        billId: resolveNotificationBillId(data),
+        refreshSignal: Date.now(),
+      },
+    };
   }
 
   return null;
+}
+
+function resolveNotificationType(data: Record<string, unknown>): string | null {
+  const notificationType = data.notificationType;
+  if (typeof notificationType === 'string' && notificationType.trim()) {
+    return notificationType.trim();
+  }
+
+  const signalType = data.signal_type;
+  if (typeof signalType === 'string' && signalType.trim()) {
+    return signalType.trim();
+  }
+
+  const type = data.type;
+  if (typeof type === 'string' && type.trim()) {
+    return type.trim();
+  }
+
+  return null;
+}
+
+function resolveNotificationBillId(data: Record<string, unknown>): string | undefined {
+  for (const key of ['billId', 'bill_id', 'sourceRecord', 'source_record']) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
 }
 
 function isFutureVisitReminderNotificationRequest(notification: ExpoNotifications.NotificationRequest): boolean {
