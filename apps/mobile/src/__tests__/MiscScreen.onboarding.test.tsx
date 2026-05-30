@@ -42,8 +42,14 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
+  billsQueryKeys: {
+    root: ['feature', 'bills'],
+  },
   isMoreOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.moreCards?.[cardId]?.dismissedAt)),
+  listBillSummaries: jest.fn(),
   listTastingSessions: jest.fn(),
+  summarizeBillOwedNotificationSignal:
+    jest.requireActual('../features/store/notificationSignalSummary').summarizeBillOwedNotificationSignal,
   summarizeTastingSessionNotificationSignal:
     jest.requireActual('../features/store/notificationSignalSummary').summarizeTastingSessionNotificationSignal,
   tastingSessionsQueryKeys: {
@@ -190,11 +196,11 @@ function findFeatureRow(renderer: any, testID: string): any {
 describe('MiscScreen More feature onboarding routing', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
-    mockedUseQuery.mockReturnValue({
-      data: [],
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
+      data: Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions' ? [] : [],
       isError: false,
       isLoading: false,
-    } as unknown as ReturnType<typeof useQuery>);
+    }) as unknown as ReturnType<typeof useQuery>);
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'user_1',
@@ -228,23 +234,26 @@ describe('MiscScreen More feature onboarding routing', () => {
   });
 
   it('shows a count-dot on Group Tastings for cached pending tasting invites', async () => {
-    mockedUseQuery.mockReturnValue({
-      data: [
-        buildTastingSession({
-          invites: [
-            {
-              createdAt: '2026-05-20T11:00:00.000Z',
-              id: 'invite_1',
-              invitedUserId: 'user_1',
-              invitedUserName: 'Pat',
-              status: 'pending',
-            },
-          ],
-        }),
-      ],
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
+      data:
+        Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions'
+          ? [
+              buildTastingSession({
+                invites: [
+                  {
+                    createdAt: '2026-05-20T11:00:00.000Z',
+                    id: 'invite_1',
+                    invitedUserId: 'user_1',
+                    invitedUserName: 'Pat',
+                    status: 'pending',
+                  },
+                ],
+              }),
+            ]
+          : [],
       isError: true,
       isLoading: false,
-    } as unknown as ReturnType<typeof useQuery>);
+    }) as unknown as ReturnType<typeof useQuery>);
     const renderer = await renderMiscScreen();
 
     const accessory = findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory;
@@ -253,17 +262,20 @@ describe('MiscScreen More feature onboarding routing', () => {
   });
 
   it('shows a plain dot on Group Tastings for leader-owned sessions with invite signal', async () => {
-    mockedUseQuery.mockReturnValue({
-      data: [
-        buildTastingSession({
-          inviteCode: 'ABC123',
-          joinExpiresAt: '2000-01-01T00:00:00.000Z',
-          leaderUserId: 'user_1',
-        }),
-      ],
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
+      data:
+        Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions'
+          ? [
+              buildTastingSession({
+                inviteCode: 'ABC123',
+                joinExpiresAt: '2000-01-01T00:00:00.000Z',
+                leaderUserId: 'user_1',
+              }),
+            ]
+          : [],
       isError: false,
       isLoading: false,
-    } as unknown as ReturnType<typeof useQuery>);
+    }) as unknown as ReturnType<typeof useQuery>);
     const renderer = await renderMiscScreen();
 
     const accessory = findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory;
@@ -275,6 +287,47 @@ describe('MiscScreen More feature onboarding routing', () => {
     const renderer = await renderMiscScreen();
 
     expect(findFeatureRow(renderer, 'feature-group-tastings').props.rightAccessory).toBeUndefined();
+  });
+
+  it('shows a count-dot on Split a Bill when the user owes on active bills', async () => {
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
+      data:
+        Array.isArray(queryKey) && queryKey[1] === 'bills'
+          ? [
+              {
+                createdAt: '2026-05-20T11:00:00.000Z',
+                id: 'bill_1',
+                isCreator: false,
+                participantCount: 2,
+                pendingOtherParticipantCount: 0,
+                status: 'open',
+                title: 'Dinner',
+                updatedAt: '2026-05-20T11:00:00.000Z',
+                youAreOwed: 0,
+                youOwe: 12.5,
+              },
+              {
+                createdAt: '2026-05-20T11:00:00.000Z',
+                id: 'bill_2',
+                isCreator: false,
+                participantCount: 2,
+                pendingOtherParticipantCount: 0,
+                status: 'settled',
+                title: 'Settled',
+                updatedAt: '2026-05-20T11:00:00.000Z',
+                youAreOwed: 0,
+                youOwe: 8,
+              },
+            ]
+          : [],
+      isError: false,
+      isLoading: false,
+    }) as unknown as ReturnType<typeof useQuery>);
+    const renderer = await renderMiscScreen();
+
+    const accessory = findFeatureRow(renderer, 'feature-bill-splitter').props.rightAccessory;
+
+    expect(accessory?.props.indicator).toEqual({ count: 1, kind: 'count' });
   });
 
   it.each([

@@ -1,4 +1,5 @@
 import {
+  summarizeBillOwedNotificationSignal,
   summarizeTastingSessionNotificationSignal,
   type TastingSessionRecord,
 } from '../features';
@@ -201,5 +202,63 @@ describe('summarizeTastingSessionNotificationSignal', () => {
     });
 
     expect(summary.indicator).toEqual({ kind: 'none' });
+  });
+});
+
+describe('summarizeBillOwedNotificationSignal', () => {
+  it('returns a count indicator for active bills where the user owes money', () => {
+    const summary = summarizeBillOwedNotificationSignal([
+      {
+        createdAt: '2026-05-20T11:00:00.000Z',
+        id: 'bill_1',
+        isCreator: false,
+        participantCount: 2,
+        pendingOtherParticipantCount: 0,
+        status: 'open',
+        title: 'Dinner',
+        updatedAt: '2026-05-20T11:00:00.000Z',
+        youAreOwed: 0,
+        youOwe: 12.5,
+      },
+      {
+        createdAt: '2026-05-20T11:00:00.000Z',
+        id: 'bill_2',
+        isCreator: false,
+        participantCount: 2,
+        pendingOtherParticipantCount: 0,
+        status: 'settled',
+        title: 'Settled',
+        updatedAt: '2026-05-20T11:00:00.000Z',
+        youAreOwed: 0,
+        youOwe: 9,
+      },
+    ]);
+
+    expect(summary).toEqual({
+      activeOwedBillCount: 1,
+      indicator: { count: 1, kind: 'count' },
+    });
+  });
+
+  it('returns no indicator when the user does not owe on active bills', () => {
+    expect(
+      summarizeBillOwedNotificationSignal([
+        {
+          createdAt: '2026-05-20T11:00:00.000Z',
+          id: 'bill_1',
+          isCreator: true,
+          participantCount: 2,
+          pendingOtherParticipantCount: 1,
+          status: 'open',
+          title: 'Dinner',
+          updatedAt: '2026-05-20T11:00:00.000Z',
+          youAreOwed: 12.5,
+          youOwe: 0,
+        },
+      ]),
+    ).toEqual({
+      activeOwedBillCount: 0,
+      indicator: { kind: 'none' },
+    });
   });
 });

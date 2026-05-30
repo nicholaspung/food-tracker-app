@@ -360,11 +360,15 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		var responsePayload billResponse
+		var createdBillID string
+		var createdBillTitle string
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			billRecord, err := createBillTransaction(txApp, e.Auth, requestBody)
 			if err != nil {
 				return err
 			}
+			createdBillID = billRecord.Id
+			createdBillTitle = billRecord.GetString("bill_name")
 
 			responsePayload, err = buildBillResponse(txApp, billRecord, e.Auth.Id)
 			if err != nil {
@@ -374,6 +378,15 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			return nil
 		}); err != nil {
 			return err
+		}
+
+		if err := deliverBillOwedNotifications(app, billOwedNotificationSignalInput{
+			BillID:           createdBillID,
+			BillTitle:        createdBillTitle,
+			ActorUserID:      e.Auth.Id,
+			NextParticipants: billResponseParticipantsToNotificationSignals(responsePayload.Participants),
+		}); err != nil {
+			return apis.NewApiError(500, "failed to deliver bill notifications", err)
 		}
 
 		return e.JSON(200, responsePayload)
@@ -395,11 +408,20 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		var responsePayload billResponse
+		var previousParticipantSignals []billNotificationParticipantSignal
+		var updatedBillTitle string
 		if err := app.RunInTransaction(func(txApp core.App) error {
+			existingParticipants, err := listBillParticipants(txApp, billID)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load bill participants", err)
+			}
+			previousParticipantSignals = billParticipantRecordsToNotificationSignals(existingParticipants)
+
 			billRecord, err := updateBillTransaction(txApp, e.Auth, billID, requestBody)
 			if err != nil {
 				return err
 			}
+			updatedBillTitle = billRecord.GetString("bill_name")
 
 			responsePayload, err = buildBillResponse(txApp, billRecord, e.Auth.Id)
 			if err != nil {
@@ -409,6 +431,16 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			return nil
 		}); err != nil {
 			return err
+		}
+
+		if err := deliverBillOwedNotifications(app, billOwedNotificationSignalInput{
+			BillID:               billID,
+			BillTitle:            updatedBillTitle,
+			ActorUserID:          e.Auth.Id,
+			PreviousParticipants: previousParticipantSignals,
+			NextParticipants:     billResponseParticipantsToNotificationSignals(responsePayload.Participants),
+		}); err != nil {
+			return apis.NewApiError(500, "failed to deliver bill notifications", err)
 		}
 
 		return e.JSON(200, responsePayload)
@@ -1786,6 +1818,33 @@ func listBillParticipants(app core.App, billID string) ([]*core.Record, error) {
 	return app.FindRecordsByFilter("bill_participants", "bill = {:billId}", "created", 200, 0, dbx.Params{
 		"billId": billID,
 	})
+}
+
+func billParticipantRecordsToNotificationSignals(participants []*core.Record) []billNotificationParticipantSignal {
+	signals := make([]billNotificationParticipantSignal, 0, len(participants))
+	for _, participant := range participants {
+		if participant == nil {
+			continue
+		}
+		signals = append(signals, billNotificationParticipantSignal{
+			UserID:     participant.GetString("user"),
+			AmountOwed: participant.GetFloat("amount_owed"),
+			PaidStatus: participant.GetString("paid_status"),
+		})
+	}
+	return signals
+}
+
+func billResponseParticipantsToNotificationSignals(participants []billParticipantResponse) []billNotificationParticipantSignal {
+	signals := make([]billNotificationParticipantSignal, 0, len(participants))
+	for _, participant := range participants {
+		signals = append(signals, billNotificationParticipantSignal{
+			UserID:     participant.UserID,
+			AmountOwed: participant.AmountOwed,
+			PaidStatus: participant.PaidStatus,
+		})
+	}
+	return signals
 }
 
 func listBillItems(app core.App, billID string) ([]*core.Record, error) {

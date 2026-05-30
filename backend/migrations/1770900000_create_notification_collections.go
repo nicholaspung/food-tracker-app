@@ -46,6 +46,7 @@ func init() {
 		preferences.DeleteRule = nil
 		preferences.Fields.Add(&core.RelationField{Name: "user", CollectionId: usersCollection.Id, MaxSelect: 1, Required: true, CascadeDelete: true})
 		preferences.Fields.Add(&core.BoolField{Name: "tasting_invites_enabled", Required: false})
+		preferences.Fields.Add(&core.BoolField{Name: "bill_owed_enabled", Required: false})
 		preferences.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 		preferences.Fields.Add(&core.AutodateField{Name: "updated", OnUpdate: true})
 		preferences.Indexes = []string{"CREATE UNIQUE INDEX idx_notification_preferences_user ON notification_preferences (user)"}

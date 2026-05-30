@@ -1,4 +1,5 @@
 import type { TastingSessionRecord } from '../models';
+import type { BillListSummary } from './featureStore';
 
 export type NotificationSignalIndicator =
   | { kind: 'none' }
@@ -12,6 +13,11 @@ export interface TastingSessionNotificationSignalSummary {
   hasActiveParticipantSession: boolean;
 }
 
+export interface BillOwedNotificationSignalSummary {
+  indicator: NotificationSignalIndicator;
+  activeOwedBillCount: number;
+}
+
 interface TastingSessionNotificationSignalInput {
   sessions: readonly TastingSessionRecord[];
   userId?: string | null;
@@ -23,6 +29,11 @@ const NO_TASTING_SIGNAL: TastingSessionNotificationSignalSummary = {
   hasLeaderInviteAction: false,
   indicator: { kind: 'none' },
   pendingInviteCount: 0,
+};
+
+const NO_BILL_OWED_SIGNAL: BillOwedNotificationSignalSummary = {
+  activeOwedBillCount: 0,
+  indicator: { kind: 'none' },
 };
 
 function isActiveTastingSession(session: TastingSessionRecord): boolean {
@@ -92,4 +103,19 @@ export function summarizeTastingSessionNotificationSignal({
   }
 
   return NO_TASTING_SIGNAL;
+}
+
+export function summarizeBillOwedNotificationSignal(
+  bills: readonly BillListSummary[],
+): BillOwedNotificationSignalSummary {
+  const activeOwedBillCount = bills.filter((bill) => bill.status !== 'settled' && bill.youOwe > 0).length;
+
+  if (activeOwedBillCount === 0) {
+    return NO_BILL_OWED_SIGNAL;
+  }
+
+  return {
+    activeOwedBillCount,
+    indicator: { count: activeOwedBillCount, kind: 'count' },
+  };
 }

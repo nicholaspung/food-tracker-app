@@ -18,6 +18,7 @@ const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
 const NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS = 250;
 const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
 const VISIT_REMINDER_NOTIFICATION_TYPE = 'visit_reminder';
+const BILL_OWED_NOTIFICATION_TYPE = 'bill_owed';
 
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
@@ -494,6 +495,11 @@ function resolveNotificationRoute(
       routeName: 'CreateVisit';
       params: RootStackParamList['CreateVisit'];
     }
+  | {
+      notificationType: string;
+      routeName: 'BillDetail';
+      params: RootStackParamList['BillDetail'];
+    }
   | null {
   const data = response?.notification.request.content.data;
   if (!data || typeof data.notificationType !== 'string') {
@@ -516,6 +522,17 @@ function resolveNotificationRoute(
       routeName: 'CreateVisit',
       params: undefined,
     };
+  }
+
+  if (data.notificationType === BILL_OWED_NOTIFICATION_TYPE && typeof data.billId === 'string') {
+    const billId = data.billId.trim();
+    if (billId) {
+      return {
+        notificationType: BILL_OWED_NOTIFICATION_TYPE,
+        routeName: 'BillDetail',
+        params: { billId },
+      };
+    }
   }
 
   return null;

@@ -16,8 +16,11 @@ import {
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import {
+  billsQueryKeys,
   isMoreOnboardingCardDismissed,
+  listBillSummaries,
   listTastingSessions,
+  summarizeBillOwedNotificationSignal,
   summarizeTastingSessionNotificationSignal,
   tastingSessionsQueryKeys,
   type NotificationSignalIndicator,
@@ -166,7 +169,15 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function TastingSessionSignalIndicator({ indicator }: { indicator: NotificationSignalIndicator }) {
+function MoreFeatureSignalIndicator({
+  accessibilityLabelPrefix,
+  indicator,
+  testIDPrefix,
+}: {
+  accessibilityLabelPrefix: string;
+  indicator: NotificationSignalIndicator;
+  testIDPrefix: string;
+}) {
   const styles = useStyles();
 
   if (indicator.kind === 'none') {
@@ -174,14 +185,20 @@ function TastingSessionSignalIndicator({ indicator }: { indicator: NotificationS
   }
 
   if (indicator.kind === 'dot') {
-    return <View accessibilityLabel="Group tasting activity" style={styles.signalDot} testID="tasting-signal-dot" />;
+    return (
+      <View
+        accessibilityLabel={accessibilityLabelPrefix}
+        style={styles.signalDot}
+        testID={`${testIDPrefix}-signal-dot`}
+      />
+    );
   }
 
   return (
     <View
-      accessibilityLabel={`${indicator.count} pending tasting ${indicator.count === 1 ? 'invite' : 'invites'}`}
+      accessibilityLabel={`${indicator.count} ${accessibilityLabelPrefix}`}
       style={styles.signalCountDot}
-      testID="tasting-signal-count-dot"
+      testID={`${testIDPrefix}-signal-count-dot`}
     >
       <Text tone="inverse" variant="captionStrong">
         {indicator.count > 9 ? '9+' : indicator.count}
@@ -200,6 +217,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     queryFn: ({ signal }) => listTastingSessions({ signal }),
     enabled: Boolean(user?.id),
   });
+  const billsQuery = useQuery({
+    queryKey: billsQueryKeys.root,
+    queryFn: ({ signal }) => listBillSummaries({ signal }),
+    enabled: Boolean(user?.id),
+  });
   const tastingSessionSignalSummary = useMemo(
     () =>
       summarizeTastingSessionNotificationSignal({
@@ -209,6 +231,10 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     [tastingSessionsQuery.data, user?.id],
   );
   const tastingSessionSignalIndicator = tastingSessionSignalSummary.indicator;
+  const billOwedSignalIndicator = useMemo(
+    () => summarizeBillOwedNotificationSignal(billsQuery.data ?? []).indicator,
+    [billsQuery.data],
+  );
 
   const sectionColors = {
     cardBorder: theme.colors.border.subtle,
@@ -377,7 +403,15 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                   onPress={action.onPress}
                   rightAccessory={
                     tastingSessionSignalIndicator.kind === 'none' ? undefined : (
-                      <TastingSessionSignalIndicator indicator={tastingSessionSignalIndicator} />
+                      <MoreFeatureSignalIndicator
+                        accessibilityLabelPrefix={
+                          tastingSessionSignalIndicator.kind === 'count'
+                            ? `pending tasting ${tastingSessionSignalIndicator.count === 1 ? 'invite' : 'invites'}`
+                            : 'Group tasting activity'
+                        }
+                        indicator={tastingSessionSignalIndicator}
+                        testIDPrefix="tasting"
+                      />
                     )
                   }
                   testID={action.testID}
@@ -404,6 +438,15 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                   isLast={index === billsAndTipsActions.length - 1}
                   key={action.title}
                   onPress={action.onPress}
+                  rightAccessory={
+                    action.testID === 'feature-bill-splitter' && billOwedSignalIndicator.kind !== 'none' ? (
+                      <MoreFeatureSignalIndicator
+                        accessibilityLabelPrefix={`active ${billOwedSignalIndicator.kind === 'count' && billOwedSignalIndicator.count === 1 ? 'bill' : 'bills'} with a balance due`}
+                        indicator={billOwedSignalIndicator}
+                        testIDPrefix="bill-owed"
+                      />
+                    ) : undefined
+                  }
                   testID={action.testID}
                   title={action.title}
                 />

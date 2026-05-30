@@ -221,6 +221,155 @@ func TestTastingInviteNotificationProviderFailureIsLogged(t *testing.T) {
 	assertNotificationDeliveryLog(t, server.app, invitee.Id, "provider_failed", 1)
 }
 
+func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, actorToken := createAuthUser(t, server.app, false, false)
+	appParticipant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, actor.Id, "actor-device", "ExponentPushToken[actor]", true)
+	createNotificationDeviceRecord(t, server.app, appParticipant.Id, "participant-device", "ExponentPushToken[participant]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills",
+		actorToken,
+		`{
+			"title":"Dinner Split",
+			"totalAmount":40,
+			"tax":0,
+			"tip":0,
+			"fees":0,
+			"extrasSplitMode":"equal",
+			"participants":[
+				{"id":"actor","name":"Actor","userId":"`+actor.Id+`","amountOwed":20,"paidStatus":"pending"},
+				{"id":"friend","name":"Friend","userId":"`+appParticipant.Id+`","amountOwed":15,"paidStatus":"pending"},
+				{"id":"custom","name":"Cash Friend","amountOwed":5,"paidStatus":"pending"}
+			],
+			"items":[{"id":"item-1","itemName":"Noodles","price":40,"assignedToParticipantIds":["actor","friend","custom"],"splitMode":"simple"}]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bill create to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	createdBill := parseJSONResponse[billResponsePayload](t, response.Body.Bytes())
+
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one bill owed notification, got %#v", sender.calls)
+	}
+	call := sender.calls[0]
+	if call.token != "ExponentPushToken[participant]" {
+		t.Fatalf("expected app participant token, got %q", call.token)
+	}
+	if call.payload.Data["notificationType"] != "bill_owed" ||
+		call.payload.Data["route"] != "BillDetail" ||
+		call.payload.Data["billId"] != createdBill.ID {
+		t.Fatalf("unexpected bill notification payload: %#v", call.payload)
+	}
+	if strings.Contains(call.payload.Body, "15") || strings.Contains(call.payload.Body, "$") {
+		t.Fatalf("expected bill notification copy to omit amount, got %q", call.payload.Body)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, appParticipant.Id, "bill_owed", "sent", 1)
+}
+
+func TestBillOwedNotificationDeliveryOnEditDedupesAndSendsNewOwes(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, actorToken := createAuthUser(t, server.app, false, false)
+	existingOwer, _ := createAuthUser(t, server.app, false, false)
+	newOwer, _ := createAuthUser(t, server.app, false, false)
+	changedOwer, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, existingOwer.Id, "existing-device", "ExponentPushToken[existing]", true)
+	createNotificationDeviceRecord(t, server.app, newOwer.Id, "new-device", "ExponentPushToken[new]", true)
+	createNotificationDeviceRecord(t, server.app, changedOwer.Id, "changed-device", "ExponentPushToken[changed]", true)
+
+	bill := seedBillRecord(t, server.app, actor.Id, "Edit Dinner")
+	actorParticipant := seedBillParticipantRecord(t, server.app, bill.Id, actor.Id, "Actor", 20, "paid")
+	existingParticipant := seedBillParticipantRecord(t, server.app, bill.Id, existingOwer.Id, "Existing", 12, "pending")
+	changedParticipant := seedBillParticipantRecord(t, server.app, bill.Id, changedOwer.Id, "Changed", 9, "paid")
+	customParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Custom", 7, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/bills/"+bill.Id,
+		actorToken,
+		`{
+			"totalAmount":63,
+			"participants":[
+				{"id":"`+actorParticipant.Id+`","name":"Actor","userId":"`+actor.Id+`","amountOwed":20,"paidStatus":"paid"},
+				{"id":"`+existingParticipant.Id+`","name":"Existing","userId":"`+existingOwer.Id+`","amountOwed":14,"paidStatus":"pending"},
+				{"id":"`+changedParticipant.Id+`","name":"Changed","userId":"`+changedOwer.Id+`","amountOwed":9,"paidStatus":"pending"},
+				{"id":"new","name":"New","userId":"`+newOwer.Id+`","amountOwed":11,"paidStatus":"pending"},
+				{"id":"`+customParticipant.Id+`","name":"Custom","amountOwed":7,"paidStatus":"pending"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bill edit to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected notifications for new and changed owing participants only, got %#v", sender.calls)
+	}
+	sentTokens := map[string]struct{}{}
+	for _, call := range sender.calls {
+		sentTokens[call.token] = struct{}{}
+	}
+	if _, ok := sentTokens["ExponentPushToken[new]"]; !ok {
+		t.Fatalf("expected new owing participant notification, got %#v", sender.calls)
+	}
+	if _, ok := sentTokens["ExponentPushToken[changed]"]; !ok {
+		t.Fatalf("expected changed owing participant notification, got %#v", sender.calls)
+	}
+	if _, ok := sentTokens["ExponentPushToken[existing]"]; ok {
+		t.Fatalf("expected existing owing participant to be deduped, got %#v", sender.calls)
+	}
+}
+
+func TestBillOwedNotificationPreferenceSuppression(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, actorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[participant]", true)
+	createBillNotificationPreferenceRecord(t, server.app, participant.Id, false)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills",
+		actorToken,
+		`{
+			"title":"Muted Dinner",
+			"totalAmount":20,
+			"participants":[
+				{"id":"actor","name":"Actor","userId":"`+actor.Id+`","amountOwed":10,"paidStatus":"paid"},
+				{"id":"friend","name":"Friend","userId":"`+participant.Id+`","amountOwed":10,"paidStatus":"pending"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bill create to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected disabled bill preference to suppress provider sends, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_owed", "skipped_preference_disabled", 0)
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{
@@ -236,19 +385,34 @@ func createNotificationPreferenceRecord(t *testing.T, app core.App, userID strin
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
 		"user":                    userID,
+		"bill_owed_enabled":       true,
 		"tasting_invites_enabled": tastingInvitesEnabled,
+	})
+}
+
+func createBillNotificationPreferenceRecord(t *testing.T, app core.App, userID string, billOwedEnabled bool) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
+		"user":                    userID,
+		"bill_owed_enabled":       billOwedEnabled,
+		"tasting_invites_enabled": true,
 	})
 }
 
 func assertNotificationDeliveryLog(t *testing.T, app core.App, userID string, status string, deviceCount int) *core.Record {
 	t.Helper()
+	return assertNotificationDeliveryLogWithSignal(t, app, userID, "tasting_invite", status, deviceCount)
+}
+
+func assertNotificationDeliveryLogWithSignal(t *testing.T, app core.App, userID string, signalType string, status string, deviceCount int) *core.Record {
+	t.Helper()
 	records, err := app.FindRecordsByFilter(
 		"notification_delivery_logs",
-		"user = {:user} && status = {:status}",
+		"user = {:user} && signal_type = {:signalType} && status = {:status}",
 		"",
 		10,
 		0,
-		map[string]any{"user": userID, "status": status},
+		map[string]any{"user": userID, "signalType": signalType, "status": status},
 	)
 	if err != nil {
 		t.Fatalf("failed to load delivery log: %v", err)
@@ -257,10 +421,10 @@ func assertNotificationDeliveryLog(t *testing.T, app core.App, userID string, st
 		t.Fatalf("expected delivery log status %q for user %s", status, userID)
 	}
 	record := records[0]
-	if record.GetString("signal_type") != "tasting_invite" {
-		t.Fatalf("expected tasting invite signal type, got %q", record.GetString("signal_type"))
+	if record.GetString("signal_type") != signalType {
+		t.Fatalf("expected signal type %q, got %q", signalType, record.GetString("signal_type"))
 	}
-	if record.GetString("source_collection") != "tasting_sessions" || strings.TrimSpace(record.GetString("source_record")) == "" {
+	if strings.TrimSpace(record.GetString("source_collection")) == "" || strings.TrimSpace(record.GetString("source_record")) == "" {
 		t.Fatalf("expected source metadata, got %#v", record)
 	}
 	if int(record.GetFloat("device_count")) != deviceCount {

@@ -475,6 +475,29 @@ describe('notificationInteraction', () => {
     expect(navigate).toHaveBeenCalledWith('CreateVisit', undefined);
   });
 
+  it('routes bill owed notification taps to BillDetail', async () => {
+    const navigate = jest.fn();
+    const navigationRef = {
+      isReady: () => true,
+      navigate,
+    };
+    const response = {
+      notification: {
+        request: {
+          content: {
+            data: {
+              billId: 'bill_1',
+              notificationType: 'bill_owed',
+            },
+          },
+        },
+      },
+    };
+
+    expect(routeNotificationResponse(response as any, navigationRef)).toBe('routed');
+    expect(navigate).toHaveBeenCalledWith('BillDetail', { billId: 'bill_1' });
+  });
+
   it('retries notification tap routing until navigation is ready', async () => {
     const navigate = jest.fn();
     let isReady = false;

@@ -15,7 +15,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const tastingInviteNotificationSignalType = "tasting_invite"
+const (
+	tastingInviteNotificationSignalType = "tasting_invite"
+	billOwedNotificationSignalType      = "bill_owed"
+)
 
 type notificationDeviceRegistrationRequest struct {
 	DeviceID  string `json:"deviceId"`
@@ -31,6 +34,20 @@ type RemoteDeviceNotificationPayload struct {
 
 type NotificationPushSender interface {
 	SendRemoteDeviceNotification(token string, payload RemoteDeviceNotificationPayload) (string, error)
+}
+
+type billNotificationParticipantSignal struct {
+	UserID     string
+	AmountOwed float64
+	PaidStatus string
+}
+
+type billOwedNotificationSignalInput struct {
+	BillID               string
+	BillTitle            string
+	ActorUserID          string
+	PreviousParticipants []billNotificationParticipantSignal
+	NextParticipants     []billNotificationParticipantSignal
 }
 
 type expoNotificationPushSender struct {
@@ -257,6 +274,158 @@ func deliverTastingInviteNotification(app core.App, sessionID string, sessionNam
 	})
 }
 
+func deliverBillOwedNotifications(app core.App, input billOwedNotificationSignalInput) error {
+	billID := strings.TrimSpace(input.BillID)
+	if billID == "" {
+		return nil
+	}
+
+	recipientUserIDs := billOwedNotificationRecipientUserIDs(input)
+	if len(recipientUserIDs) == 0 {
+		return nil
+	}
+
+	billTitle := strings.TrimSpace(input.BillTitle)
+	if billTitle == "" {
+		billTitle = "a bill"
+	}
+
+	for _, userID := range recipientUserIDs {
+		if err := deliverBillOwedNotification(app, billID, billTitle, input.ActorUserID, userID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func billOwedNotificationRecipientUserIDs(input billOwedNotificationSignalInput) []string {
+	previousOwingUsers := map[string]struct{}{}
+	for _, participant := range input.PreviousParticipants {
+		userID := strings.TrimSpace(participant.UserID)
+		if userID == "" || !billParticipantOwesMoney(participant) {
+			continue
+		}
+		previousOwingUsers[userID] = struct{}{}
+	}
+
+	recipients := []string{}
+	seen := map[string]struct{}{}
+	actorUserID := strings.TrimSpace(input.ActorUserID)
+	for _, participant := range input.NextParticipants {
+		userID := strings.TrimSpace(participant.UserID)
+		if userID == "" || userID == actorUserID || !billParticipantOwesMoney(participant) {
+			continue
+		}
+		if _, alreadyOwed := previousOwingUsers[userID]; alreadyOwed {
+			continue
+		}
+		if _, alreadyQueued := seen[userID]; alreadyQueued {
+			continue
+		}
+		seen[userID] = struct{}{}
+		recipients = append(recipients, userID)
+	}
+
+	return recipients
+}
+
+func billParticipantOwesMoney(participant billNotificationParticipantSignal) bool {
+	return sanitizeCurrency(participant.AmountOwed) > 0 && normalizePaidStatus(participant.PaidStatus) == "pending"
+}
+
+func deliverBillOwedNotification(app core.App, billID string, billTitle string, actorUserID string, userID string) error {
+	trimmedUserID := strings.TrimSpace(userID)
+	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billOwedNotificationSignalType, billID, trimmedUserID, time.Now().UTC().UnixNano())
+
+	if strings.TrimSpace(actorUserID) != "" && strings.TrimSpace(actorUserID) == trimmedUserID {
+		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+			UserID:           trimmedUserID,
+			SignalType:       billOwedNotificationSignalType,
+			SourceCollection: "bills",
+			SourceRecord:     billID,
+			ActorUserID:      actorUserID,
+			DeliveryKey:      deliveryKey,
+			Status:           "skipped_actor",
+		})
+	}
+
+	enabled, err := isBillOwedNotificationPreferenceEnabled(app, trimmedUserID)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+			UserID:           trimmedUserID,
+			SignalType:       billOwedNotificationSignalType,
+			SourceCollection: "bills",
+			SourceRecord:     billID,
+			ActorUserID:      actorUserID,
+			DeliveryKey:      deliveryKey,
+			Status:           "skipped_preference_disabled",
+		})
+	}
+
+	devices, err := listActiveNotificationDevices(app, trimmedUserID)
+	if err != nil {
+		return err
+	}
+	if len(devices) == 0 {
+		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+			UserID:           trimmedUserID,
+			SignalType:       billOwedNotificationSignalType,
+			SourceCollection: "bills",
+			SourceRecord:     billID,
+			ActorUserID:      actorUserID,
+			DeliveryKey:      deliveryKey,
+			Status:           "skipped_no_active_device",
+		})
+	}
+
+	payload := RemoteDeviceNotificationPayload{
+		Title: "Bill split update",
+		Body:  fmt.Sprintf("You have a balance due for %s.", billTitle),
+		Data: map[string]any{
+			"billId":           billID,
+			"notificationType": billOwedNotificationSignalType,
+			"route":            "BillDetail",
+		},
+	}
+
+	var providerMessageID string
+	for _, device := range devices {
+		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
+		if sendErr != nil {
+			return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+				UserID:           trimmedUserID,
+				SignalType:       billOwedNotificationSignalType,
+				SourceCollection: "bills",
+				SourceRecord:     billID,
+				ActorUserID:      actorUserID,
+				DeliveryKey:      deliveryKey,
+				Status:           "provider_failed",
+				DeviceCount:      len(devices),
+				ErrorCode:        normalizeProviderErrorCode(sendErr),
+			})
+		}
+		if providerMessageID == "" {
+			providerMessageID = messageID
+		}
+	}
+
+	return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+		UserID:            trimmedUserID,
+		SignalType:        billOwedNotificationSignalType,
+		SourceCollection:  "bills",
+		SourceRecord:      billID,
+		ActorUserID:       actorUserID,
+		DeliveryKey:       deliveryKey,
+		Status:            "sent",
+		DeviceCount:       len(devices),
+		ProviderMessageID: providerMessageID,
+	})
+}
+
 type notificationDeliveryLogInput struct {
 	UserID            string
 	SignalType        string
@@ -308,6 +477,21 @@ func isTastingInviteNotificationPreferenceEnabled(app core.App, userID string) (
 		return false, err
 	}
 	return record.GetBool("tasting_invites_enabled"), nil
+}
+
+func isBillOwedNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"notification_preferences",
+		"user = {:user}",
+		dbx.Params{"user": strings.TrimSpace(userID)},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return record.GetBool("bill_owed_enabled"), nil
 }
 
 func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record, error) {
