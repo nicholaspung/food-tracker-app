@@ -664,6 +664,61 @@ func TestMonthlyFriendsActivityNotificationsDedupePreferenceAndDeviceSuppression
 	}
 }
 
+func TestAdminMonthlyFriendsActivityTestEndpointTargetsUserAndCanForceSend(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	viewer, _ := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+	createNotificationDeviceRecord(t, server.app, viewer.Id, "viewer-device", "ExponentPushToken[viewer]", true)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Preview Push Cafe",
+		"location":   "San Francisco",
+		"visibility": "friends",
+	})
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "friends", "2026-04-18 12:00:00.000Z")
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/notifications/monthly-friends-activity/test",
+		adminToken,
+		`{"userId":"`+viewer.Id+`","month":"2026-04","force":true}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected admin monthly notification test to succeed, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected forced test send, got %#v", sender.calls)
+	}
+	if sender.calls[0].payload.Data["route"] != "Home" || sender.calls[0].payload.Data["feedMode"] != "friends" {
+		t.Fatalf("unexpected forced monthly test payload: %#v", sender.calls[0].payload)
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/notifications/monthly-friends-activity/test",
+		adminToken,
+		`{"userId":"`+viewer.Id+`","month":"2026-04","force":true}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second forced admin monthly notification test to succeed, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected forced test send to bypass monthly dedupe, got %#v", sender.calls)
+	}
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{

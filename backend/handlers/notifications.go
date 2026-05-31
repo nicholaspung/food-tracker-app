@@ -29,6 +29,12 @@ type notificationDeviceRegistrationRequest struct {
 	PushToken string `json:"pushToken"`
 }
 
+type monthlyFriendsActivityTestRequest struct {
+	Force  bool   `json:"force"`
+	Month  string `json:"month"`
+	UserID string `json:"userId"`
+}
+
 type RemoteDeviceNotificationPayload struct {
 	Title string         `json:"title"`
 	Body  string         `json:"body"`
@@ -79,6 +85,10 @@ type monthlyFriendsActivityCandidate struct {
 	FriendCount int    `db:"friend_count"`
 }
 
+type monthlyFriendsActivityDeliveryOptions struct {
+	ForceTestSend bool
+}
+
 type expoNotificationPushSender struct {
 	client *http.Client
 }
@@ -99,6 +109,53 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 	if err := RegisterMonthlyFriendsActivityNotificationJob(app); err != nil {
 		log.Printf("Warning: failed to register monthly friends activity notification job: %v", err)
 	}
+
+	se.Router.POST("/api/admin/notifications/monthly-friends-activity/test", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		requestBody := monthlyFriendsActivityTestRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		userID, err := normalizeBoundedString(requestBody.UserID, "userId", 100)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		monthStart, monthEnd, err := parseMonthlyFriendsActivityMonth(requestBody.Month, time.Now().UTC())
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		candidate, found, err := findMonthlyFriendsActivityCandidate(app, userID, monthStart, monthEnd)
+		if err != nil {
+			return apis.NewApiError(500, "failed to inspect monthly friends activity", err)
+		}
+		if !found {
+			return apis.NewBadRequestError("user has no accepted-friend friend-visible visits for that month", nil)
+		}
+
+		status, err := deliverMonthlyFriendsActivityNotificationWithOptions(app, candidate, monthStart, monthlyFriendsActivityDeliveryOptions{
+			ForceTestSend: requestBody.Force,
+		})
+		if err != nil {
+			return apis.NewApiError(500, "failed to deliver monthly friends activity notification", err)
+		}
+		if status == "" {
+			status = "skipped_duplicate"
+		}
+
+		return e.JSON(200, map[string]any{
+			"friendCount": candidate.FriendCount,
+			"month":       monthStart.Format("2006-01"),
+			"status":      status,
+			"userId":      candidate.UserID,
+			"visitCount":  candidate.VisitCount,
+		})
+	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/notification-devices", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
@@ -205,7 +262,7 @@ func DeliverMonthlyFriendsActivityNotifications(app core.App, now time.Time) (Mo
 	result.Eligible = len(candidates)
 
 	for _, candidate := range candidates {
-		status, err := deliverMonthlyFriendsActivityNotification(app, candidate, monthStart)
+		status, err := deliverMonthlyFriendsActivityNotificationWithOptions(app, candidate, monthStart, monthlyFriendsActivityDeliveryOptions{})
 		if err != nil {
 			return result, err
 		}
@@ -250,19 +307,67 @@ func listMonthlyFriendsActivityCandidates(app core.App, monthStart time.Time, mo
 	return candidates, err
 }
 
-func deliverMonthlyFriendsActivityNotification(app core.App, candidate monthlyFriendsActivityCandidate, monthStart time.Time) (string, error) {
+func findMonthlyFriendsActivityCandidate(app core.App, userID string, monthStart time.Time, monthEnd time.Time) (monthlyFriendsActivityCandidate, bool, error) {
+	candidates := []monthlyFriendsActivityCandidate{}
+	err := app.DB().NewQuery(`
+		SELECT
+			viewer.id AS user_id,
+			COUNT(DISTINCT visits.id) AS visit_count,
+			COUNT(DISTINCT visits.user) AS friend_count
+		FROM users viewer
+		INNER JOIN friendships friendship
+			ON friendship.status = 'accepted'
+			AND (friendship.user = viewer.id OR friendship.friend = viewer.id)
+		INNER JOIN visits
+			ON visits.user = CASE
+				WHEN friendship.user = viewer.id THEN friendship.friend
+				ELSE friendship.user
+			END
+			AND visits.visibility = 'friends'
+			AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) >= {:monthStart}
+			AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) < {:monthEnd}
+		WHERE viewer.id = {:user}
+		GROUP BY viewer.id
+		HAVING COUNT(DISTINCT visits.id) > 0
+		LIMIT 1
+	`).
+		Bind(dbx.Params{
+			"monthStart": formatPocketBaseDateTime(monthStart),
+			"monthEnd":   formatPocketBaseDateTime(monthEnd),
+			"user":       strings.TrimSpace(userID),
+		}).
+		All(&candidates)
+	if err != nil {
+		return monthlyFriendsActivityCandidate{}, false, err
+	}
+	if len(candidates) == 0 {
+		return monthlyFriendsActivityCandidate{}, false, nil
+	}
+	return candidates[0], true, nil
+}
+
+func deliverMonthlyFriendsActivityNotificationWithOptions(
+	app core.App,
+	candidate monthlyFriendsActivityCandidate,
+	monthStart time.Time,
+	options monthlyFriendsActivityDeliveryOptions,
+) (string, error) {
 	userID := strings.TrimSpace(candidate.UserID)
 	if userID == "" {
 		return "", nil
 	}
 
 	deliveryKey := monthlyFriendsActivityDeliveryKey(userID, monthStart)
-	alreadyLogged, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
-	if err != nil {
-		return "", err
-	}
-	if alreadyLogged {
-		return "", nil
+	if options.ForceTestSend {
+		deliveryKey = fmt.Sprintf("%s:admin-test:%d", deliveryKey, time.Now().UTC().UnixNano())
+	} else {
+		alreadyLogged, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
+		if err != nil {
+			return "", err
+		}
+		if alreadyLogged {
+			return "", nil
+		}
 	}
 
 	baseLog := notificationDeliveryLogInput{
@@ -332,6 +437,21 @@ func deliverMonthlyFriendsActivityNotification(app core.App, candidate monthlyFr
 		return "", err
 	}
 	return baseLog.Status, nil
+}
+
+func parseMonthlyFriendsActivityMonth(month string, now time.Time) (time.Time, time.Time, error) {
+	trimmedMonth := strings.TrimSpace(month)
+	if trimmedMonth == "" {
+		monthStart, monthEnd := previousCalendarMonthBounds(now)
+		return monthStart, monthEnd, nil
+	}
+
+	parsed, err := time.Parse("2006-01", trimmedMonth)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("month must use YYYY-MM format")
+	}
+	monthStart := time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return monthStart, monthStart.AddDate(0, 1, 0), nil
 }
 
 func previousCalendarMonthBounds(now time.Time) (time.Time, time.Time) {

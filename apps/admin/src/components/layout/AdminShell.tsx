@@ -13,6 +13,7 @@ const navItems = [
   { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
   { to: '/waitlist', label: 'Waitlist', icon: '@' },
   { to: '/moderation', label: 'Moderation', icon: '⚑' },
+  { to: '/notification-tests', label: 'Notification Tests', icon: '!' },
   { to: '/users', label: 'Users', icon: '◎' },
   { to: '/record-counts', label: 'Record Counts', icon: '#' },
   { to: '/audit-trail', label: 'Audit Trail', icon: '≡' },

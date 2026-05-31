@@ -62,6 +62,11 @@ const ModerationPage = lazy(() =>
     default: ModerationPage,
   })),
 );
+const NotificationTestPage = lazy(() =>
+  import('@/features/notifications/NotificationTestPage').then(({ NotificationTestPage }) => ({
+    default: NotificationTestPage,
+  })),
+);
 const RecordTypeCountsPage = lazy(() =>
   import('@/features/records/RecordTypeCountsPage').then(({ RecordTypeCountsPage }) => ({
     default: RecordTypeCountsPage,
@@ -162,6 +167,10 @@ const shellRoutes = {
         {
           path: '/moderation',
           element: withRouteSuspense(<ModerationPage />),
+        },
+        {
+          path: '/notification-tests',
+          element: withRouteSuspense(<NotificationTestPage />),
         },
         {
           path: '/users',
