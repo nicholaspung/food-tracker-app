@@ -286,3 +286,96 @@ func TestDeleteAccountDeletesUserAndCleansSharedReferences(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteAccountRemovesRemoteDeviceNotificationRecords(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	targetUser, token := createAuthUser(t, server.app, false, false)
+	notificationRecords := createAccountDeletionRemoteDeviceNotificationRecords(t, server.app, targetUser.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		token,
+		`{"currentPassword":"password123"}`,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	assertAccountDeletionRemovedRemoteDeviceNotificationRecords(t, server.app, notificationRecords)
+}
+
+type accountDeletionRemoteDeviceNotificationRecords struct {
+	notificationDevice      *core.Record
+	notificationPreference  *core.Record
+	notificationDeliveryLog *core.Record
+}
+
+func createAccountDeletionRemoteDeviceNotificationRecords(
+	t *testing.T,
+	app core.App,
+	userID string,
+) accountDeletionRemoteDeviceNotificationRecords {
+	t.Helper()
+
+	notificationDevice := createNotificationDeviceRecord(
+		t,
+		app,
+		userID,
+		"account-delete-device",
+		"ExponentPushToken[account-delete]",
+		true,
+	)
+	notificationPreference := createNotificationPreferenceRecord(t, app, userID, false)
+	notificationDeliveryLog := createCollectionRecord(t, app, "notification_delivery_logs", map[string]any{
+		"user":                  userID,
+		"signal_type":           tastingInviteNotificationSignalTypeForTests(),
+		"source_collection":     "tasting_sessions",
+		"source_record":         "account-delete-source",
+		"delivery_key":          "account-delete:" + userID,
+		"status":                "sent",
+		"device_count":          1,
+		"notification_device":   notificationDevice.Id,
+		"provider_message_id":   "receipt_account_delete",
+		"receipt_status":        "pending",
+		"receipt_next_check_at": "2099-01-01 00:00:00.000Z",
+	})
+
+	return accountDeletionRemoteDeviceNotificationRecords{
+		notificationDevice:      notificationDevice,
+		notificationPreference:  notificationPreference,
+		notificationDeliveryLog: notificationDeliveryLog,
+	}
+}
+
+func assertAccountDeletionRemovedRemoteDeviceNotificationRecords(
+	t *testing.T,
+	app core.App,
+	records accountDeletionRemoteDeviceNotificationRecords,
+) {
+	t.Helper()
+
+	assertAccountDeletionRemovedRecord(t, app, "Notification Device", "notification_devices", records.notificationDevice.Id)
+	assertAccountDeletionRemovedRecord(t, app, "Notification Preference", "notification_preferences", records.notificationPreference.Id)
+	assertAccountDeletionRemovedRecord(t, app, "Notification Delivery Log", "notification_delivery_logs", records.notificationDeliveryLog.Id)
+}
+
+func assertAccountDeletionRemovedRecord(
+	t *testing.T,
+	app core.App,
+	domainName string,
+	collectionName string,
+	recordID string,
+) {
+	t.Helper()
+
+	if _, err := app.FindRecordById(collectionName, recordID); err == nil {
+		t.Fatalf("expected account deletion to remove %s record %s", domainName, recordID)
+	}
+}
