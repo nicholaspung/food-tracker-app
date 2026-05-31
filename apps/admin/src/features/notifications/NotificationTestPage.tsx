@@ -43,6 +43,9 @@ export function NotificationTestPage() {
     if (!result) {
       return null;
     }
+    if (result.status === 'skipped_no_matching_activity') {
+      return `No matching monthly activity was found for ${result.month}.`;
+    }
     return `Status ${result.status}. ${result.visitCount} visit(s) from ${result.friendCount} friend(s) counted for ${result.month}.`;
   }, [result]);
 
@@ -156,8 +159,24 @@ export function NotificationTestPage() {
         ) : null}
 
         {statusMessage ? (
-          <div className="state-panel success" style={{ marginTop: 16 }}>
+          <div
+            className={`state-panel ${result?.status === 'skipped_no_matching_activity' ? 'error' : 'success'}`}
+            style={{ marginTop: 16 }}
+          >
             <strong>{statusMessage}</strong>
+            {result?.diagnostics ? (
+              <span className="text-muted">
+                Target exists: {result.diagnostics.targetUserExists ? 'yes' : 'no'} · Accepted
+                friends: {result.diagnostics.acceptedFriendCount} · Friend-visible visits in
+                selected month: {result.diagnostics.friendVisibleVisitDateCountInMonth} · Any
+                accepted-friend visits in selected month:{' '}
+                {result.diagnostics.acceptedFriendVisitCountInMonth} · Private accepted-friend
+                visits in selected month: {result.diagnostics.privateAcceptedFriendCountInMonth} ·
+                Friend-visible visits created in selected month:{' '}
+                {result.diagnostics.friendVisibleCreatedCountInMonth} · Friend-visible visits all
+                time: {result.diagnostics.friendVisibleVisitCountAllTime}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </section>

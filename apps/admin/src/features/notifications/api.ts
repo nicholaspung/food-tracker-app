@@ -1,11 +1,20 @@
 import { pb } from '@/lib/pocketbase';
 
 interface AdminMonthlyFriendsActivityTestResponse {
-  friendCount: number;
+  diagnostics?: {
+    acceptedFriendCount: number;
+    acceptedFriendVisitCountInMonth: number;
+    friendVisibleCreatedCountInMonth: number;
+    friendVisibleVisitCountAllTime: number;
+    friendVisibleVisitDateCountInMonth: number;
+    privateAcceptedFriendCountInMonth: number;
+    targetUserExists: boolean;
+  };
+  friendCount?: number;
   month: string;
   status: string;
   userId: string;
-  visitCount: number;
+  visitCount?: number;
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {

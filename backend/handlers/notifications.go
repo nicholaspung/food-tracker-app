@@ -79,6 +79,16 @@ type MonthlyFriendsActivityDeliveryResult struct {
 	Skipped    int
 }
 
+type MonthlyFriendsActivityDiagnostics struct {
+	AcceptedFriendCount                int  `json:"acceptedFriendCount"`
+	AcceptedFriendVisitCountInMonth    int  `json:"acceptedFriendVisitCountInMonth"`
+	FriendVisibleCreatedCountInMonth   int  `json:"friendVisibleCreatedCountInMonth"`
+	FriendVisibleVisitCountAllTime     int  `json:"friendVisibleVisitCountAllTime"`
+	FriendVisibleVisitDateCountInMonth int  `json:"friendVisibleVisitDateCountInMonth"`
+	PrivateAcceptedFriendCountInMonth  int  `json:"privateAcceptedFriendCountInMonth"`
+	TargetUserExists                   bool `json:"targetUserExists"`
+}
+
 type monthlyFriendsActivityCandidate struct {
 	UserID      string `db:"user_id"`
 	VisitCount  int    `db:"visit_count"`
@@ -135,7 +145,16 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewApiError(500, "failed to inspect monthly friends activity", err)
 		}
 		if !found {
-			return apis.NewBadRequestError("user has no accepted-friend friend-visible visits for that month", nil)
+			diagnostics, diagnosticsErr := diagnoseMonthlyFriendsActivityCandidate(app, userID, monthStart, monthEnd)
+			if diagnosticsErr != nil {
+				return apis.NewApiError(500, "failed to inspect monthly friends activity diagnostics", diagnosticsErr)
+			}
+			return e.JSON(200, map[string]any{
+				"diagnostics": diagnostics,
+				"month":       monthStart.Format("2006-01"),
+				"status":      "skipped_no_matching_activity",
+				"userId":      userID,
+			})
 		}
 
 		status, err := deliverMonthlyFriendsActivityNotificationWithOptions(app, candidate, monthStart, monthlyFriendsActivityDeliveryOptions{
@@ -305,6 +324,162 @@ func listMonthlyFriendsActivityCandidates(app core.App, monthStart time.Time, mo
 		}).
 		All(&candidates)
 	return candidates, err
+}
+
+func diagnoseMonthlyFriendsActivityCandidate(
+	app core.App,
+	userID string,
+	monthStart time.Time,
+	monthEnd time.Time,
+) (MonthlyFriendsActivityDiagnostics, error) {
+	diagnostics := MonthlyFriendsActivityDiagnostics{}
+	trimmedUserID := strings.TrimSpace(userID)
+
+	userRecord, err := app.FindRecordById("users", trimmedUserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return diagnostics, nil
+		}
+		return diagnostics, err
+	}
+	diagnostics.TargetUserExists = userRecord != nil
+
+	countQueries := []struct {
+		assign func(int)
+		query  string
+	}{
+		{
+			assign: func(value int) { diagnostics.AcceptedFriendCount = value },
+			query: `
+				SELECT COUNT(DISTINCT CASE
+					WHEN friendship.user = {:user} THEN friendship.friend
+					ELSE friendship.user
+				END) AS count
+				FROM friendships friendship
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+		{
+			assign: func(value int) { diagnostics.FriendVisibleVisitCountAllTime = value },
+			query: `
+				SELECT COUNT(DISTINCT visits.id) AS count
+				FROM friendships friendship
+				INNER JOIN visits
+					ON visits.user = CASE
+						WHEN friendship.user = {:user} THEN friendship.friend
+						ELSE friendship.user
+					END
+					AND visits.visibility = 'friends'
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+		{
+			assign: func(value int) { diagnostics.FriendVisibleVisitDateCountInMonth = value },
+			query: `
+				SELECT COUNT(DISTINCT visits.id) AS count
+				FROM friendships friendship
+				INNER JOIN visits
+					ON visits.user = CASE
+						WHEN friendship.user = {:user} THEN friendship.friend
+						ELSE friendship.user
+					END
+					AND visits.visibility = 'friends'
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) >= {:monthStart}
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) < {:monthEnd}
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+		{
+			assign: func(value int) { diagnostics.AcceptedFriendVisitCountInMonth = value },
+			query: `
+				SELECT COUNT(DISTINCT visits.id) AS count
+				FROM friendships friendship
+				INNER JOIN visits
+					ON visits.user = CASE
+						WHEN friendship.user = {:user} THEN friendship.friend
+						ELSE friendship.user
+					END
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) >= {:monthStart}
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) < {:monthEnd}
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+		{
+			assign: func(value int) { diagnostics.PrivateAcceptedFriendCountInMonth = value },
+			query: `
+				SELECT COUNT(DISTINCT visits.id) AS count
+				FROM friendships friendship
+				INNER JOIN visits
+					ON visits.user = CASE
+						WHEN friendship.user = {:user} THEN friendship.friend
+						ELSE friendship.user
+					END
+					AND visits.visibility = 'private'
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) >= {:monthStart}
+					AND COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) < {:monthEnd}
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+		{
+			assign: func(value int) { diagnostics.FriendVisibleCreatedCountInMonth = value },
+			query: `
+				SELECT COUNT(DISTINCT visits.id) AS count
+				FROM friendships friendship
+				INNER JOIN visits
+					ON visits.user = CASE
+						WHEN friendship.user = {:user} THEN friendship.friend
+						ELSE friendship.user
+					END
+					AND visits.visibility = 'friends'
+					AND visits.created >= {:monthStart}
+					AND visits.created < {:monthEnd}
+				WHERE friendship.status = 'accepted'
+					AND (friendship.user = {:user} OR friendship.friend = {:user})
+			`,
+		},
+	}
+
+	for _, countQuery := range countQueries {
+		count, err := runMonthlyFriendsActivityDiagnosticCount(app, countQuery.query, trimmedUserID, monthStart, monthEnd)
+		if err != nil {
+			return diagnostics, err
+		}
+		countQuery.assign(count)
+	}
+
+	return diagnostics, nil
+}
+
+func runMonthlyFriendsActivityDiagnosticCount(
+	app core.App,
+	query string,
+	userID string,
+	monthStart time.Time,
+	monthEnd time.Time,
+) (int, error) {
+	type countRow struct {
+		Count int `db:"count"`
+	}
+	rows := []countRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"monthEnd":   formatPocketBaseDateTime(monthEnd),
+			"monthStart": formatPocketBaseDateTime(monthStart),
+			"user":       strings.TrimSpace(userID),
+		}).
+		All(&rows)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	return rows[0].Count, nil
 }
 
 func findMonthlyFriendsActivityCandidate(app core.App, userID string, monthStart time.Time, monthEnd time.Time) (monthlyFriendsActivityCandidate, bool, error) {

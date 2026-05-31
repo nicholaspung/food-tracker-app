@@ -719,6 +719,56 @@ func TestAdminMonthlyFriendsActivityTestEndpointTargetsUserAndCanForceSend(t *te
 	}
 }
 
+func TestAdminMonthlyFriendsActivityTestEndpointReturnsDiagnosticsWhenNoMatch(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	viewer, _ := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+	createNotificationDeviceRecord(t, server.app, viewer.Id, "viewer-device", "ExponentPushToken[viewer]", true)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Diagnostic Cafe",
+		"location":   "San Francisco",
+		"visibility": "friends",
+	})
+	createVisitRecordWithDate(t, server.app, friend.Id, restaurant.Id, "private", "2026-04-18 12:00:00.000Z")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/notifications/monthly-friends-activity/test",
+		adminToken,
+		`{"userId":"`+viewer.Id+`","month":"2026-04","force":true}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected diagnostic response to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := parseJSONResponse[map[string]any](t, response.Body.Bytes())
+	if payload["status"] != "skipped_no_matching_activity" {
+		t.Fatalf("expected no-match status, got %#v", payload)
+	}
+	diagnostics, ok := payload["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics payload, got %#v", payload)
+	}
+	if diagnostics["acceptedFriendCount"] != float64(1) ||
+		diagnostics["privateAcceptedFriendCountInMonth"] != float64(1) ||
+		diagnostics["friendVisibleVisitDateCountInMonth"] != float64(0) {
+		t.Fatalf("unexpected diagnostics payload: %#v", diagnostics)
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected no provider send for no-match diagnostic response, got %#v", sender.calls)
+	}
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{
