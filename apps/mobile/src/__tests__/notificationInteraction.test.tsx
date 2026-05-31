@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import {
+  clearNotificationDeviceIdentity,
   getVisitReminderNotificationStatus,
   routeNotificationResponse,
   scheduleVisitReminderNotification,
@@ -75,6 +76,9 @@ jest.mock('expo-notifications', () => ({
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(async (key: string) => mockAsyncStorageState.get(key) ?? null),
+  removeItem: jest.fn(async (key: string) => {
+    mockAsyncStorageState.delete(key);
+  }),
   setItem: jest.fn(async (key: string, value: string) => {
     mockAsyncStorageState.set(key, value);
   }),
@@ -296,6 +300,25 @@ describe('notificationInteraction', () => {
     await unregisterCurrentNotificationDevice();
 
     expect(mockedDeactivateNotificationDevice).toHaveBeenCalledWith('device_1');
+    expect(mockAsyncStorageState.has('notifications.deviceId')).toBe(false);
+  });
+
+  it('keeps the persisted device when logout server deactivation fails', async () => {
+    mockAsyncStorageState.set('notifications.deviceId', 'device_1');
+    mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('server failed'));
+
+    await expect(unregisterCurrentNotificationDevice()).rejects.toThrow('server failed');
+
+    expect(mockedDeactivateNotificationDevice).toHaveBeenCalledWith('device_1');
+    expect(mockAsyncStorageState.get('notifications.deviceId')).toBe('device_1');
+  });
+
+  it('clears the persisted device identity after account deletion cleanup', async () => {
+    mockAsyncStorageState.set('notifications.deviceId', 'device_1');
+
+    await clearNotificationDeviceIdentity();
+
+    expect(mockAsyncStorageState.has('notifications.deviceId')).toBe(false);
   });
 
   it('routes tasting invite notification taps to the tasting sessions list', async () => {

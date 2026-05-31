@@ -834,6 +834,7 @@ configure_backend() {
     local places_key="${GOOGLE_PLACES_API_KEY:-}"
     local posthog_api_key="${POSTHOG_API_KEY:-}"
     local posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
+    local expo_push_access_token="${EXPO_PUSH_ACCESS_TOKEN:-}"
 
     if [ -z "$gemini_key" ] && [ -f "$env_file_storage" ]; then
         gemini_key=$(grep "^GEMINI_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
@@ -845,6 +846,10 @@ configure_backend() {
 
     if [ -z "$posthog_api_key" ] && [ -f "$env_file_storage" ]; then
         posthog_api_key=$(grep "^POSTHOG_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
+    fi
+
+    if [ -z "$expo_push_access_token" ] && [ -f "$env_file_storage" ]; then
+        expo_push_access_token=$(grep "^EXPO_PUSH_ACCESS_TOKEN=" "$env_file_storage" | cut -d '=' -f 2)
     fi
 
     if [ -z "$posthog_host" ] && [ -f "$env_file_storage" ]; then
@@ -863,6 +868,10 @@ configure_backend() {
         warn "POSTHOG_API_KEY not set. Backend analytics will be disabled."
     fi
 
+    if [ -z "$expo_push_access_token" ]; then
+        warn "EXPO_PUSH_ACCESS_TOKEN not set. Expo push sends will remain unauthenticated; do not enable Expo push security until this secret is configured."
+    fi
+
     cat > "$env_file_storage" <<EOF
 # Backend Environment Variables - $ENVIRONMENT
 # Generated on $(date)
@@ -879,6 +888,7 @@ GEMINI_API_KEY=${gemini_key}
 GOOGLE_PLACES_API_KEY=${places_key}
 POSTHOG_API_KEY=${posthog_api_key}
 POSTHOG_HOST=${posthog_host}
+EXPO_PUSH_ACCESS_TOKEN=${expo_push_access_token}
 EOF
 
     chmod 600 "$env_file_storage"
@@ -898,6 +908,7 @@ EOF
     export GOOGLE_PLACES_API_KEY="$places_key"
     export POSTHOG_API_KEY="$posthog_api_key"
     export POSTHOG_HOST="$posthog_host"
+    export EXPO_PUSH_ACCESS_TOKEN="$expo_push_access_token"
 
     log "Backend .env configured at $env_file_storage (symlinked to backend/.env)"
 }

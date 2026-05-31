@@ -14,7 +14,7 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Device Data and Permissions',
     body:
-      'Some features request device access only when needed. This can include camera access for food photos, receipt photos, and QR codes, photo library access for selecting images, location access for nearby restaurant search, and technical diagnostics such as app version, platform details, crash details, and usage events. If you choose menu scanning, receipt scanning, or restaurant identification from a photo, the selected image is also sent for server-side processing.',
+      'Some features request device access only when needed. This can include camera access for food photos, receipt photos, and QR codes, photo library access for selecting images, location access for nearby restaurant search, notification permission for reminders and activity alerts, and technical diagnostics such as app version, platform details, crash details, and usage events. If you allow push notifications, we store a generated device identifier, platform, push token, and notification preferences so we can deliver the categories you choose. If you choose menu scanning, receipt scanning, or restaurant identification from a photo, the selected image is also sent for server-side processing.',
   },
   {
     title: 'How We Use Data',
@@ -39,7 +39,7 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Your Choices and Rights',
     body:
-      'You can review and edit supported profile details and content in the app, update visibility settings for supported content types, and control camera, photo, and location access through device settings. You can also request access, correction, export, or deletion by contacting privacy@yummyrecs.com.',
+      'You can review and edit supported profile details and content in the app, update visibility settings for supported content types, turn notification categories on or off in the app, and control camera, photo, location, and notification access through device settings. You can also request access, correction, export, or deletion by contacting privacy@yummyrecs.com.',
   },
   {
     title: "Children's Privacy",

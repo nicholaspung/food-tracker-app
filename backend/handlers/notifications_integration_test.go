@@ -13,8 +13,11 @@ import (
 )
 
 type recordingNotificationPushSender struct {
-	calls []recordedNotificationPush
-	err   error
+	calls      []recordedNotificationPush
+	err        error
+	errAtCall  int
+	messageID  string
+	messageIDs []string
 }
 
 type recordedNotificationPush struct {
@@ -24,10 +27,30 @@ type recordedNotificationPush struct {
 
 func (sender *recordingNotificationPushSender) SendRemoteDeviceNotification(token string, payload handlers.RemoteDeviceNotificationPayload) (string, error) {
 	sender.calls = append(sender.calls, recordedNotificationPush{token: token, payload: payload})
-	if sender.err != nil {
+	if sender.err != nil && (sender.errAtCall == 0 || sender.errAtCall == len(sender.calls)) {
 		return "", sender.err
 	}
+	if len(sender.messageIDs) >= len(sender.calls) {
+		return sender.messageIDs[len(sender.calls)-1], nil
+	}
+	if sender.messageID != "" {
+		return sender.messageID, nil
+	}
 	return "message_1", nil
+}
+
+type recordingNotificationReceiptChecker struct {
+	ids      []string
+	receipts map[string]handlers.RemoteDeviceNotificationReceipt
+	err      error
+}
+
+func (checker *recordingNotificationReceiptChecker) CheckRemoteDeviceNotificationReceipts(receiptIDs []string) (map[string]handlers.RemoteDeviceNotificationReceipt, error) {
+	checker.ids = append(checker.ids, receiptIDs...)
+	if checker.err != nil {
+		return nil, checker.err
+	}
+	return checker.receipts, nil
 }
 
 func TestNotificationDeviceRegistrationUpsertsAndLogoutCleanupDeactivates(t *testing.T) {
@@ -93,6 +116,97 @@ func TestNotificationDeviceRegistrationUpsertsAndLogoutCleanupDeactivates(t *tes
 	}
 	if reloaded.GetBool("active") {
 		t.Fatalf("expected logout cleanup to deactivate device")
+	}
+}
+
+func TestNotificationDeviceRegistrationDeactivatesMatchingDevicesForOtherUsers(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	previousUser, _ := createAuthUser(t, server.app, false, false)
+	currentUser, token := createAuthUser(t, server.app, false, false)
+	sameDevice := createNotificationDeviceRecord(t, server.app, previousUser.Id, "shared-device", "ExponentPushToken[old-device]", true)
+	sameToken := createNotificationDeviceRecord(t, server.app, previousUser.Id, "other-device", "ExponentPushToken[shared]", true)
+	unrelated := createNotificationDeviceRecord(t, server.app, previousUser.Id, "unrelated-device", "ExponentPushToken[unrelated]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices",
+		token,
+		`{"deviceId":"shared-device","platform":"android","pushToken":"ExponentPushToken[shared]"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected notification device registration to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedSameDevice, err := server.app.FindRecordById("notification_devices", sameDevice.Id)
+	if err != nil {
+		t.Fatalf("failed to reload same-device record: %v", err)
+	}
+	reloadedSameToken, err := server.app.FindRecordById("notification_devices", sameToken.Id)
+	if err != nil {
+		t.Fatalf("failed to reload same-token record: %v", err)
+	}
+	reloadedUnrelated, err := server.app.FindRecordById("notification_devices", unrelated.Id)
+	if err != nil {
+		t.Fatalf("failed to reload unrelated record: %v", err)
+	}
+	if reloadedSameDevice.GetBool("active") || reloadedSameToken.GetBool("active") {
+		t.Fatalf("expected matching devices for previous user to be deactivated")
+	}
+	if !reloadedUnrelated.GetBool("active") {
+		t.Fatalf("expected unrelated previous user device to remain active")
+	}
+
+	currentDevices, err := server.app.FindRecordsByFilter(
+		"notification_devices",
+		"user = {:user}",
+		"",
+		10,
+		0,
+		map[string]any{"user": currentUser.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load current user devices: %v", err)
+	}
+	if len(currentDevices) != 1 ||
+		!currentDevices[0].GetBool("active") ||
+		currentDevices[0].GetString("device_id") != "shared-device" ||
+		currentDevices[0].GetString("push_token") != "ExponentPushToken[shared]" ||
+		currentDevices[0].GetString("platform") != "android" {
+		t.Fatalf("expected current user's matching device to be active and updated, got %#v", currentDevices)
+	}
+}
+
+func TestNotificationDeviceEndpointsRequireAuthentication(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+
+	registerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices",
+		"",
+		`{"deviceId":"device-1","platform":"ios","pushToken":"ExponentPushToken[first]"}`,
+	)
+	if registerResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected registration to require auth, got %d: %s", registerResponse.Code, registerResponse.Body.String())
+	}
+
+	deleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/notification-devices/device-1",
+		"",
+		"",
+	)
+	if deleteResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected deactivation to require auth, got %d: %s", deleteResponse.Code, deleteResponse.Body.String())
 	}
 }
 
@@ -187,6 +301,7 @@ func TestTastingInviteNotificationDeliveryCreateAndResend(t *testing.T) {
 	if sender.calls[0].token != "ExponentPushToken[invitee]" || sender.calls[0].payload.Data["route"] != "TastingSessions" {
 		t.Fatalf("expected tasting invite notification payload, got %#v", sender.calls[0])
 	}
+	assertNotificationPayloadOmitsSensitiveText(t, sender.calls[0].payload, "Dumpling Flight")
 	assertNotificationDeliveryLog(t, server.app, invitee.Id, "sent", 1)
 
 	inviteID := createdSession.Invites[0].ID
@@ -339,6 +454,407 @@ func TestNotificationProviderInvalidTokenDeactivatesDeviceAndSuppressesFutureSen
 	assertNotificationDeliveryLog(t, server.app, invitee.Id, "skipped_no_active_device", 0)
 }
 
+func TestAcceptedNotificationSendPersistsPendingReceiptMetadata(t *testing.T) {
+	sender := &recordingNotificationPushSender{messageID: "receipt_accepted_1"}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Receipt Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected send to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	logRecord := assertNotificationDeliveryLog(t, server.app, invitee.Id, "sent", 1)
+	if logRecord.GetString("provider_message_id") != "receipt_accepted_1" {
+		t.Fatalf("expected receipt id to be stored, got %q", logRecord.GetString("provider_message_id"))
+	}
+	if logRecord.GetString("notification_device") != device.Id {
+		t.Fatalf("expected related notification device id, got %q", logRecord.GetString("notification_device"))
+	}
+	if logRecord.GetString("receipt_status") != "pending" || logRecord.GetDateTime("receipt_next_check_at").IsZero() {
+		t.Fatalf("expected pending receipt metadata, got status=%q next=%v", logRecord.GetString("receipt_status"), logRecord.GetDateTime("receipt_next_check_at"))
+	}
+	for _, fieldName := range []string{"provider_message_id", "receipt_status", "receipt_error_code", "error_code"} {
+		fieldValue := logRecord.GetString(fieldName)
+		if strings.Contains(fieldValue, "ExponentPushToken") || strings.Contains(fieldValue, "Receipt Flight") {
+			t.Fatalf("expected receipt metadata field %s to omit push token and body text, got %q", fieldName, fieldValue)
+		}
+	}
+}
+
+func TestAcceptedNotificationSendCreatesPerDeviceReceiptRecord(t *testing.T) {
+	sender := &recordingNotificationPushSender{messageID: "receipt_single_1"}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Receipt Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected send to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	logRecord := assertNotificationDeliveryLog(t, server.app, invitee.Id, "sent", 1)
+	receipts := assertNotificationDeliveryReceiptRecords(t, server.app, logRecord.Id, 1)
+	receipt := receipts[0]
+	if receipt.GetString("notification_device") != device.Id || receipt.GetString("provider_message_id") != "receipt_single_1" {
+		t.Fatalf("expected receipt linked to device and provider id, got device=%q provider=%q", receipt.GetString("notification_device"), receipt.GetString("provider_message_id"))
+	}
+	if receipt.GetString("receipt_status") != "pending" || receipt.GetDateTime("receipt_next_check_at").IsZero() {
+		t.Fatalf("expected pending receipt metadata, got status=%q next=%v", receipt.GetString("receipt_status"), receipt.GetDateTime("receipt_next_check_at"))
+	}
+	for _, fieldName := range []string{"provider_message_id", "receipt_status", "receipt_error_code"} {
+		fieldValue := receipt.GetString(fieldName)
+		if strings.Contains(fieldValue, "ExponentPushToken") || strings.Contains(fieldValue, "Receipt Flight") {
+			t.Fatalf("expected receipt metadata field %s to omit push token and body text, got %q", fieldName, fieldValue)
+		}
+	}
+}
+
+func TestAcceptedNotificationSendCreatesReceiptRecordPerSuccessfulDevice(t *testing.T) {
+	sender := &recordingNotificationPushSender{messageIDs: []string{"receipt_device_1", "receipt_device_2"}}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	firstDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[one]", true)
+	secondDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-2", "ExponentPushToken[two]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Multi Device Receipt Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected send to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected provider send per active device, got %d", len(sender.calls))
+	}
+
+	logRecord := assertNotificationDeliveryLog(t, server.app, invitee.Id, "sent", 2)
+	if logRecord.GetString("provider_message_id") != "receipt_device_1" || logRecord.GetString("notification_device") != firstDevice.Id {
+		t.Fatalf("expected parent log to keep first provider/device summary, got provider=%q device=%q", logRecord.GetString("provider_message_id"), logRecord.GetString("notification_device"))
+	}
+	receipts := assertNotificationDeliveryReceiptRecords(t, server.app, logRecord.Id, 2)
+	receiptsByProviderID := map[string]*core.Record{}
+	for _, receipt := range receipts {
+		receiptsByProviderID[receipt.GetString("provider_message_id")] = receipt
+	}
+	if receiptsByProviderID["receipt_device_1"].GetString("notification_device") != firstDevice.Id {
+		t.Fatalf("expected first receipt to link first device")
+	}
+	if receiptsByProviderID["receipt_device_2"].GetString("notification_device") != secondDevice.Id {
+		t.Fatalf("expected second receipt to link second device")
+	}
+}
+
+func TestPartialProviderSendFailurePreservesAcceptedPerDeviceReceipts(t *testing.T) {
+	sender := &recordingNotificationPushSender{
+		err:        errors.New("DeviceNotRegistered"),
+		errAtCall:  2,
+		messageIDs: []string{"receipt_device_1"},
+	}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	firstDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[one]", true)
+	secondDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-2", "ExponentPushToken[two]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Partial Receipt Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected partial provider failure to keep request successful, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected provider send to stop on second device failure, got %d calls", len(sender.calls))
+	}
+
+	logRecord := assertNotificationDeliveryLog(t, server.app, invitee.Id, "provider_failed", 2)
+	if logRecord.GetString("error_code") != "DeviceNotRegistered" {
+		t.Fatalf("expected parent log to store provider failure summary, got %q", logRecord.GetString("error_code"))
+	}
+	if logRecord.GetString("provider_message_id") != "receipt_device_1" || logRecord.GetString("notification_device") != firstDevice.Id {
+		t.Fatalf("expected parent log to retain first accepted provider/device summary, got provider=%q device=%q", logRecord.GetString("provider_message_id"), logRecord.GetString("notification_device"))
+	}
+
+	receipts := assertNotificationDeliveryReceiptRecords(t, server.app, logRecord.Id, 1)
+	receipt := receipts[0]
+	if receipt.GetString("notification_device") != firstDevice.Id || receipt.GetString("provider_message_id") != "receipt_device_1" {
+		t.Fatalf("expected accepted receipt to be preserved for first device, got device=%q provider=%q", receipt.GetString("notification_device"), receipt.GetString("provider_message_id"))
+	}
+	if receipt.GetString("receipt_status") != "pending" || receipt.GetDateTime("receipt_next_check_at").IsZero() {
+		t.Fatalf("expected accepted receipt to remain pending, got status=%q next=%v", receipt.GetString("receipt_status"), receipt.GetDateTime("receipt_next_check_at"))
+	}
+	for _, fieldName := range []string{"provider_message_id", "receipt_status", "receipt_error_code"} {
+		fieldValue := receipt.GetString(fieldName)
+		if strings.Contains(fieldValue, "ExponentPushToken") || strings.Contains(fieldValue, "Partial Receipt Flight") {
+			t.Fatalf("expected receipt metadata field %s to omit push token and notification text, got %q", fieldName, fieldValue)
+		}
+	}
+
+	assertNotificationDeviceActiveState(t, server.app, firstDevice.Id, true)
+	assertNotificationDeviceActiveState(t, server.app, secondDevice.Id, false)
+}
+
+func TestNotificationDeliveryReceiptsAreBackendOnly(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, false)
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	device := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[user]", true)
+	logRecord := createNotificationDeliveryLogRecord(t, server.app, user.Id, "delivery-key", "sent")
+	createNotificationDeliveryReceiptRecord(t, server.app, logRecord.Id, device.Id, "receipt_private_1", "2026-05-30 11:45:00.000Z")
+
+	adminResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/notification_delivery_receipts/records",
+		adminToken,
+		"",
+	)
+	if adminResponse.Code != http.StatusOK || !strings.Contains(adminResponse.Body.String(), "receipt_private_1") {
+		t.Fatalf("expected admins to read operational receipt metadata, got %d: %s", adminResponse.Code, adminResponse.Body.String())
+	}
+
+	userResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/notification_delivery_receipts/records",
+		token,
+		"",
+	)
+	if userResponse.Code != http.StatusOK {
+		t.Fatalf("expected regular user receipt list request to be handled without exposing records, got %d: %s", userResponse.Code, userResponse.Body.String())
+	}
+	if strings.Contains(userResponse.Body.String(), "receipt_private_1") || strings.Contains(userResponse.Body.String(), "ExponentPushToken") {
+		t.Fatalf("expected regular user response to omit receipt metadata, got %s", userResponse.Body.String())
+	}
+}
+
+func TestNotificationReceiptCheckMarksSuccessfulReceipt(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[user]", true)
+	logRecord := createPendingNotificationReceiptLogRecord(t, server.app, user.Id, device.Id, "receipt_ok_1", "2026-05-30 11:45:00.000Z")
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{
+		"receipt_ok_1": {Status: "ok"},
+	}}
+	restore := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restore()
+
+	checked, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected receipt check to succeed: %v", err)
+	}
+	if checked != 1 || len(checker.ids) != 1 || checker.ids[0] != "receipt_ok_1" {
+		t.Fatalf("expected one receipt check, checked=%d ids=%#v", checked, checker.ids)
+	}
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "sent" || reloadedLog.GetString("receipt_status") != "ok" || reloadedLog.GetDateTime("receipt_checked_at").IsZero() {
+		t.Fatalf("expected successful receipt to stay sent and checked, got status=%q receipt=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_status"))
+	}
+}
+
+func TestNotificationReceiptDeviceNotRegisteredDeactivatesDevice(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[user]", true)
+	logRecord := createPendingNotificationReceiptLogRecord(t, server.app, user.Id, device.Id, "receipt_unregistered_1", "2026-05-30 11:45:00.000Z")
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{
+		"receipt_unregistered_1": {Status: "error", ErrorCode: "DeviceNotRegistered"},
+	}}
+	restore := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restore()
+
+	if _, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("expected receipt check to succeed: %v", err)
+	}
+	reloadedDevice, err := server.app.FindRecordById("notification_devices", device.Id)
+	if err != nil {
+		t.Fatalf("failed to reload notification device: %v", err)
+	}
+	if reloadedDevice.GetBool("active") {
+		t.Fatalf("expected DeviceNotRegistered receipt to deactivate notification device")
+	}
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "provider_failed" || reloadedLog.GetString("receipt_error_code") != "DeviceNotRegistered" {
+		t.Fatalf("expected provider failure receipt metadata, got status=%q error=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_error_code"))
+	}
+}
+
+func TestNotificationReceiptCheckProcessesPerDeviceReceiptsAndDeactivatesOnlyFailedDevice(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	firstDevice := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[first]", true)
+	secondDevice := createNotificationDeviceRecord(t, server.app, user.Id, "device-2", "ExponentPushToken[second]", true)
+	logRecord := createPendingNotificationReceiptLogRecord(t, server.app, user.Id, firstDevice.Id, "receipt_device_1", "2026-05-30 11:45:00.000Z")
+	firstReceipt := createNotificationDeliveryReceiptRecord(t, server.app, logRecord.Id, firstDevice.Id, "receipt_device_1", "2026-05-30 11:45:00.000Z")
+	secondReceipt := createNotificationDeliveryReceiptRecord(t, server.app, logRecord.Id, secondDevice.Id, "receipt_device_2", "2026-05-30 11:45:00.000Z")
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{
+		"receipt_device_1": {Status: "ok"},
+		"receipt_device_2": {Status: "error", ErrorCode: "DeviceNotRegistered"},
+	}}
+	restore := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restore()
+
+	checked, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected receipt check to succeed: %v", err)
+	}
+	if checked != 2 {
+		t.Fatalf("expected two per-device receipt checks, got %d", checked)
+	}
+	if len(checker.ids) != 2 || checker.ids[0] != "receipt_device_1" || checker.ids[1] != "receipt_device_2" {
+		t.Fatalf("expected per-device receipt ids to be checked, got %#v", checker.ids)
+	}
+
+	assertNotificationDeviceActiveState(t, server.app, firstDevice.Id, true)
+	assertNotificationDeviceActiveState(t, server.app, secondDevice.Id, false)
+
+	reloadedFirstReceipt, err := server.app.FindRecordById("notification_delivery_receipts", firstReceipt.Id)
+	if err != nil {
+		t.Fatalf("failed to reload first delivery receipt: %v", err)
+	}
+	if reloadedFirstReceipt.GetString("receipt_status") != "ok" || reloadedFirstReceipt.GetString("receipt_error_code") != "" || reloadedFirstReceipt.GetDateTime("receipt_checked_at").IsZero() {
+		t.Fatalf("expected first receipt to be marked ok, got status=%q error=%q checked=%v", reloadedFirstReceipt.GetString("receipt_status"), reloadedFirstReceipt.GetString("receipt_error_code"), reloadedFirstReceipt.GetDateTime("receipt_checked_at"))
+	}
+
+	reloadedSecondReceipt, err := server.app.FindRecordById("notification_delivery_receipts", secondReceipt.Id)
+	if err != nil {
+		t.Fatalf("failed to reload second delivery receipt: %v", err)
+	}
+	if reloadedSecondReceipt.GetString("receipt_status") != "error" || reloadedSecondReceipt.GetString("receipt_error_code") != "DeviceNotRegistered" || reloadedSecondReceipt.GetDateTime("receipt_checked_at").IsZero() {
+		t.Fatalf("expected second receipt to hold DeviceNotRegistered error, got status=%q error=%q checked=%v", reloadedSecondReceipt.GetString("receipt_status"), reloadedSecondReceipt.GetString("receipt_error_code"), reloadedSecondReceipt.GetDateTime("receipt_checked_at"))
+	}
+
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "sent" || reloadedLog.GetString("receipt_error_code") != "DeviceNotRegistered" {
+		t.Fatalf("expected parent log to preserve sent status with receipt failure summary, got status=%q error=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_error_code"))
+	}
+}
+
+func TestNotificationReceiptNonDeviceErrorIsRecordedWithoutDeactivatingDevice(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[user]", true)
+	logRecord := createPendingNotificationReceiptLogRecord(t, server.app, user.Id, device.Id, "receipt_bad_credentials_1", "2026-05-30 11:45:00.000Z")
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{
+		"receipt_bad_credentials_1": {Status: "error", ErrorCode: "InvalidCredentials"},
+	}}
+	restore := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restore()
+
+	if _, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("expected receipt check to succeed: %v", err)
+	}
+	reloadedDevice, err := server.app.FindRecordById("notification_devices", device.Id)
+	if err != nil {
+		t.Fatalf("failed to reload notification device: %v", err)
+	}
+	if !reloadedDevice.GetBool("active") {
+		t.Fatalf("expected non-device receipt error to keep notification device active")
+	}
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "provider_failed" || reloadedLog.GetString("receipt_error_code") != "InvalidCredentials" {
+		t.Fatalf("expected bounded provider failure metadata, got status=%q error=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_error_code"))
+	}
+}
+
+func TestNotificationReceiptCheckToleratesMissingReceipts(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, user.Id, "device-1", "ExponentPushToken[user]", true)
+	logRecord := createPendingNotificationReceiptLogRecord(t, server.app, user.Id, device.Id, "receipt_missing_1", "2026-05-30 11:45:00.000Z")
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{}}
+	restore := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restore()
+
+	checked, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("expected missing receipt to be tolerated: %v", err)
+	}
+	if checked != 1 {
+		t.Fatalf("expected one missing receipt to be processed, got %d", checked)
+	}
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "sent" || reloadedLog.GetString("receipt_status") != "missing" || reloadedLog.GetString("receipt_error_code") != "receipt_missing" {
+		t.Fatalf("expected missing receipt metadata without provider failure, got status=%q receipt=%q error=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_status"), reloadedLog.GetString("receipt_error_code"))
+	}
+}
+
 func TestNotificationDeliveryLogRetentionCleanup(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterNotificationHandlers(se, app)
@@ -370,6 +886,41 @@ func TestNotificationDeliveryLogRetentionCleanup(t *testing.T) {
 	assertNotificationDeliveryLogIDMissing(t, server.app, oldSkipped.Id)
 	assertNotificationDeliveryLogIDExists(t, server.app, recentSent.Id)
 	assertNotificationDeliveryLogIDExists(t, server.app, recentFailed.Id)
+}
+
+func TestStaleNotificationDeviceCleanup(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	staleSeen := createNotificationDeviceRecord(t, server.app, user.Id, "stale-seen-device", "ExponentPushToken[stale-seen]", true)
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", staleSeen.Id, "last_seen_at", "2026-02-20 12:00:00.000Z")
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", staleSeen.Id, "last_registered_at", "2026-02-20 12:00:00.000Z")
+
+	freshSeen := createNotificationDeviceRecord(t, server.app, user.Id, "fresh-seen-device", "ExponentPushToken[fresh-seen]", true)
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", freshSeen.Id, "last_seen_at", "2026-05-15 12:00:00.000Z")
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", freshSeen.Id, "last_registered_at", "2026-01-15 12:00:00.000Z")
+
+	inactiveStale := createNotificationDeviceRecord(t, server.app, user.Id, "inactive-stale-device", "ExponentPushToken[inactive-stale]", false)
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", inactiveStale.Id, "last_seen_at", "2026-02-20 12:00:00.000Z")
+	setCollectionRecordFieldValue(t, server.app, "notification_devices", inactiveStale.Id, "last_registered_at", "2026-02-20 12:00:00.000Z")
+
+	missingTimestamps := createNotificationDeviceRecord(t, server.app, user.Id, "missing-timestamps-device", "ExponentPushToken[missing-timestamps]", true)
+
+	deactivated, err := handlers.CleanupStaleNotificationDevices(server.app, now)
+	if err != nil {
+		t.Fatalf("expected stale notification device cleanup to succeed: %v", err)
+	}
+	if deactivated != 2 {
+		t.Fatalf("expected cleanup to deactivate stale and missing-timestamp devices, got %d", deactivated)
+	}
+
+	assertNotificationDeviceActiveState(t, server.app, staleSeen.Id, false)
+	assertNotificationDeviceActiveState(t, server.app, freshSeen.Id, true)
+	assertNotificationDeviceActiveState(t, server.app, inactiveStale.Id, false)
+	assertNotificationDeviceActiveState(t, server.app, missingTimestamps.Id, false)
 }
 
 func TestNotificationDeliveryLogsAreNotReadableByNormalMobileUsers(t *testing.T) {
@@ -448,9 +999,7 @@ func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
 		call.payload.Data["billId"] != createdBill.ID {
 		t.Fatalf("unexpected bill notification payload: %#v", call.payload)
 	}
-	if strings.Contains(call.payload.Body, "15") || strings.Contains(call.payload.Body, "$") {
-		t.Fatalf("expected bill notification copy to omit amount, got %q", call.payload.Body)
-	}
+	assertNotificationPayloadOmitsSensitiveText(t, call.payload, "Dinner Split", "15", "$", "Friend", "Noodles")
 	assertNotificationDeliveryLogWithSignal(t, server.app, appParticipant.Id, "bill_owed", "sent", 1)
 }
 
@@ -583,9 +1132,7 @@ func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
 		call.payload.Data["billId"] != bill.Id {
 		t.Fatalf("unexpected payment reminder payload: %#v", call.payload)
 	}
-	if strings.Contains(call.payload.Body, "18") || strings.Contains(call.payload.Body, "$") {
-		t.Fatalf("expected reminder copy to omit amount, got %q", call.payload.Body)
-	}
+	assertNotificationPayloadOmitsSensitiveText(t, call.payload, "Reminder Dinner", "18", "$", "Friend")
 
 	logRecord := assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "sent", 1)
 	if logRecord.GetString("source_collection") != "bill_participants" || logRecord.GetString("source_record") != participantRecord.Id {
@@ -610,6 +1157,98 @@ func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
 		t.Fatalf("expected weekly rate limit response, got %d: %s", rateLimitedResponse.Code, rateLimitedResponse.Body.String())
 	}
 	if len(sender.calls) != 1 {
+		t.Fatalf("expected rate limit to avoid another provider send, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_rate_limited", 0)
+}
+
+func TestBillPaymentReminderCooldownSurvivesPerDeviceReceiptFailure(t *testing.T) {
+	sender := &recordingNotificationPushSender{messageIDs: []string{"receipt_reminder_1", "receipt_reminder_2"}}
+	restoreSender := handlers.SetNotificationPushSenderForTests(sender)
+	defer restoreSender()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device-1", "ExponentPushToken[participant-one]", true)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device-2", "ExponentPushToken[participant-two]", true)
+	bill := seedBillRecord(t, server.app, creator.Id, "Reminder Dinner")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected payment reminder to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected two payment reminder pushes, got %#v", sender.calls)
+	}
+
+	logRecord := assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "sent", 2)
+	receipts := assertNotificationDeliveryReceiptRecords(t, server.app, logRecord.Id, 2)
+	receiptsByProviderID := map[string]*core.Record{}
+	for _, receipt := range receipts {
+		receiptsByProviderID[receipt.GetString("provider_message_id")] = receipt
+	}
+
+	checker := &recordingNotificationReceiptChecker{receipts: map[string]handlers.RemoteDeviceNotificationReceipt{
+		"receipt_reminder_1": {Status: "ok"},
+		"receipt_reminder_2": {Status: "error", ErrorCode: "DeviceNotRegistered"},
+	}}
+	restoreChecker := handlers.SetNotificationPushReceiptCheckerForTests(checker)
+	defer restoreChecker()
+
+	checked, err := handlers.CheckPendingExpoPushReceipts(server.app, time.Now().UTC().Add(20*time.Minute))
+	if err != nil {
+		t.Fatalf("expected receipt check to succeed: %v", err)
+	}
+	if checked != 2 {
+		t.Fatalf("expected two per-device receipt checks, got %d", checked)
+	}
+
+	failedReceipt := receiptsByProviderID["receipt_reminder_2"]
+	assertNotificationDeviceActiveState(t, server.app, failedReceipt.GetString("notification_device"), false)
+	for _, receipt := range receipts {
+		if receipt.Id == failedReceipt.Id {
+			continue
+		}
+		assertNotificationDeviceActiveState(t, server.app, receipt.GetString("notification_device"), true)
+	}
+
+	reloadedFailedReceipt, err := server.app.FindRecordById("notification_delivery_receipts", failedReceipt.Id)
+	if err != nil {
+		t.Fatalf("failed to reload failed delivery receipt: %v", err)
+	}
+	if reloadedFailedReceipt.GetString("receipt_status") != "error" || reloadedFailedReceipt.GetString("receipt_error_code") != "DeviceNotRegistered" {
+		t.Fatalf("expected failed receipt metadata, got status=%q error=%q", reloadedFailedReceipt.GetString("receipt_status"), reloadedFailedReceipt.GetString("receipt_error_code"))
+	}
+
+	reloadedLog, err := server.app.FindRecordById("notification_delivery_logs", logRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload delivery log: %v", err)
+	}
+	if reloadedLog.GetString("status") != "sent" || reloadedLog.GetString("receipt_error_code") != "DeviceNotRegistered" {
+		t.Fatalf("expected parent reminder log to stay sent with receipt error summary, got status=%q error=%q", reloadedLog.GetString("status"), reloadedLog.GetString("receipt_error_code"))
+	}
+
+	rateLimitedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if rateLimitedResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected reminder to remain rate limited after receipt failure, got %d: %s", rateLimitedResponse.Code, rateLimitedResponse.Body.String())
+	}
+	if len(sender.calls) != 2 {
 		t.Fatalf("expected rate limit to avoid another provider send, got %#v", sender.calls)
 	}
 	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_rate_limited", 0)
@@ -775,6 +1414,7 @@ func TestMonthlyFriendsActivityNotificationsSelectPreviousMonthFriendVisibleVisi
 		call.payload.Data["period"] != "2026-04" {
 		t.Fatalf("unexpected monthly friends activity payload: %#v", call.payload)
 	}
+	assertNotificationPayloadOmitsSensitiveText(t, call.payload, "Monthly Cafe", "Standalone snack", "1", "2")
 
 	logRecord := assertNotificationDeliveryLogWithSignal(t, server.app, viewer.Id, "monthly_friends_activity", "sent", 1)
 	if logRecord.GetString("source_collection") != "visits" || logRecord.GetString("source_record") != "2026-04" {
@@ -970,6 +1610,34 @@ func createNotificationDeliveryLogRecord(t *testing.T, app core.App, userID stri
 	})
 }
 
+func createPendingNotificationReceiptLogRecord(t *testing.T, app core.App, userID string, deviceID string, receiptID string, nextCheckAt string) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "notification_delivery_logs", map[string]any{
+		"user":                  userID,
+		"signal_type":           tastingInviteNotificationSignalTypeForTests(),
+		"source_collection":     "tasting_sessions",
+		"source_record":         "source-1",
+		"delivery_key":          "receipt:" + receiptID,
+		"status":                "sent",
+		"device_count":          1,
+		"notification_device":   deviceID,
+		"provider_message_id":   receiptID,
+		"receipt_status":        "pending",
+		"receipt_next_check_at": nextCheckAt,
+	})
+}
+
+func createNotificationDeliveryReceiptRecord(t *testing.T, app core.App, logID string, deviceID string, receiptID string, nextCheckAt string) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "notification_delivery_receipts", map[string]any{
+		"notification_delivery_log": logID,
+		"notification_device":       deviceID,
+		"provider_message_id":       receiptID,
+		"receipt_status":            "pending",
+		"receipt_next_check_at":     nextCheckAt,
+	})
+}
+
 func tastingInviteNotificationSignalTypeForTests() string {
 	return "tasting_invite"
 }
@@ -1028,6 +1696,17 @@ func assertNotificationDeliveryLogIDMissing(t *testing.T, app core.App, recordID
 	}
 }
 
+func assertNotificationDeviceActiveState(t *testing.T, app core.App, recordID string, expectedActive bool) {
+	t.Helper()
+	record, err := app.FindRecordById("notification_devices", recordID)
+	if err != nil {
+		t.Fatalf("failed to load notification device %s: %v", recordID, err)
+	}
+	if record.GetBool("active") != expectedActive {
+		t.Fatalf("expected notification device %s active=%v, got %v", recordID, expectedActive, record.GetBool("active"))
+	}
+}
+
 func assertNotificationDeliveryLog(t *testing.T, app core.App, userID string, status string, deviceCount int) *core.Record {
 	t.Helper()
 	return assertNotificationDeliveryLogWithSignal(t, app, userID, "tasting_invite", status, deviceCount)
@@ -1063,4 +1742,36 @@ func assertNotificationDeliveryLogWithSignal(t *testing.T, app core.App, userID 
 		t.Fatalf("expected delivery key")
 	}
 	return record
+}
+
+func assertNotificationDeliveryReceiptRecords(t *testing.T, app core.App, logID string, expectedCount int) []*core.Record {
+	t.Helper()
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_receipts",
+		"notification_delivery_log = {:logID}",
+		"provider_message_id",
+		10,
+		0,
+		map[string]any{"logID": logID},
+	)
+	if err != nil {
+		t.Fatalf("failed to load delivery receipt records: %v", err)
+	}
+	if len(records) != expectedCount {
+		t.Fatalf("expected %d delivery receipt records, got %d", expectedCount, len(records))
+	}
+	return records
+}
+
+func assertNotificationPayloadOmitsSensitiveText(t *testing.T, payload handlers.RemoteDeviceNotificationPayload, sensitiveValues ...string) {
+	t.Helper()
+	visibleCopy := payload.Title + " " + payload.Body
+	for _, sensitiveValue := range sensitiveValues {
+		if strings.TrimSpace(sensitiveValue) == "" {
+			continue
+		}
+		if strings.Contains(visibleCopy, sensitiveValue) {
+			t.Fatalf("expected notification visible copy to omit %q, got title=%q body=%q", sensitiveValue, payload.Title, payload.Body)
+		}
+	}
 }

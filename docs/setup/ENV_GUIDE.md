@@ -70,12 +70,14 @@ GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
+EXPO_PUSH_ACCESS_TOKEN=
 ```
 
 Notes:
 
 - `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` are required for backend startup today.
 - `POSTHOG_API_KEY` is optional.
+- `EXPO_PUSH_ACCESS_TOKEN` is optional until Expo push security is enabled. When blank, backend Remote Device Notification sends omit the Expo `Authorization` header so local development and existing deployments keep working. Before enabling push security in the EAS dashboard, set this server-only secret in the matching backend environment.
 - Waitlist approval signup links use `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`.
 - Waitlist confirmation emails, mobile invite sharing, and the public marketing App Store badge use `FOOD_TRACKER_IOS_APP_STORE_URL` / `EXPO_PUBLIC_IOS_APP_STORE_URL` / `IOS_APP_STORE_URL`. The default is `https://apps.apple.com/us/app/yummy-recs/id6761597807` in local, beta, and production.
 - The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
@@ -149,6 +151,7 @@ GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
+EXPO_PUSH_ACCESS_TOKEN=
 SUDO_PASSWORD=
 FOOD_TRACKER_IOS_TEAM_ID=
 FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
@@ -173,6 +176,7 @@ GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
+EXPO_PUSH_ACCESS_TOKEN=
 SUDO_PASSWORD=
 FOOD_TRACKER_IOS_TEAM_ID=
 FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
@@ -181,7 +185,7 @@ FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 Notes:
 
 - Beta and production can point at the same VPS connection values if both environments deploy to the same server.
-- `GEMINI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `POSTHOG_API_KEY`, and `POSTHOG_HOST` should usually be scoped separately per GitHub environment so beta and production can diverge safely.
+- `GEMINI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `POSTHOG_API_KEY`, `POSTHOG_HOST`, and `EXPO_PUSH_ACCESS_TOKEN` should usually be scoped separately per GitHub environment so beta and production can diverge safely.
 - Attach `EXPO_TOKEN` to the `production` GitHub environment as well if you want to use the manual production-targeted mobile preview dispatch in `.github/workflows/mobile-preview.yml`.
 
 ### App Link Association Secrets

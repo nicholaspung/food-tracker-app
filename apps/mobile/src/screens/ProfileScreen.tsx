@@ -42,6 +42,7 @@ import { formatEmailVerificationRemainingTime } from '../lib/emailVerificationAc
 import { getErrorMessage } from '../lib/errorUtils';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { clearNotificationDeviceIdentity } from '../notifications/notificationInteraction';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
@@ -596,6 +597,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_SUCCEEDED", {
         source: "ProfileScreen",
       });
+      await clearNotificationDeviceIdentity();
       await signOut();
     } catch (error) {
       const message = getErrorMessage(error, "Could not delete account.");

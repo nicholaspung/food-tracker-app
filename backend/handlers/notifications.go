@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,7 +26,15 @@ const (
 
 	notificationDeliverySentRetentionDays   = 30
 	notificationDeliveryFailedRetentionDays = 14
+	notificationDeviceStaleAfterDays        = 90
+	notificationReceiptPendingDelay         = 15 * time.Minute
+
+	expoPushAccessTokenEnvKey = "EXPO_PUSH_ACCESS_TOKEN"
+	expoPushSendEndpoint      = "https://exp.host/--/api/v2/push/send"
+	expoPushReceiptsEndpoint  = "https://exp.host/--/api/v2/push/getReceipts"
 )
+
+var expoPushTokenPattern = regexp.MustCompile(`(?:ExponentPushToken|ExpoPushToken)\[[^\]]+\]`)
 
 type remoteNotificationPreferenceCategory string
 
@@ -64,8 +74,24 @@ type RemoteDeviceNotificationPayload struct {
 	Data  map[string]any `json:"data"`
 }
 
+type remoteNotificationSignalPayloadInput struct {
+	SignalType string
+	SessionID  string
+	BillID     string
+	Period     string
+}
+
 type NotificationPushSender interface {
 	SendRemoteDeviceNotification(token string, payload RemoteDeviceNotificationPayload) (string, error)
+}
+
+type NotificationPushReceiptChecker interface {
+	CheckRemoteDeviceNotificationReceipts(receiptIDs []string) (map[string]RemoteDeviceNotificationReceipt, error)
+}
+
+type RemoteDeviceNotificationReceipt struct {
+	Status    string
+	ErrorCode string
 }
 
 type billNotificationParticipantSignal struct {
@@ -128,10 +154,16 @@ type monthlyFriendsActivityDeliveryOptions struct {
 }
 
 type expoNotificationPushSender struct {
-	client *http.Client
+	client           *http.Client
+	endpoint         string
+	receiptsEndpoint string
 }
 
 var activeNotificationPushSender NotificationPushSender = expoNotificationPushSender{
+	client: &http.Client{Timeout: 5 * time.Second},
+}
+
+var activeNotificationPushReceiptChecker NotificationPushReceiptChecker = expoNotificationPushSender{
 	client: &http.Client{Timeout: 5 * time.Second},
 }
 
@@ -143,12 +175,26 @@ func SetNotificationPushSenderForTests(sender NotificationPushSender) func() {
 	}
 }
 
+func SetNotificationPushReceiptCheckerForTests(checker NotificationPushReceiptChecker) func() {
+	previous := activeNotificationPushReceiptChecker
+	activeNotificationPushReceiptChecker = checker
+	return func() {
+		activeNotificationPushReceiptChecker = previous
+	}
+}
+
 func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 	if err := RegisterMonthlyFriendsActivityNotificationJob(app); err != nil {
 		log.Printf("Warning: failed to register monthly friends activity notification job: %v", err)
 	}
 	if err := RegisterNotificationDeliveryCleanupJob(app); err != nil {
 		log.Printf("Warning: failed to register notification delivery cleanup job: %v", err)
+	}
+	if err := RegisterStaleNotificationDeviceCleanupJob(app); err != nil {
+		log.Printf("Warning: failed to register stale notification device cleanup job: %v", err)
+	}
+	if err := RegisterNotificationReceiptCheckJob(app); err != nil {
+		log.Printf("Warning: failed to register notification receipt check job: %v", err)
 	}
 
 	se.Router.POST("/api/admin/notifications/monthly-friends-activity/test", func(e *core.RequestEvent) error {
@@ -229,30 +275,36 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 		platform := normalizeNotificationDevicePlatform(requestBody.Platform)
 		now := time.Now().UTC()
 
-		record, findErr := app.FindFirstRecordByFilter(
-			"notification_devices",
-			"user = {:user} && device_id = {:deviceID}",
-			dbx.Params{"user": authRecord.Id, "deviceID": deviceID},
-		)
-		if findErr != nil {
-			if !errors.Is(findErr, sql.ErrNoRows) {
-				return apis.NewApiError(500, "failed to load notification device", findErr)
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			record, findErr := txApp.FindFirstRecordByFilter(
+				"notification_devices",
+				"user = {:user} && device_id = {:deviceID}",
+				dbx.Params{"user": authRecord.Id, "deviceID": deviceID},
+			)
+			if findErr != nil {
+				if !errors.Is(findErr, sql.ErrNoRows) {
+					return findErr
+				}
+				collection, collectionErr := txApp.FindCollectionByNameOrId("notification_devices")
+				if collectionErr != nil {
+					return collectionErr
+				}
+				record = core.NewRecord(collection)
+				record.Set("user", authRecord.Id)
+				record.Set("device_id", deviceID)
 			}
-			collection, collectionErr := app.FindCollectionByNameOrId("notification_devices")
-			if collectionErr != nil {
-				return apis.NewApiError(500, "internal error", collectionErr)
-			}
-			record = core.NewRecord(collection)
-			record.Set("user", authRecord.Id)
-			record.Set("device_id", deviceID)
-		}
 
-		record.Set("push_token", pushToken)
-		record.Set("platform", platform)
-		record.Set("active", true)
-		record.Set("last_registered_at", now)
-		record.Set("last_seen_at", now)
-		if err := app.Save(record); err != nil {
+			record.Set("push_token", pushToken)
+			record.Set("platform", platform)
+			record.Set("active", true)
+			record.Set("last_registered_at", now)
+			record.Set("last_seen_at", now)
+			if err := txApp.Save(record); err != nil {
+				return err
+			}
+
+			return deactivateOtherNotificationDevicesForRegistration(txApp, authRecord.Id, deviceID, pushToken)
+		}); err != nil {
 			return apis.NewApiError(500, "failed to save notification device", err)
 		}
 
@@ -342,6 +394,99 @@ func RegisterNotificationDeliveryCleanupJob(app core.App) error {
 	})
 }
 
+func RegisterStaleNotificationDeviceCleanupJob(app core.App) error {
+	return app.Cron().Add("stale_notification_device_cleanup", "30 3 * * *", func() {
+		deactivated, err := CleanupStaleNotificationDevices(app, time.Now().UTC())
+		if err != nil {
+			log.Printf("Stale notification device cleanup failed: %v", err)
+			return
+		}
+		if deactivated > 0 {
+			log.Printf("Stale notification device cleanup deactivated %d records", deactivated)
+		}
+	})
+}
+
+func RegisterNotificationReceiptCheckJob(app core.App) error {
+	return app.Cron().Add("notification_push_receipt_checks", "*/5 * * * *", func() {
+		checked, err := CheckPendingExpoPushReceipts(app, time.Now().UTC())
+		if err != nil {
+			log.Printf("Notification receipt check failed: %v", err)
+			return
+		}
+		if checked > 0 {
+			log.Printf("Notification receipt check processed %d records", checked)
+		}
+	})
+}
+
+func CleanupStaleNotificationDevices(app core.App, now time.Time) (int, error) {
+	cutoff := now.UTC().AddDate(0, 0, -notificationDeviceStaleAfterDays)
+	deviceIDs := make([]string, 0)
+	offset := 0
+
+	for {
+		records, err := app.FindRecordsByFilter(
+			"notification_devices",
+			"active = true",
+			"created",
+			200,
+			offset,
+			nil,
+		)
+		if err != nil {
+			return 0, err
+		}
+		if len(records) == 0 {
+			break
+		}
+
+		for _, record := range records {
+			if isStaleNotificationDeviceRecord(record, cutoff) {
+				deviceIDs = append(deviceIDs, record.Id)
+			}
+		}
+
+		offset += len(records)
+	}
+
+	deactivated := 0
+	for _, deviceID := range deviceIDs {
+		record, err := app.FindRecordById("notification_devices", deviceID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return deactivated, err
+		}
+		if !record.GetBool("active") {
+			continue
+		}
+		record.Set("active", false)
+		if err := app.Save(record); err != nil {
+			return deactivated, err
+		}
+		deactivated++
+	}
+
+	return deactivated, nil
+}
+
+func isStaleNotificationDeviceRecord(record *core.Record, cutoff time.Time) bool {
+	lastSeenAt := record.GetDateTime("last_seen_at")
+	lastRegisteredAt := record.GetDateTime("last_registered_at")
+	if lastSeenAt.IsZero() && lastRegisteredAt.IsZero() {
+		return true
+	}
+
+	lastActivityAt := lastSeenAt.Time()
+	if lastActivityAt.IsZero() || (!lastRegisteredAt.IsZero() && lastRegisteredAt.Time().After(lastActivityAt)) {
+		lastActivityAt = lastRegisteredAt.Time()
+	}
+
+	return lastActivityAt.Before(cutoff)
+}
+
 func CleanupNotificationDeliveryLogs(app core.App, now time.Time) (int, error) {
 	sentCutoff := formatPocketBaseDateTime(now.UTC().AddDate(0, 0, -notificationDeliverySentRetentionDays))
 	failedCutoff := formatPocketBaseDateTime(now.UTC().AddDate(0, 0, -notificationDeliveryFailedRetentionDays))
@@ -372,6 +517,252 @@ func CleanupNotificationDeliveryLogs(app core.App, now time.Time) (int, error) {
 			removed++
 		}
 	}
+}
+
+func CheckPendingExpoPushReceipts(app core.App, now time.Time) (int, error) {
+	checked, err := checkPendingPerDeviceNotificationReceipts(app, now)
+	if err != nil {
+		return checked, err
+	}
+	legacyChecked, err := checkPendingLegacyNotificationLogReceipts(app, now)
+	if err != nil {
+		return checked + legacyChecked, err
+	}
+	return checked + legacyChecked, nil
+}
+
+func checkPendingPerDeviceNotificationReceipts(app core.App, now time.Time) (int, error) {
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_receipts",
+		"receipt_status = 'pending' && provider_message_id != '' && receipt_next_check_at <= {:now}",
+		"receipt_next_check_at",
+		1000,
+		0,
+		dbx.Params{"now": formatPocketBaseDateTime(now.UTC())},
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "notification_delivery_receipts") {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if len(records) == 0 {
+		return 0, nil
+	}
+
+	receiptIDs := make([]string, 0, len(records))
+	recordsByReceiptID := map[string]*core.Record{}
+	for _, record := range records {
+		receiptID := strings.TrimSpace(record.GetString("provider_message_id"))
+		if receiptID == "" {
+			continue
+		}
+		receiptIDs = append(receiptIDs, receiptID)
+		recordsByReceiptID[receiptID] = record
+	}
+	if len(receiptIDs) == 0 {
+		return 0, nil
+	}
+
+	receipts, err := activeNotificationPushReceiptChecker.CheckRemoteDeviceNotificationReceipts(receiptIDs)
+	if err != nil {
+		return 0, err
+	}
+
+	checked := 0
+	for _, receiptID := range receiptIDs {
+		record := recordsByReceiptID[receiptID]
+		receipt, ok := receipts[receiptID]
+		if !ok {
+			record.Set("receipt_status", "missing")
+			record.Set("receipt_checked_at", now.UTC())
+			record.Set("receipt_error_code", "receipt_missing")
+			if err := app.Save(record); err != nil {
+				return checked, err
+			}
+			if err := updateParentNotificationDeliveryLogReceiptSummary(app, record, "missing", "receipt_missing", now); err != nil {
+				return checked, err
+			}
+			checked++
+			continue
+		}
+
+		receiptStatus := normalizeExpoReceiptStatus(receipt.Status)
+		record.Set("receipt_status", receiptStatus)
+		record.Set("receipt_checked_at", now.UTC())
+		if receiptStatus == "error" {
+			errorCode := normalizeReceiptProviderErrorCode(receipt)
+			record.Set("receipt_error_code", errorCode)
+			if err := updateParentNotificationDeliveryLogReceiptSummary(app, record, receiptStatus, errorCode, now); err != nil {
+				return checked, err
+			}
+			if isInvalidProviderTokenErrorCode(receipt.ErrorCode) {
+				deviceID := strings.TrimSpace(record.GetString("notification_device"))
+				if deviceID != "" {
+					deviceRecord, findErr := app.FindRecordById("notification_devices", deviceID)
+					if findErr == nil && deviceRecord.GetBool("active") {
+						if err := deactivateNotificationDeviceRecord(app, deviceRecord); err != nil {
+							return checked, err
+						}
+					} else if findErr != nil && !errors.Is(findErr, sql.ErrNoRows) {
+						return checked, findErr
+					}
+				}
+			}
+		} else if err := updateParentNotificationDeliveryLogReceiptSummary(app, record, receiptStatus, "", now); err != nil {
+			return checked, err
+		}
+		if err := app.Save(record); err != nil {
+			return checked, err
+		}
+		checked++
+	}
+
+	return checked, nil
+}
+
+func checkPendingLegacyNotificationLogReceipts(app core.App, now time.Time) (int, error) {
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_logs",
+		"status = 'sent' && receipt_status = 'pending' && provider_message_id != '' && receipt_next_check_at <= {:now}",
+		"receipt_next_check_at",
+		1000,
+		0,
+		dbx.Params{"now": formatPocketBaseDateTime(now.UTC())},
+	)
+	if err != nil {
+		return 0, err
+	}
+	if len(records) == 0 {
+		return 0, nil
+	}
+
+	receiptIDs := make([]string, 0, len(records))
+	recordsByReceiptID := map[string]*core.Record{}
+	for _, record := range records {
+		hasPerDeviceReceipts, err := hasNotificationDeliveryReceiptRecords(app, record.Id)
+		if err != nil {
+			return 0, err
+		}
+		if hasPerDeviceReceipts {
+			continue
+		}
+		receiptID := strings.TrimSpace(record.GetString("provider_message_id"))
+		if receiptID == "" {
+			continue
+		}
+		receiptIDs = append(receiptIDs, receiptID)
+		recordsByReceiptID[receiptID] = record
+	}
+	if len(receiptIDs) == 0 {
+		return 0, nil
+	}
+
+	receipts, err := activeNotificationPushReceiptChecker.CheckRemoteDeviceNotificationReceipts(receiptIDs)
+	if err != nil {
+		return 0, err
+	}
+
+	checked := 0
+	for _, receiptID := range receiptIDs {
+		record := recordsByReceiptID[receiptID]
+		receipt, ok := receipts[receiptID]
+		if !ok {
+			record.Set("receipt_status", "missing")
+			record.Set("receipt_checked_at", now.UTC())
+			record.Set("receipt_error_code", "receipt_missing")
+			if err := app.Save(record); err != nil {
+				return checked, err
+			}
+			checked++
+			continue
+		}
+
+		receiptStatus := normalizeExpoReceiptStatus(receipt.Status)
+		record.Set("receipt_status", receiptStatus)
+		record.Set("receipt_checked_at", now.UTC())
+		if receiptStatus == "error" {
+			errorCode := normalizeReceiptProviderErrorCode(receipt)
+			record.Set("status", "provider_failed")
+			record.Set("error_code", errorCode)
+			record.Set("receipt_error_code", errorCode)
+			if isInvalidProviderTokenErrorCode(receipt.ErrorCode) {
+				deviceID := strings.TrimSpace(record.GetString("notification_device"))
+				if deviceID != "" {
+					deviceRecord, findErr := app.FindRecordById("notification_devices", deviceID)
+					if findErr == nil && deviceRecord.GetBool("active") {
+						if err := deactivateNotificationDeviceRecord(app, deviceRecord); err != nil {
+							return checked, err
+						}
+					} else if findErr != nil && !errors.Is(findErr, sql.ErrNoRows) {
+						return checked, findErr
+					}
+				}
+			}
+		}
+		if err := app.Save(record); err != nil {
+			return checked, err
+		}
+		checked++
+	}
+
+	return checked, nil
+}
+
+func hasNotificationDeliveryReceiptRecords(app core.App, deliveryLogID string) (bool, error) {
+	records, err := app.FindRecordsByFilter(
+		"notification_delivery_receipts",
+		"notification_delivery_log = {:deliveryLogID}",
+		"",
+		1,
+		0,
+		dbx.Params{"deliveryLogID": strings.TrimSpace(deliveryLogID)},
+	)
+	if err != nil {
+		return false, err
+	}
+	return len(records) > 0, nil
+}
+
+func updateParentNotificationDeliveryLogReceiptSummary(
+	app core.App,
+	receiptRecord *core.Record,
+	receiptStatus string,
+	errorCode string,
+	now time.Time,
+) error {
+	logID := strings.TrimSpace(receiptRecord.GetString("notification_delivery_log"))
+	if logID == "" {
+		return nil
+	}
+	logRecord, err := app.FindRecordById("notification_delivery_logs", logID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	providerMessageID := strings.TrimSpace(receiptRecord.GetString("provider_message_id"))
+	if strings.TrimSpace(logRecord.GetString("provider_message_id")) != providerMessageID {
+		if receiptStatus != "error" {
+			return nil
+		}
+	} else {
+		logRecord.Set("receipt_status", receiptStatus)
+		logRecord.Set("receipt_checked_at", now.UTC())
+	}
+
+	if receiptStatus == "error" {
+		logRecord.Set("error_code", errorCode)
+		logRecord.Set("receipt_error_code", errorCode)
+		logRecord.Set("receipt_status", "error")
+		logRecord.Set("receipt_checked_at", now.UTC())
+	} else if receiptStatus == "missing" && strings.TrimSpace(logRecord.GetString("provider_message_id")) == providerMessageID {
+		logRecord.Set("receipt_error_code", errorCode)
+	}
+
+	return app.Save(logRecord)
 }
 
 func DeliverMonthlyFriendsActivityNotifications(app core.App, now time.Time) (MonthlyFriendsActivityDeliveryResult, error) {
@@ -744,23 +1135,17 @@ func deliverMonthlyFriendsActivityNotificationWithOptions(
 		return baseLog.Status, nil
 	}
 
-	payload := RemoteDeviceNotificationPayload{
-		Title: "Friends were active",
-		Body:  monthlyFriendsActivityNotificationBody(candidate),
-		Data: map[string]any{
-			"feedMode":         "friends",
-			"notificationType": monthlyFriendsActivitySignalType,
-			"period":           monthStart.Format("2006-01"),
-			"route":            "Home",
-		},
-	}
+	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
+		SignalType: monthlyFriendsActivitySignalType,
+		Period:     monthStart.Format("2006-01"),
+	})
 
-	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
-	if sendErr != nil {
+	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendResult.Err != nil {
 		baseLog.Status = "provider_failed"
 		baseLog.DeviceCount = len(devices)
-		baseLog.ErrorCode = providerErrorCode
-		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+		baseLog.ErrorCode = sendResult.ErrorCode
+		if err := createNotificationDeliveryLogWithReceipts(app, baseLog, sendResult); err != nil {
 			return "", err
 		}
 		return baseLog.Status, nil
@@ -768,8 +1153,13 @@ func deliverMonthlyFriendsActivityNotificationWithOptions(
 
 	baseLog.Status = "sent"
 	baseLog.DeviceCount = len(devices)
-	baseLog.ProviderMessageID = providerMessageID
-	if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+	baseLog.ProviderMessageID = sendResult.ProviderMessageID
+	baseLog.NotificationDeviceID = sendResult.NotificationDeviceID
+	logRecord, err := createNotificationDeliveryLogRecord(app, baseLog)
+	if err != nil {
+		return "", err
+	}
+	if err := createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts); err != nil {
 		return "", err
 	}
 	return baseLog.Status, nil
@@ -801,13 +1191,6 @@ func monthlyFriendsActivityDeliveryKey(userID string, monthStart time.Time) stri
 	return fmt.Sprintf("%s:%s:%s", monthlyFriendsActivitySignalType, monthStart.UTC().Format("2006-01"), strings.TrimSpace(userID))
 }
 
-func monthlyFriendsActivityNotificationBody(candidate monthlyFriendsActivityCandidate) string {
-	if candidate.FriendCount == 1 {
-		return "A friend added restaurant visits last month."
-	}
-	return "Your friends added restaurant visits last month."
-}
-
 func formatPocketBaseDateTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04:05.000Z")
 }
@@ -821,11 +1204,6 @@ func deliverTastingInviteNotifications(app core.App, sessionID string, actorUser
 	if err != nil {
 		return err
 	}
-	sessionName := strings.TrimSpace(sessionRecord.GetString("name"))
-	if sessionName == "" {
-		sessionName = "a tasting session"
-	}
-
 	seen := map[string]struct{}{}
 	for _, rawUserID := range invitedUserIDs {
 		userID := strings.TrimSpace(rawUserID)
@@ -837,7 +1215,7 @@ func deliverTastingInviteNotifications(app core.App, sessionID string, actorUser
 		}
 		seen[userID] = struct{}{}
 
-		if err := deliverTastingInviteNotification(app, sessionRecord.Id, sessionName, actorUserID, userID); err != nil {
+		if err := deliverTastingInviteNotification(app, sessionRecord.Id, actorUserID, userID); err != nil {
 			return err
 		}
 	}
@@ -845,7 +1223,7 @@ func deliverTastingInviteNotifications(app core.App, sessionID string, actorUser
 	return nil
 }
 
-func deliverTastingInviteNotification(app core.App, sessionID string, sessionName string, actorUserID string, userID string) error {
+func deliverTastingInviteNotification(app core.App, sessionID string, actorUserID string, userID string) error {
 	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", tastingInviteNotificationSignalType, sessionID, strings.TrimSpace(userID), time.Now().UTC().UnixNano())
 
 	if strings.TrimSpace(actorUserID) != "" && strings.TrimSpace(actorUserID) == strings.TrimSpace(userID) {
@@ -892,19 +1270,14 @@ func deliverTastingInviteNotification(app core.App, sessionID string, sessionNam
 		})
 	}
 
-	payload := RemoteDeviceNotificationPayload{
-		Title: "Tasting invite",
-		Body:  fmt.Sprintf("You were invited to %s.", sessionName),
-		Data: map[string]any{
-			"notificationType": "tasting_invite",
-			"sessionId":        sessionID,
-			"route":            "TastingSessions",
-		},
-	}
+	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
+		SignalType: tastingInviteNotificationSignalType,
+		SessionID:  sessionID,
+	})
 
-	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
-	if sendErr != nil {
-		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendResult.Err != nil {
+		return createNotificationDeliveryLogWithReceipts(app, notificationDeliveryLogInput{
 			UserID:           userID,
 			SignalType:       tastingInviteNotificationSignalType,
 			SourceCollection: "tasting_sessions",
@@ -913,21 +1286,26 @@ func deliverTastingInviteNotification(app core.App, sessionID string, sessionNam
 			DeliveryKey:      deliveryKey,
 			Status:           "provider_failed",
 			DeviceCount:      len(devices),
-			ErrorCode:        providerErrorCode,
-		})
+			ErrorCode:        sendResult.ErrorCode,
+		}, sendResult)
 	}
 
-	return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-		UserID:            userID,
-		SignalType:        tastingInviteNotificationSignalType,
-		SourceCollection:  "tasting_sessions",
-		SourceRecord:      sessionID,
-		ActorUserID:       actorUserID,
-		DeliveryKey:       deliveryKey,
-		Status:            "sent",
-		DeviceCount:       len(devices),
-		ProviderMessageID: providerMessageID,
+	logRecord, err := createNotificationDeliveryLogRecord(app, notificationDeliveryLogInput{
+		UserID:               userID,
+		SignalType:           tastingInviteNotificationSignalType,
+		SourceCollection:     "tasting_sessions",
+		SourceRecord:         sessionID,
+		ActorUserID:          actorUserID,
+		DeliveryKey:          deliveryKey,
+		Status:               "sent",
+		DeviceCount:          len(devices),
+		ProviderMessageID:    sendResult.ProviderMessageID,
+		NotificationDeviceID: sendResult.NotificationDeviceID,
 	})
+	if err != nil {
+		return err
+	}
+	return createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
 }
 
 func deliverBillOwedNotifications(app core.App, input billOwedNotificationSignalInput) error {
@@ -941,13 +1319,8 @@ func deliverBillOwedNotifications(app core.App, input billOwedNotificationSignal
 		return nil
 	}
 
-	billTitle := strings.TrimSpace(input.BillTitle)
-	if billTitle == "" {
-		billTitle = "a bill"
-	}
-
 	for _, userID := range recipientUserIDs {
-		if err := deliverBillOwedNotification(app, billID, billTitle, input.ActorUserID, userID); err != nil {
+		if err := deliverBillOwedNotification(app, billID, input.ActorUserID, userID); err != nil {
 			return err
 		}
 	}
@@ -990,7 +1363,7 @@ func billParticipantOwesMoney(participant billNotificationParticipantSignal) boo
 	return sanitizeCurrency(participant.AmountOwed) > 0 && normalizePaidStatus(participant.PaidStatus) == "pending"
 }
 
-func deliverBillOwedNotification(app core.App, billID string, billTitle string, actorUserID string, userID string) error {
+func deliverBillOwedNotification(app core.App, billID string, actorUserID string, userID string) error {
 	trimmedUserID := strings.TrimSpace(userID)
 	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billOwedNotificationSignalType, billID, trimmedUserID, time.Now().UTC().UnixNano())
 
@@ -1038,19 +1411,14 @@ func deliverBillOwedNotification(app core.App, billID string, billTitle string, 
 		})
 	}
 
-	payload := RemoteDeviceNotificationPayload{
-		Title: "Bill split update",
-		Body:  fmt.Sprintf("You have a balance due for %s.", billTitle),
-		Data: map[string]any{
-			"billId":           billID,
-			"notificationType": billOwedNotificationSignalType,
-			"route":            "Bills",
-		},
-	}
+	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
+		SignalType: billOwedNotificationSignalType,
+		BillID:     billID,
+	})
 
-	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
-	if sendErr != nil {
-		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendResult.Err != nil {
+		return createNotificationDeliveryLogWithReceipts(app, notificationDeliveryLogInput{
 			UserID:           trimmedUserID,
 			SignalType:       billOwedNotificationSignalType,
 			SourceCollection: "bills",
@@ -1059,32 +1427,33 @@ func deliverBillOwedNotification(app core.App, billID string, billTitle string, 
 			DeliveryKey:      deliveryKey,
 			Status:           "provider_failed",
 			DeviceCount:      len(devices),
-			ErrorCode:        providerErrorCode,
-		})
+			ErrorCode:        sendResult.ErrorCode,
+		}, sendResult)
 	}
 
-	return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-		UserID:            trimmedUserID,
-		SignalType:        billOwedNotificationSignalType,
-		SourceCollection:  "bills",
-		SourceRecord:      billID,
-		ActorUserID:       actorUserID,
-		DeliveryKey:       deliveryKey,
-		Status:            "sent",
-		DeviceCount:       len(devices),
-		ProviderMessageID: providerMessageID,
+	logRecord, err := createNotificationDeliveryLogRecord(app, notificationDeliveryLogInput{
+		UserID:               trimmedUserID,
+		SignalType:           billOwedNotificationSignalType,
+		SourceCollection:     "bills",
+		SourceRecord:         billID,
+		ActorUserID:          actorUserID,
+		DeliveryKey:          deliveryKey,
+		Status:               "sent",
+		DeviceCount:          len(devices),
+		ProviderMessageID:    sendResult.ProviderMessageID,
+		NotificationDeviceID: sendResult.NotificationDeviceID,
 	})
+	if err != nil {
+		return err
+	}
+	return createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
 }
 
 func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (billPaymentReminderResult, error) {
 	billID := strings.TrimSpace(input.BillID)
-	billTitle := strings.TrimSpace(input.BillTitle)
 	participantID := strings.TrimSpace(input.ParticipantID)
 	actorUserID := strings.TrimSpace(input.ActorUserID)
 	recipientID := strings.TrimSpace(input.RecipientID)
-	if billTitle == "" {
-		billTitle = "a bill"
-	}
 
 	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billPaymentReminderSignalType, participantID, recipientID, time.Now().UTC().UnixNano())
 	baseLog := notificationDeliveryLogInput{
@@ -1136,22 +1505,17 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 		return billPaymentReminderResult{Status: "skipped_no_active_device"}, nil
 	}
 
-	payload := RemoteDeviceNotificationPayload{
-		Title: "Bill payment reminder",
-		Body:  fmt.Sprintf("You have a payment reminder for %s.", billTitle),
-		Data: map[string]any{
-			"billId":           billID,
-			"notificationType": billPaymentReminderSignalType,
-			"route":            "BillDetail",
-		},
-	}
+	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
+		SignalType: billPaymentReminderSignalType,
+		BillID:     billID,
+	})
 
-	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
-	if sendErr != nil {
+	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendResult.Err != nil {
 		baseLog.Status = "provider_failed"
 		baseLog.DeviceCount = len(devices)
-		baseLog.ErrorCode = providerErrorCode
-		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+		baseLog.ErrorCode = sendResult.ErrorCode
+		if err := createNotificationDeliveryLogWithReceipts(app, baseLog, sendResult); err != nil {
 			return billPaymentReminderResult{}, err
 		}
 		return billPaymentReminderResult{Status: "provider_failed"}, nil
@@ -1159,30 +1523,114 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 
 	baseLog.Status = "sent"
 	baseLog.DeviceCount = len(devices)
-	baseLog.ProviderMessageID = providerMessageID
-	if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+	baseLog.ProviderMessageID = sendResult.ProviderMessageID
+	baseLog.NotificationDeviceID = sendResult.NotificationDeviceID
+	logRecord, err := createNotificationDeliveryLogRecord(app, baseLog)
+	if err != nil {
+		return billPaymentReminderResult{}, err
+	}
+	if err := createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts); err != nil {
 		return billPaymentReminderResult{}, err
 	}
 	return billPaymentReminderResult{Status: "sent"}, nil
 }
 
+func remoteDeviceNotificationPayloadForSignal(input remoteNotificationSignalPayloadInput) RemoteDeviceNotificationPayload {
+	switch strings.TrimSpace(input.SignalType) {
+	case tastingInviteNotificationSignalType:
+		return RemoteDeviceNotificationPayload{
+			Title: "Tasting invite",
+			Body:  "You have a new tasting invite.",
+			Data: map[string]any{
+				"notificationType": tastingInviteNotificationSignalType,
+				"sessionId":        strings.TrimSpace(input.SessionID),
+				"route":            "TastingSessions",
+			},
+		}
+	case billOwedNotificationSignalType:
+		return RemoteDeviceNotificationPayload{
+			Title: "Bill split update",
+			Body:  "You have a bill update.",
+			Data: map[string]any{
+				"billId":           strings.TrimSpace(input.BillID),
+				"notificationType": billOwedNotificationSignalType,
+				"route":            "Bills",
+			},
+		}
+	case billPaymentReminderSignalType:
+		return RemoteDeviceNotificationPayload{
+			Title: "Bill payment reminder",
+			Body:  "You have a payment reminder.",
+			Data: map[string]any{
+				"billId":           strings.TrimSpace(input.BillID),
+				"notificationType": billPaymentReminderSignalType,
+				"route":            "BillDetail",
+			},
+		}
+	case monthlyFriendsActivitySignalType:
+		return RemoteDeviceNotificationPayload{
+			Title: "Friends were active",
+			Body:  "Your friends added restaurant visits last month.",
+			Data: map[string]any{
+				"feedMode":         "friends",
+				"notificationType": monthlyFriendsActivitySignalType,
+				"period":           strings.TrimSpace(input.Period),
+				"route":            "Home",
+			},
+		}
+	default:
+		return RemoteDeviceNotificationPayload{
+			Title: "Food Tracker update",
+			Body:  "Open Food Tracker to view the update.",
+			Data: map[string]any{
+				"notificationType": strings.TrimSpace(input.SignalType),
+			},
+		}
+	}
+}
+
 type notificationDeliveryLogInput struct {
-	UserID            string
-	SignalType        string
-	SourceCollection  string
-	SourceRecord      string
-	ActorUserID       string
-	DeliveryKey       string
-	Status            string
-	DeviceCount       int
-	ProviderMessageID string
-	ErrorCode         string
+	UserID               string
+	SignalType           string
+	SourceCollection     string
+	SourceRecord         string
+	ActorUserID          string
+	DeliveryKey          string
+	Status               string
+	DeviceCount          int
+	NotificationDeviceID string
+	ProviderMessageID    string
+	ErrorCode            string
 }
 
 func createNotificationDeliveryLog(app core.App, input notificationDeliveryLogInput) error {
-	collection, err := app.FindCollectionByNameOrId("notification_delivery_logs")
+	_, err := createNotificationDeliveryLogRecord(app, input)
+	return err
+}
+
+func createNotificationDeliveryLogWithReceipts(
+	app core.App,
+	input notificationDeliveryLogInput,
+	sendResult remoteNotificationSendResult,
+) error {
+	if strings.TrimSpace(input.ProviderMessageID) == "" {
+		input.ProviderMessageID = sendResult.ProviderMessageID
+	}
+	if strings.TrimSpace(input.NotificationDeviceID) == "" {
+		input.NotificationDeviceID = sendResult.NotificationDeviceID
+	}
+
+	logRecord, err := createNotificationDeliveryLogRecord(app, input)
 	if err != nil {
 		return err
+	}
+	return createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
+}
+
+func createNotificationDeliveryLogRecord(app core.App, input notificationDeliveryLogInput) (*core.Record, error) {
+	collection, err := app.FindCollectionByNameOrId("notification_delivery_logs")
+	if err != nil {
+		return nil, err
 	}
 	record := core.NewRecord(collection)
 	record.Set("user", input.UserID)
@@ -1198,10 +1646,18 @@ func createNotificationDeliveryLog(app core.App, input notificationDeliveryLogIn
 	if strings.TrimSpace(input.ProviderMessageID) != "" {
 		record.Set("provider_message_id", input.ProviderMessageID)
 	}
+	if strings.TrimSpace(input.NotificationDeviceID) != "" {
+		record.Set("notification_device", input.NotificationDeviceID)
+		record.Set("receipt_status", "pending")
+		record.Set("receipt_next_check_at", time.Now().UTC().Add(notificationReceiptPendingDelay))
+	}
 	if strings.TrimSpace(input.ErrorCode) != "" {
 		record.Set("error_code", input.ErrorCode)
 	}
-	return app.Save(record)
+	if err := app.Save(record); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 func isTastingInviteNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
@@ -1327,34 +1783,128 @@ func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record,
 	)
 }
 
+type remoteNotificationSendResult struct {
+	ProviderMessageID    string
+	NotificationDeviceID string
+	Receipts             []remoteNotificationReceiptInput
+	ErrorCode            string
+	Err                  error
+}
+
+type remoteNotificationReceiptInput struct {
+	NotificationDeviceID string
+	ProviderMessageID    string
+}
+
 func sendRemoteNotificationToActiveDevices(
 	app core.App,
 	devices []*core.Record,
 	payload RemoteDeviceNotificationPayload,
-) (string, string, error) {
+) remoteNotificationSendResult {
 	var providerMessageID string
+	var notificationDeviceID string
+	receipts := make([]remoteNotificationReceiptInput, 0, len(devices))
 	for _, device := range devices {
 		messageID, err := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
 		if err != nil {
-			errorCode := normalizeProviderErrorCode(err)
+			errorCode := normalizeProviderErrorCode(err, payload)
 			if isInvalidProviderTokenErrorCode(errorCode) {
 				if deactivateErr := deactivateNotificationDeviceRecord(app, device); deactivateErr != nil {
-					return "", errorCode, deactivateErr
+					return remoteNotificationSendResult{
+						ProviderMessageID:    providerMessageID,
+						NotificationDeviceID: notificationDeviceID,
+						Receipts:             receipts,
+						ErrorCode:            errorCode,
+						Err:                  deactivateErr,
+					}
 				}
 			}
-			return "", errorCode, err
+			return remoteNotificationSendResult{
+				ProviderMessageID:    providerMessageID,
+				NotificationDeviceID: notificationDeviceID,
+				Receipts:             receipts,
+				ErrorCode:            errorCode,
+				Err:                  err,
+			}
 		}
 		if providerMessageID == "" {
 			providerMessageID = messageID
+			notificationDeviceID = device.Id
+		}
+		if strings.TrimSpace(messageID) != "" {
+			receipts = append(receipts, remoteNotificationReceiptInput{
+				NotificationDeviceID: device.Id,
+				ProviderMessageID:    messageID,
+			})
 		}
 	}
-	return providerMessageID, "", nil
+	return remoteNotificationSendResult{
+		ProviderMessageID:    providerMessageID,
+		NotificationDeviceID: notificationDeviceID,
+		Receipts:             receipts,
+	}
+}
+
+func createNotificationDeliveryReceiptRecords(
+	app core.App,
+	deliveryLogID string,
+	receipts []remoteNotificationReceiptInput,
+) error {
+	if strings.TrimSpace(deliveryLogID) == "" || len(receipts) == 0 {
+		return nil
+	}
+	collection, err := app.FindCollectionByNameOrId("notification_delivery_receipts")
+	if err != nil {
+		return err
+	}
+	nextCheckAt := time.Now().UTC().Add(notificationReceiptPendingDelay)
+	for _, input := range receipts {
+		if strings.TrimSpace(input.NotificationDeviceID) == "" || strings.TrimSpace(input.ProviderMessageID) == "" {
+			continue
+		}
+		record := core.NewRecord(collection)
+		record.Set("notification_delivery_log", deliveryLogID)
+		record.Set("notification_device", input.NotificationDeviceID)
+		record.Set("provider_message_id", input.ProviderMessageID)
+		record.Set("receipt_status", "pending")
+		record.Set("receipt_next_check_at", nextCheckAt)
+		if err := app.Save(record); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deactivateNotificationDeviceRecord(app core.App, record *core.Record) error {
 	record.Set("active", false)
 	record.Set("last_seen_at", time.Now().UTC())
 	return app.Save(record)
+}
+
+func deactivateOtherNotificationDevicesForRegistration(app core.App, userID string, deviceID string, pushToken string) error {
+	records, err := app.FindRecordsByFilter(
+		"notification_devices",
+		"active = true && user != {:user} && (device_id = {:deviceID} || push_token = {:pushToken})",
+		"",
+		100,
+		0,
+		dbx.Params{
+			"deviceID":  strings.TrimSpace(deviceID),
+			"pushToken": strings.TrimSpace(pushToken),
+			"user":      strings.TrimSpace(userID),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if err := deactivateNotificationDeviceRecord(app, record); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func normalizeNotificationDevicePlatform(platform string) string {
@@ -1375,15 +1925,58 @@ func isInvalidProviderTokenErrorCode(errorCode string) bool {
 		strings.Contains(normalized, "unregistered")
 }
 
-func normalizeProviderErrorCode(err error) string {
+func normalizeExpoReceiptStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "ok":
+		return "ok"
+	case "error":
+		return "error"
+	default:
+		return "missing"
+	}
+}
+
+func normalizeReceiptProviderErrorCode(receipt RemoteDeviceNotificationReceipt) string {
+	errorCode := strings.TrimSpace(receipt.ErrorCode)
+	if errorCode == "" {
+		return "receipt_error"
+	}
+	errorCode = redactSensitiveProviderErrorText(errorCode, RemoteDeviceNotificationPayload{})
+	if len(errorCode) > 100 {
+		return errorCode[:100]
+	}
+	return errorCode
+}
+
+func normalizeProviderErrorCode(err error, payload RemoteDeviceNotificationPayload) string {
 	message := strings.TrimSpace(err.Error())
 	if message == "" {
 		return "provider_error"
 	}
+	message = redactSensitiveProviderErrorText(message, payload)
 	if len(message) > 100 {
 		return message[:100]
 	}
 	return message
+}
+
+func redactSensitiveProviderErrorText(message string, payload RemoteDeviceNotificationPayload) string {
+	redacted := expoPushTokenPattern.ReplaceAllString(message, "[redacted_push_token]")
+
+	if accessToken := resolveExpoPushAccessToken(); accessToken != "" {
+		redacted = strings.ReplaceAll(redacted, accessToken, "[redacted_expo_access_token]")
+	}
+	for _, value := range []string{payload.Title, payload.Body} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			redacted = strings.ReplaceAll(redacted, value, "[redacted_notification_text]")
+		}
+	}
+	return redacted
+}
+
+func resolveExpoPushAccessToken() string {
+	return strings.TrimSpace(os.Getenv(expoPushAccessTokenEnvKey))
 }
 
 func (sender expoNotificationPushSender) SendRemoteDeviceNotification(token string, payload RemoteDeviceNotificationPayload) (string, error) {
@@ -1402,7 +1995,20 @@ func (sender expoNotificationPushSender) SendRemoteDeviceNotification(token stri
 	if client == nil {
 		client = http.DefaultClient
 	}
-	response, err := client.Post("https://exp.host/--/api/v2/push/send", "application/json", bytes.NewReader(bodyBytes))
+	endpoint := strings.TrimSpace(sender.endpoint)
+	if endpoint == "" {
+		endpoint = expoPushSendEndpoint
+	}
+	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if accessToken := resolveExpoPushAccessToken(); accessToken != "" {
+		request.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}
@@ -1413,6 +2019,9 @@ func (sender expoNotificationPushSender) SendRemoteDeviceNotification(token stri
 			ID      string `json:"id"`
 			Status  string `json:"status"`
 			Message string `json:"message"`
+			Details struct {
+				Error string `json:"error"`
+			} `json:"details"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&responseBody); err != nil {
@@ -1420,6 +2029,9 @@ func (sender expoNotificationPushSender) SendRemoteDeviceNotification(token stri
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || responseBody.Data.Status == "error" {
 		message := responseBody.Data.Message
+		if strings.TrimSpace(responseBody.Data.Details.Error) != "" {
+			message = responseBody.Data.Details.Error
+		}
 		if message == "" {
 			message = fmt.Sprintf("expo_push_status_%d", response.StatusCode)
 		}
@@ -1427,4 +2039,65 @@ func (sender expoNotificationPushSender) SendRemoteDeviceNotification(token stri
 	}
 
 	return responseBody.Data.ID, nil
+}
+
+func (sender expoNotificationPushSender) CheckRemoteDeviceNotificationReceipts(receiptIDs []string) (map[string]RemoteDeviceNotificationReceipt, error) {
+	requestBody := map[string]any{"ids": receiptIDs}
+	bodyBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	client := sender.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	endpoint := strings.TrimSpace(sender.receiptsEndpoint)
+	if endpoint == "" {
+		endpoint = expoPushReceiptsEndpoint
+	}
+	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if accessToken := resolveExpoPushAccessToken(); accessToken != "" {
+		request.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	var responseBody struct {
+		Data map[string]struct {
+			Status  string `json:"status"`
+			Details struct {
+				Error string `json:"error"`
+			} `json:"details"`
+		} `json:"data"`
+		Errors []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&responseBody); err != nil {
+		return nil, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 || len(responseBody.Errors) > 0 {
+		if len(responseBody.Errors) > 0 && strings.TrimSpace(responseBody.Errors[0].Code) != "" {
+			return nil, errors.New(responseBody.Errors[0].Code)
+		}
+		return nil, fmt.Errorf("expo_push_receipts_status_%d", response.StatusCode)
+	}
+
+	receipts := map[string]RemoteDeviceNotificationReceipt{}
+	for receiptID, receipt := range responseBody.Data {
+		receipts[receiptID] = RemoteDeviceNotificationReceipt{
+			Status:    receipt.Status,
+			ErrorCode: receipt.Details.Error,
+		}
+	}
+	return receipts, nil
 }

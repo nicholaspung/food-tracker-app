@@ -3,9 +3,10 @@ import { Share } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { lockInviteCode, useMonthlyUsage } from '../features';
+import { deleteAccount, lockInviteCode, useMonthlyUsage } from '../features';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import {
+  clearNotificationDeviceIdentity,
   getVisitReminderNotificationStatus,
   scheduleVisitReminderNotification,
 } from '../notifications/notificationInteraction';
@@ -81,6 +82,9 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 }));
 
 jest.mock('../features', () => ({
+  billsQueryKeys: {
+    root: ['feature', 'bills'],
+  },
   deleteAccount: jest.fn(),
   feedbackQueryKeys: {
     summary: ['feature', 'feedback', 'summary'],
@@ -97,6 +101,11 @@ jest.mock('../features', () => ({
     inviteCodes: jest.fn(() => ['feature', 'profile', 'invites']),
     profile: ['feature', 'profile'],
   },
+  summarizeBillOwedNotificationSignal: jest.fn(() => ({
+    indicator: {
+      kind: 'none',
+    },
+  })),
   summarizeTastingSessionNotificationSignal: jest.fn(() => ({
     indicator: {
       kind: 'none',
@@ -122,6 +131,7 @@ jest.mock('../observability', () => ({
 }));
 
 jest.mock('../notifications/notificationInteraction', () => ({
+  clearNotificationDeviceIdentity: jest.fn(),
   getVisitReminderNotificationStatus: jest.fn(),
   scheduleVisitReminderNotification: jest.fn(),
 }));
@@ -269,6 +279,10 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedDeleteAccount = deleteAccount as jest.MockedFunction<typeof deleteAccount>;
+const mockedClearNotificationDeviceIdentity = clearNotificationDeviceIdentity as jest.MockedFunction<
+  typeof clearNotificationDeviceIdentity
+>;
 const mockedGetVisitReminderNotificationStatus = getVisitReminderNotificationStatus as jest.MockedFunction<
   typeof getVisitReminderNotificationStatus
 >;
@@ -316,6 +330,8 @@ describe('tab root content sections', () => {
     mockedUseQueryClient.mockReset();
     mockedUseAuth.mockReset();
     mockedUseMonthlyUsage.mockReset();
+    mockedDeleteAccount.mockReset();
+    mockedClearNotificationDeviceIdentity.mockReset();
     mockedGetVisitReminderNotificationStatus.mockReset();
     mockedScheduleVisitReminderNotification.mockReset();
     mockedLockInviteCode.mockReset();
@@ -345,6 +361,8 @@ describe('tab root content sections', () => {
       isError: false,
       refetch: jest.fn(),
     });
+    mockedDeleteAccount.mockResolvedValue(undefined);
+    mockedClearNotificationDeviceIdentity.mockResolvedValue(undefined);
     mockedLockInviteCode.mockResolvedValue(undefined);
     mockedGetVisitReminderNotificationStatus.mockResolvedValue({
       status: 'none',
@@ -908,6 +926,92 @@ describe('tab root content sections', () => {
     });
 
     expect(requestLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the local notification device identity after successful account deletion', async () => {
+    const signOut = jest.fn();
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+        isBetaUser: false,
+        isSubscriber: false,
+      },
+      signOut,
+      user: {
+        email: 'user@example.com',
+        id: 'user-1',
+        isBetaUser: false,
+        verified: true,
+      },
+      verificationGraceEndsAt: null,
+      verificationStatus: 'verified',
+    } as never);
+    mockedUseQuery.mockImplementation((options) => {
+      const queryKey = JSON.stringify(options.queryKey);
+
+      if (queryKey === JSON.stringify(['feature', 'profile'])) {
+        return {
+          data: {
+            createdAt: '2026-04-01T00:00:00.000Z',
+            displayName: 'Nick',
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      if (queryKey === JSON.stringify(['feature', 'feedback', 'summary'])) {
+        return {
+          data: {
+            activeCount: 2,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderWithNavigation(
+        <ProfileScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'profile', name: 'Profile' } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'profile-delete-account-toggle' }).props.onPress();
+    });
+    const deleteButton = renderer.root
+      .findAllByType('Button')
+      .find((button: any) => button.props.label === 'Delete Account');
+    act(() => {
+      deleteButton?.props.onPress();
+    });
+    const modal = renderer.root.findByProps({ testID: 'profile-delete-account-confirmation-modal' });
+    act(() => {
+      modal.findByType('Input').props.onChangeText('password123');
+    });
+
+    await act(async () => {
+      await modal.props.onConfirm();
+    });
+
+    expect(mockedDeleteAccount).toHaveBeenCalledWith('password123');
+    expect(mockedClearNotificationDeviceIdentity).toHaveBeenCalledTimes(1);
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 
   it('shares signup invite codes with the iOS App Store link and locks after sharing', async () => {

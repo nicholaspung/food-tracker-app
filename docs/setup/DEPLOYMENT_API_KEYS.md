@@ -7,12 +7,13 @@ This guide explains how to configure the new backend API keys (Gemini and Google
 As of the latest changes, the following API keys have been **moved to the backend**:
 - ✅ **Google Gemini API** - For menu OCR/parsing
 - ✅ **Google Places API** - For restaurant search and geocoding
+- ✅ **Expo Push Access Token** - For authenticated Expo push sends when push security is enabled
 
 These keys are **no longer stored in client-side app configuration** for security reasons.
 
 ---
 
-## 🔑 Required API Keys
+## 🔑 Backend Secrets
 
 ### 1. Google Gemini API Key
 - **Purpose**: Menu image parsing using Google Gemini AI
@@ -26,6 +27,12 @@ These keys are **no longer stored in client-side app configuration** for securit
   - Places API
   - Geocoding API
 - **Environment Variable**: `GOOGLE_PLACES_API_KEY`
+
+### 3. Expo Push Access Token
+- **Purpose**: Authenticated Expo Push API requests after enabling Expo push security
+- **Get it from**: Expo/EAS project dashboard push notification security settings
+- **Environment Variable**: `EXPO_PUSH_ACCESS_TOKEN`
+- **Required**: Only after Expo push security is enabled for the project
 
 ---
 
@@ -42,7 +49,7 @@ Go to your GitHub repository settings:
 Settings > Secrets and variables > Actions > New repository secret
 ```
 
-Add these two secrets:
+Add these secrets:
 
 1. **GEMINI_API_KEY**
    - Name: `GEMINI_API_KEY`
@@ -51,6 +58,11 @@ Add these two secrets:
 2. **GOOGLE_PLACES_API_KEY**
    - Name: `GOOGLE_PLACES_API_KEY`
    - Value: Your Google Places API key from Google Cloud Console
+
+3. **EXPO_PUSH_ACCESS_TOKEN**
+   - Name: `EXPO_PUSH_ACCESS_TOKEN`
+   - Value: Your Expo push access token
+   - Required before enabling Expo push security in the Expo/EAS dashboard
 
 #### Step 2: Deploy
 
@@ -71,7 +83,7 @@ cat /opt/food-tracker-secrets/beta/.env
 cat /opt/food-tracker-secrets/production/.env
 ```
 
-You should see both API keys populated.
+You should see `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` populated, plus `EXPO_PUSH_ACCESS_TOKEN` if push security is enabled for that environment.
 
 ---
 
@@ -92,6 +104,7 @@ Before running the deployment script, export the API keys:
 ```bash
 export GEMINI_API_KEY="your_gemini_api_key_here"
 export GOOGLE_PLACES_API_KEY="your_google_places_api_key_here"
+export EXPO_PUSH_ACCESS_TOKEN="your_expo_push_access_token_here" # only after enabling Expo push security
 ```
 
 #### Step 3: Run Deployment
@@ -107,6 +120,17 @@ The script will:
 - Read the API keys from environment variables
 - Store them securely in `/opt/food-tracker-secrets/{environment}/.env`
 - Create a symlink from `backend/.env` to the secure location
+
+### Expo push security
+
+Remote Device Notifications can use Expo push security without exposing the access token to the mobile app:
+
+1. Create or copy the Expo push access token for the project.
+2. Add `EXPO_PUSH_ACCESS_TOKEN` as a server-side secret in each GitHub environment that deploys backend notifications, or export it before a manual deploy.
+3. Deploy so `scripts/deploy.sh` writes the token into `/opt/food-tracker-secrets/{environment}/.env`.
+4. In the Expo/EAS dashboard for the same project, enable push notification security.
+
+If `EXPO_PUSH_ACCESS_TOKEN` is blank, backend sends keep using the existing unauthenticated Expo Push API request. That is intentional for local development and deployments where EAS push security has not been enabled yet. After push security is enabled in EAS, missing, invalid, or rejected tokens will surface as provider failures in `notification_delivery_logs.error_code`; those logs are bounded metadata and must not include push tokens or notification text.
 
 #### Step 4: Verify
 

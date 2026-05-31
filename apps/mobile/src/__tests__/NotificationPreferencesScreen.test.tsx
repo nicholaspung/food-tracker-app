@@ -236,7 +236,44 @@ describe('NotificationPreferencesScreen', () => {
       testID: 'notification-preferences-tasting-invites-toggle',
     });
     expect(tastingToggle.props.value).toBe(true);
-    expect(tastingToggle.props.disabled).toBe(true);
+    expect(tastingToggle.props.disabled).toBe(false);
     expect(renderer.root.findAllByType('Card').some((card: any) => card.props.tone === 'warning')).toBe(true);
+  });
+
+  it('allows notification categories to be turned off when OS permission is denied', async () => {
+    mockGetRemoteNotificationPermissionStatus.mockResolvedValue('denied');
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <NotificationPreferencesScreen
+          navigation={{ navigate: jest.fn() } as never}
+          route={{ key: 'NotificationPreferences-route', name: 'NotificationPreferences' } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.root
+        .findByProps({ testID: 'notification-preferences-tasting-invites-toggle' })
+        .props.onValueChange(false);
+      await Promise.resolve();
+    });
+
+    const saveAction = renderer.root.findByType('BackHeaderScreenScaffold').props.primaryAction;
+    await act(async () => {
+      saveAction.onPress();
+      await Promise.resolve();
+    });
+
+    expect(mockRequestRemoteNotificationPermission).not.toHaveBeenCalled();
+    expect(mockSaveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationPreferences: expect.objectContaining({
+          notificationTastingInvitesEnabled: false,
+        }),
+      }),
+    );
   });
 });

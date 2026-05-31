@@ -136,6 +136,10 @@ _Avoid_: alert, notification everywhere
 An OS-level notification delivered to a user's device from Food Tracker.
 _Avoid_: mobile notification, push notification when local notification is meant
 
+**System Notification Permission**:
+The OS-level authorization that allows Food Tracker to deliver **Device Notifications** on the current device.
+_Avoid_: overall notification preference, master notification toggle
+
 **Remote Device Notification**:
 A **Device Notification** sent because Food Tracker server state changed while the user may not be using the app.
 _Avoid_: local reminder, in-app notification
@@ -278,7 +282,14 @@ _Avoid_: notification inbox, user notification history
 - Monthly friends activity **Remote Device Notifications** do not count private visits, food products, notes, Bills, or tasting sessions.
 - Tapping a monthly friends activity **Device Notification** opens the Home feed filtered to friends.
 - **Notification Preferences** are separate from OS notification permission.
+- **System Notification Permission** is separate from **Notification Preferences** and belongs to the current device's OS settings.
 - Tasting invites, Bills and payment reminders, and monthly friends activity each have their own **Notification Preference**.
+- A disabled **System Notification Permission** prevents enabling **Notification Preferences** on that device but does not prevent disabling them.
+- A **Notification Preference** may be enabled while its **Remote Device Notification** delivery is blocked by disabled **System Notification Permission** on the current device.
+- When Food Tracker cannot confirm **System Notification Permission** on the current device, it should preserve the user's ability to disable **Notification Preferences**.
+- When **System Notification Permission** has not been granted yet, Food Tracker may ask for permission in context before enabling **Notification Preferences**.
+- Food Tracker should show the current **System Notification Permission** state when a user manages **Notification Preferences**.
+- While managing **Notification Preferences**, requests for **System Notification Permission** start from the system notification status action rather than individual preference toggles.
 - User-scheduled visit reminders are controlled by their reminder schedule rather than a global **Notification Preference**.
 - **Notification Preferences** control only **Remote Device Notification** delivery, not **In-App Indicators**.
 - A user may have multiple **Notification Devices**.

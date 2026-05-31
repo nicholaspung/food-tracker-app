@@ -90,6 +90,10 @@ async function resolveNotificationDeviceId(): Promise<string> {
   return nextDeviceId;
 }
 
+export async function clearNotificationDeviceIdentity(): Promise<void> {
+  await AsyncStorage.removeItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+}
+
 export async function unregisterCurrentNotificationDevice(): Promise<void> {
   const deviceId = await AsyncStorage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
   if (!deviceId?.trim()) {
@@ -97,6 +101,7 @@ export async function unregisterCurrentNotificationDevice(): Promise<void> {
   }
 
   await deactivateNotificationDevice(deviceId);
+  await clearNotificationDeviceIdentity();
 }
 
 export function useRemoteNotificationRegistration(status: NotificationAuthStatus, userId: string | null | undefined) {

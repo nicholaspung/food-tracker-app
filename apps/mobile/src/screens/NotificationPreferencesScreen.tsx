@@ -259,17 +259,13 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     setValue(nextValue);
   };
 
-  const notificationsDisabledByOs =
-    remoteNotificationPermissionStatus === 'denied' ||
-    remoteNotificationPermissionStatus === 'unavailable' ||
-    remoteNotificationPermissionStatus === 'failed';
   const notificationPermissionMessage =
     remoteNotificationPermissionStatus === 'denied'
-      ? 'System notification permission is off. Your saved preferences are shown below, but notifications cannot be delivered until permission is enabled.'
+      ? 'System notification permission is off. You can still turn categories off here, but notifications cannot be delivered until permission is enabled.'
       : remoteNotificationPermissionStatus === 'unavailable'
-        ? 'System notifications are unavailable on this device. Your saved preferences are still shown below.'
+        ? 'System notifications are unavailable on this device. You can still turn categories off here.'
         : remoteNotificationPermissionStatus === 'failed'
-          ? 'Could not check system notification permission. Your saved preferences are still shown below.'
+          ? 'Could not check system notification permission. You can still turn categories off here.'
           : null;
 
   const canShowSaveAction = !settingsQuery.isLoading && !settingsQuery.isError;
@@ -353,7 +349,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
                   </Card>
                 ) : null}
                 <NotificationPreferenceToggle
-                  disabled={notificationsDisabledByOs}
+                  disabled={false}
                   label="Tasting invites"
                   onValueChange={(nextValue) => {
                     void handleToggleNotificationPreference(
@@ -366,7 +362,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
                   value={notificationTastingInvitesEnabled}
                 />
                 <NotificationPreferenceToggle
-                  disabled={notificationsDisabledByOs}
+                  disabled={false}
                   label="Bills and payment reminders"
                   onValueChange={(nextValue) => {
                     void handleToggleNotificationPreference(
@@ -379,7 +375,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
                   value={notificationBillsEnabled}
                 />
                 <NotificationPreferenceToggle
-                  disabled={notificationsDisabledByOs}
+                  disabled={false}
                   label="Monthly friends activity"
                   onValueChange={(nextValue) => {
                     void handleToggleNotificationPreference(
