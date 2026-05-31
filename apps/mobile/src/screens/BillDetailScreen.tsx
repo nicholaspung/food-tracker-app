@@ -22,7 +22,10 @@ import {
   type BillRecord,
 } from '../features';
 import { billsQueryKeys, getCachedBillDetail } from '../features/store/billsQuery';
-import { sendBillPaymentReminder } from '../features/store/billsStore';
+import {
+  sendBillPaymentReminder,
+  type BillPaymentReminderResult,
+} from '../features/store/billsStore';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
 import { useBillWrites } from '../features/store/useBillWrites';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
@@ -31,7 +34,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Card, Modal, Text } from '../ui';
 
 type BillDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'BillDetail'>;
 
@@ -130,6 +133,108 @@ function formatComplexSplitValue(type: 'percentage' | 'amount', value: number): 
   return formatCurrency(value);
 }
 
+type BillPaymentReminderModalOutcome =
+  | 'sending'
+  | 'sent'
+  | 'already_sent_this_week'
+  | 'skipped_preference_disabled'
+  | 'skipped_no_active_device'
+  | 'provider_failed'
+  | 'failed';
+
+interface BillPaymentReminderModalState {
+  participantName: string;
+  outcome: BillPaymentReminderModalOutcome;
+}
+
+interface BillPaymentReminderModalCopy {
+  title: string;
+  description: string;
+  actionLabel?: string;
+}
+
+function mapBillPaymentReminderResultStatus(
+  status: BillPaymentReminderResult['status'],
+): BillPaymentReminderModalOutcome {
+  if (
+    status === 'sent' ||
+    status === 'skipped_preference_disabled' ||
+    status === 'skipped_no_active_device' ||
+    status === 'provider_failed'
+  ) {
+    return status;
+  }
+
+  if (status === 'skipped_rate_limited') {
+    return 'already_sent_this_week';
+  }
+
+  return 'failed';
+}
+
+function mapBillPaymentReminderError(error: unknown): BillPaymentReminderModalOutcome {
+  const message = error instanceof Error ? error.message : '';
+  if (message.toLowerCase().includes('already sent this week')) {
+    return 'already_sent_this_week';
+  }
+
+  return 'failed';
+}
+
+function getBillPaymentReminderModalCopy({
+  outcome,
+  participantName,
+}: BillPaymentReminderModalState): BillPaymentReminderModalCopy {
+  switch (outcome) {
+    case 'sending':
+      return {
+        title: 'Sending Reminder',
+        description: `Sending a payment reminder to ${participantName}.`,
+      };
+    case 'sent':
+      return {
+        title: 'Reminder Sent',
+        description: `${participantName} has been sent a payment reminder.`,
+        actionLabel: 'Done',
+      };
+    case 'already_sent_this_week':
+      return {
+        title: 'Already Sent This Week',
+        description: `${participantName} already received a payment reminder for this bill this week.`,
+        actionLabel: 'Done',
+      };
+    case 'skipped_preference_disabled':
+      return {
+        title: 'Reminder Not Sent',
+        description: `${participantName} has payment reminders turned off.`,
+        actionLabel: 'Done',
+      };
+    case 'skipped_no_active_device':
+      return {
+        title: 'Reminder Not Sent',
+        description: `${participantName} has no active notification device.`,
+        actionLabel: 'Done',
+      };
+    case 'provider_failed':
+      return {
+        title: 'Reminder Not Sent',
+        description: 'The notification provider could not send the reminder. Try again in a moment.',
+        actionLabel: 'Done',
+      };
+    case 'failed':
+      return {
+        title: 'Reminder Not Sent',
+        description: 'The reminder could not be sent. Try again in a moment.',
+        actionLabel: 'Done',
+      };
+  }
+}
+
+function getOptimisticPaymentReminderAvailableAt(): string {
+  const weeklyCooldownMs = 7 * 24 * 60 * 60 * 1000;
+  return new Date(Date.now() + weeklyCooldownMs).toISOString();
+}
+
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
@@ -226,6 +331,9 @@ const useStyles = createThemedStyles((theme) => ({
   participantReminderLabel: {
     color: theme.colors.text.info,
   },
+  reminderModalStatus: {
+    color: theme.colors.text.secondary,
+  },
   itemPrice: {
     color: theme.colors.text.primary,
   },
@@ -277,6 +385,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const [isDeletingBill, setIsDeletingBill] = useState(false);
   const [updatingParticipantId, setUpdatingParticipantId] = useState<string | null>(null);
   const [remindingParticipantId, setRemindingParticipantId] = useState<string | null>(null);
+  const [reminderModalState, setReminderModalState] = useState<BillPaymentReminderModalState | null>(null);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billQuery.isRefetching);
 
@@ -491,41 +600,58 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     }
 
     setErrorMessage(null);
+    const participantName = sanitizeParticipantDisplayName(participant.name);
+    setReminderModalState({
+      participantName,
+      outcome: 'sending',
+    });
     setRemindingParticipantId(participant.id);
     trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_STARTED', {
       source: 'BillDetailScreen',
-      billId,
-      participantId: participant.id,
     });
 
     try {
       const result = await sendBillPaymentReminder(billId, participant.id);
-      const messageByStatus: Record<string, string> = {
-        provider_failed: 'The reminder could not be sent. Try again in a moment.',
-        skipped_no_active_device: 'This person has no active notification device.',
-        skipped_preference_disabled: 'This person has payment reminders turned off.',
-      };
-      const statusMessage = messageByStatus[result.status];
-      if (statusMessage) {
-        setErrorMessage(statusMessage);
+      if (result.status === 'sent') {
+        queryClient.setQueryData<BillRecord | null>(billsQueryKeys.detail(billId), (cachedBill) => {
+          if (!cachedBill) {
+            return cachedBill;
+          }
+
+          return {
+            ...cachedBill,
+            participants: cachedBill.participants.map((cachedParticipant) =>
+              cachedParticipant.id === participant.id
+                ? {
+                    ...cachedParticipant,
+                    paymentReminderAvailable: false,
+                    paymentReminderAvailableAt:
+                      cachedParticipant.paymentReminderAvailableAt ?? getOptimisticPaymentReminderAvailableAt(),
+                  }
+                : cachedParticipant,
+            ),
+          };
+        });
+        void queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(billId) });
       }
+      setReminderModalState({
+        participantName,
+        outcome: mapBillPaymentReminderResultStatus(result.status),
+      });
       trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_SUCCEEDED', {
         source: 'BillDetailScreen',
-        billId,
-        participantId: participant.id,
         status: result.status,
       });
     } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : 'Could not send payment reminder.';
-      const message = rawMessage.toLowerCase().includes('already sent this week')
-        ? 'A reminder was already sent to this person this week.'
-        : rawMessage;
-      setErrorMessage(message);
+      const outcome = mapBillPaymentReminderError(error);
+      setReminderModalState({
+        participantName,
+        outcome,
+      });
       trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_FAILED', {
         source: 'BillDetailScreen',
-        billId,
-        participantId: participant.id,
-        error: message,
+        error: error instanceof Error ? error.message : 'Could not send payment reminder.',
+        outcome,
       });
     } finally {
       setRemindingParticipantId(null);
@@ -580,6 +706,11 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       await billQuery.refetch();
     });
   }, [billQuery, runPullRefresh]);
+
+  const reminderModalCopy = reminderModalState
+    ? getBillPaymentReminderModalCopy(reminderModalState)
+    : null;
+  const isReminderModalSending = reminderModalState?.outcome === 'sending';
 
   return (
     <FeatureDetailScreenScaffold
@@ -800,13 +931,19 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                   const actionLabel = nextPaidStatus === 'paid' ? 'Mark Paid' : 'Mark Unpaid';
                   const isMarkUnpaidAction = nextPaidStatus === 'pending';
                   const isUpdatingParticipant = updatingParticipantId === participant.id;
-                  const canSendReminder = Boolean(
+                  const canShowReminderAction = Boolean(
                     isCreator &&
                       !isBillSettled &&
                       !isCurrentUser &&
                       participant.userId &&
                       participant.paidStatus === 'pending' &&
                       participant.amountOwed > 0,
+                  );
+                  const canSendReminder = Boolean(
+                    canShowReminderAction && participant.paymentReminderAvailable === true,
+                  );
+                  const isReminderInCooldown = Boolean(
+                    canShowReminderAction && participant.paymentReminderAvailable === false,
                   );
                   const isSendingReminder = remindingParticipantId === participant.id;
                   const statusPill = (
@@ -822,7 +959,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                       key={participant.id}
                       titleAccessory={statusPill}
                       rightAccessory={
-                        canUpdateStatus || canSendReminder ? (
+                        canUpdateStatus || canShowReminderAction ? (
                           <View style={styles.participantActions}>
                             {canUpdateStatus ? (
                               <Pressable
@@ -854,24 +991,33 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                               </Pressable>
                             ) : null}
 
-                            {canSendReminder ? (
+                            {canShowReminderAction ? (
                               <Pressable
-                                accessibilityLabel={`Remind ${displayName}`}
+                                accessibilityLabel={
+                                  isReminderInCooldown ? `${displayName} reminded` : `Remind ${displayName}`
+                                }
                                 accessibilityRole="button"
-                                disabled={isSendingReminder || !isOnline}
+                                disabled={isReminderInCooldown || isSendingReminder || !isOnline}
                                 onPress={() => {
+                                  if (!canSendReminder) {
+                                    return;
+                                  }
                                   void remindParticipant(participant);
                                 }}
                                 style={({ pressed }) => [
                                   styles.participantActionPill,
                                   styles.participantActionPillSecondary,
-                                  pressed && !isSendingReminder && isOnline ? styles.participantActionPillPressed : null,
-                                  isSendingReminder || !isOnline ? styles.participantActionPillDisabled : null,
+                                  pressed && canSendReminder && !isSendingReminder && isOnline
+                                    ? styles.participantActionPillPressed
+                                    : null,
+                                  isReminderInCooldown || isSendingReminder || !isOnline
+                                    ? styles.participantActionPillDisabled
+                                    : null,
                                 ]}
                                 testID={`bill-participant-reminder-${participant.id}`}
                               >
                                 <Text style={styles.participantReminderLabel} variant="bodySmTightSemiBold">
-                                  {isSendingReminder ? 'Sending...' : 'Remind'}
+                                  {isSendingReminder ? 'Sending...' : isReminderInCooldown ? 'Reminded' : 'Remind'}
                                 </Text>
                               </Pressable>
                             ) : null}
@@ -974,6 +1120,35 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         title="Delete Bill?"
         visible={isDeleteConfirmVisible}
       />
+      <Modal
+        description={reminderModalCopy?.description}
+        onRequestClose={() => {
+          if (isReminderModalSending) {
+            return;
+          }
+          setReminderModalState(null);
+        }}
+        primaryAction={
+          reminderModalCopy?.actionLabel
+            ? {
+                label: reminderModalCopy.actionLabel,
+                onPress: () => {
+                  setReminderModalState(null);
+                },
+                testID: 'bill-payment-reminder-result-done',
+              }
+            : undefined
+        }
+        testID="bill-payment-reminder-result-modal"
+        title={reminderModalCopy?.title}
+        visible={reminderModalState !== null}
+      >
+        {isReminderModalSending ? (
+          <Text style={styles.reminderModalStatus} variant="bodySm">
+            Sending reminder...
+          </Text>
+        ) : null}
+      </Modal>
     </FeatureDetailScreenScaffold>
   );
 }

@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -1150,6 +1151,210 @@ func TestBillDetailEndpointReturnsNestedDataAndParticipantDisplayMetadata(t *tes
 	)
 	if outsiderResponse.Code != http.StatusNotFound {
 		t.Fatalf("expected outsider access to be denied with 404, got %d: %s", outsiderResponse.Code, outsiderResponse.Body.String())
+	}
+}
+
+func TestBillDetailEndpointReturnsPaymentReminderCooldownEligibility(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	availableUser, _ := createAuthUser(t, server.app, false, false)
+	cooldownUser, _ := createAuthUser(t, server.app, false, false)
+	skippedUser, _ := createAuthUser(t, server.app, false, false)
+	otherParticipantUser, _ := createAuthUser(t, server.app, false, false)
+
+	bill := seedBillRecord(t, server.app, owner.Id, "Reminder Detail")
+	availableParticipant := seedBillParticipantRecord(t, server.app, bill.Id, availableUser.Id, "Available", 12, "pending")
+	cooldownParticipant := seedBillParticipantRecord(t, server.app, bill.Id, cooldownUser.Id, "Cooldown", 18, "pending")
+	skippedParticipant := seedBillParticipantRecord(t, server.app, bill.Id, skippedUser.Id, "Skipped", 15, "pending")
+	otherScopedParticipant := seedBillParticipantRecord(t, server.app, bill.Id, otherParticipantUser.Id, "Other Scoped", 20, "pending")
+
+	now := time.Now().UTC()
+	recentSentLog := createCollectionRecord(t, server.app, "notification_delivery_logs", map[string]any{
+		"user":              cooldownUser.Id,
+		"signal_type":       "bill_payment_reminder",
+		"source_collection": "bill_participants",
+		"source_record":     cooldownParticipant.Id,
+		"delivery_key":      "bill-payment-reminder-cooldown",
+		"status":            "sent",
+		"device_count":      1,
+	})
+	recentSentAt := now.AddDate(0, 0, -2).Format(time.RFC3339Nano)
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", recentSentLog.Id, recentSentAt)
+
+	skippedLog := createCollectionRecord(t, server.app, "notification_delivery_logs", map[string]any{
+		"user":              skippedUser.Id,
+		"signal_type":       "bill_payment_reminder",
+		"source_collection": "bill_participants",
+		"source_record":     skippedParticipant.Id,
+		"delivery_key":      "bill-payment-reminder-skipped",
+		"status":            "skipped_rate_limited",
+		"device_count":      0,
+	})
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", skippedLog.Id, recentSentAt)
+
+	failedLog := createCollectionRecord(t, server.app, "notification_delivery_logs", map[string]any{
+		"user":              skippedUser.Id,
+		"signal_type":       "bill_payment_reminder",
+		"source_collection": "bill_participants",
+		"source_record":     skippedParticipant.Id,
+		"delivery_key":      "bill-payment-reminder-failed",
+		"status":            "provider_failed",
+		"device_count":      1,
+	})
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", failedLog.Id, recentSentAt)
+
+	otherParticipantLog := createCollectionRecord(t, server.app, "notification_delivery_logs", map[string]any{
+		"user":              availableUser.Id,
+		"signal_type":       "bill_payment_reminder",
+		"source_collection": "bill_participants",
+		"source_record":     otherScopedParticipant.Id,
+		"delivery_key":      "bill-payment-reminder-other-participant",
+		"status":            "sent",
+		"device_count":      1,
+	})
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", otherParticipantLog.Id, recentSentAt)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/bills/"+bill.Id,
+		ownerToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Participants []struct {
+			ID                         string  `json:"id"`
+			PaymentReminderAvailable   bool    `json:"paymentReminderAvailable"`
+			PaymentReminderAvailableAt *string `json:"paymentReminderAvailableAt"`
+		} `json:"participants"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse bill detail payload: %v; body=%s", err, response.Body.String())
+	}
+
+	participantByID := make(map[string]struct {
+		PaymentReminderAvailable   bool
+		PaymentReminderAvailableAt *string
+	}, len(payload.Participants))
+	for _, participantPayload := range payload.Participants {
+		participantByID[participantPayload.ID] = struct {
+			PaymentReminderAvailable   bool
+			PaymentReminderAvailableAt *string
+		}{
+			PaymentReminderAvailable:   participantPayload.PaymentReminderAvailable,
+			PaymentReminderAvailableAt: participantPayload.PaymentReminderAvailableAt,
+		}
+	}
+
+	if availability := participantByID[availableParticipant.Id]; !availability.PaymentReminderAvailable || availability.PaymentReminderAvailableAt != nil {
+		t.Fatalf("expected unrelated participant-scoped sent log not to consume available participant cooldown, got %#v", availability)
+	}
+	cooldownAvailability := participantByID[cooldownParticipant.Id]
+	if cooldownAvailability.PaymentReminderAvailable || cooldownAvailability.PaymentReminderAvailableAt == nil {
+		t.Fatalf("expected recent sent reminder to make participant unavailable, got %#v", cooldownAvailability)
+	}
+	availableAt, err := time.Parse(time.RFC3339Nano, *cooldownAvailability.PaymentReminderAvailableAt)
+	if err != nil {
+		t.Fatalf("expected parseable availability timestamp, got %q: %v", *cooldownAvailability.PaymentReminderAvailableAt, err)
+	}
+	if !availableAt.After(now) {
+		t.Fatalf("expected availability timestamp to be in the future, got %s", availableAt.Format(time.RFC3339Nano))
+	}
+	if availability := participantByID[skippedParticipant.Id]; !availability.PaymentReminderAvailable || availability.PaymentReminderAvailableAt != nil {
+		t.Fatalf("expected skipped and failed reminders not to consume cooldown, got %#v", availability)
+	}
+}
+
+func TestBillDetailEndpointKeepsReminderAvailableAfterUnsentReminderOutcomes(t *testing.T) {
+	sender := &recordingNotificationPushSender{err: errors.New("provider unavailable")}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	preferenceDisabledUser, _ := createAuthUser(t, server.app, false, false)
+	noDeviceUser, _ := createAuthUser(t, server.app, false, false)
+	providerFailedUser, _ := createAuthUser(t, server.app, false, false)
+	createBillNotificationPreferenceRecord(t, server.app, preferenceDisabledUser.Id, false)
+	createNotificationDeviceRecord(t, server.app, noDeviceUser.Id, "inactive-device", "ExponentPushToken[inactive]", false)
+	createNotificationDeviceRecord(t, server.app, providerFailedUser.Id, "provider-device", "ExponentPushToken[provider]", true)
+
+	bill := seedBillRecord(t, server.app, owner.Id, "Unsent Reminder Detail")
+	preferenceDisabledParticipant := seedBillParticipantRecord(t, server.app, bill.Id, preferenceDisabledUser.Id, "Muted", 12, "pending")
+	noDeviceParticipant := seedBillParticipantRecord(t, server.app, bill.Id, noDeviceUser.Id, "No Device", 18, "pending")
+	providerFailedParticipant := seedBillParticipantRecord(t, server.app, bill.Id, providerFailedUser.Id, "Provider Failed", 15, "pending")
+
+	for _, participantID := range []string{
+		preferenceDisabledParticipant.Id,
+		noDeviceParticipant.Id,
+		providerFailedParticipant.Id,
+	} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/bills/"+bill.Id+"/participants/"+participantID+"/payment-reminder",
+			ownerToken,
+			"",
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected unsent reminder outcome to return 200 OK, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/bills/"+bill.Id,
+		ownerToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Participants []struct {
+			ID                         string  `json:"id"`
+			PaymentReminderAvailable   bool    `json:"paymentReminderAvailable"`
+			PaymentReminderAvailableAt *string `json:"paymentReminderAvailableAt"`
+		} `json:"participants"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse bill detail payload: %v; body=%s", err, response.Body.String())
+	}
+
+	participantByID := make(map[string]struct {
+		PaymentReminderAvailable   bool
+		PaymentReminderAvailableAt *string
+	}, len(payload.Participants))
+	for _, participantPayload := range payload.Participants {
+		participantByID[participantPayload.ID] = struct {
+			PaymentReminderAvailable   bool
+			PaymentReminderAvailableAt *string
+		}{
+			PaymentReminderAvailable:   participantPayload.PaymentReminderAvailable,
+			PaymentReminderAvailableAt: participantPayload.PaymentReminderAvailableAt,
+		}
+	}
+
+	for _, participantID := range []string{
+		preferenceDisabledParticipant.Id,
+		noDeviceParticipant.Id,
+		providerFailedParticipant.Id,
+	} {
+		if availability := participantByID[participantID]; !availability.PaymentReminderAvailable || availability.PaymentReminderAvailableAt != nil {
+			t.Fatalf("expected unsent reminder outcome not to consume cooldown for %s, got %#v", participantID, availability)
+		}
 	}
 }
 

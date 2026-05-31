@@ -71,6 +71,11 @@ type billPaymentReminderResult struct {
 	Status string
 }
 
+type billPaymentReminderAvailability struct {
+	Available   bool
+	AvailableAt *string
+}
+
 type MonthlyFriendsActivityDeliveryResult struct {
 	MonthStart time.Time
 	MonthEnd   time.Time
@@ -1107,6 +1112,24 @@ func isMonthlyFriendsActivityNotificationPreferenceEnabled(app core.App, userID 
 }
 
 func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, userID string, since time.Time) (bool, error) {
+	if strings.TrimSpace(participantID) == "" || strings.TrimSpace(userID) == "" {
+		return false, nil
+	}
+	availability, err := getBillPaymentReminderAvailability(app, participantID, userID, since.AddDate(0, 0, 7))
+	if err != nil {
+		return false, err
+	}
+	return !availability.Available, nil
+}
+
+func getBillPaymentReminderAvailability(app core.App, participantID string, userID string, now time.Time) (billPaymentReminderAvailability, error) {
+	trimmedParticipantID := strings.TrimSpace(participantID)
+	trimmedUserID := strings.TrimSpace(userID)
+	if trimmedParticipantID == "" || trimmedUserID == "" {
+		return billPaymentReminderAvailability{Available: false}, nil
+	}
+
+	cooldownStartsAt := now.UTC().AddDate(0, 0, -7)
 	records, err := app.FindRecordsByFilter(
 		"notification_delivery_logs",
 		"signal_type = {:signalType} && source_collection = 'bill_participants' && source_record = {:participantID} && user = {:user} && status = 'sent' && created >= {:since}",
@@ -1115,15 +1138,33 @@ func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, us
 		0,
 		dbx.Params{
 			"signalType":    billPaymentReminderSignalType,
-			"participantID": strings.TrimSpace(participantID),
-			"user":          strings.TrimSpace(userID),
-			"since":         since.Format(time.RFC3339Nano),
+			"participantID": trimmedParticipantID,
+			"user":          trimmedUserID,
+			"since":         cooldownStartsAt.Format(time.RFC3339Nano),
 		},
 	)
 	if err != nil {
-		return false, err
+		return billPaymentReminderAvailability{}, err
 	}
-	return len(records) > 0, nil
+	if len(records) == 0 {
+		return billPaymentReminderAvailability{Available: true}, nil
+	}
+
+	sentAt := records[0].GetDateTime("created")
+	if sentAt.IsZero() {
+		return billPaymentReminderAvailability{Available: true}, nil
+	}
+
+	availableAt := sentAt.Time().UTC().AddDate(0, 0, 7)
+	if !availableAt.After(now.UTC()) {
+		return billPaymentReminderAvailability{Available: true}, nil
+	}
+
+	availableAtText := availableAt.Format(time.RFC3339Nano)
+	return billPaymentReminderAvailability{
+		Available:   false,
+		AvailableAt: &availableAtText,
+	}, nil
 }
 
 func hasNotificationDeliveryLogWithKey(app core.App, deliveryKey string) (bool, error) {

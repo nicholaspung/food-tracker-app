@@ -155,6 +155,8 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
+  Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Modal', props, children),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -168,6 +170,11 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 
 type TestRenderer = ReturnType<typeof create> & { root: any };
 
+const queryClient = {
+  invalidateQueries: jest.fn(),
+  setQueryData: jest.fn(),
+};
+
 function buildBill(overrides: Record<string, unknown> = {}) {
   return {
     createdAt: '2026-05-19T12:00:00.000Z',
@@ -178,7 +185,24 @@ function buildBill(overrides: Record<string, unknown> = {}) {
     items: [],
     participants: [
       { amountOwed: 10, id: 'self', name: 'Pat', paidStatus: 'paid', userId: 'user_1' },
-      { amountOwed: 10, id: 'eligible', name: 'Alex', paidStatus: 'pending', userId: 'user_2' },
+      {
+        amountOwed: 10,
+        id: 'eligible',
+        name: 'Alex',
+        paidStatus: 'pending',
+        paymentReminderAvailable: true,
+        paymentReminderAvailableAt: null,
+        userId: 'user_2',
+      },
+      {
+        amountOwed: 9,
+        id: 'cooldown',
+        name: 'Sam',
+        paidStatus: 'pending',
+        paymentReminderAvailable: false,
+        paymentReminderAvailableAt: '2026-05-26T12:00:00.000Z',
+        userId: 'user_4',
+      },
       { amountOwed: 8, id: 'custom', name: 'Cash Friend', paidStatus: 'pending' },
       { amountOwed: 6, id: 'paid', name: 'Jordan', paidStatus: 'paid', userId: 'user_3' },
     ],
@@ -188,7 +212,7 @@ function buildBill(overrides: Record<string, unknown> = {}) {
     tax: 0,
     tip: 0,
     title: 'Dinner',
-    totalAmount: 34,
+    totalAmount: 43,
     updatedAt: '2026-05-19T12:00:00.000Z',
     ...overrides,
   };
@@ -227,11 +251,29 @@ function findPressableByTestId(renderer: TestRenderer, testID: string) {
   return renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === testID);
 }
 
+function findReminderResultModal(renderer: TestRenderer) {
+  return renderer.root.findByProps({ testID: 'bill-payment-reminder-result-modal' });
+}
+
+function getTextContent(node: any): string {
+  if (typeof node === 'string') {
+    return node;
+  }
+
+  if (!node?.children) {
+    return '';
+  }
+
+  return node.children.map(getTextContent).join('');
+}
+
 describe('BillDetailScreen payment reminders', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getBillById as jest.Mock).mockResolvedValue(buildBill());
-    mockedUseQueryClient.mockReturnValue({} as ReturnType<typeof useQueryClient>);
+    queryClient.invalidateQueries.mockReset();
+    queryClient.setQueryData.mockReset();
+    mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
     mockedUseAuth.mockReturnValue({ user: { id: 'user_1' } } as ReturnType<typeof useAuth>);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
     mockedUseBillWrites.mockReturnValue({
@@ -246,8 +288,39 @@ describe('BillDetailScreen payment reminders', () => {
     const renderer = await renderBillDetail();
 
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-eligible')).toBeTruthy();
+    expect(findPressableByTestId(renderer, 'bill-participant-reminder-cooldown')).toBeTruthy();
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-custom')).toBeUndefined();
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-paid')).toBeUndefined();
+  });
+
+  it('shows enabled Remind for eligible participants and disabled Reminded for cooldown participants', async () => {
+    const renderer = await renderBillDetail();
+    const eligibleButton = findPressableByTestId(renderer, 'bill-participant-reminder-eligible');
+    const cooldownButton = findPressableByTestId(renderer, 'bill-participant-reminder-cooldown');
+
+    expect(eligibleButton?.props.disabled).toBe(false);
+    expect(getTextContent(eligibleButton)).toBe('Remind');
+    expect(cooldownButton?.props.disabled).toBe(true);
+    expect(getTextContent(cooldownButton)).toBe('Reminded');
+  });
+
+  it('keeps eligible reminder actions visible but disabled while offline', async () => {
+    mockedUseConnectivity.mockReturnValue({ isOnline: false } as ReturnType<typeof useConnectivity>);
+    const renderer = await renderBillDetail();
+    const eligibleButton = findPressableByTestId(renderer, 'bill-participant-reminder-eligible');
+
+    expect(eligibleButton).toBeTruthy();
+    expect(eligibleButton?.props.disabled).toBe(true);
+    expect(getTextContent(eligibleButton)).toBe('Remind');
+
+    await act(async () => {
+      eligibleButton?.props.onPress();
+    });
+
+    expect(mockedSendBillPaymentReminder).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Connect to the internet to send payment reminders.',
+    );
   });
 
   it('hides reminder actions when viewer is not the creator', async () => {
@@ -258,7 +331,7 @@ describe('BillDetailScreen payment reminders', () => {
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-eligible')).toBeUndefined();
   });
 
-  it('submits reminder action and disables it while in flight', async () => {
+  it('opens the reminder result modal in a sending state and disables the action while in flight', async () => {
     let resolveReminder: (value: { status: 'sent' }) => void = () => undefined;
     mockedSendBillPaymentReminder.mockReturnValue(
       new Promise((resolve) => {
@@ -274,13 +347,58 @@ describe('BillDetailScreen payment reminders', () => {
 
     expect(mockedSendBillPaymentReminder).toHaveBeenCalledWith('bill_1', 'eligible');
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.disabled).toBe(true);
+    const modal = findReminderResultModal(renderer);
+    expect(modal.props.visible).toBe(true);
+    expect(modal.props.title).toBe('Sending Reminder');
+    expect(modal.props.description).toBe('Sending a payment reminder to Alex.');
+    expect(modal.props.primaryAction).toBeUndefined();
 
     await act(async () => {
       resolveReminder({ status: 'sent' });
     });
   });
 
-  it('surfaces weekly rate limit errors through the page error toast', async () => {
+  it('updates the reminder result modal when the send succeeds', async () => {
+    const renderer = await renderBillDetail();
+
+    await act(async () => {
+      findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.onPress();
+    });
+
+    const modal = findReminderResultModal(renderer);
+    expect(modal.props.visible).toBe(true);
+    expect(modal.props.title).toBe('Reminder Sent');
+    expect(modal.props.description).toBe('Alex has been sent a payment reminder.');
+    expect(modal.props.primaryAction.label).toBe('Done');
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+  });
+
+  it('optimistically marks the participant reminded and invalidates bill detail after send succeeds', async () => {
+    const bill = buildBill();
+    const renderer = await renderBillDetail(bill);
+
+    await act(async () => {
+      findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.onPress();
+    });
+
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['feature', 'bills', 'detail', 'bill_1'],
+      expect.any(Function),
+    );
+    const updater = queryClient.setQueryData.mock.calls[0]?.[1] as (cachedBill: typeof bill) => typeof bill;
+    const updatedBill = updater(bill);
+    expect(updatedBill.participants.find((participant) => participant.id === 'eligible')).toMatchObject({
+      paymentReminderAvailable: false,
+    });
+    expect(
+      updatedBill.participants.find((participant) => participant.id === 'eligible')?.paymentReminderAvailableAt,
+    ).toEqual(expect.any(String));
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'bills', 'detail', 'bill_1'],
+    });
+  });
+
+  it('shows weekly rate limits in the reminder result modal instead of the page error toast', async () => {
     mockedSendBillPaymentReminder.mockRejectedValue(new Error('payment reminder already sent this week'));
     const renderer = await renderBillDetail();
 
@@ -288,7 +406,46 @@ describe('BillDetailScreen payment reminders', () => {
       findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.onPress();
     });
 
-    const toast = renderer.root.findByType('PageErrorToast');
-    expect(toast.props.errorMessage).toBe('A reminder was already sent to this person this week.');
+    const modal = findReminderResultModal(renderer);
+    expect(modal.props.visible).toBe(true);
+    expect(modal.props.title).toBe('Already Sent This Week');
+    expect(modal.props.description).toBe('Alex already received a payment reminder for this bill this week.');
+    expect(modal.props.primaryAction.label).toBe('Done');
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
   });
+
+  it.each([
+    [
+      'skipped_preference_disabled',
+      'Reminder Not Sent',
+      'Alex has payment reminders turned off.',
+    ],
+    [
+      'skipped_no_active_device',
+      'Reminder Not Sent',
+      'Alex has no active notification device.',
+    ],
+    [
+      'provider_failed',
+      'Reminder Not Sent',
+      'The notification provider could not send the reminder. Try again in a moment.',
+    ],
+  ])(
+    'shows the %s outcome in the reminder result modal instead of the page error toast',
+    async (status, title, description) => {
+      mockedSendBillPaymentReminder.mockResolvedValue({ status });
+      const renderer = await renderBillDetail();
+
+      await act(async () => {
+        findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.onPress();
+      });
+
+      const modal = findReminderResultModal(renderer);
+      expect(modal.props.visible).toBe(true);
+      expect(modal.props.title).toBe(title);
+      expect(modal.props.description).toBe(description);
+      expect(modal.props.primaryAction.label).toBe('Done');
+      expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+    },
+  );
 });

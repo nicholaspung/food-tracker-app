@@ -46,6 +46,8 @@ interface BillParticipantApiResponse {
   amountOwed: number;
   customTipContribution?: number | null;
   paidStatus?: BillParticipantRecord['paidStatus'];
+  paymentReminderAvailable?: boolean;
+  paymentReminderAvailableAt?: string | null;
 }
 
 interface BillApiResponse {
@@ -113,6 +115,11 @@ function mapBillParticipantApiRecord(record: BillParticipantApiResponse): BillPa
     amountOwed: sanitizeCurrency(record.amountOwed),
     customTipContribution,
     paidStatus: record.paidStatus === 'paid' ? 'paid' : 'pending',
+    paymentReminderAvailable: record.paymentReminderAvailable,
+    paymentReminderAvailableAt:
+      typeof record.paymentReminderAvailableAt === 'string'
+        ? record.paymentReminderAvailableAt.trim() || null
+        : null,
   };
 }
 

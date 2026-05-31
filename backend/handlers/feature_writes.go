@@ -149,13 +149,15 @@ type billItemSplitWriteRequest struct {
 }
 
 type billParticipantResponse struct {
-	ID                    string   `json:"id"`
-	Name                  string   `json:"name"`
-	UserID                string   `json:"userId,omitempty"`
-	FriendshipID          string   `json:"friendshipId,omitempty"`
-	AmountOwed            float64  `json:"amountOwed"`
-	CustomTipContribution *float64 `json:"customTipContribution,omitempty"`
-	PaidStatus            string   `json:"paidStatus"`
+	ID                         string   `json:"id"`
+	Name                       string   `json:"name"`
+	UserID                     string   `json:"userId,omitempty"`
+	FriendshipID               string   `json:"friendshipId,omitempty"`
+	AmountOwed                 float64  `json:"amountOwed"`
+	CustomTipContribution      *float64 `json:"customTipContribution,omitempty"`
+	PaidStatus                 string   `json:"paidStatus"`
+	PaymentReminderAvailable   bool     `json:"paymentReminderAvailable"`
+	PaymentReminderAvailableAt *string  `json:"paymentReminderAvailableAt"`
 }
 
 type billItemSplitResponse struct {
@@ -1638,6 +1640,8 @@ func buildBillResponse(app core.App, billRecord *core.Record, viewerUserID strin
 	responseParticipants := make([]billParticipantResponse, 0, len(participants))
 	for _, participant := range participants {
 		userID := strings.TrimSpace(participant.GetString("user"))
+		amountOwed := sanitizeCurrency(participant.GetFloat("amount_owed"))
+		paidStatus := normalizePaidStatus(participant.GetString("paid_status"))
 		name := strings.TrimSpace(participant.GetString("participant_name"))
 		if name == "" {
 			if userRecord := userRecordsByID[userID]; userRecord != nil {
@@ -1654,14 +1658,24 @@ func buildBillResponse(app core.App, billRecord *core.Record, viewerUserID strin
 			name = "Unknown"
 		}
 
+		paymentReminderAvailability := billPaymentReminderAvailability{Available: false}
+		if userID != "" && userID != billRecord.GetString("creator_user") && paidStatus == "pending" && amountOwed > 0 {
+			paymentReminderAvailability, err = getBillPaymentReminderAvailability(app, participant.Id, userID, time.Now().UTC())
+			if err != nil {
+				return billResponse{}, err
+			}
+		}
+
 		responseParticipants = append(responseParticipants, billParticipantResponse{
-			ID:                    participant.Id,
-			Name:                  name,
-			UserID:                userID,
-			FriendshipID:          friendshipIDsByUserID[userID],
-			AmountOwed:            sanitizeCurrency(participant.GetFloat("amount_owed")),
-			CustomTipContribution: sanitizeOptionalCurrencyResponse(participant.Get("custom_tip_contribution")),
-			PaidStatus:            normalizePaidStatus(participant.GetString("paid_status")),
+			ID:                         participant.Id,
+			Name:                       name,
+			UserID:                     userID,
+			FriendshipID:               friendshipIDsByUserID[userID],
+			AmountOwed:                 amountOwed,
+			CustomTipContribution:      sanitizeOptionalCurrencyResponse(participant.Get("custom_tip_contribution")),
+			PaidStatus:                 paidStatus,
+			PaymentReminderAvailable:   paymentReminderAvailability.Available,
+			PaymentReminderAvailableAt: paymentReminderAvailability.AvailableAt,
 		})
 	}
 

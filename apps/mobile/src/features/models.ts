@@ -332,6 +332,8 @@ export interface BillParticipantRecord {
   amountOwed: number;
   customTipContribution?: number;
   paidStatus: 'pending' | 'paid';
+  paymentReminderAvailable?: boolean;
+  paymentReminderAvailableAt?: string | null;
 }
 
 export type BillExtrasSplitMode = 'proportional' | 'equal';

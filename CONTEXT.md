@@ -267,6 +267,7 @@ _Avoid_: notification inbox, user notification history
 - The Bill **In-App Indicator** stays visible while the signed-in user owes money on any active Bill.
 - A **Bill Payment Reminder** is an explicit payer action, not an automatic recurring reminder.
 - A **Bill Payment Reminder** can be sent to the same Bill participant at most once per week.
+- Only a successfully sent **Bill Payment Reminder** consumes the weekly reminder slot.
 - A **Bill Payment Reminder** is unavailable for custom participants and participants who are already paid.
 - Directly invited tasting session users receive **Remote Device Notifications** when a leader creates or resends their invite.
 - Tasting session leaders receive an **In-App Indicator** when an active session has a shareable invite code or open invite window.
