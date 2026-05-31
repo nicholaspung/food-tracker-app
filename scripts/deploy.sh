@@ -248,8 +248,9 @@ run_pnpm() {
     "${PNPM_CMD[@]}" "$@"
 }
 
-USER_CANCELLED=false
+LOCK_ACQUIRED=false
 ROLLBACK_REQUIRED=false
+ROLLBACK_COMPLETED=false
 
 site_keys() {
     echo "marketing app admin"
@@ -393,7 +394,6 @@ validate_site_source() {
 handle_interrupt() {
     echo ""
     warn "Deployment interrupted by user (CTRL+C)"
-    USER_CANCELLED=true
 
     echo -n "Do you want to rollback the deployment? (y/N): "
     read -t 10 -r response || response="n"
@@ -401,31 +401,72 @@ handle_interrupt() {
     if [[ "$response" =~ ^[Yy]$ ]]; then
         warn "User requested rollback..."
         rollback
+        ROLLBACK_COMPLETED=true
+        exit 130
     else
         warn "Skipping rollback. Cleaning up and exiting..."
-        rm -f "$LOCK_FILE"
         error "Deployment cancelled by user. System may be in an inconsistent state."
         exit 130
     fi
 }
 
-cleanup() {
-    local exit_code=$?
+handle_signal() {
+    local signal_name="$1"
+    local exit_code="$2"
 
-    if [ "$USER_CANCELLED" = true ]; then
+    echo ""
+    warn "Deployment interrupted by $signal_name"
+    exit "$exit_code"
+}
+
+cleanup_lock() {
+    if [ "$LOCK_ACQUIRED" != true ]; then
         return
     fi
 
+    if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$LOCK_FILE"
+    else
+        warn "Lock file was changed by another process; leaving it in place: $LOCK_FILE"
+    fi
+}
+
+acquire_lock() {
+    local existing_pid=""
+
+    if [ -f "$LOCK_FILE" ]; then
+        existing_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
+        if [[ "$existing_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$existing_pid" 2>/dev/null; then
+            warn "Removing stale deployment lock for exited process $existing_pid: $LOCK_FILE"
+            rm -f "$LOCK_FILE"
+        fi
+    fi
+
+    if (set -o noclobber; echo $$ > "$LOCK_FILE") 2>/dev/null; then
+        LOCK_ACQUIRED=true
+        return
+    fi
+
+    error "Deployment already in progress (lock file exists: $LOCK_FILE)"
+    error "If no deployment is running, remove the lock file manually"
+    exit 1
+}
+
+cleanup() {
+    local exit_code=$?
+
+    trap - EXIT INT TERM HUP QUIT
+
     if [ $exit_code -ne 0 ]; then
         error "Deployment failed with exit code $exit_code"
-        if [ "$ROLLBACK_REQUIRED" = true ]; then
+        if [ "$ROLLBACK_REQUIRED" = true ] && [ "$ROLLBACK_COMPLETED" != true ]; then
             rollback
         else
             warn "Skipping rollback because no deploy mutations were applied yet"
         fi
     fi
 
-    rm -f "$LOCK_FILE"
+    cleanup_lock
     exit $exit_code
 }
 
@@ -464,19 +505,16 @@ rollback() {
     error "Rollback complete. System restored to previous state."
 }
 
-trap cleanup EXIT TERM
+trap cleanup EXIT
 trap handle_interrupt INT
+trap 'handle_signal TERM 143' TERM
+trap 'handle_signal HUP 129' HUP
+trap 'handle_signal QUIT 131' QUIT
 
 preflight_checks() {
     step "Running pre-flight checks..."
 
-    if [ -f "$LOCK_FILE" ]; then
-        error "Deployment already in progress (lock file exists: $LOCK_FILE)"
-        error "If no deployment is running, remove the lock file manually"
-        exit 1
-    fi
-
-    echo $$ > "$LOCK_FILE"
+    acquire_lock
 
     for cmd in git docker curl systemctl node corepack; do
         if ! command -v "$cmd" &> /dev/null; then
