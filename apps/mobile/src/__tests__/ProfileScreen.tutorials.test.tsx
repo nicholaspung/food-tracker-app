@@ -282,4 +282,17 @@ describe('ProfileScreen tutorials', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('Tutorials');
   });
+
+  it('opens notification preferences from Invites & Settings', async () => {
+    const renderer = await renderProfileScreen();
+
+    const notificationRow = findRow(renderer, 'profile-notification-preferences-link');
+    expect(notificationRow.props.title).toBe('Notifications');
+
+    await act(async () => {
+      notificationRow.props.onPress();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('NotificationPreferences');
+  });
 });

@@ -40,6 +40,18 @@ type notificationDeviceRegistrationRequest struct {
 	PushToken string `json:"pushToken"`
 }
 
+type notificationPreferencesRequest struct {
+	TastingInvitesEnabled         bool `json:"tastingInvitesEnabled"`
+	BillOwedEnabled               bool `json:"billOwedEnabled"`
+	MonthlyFriendsActivityEnabled bool `json:"monthlyFriendsActivityEnabled"`
+}
+
+type notificationPreferencesResponse struct {
+	TastingInvitesEnabled         bool `json:"tastingInvitesEnabled"`
+	BillOwedEnabled               bool `json:"billOwedEnabled"`
+	MonthlyFriendsActivityEnabled bool `json:"monthlyFriendsActivityEnabled"`
+}
+
 type monthlyFriendsActivityTestRequest struct {
 	Force  bool   `json:"force"`
 	Month  string `json:"month"`
@@ -247,6 +259,39 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, map[string]any{"success": true})
 	}).Bind(apis.RequireAuth())
 
+	se.Router.GET("/api/notification-preferences", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+
+		preferences, err := getNotificationPreferencesResponse(app, authRecord.Id)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load notification preferences", err)
+		}
+
+		return e.JSON(200, preferences)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.PUT("/api/notification-preferences", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+
+		requestBody := notificationPreferencesRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		preferences, err := saveNotificationPreferencesResponse(app, authRecord.Id, requestBody)
+		if err != nil {
+			return apis.NewApiError(500, "failed to save notification preferences", err)
+		}
+
+		return e.JSON(200, preferences)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.DELETE("/api/notification-devices/{deviceId}", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
 		if err != nil {
@@ -355,6 +400,66 @@ func DeliverMonthlyFriendsActivityNotifications(app core.App, now time.Time) (Mo
 	}
 
 	return result, nil
+}
+
+func getNotificationPreferencesResponse(app core.App, userID string) (notificationPreferencesResponse, error) {
+	record, err := findNotificationPreferencesRecord(app, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return notificationPreferencesResponse{
+				TastingInvitesEnabled:         true,
+				BillOwedEnabled:               true,
+				MonthlyFriendsActivityEnabled: true,
+			}, nil
+		}
+		return notificationPreferencesResponse{}, err
+	}
+
+	return notificationPreferencesResponse{
+		TastingInvitesEnabled:         record.GetBool("tasting_invites_enabled"),
+		BillOwedEnabled:               record.GetBool("bill_owed_enabled"),
+		MonthlyFriendsActivityEnabled: record.GetBool("monthly_friends_activity_enabled"),
+	}, nil
+}
+
+func saveNotificationPreferencesResponse(
+	app core.App,
+	userID string,
+	input notificationPreferencesRequest,
+) (notificationPreferencesResponse, error) {
+	record, err := findNotificationPreferencesRecord(app, userID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return notificationPreferencesResponse{}, err
+		}
+		collection, collectionErr := app.FindCollectionByNameOrId("notification_preferences")
+		if collectionErr != nil {
+			return notificationPreferencesResponse{}, collectionErr
+		}
+		record = core.NewRecord(collection)
+		record.Set("user", strings.TrimSpace(userID))
+	}
+
+	record.Set("tasting_invites_enabled", input.TastingInvitesEnabled)
+	record.Set("bill_owed_enabled", input.BillOwedEnabled)
+	record.Set("monthly_friends_activity_enabled", input.MonthlyFriendsActivityEnabled)
+	if err := app.Save(record); err != nil {
+		return notificationPreferencesResponse{}, err
+	}
+
+	return notificationPreferencesResponse{
+		TastingInvitesEnabled:         record.GetBool("tasting_invites_enabled"),
+		BillOwedEnabled:               record.GetBool("bill_owed_enabled"),
+		MonthlyFriendsActivityEnabled: record.GetBool("monthly_friends_activity_enabled"),
+	}, nil
+}
+
+func findNotificationPreferencesRecord(app core.App, userID string) (*core.Record, error) {
+	return app.FindFirstRecordByFilter(
+		"notification_preferences",
+		"user = {:user}",
+		dbx.Params{"user": strings.TrimSpace(userID)},
+	)
 }
 
 func listMonthlyFriendsActivityCandidates(app core.App, monthStart time.Time, monthEnd time.Time) ([]monthlyFriendsActivityCandidate, error) {

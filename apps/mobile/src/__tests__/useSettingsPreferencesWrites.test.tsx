@@ -3,10 +3,9 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
-  createCollectionRecord,
   getAuthRecord,
-  listCollectionPage,
   saveAuthRecord,
+  sendApiRequest,
   updateCollectionRecord,
 } from '../features/store/pocketbaseGateway';
 import { invalidateSettingsQueries, settingsQueryKeys } from '../features/store/settingsQuery';
@@ -18,10 +17,9 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
-  createCollectionRecord: jest.fn(),
   getAuthRecord: jest.fn(),
-  listCollectionPage: jest.fn(),
   saveAuthRecord: jest.fn(),
+  sendApiRequest: jest.fn(),
   updateCollectionRecord: jest.fn(),
 }));
 
@@ -38,9 +36,8 @@ jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
 
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedGetAuthRecord = getAuthRecord as jest.MockedFunction<typeof getAuthRecord>;
-const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFunction<typeof createCollectionRecord>;
-const mockedListCollectionPage = listCollectionPage as jest.MockedFunction<typeof listCollectionPage>;
 const mockedSaveAuthRecord = saveAuthRecord as jest.MockedFunction<typeof saveAuthRecord>;
+const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
 const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 const mockedInvalidateSettingsQueries =
   invalidateSettingsQueries as jest.MockedFunction<typeof invalidateSettingsQueries>;
@@ -71,15 +68,11 @@ describe('useSettingsPreferencesWrites', () => {
     mockedUseQueryClient.mockReturnValue(queryClient as never);
     mockedGetAuthRecord.mockReturnValue({ id: 'user_1' } as never);
     mockedInvalidateSettingsQueries.mockResolvedValue(undefined);
-    mockedCreateCollectionRecord.mockResolvedValue({ id: 'notification-preferences-1' } as never);
-    mockedListCollectionPage.mockResolvedValue({
-      items: [{ id: 'notification-preferences-1' }],
-      page: 1,
-      pageSize: 1,
-      totalItems: 1,
-      totalPages: 1,
-      hasNextPage: false,
-    });
+    mockedSendApiRequest.mockResolvedValue({
+      billOwedEnabled: true,
+      monthlyFriendsActivityEnabled: true,
+      tastingInvitesEnabled: false,
+    } as never);
     mockedUpdateCollectionRecord.mockResolvedValue({
       id: 'user_1',
       defaultVisitVisibility: 'friends',
@@ -156,14 +149,16 @@ describe('useSettingsPreferencesWrites', () => {
         defaultHomeFeedTypeFilter: 'all',
       }),
     );
-    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
-      'notification_preferences',
-      'notification-preferences-1',
-      {
-        bill_owed_enabled: true,
-        monthly_friends_activity_enabled: true,
-        tasting_invites_enabled: false,
-      },
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/notification-preferences',
+      expect.objectContaining({
+        body: {
+          billOwedEnabled: true,
+          monthlyFriendsActivityEnabled: true,
+          tastingInvitesEnabled: false,
+        },
+        method: 'PUT',
+      }),
     );
     expect(mockedSaveAuthRecord).toHaveBeenCalledWith(expect.objectContaining({ id: 'user_1' }));
     expect(queryClient.setQueryData).toHaveBeenCalledWith(settingsQueryKeys.detail('user_1'), {

@@ -59,6 +59,7 @@ import {
   LoginScreen,
   MiscScreen,
   MoreFeatureOnboardingScreen,
+  NotificationPreferencesScreen,
   RestaurantDiscoveryRestaurantScreen,
   RestaurantDiscoveryScreen,
   NoteEditorScreen,
@@ -262,6 +263,7 @@ export type RootStackParamList = {
   PrivacyPolicy: undefined;
   QRScanner: undefined;
   Settings: undefined;
+  NotificationPreferences: undefined;
   Feedback: undefined;
   CreateFeedback: undefined;
   FeedbackDetail: { feedbackId: string };
@@ -349,6 +351,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'TermsOfService',
   'PrivacyPolicy',
   'Settings',
+  'NotificationPreferences',
   'Feedback',
   'CreateFeedback',
   'FeedbackDetail',
@@ -843,6 +846,11 @@ export function RootNavigator() {
                   />
                   <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
                   <Stack.Screen component={SettingsScreen} name="Settings" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={NotificationPreferencesScreen}
+                    name="NotificationPreferences"
+                    options={{ headerShown: false }}
+                  />
                   <Stack.Screen component={FeedbackScreen} name="Feedback" options={{ headerShown: false }} />
                   <Stack.Screen
                     component={CreateFeedbackScreen}

@@ -26,6 +26,7 @@ export * from './ListsScreen';
 export * from './LoginScreen';
 export * from './MiscScreen';
 export * from './MoreFeatureOnboardingScreen';
+export * from './NotificationPreferencesScreen';
 export * from './NoteEditorScreen';
 export * from './NotesScreen';
 export * from './OnboardingScreen';

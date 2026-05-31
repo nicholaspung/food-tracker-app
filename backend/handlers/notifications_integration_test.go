@@ -96,6 +96,67 @@ func TestNotificationDeviceRegistrationUpsertsAndLogoutCleanupDeactivates(t *tes
 	}
 }
 
+func TestNotificationPreferencesApiDefaultsAndSavesForAuthenticatedUser(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, false)
+
+	defaultResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notification-preferences",
+		token,
+		"",
+	)
+	if defaultResponse.Code != http.StatusOK {
+		t.Fatalf("expected notification preferences defaults to load, got %d: %s", defaultResponse.Code, defaultResponse.Body.String())
+	}
+	defaultPayload := parseJSONResponse[map[string]any](t, defaultResponse.Body.Bytes())
+	if defaultPayload["tastingInvitesEnabled"] != true ||
+		defaultPayload["billOwedEnabled"] != true ||
+		defaultPayload["monthlyFriendsActivityEnabled"] != true {
+		t.Fatalf("unexpected default notification preferences payload: %#v", defaultPayload)
+	}
+
+	saveResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/notification-preferences",
+		token,
+		`{"tastingInvitesEnabled":false,"billOwedEnabled":true,"monthlyFriendsActivityEnabled":false}`,
+	)
+	if saveResponse.Code != http.StatusOK {
+		t.Fatalf("expected notification preferences save to succeed, got %d: %s", saveResponse.Code, saveResponse.Body.String())
+	}
+	savePayload := parseJSONResponse[map[string]any](t, saveResponse.Body.Bytes())
+	if savePayload["tastingInvitesEnabled"] != false ||
+		savePayload["billOwedEnabled"] != true ||
+		savePayload["monthlyFriendsActivityEnabled"] != false {
+		t.Fatalf("unexpected saved notification preferences payload: %#v", savePayload)
+	}
+
+	records, err := server.app.FindRecordsByFilter(
+		"notification_preferences",
+		"user = {:user}",
+		"",
+		10,
+		0,
+		map[string]any{"user": user.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load saved notification preferences: %v", err)
+	}
+	if len(records) != 1 ||
+		records[0].GetBool("tasting_invites_enabled") ||
+		!records[0].GetBool("bill_owed_enabled") ||
+		records[0].GetBool("monthly_friends_activity_enabled") {
+		t.Fatalf("unexpected saved notification preferences record: %#v", records)
+	}
+}
+
 func TestTastingInviteNotificationDeliveryCreateAndResend(t *testing.T) {
 	sender := &recordingNotificationPushSender{}
 	restore := handlers.SetNotificationPushSenderForTests(sender)

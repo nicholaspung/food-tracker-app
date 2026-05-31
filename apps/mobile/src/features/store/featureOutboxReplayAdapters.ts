@@ -2,7 +2,7 @@ import type { RecordModel } from 'pocketbase';
 
 import { BILL_WRITE_OUTBOX_REPLAY_ADAPTERS } from './billWritesOutboxReplayAdapter';
 import type { FeatureOutboxOperationName, FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
-import { escapeFilterValue, type FeatureWriteRequestOptions } from './featureStoreShared';
+import { type FeatureWriteRequestOptions } from './featureStoreShared';
 import {
   addRestaurantVisitRatingsToList,
   convertVisitItemToFoodProduct,
@@ -41,12 +41,11 @@ import {
   getMobileOnboardingState,
 } from './onboardingStore';
 import {
-  createCollectionRecord,
   getCollectionRecord,
-  listCollectionPage,
   saveAuthRecord,
   updateCollectionRecord,
 } from './pocketbaseGateway';
+import { saveNotificationPreferences } from './notificationPreferencesStore';
 
 type FeatureOutboxReplayAdapter = (
   payload: unknown,
@@ -214,35 +213,22 @@ async function replaySettingsPreferencesSave(
       headers: requestOptions.headers,
     },
   );
-  await replayNotificationPreferencesSave(settingsPayload);
+  await replayNotificationPreferencesSave(settingsPayload, requestOptions);
   saveAuthRecord(updatedRecord);
 }
 
 async function replayNotificationPreferencesSave(
   settingsPayload: FeatureOutboxOperationPayloadMap['settings.visibility.save'],
+  requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const payload = {
-    bill_owed_enabled: settingsPayload.bill_owed_enabled,
-    monthly_friends_activity_enabled: settingsPayload.monthly_friends_activity_enabled,
-    tasting_invites_enabled: settingsPayload.tasting_invites_enabled,
-  };
-  const response = await listCollectionPage<{ id?: string }>(
-    'notification_preferences',
+  await saveNotificationPreferences(
     {
-      filter: `user = "${escapeFilterValue(settingsPayload.userId)}"`,
-      pageSize: 1,
+      notificationBillsEnabled: settingsPayload.bill_owed_enabled,
+      notificationMonthlyFriendsActivityEnabled: settingsPayload.monthly_friends_activity_enabled,
+      notificationTastingInvitesEnabled: settingsPayload.tasting_invites_enabled,
     },
+    requestOptions,
   );
-  const existingRecordId = response.items[0]?.id;
-  if (existingRecordId) {
-    await updateCollectionRecord('notification_preferences', existingRecordId, payload);
-    return;
-  }
-
-  await createCollectionRecord('notification_preferences', {
-    user: settingsPayload.userId,
-    ...payload,
-  });
 }
 
 async function replayMainOnboardingComplete(

@@ -11,14 +11,17 @@ import {
   type HomeFeedDefaultSort,
   type HomeFeedDefaultTypeFilter,
 } from './homeFeedPreferences';
-import { escapeFilterValue } from './featureStoreShared';
 import {
-  createCollectionRecord,
   getAuthRecord,
-  listCollectionPage,
   saveAuthRecord,
   updateCollectionRecord,
 } from './pocketbaseGateway';
+import {
+  mapNotificationPreferences,
+  saveNotificationPreferences,
+  type NotificationPreferences,
+  type NotificationPreferencesRecord,
+} from './notificationPreferencesStore';
 import { invalidateSettingsQueries, settingsQueryKeys } from './settingsQuery';
 import {
   type OfflineAwareFeatureWriteResult,
@@ -36,20 +39,6 @@ export interface UserSettingsRecord {
   defaultHomeFeedMode?: unknown;
   defaultHomeFeedTypeFilter?: unknown;
   defaultHomeFeedSort?: unknown;
-}
-
-export interface NotificationPreferencesRecord {
-  id?: string;
-  user?: unknown;
-  tasting_invites_enabled?: unknown;
-  bill_owed_enabled?: unknown;
-  monthly_friends_activity_enabled?: unknown;
-}
-
-export interface NotificationPreferences {
-  notificationTastingInvitesEnabled: boolean;
-  notificationBillsEnabled: boolean;
-  notificationMonthlyFriendsActivityEnabled: boolean;
 }
 
 export interface UserSettings {
@@ -95,59 +84,6 @@ export function mapUserSettings(record: UserSettingsRecord): UserSettings {
     notificationPreferences: mapNotificationPreferences(record as NotificationPreferencesRecord),
     ...homeFeedDefaults,
   };
-}
-
-function mapNotificationPreferences(
-  record: NotificationPreferencesRecord | null | undefined,
-): NotificationPreferences {
-  return {
-    notificationBillsEnabled: record?.bill_owed_enabled === false ? false : true,
-    notificationMonthlyFriendsActivityEnabled:
-      record?.monthly_friends_activity_enabled === false ? false : true,
-    notificationTastingInvitesEnabled: record?.tasting_invites_enabled === false ? false : true,
-  };
-}
-
-export async function getNotificationPreferences(
-  userId: string,
-  options?: { signal?: AbortSignal },
-): Promise<NotificationPreferences> {
-  const response = await listCollectionPage<NotificationPreferencesRecord>(
-    'notification_preferences',
-    {
-      filter: `user = "${escapeFilterValue(userId)}"`,
-      pageSize: 1,
-      signal: options?.signal,
-    },
-  );
-  return mapNotificationPreferences(response.items[0]);
-}
-
-async function saveNotificationPreferences(
-  userId: string,
-  preferences: NotificationPreferences,
-): Promise<NotificationPreferencesRecord> {
-  const payload = buildNotificationPreferencesUpdate(preferences);
-  const response = await listCollectionPage<NotificationPreferencesRecord>(
-    'notification_preferences',
-    {
-      filter: `user = "${escapeFilterValue(userId)}"`,
-      pageSize: 1,
-    },
-  );
-  const existingRecordId = response.items[0]?.id;
-  if (existingRecordId) {
-    return updateCollectionRecord<NotificationPreferencesRecord>(
-      'notification_preferences',
-      existingRecordId,
-      payload,
-    );
-  }
-
-  return createCollectionRecord<NotificationPreferencesRecord>('notification_preferences', {
-    user: userId,
-    ...payload,
-  });
 }
 
 function buildNotificationPreferencesUpdate(
@@ -215,7 +151,7 @@ export function useSettingsPreferencesWrites() {
             input.userId,
             buildUserSettingsRecordUpdate(settingsUpdate),
           ).then(async (updatedUserRecord) => {
-            await saveNotificationPreferences(input.userId, input.notificationPreferences);
+            await saveNotificationPreferences(input.notificationPreferences);
             return updatedUserRecord;
           }),
       });

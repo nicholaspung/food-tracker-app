@@ -7,9 +7,6 @@ const mockReact = React;
 const mockSetPreference = jest.fn();
 const mockSaveSettings = jest.fn();
 const mockSetQueryData = jest.fn();
-const mockGetRemoteNotificationPermissionStatus = jest.fn();
-const mockRegisterCurrentRemoteNotificationDevice = jest.fn();
-const mockRequestRemoteNotificationPermission = jest.fn();
 const mockSettingsData = {
   homeFeedMode: 'mine',
   homeFeedSort: 'created',
@@ -53,12 +50,8 @@ const mockTheme = {
 } as const;
 
 jest.mock('react-native', () => ({
-  Linking: {
-    openSettings: jest.fn(),
-  },
   Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Pressable', props, children),
-  Switch: (props: Record<string, unknown>) => mockReact.createElement('Switch', props),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
 }));
@@ -129,13 +122,6 @@ jest.mock('../features', () => ({
   useSettingsPreferencesWrites: () => ({
     saveSettingsPreferences: mockSaveSettings,
   }),
-}));
-
-jest.mock('../notifications/notificationInteraction', () => ({
-  getRemoteNotificationPermissionStatus: () => mockGetRemoteNotificationPermissionStatus(),
-  registerCurrentRemoteNotificationDevice: (...args: unknown[]) =>
-    mockRegisterCurrentRemoteNotificationDevice(...args),
-  requestRemoteNotificationPermission: () => mockRequestRemoteNotificationPermission(),
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
@@ -210,12 +196,6 @@ describe('SettingsScreen', () => {
     mockSetPreference.mockClear();
     mockSaveSettings.mockClear();
     mockSetQueryData.mockClear();
-    mockGetRemoteNotificationPermissionStatus.mockReset();
-    mockRegisterCurrentRemoteNotificationDevice.mockReset();
-    mockRequestRemoteNotificationPermission.mockReset();
-    mockGetRemoteNotificationPermissionStatus.mockResolvedValue('granted');
-    mockRegisterCurrentRemoteNotificationDevice.mockResolvedValue(true);
-    mockRequestRemoteNotificationPermission.mockResolvedValue('granted');
     mockSettingsData.notificationPreferences.notificationBillsEnabled = true;
     mockSettingsData.notificationPreferences.notificationMonthlyFriendsActivityEnabled = true;
     mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = true;
@@ -313,91 +293,4 @@ describe('SettingsScreen', () => {
     });
   });
 
-  it('renders notification preference toggles and saves changed values separately from in-app indicators', async () => {
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = create(
-        <SettingsScreen
-          navigation={{ navigate: jest.fn() } as never}
-          route={{ key: 'Settings-route', name: 'Settings' } as never}
-        />,
-      );
-      await Promise.resolve();
-    });
-
-    const sectionCards = renderer.root.findAllByType('SectionCard');
-    expect(sectionCards.map((section: any) => section.props.title)).toContain('Notification Preferences');
-
-    await act(async () => {
-      renderer.root.findByProps({ testID: 'settings-notification-bills-toggle' }).props.onValueChange(false);
-      await Promise.resolve();
-    });
-
-    const saveAction = renderer.root.findByType('BackHeaderScreenScaffold').props.primaryAction;
-    expect(saveAction.disabled).toBe(false);
-
-    await act(async () => {
-      saveAction.onPress();
-      await Promise.resolve();
-    });
-
-    expect(mockRequestRemoteNotificationPermission).not.toHaveBeenCalled();
-    expect(mockSaveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        notificationPreferences: {
-          notificationBillsEnabled: false,
-          notificationMonthlyFriendsActivityEnabled: true,
-          notificationTastingInvitesEnabled: true,
-        },
-      }),
-    );
-  });
-
-  it('requests OS permission when turning a notification preference on', async () => {
-    mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = false;
-    mockGetRemoteNotificationPermissionStatus.mockResolvedValue('undetermined');
-    mockRequestRemoteNotificationPermission.mockResolvedValue('granted');
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = create(
-        <SettingsScreen
-          navigation={{ navigate: jest.fn() } as never}
-          route={{ key: 'Settings-route', name: 'Settings' } as never}
-        />,
-      );
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      renderer.root.findByProps({ testID: 'settings-notification-tasting-invites-toggle' }).props.onValueChange(true);
-      await Promise.resolve();
-    });
-
-    expect(mockRequestRemoteNotificationPermission).toHaveBeenCalledTimes(1);
-    expect(mockRegisterCurrentRemoteNotificationDevice).toHaveBeenCalledWith('settings');
-    expect(renderer.root.findByProps({ testID: 'settings-notification-tasting-invites-toggle' }).props.value).toBe(true);
-  });
-
-  it('shows denied permission state without hiding saved preference values', async () => {
-    mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = true;
-    mockGetRemoteNotificationPermissionStatus.mockResolvedValue('denied');
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = create(
-        <SettingsScreen
-          navigation={{ navigate: jest.fn() } as never}
-          route={{ key: 'Settings-route', name: 'Settings' } as never}
-        />,
-      );
-      await Promise.resolve();
-    });
-
-    const tastingToggle = renderer.root.findByProps({ testID: 'settings-notification-tasting-invites-toggle' });
-    expect(tastingToggle.props.value).toBe(true);
-    expect(tastingToggle.props.disabled).toBe(true);
-    expect(renderer.root.findAllByType('Card').some((card: any) => card.props.tone === 'warning')).toBe(true);
-  });
 });

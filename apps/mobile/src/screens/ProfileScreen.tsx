@@ -960,6 +960,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             ) : null}
 
             <OptionListRow
+              iconName="notifications-outline"
+              onPress={() => {
+                navigation.navigate("NotificationPreferences");
+              }}
+              subtitle="Remote alerts for invites, bills, and friends"
+              testID="profile-notification-preferences-link"
+              title="Notifications"
+            />
+
+            <OptionListRow
               iconName="settings-outline"
               isLast
               onPress={() => {
