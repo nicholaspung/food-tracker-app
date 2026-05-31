@@ -45,7 +45,7 @@ const useStyles = createThemedStyles((theme) => ({
     flex: 1,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
     padding: theme.spacing.md,
   },

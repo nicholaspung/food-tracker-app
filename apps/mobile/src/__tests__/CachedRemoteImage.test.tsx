@@ -1,4 +1,3 @@
-import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { CachedRemoteImage } from '../components/shared/CachedRemoteImage';

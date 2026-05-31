@@ -120,7 +120,7 @@ export function Screen({
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             {
               top: scrollUnderlayTopInset + topOverlayHeight,
               backgroundColor: scrollUnderlayColor,

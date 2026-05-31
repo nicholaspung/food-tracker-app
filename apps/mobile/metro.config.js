@@ -1,7 +1,21 @@
 const path = require('path');
-const { getPostHogExpoConfig } = require('posthog-react-native/metro');
+const { getDefaultConfig } = require('expo/metro-config');
 
-const config = getPostHogExpoConfig(__dirname);
+function getExpoConfig(projectRoot) {
+  try {
+    const { getPostHogExpoConfig } = require('posthog-react-native/metro');
+    return getPostHogExpoConfig(projectRoot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('DeltaBundler/Serializers')) {
+      throw error;
+    }
+
+    return getDefaultConfig(projectRoot);
+  }
+}
+
+const config = getExpoConfig(__dirname);
 const mobileNodeModules = path.resolve(__dirname, 'node_modules');
 const workspaceNodeModules = path.resolve(__dirname, '..', '..', 'node_modules');
 const workspaceRoot = path.resolve(__dirname, '..', '..');

@@ -23,7 +23,7 @@ const useStyles = createThemedStyles((theme, fill: boolean) => ({
     ...(fill ? { flex: 1 } : {}),
   },
   splitBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   splitBackdropSegment: {
     width: '100%',

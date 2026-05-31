@@ -35,7 +35,7 @@ const styles: {
   frame: { height: 200, width: 120 },
   iconFrame: { height: 80, width: 80 },
   image: { height: '100%', width: '100%' },
-  video: { ...StyleSheet.absoluteFillObject },
+  video: { ...StyleSheet.absoluteFill },
 };
 
 describe('TutorialMedia', () => {

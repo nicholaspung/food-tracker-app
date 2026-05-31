@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useColorScheme } from 'react-native';
 

@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';

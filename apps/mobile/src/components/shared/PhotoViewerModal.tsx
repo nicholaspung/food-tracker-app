@@ -106,7 +106,7 @@ const useStyles = createThemedStyles((
 const slideStyles = StyleSheet.create({
   image: {
     resizeMode: 'contain',
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   slide: {
     alignItems: 'center',

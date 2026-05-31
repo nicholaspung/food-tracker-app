@@ -62,9 +62,9 @@
     "turbo": "^2.9.10"
   },
   "dependencies": {
-    "expo": "55.0.24",
-    "react": "19.2.0",
-    "react-native": "0.83.6"
+    "expo": "56.0.8",
+    "react": "19.2.3",
+    "react-native": "0.85.3"
   },
   "pnpm": {
     "overrides": {
@@ -85,16 +85,6 @@
       "socket.io-parser": "4.2.6",
       "tar": "7.5.11",
       "yaml": "2.8.3"
-    },
-    "patchedDependencies": {
-      "expo-sqlite@55.0.16": "patches/expo-sqlite@55.0.16.patch"
-    },
-    "packageExtensions": {
-      "@react-native-community/datetimepicker@8.6.0": {
-        "dependencies": {
-          "@expo/config-plugins": "55.0.10"
-        }
-      }
     }
   }
 }

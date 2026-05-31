@@ -64,7 +64,7 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'flex-end',
   },
   datePickerModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   datePickerModalSheet: {
     backgroundColor: theme.colors.background.surface,

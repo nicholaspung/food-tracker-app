@@ -107,7 +107,7 @@ export function TutorialMedia({
   const videoUri = media?.videoUri;
   const hasMedia = Boolean(posterSource || videoUri);
   const videoContentFit: VideoContentFit = imageResizeMode === 'cover' ? 'cover' : 'contain';
-  const videoStyle = styles.video ?? [styles.image as StyleProp<ViewStyle>, StyleSheet.absoluteFillObject];
+  const videoStyle = styles.video ?? [styles.image as StyleProp<ViewStyle>, StyleSheet.absoluteFill];
 
   if (!hasMedia) {
     return (

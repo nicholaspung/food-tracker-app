@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClientResponseError } from 'pocketbase';

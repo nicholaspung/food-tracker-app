@@ -7,6 +7,16 @@ const compat = new FlatCompat({
 module.exports = [
   ...compat.extends('expo'),
   {
+    rules: {
+      // Keep React Compiler-oriented lint checks disabled until the dedicated compiler rollout.
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/theme/tokens.ts'],
     rules: {
