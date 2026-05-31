@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
-import { Linking, Switch, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, Linking, Switch, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -30,7 +31,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Card, Text } from '../ui';
+import { Button, Card, Text, type CardTone } from '../ui';
 
 type NotificationPreferencesScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -42,9 +43,12 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.md,
     paddingTop: theme.spacing.sm,
   },
-  calloutActions: {
+  systemNotificationAction: {
     alignItems: 'flex-start',
     marginTop: theme.spacing.xs,
+  },
+  systemNotificationCard: {
+    gap: theme.spacing.sm,
   },
   toggleList: {
     gap: theme.spacing.sm,
@@ -68,10 +72,68 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+type SystemNotificationPermissionTone = Extract<CardTone, 'danger' | 'info' | 'success' | 'warning'>;
+
+interface SystemNotificationPermissionContent {
+  actionLabel?: string;
+  description: string;
+  statusLabel: string;
+  testID: string;
+  tone: SystemNotificationPermissionTone;
+}
+
+function getSystemNotificationPermissionContent(
+  status: RemoteNotificationPermissionStatus,
+): SystemNotificationPermissionContent {
+  switch (status) {
+    case 'granted':
+      return {
+        description: 'System notification permission is enabled on this device.',
+        statusLabel: 'Enabled',
+        testID: 'system-notification-permission-granted',
+        tone: 'success',
+      };
+    case 'denied':
+      return {
+        actionLabel: 'Open Settings',
+        description: 'System notification permission is off. Notifications cannot be delivered until permission is enabled in system settings.',
+        statusLabel: 'Off in Settings',
+        testID: 'system-notification-permission-denied',
+        tone: 'warning',
+      };
+    case 'undetermined':
+      return {
+        actionLabel: 'Enable Notifications',
+        description: 'System notification permission has not been requested for this device yet.',
+        statusLabel: 'Not Enabled',
+        testID: 'system-notification-permission-undetermined',
+        tone: 'info',
+      };
+    case 'unavailable':
+      return {
+        actionLabel: 'Retry',
+        description: 'System notification permission cannot be checked on this device right now.',
+        statusLabel: 'Unavailable',
+        testID: 'system-notification-permission-unavailable',
+        tone: 'warning',
+      };
+    case 'failed':
+    default:
+      return {
+        actionLabel: 'Retry',
+        description: 'Could not check system notification permission. Try again in a moment.',
+        statusLabel: 'Check Failed',
+        testID: 'system-notification-permission-failed',
+        tone: 'danger',
+      };
+  }
+}
+
 interface NotificationPreferenceToggleProps {
   disabled: boolean;
   label: string;
   onValueChange: (value: boolean) => void;
+  statusText: string;
   testID: string;
   value: boolean;
 }
@@ -80,6 +142,7 @@ function NotificationPreferenceToggle({
   disabled,
   label,
   onValueChange,
+  statusText,
   testID,
   value,
 }: NotificationPreferenceToggleProps) {
@@ -88,6 +151,9 @@ function NotificationPreferenceToggle({
     <View style={[styles.toggleRow, disabled ? styles.toggleRowDisabled : null]}>
       <View style={styles.toggleText}>
         <Text variant="label">{label}</Text>
+        <Text tone="secondary" variant="bodySmTight" testID={`${testID}-status`}>
+          {statusText}
+        </Text>
       </View>
       <Switch
         disabled={disabled}
@@ -97,6 +163,29 @@ function NotificationPreferenceToggle({
       />
     </View>
   );
+}
+
+function getNotificationPreferenceDeliveryStatusText(
+  isPreferenceEnabled: boolean,
+  permissionStatus: RemoteNotificationPermissionStatus,
+) {
+  if (!isPreferenceEnabled) {
+    return 'Off';
+  }
+
+  switch (permissionStatus) {
+    case 'granted':
+      return 'On';
+    case 'denied':
+      return 'On, blocked by system settings.';
+    case 'undetermined':
+      return 'On, notifications not enabled yet.';
+    case 'unavailable':
+      return 'On, delivery cannot currently be confirmed.';
+    case 'failed':
+    default:
+      return 'On, delivery cannot currently be confirmed.';
+  }
 }
 
 export function NotificationPreferencesScreen({ navigation }: NotificationPreferencesScreenProps) {
@@ -109,6 +198,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
   const [notificationMonthlyFriendsActivityEnabled, setNotificationMonthlyFriendsActivityEnabled] = useState(true);
   const [remoteNotificationPermissionStatus, setRemoteNotificationPermissionStatus] =
     useState<RemoteNotificationPermissionStatus>('undetermined');
+  const [isCheckingNotificationPermission, setIsCheckingNotificationPermission] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -132,17 +222,40 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     },
   });
 
+  const refreshNotificationPermissionStatus = useCallback(async () => {
+    setIsCheckingNotificationPermission(true);
+    const status = await getRemoteNotificationPermissionStatus();
+    setRemoteNotificationPermissionStatus(status);
+    setIsCheckingNotificationPermission(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      setIsCheckingNotificationPermission(true);
+      void getRemoteNotificationPermissionStatus().then((status) => {
+        if (isActive) {
+          setRemoteNotificationPermissionStatus(status);
+          setIsCheckingNotificationPermission(false);
+        }
+      });
+
+      return () => {
+        isActive = false;
+      };
+    }, []),
+  );
+
   useEffect(() => {
-    let isMounted = true;
-    void getRemoteNotificationPermissionStatus().then((status) => {
-      if (isMounted) {
-        setRemoteNotificationPermissionStatus(status);
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshNotificationPermissionStatus();
       }
     });
     return () => {
-      isMounted = false;
+      subscription.remove();
     };
-  }, []);
+  }, [refreshNotificationPermissionStatus]);
 
   useEffect(() => {
     if (!settingsQuery.data) {
@@ -176,6 +289,9 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     notificationTastingInvitesEnabled,
     settingsQuery.data,
   ]);
+
+  const canOptInToNotificationPreferences =
+    remoteNotificationPermissionStatus === 'granted' && !isCheckingNotificationPermission;
 
   const handleSavePreferences = async () => {
     if (!user?.id || !settingsQuery.data) {
@@ -233,22 +349,18 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     }
   };
 
-  const handleToggleNotificationPreference = async (
+  const handleToggleNotificationPreference = (
     preferenceName: 'tasting_invites' | 'bills' | 'monthly_friends_activity',
     nextValue: boolean,
+    currentValue: boolean,
     setValue: (value: boolean) => void,
   ) => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (nextValue && remoteNotificationPermissionStatus !== 'granted') {
-      const nextPermissionStatus = await requestRemoteNotificationPermission();
-      setRemoteNotificationPermissionStatus(nextPermissionStatus);
-      if (nextPermissionStatus !== 'granted') {
-        setErrorMessage('Notification permission is off. Enable notifications in system settings to turn on notifications.');
-        return;
-      }
-      void registerCurrentRemoteNotificationDevice('settings');
+    if (nextValue && !currentValue && !canOptInToNotificationPreferences) {
+      setErrorMessage('Enable system notifications before turning on a notification preference.');
+      return;
     }
 
     trackObservabilityEvent('SETTINGS_NOTIFICATION_PREFERENCE_CHANGED', {
@@ -259,14 +371,32 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     setValue(nextValue);
   };
 
-  const notificationPermissionMessage =
-    remoteNotificationPermissionStatus === 'denied'
-      ? 'System notification permission is off. You can still turn categories off here, but notifications cannot be delivered until permission is enabled.'
-      : remoteNotificationPermissionStatus === 'unavailable'
-        ? 'System notifications are unavailable on this device. You can still turn categories off here.'
-        : remoteNotificationPermissionStatus === 'failed'
-          ? 'Could not check system notification permission. You can still turn categories off here.'
-          : null;
+  const handleSystemNotificationPermissionAction = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (remoteNotificationPermissionStatus === 'denied') {
+      void Linking.openSettings();
+      return;
+    }
+
+    if (remoteNotificationPermissionStatus === 'undetermined') {
+      setIsCheckingNotificationPermission(true);
+      const nextPermissionStatus = await requestRemoteNotificationPermission();
+      setRemoteNotificationPermissionStatus(nextPermissionStatus);
+      setIsCheckingNotificationPermission(false);
+      if (nextPermissionStatus === 'granted') {
+        void registerCurrentRemoteNotificationDevice('settings');
+      }
+      return;
+    }
+
+    await refreshNotificationPermissionStatus();
+  };
+
+  const systemNotificationPermissionContent = getSystemNotificationPermissionContent(
+    remoteNotificationPermissionStatus,
+  );
 
   const canShowSaveAction = !settingsQuery.isLoading && !settingsQuery.isError;
   const saveAction = canShowSaveAction
@@ -324,66 +454,99 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
         {!settingsQuery.isLoading && !settingsQuery.isError ? (
           <>
             <SectionCard
+              description="Controls whether this device can receive push notifications from Yummy Recs."
+              title="System Notifications"
+            >
+              <Card
+                style={styles.systemNotificationCard}
+                testID={systemNotificationPermissionContent.testID}
+                tone={systemNotificationPermissionContent.tone}
+              >
+                <Text tone={systemNotificationPermissionContent.tone} variant="label">
+                  {systemNotificationPermissionContent.statusLabel}
+                </Text>
+                <Text tone={systemNotificationPermissionContent.tone} variant="bodySmTight">
+                  {systemNotificationPermissionContent.description}
+                </Text>
+                {systemNotificationPermissionContent.actionLabel ? (
+                  <View style={styles.systemNotificationAction}>
+                    <Button
+                      disabled={isCheckingNotificationPermission}
+                      label={
+                        isCheckingNotificationPermission
+                          ? 'Checking...'
+                          : systemNotificationPermissionContent.actionLabel
+                      }
+                      loading={isCheckingNotificationPermission}
+                      onPress={() => {
+                        void handleSystemNotificationPermissionAction();
+                      }}
+                      testID="system-notification-permission-action"
+                      variant="secondary"
+                    />
+                  </View>
+                ) : null}
+              </Card>
+            </SectionCard>
+
+            <SectionCard
               description="Choose which notifications Yummy Recs may send. In-app indicators stay visible."
               title="Notification Preferences"
             >
               <View style={styles.toggleList}>
-                {notificationPermissionMessage ? (
-                  <Card tone="warning">
-                    <Text tone="warning" variant="bodySmTight">
-                      {notificationPermissionMessage}
-                    </Text>
-                    {remoteNotificationPermissionStatus === 'denied' ? (
-                      <View style={styles.calloutActions}>
-                        <Text
-                          onPress={() => {
-                            void Linking.openSettings();
-                          }}
-                          tone="warning"
-                          variant="label"
-                        >
-                          Open Settings
-                        </Text>
-                      </View>
-                    ) : null}
-                  </Card>
-                ) : null}
                 <NotificationPreferenceToggle
-                  disabled={false}
+                  disabled={!notificationTastingInvitesEnabled && !canOptInToNotificationPreferences}
                   label="Tasting invites"
                   onValueChange={(nextValue) => {
-                    void handleToggleNotificationPreference(
+                    handleToggleNotificationPreference(
                       'tasting_invites',
                       nextValue,
+                      notificationTastingInvitesEnabled,
                       setNotificationTastingInvitesEnabled,
                     );
                   }}
+                  statusText={getNotificationPreferenceDeliveryStatusText(
+                    notificationTastingInvitesEnabled,
+                    remoteNotificationPermissionStatus,
+                  )}
                   testID="notification-preferences-tasting-invites-toggle"
                   value={notificationTastingInvitesEnabled}
                 />
                 <NotificationPreferenceToggle
-                  disabled={false}
+                  disabled={!notificationBillsEnabled && !canOptInToNotificationPreferences}
                   label="Bills and payment reminders"
                   onValueChange={(nextValue) => {
-                    void handleToggleNotificationPreference(
+                    handleToggleNotificationPreference(
                       'bills',
                       nextValue,
+                      notificationBillsEnabled,
                       setNotificationBillsEnabled,
                     );
                   }}
+                  statusText={getNotificationPreferenceDeliveryStatusText(
+                    notificationBillsEnabled,
+                    remoteNotificationPermissionStatus,
+                  )}
                   testID="notification-preferences-bills-toggle"
                   value={notificationBillsEnabled}
                 />
                 <NotificationPreferenceToggle
-                  disabled={false}
+                  disabled={
+                    !notificationMonthlyFriendsActivityEnabled && !canOptInToNotificationPreferences
+                  }
                   label="Monthly friends activity"
                   onValueChange={(nextValue) => {
-                    void handleToggleNotificationPreference(
+                    handleToggleNotificationPreference(
                       'monthly_friends_activity',
                       nextValue,
+                      notificationMonthlyFriendsActivityEnabled,
                       setNotificationMonthlyFriendsActivityEnabled,
                     );
                   }}
+                  statusText={getNotificationPreferenceDeliveryStatusText(
+                    notificationMonthlyFriendsActivityEnabled,
+                    remoteNotificationPermissionStatus,
+                  )}
                   testID="notification-preferences-monthly-friends-activity-toggle"
                   value={notificationMonthlyFriendsActivityEnabled}
                 />
