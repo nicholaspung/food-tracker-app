@@ -188,7 +188,6 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     setIsSaving(true);
     trackObservabilityEvent('SETTINGS_NOTIFICATION_SAVE_STARTED', {
       source: 'NotificationPreferencesScreen',
-      userId: user.id,
       notificationTastingInvitesEnabled,
       notificationBillsEnabled,
       notificationMonthlyFriendsActivityEnabled,
@@ -214,7 +213,6 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
 
       trackObservabilityEvent('SETTINGS_NOTIFICATION_SAVE_SUCCEEDED', {
         source: 'NotificationPreferencesScreen',
-        userId: user.id,
         queued: saveResult.status === 'queued',
       });
       setSuccessMessage(
@@ -227,7 +225,6 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
       setErrorMessage(message);
       trackObservabilityEvent('SETTINGS_NOTIFICATION_SAVE_FAILED', {
         source: 'NotificationPreferencesScreen',
-        userId: user.id,
         isOnline,
         error: message,
       });

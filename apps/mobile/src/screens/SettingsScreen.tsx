@@ -153,7 +153,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setSuccessMessage(null);
     trackObservabilityEvent('SETTINGS_SAVE_STARTED', {
       source: 'SettingsScreen',
-      userId: user.id,
       visitVisibility,
       restaurantVisibility,
       listVisibility,
@@ -184,7 +183,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       if (saveResult.status === 'queued') {
         trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
           source: 'SettingsScreen',
-          userId: user.id,
           visitVisibility,
           restaurantVisibility,
           listVisibility,
@@ -199,7 +197,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
         source: 'SettingsScreen',
-        userId: user.id,
         visitVisibility,
         restaurantVisibility,
         listVisibility,
@@ -214,7 +211,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       setErrorMessage(message);
       trackObservabilityEvent('SETTINGS_SAVE_FAILED', {
         source: 'SettingsScreen',
-        userId: user.id,
         isOnline,
         error: message,
       });
