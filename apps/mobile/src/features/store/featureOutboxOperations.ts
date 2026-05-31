@@ -136,6 +136,9 @@ interface SettingsSaveOperationPayload extends HomeFeedDefaultsRecord {
   defaultVisitVisibility: 'friends' | 'private';
   defaultRestaurantVisibility: 'private' | 'friends';
   defaultListVisibility: 'private' | 'friends';
+  tasting_invites_enabled: boolean;
+  bill_owed_enabled: boolean;
+  monthly_friends_activity_enabled: boolean;
 }
 
 interface MainOnboardingCompleteOperationPayload extends CompleteMainOnboardingInput {

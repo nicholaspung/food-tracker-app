@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Linking, Switch, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -13,6 +13,7 @@ import {
 } from '../components/shared';
 import {
   getCollectionRecord,
+  getNotificationPreferences,
   mapUserSettings,
   settingsQueryKeys,
   useSettingsPreferencesWrites,
@@ -26,6 +27,12 @@ import {
   type VisitVisibility,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import {
+  getRemoteNotificationPermissionStatus,
+  registerCurrentRemoteNotificationDevice,
+  requestRemoteNotificationPermission,
+  type RemoteNotificationPermissionStatus,
+} from '../notifications/notificationInteraction';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -62,10 +69,65 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.md,
     paddingTop: theme.spacing.sm,
   },
+  calloutActions: {
+    alignItems: 'flex-start',
+    marginTop: theme.spacing.xs,
+  },
   optionList: {
     gap: theme.spacing.xs,
   },
+  toggleList: {
+    gap: theme.spacing.sm,
+  },
+  toggleRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  toggleRowDisabled: {
+    opacity: 0.6,
+  },
+  toggleText: {
+    flex: 1,
+  },
 }));
+
+interface NotificationPreferenceToggleProps {
+  disabled: boolean;
+  label: string;
+  onValueChange: (value: boolean) => void;
+  testID: string;
+  value: boolean;
+}
+
+function NotificationPreferenceToggle({
+  disabled,
+  label,
+  onValueChange,
+  testID,
+  value,
+}: NotificationPreferenceToggleProps) {
+  const styles = useStyles();
+  return (
+    <View style={[styles.toggleRow, disabled ? styles.toggleRowDisabled : null]}>
+      <View style={styles.toggleText}>
+        <Text variant="label">{label}</Text>
+      </View>
+      <Switch
+        disabled={disabled}
+        onValueChange={onValueChange}
+        testID={testID}
+        value={value}
+      />
+    </View>
+  );
+}
 
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const styles = useStyles();
@@ -79,6 +141,11 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [homeFeedMode, setHomeFeedMode] = useState<HomeFeedDefaultMode>('mine');
   const [homeFeedTypeFilter, setHomeFeedTypeFilter] = useState<HomeFeedDefaultTypeFilter>('visits');
   const [homeFeedSort, setHomeFeedSort] = useState<HomeFeedDefaultSort>('created');
+  const [notificationTastingInvitesEnabled, setNotificationTastingInvitesEnabled] = useState(true);
+  const [notificationBillsEnabled, setNotificationBillsEnabled] = useState(true);
+  const [notificationMonthlyFriendsActivityEnabled, setNotificationMonthlyFriendsActivityEnabled] = useState(true);
+  const [remoteNotificationPermissionStatus, setRemoteNotificationPermissionStatus] =
+    useState<RemoteNotificationPermissionStatus>('undetermined');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -91,10 +158,28 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         throw new Error('Authentication required.');
       }
 
-      const record = await getCollectionRecord<UserSettingsRecord>('users', user.id, { signal });
-      return mapUserSettings(record);
+      const [record, notificationPreferences] = await Promise.all([
+        getCollectionRecord<UserSettingsRecord>('users', user.id, { signal }),
+        getNotificationPreferences(user.id, { signal }),
+      ]);
+      return {
+        ...mapUserSettings(record),
+        notificationPreferences,
+      };
     },
   });
+
+  useEffect(() => {
+    let isMounted = true;
+    void getRemoteNotificationPermissionStatus().then((status) => {
+      if (isMounted) {
+        setRemoteNotificationPermissionStatus(status);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!settingsQuery.data) {
@@ -107,6 +192,13 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setHomeFeedMode(settingsQuery.data.homeFeedMode);
     setHomeFeedTypeFilter(settingsQuery.data.homeFeedTypeFilter);
     setHomeFeedSort(settingsQuery.data.homeFeedSort);
+    setNotificationTastingInvitesEnabled(
+      settingsQuery.data.notificationPreferences.notificationTastingInvitesEnabled,
+    );
+    setNotificationBillsEnabled(settingsQuery.data.notificationPreferences.notificationBillsEnabled);
+    setNotificationMonthlyFriendsActivityEnabled(
+      settingsQuery.data.notificationPreferences.notificationMonthlyFriendsActivityEnabled,
+    );
   }, [settingsQuery.data]);
 
   const hasPendingChanges = useMemo(() => {
@@ -120,13 +212,21 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       listVisibility !== settingsQuery.data.listVisibility ||
       homeFeedMode !== settingsQuery.data.homeFeedMode ||
       homeFeedTypeFilter !== settingsQuery.data.homeFeedTypeFilter ||
-      homeFeedSort !== settingsQuery.data.homeFeedSort
+      homeFeedSort !== settingsQuery.data.homeFeedSort ||
+      notificationTastingInvitesEnabled !==
+        settingsQuery.data.notificationPreferences.notificationTastingInvitesEnabled ||
+      notificationBillsEnabled !== settingsQuery.data.notificationPreferences.notificationBillsEnabled ||
+      notificationMonthlyFriendsActivityEnabled !==
+        settingsQuery.data.notificationPreferences.notificationMonthlyFriendsActivityEnabled
     );
   }, [
     homeFeedMode,
     homeFeedSort,
     homeFeedTypeFilter,
     listVisibility,
+    notificationBillsEnabled,
+    notificationMonthlyFriendsActivityEnabled,
+    notificationTastingInvitesEnabled,
     restaurantVisibility,
     settingsQuery.data,
     visitVisibility,
@@ -153,6 +253,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       homeFeedMode,
       homeFeedTypeFilter,
       homeFeedSort,
+      notificationTastingInvitesEnabled,
+      notificationBillsEnabled,
+      notificationMonthlyFriendsActivityEnabled,
       hasPendingChanges,
       isOnline,
     });
@@ -164,9 +267,14 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         visitVisibility,
         restaurantVisibility,
         listVisibility,
-          homeFeedMode,
-          homeFeedTypeFilter,
-          homeFeedSort,
+        homeFeedMode,
+        homeFeedTypeFilter,
+        homeFeedSort,
+        notificationPreferences: {
+          notificationBillsEnabled,
+          notificationMonthlyFriendsActivityEnabled,
+          notificationTastingInvitesEnabled,
+        },
       });
 
       if (saveResult.status === 'queued') {
@@ -179,6 +287,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
           homeFeedMode,
           homeFeedTypeFilter,
           homeFeedSort,
+          notificationTastingInvitesEnabled,
+          notificationBillsEnabled,
+          notificationMonthlyFriendsActivityEnabled,
           queued: true,
         });
         setSuccessMessage('Settings saved offline and will sync when you reconnect.');
@@ -194,6 +305,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         homeFeedMode,
         homeFeedTypeFilter,
         homeFeedSort,
+        notificationTastingInvitesEnabled,
+        notificationBillsEnabled,
+        notificationMonthlyFriendsActivityEnabled,
         queued: false,
       });
       setSuccessMessage('Settings saved successfully.');
@@ -277,6 +391,32 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setHomeFeedSort(value);
   };
 
+  const handleToggleNotificationPreference = async (
+    preferenceName: 'tasting_invites' | 'bills' | 'monthly_friends_activity',
+    nextValue: boolean,
+    setValue: (value: boolean) => void,
+  ) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (nextValue && remoteNotificationPermissionStatus !== 'granted') {
+      const nextPermissionStatus = await requestRemoteNotificationPermission();
+      setRemoteNotificationPermissionStatus(nextPermissionStatus);
+      if (nextPermissionStatus !== 'granted') {
+        setErrorMessage('Notification permission is off. Enable notifications in system settings to turn on remote notifications.');
+        return;
+      }
+      void registerCurrentRemoteNotificationDevice('settings');
+    }
+
+    trackObservabilityEvent('SETTINGS_NOTIFICATION_PREFERENCE_CHANGED', {
+      source: 'SettingsScreen',
+      preferenceName,
+      nextValue,
+    });
+    setValue(nextValue);
+  };
+
   const handleSelectAppearance = (value: ThemePreference) => {
     trackObservabilityEvent('SETTINGS_APPEARANCE_CHANGED', {
       source: 'SettingsScreen',
@@ -339,6 +479,19 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       }) as const,
     [],
   );
+
+  const notificationsDisabledByOs =
+    remoteNotificationPermissionStatus === 'denied' ||
+    remoteNotificationPermissionStatus === 'unavailable' ||
+    remoteNotificationPermissionStatus === 'failed';
+  const notificationPermissionMessage =
+    remoteNotificationPermissionStatus === 'denied'
+      ? 'System notification permission is off. Your saved preferences are shown below, but remote notifications cannot be delivered until permission is enabled.'
+      : remoteNotificationPermissionStatus === 'unavailable'
+        ? 'System notifications are unavailable on this device. Your saved preferences are still shown below.'
+        : remoteNotificationPermissionStatus === 'failed'
+          ? 'Could not check system notification permission. Your saved preferences are still shown below.'
+          : null;
 
   if (!user?.id) {
     return (
@@ -438,6 +591,73 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                   onChange={handleSelectHomeFeedSort}
                   options={homeFeedSortOptions}
                   value={homeFeedSort}
+                />
+              </View>
+            </SectionCard>
+
+            <SectionCard
+              description="Choose which remote device notifications Yummy Recs may send. In-app indicators stay visible."
+              title="Notification Preferences"
+            >
+              <View style={styles.toggleList}>
+                {notificationPermissionMessage ? (
+                  <Card tone="warning">
+                    <Text tone="warning" variant="bodySmTight">
+                      {notificationPermissionMessage}
+                    </Text>
+                    {remoteNotificationPermissionStatus === 'denied' ? (
+                      <View style={styles.calloutActions}>
+                        <Text
+                          onPress={() => {
+                            void Linking.openSettings();
+                          }}
+                          tone="warning"
+                          variant="label"
+                        >
+                          Open Settings
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Card>
+                ) : null}
+                <NotificationPreferenceToggle
+                  disabled={notificationsDisabledByOs}
+                  label="Tasting invites"
+                  onValueChange={(nextValue) => {
+                    void handleToggleNotificationPreference(
+                      'tasting_invites',
+                      nextValue,
+                      setNotificationTastingInvitesEnabled,
+                    );
+                  }}
+                  testID="settings-notification-tasting-invites-toggle"
+                  value={notificationTastingInvitesEnabled}
+                />
+                <NotificationPreferenceToggle
+                  disabled={notificationsDisabledByOs}
+                  label="Bills and payment reminders"
+                  onValueChange={(nextValue) => {
+                    void handleToggleNotificationPreference(
+                      'bills',
+                      nextValue,
+                      setNotificationBillsEnabled,
+                    );
+                  }}
+                  testID="settings-notification-bills-toggle"
+                  value={notificationBillsEnabled}
+                />
+                <NotificationPreferenceToggle
+                  disabled={notificationsDisabledByOs}
+                  label="Monthly friends activity"
+                  onValueChange={(nextValue) => {
+                    void handleToggleNotificationPreference(
+                      'monthly_friends_activity',
+                      nextValue,
+                      setNotificationMonthlyFriendsActivityEnabled,
+                    );
+                  }}
+                  testID="settings-notification-monthly-friends-activity-toggle"
+                  value={notificationMonthlyFriendsActivityEnabled}
                 />
               </View>
             </SectionCard>

@@ -11,7 +11,14 @@ import {
   type HomeFeedDefaultSort,
   type HomeFeedDefaultTypeFilter,
 } from './homeFeedPreferences';
-import { getAuthRecord, saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
+import { escapeFilterValue } from './featureStoreShared';
+import {
+  createCollectionRecord,
+  getAuthRecord,
+  listCollectionPage,
+  saveAuthRecord,
+  updateCollectionRecord,
+} from './pocketbaseGateway';
 import { invalidateSettingsQueries, settingsQueryKeys } from './settingsQuery';
 import {
   type OfflineAwareFeatureWriteResult,
@@ -31,6 +38,20 @@ export interface UserSettingsRecord {
   defaultHomeFeedSort?: unknown;
 }
 
+export interface NotificationPreferencesRecord {
+  id?: string;
+  user?: unknown;
+  tasting_invites_enabled?: unknown;
+  bill_owed_enabled?: unknown;
+  monthly_friends_activity_enabled?: unknown;
+}
+
+export interface NotificationPreferences {
+  notificationTastingInvitesEnabled: boolean;
+  notificationBillsEnabled: boolean;
+  notificationMonthlyFriendsActivityEnabled: boolean;
+}
+
 export interface UserSettings {
   visitVisibility: VisitVisibility;
   restaurantVisibility: RestaurantVisibility;
@@ -38,6 +59,7 @@ export interface UserSettings {
   homeFeedMode: HomeFeedDefaultMode;
   homeFeedTypeFilter: HomeFeedDefaultTypeFilter;
   homeFeedSort: HomeFeedDefaultSort;
+  notificationPreferences: NotificationPreferences;
 }
 
 interface SaveSettingsPreferencesInput extends UserSettings {
@@ -70,7 +92,87 @@ export function mapUserSettings(record: UserSettingsRecord): UserSettings {
     visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
     restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
     listVisibility: normalizeListVisibility(record.defaultListVisibility),
+    notificationPreferences: mapNotificationPreferences(record as NotificationPreferencesRecord),
     ...homeFeedDefaults,
+  };
+}
+
+function mapNotificationPreferences(
+  record: NotificationPreferencesRecord | null | undefined,
+): NotificationPreferences {
+  return {
+    notificationBillsEnabled: record?.bill_owed_enabled === false ? false : true,
+    notificationMonthlyFriendsActivityEnabled:
+      record?.monthly_friends_activity_enabled === false ? false : true,
+    notificationTastingInvitesEnabled: record?.tasting_invites_enabled === false ? false : true,
+  };
+}
+
+export async function getNotificationPreferences(
+  userId: string,
+  options?: { signal?: AbortSignal },
+): Promise<NotificationPreferences> {
+  const response = await listCollectionPage<NotificationPreferencesRecord>(
+    'notification_preferences',
+    {
+      filter: `user = "${escapeFilterValue(userId)}"`,
+      pageSize: 1,
+      signal: options?.signal,
+    },
+  );
+  return mapNotificationPreferences(response.items[0]);
+}
+
+async function saveNotificationPreferences(
+  userId: string,
+  preferences: NotificationPreferences,
+): Promise<NotificationPreferencesRecord> {
+  const payload = buildNotificationPreferencesUpdate(preferences);
+  const response = await listCollectionPage<NotificationPreferencesRecord>(
+    'notification_preferences',
+    {
+      filter: `user = "${escapeFilterValue(userId)}"`,
+      pageSize: 1,
+    },
+  );
+  const existingRecordId = response.items[0]?.id;
+  if (existingRecordId) {
+    return updateCollectionRecord<NotificationPreferencesRecord>(
+      'notification_preferences',
+      existingRecordId,
+      payload,
+    );
+  }
+
+  return createCollectionRecord<NotificationPreferencesRecord>('notification_preferences', {
+    user: userId,
+    ...payload,
+  });
+}
+
+function buildNotificationPreferencesUpdate(
+  input: NotificationPreferences,
+): Pick<
+  FeatureOutboxOperationPayload<'settings.visibility.save'>,
+  'bill_owed_enabled' | 'monthly_friends_activity_enabled' | 'tasting_invites_enabled'
+> {
+  return {
+    bill_owed_enabled: input.notificationBillsEnabled,
+    monthly_friends_activity_enabled: input.notificationMonthlyFriendsActivityEnabled,
+    tasting_invites_enabled: input.notificationTastingInvitesEnabled,
+  };
+}
+
+function buildUserSettingsRecordUpdate(
+  settingsUpdate: Omit<FeatureOutboxOperationPayload<'settings.visibility.save'>, 'userId'>,
+): Record<string, unknown> {
+  return {
+    defaultListVisibility: settingsUpdate.defaultListVisibility,
+    defaultRestaurantVisibility: settingsUpdate.defaultRestaurantVisibility,
+    defaultVisitVisibility: settingsUpdate.defaultVisitVisibility,
+    defaultHomeFeedMode: settingsUpdate.defaultHomeFeedMode,
+    defaultHomeFeedSort: settingsUpdate.defaultHomeFeedSort,
+    defaultHomeFeedTypeFilter: settingsUpdate.defaultHomeFeedTypeFilter,
   };
 }
 
@@ -79,6 +181,7 @@ function buildSettingsPreferencesUpdate(input: UserSettings): Omit<FeatureOutbox
     defaultListVisibility: input.listVisibility,
     defaultRestaurantVisibility: input.restaurantVisibility,
     defaultVisitVisibility: input.visitVisibility,
+    ...buildNotificationPreferencesUpdate(input.notificationPreferences),
     ...buildHomeFeedDefaultsUpdate({
       homeFeedMode: input.homeFeedMode,
       homeFeedTypeFilter: input.homeFeedTypeFilter,
@@ -110,8 +213,11 @@ export function useSettingsPreferencesWrites() {
           updateCollectionRecord<RecordModel & UserSettingsRecord>(
             'users',
             input.userId,
-            settingsUpdate,
-          ),
+            buildUserSettingsRecordUpdate(settingsUpdate),
+          ).then(async (updatedUserRecord) => {
+            await saveNotificationPreferences(input.userId, input.notificationPreferences);
+            return updatedUserRecord;
+          }),
       });
 
       if (result.status === 'queued') {
@@ -119,7 +225,7 @@ export function useSettingsPreferencesWrites() {
         if (currentAuthRecord) {
           saveAuthRecord({
             ...(currentAuthRecord as RecordModel),
-            ...settingsUpdate,
+            ...buildUserSettingsRecordUpdate(settingsUpdate),
           } as RecordModel);
         }
 
@@ -127,7 +233,10 @@ export function useSettingsPreferencesWrites() {
         return result;
       }
 
-      const nextSettings = mapUserSettings(result.result);
+      const nextSettings = mapUserSettings({
+        ...result.result,
+        ...buildNotificationPreferencesUpdate(input.notificationPreferences),
+      });
       saveAuthRecord(result.result);
       queryClient.setQueryData(settingsQueryKeys.detail(input.userId), nextSettings);
       await invalidateSettingsQueries(queryClient, input.userId);

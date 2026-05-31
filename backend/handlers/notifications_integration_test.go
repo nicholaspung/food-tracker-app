@@ -222,6 +222,122 @@ func TestTastingInviteNotificationProviderFailureIsLogged(t *testing.T) {
 	assertNotificationDeliveryLog(t, server.app, invitee.Id, "provider_failed", 1)
 }
 
+func TestNotificationProviderInvalidTokenDeactivatesDeviceAndSuppressesFutureSends(t *testing.T) {
+	sender := &recordingNotificationPushSender{err: errors.New("DeviceNotRegistered")}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	_, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Invalid Token Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected provider failure to be logged without blocking the invite write, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected first invite to attempt provider send, got %#v", sender.calls)
+	}
+	reloadedDevice, err := server.app.FindRecordById("notification_devices", device.Id)
+	if err != nil {
+		t.Fatalf("failed to reload notification device: %v", err)
+	}
+	if reloadedDevice.GetBool("active") {
+		t.Fatalf("expected invalid provider token to deactivate notification device")
+	}
+	logRecord := assertNotificationDeliveryLog(t, server.app, invitee.Id, "provider_failed", 1)
+	if strings.Contains(logRecord.GetString("error_code"), "ExponentPushToken") {
+		t.Fatalf("expected provider error log to omit push token, got %q", logRecord.GetString("error_code"))
+	}
+
+	sender.err = nil
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Skipped Device Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected inactive-device invite to succeed, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected inactive device to suppress future provider sends, got %#v", sender.calls)
+	}
+	assertNotificationDeliveryLog(t, server.app, invitee.Id, "skipped_no_active_device", 0)
+}
+
+func TestNotificationDeliveryLogRetentionCleanup(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, _ := createAuthUser(t, server.app, false, false)
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	oldSent := createNotificationDeliveryLogRecord(t, server.app, user.Id, "old-sent", "sent")
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", oldSent.Id, "2026-04-20 12:00:00.000Z")
+	recentSent := createNotificationDeliveryLogRecord(t, server.app, user.Id, "recent-sent", "sent")
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", recentSent.Id, "2026-05-05 12:00:00.000Z")
+	oldFailed := createNotificationDeliveryLogRecord(t, server.app, user.Id, "old-failed", "provider_failed")
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", oldFailed.Id, "2026-05-01 12:00:00.000Z")
+	recentFailed := createNotificationDeliveryLogRecord(t, server.app, user.Id, "recent-failed", "provider_failed")
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", recentFailed.Id, "2026-05-20 12:00:00.000Z")
+	oldSkipped := createNotificationDeliveryLogRecord(t, server.app, user.Id, "old-skipped", "skipped_no_active_device")
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", oldSkipped.Id, "2026-05-01 12:00:00.000Z")
+
+	removed, err := handlers.CleanupNotificationDeliveryLogs(server.app, now)
+	if err != nil {
+		t.Fatalf("expected notification delivery log cleanup to succeed: %v", err)
+	}
+	if removed != 3 {
+		t.Fatalf("expected cleanup to remove old sent and old failed/skipped logs, got %d", removed)
+	}
+
+	assertNotificationDeliveryLogIDMissing(t, server.app, oldSent.Id)
+	assertNotificationDeliveryLogIDMissing(t, server.app, oldFailed.Id)
+	assertNotificationDeliveryLogIDMissing(t, server.app, oldSkipped.Id)
+	assertNotificationDeliveryLogIDExists(t, server.app, recentSent.Id)
+	assertNotificationDeliveryLogIDExists(t, server.app, recentFailed.Id)
+}
+
+func TestNotificationDeliveryLogsAreNotReadableByNormalMobileUsers(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, false)
+	createNotificationDeliveryLogRecord(t, server.app, user.Id, "private-log", "sent")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/notification_delivery_logs/records",
+		token,
+		"",
+	)
+	if response.Code == http.StatusOK {
+		payload := parseJSONResponse[map[string]any](t, response.Body.Bytes())
+		items, ok := payload["items"].([]any)
+		if !ok || len(items) != 0 {
+			t.Fatalf("expected normal authenticated user to receive no delivery log records, got %s", response.Body.String())
+		}
+	}
+	if strings.Contains(response.Body.String(), "private-log") || strings.Contains(response.Body.String(), "notification_delivery_logs") {
+		t.Fatalf("expected delivery log response to omit operational details, got %s", response.Body.String())
+	}
+}
+
 func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
 	sender := &recordingNotificationPushSender{}
 	restore := handlers.SetNotificationPushSenderForTests(sender)
@@ -780,6 +896,23 @@ func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, d
 	})
 }
 
+func createNotificationDeliveryLogRecord(t *testing.T, app core.App, userID string, deliveryKey string, status string) *core.Record {
+	t.Helper()
+	return createCollectionRecord(t, app, "notification_delivery_logs", map[string]any{
+		"user":              userID,
+		"signal_type":       tastingInviteNotificationSignalTypeForTests(),
+		"source_collection": "tasting_sessions",
+		"source_record":     "source-1",
+		"delivery_key":      deliveryKey,
+		"status":            status,
+		"device_count":      1,
+	})
+}
+
+func tastingInviteNotificationSignalTypeForTests() string {
+	return "tasting_invite"
+}
+
 func createNotificationPreferenceRecord(t *testing.T, app core.App, userID string, tastingInvitesEnabled bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_preferences", map[string]any{
@@ -818,6 +951,20 @@ func createVisitRecordWithDate(t *testing.T, app core.App, userID string, restau
 		"visitDate":  visitDate,
 		"visibility": visibility,
 	})
+}
+
+func assertNotificationDeliveryLogIDExists(t *testing.T, app core.App, recordID string) {
+	t.Helper()
+	if _, err := app.FindRecordById("notification_delivery_logs", recordID); err != nil {
+		t.Fatalf("expected notification delivery log %s to exist: %v", recordID, err)
+	}
+}
+
+func assertNotificationDeliveryLogIDMissing(t *testing.T, app core.App, recordID string) {
+	t.Helper()
+	if _, err := app.FindRecordById("notification_delivery_logs", recordID); err == nil {
+		t.Fatalf("expected notification delivery log %s to be removed", recordID)
+	}
 }
 
 func assertNotificationDeliveryLog(t *testing.T, app core.App, userID string, status string, deviceCount int) *core.Record {

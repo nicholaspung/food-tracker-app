@@ -45,6 +45,8 @@ export type VisitReminderNotificationStatus =
       errorMessage?: string;
     };
 
+export type RemoteNotificationPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable' | 'failed';
+
 interface NavigationRefLike {
   isReady: () => boolean;
   navigate: <TRouteName extends keyof RootStackParamList>(
@@ -166,9 +168,9 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
         return;
       }
 
-      const permission = await ensureRemoteNotificationPermission(notifications);
-      if (!permission || isCancelled) {
-        if (!permission) {
+      const existingPermission = await notifications.getPermissionsAsync();
+      if (!existingPermission.granted || isCancelled) {
+        if (!existingPermission.granted) {
           trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
             reason: 'permission_denied',
             source: 'NotificationInteraction',
@@ -222,6 +224,54 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
       appStateSubscription.remove();
     };
   }, [status, userId]);
+}
+
+export async function registerCurrentRemoteNotificationDevice(trigger: 'settings' | 'auth' | 'foreground' | 'retry' = 'settings'): Promise<boolean> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
+    trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
+      reason: 'native_module_unavailable',
+      source: 'NotificationInteraction',
+      trigger,
+    });
+    return false;
+  }
+
+  const existingPermission = await notifications.getPermissionsAsync();
+  if (!existingPermission.granted) {
+    trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
+      reason: 'permission_denied',
+      source: 'NotificationInteraction',
+      trigger,
+    });
+    return false;
+  }
+
+  const projectId = resolveExpoProjectId();
+  if (!projectId) {
+    trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
+      reason: 'missing_expo_project_id',
+      source: 'NotificationInteraction',
+      trigger,
+    });
+    return false;
+  }
+
+  const [deviceId, pushToken] = await Promise.all([
+    resolveNotificationDeviceId(),
+    notifications.getExpoPushTokenAsync({ projectId }),
+  ]);
+  await registerNotificationDevice({
+    deviceId,
+    platform: Platform.OS,
+    pushToken: pushToken.data,
+  });
+  trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SUCCEEDED', {
+    platform: Platform.OS,
+    source: 'NotificationInteraction',
+    trigger,
+  });
+  return true;
 }
 
 function isIosSimulatorMissingApnsEntitlementError(error: unknown): boolean {
@@ -474,8 +524,45 @@ export async function getVisitReminderNotificationStatus(): Promise<VisitReminde
   }
 }
 
-async function ensureRemoteNotificationPermission(notifications: NotificationsModule): Promise<boolean> {
-  return ensureNotificationPermission(notifications);
+export async function getRemoteNotificationPermissionStatus(): Promise<RemoteNotificationPermissionStatus> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
+    return 'unavailable';
+  }
+
+  try {
+    const permission = await notifications.getPermissionsAsync();
+    if (permission.granted) {
+      return 'granted';
+    }
+    return permission.canAskAgain === false ? 'denied' : 'undetermined';
+  } catch (error) {
+    logger.warn('[NotificationInteraction] Failed to read notification permission:', error);
+    return 'failed';
+  }
+}
+
+export async function requestRemoteNotificationPermission(): Promise<RemoteNotificationPermissionStatus> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
+    return 'unavailable';
+  }
+
+  try {
+    const existingPermission = await notifications.getPermissionsAsync();
+    if (existingPermission.granted) {
+      return 'granted';
+    }
+
+    const requestedPermission = await notifications.requestPermissionsAsync();
+    if (requestedPermission.granted) {
+      return 'granted';
+    }
+    return requestedPermission.canAskAgain === false ? 'denied' : 'undetermined';
+  } catch (error) {
+    logger.warn('[NotificationInteraction] Failed to request notification permission:', error);
+    return 'failed';
+  }
 }
 
 async function ensureNotificationPermission(notifications: NotificationsModule): Promise<boolean> {

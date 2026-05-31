@@ -21,6 +21,17 @@ const (
 	billOwedNotificationSignalType      = "bill_owed"
 	billPaymentReminderSignalType       = "bill_payment_reminder"
 	monthlyFriendsActivitySignalType    = "monthly_friends_activity"
+
+	notificationDeliverySentRetentionDays   = 30
+	notificationDeliveryFailedRetentionDays = 14
+)
+
+type remoteNotificationPreferenceCategory string
+
+const (
+	remoteNotificationPreferenceTastingInvites         remoteNotificationPreferenceCategory = "tasting_invites"
+	remoteNotificationPreferenceBills                  remoteNotificationPreferenceCategory = "bills"
+	remoteNotificationPreferenceMonthlyFriendsActivity remoteNotificationPreferenceCategory = "monthly_friends_activity"
 )
 
 type notificationDeviceRegistrationRequest struct {
@@ -123,6 +134,9 @@ func SetNotificationPushSenderForTests(sender NotificationPushSender) func() {
 func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 	if err := RegisterMonthlyFriendsActivityNotificationJob(app); err != nil {
 		log.Printf("Warning: failed to register monthly friends activity notification job: %v", err)
+	}
+	if err := RegisterNotificationDeliveryCleanupJob(app); err != nil {
+		log.Printf("Warning: failed to register notification delivery cleanup job: %v", err)
 	}
 
 	se.Router.POST("/api/admin/notifications/monthly-friends-activity/test", func(e *core.RequestEvent) error {
@@ -255,9 +269,7 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewApiError(500, "failed to load notification device", findErr)
 		}
 
-		record.Set("active", false)
-		record.Set("last_seen_at", time.Now().UTC())
-		if err := app.Save(record); err != nil {
+		if err := deactivateNotificationDeviceRecord(app, record); err != nil {
 			return apis.NewApiError(500, "failed to deactivate notification device", err)
 		}
 		return e.JSON(200, map[string]any{"success": true})
@@ -270,6 +282,51 @@ func RegisterMonthlyFriendsActivityNotificationJob(app core.App) error {
 			log.Printf("Monthly friends activity notifications failed: %v", err)
 		}
 	})
+}
+
+func RegisterNotificationDeliveryCleanupJob(app core.App) error {
+	return app.Cron().Add("notification_delivery_log_retention_cleanup", "0 3 * * *", func() {
+		removed, err := CleanupNotificationDeliveryLogs(app, time.Now().UTC())
+		if err != nil {
+			log.Printf("Notification delivery log cleanup failed: %v", err)
+			return
+		}
+		if removed > 0 {
+			log.Printf("Notification delivery log cleanup removed %d records", removed)
+		}
+	})
+}
+
+func CleanupNotificationDeliveryLogs(app core.App, now time.Time) (int, error) {
+	sentCutoff := formatPocketBaseDateTime(now.UTC().AddDate(0, 0, -notificationDeliverySentRetentionDays))
+	failedCutoff := formatPocketBaseDateTime(now.UTC().AddDate(0, 0, -notificationDeliveryFailedRetentionDays))
+	removed := 0
+
+	for {
+		records, err := app.FindRecordsByFilter(
+			"notification_delivery_logs",
+			"(status = 'sent' && created < {:sentCutoff}) || (status != 'sent' && created < {:failedCutoff})",
+			"",
+			200,
+			0,
+			dbx.Params{
+				"failedCutoff": failedCutoff,
+				"sentCutoff":   sentCutoff,
+			},
+		)
+		if err != nil {
+			return removed, err
+		}
+		if len(records) == 0 {
+			return removed, nil
+		}
+		for _, record := range records {
+			if err := app.Delete(record); err != nil {
+				return removed, err
+			}
+			removed++
+		}
+	}
 }
 
 func DeliverMonthlyFriendsActivityNotifications(app core.App, now time.Time) (MonthlyFriendsActivityDeliveryResult, error) {
@@ -593,21 +650,15 @@ func deliverMonthlyFriendsActivityNotificationWithOptions(
 		},
 	}
 
-	var providerMessageID string
-	for _, device := range devices {
-		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
-		if sendErr != nil {
-			baseLog.Status = "provider_failed"
-			baseLog.DeviceCount = len(devices)
-			baseLog.ErrorCode = normalizeProviderErrorCode(sendErr)
-			if err := createNotificationDeliveryLog(app, baseLog); err != nil {
-				return "", err
-			}
-			return baseLog.Status, nil
+	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendErr != nil {
+		baseLog.Status = "provider_failed"
+		baseLog.DeviceCount = len(devices)
+		baseLog.ErrorCode = providerErrorCode
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return "", err
 		}
-		if providerMessageID == "" {
-			providerMessageID = messageID
-		}
+		return baseLog.Status, nil
 	}
 
 	baseLog.Status = "sent"
@@ -746,25 +797,19 @@ func deliverTastingInviteNotification(app core.App, sessionID string, sessionNam
 		},
 	}
 
-	var providerMessageID string
-	for _, device := range devices {
-		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
-		if sendErr != nil {
-			return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-				UserID:           userID,
-				SignalType:       tastingInviteNotificationSignalType,
-				SourceCollection: "tasting_sessions",
-				SourceRecord:     sessionID,
-				ActorUserID:      actorUserID,
-				DeliveryKey:      deliveryKey,
-				Status:           "provider_failed",
-				DeviceCount:      len(devices),
-				ErrorCode:        normalizeProviderErrorCode(sendErr),
-			})
-		}
-		if providerMessageID == "" {
-			providerMessageID = messageID
-		}
+	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendErr != nil {
+		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+			UserID:           userID,
+			SignalType:       tastingInviteNotificationSignalType,
+			SourceCollection: "tasting_sessions",
+			SourceRecord:     sessionID,
+			ActorUserID:      actorUserID,
+			DeliveryKey:      deliveryKey,
+			Status:           "provider_failed",
+			DeviceCount:      len(devices),
+			ErrorCode:        providerErrorCode,
+		})
 	}
 
 	return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
@@ -898,25 +943,19 @@ func deliverBillOwedNotification(app core.App, billID string, billTitle string, 
 		},
 	}
 
-	var providerMessageID string
-	for _, device := range devices {
-		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
-		if sendErr != nil {
-			return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-				UserID:           trimmedUserID,
-				SignalType:       billOwedNotificationSignalType,
-				SourceCollection: "bills",
-				SourceRecord:     billID,
-				ActorUserID:      actorUserID,
-				DeliveryKey:      deliveryKey,
-				Status:           "provider_failed",
-				DeviceCount:      len(devices),
-				ErrorCode:        normalizeProviderErrorCode(sendErr),
-			})
-		}
-		if providerMessageID == "" {
-			providerMessageID = messageID
-		}
+	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendErr != nil {
+		return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
+			UserID:           trimmedUserID,
+			SignalType:       billOwedNotificationSignalType,
+			SourceCollection: "bills",
+			SourceRecord:     billID,
+			ActorUserID:      actorUserID,
+			DeliveryKey:      deliveryKey,
+			Status:           "provider_failed",
+			DeviceCount:      len(devices),
+			ErrorCode:        providerErrorCode,
+		})
 	}
 
 	return createNotificationDeliveryLog(app, notificationDeliveryLogInput{
@@ -1002,21 +1041,15 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 		},
 	}
 
-	var providerMessageID string
-	for _, device := range devices {
-		messageID, sendErr := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
-		if sendErr != nil {
-			baseLog.Status = "provider_failed"
-			baseLog.DeviceCount = len(devices)
-			baseLog.ErrorCode = normalizeProviderErrorCode(sendErr)
-			if err := createNotificationDeliveryLog(app, baseLog); err != nil {
-				return billPaymentReminderResult{}, err
-			}
-			return billPaymentReminderResult{Status: "provider_failed"}, nil
+	providerMessageID, providerErrorCode, sendErr := sendRemoteNotificationToActiveDevices(app, devices, payload)
+	if sendErr != nil {
+		baseLog.Status = "provider_failed"
+		baseLog.DeviceCount = len(devices)
+		baseLog.ErrorCode = providerErrorCode
+		if err := createNotificationDeliveryLog(app, baseLog); err != nil {
+			return billPaymentReminderResult{}, err
 		}
-		if providerMessageID == "" {
-			providerMessageID = messageID
-		}
+		return billPaymentReminderResult{Status: "provider_failed"}, nil
 	}
 
 	baseLog.Status = "sent"
@@ -1067,36 +1100,22 @@ func createNotificationDeliveryLog(app core.App, input notificationDeliveryLogIn
 }
 
 func isTastingInviteNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
-	record, err := app.FindFirstRecordByFilter(
-		"notification_preferences",
-		"user = {:user}",
-		dbx.Params{"user": strings.TrimSpace(userID)},
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return true, nil
-		}
-		return false, err
-	}
-	return record.GetBool("tasting_invites_enabled"), nil
+	return isRemoteNotificationPreferenceEnabled(app, userID, remoteNotificationPreferenceTastingInvites)
 }
 
 func isBillOwedNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
-	record, err := app.FindFirstRecordByFilter(
-		"notification_preferences",
-		"user = {:user}",
-		dbx.Params{"user": strings.TrimSpace(userID)},
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return true, nil
-		}
-		return false, err
-	}
-	return record.GetBool("bill_owed_enabled"), nil
+	return isRemoteNotificationPreferenceEnabled(app, userID, remoteNotificationPreferenceBills)
 }
 
 func isMonthlyFriendsActivityNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
+	return isRemoteNotificationPreferenceEnabled(app, userID, remoteNotificationPreferenceMonthlyFriendsActivity)
+}
+
+func isRemoteNotificationPreferenceEnabled(
+	app core.App,
+	userID string,
+	category remoteNotificationPreferenceCategory,
+) (bool, error) {
 	record, err := app.FindFirstRecordByFilter(
 		"notification_preferences",
 		"user = {:user}",
@@ -1108,7 +1127,17 @@ func isMonthlyFriendsActivityNotificationPreferenceEnabled(app core.App, userID 
 		}
 		return false, err
 	}
-	return record.GetBool("monthly_friends_activity_enabled"), nil
+
+	switch category {
+	case remoteNotificationPreferenceTastingInvites:
+		return record.GetBool("tasting_invites_enabled"), nil
+	case remoteNotificationPreferenceBills:
+		return record.GetBool("bill_owed_enabled"), nil
+	case remoteNotificationPreferenceMonthlyFriendsActivity:
+		return record.GetBool("monthly_friends_activity_enabled"), nil
+	default:
+		return true, nil
+	}
 }
 
 func hasRecentBillPaymentReminderDelivery(app core.App, participantID string, userID string, since time.Time) (bool, error) {
@@ -1193,6 +1222,36 @@ func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record,
 	)
 }
 
+func sendRemoteNotificationToActiveDevices(
+	app core.App,
+	devices []*core.Record,
+	payload RemoteDeviceNotificationPayload,
+) (string, string, error) {
+	var providerMessageID string
+	for _, device := range devices {
+		messageID, err := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
+		if err != nil {
+			errorCode := normalizeProviderErrorCode(err)
+			if isInvalidProviderTokenErrorCode(errorCode) {
+				if deactivateErr := deactivateNotificationDeviceRecord(app, device); deactivateErr != nil {
+					return "", errorCode, deactivateErr
+				}
+			}
+			return "", errorCode, err
+		}
+		if providerMessageID == "" {
+			providerMessageID = messageID
+		}
+	}
+	return providerMessageID, "", nil
+}
+
+func deactivateNotificationDeviceRecord(app core.App, record *core.Record) error {
+	record.Set("active", false)
+	record.Set("last_seen_at", time.Now().UTC())
+	return app.Save(record)
+}
+
 func normalizeNotificationDevicePlatform(platform string) string {
 	switch strings.TrimSpace(strings.ToLower(platform)) {
 	case "ios", "android", "web":
@@ -1200,6 +1259,15 @@ func normalizeNotificationDevicePlatform(platform string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func isInvalidProviderTokenErrorCode(errorCode string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(errorCode))
+	return strings.Contains(normalized, "devicenotregistered") ||
+		strings.Contains(normalized, "not registered") ||
+		strings.Contains(normalized, "invalid push token") ||
+		strings.Contains(normalized, "invalid token") ||
+		strings.Contains(normalized, "unregistered")
 }
 
 func normalizeProviderErrorCode(err error) string {

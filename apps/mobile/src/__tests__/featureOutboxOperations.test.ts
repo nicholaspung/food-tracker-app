@@ -3,7 +3,9 @@ import {
 } from '../features/store/featureOutboxOperations';
 import { replayRegisteredFeatureOutboxOperation } from '../features/store/featureOutboxReplayAdapters';
 import {
+  createCollectionRecord,
   getCollectionRecord,
+  listCollectionPage,
   saveAuthRecord,
   updateCollectionRecord,
 } from '../features/store/pocketbaseGateway';
@@ -64,8 +66,10 @@ jest.mock('../features/store/featureStore', () => ({
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
+  createCollectionRecord: jest.fn(),
   getAuthRecord: jest.fn(),
   getCollectionRecord: jest.fn(),
+  listCollectionPage: jest.fn(),
   saveAuthRecord: jest.fn(),
   updateCollectionRecord: jest.fn(),
 }));
@@ -100,6 +104,8 @@ const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jes
 const mockedMarkNoteUsed = markNoteUsed as jest.MockedFunction<typeof markNoteUsed>;
 const mockedUpdateVisit = updateVisit as jest.MockedFunction<typeof updateVisit>;
 const mockedGetCollectionRecord = getCollectionRecord as jest.MockedFunction<typeof getCollectionRecord>;
+const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFunction<typeof createCollectionRecord>;
+const mockedListCollectionPage = listCollectionPage as jest.MockedFunction<typeof listCollectionPage>;
 const mockedSaveAuthRecord = saveAuthRecord as jest.MockedFunction<typeof saveAuthRecord>;
 const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 
@@ -147,9 +153,19 @@ describe('featureOutboxOperations', () => {
     mockedConvertVisitItemToFoodProduct.mockReset();
     mockedMarkNoteUsed.mockReset();
     mockedUpdateVisit.mockReset();
+    mockedCreateCollectionRecord.mockReset();
     mockedGetCollectionRecord.mockReset();
+    mockedListCollectionPage.mockReset();
     mockedSaveAuthRecord.mockReset();
     mockedUpdateCollectionRecord.mockReset();
+    mockedListCollectionPage.mockResolvedValue({
+      items: [{ id: 'notification-preferences-1' }],
+      page: 1,
+      pageSize: 1,
+      totalItems: 1,
+      totalPages: 1,
+      hasNextPage: false,
+    });
   });
 
   it('passes queued idempotency headers into replayed local feature writes', async () => {
@@ -721,6 +737,9 @@ describe('featureOutboxOperations', () => {
           homeFeedMode: 'all',
           homeFeedTypeFilter: 'all',
           homeFeedSort: 'newest',
+          bill_owed_enabled: true,
+          monthly_friends_activity_enabled: false,
+          tasting_invites_enabled: true,
         }),
         headers: {
           'X-Mobile-Write-Operation': 'settings.visibility.save',
@@ -743,6 +762,15 @@ describe('featureOutboxOperations', () => {
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
         },
+      },
+    );
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'notification_preferences',
+      'notification-preferences-1',
+      {
+        bill_owed_enabled: true,
+        monthly_friends_activity_enabled: false,
+        tasting_invites_enabled: true,
       },
     );
     expect(mockedSaveAuthRecord).toHaveBeenCalledWith(
