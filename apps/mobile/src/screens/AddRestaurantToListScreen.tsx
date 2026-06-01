@@ -477,10 +477,10 @@ export function AddRestaurantToListScreen({
     ).length;
     trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_RESTAURANT_SELECTED', {
       source: 'AddRestaurantToListScreen',
-      listId,
-      restaurantId: restaurant.id,
       alreadyInList: restaurant.alreadyInList === true,
       availableItemCount,
+      hasListContext: listId.trim().length > 0,
+      hasRestaurantSelection: restaurant.id.trim().length > 0,
     });
     setErrorMessage(null);
     setSelectedRestaurantId(restaurant.id);
@@ -511,8 +511,8 @@ export function AddRestaurantToListScreen({
         : [...previous, foodItemId];
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_FOOD_ITEM_TOGGLED', {
         source: 'AddRestaurantToListScreen',
-        listId,
-        foodItemId,
+        hasFoodItemSelection: foodItemId.trim().length > 0,
+        hasListContext: listId.trim().length > 0,
         selected: !isSelected,
         selectedFoodItemCount: nextIds.length,
       });
@@ -533,9 +533,9 @@ export function AddRestaurantToListScreen({
 
     trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_HIDE_DUPLICATE_RATINGS_TOGGLED', {
       source: 'AddRestaurantToListScreen',
-      listId,
-      restaurantId: selectedRestaurant.id,
       enabled,
+      hasListContext: listId.trim().length > 0,
+      hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
       selectedFoodItemCount: selectedFoodItemIds.length,
       visibleFoodItemCount,
     });
@@ -555,9 +555,9 @@ export function AddRestaurantToListScreen({
 
     trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_PHOTO_VIEWER_OPENED', {
       source: 'AddRestaurantToListScreen',
-      listId,
-      restaurantId: selectedRestaurant?.id ?? null,
-      foodItemId: item.id,
+      hasFoodItemSelection: item.id.trim().length > 0,
+      hasListContext: listId.trim().length > 0,
+      hasRestaurantSelection: Boolean(selectedRestaurant?.id?.trim()),
       initialIndex: viewerState.initialIndex,
       photoCount: viewerState.urls.length,
     });
@@ -605,9 +605,9 @@ export function AddRestaurantToListScreen({
     } catch (error) {
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_PHOTO_VIEWER_FAILED', {
         source: 'AddRestaurantToListScreen',
-        listId,
-        restaurantId: selectedRestaurant?.id ?? null,
-        foodItemId: item.id,
+        hasFoodItemSelection: item.id.trim().length > 0,
+        hasListContext: listId.trim().length > 0,
+        hasRestaurantSelection: Boolean(selectedRestaurant?.id?.trim()),
         error: error instanceof Error ? error.message : 'unknown_error',
       });
 
@@ -630,7 +630,7 @@ export function AddRestaurantToListScreen({
     if (!selectedRestaurant) {
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_VALIDATION_FAILED', {
         source: 'AddRestaurantToListScreen',
-        listId,
+        hasListContext: listId.trim().length > 0,
         reason: 'missing_restaurant',
       });
       setErrorMessage("Please choose a restaurant.");
@@ -644,8 +644,8 @@ export function AddRestaurantToListScreen({
     ) {
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_VALIDATION_FAILED', {
         source: 'AddRestaurantToListScreen',
-        listId,
-        restaurantId: selectedRestaurant.id,
+        hasListContext: listId.trim().length > 0,
+        hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
         reason: 'missing_items_or_note',
       });
       setErrorMessage("Select at least one new item or add a note.");
@@ -655,11 +655,11 @@ export function AddRestaurantToListScreen({
     setErrorMessage(null);
     trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_STARTED', {
       source: 'AddRestaurantToListScreen',
-      listId,
-      restaurantId: selectedRestaurant.id,
-      selectedFoodItemCount: selectedNewFoodItemIds.length,
-      includesNote: note.trim().length > 0,
+      hasListContext: listId.trim().length > 0,
+      hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
       isOnline,
+      includesNote: note.trim().length > 0,
+      selectedFoodItemCount: selectedNewFoodItemIds.length,
     });
     setIsSubmitting(true);
 
@@ -676,10 +676,10 @@ export function AddRestaurantToListScreen({
       if (addResult.status === 'queued') {
         trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
           source: 'AddRestaurantToListScreen',
-          listId,
-          restaurantId: selectedRestaurant.id,
-          selectedFoodItemCount: selectedNewFoodItemIds.length,
+          hasListContext: listId.trim().length > 0,
+          hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
           queued: true,
+          selectedFoodItemCount: selectedNewFoodItemIds.length,
         });
         handleBackToListDetail();
         return;
@@ -687,10 +687,10 @@ export function AddRestaurantToListScreen({
 
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
         source: 'AddRestaurantToListScreen',
-        listId,
-        restaurantId: selectedRestaurant.id,
-        selectedFoodItemCount: selectedNewFoodItemIds.length,
+        hasListContext: listId.trim().length > 0,
+        hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
         queued: false,
+        selectedFoodItemCount: selectedNewFoodItemIds.length,
       });
       handleBackToListDetail();
     } catch (error) {
@@ -701,8 +701,8 @@ export function AddRestaurantToListScreen({
       setErrorMessage(message);
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_FAILED', {
         source: 'AddRestaurantToListScreen',
-        listId,
-        restaurantId: selectedRestaurant.id,
+        hasListContext: listId.trim().length > 0,
+        hasRestaurantSelection: selectedRestaurant.id.trim().length > 0,
         error: message,
       });
     } finally {

@@ -151,6 +151,20 @@ const useStyles = createThemedStyles((theme) => ({
   cardMetaText: {
     color: theme.colors.text.muted,
   },
+  sharedLinkPill: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  sharedLinkPillText: {
+    color: theme.colors.text.info,
+  },
   ownerMeta: {
     alignItems: 'center',
     columnGap: 4,
@@ -696,7 +710,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         : theme.colors.text.muted;
 
     return (
-      <Card style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
+      <Card
+        style={[
+          styles.listCard,
+          list.isDefault ? styles.defaultListCard : null,
+        ]}
+      >
         {coverImage ? (
           <View style={styles.coverImageWrap}>
             <CachedRemoteImage uri={coverImage} style={styles.coverImage} />
@@ -739,11 +758,18 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           style={styles.cardListItem}
           testID={`lists-list-card-${activeTab}-${listIndex}`}
           title={list.name}
+          titleAccessory={
+            activeTab === 'my' && list.shareEnabled ? (
+              <View style={styles.sharedLinkPill} testID={`lists-shared-link-pill-${listIndex}`}>
+                <Ionicons color={theme.colors.text.info} name="link-outline" size={12} />
+                <Text style={styles.sharedLinkPillText} variant="bodySmTightBold">
+                  Shared link
+                </Text>
+              </View>
+            ) : undefined
+          }
           trailing={
             <View style={styles.trailingIcons}>
-              {activeTab === 'my' && list.shareEnabled ? (
-                <Ionicons color={theme.colors.text.info} name="link-outline" size={16} />
-              ) : null}
               <Ionicons color={visibilityIconColor} name={visibilityIconName} size={16} />
               <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={16} />
             </View>

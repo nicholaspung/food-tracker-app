@@ -129,19 +129,19 @@ function buildGroup(): RestaurantMapGroup {
 }
 
 function renderSheet({
-  directionsErrorMessage = null,
-  directionsLoading = false,
+  mapOpenErrorMessage = null,
+  mapOpenLoading = false,
   group = buildGroup(),
   onOpenSelectedGroup,
-  onOpenDirections = jest.fn().mockResolvedValue(undefined),
+  onOpenInMaps = jest.fn().mockResolvedValue(undefined),
   selectedGroupActionLabel,
   tabs,
 }: {
-  directionsErrorMessage?: string | null;
-  directionsLoading?: boolean;
+  mapOpenErrorMessage?: string | null;
+  mapOpenLoading?: boolean;
   group?: RestaurantMapGroup;
   onOpenSelectedGroup?: jest.Mock;
-  onOpenDirections?: jest.Mock;
+  onOpenInMaps?: jest.Mock;
   selectedGroupActionLabel?: string;
   tabs?: React.ComponentProps<typeof RestaurantMapSheet>['tabs'];
 } = {}) {
@@ -150,12 +150,12 @@ function renderSheet({
   act(() => {
     renderer = create(
       <RestaurantMapSheet
-        directionsErrorMessage={directionsErrorMessage}
-        directionsLoading={directionsLoading}
+        mapOpenErrorMessage={mapOpenErrorMessage}
+        mapOpenLoading={mapOpenLoading}
         group={group}
         onClose={jest.fn()}
         onOpenSelectedGroup={onOpenSelectedGroup}
-        onOpenDirections={onOpenDirections}
+        onOpenInMaps={onOpenInMaps}
         selectedGroupActionLabel={selectedGroupActionLabel}
         tabs={tabs}
       />,
@@ -169,7 +169,7 @@ function renderSheet({
   return {
     group,
     onOpenSelectedGroup,
-    onOpenDirections,
+    onOpenInMaps,
     renderer,
   };
 }
@@ -229,15 +229,15 @@ describe('RestaurantMapSheet', () => {
     expect(bottomSheet.findAllByType('BottomSheetView')).toHaveLength(0);
   });
 
-  it('renders a directions button for the selected restaurant', () => {
+  it('renders an open-in-maps button for the selected restaurant', () => {
     const { renderer } = renderSheet();
 
     const button = renderer.root.findByProps({
-      testID: 'restaurant-map-directions-button',
+      testID: 'restaurant-map-open-in-maps-button',
     });
 
-    expect(button.props.accessibilityLabel).toBe('Get directions to Test Restaurant');
-    expect(button.props.label).toBe('Directions');
+    expect(button.props.accessibilityLabel).toBe('Open Test Restaurant in Maps');
+    expect(button.props.label).toBe('Open in Maps');
     expect(button.props.variant).toBe('secondary');
   });
 
@@ -264,7 +264,7 @@ describe('RestaurantMapSheet', () => {
     expect(button.props.label).toBe('Open Restaurant');
     expect(button.props.style).toEqual(expect.objectContaining({ flex: 1 }));
     expect(renderer.root.findByProps({
-      testID: 'restaurant-map-directions-button',
+      testID: 'restaurant-map-open-in-maps-button',
     }).props.style).toEqual(expect.objectContaining({ flex: 1 }));
 
     act(() => {
@@ -274,33 +274,33 @@ describe('RestaurantMapSheet', () => {
     expect(onOpenSelectedGroup).toHaveBeenCalledWith(group);
   });
 
-  it('opens directions for the selected restaurant when the directions button is pressed', () => {
-    const { group, onOpenDirections, renderer } = renderSheet();
+  it('opens the selected restaurant in Maps when the map button is pressed', () => {
+    const { group, onOpenInMaps, renderer } = renderSheet();
 
     act(() => {
       renderer.root.findByProps({
-        testID: 'restaurant-map-directions-button',
+        testID: 'restaurant-map-open-in-maps-button',
       }).props.onPress();
     });
 
-    expect(onOpenDirections).toHaveBeenCalledWith(group);
+    expect(onOpenInMaps).toHaveBeenCalledWith(group);
   });
 
-  it('shows a directions error message', () => {
+  it('shows a map open error message', () => {
     const { renderer } = renderSheet({
-      directionsErrorMessage: 'Could not open directions. Try again from your maps app.',
+      mapOpenErrorMessage: 'Could not open this location. Try again from your maps app.',
     });
 
-    expect(findTextNodes(renderer, 'Could not open directions. Try again from your maps app.')).toHaveLength(1);
+    expect(findTextNodes(renderer, 'Could not open this location. Try again from your maps app.')).toHaveLength(1);
   });
 
-  it('passes the directions loading state to the button', () => {
+  it('passes the map open loading state to the button', () => {
     const { renderer } = renderSheet({
-      directionsLoading: true,
+      mapOpenLoading: true,
     });
 
     expect(renderer.root.findByProps({
-      testID: 'restaurant-map-directions-button',
+      testID: 'restaurant-map-open-in-maps-button',
     }).props.loading).toBe(true);
   });
 

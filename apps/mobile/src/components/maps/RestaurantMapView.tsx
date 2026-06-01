@@ -21,7 +21,7 @@ import {
   buildInitialMapRegion,
   buildSelectedRestaurantRegion,
 } from './restaurantMapRegion';
-import { buildRestaurantDirectionsUrl } from './restaurantDirectionsLink';
+import { buildRestaurantMapUrl } from './restaurantMapLink';
 import type { RestaurantMapGroup, RestaurantMapSheetTabs } from './restaurantMapTypes';
 
 interface RestaurantMapViewProps {
@@ -221,8 +221,8 @@ export function RestaurantMapView({
   const didHandleInitialRegionRef = useRef(false);
   const lastHandledResetSignalRef = useRef(resetSignal);
   const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
-  const [directionsErrorMessage, setDirectionsErrorMessage] = useState<string | null>(null);
-  const [directionsLoading, setDirectionsLoading] = useState(false);
+  const [mapOpenErrorMessage, setMapOpenErrorMessage] = useState<string | null>(null);
+  const [mapOpenLoading, setMapOpenLoading] = useState(false);
   const [hiddenLocationBannerDismissed, setHiddenLocationBannerDismissed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(initialUserCoordinates);
   const maps = loadMapsComponents();
@@ -255,7 +255,7 @@ export function RestaurantMapView({
   }, [onSelectedGroupChange, selectedGroup, selectedGroupId]);
 
   useEffect(() => {
-    setDirectionsErrorMessage(null);
+    setMapOpenErrorMessage(null);
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -378,16 +378,16 @@ export function RestaurantMapView({
     userPanPendingRef.current = false;
     onUserRegionChangeComplete?.(region);
   };
-  const handleOpenDirections = async (group: RestaurantMapGroup) => {
-    setDirectionsErrorMessage(null);
-    setDirectionsLoading(true);
+  const handleOpenInMaps = async (group: RestaurantMapGroup) => {
+    setMapOpenErrorMessage(null);
+    setMapOpenLoading(true);
 
     try {
-      await Linking.openURL(buildRestaurantDirectionsUrl(group));
+      await Linking.openURL(buildRestaurantMapUrl(group));
     } catch {
-      setDirectionsErrorMessage('Could not open directions. Try again from your maps app.');
+      setMapOpenErrorMessage('Could not open this location. Try again from your maps app.');
     } finally {
-      setDirectionsLoading(false);
+      setMapOpenLoading(false);
     }
   };
 
@@ -477,14 +477,14 @@ export function RestaurantMapView({
       ) : null}
 
       <RestaurantMapSheet
-        directionsErrorMessage={directionsErrorMessage}
-        directionsLoading={directionsLoading}
+        mapOpenErrorMessage={mapOpenErrorMessage}
+        mapOpenLoading={mapOpenLoading}
         group={selectedGroup}
         onClose={() => {
           onSelectedGroupChange(null);
         }}
         onOpenSelectedGroup={onOpenSelectedGroup}
-        onOpenDirections={handleOpenDirections}
+        onOpenInMaps={handleOpenInMaps}
         tabs={selectedGroupTabs}
         selectedGroupActionLabel={selectedGroupActionLabel}
       />

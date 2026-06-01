@@ -142,9 +142,9 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
 
       trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'CreateRestaurantListScreen',
+        hasCreatedList: createdList.id.trim().length > 0,
         queued: false,
         visibility,
-        listId: createdList.id,
       });
       navigation.replace('ListDetail', { listId: createdList.id });
     } catch (error) {

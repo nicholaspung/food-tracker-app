@@ -79,9 +79,11 @@ jest.mock('../theme', () => ({
             },
             border: {
               default: 'default-border',
+              info: 'info-border',
               subtle: 'subtle-border',
             },
             status: {
+              infoBg: 'info-background',
               warningBg: 'warning-background',
               warningBorder: 'warning-border',
             },
@@ -93,6 +95,7 @@ jest.mock('../theme', () => ({
             },
           },
           radii: {
+            lg: 16,
             md: 12,
             pill: 999,
           },
@@ -119,9 +122,11 @@ jest.mock('../theme', () => ({
       },
       border: {
         default: 'default-border',
+        info: 'info-border',
         subtle: 'subtle-border',
       },
       status: {
+        infoBg: 'info-background',
         warningBg: 'warning-background',
         warningBorder: 'warning-border',
       },
@@ -133,6 +138,7 @@ jest.mock('../theme', () => ({
       },
     },
     radii: {
+      lg: 16,
       md: 12,
       pill: 999,
     },
@@ -270,6 +276,23 @@ describe('ListsScreen', () => {
     expect(renderer.root.findByProps({ testID: 'lists-search-input' })).toBeTruthy();
     expect(renderer.root.findByProps({ testID: 'lists-list-card-my-0' })).toBeTruthy();
     expect(renderer.root.findByType('FeatureListFooter').props.label).toBe('Load more lists');
+  });
+
+  it('promotes shared-link state with a pill on my list cards', async () => {
+    mockedUseInfiniteQuery.mockImplementation((options) =>
+      options.enabled === false
+        ? buildQueryResult({ isSuccess: false })
+        : buildQueryResult({}, [buildList({ shareEnabled: true })]),
+    );
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    const listItem = renderer.root.findByProps({ testID: 'lists-list-card-my-0' });
+    expect(listItem.props.titleAccessory.props.testID).toBe('lists-shared-link-pill-0');
+    expect(listItem.props.titleAccessory.props.children[1].props.children).toBe('Shared link');
   });
 
   it('renders the empty state when there are no lists', async () => {

@@ -21,11 +21,11 @@ import type {
 } from './restaurantMapTypes';
 
 interface RestaurantMapSheetProps {
-  directionsErrorMessage: string | null;
-  directionsLoading: boolean;
+  mapOpenErrorMessage: string | null;
+  mapOpenLoading: boolean;
   group: RestaurantMapGroup | null;
   onClose: () => void;
-  onOpenDirections: (group: RestaurantMapGroup) => Promise<void>;
+  onOpenInMaps: (group: RestaurantMapGroup) => Promise<void>;
   onOpenSelectedGroup?: (group: RestaurantMapGroup) => void;
   selectedGroupActionLabel?: string;
   tabs?: RestaurantMapSheetTabs | null;
@@ -154,7 +154,7 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.secondary,
     fontStyle: 'italic',
   },
-  directionsError: {
+  mapOpenError: {
     color: theme.colors.text.warning,
   },
   tabsWrap: {
@@ -324,11 +324,11 @@ function RestaurantMapSheetTabContent({
 }
 
 export function RestaurantMapSheet({
-  directionsErrorMessage,
-  directionsLoading,
+  mapOpenErrorMessage,
+  mapOpenLoading,
   group,
   onClose,
-  onOpenDirections,
+  onOpenInMaps,
   onOpenSelectedGroup,
   selectedGroupActionLabel = 'Open Restaurant',
   tabs = null,
@@ -408,20 +408,20 @@ export function RestaurantMapSheet({
               />
             ) : null}
             <Button
-              accessibilityLabel={`Get directions to ${group.restaurantName}`}
-              label="Directions"
-              loading={directionsLoading}
+              accessibilityLabel={`Open ${group.restaurantName} in Maps`}
+              label="Open in Maps"
+              loading={mapOpenLoading}
               onPress={() => {
-                void onOpenDirections(group);
+                void onOpenInMaps(group);
               }}
               style={onOpenSelectedGroup ? styles.actionButton : undefined}
-              testID="restaurant-map-directions-button"
+              testID="restaurant-map-open-in-maps-button"
               variant="secondary"
             />
           </View>
-          {directionsErrorMessage ? (
-            <Text style={styles.directionsError} variant="bodySmTightSemiBold">
-              {directionsErrorMessage}
+          {mapOpenErrorMessage ? (
+            <Text style={styles.mapOpenError} variant="bodySmTightSemiBold">
+              {mapOpenErrorMessage}
             </Text>
           ) : null}
         </View>

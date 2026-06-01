@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { buildRestaurantDirectionsUrl } from '../components/maps/restaurantDirectionsLink';
+import { buildRestaurantMapUrl } from '../components/maps/restaurantMapLink';
 import type { RestaurantMapGroup } from '../components/maps/restaurantMapTypes';
 
 function setPlatformOS(os: 'ios' | 'android') {
@@ -23,45 +23,55 @@ function buildGroup(overrides: Partial<RestaurantMapGroup> = {}): RestaurantMapG
   };
 }
 
-describe('buildRestaurantDirectionsUrl', () => {
+describe('buildRestaurantMapUrl', () => {
   const originalPlatformOS = Platform.OS;
 
   afterEach(() => {
     setPlatformOS(originalPlatformOS as 'ios' | 'android');
   });
 
-  it('builds an Android geo URL with the restaurant location when available', () => {
+  it('builds an Android geo search URL with the restaurant location when available', () => {
     setPlatformOS('android');
 
-    expect(buildRestaurantDirectionsUrl(buildGroup())).toBe(
-      'geo:0,0?q=Test%20Restaurant%20Palm%20City%2C%20FL',
+    expect(buildRestaurantMapUrl(buildGroup())).toBe(
+      'geo:27.17,-80.27?q=Test%20Restaurant%20Palm%20City%2C%20FL',
     );
   });
 
-  it('builds an iOS Apple Maps driving directions URL with the restaurant location when available', () => {
+  it('builds an iOS Apple Maps search URL with the restaurant location when available', () => {
     setPlatformOS('ios');
 
-    const url = buildRestaurantDirectionsUrl(buildGroup());
+    const url = buildRestaurantMapUrl(buildGroup());
 
     expect(url).toBe(
-      'https://maps.apple.com/?daddr=Test%20Restaurant%20Palm%20City%2C%20FL&q=Test%20Restaurant&dirflg=d',
+      'https://maps.apple.com/?q=Test%20Restaurant%20Palm%20City%2C%20FL&ll=27.17%2C-80.27',
     );
   });
 
-  it('falls back to coordinates when no restaurant location is available', () => {
-    setPlatformOS('ios');
+  it('uses coordinates with the restaurant label when no Android restaurant location is available', () => {
+    setPlatformOS('android');
 
-    expect(buildRestaurantDirectionsUrl(buildGroup({
+    expect(buildRestaurantMapUrl(buildGroup({
       restaurantLocation: undefined,
     }))).toBe(
-      'https://maps.apple.com/?daddr=27.17,-80.27&q=Test%20Restaurant&dirflg=d',
+      'geo:0,0?q=27.17%2C-80.27(Test%20Restaurant)',
+    );
+  });
+
+  it('uses the restaurant label and centered coordinates when no iOS restaurant location is available', () => {
+    setPlatformOS('ios');
+
+    expect(buildRestaurantMapUrl(buildGroup({
+      restaurantLocation: undefined,
+    }))).toBe(
+      'https://maps.apple.com/?q=Test%20Restaurant&ll=27.17%2C-80.27',
     );
   });
 
   it('encodes special characters in the restaurant label and query', () => {
     setPlatformOS('ios');
 
-    const url = buildRestaurantDirectionsUrl(buildGroup({
+    const url = buildRestaurantMapUrl(buildGroup({
       restaurantLocation: 'A/B Market',
       restaurantName: "Bob's Sushi & Grill (North)",
     }));

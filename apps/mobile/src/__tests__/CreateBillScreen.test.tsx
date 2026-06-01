@@ -514,7 +514,7 @@ describe('CreateBillScreen', () => {
       customParticipantInput.props.onChangeText(name);
     });
 
-    const addPersonButton = findByTestId(renderer, 'Button', 'bill-custom-participant-add-button');
+    const addPersonButton = findByTestId(renderer, 'Pressable', 'bill-custom-participant-add-button');
     await act(async () => {
       addPersonButton.props.onPress();
     });
