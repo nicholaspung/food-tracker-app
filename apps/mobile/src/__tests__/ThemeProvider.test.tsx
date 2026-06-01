@@ -39,6 +39,7 @@ describe('ThemeProvider', () => {
     mockUseColorScheme.mockReset();
     mockUseColorScheme.mockReturnValue('light');
     await AsyncStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it('defaults to system preference when no stored preference exists', async () => {
@@ -70,7 +71,7 @@ describe('ThemeProvider', () => {
 
   it('uses the light palette when a light override is stored and the OS is dark', async () => {
     mockUseColorScheme.mockReturnValue('dark');
-    await AsyncStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'light');
+    globalThis.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'light');
     let capturedTheme: Theme | undefined;
 
     await renderTheme((theme) => {
@@ -94,14 +95,14 @@ describe('ThemeProvider', () => {
       capturedTheme!.setPreference('dark');
     });
 
-    expect(await AsyncStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('dark');
+    expect(globalThis.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('dark');
     expect(capturedTheme).toBeDefined();
     expect(capturedTheme!.preference).toBe('dark');
     expect(capturedTheme!.colorScheme).toBe('dark');
   });
 
   it('ignores invalid stored preferences', async () => {
-    await AsyncStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'sepia');
+    globalThis.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'sepia');
     let capturedTheme: Theme | undefined;
 
     await renderTheme((theme) => {

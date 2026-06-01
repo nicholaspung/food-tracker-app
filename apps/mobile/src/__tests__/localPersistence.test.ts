@@ -6,6 +6,7 @@ import { localPersistence } from '../localPersistence';
 describe('localPersistence', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it('keeps owned storage categories explicit while preserving current keys', () => {
@@ -43,20 +44,51 @@ describe('localPersistence', () => {
     );
   });
 
-  it('delegates async key-value categories to the existing AsyncStorage engine', async () => {
+  it('delegates marker categories to native localStorage while preserving key names', async () => {
     await localPersistence.uiPreferences.storage.setItem(
       localPersistence.uiPreferences.keys.themePreference,
       'dark',
     );
+    await localPersistence.analytics.storage.setItem(localPersistence.analytics.keys.anonymousId, 'anon-1');
+    await localPersistence.notifications.storage.setItem(localPersistence.notifications.keys.deviceId, 'device-1');
 
-    await expect(AsyncStorage.getItem(localPersistence.uiPreferences.keys.themePreference)).resolves.toBe('dark');
+    await expect(AsyncStorage.getItem(localPersistence.uiPreferences.keys.themePreference)).resolves.toBeNull();
+    expect(globalThis.localStorage.getItem(localPersistence.uiPreferences.keys.themePreference)).toBe('dark');
+    expect(globalThis.localStorage.getItem(localPersistence.analytics.keys.anonymousId)).toBe('anon-1');
+    expect(globalThis.localStorage.getItem(localPersistence.notifications.keys.deviceId)).toBe('device-1');
     await expect(
       localPersistence.uiPreferences.storage.getItem(localPersistence.uiPreferences.keys.themePreference),
     ).resolves.toBe('dark');
 
     await localPersistence.uiPreferences.storage.removeItem(localPersistence.uiPreferences.keys.themePreference);
+    await localPersistence.analytics.storage.removeItem(localPersistence.analytics.keys.anonymousId);
+    await localPersistence.notifications.storage.removeItem(localPersistence.notifications.keys.deviceId);
 
-    await expect(AsyncStorage.getItem(localPersistence.uiPreferences.keys.themePreference)).resolves.toBeNull();
+    expect(globalThis.localStorage.getItem(localPersistence.uiPreferences.keys.themePreference)).toBeNull();
+    expect(globalThis.localStorage.getItem(localPersistence.analytics.keys.anonymousId)).toBeNull();
+    expect(globalThis.localStorage.getItem(localPersistence.notifications.keys.deviceId)).toBeNull();
+  });
+
+  it('keeps non-marker async key-value categories on the existing AsyncStorage engine', async () => {
+    await localPersistence.queryCache.storage.setItem(localPersistence.queryCache.activeStorageKey, 'query-cache');
+    await localPersistence.usageSnapshots.storage.setItem(
+      localPersistence.usageSnapshots.buildStorageKey('user-1'),
+      'usage-cache',
+    );
+    await localPersistence.authHandoffs.storage.setItem(
+      localPersistence.authHandoffs.keys.pendingAuthRedirect,
+      'redirect',
+    );
+    await localPersistence.authFallback.storage.setItem(localPersistence.authFallback.keys.rateLimiter, 'rate-limit');
+
+    await expect(AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).resolves.toBe('query-cache');
+    await expect(
+      AsyncStorage.getItem(localPersistence.usageSnapshots.buildStorageKey('user-1')),
+    ).resolves.toBe('usage-cache');
+    await expect(
+      AsyncStorage.getItem(localPersistence.authHandoffs.keys.pendingAuthRedirect),
+    ).resolves.toBe('redirect');
+    await expect(AsyncStorage.getItem(localPersistence.authFallback.keys.rateLimiter)).resolves.toBe('rate-limit');
   });
 
   it('builds dynamic user-scoped keys without changing their format', () => {

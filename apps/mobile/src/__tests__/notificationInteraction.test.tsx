@@ -135,6 +135,7 @@ describe('notificationInteraction', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-28T12:00:00.000Z'));
     mockAsyncStorageState.clear();
+    globalThis.localStorage.clear();
     mockAddNotificationResponseReceivedListener.mockReset();
     mockGetExpoPushTokenAsync.mockReset();
     mockGetAllScheduledNotificationsAsync.mockReset();
@@ -336,30 +337,30 @@ describe('notificationInteraction', () => {
   });
 
   it('deactivates the persisted device during logout cleanup', async () => {
-    mockAsyncStorageState.set('notifications.deviceId', 'device_1');
+    globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
 
     await unregisterCurrentNotificationDevice();
 
     expect(mockedDeactivateNotificationDevice).toHaveBeenCalledWith('device_1');
-    expect(mockAsyncStorageState.has('notifications.deviceId')).toBe(false);
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBeNull();
   });
 
   it('keeps the persisted device when logout server deactivation fails', async () => {
-    mockAsyncStorageState.set('notifications.deviceId', 'device_1');
+    globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
     mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('server failed'));
 
     await expect(unregisterCurrentNotificationDevice()).rejects.toThrow('server failed');
 
     expect(mockedDeactivateNotificationDevice).toHaveBeenCalledWith('device_1');
-    expect(mockAsyncStorageState.get('notifications.deviceId')).toBe('device_1');
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBe('device_1');
   });
 
   it('clears the persisted device identity after account deletion cleanup', async () => {
-    mockAsyncStorageState.set('notifications.deviceId', 'device_1');
+    globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
 
     await clearNotificationDeviceIdentity();
 
-    expect(mockAsyncStorageState.has('notifications.deviceId')).toBe(false);
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBeNull();
   });
 
   it('routes tasting invite notification taps to the tasting sessions list', async () => {

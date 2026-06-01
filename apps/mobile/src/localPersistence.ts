@@ -20,6 +20,16 @@ const localPersistenceAsyncStorage: AsyncKeyValueStorage = {
   removeItem: (key) => AsyncStorageModule.removeItem(key),
 };
 
+const markerLocalStorage: AsyncKeyValueStorage = {
+  getItem: async (key) => globalThis.localStorage?.getItem(key) ?? null,
+  setItem: async (key, value) => {
+    globalThis.localStorage?.setItem(key, value);
+  },
+  removeItem: async (key) => {
+    globalThis.localStorage?.removeItem(key);
+  },
+};
+
 function normalizeUsageSnapshotScope(scope?: string | null): string {
   const trimmed = scope?.trim();
   return trimmed ? trimmed : 'actual';
@@ -62,7 +72,7 @@ export const localPersistence = {
       rolePreview: 'food_tracker_mobile_role_preview_v1',
       themePreference: 'ui.theme.preference.v1',
     },
-    storage: localPersistenceAsyncStorage,
+    storage: markerLocalStorage,
   },
   usageSnapshots: {
     buildStorageKey: buildUsageSnapshotKey,
@@ -79,7 +89,7 @@ export const localPersistence = {
     keys: {
       deviceId: 'notifications.deviceId',
     },
-    storage: localPersistenceAsyncStorage,
+    storage: markerLocalStorage,
   },
   analytics: {
     keys: {
@@ -87,7 +97,7 @@ export const localPersistence = {
       firstFoodLoggedPrefix: 'analytics.product.firstFoodLogged',
     },
     buildFirstFoodLoggedKey,
-    storage: localPersistenceAsyncStorage,
+    storage: markerLocalStorage,
   },
   authFallback: {
     keys: {

@@ -34,6 +34,33 @@ timeoutManager.setTimeoutProvider({
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+const mockLocalStorageState = new Map<string, string>();
+
+const mockLocalStorage = {
+  clear: jest.fn(() => {
+    mockLocalStorageState.clear();
+  }),
+  getItem: jest.fn((key: string) => mockLocalStorageState.get(key) ?? null),
+  key: jest.fn((index: number) => Array.from(mockLocalStorageState.keys())[index] ?? null),
+  removeItem: jest.fn((key: string) => {
+    mockLocalStorageState.delete(key);
+  }),
+  setItem: jest.fn((key: string, value: string) => {
+    mockLocalStorageState.set(key, String(value));
+  }),
+  get length() {
+    return mockLocalStorageState.size;
+  },
+};
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: mockLocalStorage,
+  writable: true,
+});
+
+jest.mock('expo-sqlite/localStorage/install', () => ({}));
+
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: {

@@ -188,6 +188,7 @@ describe('FoodProductScreen', () => {
     mockedAsyncStorage.getItem.mockResolvedValue(null);
     mockedAsyncStorage.setItem.mockReset();
     mockedAsyncStorage.setItem.mockResolvedValue(undefined);
+    globalThis.localStorage.clear();
     (ImagePicker.getPendingResultAsync as jest.Mock).mockReset();
     (ImagePicker.getPendingResultAsync as jest.Mock).mockResolvedValue(null);
     (ImagePicker.launchCameraAsync as jest.Mock).mockReset();
@@ -596,7 +597,7 @@ describe('FoodProductScreen', () => {
   });
 
   it('reads and writes only the current food product rated-before key', async () => {
-    mockedAsyncStorage.getItem.mockResolvedValueOnce('1');
+    globalThis.localStorage.setItem('ui.foodProduct.hasRatedBefore', '1');
     const navigate = jest.fn();
 
     writeFeature = jest.fn().mockResolvedValue({
@@ -624,7 +625,7 @@ describe('FoodProductScreen', () => {
       );
     });
 
-    expect(mockedAsyncStorage.getItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore');
+    expect(globalThis.localStorage.getItem('ui.foodProduct.hasRatedBefore')).toBe('1');
 
     await act(async () => {
       renderer.root.findByType('FoodProductFormFields').props.onChange({
@@ -638,7 +639,7 @@ describe('FoodProductScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockedAsyncStorage.setItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore', '1');
+    expect(globalThis.localStorage.getItem('ui.foodProduct.hasRatedBefore')).toBe('1');
     expect(navigate).toHaveBeenCalledWith('Home', buildFoodProductCreatedHomeParams());
   });
 });

@@ -5,6 +5,7 @@ describe('productAnalytics', () => {
     jest.resetModules();
     jest.clearAllMocks();
     await AsyncStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it('tracks canonical product events with common analytics context', () => {
@@ -105,7 +106,7 @@ describe('productAnalytics', () => {
       },
     }));
 
-    await AsyncStorage.setItem('analytics.product.firstFoodLogged', '1');
+    globalThis.localStorage.setItem('analytics.product.firstFoodLogged', '1');
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const analytics = require('../observability/productAnalytics') as typeof import('../observability/productAnalytics');
