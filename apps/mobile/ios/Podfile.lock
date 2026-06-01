@@ -1893,6 +1893,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-vector-icons-ionicons (13.1.2)
   - react-native-view-shot (5.1.0):
     - hermes-engine
     - RCTRequired
@@ -2697,6 +2698,7 @@ DEPENDENCIES:
   - "react-native-maps (from `../../../node_modules/.pnpm/react-native-maps@1.27.2_react-native-web@0.21.2_react-dom@19.2.3_react@19.2.3__react@1_a5400cdbd39cabad71ccc05ee729363b/node_modules/react-native-maps`)"
   - "react-native-netinfo (from `../../../node_modules/.pnpm/@react-native-community+netinfo@12.0.1_react-native@0.85.3_@babel+core@7.29.0_@react-na_b9127720af3f8b8d584948756c9f107a/node_modules/@react-native-community/netinfo`)"
   - "react-native-safe-area-context (from `../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.85.3_@babel+core@7.29.0_@react-nati_5218ce1da1bc499456ea2ce83b894307/node_modules/react-native-safe-area-context`)"
+  - "react-native-vector-icons-ionicons (from `../../../node_modules/.pnpm/@react-native-vector-icons+ionicons@13.1.2_@expo+config-plugins@56.0.8_typescript@6.0.3_fd4fdedae3edd29b9af3667e6bf5ef3c/node_modules/@react-native-vector-icons/ionicons`)"
   - "react-native-view-shot (from `../../../node_modules/.pnpm/react-native-view-shot@5.1.0_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-_101650c2617d8017e6e03de145ccda45/node_modules/react-native-view-shot`)"
   - "React-NativeModulesApple (from `../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-preset@0.85.3_@babel+core@7.2_87b68a5d07f50c0f905b0a793dc3ac61/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)"
   - "React-networking (from `../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-preset@0.85.3_@babel+core@7.2_87b68a5d07f50c0f905b0a793dc3ac61/node_modules/react-native/ReactCommon/react/networking`)"
@@ -2913,6 +2915,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/@react-native-community+netinfo@12.0.1_react-native@0.85.3_@babel+core@7.29.0_@react-na_b9127720af3f8b8d584948756c9f107a/node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
     :path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.85.3_@babel+core@7.29.0_@react-nati_5218ce1da1bc499456ea2ce83b894307/node_modules/react-native-safe-area-context"
+  react-native-vector-icons-ionicons:
+    :path: "../../../node_modules/.pnpm/@react-native-vector-icons+ionicons@13.1.2_@expo+config-plugins@56.0.8_typescript@6.0.3_fd4fdedae3edd29b9af3667e6bf5ef3c/node_modules/@react-native-vector-icons/ionicons"
   react-native-view-shot:
     :path: "../../../node_modules/.pnpm/react-native-view-shot@5.1.0_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-_101650c2617d8017e6e03de145ccda45/node_modules/react-native-view-shot"
   React-NativeModulesApple:
@@ -3084,6 +3088,7 @@ SPEC CHECKSUMS:
   react-native-maps: cb32168a32e30f83beb08198325ff96b70dd5c9f
   react-native-netinfo: 2f906d5d9a639090ed1c079135d6485a95f749f1
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
+  react-native-vector-icons-ionicons: 6831196cf1486bfd26b715d749c5c9a7d67bc0eb
   react-native-view-shot: 5bf17256c542d46c02a6f2d2752fe88eb3a8d058
   React-NativeModulesApple: deba264b03bd79c6bd61014fa30e40321b5e443a
   React-networking: 35e6070b084f435429f85c5db40b4d5b38652fe9
