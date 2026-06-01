@@ -354,7 +354,6 @@ export async function submitEditFoodProductEditor(
   if (validationMessage) {
     trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED', {
       source,
-      foodProductId: input.foodProductId,
       reason:
         validationMessage === 'Food product name is required.'
           ? 'missing_item'
@@ -385,7 +384,6 @@ export async function submitEditFoodProductEditor(
 
   trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_STARTED', {
     source,
-    foodProductId: input.foodProductId,
     isOnline: input.isOnline,
     hasNotes: input.form.notes.trim().length > 0,
     visibility: input.form.visibility,
@@ -413,7 +411,6 @@ export async function submitEditFoodProductEditor(
 
     trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
       source,
-      foodProductId: input.foodProductId,
       queued,
       visibility: input.form.visibility,
       photoMode: input.photoMode,
@@ -445,7 +442,6 @@ export async function submitEditFoodProductEditor(
         : 'Could not update food product.';
     trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_FAILED', {
       source,
-      foodProductId: input.foodProductId,
       error: errorMessage,
     });
 

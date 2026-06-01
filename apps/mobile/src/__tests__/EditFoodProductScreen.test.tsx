@@ -743,7 +743,6 @@ describe('EditFoodProductScreen', () => {
       'EDIT_FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED',
       expect.objectContaining({
         source: 'EditFoodProductScreen',
-        foodProductId: 'food-product-1',
         reason: 'missing_item',
       }),
     );
@@ -790,14 +789,12 @@ describe('EditFoodProductScreen', () => {
       'EDIT_FOOD_PRODUCT_SUBMIT_STARTED',
       expect.objectContaining({
         source: 'EditFoodProductScreen',
-        foodProductId: 'food-product-1',
       }),
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
       'EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED',
       expect.objectContaining({
         source: 'EditFoodProductScreen',
-        foodProductId: 'food-product-1',
         queued: false,
       }),
     );

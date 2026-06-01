@@ -126,12 +126,12 @@ export function HomeFeedActionModals({
         cancelLabel={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'Keep Visit'
-            : 'Keep Food Product'
+            : 'Keep'
         }
         confirmLabel={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'Delete Visit'
-            : 'Delete Food Product'
+            : 'Delete'
         }
         confirmLoadingLabel="Deleting..."
         description={
