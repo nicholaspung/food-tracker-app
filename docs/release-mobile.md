@@ -45,6 +45,7 @@ pnpm mobile:unused-exports
 - Confirm online-only actions are disabled or clearly labeled while offline.
 - Review `docs/mobile-store-readiness.md` for store metadata, privacy, credentials, and policy checks.
 - Review `docs/mobile-local-persistence.md` when release changes touch offline browsing, queued writes, auth storage, redirects, or analytics first-use markers.
+- Review `docs/mobile-native-upgrade-maintenance.md` when release changes touch Expo, React Native, CocoaPods, Xcode, native projects, or package patches.
 
 ## 3. Backend Production Deploy
 

@@ -146,9 +146,14 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
             return;
           }
 
-          logger.warn('[NotificationInteraction] Failed to register notification device:', error);
+          if (!isTransientExpoPushTokenServiceError(error)) {
+            logger.warn('[NotificationInteraction] Failed to register notification device:', error);
+          }
           trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_FAILED', {
             errorMessage: error instanceof Error ? error.message : String(error),
+            reason: isTransientExpoPushTokenServiceError(error)
+              ? 'transient_expo_push_token_service_unavailable'
+              : 'registration_failed',
             source: 'NotificationInteraction',
             trigger,
           });
@@ -286,6 +291,17 @@ function isIosSimulatorMissingApnsEntitlementError(error: unknown): boolean {
 
   const errorMessage = error instanceof Error ? error.message : String(error);
   return errorMessage.includes('no valid') && errorMessage.includes('aps-environment');
+}
+
+function isTransientExpoPushTokenServiceError(error: unknown): boolean {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return (
+    errorMessage.includes('Error encountered while fetching Expo token') &&
+    (errorMessage.includes('service unavailable') ||
+      errorMessage.includes('no healthy upstream') ||
+      errorMessage.includes('upstream connect error') ||
+      errorMessage.includes('connection timeout'))
+  );
 }
 
 export function useForegroundNotificationPresentation() {

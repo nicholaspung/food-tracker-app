@@ -16,6 +16,7 @@ import {
   deactivateNotificationDevice,
   registerNotificationDevice,
 } from '../features/store/notificationDevicesStore';
+import { logger } from '../lib/logger';
 import { trackObservabilityEvent } from '../observability';
 
 const mockAddNotificationResponseReceivedListener = jest.fn();
@@ -105,6 +106,7 @@ const mockedRegisterNotificationDevice = registerNotificationDevice as jest.Mock
 const mockedDeactivateNotificationDevice = deactivateNotificationDevice as jest.MockedFunction<
   typeof deactivateNotificationDevice
 >;
+const mockedLogger = logger as jest.Mocked<typeof logger>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 
 function RegistrationHarness({ status = 'authenticated', userId = 'user_1' }) {
@@ -147,6 +149,7 @@ describe('notificationInteraction', () => {
     mockIsDevice = true;
     mockedRegisterNotificationDevice.mockReset();
     mockedDeactivateNotificationDevice.mockReset();
+    mockedLogger.warn.mockReset();
     mockedTrackObservabilityEvent.mockReset();
 
     mockAddNotificationResponseReceivedListener.mockReturnValue({
@@ -273,6 +276,44 @@ describe('notificationInteraction', () => {
       renderer.unmount();
     });
     expect(mockRemoveAppStateListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries transient Expo push token service outages without warning in dev logs', async () => {
+    mockGetExpoPushTokenAsync
+      .mockRejectedValueOnce(
+        new Error('Error encountered while fetching Expo token, expected an OK response, received: service unavailable (body: "no healthy upstream").'),
+      )
+      .mockResolvedValueOnce({ data: 'ExponentPushToken[test]' });
+
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+    expect(mockedLogger.warn).not.toHaveBeenCalledWith(
+      '[NotificationInteraction] Failed to register notification device:',
+      expect.any(Error),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'NOTIFICATION_DEVICE_REGISTRATION_FAILED',
+      expect.objectContaining({
+        reason: 'transient_expo_push_token_service_unavailable',
+        trigger: 'auth',
+      }),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+      await flushNotificationEffects();
+    });
+
+    expect(mockGetExpoPushTokenAsync).toHaveBeenCalledTimes(2);
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pushToken: 'ExponentPushToken[test]',
+      }),
+    );
   });
 
   it('shows foreground notifications as banners and notification list entries', async () => {
