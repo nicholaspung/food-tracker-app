@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
+import { Asset } from 'expo-media-library';
 
 function normalizeTimestampCandidate(rawValue: unknown): number | null {
   if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
@@ -125,10 +125,8 @@ function extractPhotoCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | nu
 
 async function getMediaLibraryCaptureDate(assetId: string): Promise<Date | null> {
   try {
-    const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId, {
-      shouldDownloadFromNetwork: false,
-    });
-    return parseCreationTimestamp(assetInfo.creationTime);
+    const mediaLibraryAsset = new Asset(assetId);
+    return parseCreationTimestamp(await mediaLibraryAsset.getCreationTime());
   } catch {
     return null;
   }
