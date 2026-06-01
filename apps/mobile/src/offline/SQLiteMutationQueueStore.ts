@@ -1,6 +1,6 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
-import { getEnvironmentDatabaseName } from '../config/persistence';
+import { localPersistence } from '../localPersistence';
 import type {
   EnqueueMutationInput,
   MutationMethod,
@@ -11,7 +11,7 @@ import type {
   QueuedMutation,
 } from './types';
 
-const DATABASE_NAME = getEnvironmentDatabaseName('food_tracker_offline_queue.db');
+const DATABASE_NAME = localPersistence.offlineQueue.nativeDatabaseName;
 const TABLE_NAME = 'offline_mutation_queue';
 const DEFAULT_MAX_ATTEMPTS = 5;
 

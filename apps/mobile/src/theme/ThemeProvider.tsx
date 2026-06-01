@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { useColorScheme } from 'react-native';
@@ -13,12 +12,13 @@ import {
   type PaletteTokens,
   type ThemeName,
 } from './tokens';
+import { localPersistence } from '../localPersistence';
 import { logger } from '../lib/logger';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type ThemeColorScheme = 'light' | 'dark';
 
-export const THEME_PREFERENCE_STORAGE_KEY = 'ui.theme.preference.v1';
+export const THEME_PREFERENCE_STORAGE_KEY = localPersistence.uiPreferences.keys.themePreference;
 
 export interface Theme {
   name: ThemeName;
@@ -221,7 +221,7 @@ export function ThemeProvider({ children, themeName = ACTIVE_THEME_NAME }: Props
   useEffect(() => {
     let isMounted = true;
 
-    void AsyncStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)
+    void localPersistence.uiPreferences.storage.getItem(THEME_PREFERENCE_STORAGE_KEY)
       .then((storedPreference) => {
         if (!isMounted) {
           return;
@@ -252,7 +252,7 @@ export function ThemeProvider({ children, themeName = ACTIVE_THEME_NAME }: Props
     }
 
     setPreferenceState(nextPreference);
-    void AsyncStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, nextPreference).catch((error) => {
+    void localPersistence.uiPreferences.storage.setItem(THEME_PREFERENCE_STORAGE_KEY, nextPreference).catch((error) => {
       logger.warn('[ThemeProvider] Failed to persist theme preference:', error);
     });
   }, []);

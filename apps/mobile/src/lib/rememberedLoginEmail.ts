@@ -1,11 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { getEnvironmentStorageKey } from '../config/persistence';
+import { localPersistence } from '../localPersistence';
 import { logger } from './logger';
 
-const REMEMBERED_LOGIN_EMAIL_STORAGE_KEY = getEnvironmentStorageKey(
-  'food_tracker_remembered_login_email_v1',
-);
+const REMEMBERED_LOGIN_EMAIL_STORAGE_KEY = localPersistence.authFallback.keys.rememberedLoginEmail;
 
 function normalizeRememberedLoginEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -13,7 +9,7 @@ function normalizeRememberedLoginEmail(email: string): string {
 
 export async function loadRememberedLoginEmail(): Promise<string> {
   try {
-    const storedEmail = await AsyncStorage.getItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
+    const storedEmail = await localPersistence.authFallback.storage.getItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
 
     if (!storedEmail) {
       return '';
@@ -31,11 +27,11 @@ export async function saveRememberedLoginEmail(email: string): Promise<void> {
 
   try {
     if (!normalizedEmail) {
-      await AsyncStorage.removeItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
+      await localPersistence.authFallback.storage.removeItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
       return;
     }
 
-    await AsyncStorage.setItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY, normalizedEmail);
+    await localPersistence.authFallback.storage.setItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY, normalizedEmail);
   } catch (error) {
     logger.warn('[RememberedLoginEmail] Failed to save remembered login email:', error);
   }
@@ -43,7 +39,7 @@ export async function saveRememberedLoginEmail(email: string): Promise<void> {
 
 export async function clearRememberedLoginEmail(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
+    await localPersistence.authFallback.storage.removeItem(REMEMBERED_LOGIN_EMAIL_STORAGE_KEY);
   } catch (error) {
     logger.warn('[RememberedLoginEmail] Failed to clear remembered login email:', error);
   }

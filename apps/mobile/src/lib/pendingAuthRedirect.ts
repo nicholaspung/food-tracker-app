@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { localPersistence } from '../localPersistence';
 
-const PENDING_AUTH_REDIRECT_STORAGE_KEY = 'pending_auth_redirect_v1';
+const PENDING_AUTH_REDIRECT_STORAGE_KEY = localPersistence.authHandoffs.keys.pendingAuthRedirect;
 const PENDING_AUTH_REDIRECT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type PendingAuthRedirect = {
@@ -34,7 +34,7 @@ function isExpiredRedirect(redirect: PendingAuthRedirect): boolean {
 }
 
 export async function savePendingAuthRedirect(redirect: Omit<PendingAuthRedirect, 'createdAt'>): Promise<void> {
-  await AsyncStorage.setItem(
+  await localPersistence.authHandoffs.storage.setItem(
     PENDING_AUTH_REDIRECT_STORAGE_KEY,
     JSON.stringify({
       ...redirect,
@@ -44,7 +44,7 @@ export async function savePendingAuthRedirect(redirect: Omit<PendingAuthRedirect
 }
 
 export async function getPendingAuthRedirect(): Promise<PendingAuthRedirect | null> {
-  const raw = await AsyncStorage.getItem(PENDING_AUTH_REDIRECT_STORAGE_KEY);
+  const raw = await localPersistence.authHandoffs.storage.getItem(PENDING_AUTH_REDIRECT_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -64,5 +64,5 @@ export async function getPendingAuthRedirect(): Promise<PendingAuthRedirect | nu
 }
 
 export async function clearPendingAuthRedirect(): Promise<void> {
-  await AsyncStorage.removeItem(PENDING_AUTH_REDIRECT_STORAGE_KEY);
+  await localPersistence.authHandoffs.storage.removeItem(PENDING_AUTH_REDIRECT_STORAGE_KEY);
 }

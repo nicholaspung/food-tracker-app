@@ -1,10 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SecureStoreOptions } from 'expo-secure-store';
 import type * as SecureStoreModule from 'expo-secure-store';
 import { BaseAuthStore, type RecordModel } from 'pocketbase';
 
 import { env } from '../config/env';
 import { getEnvironmentStorageKey, isCurrentBackendUrl } from '../config/persistence';
+import { localPersistence } from '../localPersistence';
 import { logger } from './logger';
 
 interface PersistedAuthState {
@@ -14,7 +14,7 @@ interface PersistedAuthState {
 }
 
 type SecureStoreModuleType = typeof SecureStoreModule;
-const DEFAULT_AUTH_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_pb_auth');
+const DEFAULT_AUTH_STORAGE_KEY = localPersistence.authFallback.keys.pocketbaseAuth;
 const AUTH_KEYCHAIN_SERVICE = getEnvironmentStorageKey('food_tracker_mobile_auth');
 
 let cachedSecureStoreModule: SecureStoreModuleType | null | undefined;
@@ -109,11 +109,11 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       const secureStore = await this.getSecureStoreIfAvailable();
       if (secureStore) {
         await secureStore.setItemAsync(this.storageKey, serialized, getSecureStoreOptions(secureStore));
-        await AsyncStorage.removeItem(this.storageKey);
+        await localPersistence.authFallback.storage.removeItem(this.storageKey);
         return;
       }
 
-      await AsyncStorage.setItem(this.storageKey, serialized);
+      await localPersistence.authFallback.storage.setItem(this.storageKey, serialized);
     } catch (error) {
       logger.warn('[AuthStore] Failed to persist auth state:', error);
     }
@@ -144,19 +144,19 @@ export class SecureStoreAuthStore extends BaseAuthStore {
     if (secureStore) {
       const secureValue = await secureStore.getItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
       if (secureValue) {
-        await AsyncStorage.removeItem(this.storageKey);
+        await localPersistence.authFallback.storage.removeItem(this.storageKey);
         return secureValue;
       }
     }
 
-    const legacyValue = await AsyncStorage.getItem(this.storageKey);
+    const legacyValue = await localPersistence.authFallback.storage.getItem(this.storageKey);
     if (!legacyValue) {
       return null;
     }
 
     if (secureStore) {
       await secureStore.setItemAsync(this.storageKey, legacyValue, getSecureStoreOptions(secureStore));
-      await AsyncStorage.removeItem(this.storageKey);
+      await localPersistence.authFallback.storage.removeItem(this.storageKey);
     }
 
     return legacyValue;
@@ -169,7 +169,7 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       await secureStore.deleteItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
     }
 
-    await AsyncStorage.removeItem(this.storageKey);
+    await localPersistence.authFallback.storage.removeItem(this.storageKey);
   }
 }
 

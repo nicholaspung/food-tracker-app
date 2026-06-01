@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import type * as ExpoNotifications from 'expo-notifications';
@@ -9,11 +8,12 @@ import {
   deactivateNotificationDevice,
   registerNotificationDevice,
 } from '../features/store/notificationDevicesStore';
+import { localPersistence } from '../localPersistence';
 import { logger } from '../lib/logger';
 import { trackObservabilityEvent } from '../observability';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
-const NOTIFICATION_DEVICE_ID_STORAGE_KEY = 'notifications.deviceId';
+const NOTIFICATION_DEVICE_ID_STORAGE_KEY = localPersistence.notifications.keys.deviceId;
 const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
 const NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS = 250;
 const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
@@ -80,22 +80,22 @@ export function setNotificationsModuleLoaderForTests(loader: () => Promise<Notif
 }
 
 async function resolveNotificationDeviceId(): Promise<string> {
-  const existingDeviceId = await AsyncStorage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+  const existingDeviceId = await localPersistence.notifications.storage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
   if (existingDeviceId?.trim()) {
     return existingDeviceId;
   }
 
   const nextDeviceId = `device_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
-  await AsyncStorage.setItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY, nextDeviceId);
+  await localPersistence.notifications.storage.setItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY, nextDeviceId);
   return nextDeviceId;
 }
 
 export async function clearNotificationDeviceIdentity(): Promise<void> {
-  await AsyncStorage.removeItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+  await localPersistence.notifications.storage.removeItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
 }
 
 export async function unregisterCurrentNotificationDevice(): Promise<void> {
-  const deviceId = await AsyncStorage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+  const deviceId = await localPersistence.notifications.storage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
   if (!deviceId?.trim()) {
     return;
   }

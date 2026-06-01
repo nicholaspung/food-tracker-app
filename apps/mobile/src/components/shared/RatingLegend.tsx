@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { localPersistence } from '../../localPersistence';
 import { RATING_OPTIONS } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Text } from '../../ui';
@@ -12,7 +12,7 @@ interface RatingLegendProps {
   persistenceKey?: string | null;
 }
 
-const DEFAULT_PERSISTENCE_KEY = 'ui.ratingGuide.expanded';
+const DEFAULT_PERSISTENCE_KEY = localPersistence.uiPreferences.keys.ratingGuideExpanded;
 
 const useStyles = createThemedStyles((theme) => ({
   card: {
@@ -62,7 +62,7 @@ export function RatingLegend({
 
     const loadPreference = async () => {
       try {
-        const storedValue = await AsyncStorage.getItem(persistenceKey);
+        const storedValue = await localPersistence.uiPreferences.storage.getItem(persistenceKey);
         if (!isMounted || storedValue === null) {
           return;
         }
@@ -84,7 +84,7 @@ export function RatingLegend({
     setIsExpanded((prev) => {
       const next = !prev;
       if (persistenceKey) {
-        void AsyncStorage.setItem(persistenceKey, next ? '1' : '0');
+        void localPersistence.uiPreferences.storage.setItem(persistenceKey, next ? '1' : '0');
       }
       return next;
     });

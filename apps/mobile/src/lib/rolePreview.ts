@@ -1,8 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { localPersistence } from '../localPersistence';
 import type { AuthUser } from '../types/auth';
 
-const ROLE_PREVIEW_STORAGE_KEY = 'food_tracker_mobile_role_preview_v1';
+const ROLE_PREVIEW_STORAGE_KEY = localPersistence.uiPreferences.keys.rolePreview;
 
 export interface RolePreviewSettings {
   viewAsNonAdmin: boolean;
@@ -45,7 +44,7 @@ function clearRolePreviewSettingsCache(): RolePreviewSettings {
 
 export async function loadRolePreviewSettings(): Promise<RolePreviewSettings> {
   try {
-    const storedValue = await AsyncStorage.getItem(ROLE_PREVIEW_STORAGE_KEY);
+    const storedValue = await localPersistence.uiPreferences.storage.getItem(ROLE_PREVIEW_STORAGE_KEY);
 
     if (!storedValue) {
       return clearRolePreviewSettingsCache();
@@ -65,11 +64,11 @@ export async function persistRolePreviewSettings(
 
   try {
     if (!hasRolePreviewOverrides(normalizedSettings)) {
-      await AsyncStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
+      await localPersistence.uiPreferences.storage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
       return normalizedSettings;
     }
 
-    await AsyncStorage.setItem(ROLE_PREVIEW_STORAGE_KEY, JSON.stringify(normalizedSettings));
+    await localPersistence.uiPreferences.storage.setItem(ROLE_PREVIEW_STORAGE_KEY, JSON.stringify(normalizedSettings));
     return normalizedSettings;
   } catch {
     return normalizedSettings;
@@ -80,7 +79,7 @@ export async function clearPersistedRolePreviewSettings(): Promise<RolePreviewSe
   clearRolePreviewSettingsCache();
 
   try {
-    await AsyncStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
+    await localPersistence.uiPreferences.storage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
   } catch {
     // Ignore persistence cleanup failures; in-memory state has already been reset.
   }

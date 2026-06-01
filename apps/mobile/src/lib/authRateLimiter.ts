@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { getEnvironmentStorageKey } from '../config/persistence';
+import { localPersistence } from '../localPersistence';
 import { logger } from './logger';
 
 export type AuthRateLimitFlow =
@@ -27,7 +25,7 @@ export interface AuthRateLimitDecision {
   failedAttempts: number;
 }
 
-const AUTH_RATE_LIMIT_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_auth_rate_limiter_v1');
+const AUTH_RATE_LIMIT_STORAGE_KEY = localPersistence.authFallback.keys.rateLimiter;
 const SERVER_RATE_LIMIT_COOLDOWN_MS = 15 * 60_000;
 
 type AuthRateLimitStore = Record<string, AuthRateLimitState>;
@@ -124,7 +122,7 @@ function buildDecision(state: AuthRateLimitState | null, now = Date.now()): Auth
 
 async function readStore(): Promise<AuthRateLimitStoreReadResult> {
   try {
-    const raw = await AsyncStorage.getItem(AUTH_RATE_LIMIT_STORAGE_KEY);
+    const raw = await localPersistence.authFallback.storage.getItem(AUTH_RATE_LIMIT_STORAGE_KEY);
     if (!raw) {
       return {
         storageAvailable: true,
@@ -175,11 +173,14 @@ async function writeStore(store: AuthRateLimitStore): Promise<boolean> {
     );
 
     if (entries.length === 0) {
-      await AsyncStorage.removeItem(AUTH_RATE_LIMIT_STORAGE_KEY);
+      await localPersistence.authFallback.storage.removeItem(AUTH_RATE_LIMIT_STORAGE_KEY);
       return true;
     }
 
-    await AsyncStorage.setItem(AUTH_RATE_LIMIT_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+    await localPersistence.authFallback.storage.setItem(
+      AUTH_RATE_LIMIT_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(entries)),
+    );
     return true;
   } catch (error) {
     logger.warn('[AuthRateLimiter] Failed to persist state:', error);

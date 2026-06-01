@@ -1,9 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import type { PersistedClient } from '@tanstack/query-persist-client-core';
 import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstack/react-query';
 
-import { getEnvironmentStorageKey } from '../config/persistence';
 import type { FeedbackRecord, NoteRecord } from '../features/models';
 import { isBillDetailQueryKey } from '../features/store/billsQuery';
 import { isFeedbackListQueryKey } from '../features/store/feedbackQuery';
@@ -12,14 +10,7 @@ import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
 import { isNotesSummaryQueryKey, isPaginatedNotesQueryKey } from '../features/store/notesQuery';
 import { isProfileQueryKey } from '../features/store/profileQuery';
 import { isTastingSessionsListQueryKey } from '../features/store/tastingSessionsQuery';
-
-const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
-  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
-  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
-  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3'),
-  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4'),
-];
-const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5');
+import { localPersistence } from '../localPersistence';
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';
@@ -198,8 +189,12 @@ export function sanitizePersistedClient(persistedClient: PersistedClient): Persi
 }
 
 export async function removeLegacyQueryCache(): Promise<string[]> {
-  await Promise.all(LEGACY_QUERY_CACHE_STORAGE_KEYS.map((storageKey) => AsyncStorage.removeItem(storageKey)));
-  return [...LEGACY_QUERY_CACHE_STORAGE_KEYS];
+  await Promise.all(
+    localPersistence.queryCache.legacyStorageKeys.map((storageKey) =>
+      localPersistence.queryCache.storage.removeItem(storageKey),
+    ),
+  );
+  return [...localPersistence.queryCache.legacyStorageKeys];
 }
 
 export async function clearPersistedQueryCache(): Promise<void> {
@@ -207,8 +202,8 @@ export async function clearPersistedQueryCache(): Promise<void> {
 }
 
 export const queryPersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-  key: QUERY_CACHE_STORAGE_KEY,
+  storage: localPersistence.queryCache.storage,
+  key: localPersistence.queryCache.activeStorageKey,
   throttleTime: 1000,
   serialize: (persistedClient) => JSON.stringify(sanitizePersistedClient(persistedClient)),
 });

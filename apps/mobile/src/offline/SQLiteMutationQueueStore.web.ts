@@ -7,9 +7,9 @@ import type {
   QueuedMutation,
 } from './types';
 
-import { getEnvironmentStorageKey } from '../config/persistence';
+import { localPersistence } from '../localPersistence';
 
-const STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_web_offline_queue_v1');
+const STORAGE_KEY = localPersistence.offlineQueue.webStorageKey;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 export class SQLiteMutationQueueStore implements MutationQueueStore {
@@ -210,19 +210,11 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
 }
 
 function getLocalStorageValue(key: string): string | null {
-  try {
-    return globalThis.localStorage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
+  return localPersistence.offlineQueue.webStorage.getItem(key);
 }
 
 function setLocalStorageValue(key: string, value: string): void {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    // Ignore storage failures and keep the in-memory fallback working for this session.
-  }
+  localPersistence.offlineQueue.webStorage.setItem(key, value);
 }
 
 function isQueuedMutation(value: unknown): value is QueuedMutation {

@@ -1,22 +1,13 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import type { MonthlyUsageSnapshot } from '../features/store/usageLimitsGateway';
-
-const USAGE_SNAPSHOT_CACHE_PREFIX = 'usage.monthly.snapshot.v1';
-const DEFAULT_USAGE_SNAPSHOT_SCOPE = 'actual';
+import { localPersistence } from '../localPersistence';
 
 export interface CachedUsageSnapshot {
   snapshot: MonthlyUsageSnapshot;
   cachedAt: string;
 }
 
-function normalizeScope(scope?: string | null): string {
-  const trimmed = scope?.trim();
-  return trimmed ? trimmed : DEFAULT_USAGE_SNAPSHOT_SCOPE;
-}
-
 function buildCacheKey(userId: string, scope?: string | null): string {
-  return `${USAGE_SNAPSHOT_CACHE_PREFIX}:${userId}:${normalizeScope(scope)}`;
+  return localPersistence.usageSnapshots.buildStorageKey(userId, scope);
 }
 
 export async function readUsageSnapshotCache(
@@ -27,7 +18,7 @@ export async function readUsageSnapshotCache(
     return null;
   }
 
-  const raw = await AsyncStorage.getItem(buildCacheKey(userId, scope));
+  const raw = await localPersistence.usageSnapshots.storage.getItem(buildCacheKey(userId, scope));
   if (!raw) {
     return null;
   }
@@ -62,5 +53,5 @@ export async function writeUsageSnapshotCache(
     cachedAt: new Date().toISOString(),
   };
 
-  await AsyncStorage.setItem(buildCacheKey(userId, scope), JSON.stringify(payload));
+  await localPersistence.usageSnapshots.storage.setItem(buildCacheKey(userId, scope), JSON.stringify(payload));
 }

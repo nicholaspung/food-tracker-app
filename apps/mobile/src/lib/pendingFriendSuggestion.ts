@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { localPersistence } from '../localPersistence';
 
-const PENDING_FRIEND_SUGGESTION_STORAGE_KEY = 'pending_friend_suggestion_v1';
+const PENDING_FRIEND_SUGGESTION_STORAGE_KEY = localPersistence.authHandoffs.keys.pendingFriendSuggestion;
 export const PENDING_FRIEND_SUGGESTION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PendingFriendSuggestion {
@@ -55,11 +55,11 @@ export async function savePendingFriendSuggestion(
       ? input
       : createPendingFriendSuggestion(input);
 
-  await AsyncStorage.setItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY, JSON.stringify(suggestion));
+  await localPersistence.authHandoffs.storage.setItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY, JSON.stringify(suggestion));
 }
 
 export async function getPendingFriendSuggestion(): Promise<PendingFriendSuggestion | null> {
-  const raw = await AsyncStorage.getItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+  const raw = await localPersistence.authHandoffs.storage.getItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -67,22 +67,22 @@ export async function getPendingFriendSuggestion(): Promise<PendingFriendSuggest
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isPendingFriendSuggestion(parsed)) {
-      await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+      await localPersistence.authHandoffs.storage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
       return null;
     }
 
     if (parsed.expiresAt <= Date.now()) {
-      await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+      await localPersistence.authHandoffs.storage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
       return null;
     }
 
     return parsed;
   } catch {
-    await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+    await localPersistence.authHandoffs.storage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
     return null;
   }
 }
 
 export async function clearPendingFriendSuggestion(): Promise<void> {
-  await AsyncStorage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
+  await localPersistence.authHandoffs.storage.removeItem(PENDING_FRIEND_SUGGESTION_STORAGE_KEY);
 }

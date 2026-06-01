@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { env } from '../config/env';
+import { localPersistence } from '../localPersistence';
 import type { AuthUser } from '../types/auth';
 import {
   identifyObservabilityUser,
@@ -83,7 +83,6 @@ type UserTier = AnalyticsContext['userTier'];
 type ExpoConstants = typeof import('expo-constants')['default'];
 
 const DEFAULT_ANONYMOUS_ID = 'anonymous_pending';
-const FIRST_FOOD_LOGGED_KEY = 'analytics.product.firstFoodLogged';
 
 let currentAnonymousId = DEFAULT_ANONYMOUS_ID;
 let currentUserKey: string | undefined;
@@ -253,7 +252,7 @@ function hashString(value: string): string {
 
 function getFirstFoodLoggedStorageKey(): string {
   const identityKey = currentUserKey ?? currentAnonymousId;
-  return `${FIRST_FOOD_LOGGED_KEY}.${identityKey}`;
+  return localPersistence.analytics.buildFirstFoodLoggedKey(identityKey);
 }
 
 async function trackFirstFoodLoggedOnce(
@@ -261,14 +260,14 @@ async function trackFirstFoodLoggedOnce(
   properties: TrackingEntryProperties,
 ): Promise<void> {
   try {
-    const existingValue = await AsyncStorage.getItem(storageKey);
+    const existingValue = await localPersistence.analytics.storage.getItem(storageKey);
     if (existingValue === '1') {
       trackedFirstFoodLoggedKeys.add(storageKey);
       return;
     }
 
     trackedFirstFoodLoggedKeys.add(storageKey);
-    await AsyncStorage.setItem(storageKey, '1');
+    await localPersistence.analytics.storage.setItem(storageKey, '1');
     trackProductEvent('activation.first_food_logged', properties);
   } catch {
     trackedFirstFoodLoggedKeys.add(storageKey);

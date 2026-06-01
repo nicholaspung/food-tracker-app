@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, View } from 'react-native';
@@ -28,6 +27,7 @@ import {
   buildDefaultFoodProductForm,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
+import { localPersistence } from '../localPersistence';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import {
@@ -45,7 +45,7 @@ type FoodProductEditorExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
-const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
+const FOOD_PRODUCT_RATED_BEFORE_KEY = localPersistence.uiPreferences.keys.foodProductRatedBefore;
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -99,7 +99,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
     const loadRatedBefore = async () => {
       try {
-        const foodProductValue = await AsyncStorage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY);
+        const foodProductValue = await localPersistence.uiPreferences.storage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY);
         if (isMounted) {
           setHasRatedBefore(foodProductValue === '1');
         }
@@ -171,7 +171,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       form,
       isDisplayFreeUser,
       isOnline,
-      markRatedBefore: () => AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1'),
+      markRatedBefore: () => localPersistence.uiPreferences.storage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1'),
       monthlyUsageSnapshot: monthlyUsage.snapshot,
       photo,
       shouldEnforceUsageLimitsClientSide,

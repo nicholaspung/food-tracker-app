@@ -1,9 +1,9 @@
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { localPersistence } from '../localPersistence';
 import { logger } from '../lib/logger';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
 import {
@@ -26,7 +26,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-const PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY = 'analytics.product.anonymousId';
 const QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS = 4000;
 
 interface AppProvidersProps {
@@ -201,13 +200,15 @@ export function AppProviders({ children }: AppProvidersProps) {
 }
 
 async function resolveProductAnalyticsAnonymousId(): Promise<string> {
-  const existingAnonymousId = await AsyncStorage.getItem(PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY);
+  const existingAnonymousId = await localPersistence.analytics.storage.getItem(
+    localPersistence.analytics.keys.anonymousId,
+  );
   if (existingAnonymousId?.trim()) {
     return existingAnonymousId;
   }
 
   const nextAnonymousId = `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
-  await AsyncStorage.setItem(PRODUCT_ANALYTICS_ANONYMOUS_ID_KEY, nextAnonymousId);
+  await localPersistence.analytics.storage.setItem(localPersistence.analytics.keys.anonymousId, nextAnonymousId);
   return nextAnonymousId;
 }
 
