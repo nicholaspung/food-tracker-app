@@ -67,6 +67,17 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
 }));
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      version: 'test',
+    },
+    nativeAppVersion: 'test',
+    nativeBuildVersion: 'test',
+  },
+}));
+
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
 
@@ -77,6 +88,10 @@ jest.mock('react-native', () => {
     },
     Linking: {
       openSettings: jest.fn(),
+    },
+    Platform: {
+      OS: 'ios',
+      select: (values: Record<string, unknown>) => values.ios ?? values.default,
     },
     Pressable: ({
       children,

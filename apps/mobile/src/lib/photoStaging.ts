@@ -132,6 +132,7 @@ export async function stageLocalPhotoFile(
   const jpegQuality = options.jpegQuality ?? DEFAULT_PHOTO_JPEG_QUALITY;
   const resize = options.resize ?? true;
   let manipulatedUri: string | null = null;
+  let stagedUri: string | null = null;
 
   const stagingDirectory = getPhotoStagingDirectory();
   const stagedPhotoName = normalizePhotoFileNameToJpeg(localPhoto.name);
@@ -161,8 +162,12 @@ export async function stageLocalPhotoFile(
       intermediates: true,
     });
     const sourceFile = new File(manipulatedUri);
-    sourceFile.copy(destinationFile);
+    stagedUri = destinationFile.uri;
+    await sourceFile.copy(destinationFile);
   } catch {
+    if (stagedUri) {
+      await deleteFileBestEffort(stagedUri);
+    }
     return null;
   } finally {
     if (manipulatedUri) {

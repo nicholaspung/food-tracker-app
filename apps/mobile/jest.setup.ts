@@ -34,6 +34,12 @@ timeoutManager.setTimeoutProvider({
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+Object.defineProperty(globalThis, 'fetch', {
+  configurable: true,
+  value: jest.fn(),
+  writable: true,
+});
+
 jest.mock('@gorhom/bottom-sheet', () => {
   const react = jest.requireActual<typeof import('react')>('react');
 

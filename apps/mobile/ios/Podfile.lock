@@ -2644,7 +2644,7 @@ DEPENDENCIES:
   - "ExpoModulesJSI (from `../../../node_modules/.pnpm/expo-modules-jsi@56.0.7_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-prese_0e50114251e2eccd1e5cd3421004460b/node_modules/expo-modules-jsi/apple`)"
   - "ExpoModulesWorklets (from `../../../node_modules/.pnpm/expo-modules-core@56.0.14_react-native-worklets@0.8.3_@babel+core@7.29.0_@react-native+_bb8942a2fe5a206d1d9667ac9040b3fd/node_modules/expo-modules-core`)"
   - "ExpoModulesWorkletsAdapter (from `../../../node_modules/.pnpm/expo-modules-core@56.0.14_react-native-worklets@0.8.3_@babel+core@7.29.0_@react-native+_bb8942a2fe5a206d1d9667ac9040b3fd/node_modules/expo-modules-core`)"
-  - "ExpoNotifications (from `../../../node_modules/.pnpm/expo-notifications@56.0.15_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-na_80cdb55e4f158fdef5b3d01665b831cc/node_modules/expo-notifications/ios`)"
+  - "ExpoNotifications (from `../../../node_modules/.pnpm/expo-notifications@56.0.15_patch_hash=acda13161a87712ab2a9efd08b92e332a77a97613df042ef7_bd28b89d09480867d05e972eb163f08e/node_modules/expo-notifications/ios`)"
   - "ExpoSecureStore (from `../../../node_modules/.pnpm/expo-secure-store@56.0.4_expo@56.0.8/node_modules/expo-secure-store/ios`)"
   - "ExpoSplashScreen (from `../../../node_modules/.pnpm/expo-splash-screen@56.0.10_expo@56.0.8_typescript@6.0.3/node_modules/expo-splash-screen/ios`)"
   - "ExpoSQLite (from `../../../node_modules/.pnpm/expo-sqlite@56.0.4_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-native+jes_65989ce171a705c7581df0b9b5e79cd8/node_modules/expo-sqlite/ios`)"
@@ -2809,7 +2809,7 @@ EXTERNAL SOURCES:
   ExpoModulesWorkletsAdapter:
     :path: "../../../node_modules/.pnpm/expo-modules-core@56.0.14_react-native-worklets@0.8.3_@babel+core@7.29.0_@react-native+_bb8942a2fe5a206d1d9667ac9040b3fd/node_modules/expo-modules-core"
   ExpoNotifications:
-    :path: "../../../node_modules/.pnpm/expo-notifications@56.0.15_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-na_80cdb55e4f158fdef5b3d01665b831cc/node_modules/expo-notifications/ios"
+    :path: "../../../node_modules/.pnpm/expo-notifications@56.0.15_patch_hash=acda13161a87712ab2a9efd08b92e332a77a97613df042ef7_bd28b89d09480867d05e972eb163f08e/node_modules/expo-notifications/ios"
   ExpoSecureStore:
     :path: "../../../node_modules/.pnpm/expo-secure-store@56.0.4_expo@56.0.8/node_modules/expo-secure-store/ios"
   ExpoSplashScreen:

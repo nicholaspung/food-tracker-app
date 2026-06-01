@@ -17,15 +17,16 @@ jest.mock('expo-file-system', () => {
   class MockFile {
     uri: string;
     exists = true;
-    copy = jest.fn((destination: MockFile) => {
-      MockFile.copiedTo.push(destination.uri);
-    });
+    copy = jest.fn((destination: MockFile) => MockFile.copy(this, destination));
     delete = jest.fn(() => {
       MockFile.deleted.push(this.uri);
     });
 
     static copiedTo: string[] = [];
     static deleted: string[] = [];
+    static copy = jest.fn(async (_source: MockFile, destination: MockFile) => {
+      MockFile.copiedTo.push(destination.uri);
+    });
 
     constructor(...parts: (string | MockDirectory | MockFile)[]) {
       this.uri = parts
@@ -77,6 +78,7 @@ import {
 const mockedFile = jest.requireMock('expo-file-system').File as {
   copiedTo: string[];
   deleted: string[];
+  copy: jest.Mock<Promise<void>, [{ uri: string }, { uri: string }]>;
 };
 
 describe('photoStaging', () => {
@@ -93,6 +95,10 @@ describe('photoStaging', () => {
     });
     mockedFile.copiedTo.length = 0;
     mockedFile.deleted.length = 0;
+    mockedFile.copy.mockClear();
+    mockedFile.copy.mockImplementation(async (_source, destination) => {
+      mockedFile.copiedTo.push(destination.uri);
+    });
   });
 
   afterEach(() => {
@@ -125,6 +131,49 @@ describe('photoStaging', () => {
       'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-photo.jpg',
     ]);
     expect(mockedFile.deleted).toEqual(['file:///manipulated/photo.jpg']);
+  });
+
+  it('waits for asynchronous copy before resolving the staged photo', async () => {
+    const copyControl: { resolve?: () => void } = {};
+    mockedFile.copy.mockImplementationOnce(
+      async (_source, destination) =>
+        new Promise<void>((resolve) => {
+          copyControl.resolve = () => {
+            mockedFile.copiedTo.push(destination.uri);
+            resolve();
+          };
+        }),
+    );
+
+    let resolved = false;
+    const stagedPromise = stageLocalPhotoFile({
+      uri: 'file:///picker/photo.jpg',
+      fileName: 'photo.jpg',
+      height: 3024,
+      mimeType: 'image/jpeg',
+      width: 4032,
+    }).then((staged) => {
+      resolved = true;
+      return staged;
+    });
+
+    await Promise.resolve();
+
+    expect(resolved).toBe(false);
+    expect(mockedFile.copiedTo).toEqual([]);
+
+    expect(copyControl.resolve).toBeDefined();
+    const finishCopy = copyControl.resolve as () => void;
+    finishCopy();
+
+    await expect(stagedPromise).resolves.toEqual({
+      uri: 'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-photo.jpg',
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+    });
+    expect(mockedFile.copiedTo).toEqual([
+      'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-photo.jpg',
+    ]);
   });
 
   it('uses custom resize and jpeg options', async () => {
@@ -207,6 +256,24 @@ describe('photoStaging', () => {
     ).resolves.toBeNull();
 
     expect(mockedFile.copiedTo).toEqual([]);
+  });
+
+  it('cleans manipulation and staged files when asynchronous copy fails', async () => {
+    mockedFile.copy.mockRejectedValueOnce(new Error('failed to copy'));
+
+    await expect(
+      stageLocalPhotoFile({
+        uri: 'file:///picker/photo.jpg',
+        fileName: 'photo.jpg',
+        mimeType: 'image/jpeg',
+      }),
+    ).resolves.toBeNull();
+
+    expect(mockedFile.copiedTo).toEqual([]);
+    expect(mockedFile.deleted).toEqual([
+      'file:///mock/document/photo-staging/21i3v9-4fzzzxjy-photo.jpg',
+      'file:///manipulated/photo.jpg',
+    ]);
   });
 
   it('returns null without importing the manipulator when the native module is unavailable', async () => {

@@ -111,12 +111,27 @@ jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
 }));
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      version: 'test',
+    },
+    nativeAppVersion: 'test',
+    nativeBuildVersion: 'test',
+  },
+}));
+
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
 
   return {
     Linking: {
       openSettings: jest.fn(),
+    },
+    Platform: {
+      OS: 'ios',
+      select: (values: Record<string, unknown>) => values.ios ?? values.default,
     },
     Pressable: ({
       children,
