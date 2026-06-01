@@ -362,7 +362,6 @@ export function RestaurantDiscoveryScreen({
   const [latestUserMapRegion, setLatestUserMapRegion] = useState<Region | null>(null);
   const [lastMapSearchRegion, setLastMapSearchRegion] = useState<Region | null>(null);
   const [showSearchHereButton, setShowSearchHereButton] = useState(false);
-  const [searchHereButtonHeight, setSearchHereButtonHeight] = useState(0);
   const [preserveMapRegionOnGroupsChange, setPreserveMapRegionOnGroupsChange] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapSheetTab, setMapSheetTab] = useState<RestaurantMapSheetTabId>('location');
@@ -447,9 +446,7 @@ export function RestaurantDiscoveryScreen({
   const mapExternalTopInset =
     isMapSheetOpen
       ? 0
-      : mapSearchPanelHeight +
-        theme.spacing.sm +
-        (showSearchHereButton ? searchHereButtonHeight + theme.spacing.sm : 0);
+      : mapSearchPanelHeight + theme.spacing.sm;
 
   const handleSelectRestaurant = useCallback((restaurant: RestaurantRecord) => {
     trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_SELECTED', {
@@ -701,13 +698,6 @@ export function RestaurantDiscoveryScreen({
   const handleMapSearchPanelLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = event.nativeEvent.layout.height;
     setMapSearchPanelHeight((currentHeight) =>
-      currentHeight === nextHeight ? currentHeight : nextHeight,
-    );
-  }, []);
-
-  const handleSearchHereButtonLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextHeight = event.nativeEvent.layout.height;
-    setSearchHereButtonHeight((currentHeight) =>
       currentHeight === nextHeight ? currentHeight : nextHeight,
     );
   }, []);
@@ -1004,7 +994,6 @@ export function RestaurantDiscoveryScreen({
             {restaurantMapView}
             {showSearchHereButton && !isMapSheetOpen ? (
               <View
-                onLayout={handleSearchHereButtonLayout}
                 style={[
                   styles.searchHereButtonWrap,
                   { top: mapSearchPanelHeight + theme.spacing.lg },

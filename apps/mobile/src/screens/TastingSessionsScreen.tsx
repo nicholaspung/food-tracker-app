@@ -199,6 +199,10 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
   const sessionsQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.root,
     queryFn: ({ signal }) => listTastingSessions({ signal }),
+    enabled: Boolean(user?.id && isOnline),
+    refetchOnMount: 'always',
+    refetchOnReconnect: 'always',
+    staleTime: 0,
   });
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(sessionsQuery.isRefetching);
   const refetchSessions = sessionsQuery.refetch;

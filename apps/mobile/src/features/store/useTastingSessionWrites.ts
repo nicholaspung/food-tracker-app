@@ -14,6 +14,7 @@ import {
   dismissTastingInvite,
   joinTastingSession,
   kickTastingParticipant,
+  leaveTastingSession,
   lockTastingSessionMembership,
   reopenTastingInviteWindow,
   resendTastingInvite,
@@ -189,6 +190,25 @@ export function useTastingSessionWrites() {
     [queryClient],
   );
 
+  const leaveSession = useCallback(
+    async ({
+      isOnline,
+      sessionId,
+    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
+      if (!isOnline) {
+        return blocked('Connect to the internet to leave this tasting session.');
+      }
+
+      const result = await leaveTastingSession(sessionId);
+      await removeDeletedTastingSessionFromCache(queryClient, sessionId);
+      return {
+        result,
+        status: 'completed',
+      };
+    },
+    [queryClient],
+  );
+
   const resendInvite = useCallback(
     async ({
       inviteId,
@@ -274,6 +294,7 @@ export function useTastingSessionWrites() {
     deleteSession,
     dismissInvite,
     joinSession,
+    leaveSession,
     lockLobby,
     reopenInviteWindow,
     removeParticipant,

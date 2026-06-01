@@ -57,6 +57,16 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     width: 32,
   },
+  rowIconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   statusBadge: {
     alignSelf: 'flex-start',
   },
@@ -118,9 +128,12 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [isReopeningInviteWindow, setIsReopeningInviteWindow] = useState(false);
   const [isDeleteSessionModalVisible, setIsDeleteSessionModalVisible] = useState(false);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isLeaveSessionModalVisible, setIsLeaveSessionModalVisible] = useState(false);
+  const [isLeavingSession, setIsLeavingSession] = useState(false);
 
   const session = sessionQuery.data;
   const isLeader = lifecycle.roles.isLeader;
+  const isParticipant = lifecycle.roles.isParticipant;
   const inviteWindowOpen = session ? isTastingInviteWindowOpen(session.joinExpiresAt) : false;
   const inviteWindowExpired = session ? isTastingInviteWindowExpired(session.joinExpiresAt) : false;
   const lobbyInstruction = isLeader
@@ -228,6 +241,24 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       setErrorMessage(error instanceof Error ? error.message : 'Could not delete tasting session.');
     } finally {
       setIsDeletingSession(false);
+    }
+  };
+
+  const handleConfirmLeaveSession = async () => {
+    try {
+      setErrorMessage(null);
+      setIsLeavingSession(true);
+      const leaveResult = await tastingSessionWrites.leaveSession({ isOnline, sessionId });
+      if (leaveResult.status === 'blocked') {
+        setErrorMessage(leaveResult.message);
+        return;
+      }
+      setIsLeaveSessionModalVisible(false);
+      navigation.navigate('TastingSessions');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not leave tasting session.');
+    } finally {
+      setIsLeavingSession(false);
     }
   };
 
@@ -347,8 +378,18 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
               </View>
             </View>
           )
+        ) : isParticipant ? (
+          <View style={styles.actionStack}>
+            <Text tone="secondary">Waiting for the leader to lock the group.</Text>
+            <Button
+              disabled={!isOnline || isLeavingSession}
+              label="Exit Session"
+              onPress={() => setIsLeaveSessionModalVisible(true)}
+              variant="secondary"
+            />
+          </View>
         ) : (
-          <Text tone="secondary">Waiting for the leader to lock the group.</Text>
+          <Text tone="secondary">Join this tasting session to wait in the lobby.</Text>
         )}
       </Card>
 
@@ -364,7 +405,16 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
               titleAccessory={<StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />}
               trailing={
                 isLeader && participant.role !== 'leader' ? (
-                  <Button disabled={!isOnline} label="Remove" onPress={() => setPendingKick(participant)} variant="secondary" />
+                  <Pressable
+                    accessibilityLabel={`Remove ${participant.name}`}
+                    accessibilityRole="button"
+                    disabled={!isOnline}
+                    onPress={() => setPendingKick(participant)}
+                    style={styles.rowIconButton}
+                    testID={`remove-tasting-participant-${participant.id}`}
+                  >
+                    <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+                  </Pressable>
                 ) : null
               }
             />
@@ -431,6 +481,24 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
         }}
         title="Delete Tasting Session?"
         visible={isDeleteSessionModalVisible}
+      />
+      <ConfirmDestructiveModal
+        cancelLabel="Stay"
+        confirmLabel="Exit Session"
+        confirmLoadingLabel="Exiting..."
+        description={`Exit "${session.name}"? You will leave the lobby and return to group tastings.`}
+        disabled={isLeavingSession}
+        loading={isLeavingSession}
+        onCancel={() => {
+          if (!isLeavingSession) {
+            setIsLeaveSessionModalVisible(false);
+          }
+        }}
+        onConfirm={() => {
+          void handleConfirmLeaveSession();
+        }}
+        title="Exit Tasting Session?"
+        visible={isLeaveSessionModalVisible}
       />
       <Modal
         description="Choose how long people can join. A new invite code will be generated."

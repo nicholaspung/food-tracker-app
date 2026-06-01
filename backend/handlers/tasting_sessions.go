@@ -462,6 +462,49 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
 	}).Bind(apis.RequireAuth())
 
+	se.Router.POST("/api/tasting-sessions/{sessionId}/leave", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		err = app.RunInTransaction(func(txApp core.App) error {
+			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
+			if loadErr != nil {
+				return mapTastingLoadError(loadErr)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
+				return apis.NewBadRequestError("participants can only leave during lobby", nil)
+			}
+			if strings.TrimSpace(sessionRecord.GetString("leader")) == authRecord.Id {
+				return apis.NewBadRequestError("the leader cannot leave their own tasting session", nil)
+			}
+			participantRecord, participantErr := findTastingParticipantRecord(txApp, sessionID, authRecord.Id)
+			if participantErr != nil {
+				return apis.NewApiError(500, "failed to load participant", participantErr)
+			}
+			if participantRecord == nil {
+				return apis.NewNotFoundError("participant not found", nil)
+			}
+			if err := txApp.Delete(participantRecord); err != nil {
+				return apis.NewApiError(500, "failed to leave tasting session", err)
+			}
+			if inviteRecord, inviteErr := findTastingInvite(txApp, sessionID, authRecord.Id); inviteErr != nil {
+				return apis.NewApiError(500, "failed to load invite", inviteErr)
+			} else if inviteRecord != nil {
+				inviteRecord.Set("status", tastingInviteStatusDismissed)
+				if saveErr := txApp.Save(inviteRecord); saveErr != nil {
+					return apis.NewApiError(500, "failed to dismiss invite", saveErr)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return e.JSON(200, map[string]any{"success": true})
+	}).Bind(apis.RequireAuth())
+
 	se.Router.DELETE("/api/tasting-sessions/{sessionId}", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
 		if err != nil {

@@ -127,6 +127,7 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 
 const reopenInviteWindow = jest.fn();
 const deleteSession = jest.fn();
+const leaveSession = jest.fn();
 const resendInvite = jest.fn();
 const invalidateQueries = jest.fn();
 const setQueryData = jest.fn();
@@ -220,7 +221,9 @@ function renderScreen(
       currentParticipant: session?.participants.find((participant) => participant.userId === mockedUseAuth().user?.id) ?? null,
       isInvitee: false,
       isLeader: Boolean(session && mockedUseAuth().user?.id === session.leaderUserId),
-      isParticipant: false,
+      isParticipant: Boolean(
+        session?.participants.some((participant) => participant.userId === mockedUseAuth().user?.id),
+      ),
     },
     shouldPoll: true,
     step: {
@@ -283,6 +286,7 @@ describe('TastingSessionLobbyScreen', () => {
       deleteSession,
       dismissInvite: jest.fn(),
       joinSession: jest.fn(),
+      leaveSession,
       lockLobby: jest.fn(),
       removeParticipant: jest.fn(),
       reopenInviteWindow,
@@ -293,6 +297,10 @@ describe('TastingSessionLobbyScreen', () => {
       status: 'completed',
     });
     deleteSession.mockResolvedValue({
+      result: { success: true },
+      status: 'completed',
+    });
+    leaveSession.mockResolvedValue({
       result: { success: true },
       status: 'completed',
     });
@@ -365,6 +373,75 @@ describe('TastingSessionLobbyScreen', () => {
       sessionId: 'session_1',
     });
     expect(navigation.navigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
+  it('lets joined participants exit the lobby and returns them to group tastings', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'user_2',
+      },
+    } as ReturnType<typeof useAuth>);
+
+    const { navigation, renderer } = renderScreen({
+      ...buildSession('2099-01-01T00:00:00.000Z', 'accepted'),
+      joinedCount: 2,
+      participants: [
+        ...buildSession('2099-01-01T00:00:00.000Z').participants,
+        {
+          id: 'participant_2',
+          joinedAt: '2026-05-20T11:00:00.000Z',
+          name: 'Madi',
+          role: 'participant',
+          userId: 'user_2',
+        },
+      ],
+    });
+
+    act(() => {
+      findButton(renderer, 'Exit Session').props.onPress();
+    });
+
+    const modal = renderer.root
+      .findAllByType('ConfirmDestructiveModal')
+      .find((node: any) => node.props.title === 'Exit Tasting Session?');
+    if (!modal) {
+      throw new Error('Expected exit confirmation modal.');
+    }
+    await act(async () => {
+      modal.props.onConfirm();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(leaveSession).toHaveBeenCalledWith({
+      isOnline: true,
+      sessionId: 'session_1',
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
+  it('uses a trash icon trigger for leader participant removal', () => {
+    const { renderer } = renderScreen({
+      ...buildSession('2099-01-01T00:00:00.000Z', 'accepted'),
+      joinedCount: 2,
+      participants: [
+        ...buildSession('2099-01-01T00:00:00.000Z').participants,
+        {
+          id: 'participant_2',
+          joinedAt: '2026-05-20T11:00:00.000Z',
+          name: 'Madi',
+          role: 'participant',
+          userId: 'user_2',
+        },
+      ],
+    });
+
+    const removeTrigger = renderer.root.findByProps({
+      testID: 'remove-tasting-participant-participant_2',
+    });
+
+    expect(removeTrigger.props.accessibilityLabel).toBe('Remove Madi');
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Remove')).toBe(false);
   });
 
   it('resends a dismissed invite while the lobby is open', async () => {

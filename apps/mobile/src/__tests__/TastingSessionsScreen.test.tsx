@@ -377,6 +377,38 @@ describe('TastingSessionsScreen', () => {
     expect(navigation.setParams).toHaveBeenCalledWith({ refreshSignal: undefined });
   });
 
+  it('revalidates group tastings on mount without interval polling', () => {
+    renderScreen([buildCompletedSession()]);
+
+    const queryOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
+      enabled: boolean;
+      refetchInterval?: unknown;
+      refetchOnMount: string;
+      refetchOnReconnect: string;
+      staleTime: number;
+    };
+
+    expect(queryOptions.enabled).toBe(true);
+    expect(queryOptions.staleTime).toBe(0);
+    expect(queryOptions.refetchOnMount).toBe('always');
+    expect(queryOptions.refetchOnReconnect).toBe('always');
+    expect(queryOptions.refetchInterval).toBeUndefined();
+  });
+
+  it('does not start a network list fetch while offline', () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+
+    renderScreen([]);
+
+    const queryOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
+      enabled: boolean;
+    };
+
+    expect(queryOptions.enabled).toBe(false);
+  });
+
   it('renders completed sessions as list rows with a session date', () => {
     const { renderer } = renderScreen([buildCompletedSession()]);
 

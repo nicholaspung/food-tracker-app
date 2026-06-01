@@ -199,6 +199,18 @@ export async function kickTastingParticipant(
   );
 }
 
+export async function leaveTastingSession(
+  sessionId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<{ success: boolean }> {
+  return trackFeatureMutation('tasting_session.leave', () =>
+    sendApiRequest<{ success: boolean }>(`/api/tasting-sessions/${encodePathSegment(sessionId)}/leave`, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      method: 'POST',
+    }),
+  );
+}
+
 export async function lockTastingSessionMembership(
   sessionId: string,
   requestOptions?: FeatureWriteRequestOptions,

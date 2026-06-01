@@ -58,6 +58,8 @@ const ACTIVE_LIFECYCLE_SCREENS = new Set<TastingSessionLifecycleScreen>([
   'tasting',
 ]);
 
+const TASTING_SESSION_LIFECYCLE_REFETCH_INTERVAL_MS = 3000;
+
 export function shouldPollTastingSessionLifecycleScreen(
   screen: TastingSessionLifecycleScreen,
   isOnline: boolean,
@@ -231,7 +233,11 @@ export function useTastingSessionLifecycleReadState(input: {
   const sessionQuery = useQuery({
     queryKey: tastingSessionsQueryKeys.detail(input.sessionId),
     queryFn: ({ signal }) => getTastingSessionById(input.sessionId, { signal }),
-    refetchInterval: (query) => (shouldPoll && query.state.data ? 3000 : false),
+    refetchInterval: (query) =>
+      shouldPoll && query.state.data ? TASTING_SESSION_LIFECYCLE_REFETCH_INTERVAL_MS : false,
+    refetchOnMount: 'always',
+    refetchOnReconnect: 'always',
+    staleTime: 0,
   });
   const session = sessionQuery.data;
   const missingAccess = getTastingSessionLifecycleMissingAccessFacts({
