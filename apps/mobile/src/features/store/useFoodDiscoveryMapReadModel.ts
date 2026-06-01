@@ -201,12 +201,14 @@ export function canShowFoodDiscoveryAllLocationsHistory(
     return false;
   }
 
-  const hasItemBackedHistory = history.itemCount > 0 || history.items.length > 0;
+  const historyItems = Array.isArray(history.items) ? history.items : [];
+  const historyRestaurants = Array.isArray(history.restaurants) ? history.restaurants : [];
+  const hasItemBackedHistory = history.itemCount > 0 || historyItems.length > 0;
   if (!hasItemBackedHistory || history.visitCount <= 0) {
     return false;
   }
 
-  const hasOrderedHistoryAtAnotherLocation = history.restaurants.some(
+  const hasOrderedHistoryAtAnotherLocation = historyRestaurants.some(
     (historyRestaurant) => historyRestaurant.restaurantId !== currentRestaurantId,
   );
 

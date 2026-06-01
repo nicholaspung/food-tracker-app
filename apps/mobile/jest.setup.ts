@@ -34,6 +34,32 @@ timeoutManager.setTimeoutProvider({
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      extra: {
+        eas: {
+          projectId: 'project_1',
+        },
+      },
+      version: 'test',
+    },
+    nativeAppVersion: 'test',
+    nativeBuildVersion: 'test',
+  },
+}));
+
+jest.mock('expo-device', () => ({
+  isDevice: true,
+}));
+
+jest.mock('expo-media-library', () => ({
+  Asset: jest.fn().mockImplementation(() => ({
+    getCreationTime: jest.fn(async () => null),
+  })),
+}));
+
 jest.mock('./src/ui/AppIcon', () => {
   const react = jest.requireActual<typeof import('react')>('react');
 

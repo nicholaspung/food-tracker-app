@@ -7,6 +7,9 @@
     "scheme": "yummyrecs",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/brand-logo.png",
+    "experiments": {
+      "reactCompiler": true
+    },
     "web": {
       "favicon": "./assets/brand-logo.png",
       "name": "Yummy Recs",
