@@ -1,7 +1,7 @@
 import { Ionicons } from '../../ui/AppIcon';
 import { useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
-import { Modal as RNModal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Modal as RNModal, NativeModules, Platform, Pressable, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { DateTimePickerProps } from '@expo/ui/community/datetime-picker';
 
@@ -12,6 +12,10 @@ import {
 } from '../../lib/dateFormatting';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Card, Input, Text } from '../../ui';
+
+type ExpoRuntime = {
+  modules?: Record<string, unknown>;
+};
 
 interface LocalDatePickerFieldProps {
   label?: string;
@@ -26,6 +30,26 @@ interface LocalDatePickerFieldProps {
 }
 
 type NativeDateTimePickerComponent = ComponentType<DateTimePickerProps>;
+
+function hasExpoUiNativeModule() {
+  const expoRuntime = (globalThis as typeof globalThis & { expo?: ExpoRuntime }).expo;
+  if (expoRuntime?.modules?.ExpoUI) {
+    return true;
+  }
+
+  const nativeUnimoduleProxy = NativeModules.NativeUnimoduleProxy as
+    | {
+        exportedMethods?: Record<string, unknown>;
+        modulesConstants?: Record<string, unknown>;
+      }
+    | undefined;
+
+  return Boolean(
+    NativeModules.ExpoUI ||
+      nativeUnimoduleProxy?.exportedMethods?.ExpoUI ||
+      nativeUnimoduleProxy?.modulesConstants?.ExpoUI,
+  );
+}
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -113,6 +137,10 @@ export function LocalDatePickerField({
   );
 
   const NativeDateTimePicker = useMemo<NativeDateTimePickerComponent | null>(() => {
+    if (!hasExpoUiNativeModule()) {
+      return null;
+    }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const module = require('@expo/ui/community/datetime-picker');
@@ -214,7 +242,7 @@ export function LocalDatePickerField({
             Native date picker module is not in this app build.
           </Text>
           <Text tone="warning" variant="bodySm">
-            Install `@expo/ui` and rebuild iOS/Android.
+            Rebuild the iOS/Android app after installing native dependencies.
           </Text>
           <Input
             autoCapitalize="none"

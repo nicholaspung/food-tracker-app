@@ -1,35 +1,33 @@
+import { File, UploadType, type UploadResult } from 'expo-file-system';
 import { ClientResponseError } from 'pocketbase';
 
+import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
 import type { VisitPhotoUploadInput } from './featureStore';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import { resolveFeatureWriteHeaders } from './featureStoreShared';
 
-function buildVisitPhotoFormData(
+function buildVisitPhotoUploadParameters(
   visitId: string | undefined,
   foodItemId: string,
   userId: string,
-  photo: VisitPhotoUploadInput,
   caption?: string,
-): FormData {
-  const formData = new FormData();
+): Record<string, string> {
+  const parameters: Record<string, string> = {
+    food_item: foodItemId,
+    user: userId,
+  };
+
   if (visitId) {
-    formData.append('visit', visitId);
+    parameters.visit = visitId;
   }
-  formData.append('food_item', foodItemId);
-  formData.append('user', userId);
-  formData.append('photo', {
-    uri: photo.uri,
-    name: photo.name,
-    type: photo.mimeType,
-  } as unknown as Blob);
 
   const trimmedCaption = caption?.trim();
   if (trimmedCaption) {
-    formData.append('caption', trimmedCaption);
+    parameters.caption = trimmedCaption;
   }
 
-  return formData;
+  return parameters;
 }
 
 export async function uploadVisitPhotos(
@@ -45,11 +43,17 @@ export async function uploadVisitPhotos(
   }
 
   for (const photo of photos) {
-    const formData = buildVisitPhotoFormData(visitId, foodItemId, userId, photo, caption);
+    const uploadResult = await uploadVisitPhotoFile(
+      visitId,
+      foodItemId,
+      userId,
+      photo,
+      caption,
+      requestOptions,
+    );
+
     try {
-      await pb.collection('visit_photos').create(formData, {
-        headers: resolveFeatureWriteHeaders(requestOptions),
-      });
+      assertVisitPhotoUploadSucceeded(uploadResult);
     } catch (error) {
       if (error instanceof ClientResponseError && error.status !== 429) {
         throw normalizeVisitPhotoUploadError(error, photo);
@@ -58,6 +62,71 @@ export async function uploadVisitPhotos(
       throw error;
     }
   }
+}
+
+async function uploadVisitPhotoFile(
+  visitId: string | undefined,
+  foodItemId: string,
+  userId: string,
+  photo: VisitPhotoUploadInput,
+  caption: string | undefined,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<UploadResult> {
+  const file = new File(photo.uri);
+  return file.upload(buildVisitPhotosCollectionUrl(), {
+    fieldName: 'photo',
+    headers: resolveVisitPhotoUploadHeaders(requestOptions),
+    httpMethod: 'POST',
+    mimeType: photo.mimeType,
+    parameters: buildVisitPhotoUploadParameters(visitId, foodItemId, userId, caption),
+    sessionType: 'foreground',
+    uploadType: UploadType.MULTIPART,
+  });
+}
+
+function resolveVisitPhotoUploadHeaders(
+  requestOptions?: FeatureWriteRequestOptions,
+): Record<string, string> | undefined {
+  const headers = { ...(resolveFeatureWriteHeaders(requestOptions) ?? {}) };
+  const authToken = pb.authStore.token?.trim();
+
+  if (authToken && !hasHeader(headers, 'Authorization')) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function assertVisitPhotoUploadSucceeded(uploadResult: UploadResult): void {
+  if (uploadResult.status >= 200 && uploadResult.status < 300) {
+    return;
+  }
+
+  throw new ClientResponseError({
+    response: parsePocketBaseUploadErrorResponse(uploadResult.body),
+    status: uploadResult.status,
+    url: buildVisitPhotosCollectionUrl(),
+  });
+}
+
+function buildVisitPhotosCollectionUrl(): string {
+  return `${env.pocketbaseUrl.replace(/\/+$/, '')}/api/collections/visit_photos/records`;
+}
+
+function parsePocketBaseUploadErrorResponse(body: string): Record<string, unknown> {
+  try {
+    const parsedBody = JSON.parse(body) as unknown;
+    if (parsedBody && typeof parsedBody === 'object') {
+      return parsedBody as Record<string, unknown>;
+    }
+  } catch {
+    // PocketBase normally returns JSON errors, but native uploads can surface plain text.
+  }
+
+  return {
+    data: {},
+    message: body.trim() || 'Failed to create record.',
+  };
 }
 
 function normalizeVisitPhotoUploadError(
@@ -100,4 +169,9 @@ function resolvePocketBaseFieldMessage(error: ClientResponseError): string | nul
   }
 
   return null;
+}
+
+function hasHeader(headers: Record<string, string>, targetHeader: string): boolean {
+  const normalizedTarget = targetHeader.toLowerCase();
+  return Object.keys(headers).some((header) => header.toLowerCase() === normalizedTarget);
 }
