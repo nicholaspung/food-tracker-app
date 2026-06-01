@@ -57,7 +57,36 @@ The policy deliberately treats web storage as plaintext. Web offline support can
 
 - `.scratch/mobile-production-readiness-audit/issues/08-add-mobile-offline-queue-retention-cleanup.md`
 
+## Expo SQLite LocalStorage Decision
+
+Decision: adopt `expo-sqlite/localStorage/install` only for small non-sensitive marker storage, and keep auth, query cache, and offline queue storage on their current engines until separate migrations explicitly address their restore, replay, and privacy contracts.
+
+Expo documents `expo-sqlite/kv-store` as a SQLite-backed drop-in replacement for AsyncStorage and `expo-sqlite/localStorage/install` as a native `globalThis.localStorage` implementation that is a no-op on web. This app already has an app-owned `localPersistence` interface, so future migrations should change the category engine behind that interface instead of spreading direct global `localStorage` calls through feature code.
+
+### Storage Classification
+
+| Category | Current owner | Classification | SQLite localStorage decision |
+| --- | --- | --- | --- |
+| PocketBase auth state | `SecureStoreAuthStore` | Secure auth | Explicitly excluded. Native auth remains in SecureStore; the existing AsyncStorage fallback is only a compatibility fallback when SecureStore is unavailable. |
+| Remembered login email and auth rate limiter | `localPersistence.authFallback` | Secure/auth-adjacent fallback | Do not move in the marker migration. These are tied to auth UX and logout/security behavior, so they need a separate auth-storage decision if revisited. |
+| React Query persistence | `localPersistence.queryCache` | Query cache | Do not move in the marker migration. Cache restore gates app startup through `AppProviders`, uses active and legacy environment-scoped keys, and has explicit sanitization/retention behavior. |
+| Offline mutation queue | `localPersistence.offlineQueue` | Offline mutation queue | Do not move. Native already uses a dedicated SQLite database with replayable payload rows; web uses `localStorage` only for the web queue. Any move must preserve replay payload persistence, retry state, and retention cleanup. |
+| Theme, rating guide, food-product-rated marker, role preview | `localPersistence.uiPreferences` | UI/preferences marker | Approved for follow-up migration to SQLite-backed localStorage because values are small, non-content markers/preferences. |
+| Usage snapshots | `localPersistence.usageSnapshots` | Usage snapshot | Do not include in the first migration. Values are non-content counters, but keys are user-scoped and must be handled with cache invalidation and cross-account leakage checks. |
+| Pending auth redirect and pending friend suggestion | `localPersistence.authHandoffs` | Handoff record | Do not include in the first migration. These records are TTL-bounded but include share/inviter handoff data and must preserve expiry, consume-on-use, and account-mismatch cleanup. |
+| Notification device id | `localPersistence.notifications` | Notification device id | Approved for follow-up migration only if logout/account-deletion cleanup is tested. It is a device-registration identifier, not authored content, but stale values can affect server-side notification deactivation. |
+| Anonymous id and first-food logged marker | `localPersistence.analytics` | Analytics marker | Approved for follow-up migration because values are non-content product analytics markers. Keys must not embed raw emails or authored content. |
+
+### Migration Risks
+
+- Cache invalidation: React Query cache keys have active and legacy versions and are restored before splash gating completes. Moving this cache with a global localStorage install would need an explicit dual-read or deliberate cache-drop plan, plus cold offline browse verification.
+- Logout behavior: sign-out and account deletion must continue clearing auth fallback state, query cache, usage snapshots, notification device id, pending handoffs, and queued mutations according to their current ownership rules. Marker migration follow-up tests must cover notification device cleanup.
+- Cross-account leakage: usage snapshots and persisted browse/cache data are user-associated. Any future migration must keep environment and user scoping intact, clear stale records on mismatch, and avoid reading one account's records into another account's UI.
+- Offline replay: queued writes contain the actual replay payload. Moving the queue out of the dedicated SQLite store is out of scope unless replay payload persistence, retry/backoff state, idempotency keys, and retention cleanup are redesigned together.
+- Manual key migration: `expo-sqlite/localStorage/install` does not automatically migrate AsyncStorage keys. Each approved category needs either dual-read/backfill/remove behavior or an intentional stale-marker reset.
+
 ## References
 
 - Expo SecureStore: https://docs.expo.dev/versions/latest/sdk/securestore/
 - Expo SQLite SQLCipher support: https://docs.expo.dev/versions/latest/sdk/sqlite/#sqlcipher
+- Expo SQLite key-value and localStorage APIs: https://docs.expo.dev/versions/latest/sdk/sqlite/#key-value-storage
