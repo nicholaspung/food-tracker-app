@@ -1,5 +1,7 @@
+import { File, UploadType, type UploadResult } from 'expo-file-system';
 import { ClientResponseError } from 'pocketbase';
 
+import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
 import type { NoteRecord } from '../models';
 import type {
@@ -193,24 +195,22 @@ function createEmptyNoteOverviewPage(input?: ListNotesPageInput): NoteOverviewPa
   };
 }
 
-function buildNotePhotoFormData(
+function buildNotePhotoUploadParameters(
   noteId: string,
   userId: string,
   photo: NotePhotoUploadInput,
-): FormData {
-  const formData = new FormData();
-  formData.append('note', noteId);
-  formData.append('user', userId);
-  formData.append('photo', {
-    uri: photo.uri,
-    name: photo.name,
-    type: photo.mimeType,
-  } as unknown as Blob);
+): Record<string, string> {
+  const parameters: Record<string, string> = {
+    note: noteId,
+    user: userId,
+  };
+
   const trimmedCapturedAt = photo.capturedAt?.trim();
   if (trimmedCapturedAt) {
-    formData.append('capturedAt', trimmedCapturedAt);
+    parameters.capturedAt = trimmedCapturedAt;
   }
-  return formData;
+
+  return parameters;
 }
 
 async function uploadNotePhotos(
@@ -224,11 +224,10 @@ async function uploadNotePhotos(
   }
 
   for (const photo of photos) {
-    const formData = buildNotePhotoFormData(noteId, userId, photo);
+    const uploadResult = await uploadNotePhotoFile(noteId, userId, photo, requestOptions);
+
     try {
-      await pb.collection('note_photos').create(formData, {
-        headers: resolveFeatureWriteHeaders(requestOptions),
-      });
+      assertNotePhotoUploadSucceeded(uploadResult);
     } catch (error) {
       if (error instanceof ClientResponseError && error.status !== 429) {
         throw normalizeNotePhotoUploadError(error, photo);
@@ -237,6 +236,69 @@ async function uploadNotePhotos(
       throw error;
     }
   }
+}
+
+async function uploadNotePhotoFile(
+  noteId: string,
+  userId: string,
+  photo: NotePhotoUploadInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<UploadResult> {
+  const file = new File(photo.uri);
+  return file.upload(buildNotePhotosCollectionUrl(), {
+    fieldName: 'photo',
+    headers: resolveNotePhotoUploadHeaders(requestOptions),
+    httpMethod: 'POST',
+    mimeType: photo.mimeType,
+    parameters: buildNotePhotoUploadParameters(noteId, userId, photo),
+    sessionType: 'foreground',
+    uploadType: UploadType.MULTIPART,
+  });
+}
+
+function resolveNotePhotoUploadHeaders(
+  requestOptions?: FeatureWriteRequestOptions,
+): Record<string, string> | undefined {
+  const headers = { ...(resolveFeatureWriteHeaders(requestOptions) ?? {}) };
+  const authToken = pb.authStore.token?.trim();
+
+  if (authToken && !hasHeader(headers, 'Authorization')) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function assertNotePhotoUploadSucceeded(uploadResult: UploadResult): void {
+  if (uploadResult.status >= 200 && uploadResult.status < 300) {
+    return;
+  }
+
+  throw new ClientResponseError({
+    response: parsePocketBaseUploadErrorResponse(uploadResult.body),
+    status: uploadResult.status,
+    url: buildNotePhotosCollectionUrl(),
+  });
+}
+
+function buildNotePhotosCollectionUrl(): string {
+  return `${env.pocketbaseUrl.replace(/\/+$/, '')}/api/collections/note_photos/records`;
+}
+
+function parsePocketBaseUploadErrorResponse(body: string): Record<string, unknown> {
+  try {
+    const parsedBody = JSON.parse(body) as unknown;
+    if (parsedBody && typeof parsedBody === 'object') {
+      return parsedBody as Record<string, unknown>;
+    }
+  } catch {
+    // PocketBase normally returns JSON errors, but native uploads can surface plain text.
+  }
+
+  return {
+    data: {},
+    message: body.trim() || 'Failed to create record.',
+  };
 }
 
 function normalizeNotePhotoUploadError(
@@ -279,6 +341,11 @@ function resolvePocketBasePhotoFieldMessage(error: ClientResponseError): string 
   }
 
   return null;
+}
+
+function hasHeader(headers: Record<string, string>, targetHeader: string): boolean {
+  const normalizedTarget = targetHeader.toLowerCase();
+  return Object.keys(headers).some((header) => header.toLowerCase() === normalizedTarget);
 }
 
 export async function getNoteDetail(

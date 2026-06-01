@@ -1,7 +1,25 @@
+import { File, UploadType } from 'expo-file-system';
 import { ClientResponseError } from 'pocketbase';
 
 import { createNote, markNoteUsed, updateNote } from '../features/store/notesStore';
 import { pb } from '../lib/pocketbase';
+
+const mockUpload = jest.fn();
+
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation(() => ({
+    upload: mockUpload,
+  })),
+  UploadType: {
+    MULTIPART: 1,
+  },
+}));
+
+jest.mock('../config/env', () => ({
+  env: {
+    pocketbaseUrl: 'https://api.example.test',
+  },
+}));
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
@@ -10,6 +28,7 @@ jest.mock('../observability', () => ({
 jest.mock('../lib/pocketbase', () => ({
   pb: {
     authStore: {
+      token: 'auth-token-1',
       record: {
         collectionId: 'users',
         collectionName: 'users',
@@ -22,6 +41,7 @@ jest.mock('../lib/pocketbase', () => ({
 
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
+    token: string;
     record: {
       collectionId: string;
       collectionName: string;
@@ -31,15 +51,7 @@ const mockedPocketBase = pb as typeof pb & {
   collection: jest.Mock;
 };
 
-const OriginalFormData = globalThis.FormData;
-
-class MockFormData {
-  _parts: [string, unknown][] = [];
-
-  append(key: string, value: unknown) {
-    this._parts.push([key, value]);
-  }
-}
+const mockedFile = File as jest.MockedClass<typeof File>;
 
 function buildClientResponseError(status: number): ClientResponseError {
   return new ClientResponseError({
@@ -129,8 +141,10 @@ describe('notesStore.markNoteUsed', () => {
 
 describe('notesStore note photo uploads', () => {
   beforeEach(() => {
+    mockUpload.mockReset();
+    mockedFile.mockClear();
     mockedPocketBase.collection.mockReset();
-    globalThis.FormData = MockFormData as unknown as typeof FormData;
+    mockedPocketBase.authStore.token = 'auth-token-1';
     mockedPocketBase.authStore.record = {
       collectionId: 'users',
       collectionName: 'users',
@@ -138,15 +152,13 @@ describe('notesStore note photo uploads', () => {
     };
   });
 
-  afterEach(() => {
-    globalThis.FormData = OriginalFormData;
-  });
+  it('uploads note photos through the native multipart file uploader', async () => {
+    mockUpload.mockResolvedValue({
+      body: '{}',
+      headers: {},
+      status: 200,
+    });
 
-  function getFormDataParts(formData: unknown): [string, unknown][] {
-    return ((formData as { _parts?: [string, unknown][] })._parts ?? []) as [string, unknown][];
-  }
-
-  it('appends capturedAt when creating note photo uploads', async () => {
     const notesCollection = {
       create: jest.fn().mockResolvedValue({
         id: 'note-1',
@@ -157,16 +169,10 @@ describe('notesStore note photo uploads', () => {
         updated: '2026-04-28T12:00:00.000Z',
       }),
     };
-    const notePhotosCollection = {
-      create: jest.fn().mockResolvedValue({}),
-    };
 
     mockedPocketBase.collection.mockImplementation((collectionName: string) => {
       if (collectionName === 'notes') {
         return notesCollection;
-      }
-      if (collectionName === 'note_photos') {
-        return notePhotosCollection;
       }
 
       throw new Error(`Unexpected collection: ${collectionName}`);
@@ -185,17 +191,34 @@ describe('notesStore note photo uploads', () => {
       ],
     });
 
-    const formData = notePhotosCollection.create.mock.calls[0][0];
-    expect(getFormDataParts(formData)).toEqual(
-      expect.arrayContaining([
-        ['note', 'note-1'],
-        ['user', 'user-1'],
-        ['capturedAt', '2024-09-15T12:34:56.000Z'],
-      ]),
+    expect(mockedFile).toHaveBeenCalledWith('file:///photo.jpg');
+    expect(mockUpload).toHaveBeenCalledWith(
+      'https://api.example.test/api/collections/note_photos/records',
+      {
+        fieldName: 'photo',
+        headers: {
+          Authorization: 'Bearer auth-token-1',
+        },
+        httpMethod: 'POST',
+        mimeType: 'image/jpeg',
+        parameters: {
+          capturedAt: '2024-09-15T12:34:56.000Z',
+          note: 'note-1',
+          user: 'user-1',
+        },
+        sessionType: 'foreground',
+        uploadType: UploadType.MULTIPART,
+      },
     );
   });
 
   it('omits capturedAt when updating note photo uploads without a capture date', async () => {
+    mockUpload.mockResolvedValue({
+      body: '{}',
+      headers: {},
+      status: 200,
+    });
+
     const notesCollection = {
       update: jest.fn().mockResolvedValue({
         id: 'note-1',
@@ -206,16 +229,10 @@ describe('notesStore note photo uploads', () => {
         updated: '2026-04-28T12:05:00.000Z',
       }),
     };
-    const notePhotosCollection = {
-      create: jest.fn().mockResolvedValue({}),
-    };
 
     mockedPocketBase.collection.mockImplementation((collectionName: string) => {
       if (collectionName === 'notes') {
         return notesCollection;
-      }
-      if (collectionName === 'note_photos') {
-        return notePhotosCollection;
       }
 
       throw new Error(`Unexpected collection: ${collectionName}`);
@@ -232,8 +249,15 @@ describe('notesStore note photo uploads', () => {
       ],
     });
 
-    const formData = notePhotosCollection.create.mock.calls[0][0];
-    expect(getFormDataParts(formData).some(([key]) => key === 'capturedAt')).toBe(false);
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        parameters: {
+          note: 'note-1',
+          user: 'user-1',
+        },
+      }),
+    );
   });
 
   it('normalizes note photo upload validation errors with the filename', async () => {
@@ -247,29 +271,22 @@ describe('notesStore note photo uploads', () => {
         updated: '2026-04-28T12:00:00.000Z',
       }),
     };
-    const notePhotosCollection = {
-      create: jest.fn().mockRejectedValue(
-        new ClientResponseError({
-          response: {
-            data: {
-              photo: {
-                message: 'File is too large.',
-              },
-            },
-            message: 'Failed to create record.',
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        data: {
+          photo: {
+            message: 'File is too large.',
           },
-          status: 400,
-          url: 'https://app.yummyrecs.com/api/collections/note_photos/records',
-        }),
-      ),
-    };
+        },
+        message: 'Failed to create record.',
+      }),
+      headers: {},
+      status: 400,
+    });
 
     mockedPocketBase.collection.mockImplementation((collectionName: string) => {
       if (collectionName === 'notes') {
         return notesCollection;
-      }
-      if (collectionName === 'note_photos') {
-        return notePhotosCollection;
       }
 
       throw new Error(`Unexpected collection: ${collectionName}`);

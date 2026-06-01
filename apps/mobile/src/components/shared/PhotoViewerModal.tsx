@@ -135,6 +135,7 @@ const slideStyles = StyleSheet.create({
 
 interface PhotoViewerSlideProps {
   isCurrent: boolean;
+  onRequestClose: () => void;
   onZoomActiveChange: (isZoomActive: boolean) => void;
   previewUri?: string;
   uri: string;
@@ -145,6 +146,7 @@ interface PhotoViewerSlideProps {
 interface ZoomablePhotoContainerProps {
   children: React.ReactNode;
   isCurrent: boolean;
+  onRequestClose: () => void;
   onZoomActiveChange: (isZoomActive: boolean) => void;
   resetKey: string;
 }
@@ -181,21 +183,33 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+const SWIPE_DOWN_CLOSE_DISTANCE = 120;
+const SWIPE_DOWN_CLOSE_VELOCITY = 900;
+const SWIPE_DOWN_VERTICAL_INTENT_RATIO = 1.2;
+
 function ZoomablePhotoContainer({
   children,
   isCurrent,
+  onRequestClose,
   onZoomActiveChange,
   resetKey,
 }: ZoomablePhotoContainerProps) {
+  const [isZoomActive, setIsZoomActive] = useState(false);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  const dismissTranslateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   const viewportWidth = useSharedValue(1);
   const viewportHeight = useSharedValue(1);
+  const onRequestCloseRef = useRef(onRequestClose);
   const onZoomActiveChangeRef = useRef(onZoomActiveChange);
+
+  useEffect(() => {
+    onRequestCloseRef.current = onRequestClose;
+  }, [onRequestClose]);
 
   useEffect(() => {
     onZoomActiveChangeRef.current = onZoomActiveChange;
@@ -206,10 +220,13 @@ function ZoomablePhotoContainer({
     savedScale.value = 1;
     translateX.value = withTiming(0);
     translateY.value = withTiming(0);
+    dismissTranslateY.value = withTiming(0);
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
+    setIsZoomActive(false);
     onZoomActiveChangeRef.current(false);
   }, [
+    dismissTranslateY,
     resetKey,
     savedScale,
     savedTranslateX,
@@ -228,16 +245,33 @@ function ZoomablePhotoContainer({
     savedScale.value = 1;
     translateX.value = withTiming(0);
     translateY.value = withTiming(0);
+    dismissTranslateY.value = withTiming(0);
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-  }, [isCurrent, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY]);
+    setIsZoomActive(false);
+  }, [
+    dismissTranslateY,
+    isCurrent,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    scale,
+    translateX,
+    translateY,
+  ]);
 
   const syncZoomActive = useCallback(
     (nextScale: number) => {
-      onZoomActiveChangeRef.current(nextScale > 1.01);
+      const nextIsZoomActive = nextScale > 1.01;
+      setIsZoomActive(nextIsZoomActive);
+      onZoomActiveChangeRef.current(nextIsZoomActive);
     },
     [],
   );
+
+  const requestClose = useCallback(() => {
+    onRequestCloseRef.current();
+  }, []);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((event) => {
@@ -275,12 +309,11 @@ function ZoomablePhotoContainer({
       savedTranslateY.value = nextTranslateY;
     });
 
-  const panGesture = Gesture.Pan()
+  const zoomPanGesture = Gesture.Pan()
+    .enabled(isZoomActive)
     .minDistance(2)
     .onUpdate((event) => {
-      if (scale.value <= 1.01) {
-        return;
-      }
+      dismissTranslateY.value = 0;
 
       const maxTranslateX = (viewportWidth.value * (scale.value - 1)) / 2;
       const maxTranslateY = (viewportHeight.value * (scale.value - 1)) / 2;
@@ -297,8 +330,49 @@ function ZoomablePhotoContainer({
       );
     })
     .onEnd(() => {
+      if (scale.value <= 1.01) {
+        return;
+      }
+
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
+    });
+
+  const dismissPanGesture = Gesture.Pan()
+    .enabled(isCurrent && !isZoomActive)
+    .maxPointers(1)
+    .activeOffsetY([-100000, 12])
+    .failOffsetX([-24, 24])
+    .onUpdate((event) => {
+      if (event.numberOfPointers !== 1 || event.translationY <= 0) {
+        dismissTranslateY.value = 0;
+        return;
+      }
+
+      const hasVerticalIntent =
+        Math.abs(event.translationY) >
+        Math.abs(event.translationX) * SWIPE_DOWN_VERTICAL_INTENT_RATIO;
+
+      dismissTranslateY.value = hasVerticalIntent
+        ? clamp(event.translationY, 0, viewportHeight.value)
+        : 0;
+    })
+    .onEnd((event) => {
+      if (dismissTranslateY.value <= 0) {
+        return;
+      }
+
+      const shouldClose =
+        dismissTranslateY.value > SWIPE_DOWN_CLOSE_DISTANCE ||
+        event.velocityY > SWIPE_DOWN_CLOSE_VELOCITY;
+
+      if (shouldClose) {
+        dismissTranslateY.value = withTiming(viewportHeight.value);
+        runOnJS(requestClose)();
+        return;
+      }
+
+      dismissTranslateY.value = withTiming(0);
     });
 
   const doubleTapGesture = Gesture.Tap()
@@ -337,11 +411,16 @@ function ZoomablePhotoContainer({
       savedTranslateY.value = nextTranslateY;
     });
 
-  const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture, doubleTapGesture);
+  const composedGesture = Gesture.Simultaneous(
+    pinchGesture,
+    zoomPanGesture,
+    dismissPanGesture,
+    doubleTapGesture,
+  );
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
-      { translateY: translateY.value },
+      { translateY: translateY.value + dismissTranslateY.value },
       { scale: scale.value },
     ],
   }));
@@ -365,6 +444,7 @@ function ZoomablePhotoContainer({
 
 function PhotoViewerSlide({
   isCurrent,
+  onRequestClose,
   onZoomActiveChange,
   previewUri,
   uri,
@@ -421,6 +501,7 @@ function PhotoViewerSlide({
     <View style={[slideStyles.slide, { width }]}>
       <ZoomablePhotoContainer
         isCurrent={isCurrent}
+        onRequestClose={onRequestClose}
         onZoomActiveChange={onZoomActiveChange}
         resetKey={`${uri}:${visible ? 'visible' : 'hidden'}`}
       >
@@ -579,6 +660,7 @@ export function PhotoViewerModal({
             renderItem={({ item, index }) => (
               <PhotoViewerSlide
                 isCurrent={index === currentIndex}
+                onRequestClose={onRequestClose}
                 onZoomActiveChange={(isZoomActive) => {
                   handleSlideZoomActiveChange(index, isZoomActive);
                 }}

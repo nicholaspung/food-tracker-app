@@ -20,6 +20,57 @@ function buildQueuedWrite(
 }
 
 describe('applyQueuedFeatureWritePatch', () => {
+  it('ignores non-paginated query data under patched roots', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(notesQueryKeys.summary, {
+      totalCount: 1,
+      draftCount: 1,
+      usedCount: 0,
+    });
+    queryClient.setQueryData(notesQueryKeys.detail('note-1'), {
+      note: {
+        id: 'note-1',
+        title: 'Saved',
+        content: 'Existing note',
+        status: 'draft',
+        createdAt: '2026-04-28T00:00:00.000Z',
+        updatedAt: '2026-04-28T00:00:00.000Z',
+      },
+      photos: [],
+    });
+    queryClient.setQueryData(restaurantListQueryKeys.scope('my'), {
+      totalCount: 1,
+    });
+
+    expect(() =>
+      applyQueuedFeatureWritePatch(queryClient, [
+        buildQueuedWrite({
+          operationName: 'note.create',
+          payload: {
+            title: 'Queued note',
+            content: 'Try the noodles',
+          },
+        }),
+        buildQueuedWrite({
+          operationName: 'list.create',
+          payload: {
+            name: 'Queued list',
+            visibility: 'friends',
+          },
+        }),
+      ]),
+    ).not.toThrow();
+
+    expect(queryClient.getQueryData(notesQueryKeys.summary)).toEqual({
+      totalCount: 1,
+      draftCount: 1,
+      usedCount: 0,
+    });
+    expect(queryClient.getQueryData(restaurantListQueryKeys.scope('my'))).toEqual({
+      totalCount: 1,
+    });
+  });
+
   it('inserts queued notes and removes stale queued notes from paginated caches', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(notesQueryKeys.paginated('draft'), {

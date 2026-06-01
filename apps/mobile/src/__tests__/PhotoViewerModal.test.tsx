@@ -11,8 +11,26 @@ import {
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
 
-  const createGesture = () => {
+  const createGesture = (type: string) => {
     const gesture = {
+      calls: [] as { args: unknown[]; method: string }[],
+      type,
+      activeOffsetY: (...args: unknown[]) => {
+        gesture.calls.push({ args, method: 'activeOffsetY' });
+        return gesture;
+      },
+      enabled: (...args: unknown[]) => {
+        gesture.calls.push({ args, method: 'enabled' });
+        return gesture;
+      },
+      failOffsetX: (...args: unknown[]) => {
+        gesture.calls.push({ args, method: 'failOffsetX' });
+        return gesture;
+      },
+      maxPointers: (...args: unknown[]) => {
+        gesture.calls.push({ args, method: 'maxPointers' });
+        return gesture;
+      },
       minDistance: () => gesture,
       numberOfTaps: () => gesture,
       onEnd: () => gesture,
@@ -24,10 +42,10 @@ jest.mock('react-native-gesture-handler', () => {
 
   return {
     Gesture: {
-      Pan: createGesture,
-      Pinch: createGesture,
+      Pan: () => createGesture('Pan'),
+      Pinch: () => createGesture('Pinch'),
       Simultaneous: (...gestures: unknown[]) => gestures,
-      Tap: createGesture,
+      Tap: () => createGesture('Tap'),
     },
     GestureDetector: ({
       children,
@@ -519,5 +537,42 @@ describe('PhotoViewerModal', () => {
       height: '100%',
       width: '100%',
     }));
+  });
+
+  it('leaves horizontal swipes to the photo pager while unzoomed', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          urls={['full://one', 'full://two']}
+          visible
+        />,
+      );
+    });
+
+    const gestureDetector = renderer.root.findAllByType('GestureDetector')[0];
+    const gestures = gestureDetector.props.gesture as {
+      calls: { args: unknown[]; method: string }[];
+      type: string;
+    }[];
+    const panGestures = gestures.filter((gesture) => gesture.type === 'Pan');
+    const zoomPanGesture = panGestures.find((gesture) =>
+      gesture.calls.some((call) => call.method === 'enabled' && call.args[0] === false),
+    );
+    const dismissPanGesture = panGestures.find((gesture) =>
+      gesture.calls.some((call) => call.method === 'failOffsetX'),
+    );
+
+    expect(zoomPanGesture).toBeDefined();
+    expect(dismissPanGesture?.calls).toContainEqual({
+      args: [[-24, 24]],
+      method: 'failOffsetX',
+    });
+    expect(dismissPanGesture?.calls).toContainEqual({
+      args: [[-100000, 12]],
+      method: 'activeOffsetY',
+    });
   });
 });

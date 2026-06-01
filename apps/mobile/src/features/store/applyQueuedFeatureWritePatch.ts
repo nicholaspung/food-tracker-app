@@ -11,7 +11,7 @@ import type {
 } from './featureStore';
 import { billsQueryKeys } from './billsQuery';
 import { homeFeedQueryKeys, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
-import { notesQueryKeys } from './notesQuery';
+import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
 import { restaurantListQueryKeys } from './restaurantListQuery';
 import type { QueuedFeatureWrite } from './queuedFeatureWrites';
 import type { FoodProductRecord, NoteRecord, RestaurantListRecord, VisitRecord } from '../models';
@@ -33,6 +33,33 @@ function getQueuedIdSet(queuedWrites: readonly QueuedFeatureWrite[]): Set<string
   return new Set(queuedWrites.map((write) => createQueuedId(write)));
 }
 
+function isPaginatedData(value: unknown): value is AnyPaginatedData {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    Array.isArray((value as Partial<AnyPaginatedData>).pages)
+  );
+}
+
+function isPageWithItems(page: unknown): page is PaginatedResult<AnyRecord> {
+  return (
+    Boolean(page) &&
+    typeof page === 'object' &&
+    Array.isArray((page as Partial<PaginatedResult<AnyRecord>>).items)
+  );
+}
+
+function isRestaurantListPaginatedQueryKey(queryKey: QueryKey): boolean {
+  return (
+    Array.isArray(queryKey) &&
+    queryKey.length === 5 &&
+    queryKey[0] === restaurantListQueryKeys.root[0] &&
+    queryKey[1] === restaurantListQueryKeys.root[1] &&
+    queryKey[3] === 'paginated' &&
+    typeof queryKey[4] === 'string'
+  );
+}
+
 function patchPaginatedData(
   currentData: AnyPaginatedData | undefined,
   queuedIds: Set<string>,
@@ -40,7 +67,11 @@ function patchPaginatedData(
   shouldIncludeItem: (queryKey: QueryKey, item: AnyRecord) => boolean,
   queryKey: QueryKey,
 ): AnyPaginatedData | undefined {
-  if (!currentData || currentData.pages.length === 0) {
+  if (!isPaginatedData(currentData)) {
+    return currentData;
+  }
+
+  if (currentData.pages.length === 0) {
     const initialItems = pendingItems.filter((item) => shouldIncludeItem(queryKey, item));
     if (initialItems.length === 0) {
       return currentData;
@@ -64,6 +95,10 @@ function patchPaginatedData(
   return {
     ...currentData,
     pages: currentData.pages.map((page, pageIndex) => {
+      if (!isPageWithItems(page)) {
+        return page;
+      }
+
       const nonStaleItems = page.items.filter(
         (item) => !isQueuedRecordId(item.id) || queuedIds.has(item.id),
       );
@@ -97,12 +132,17 @@ function patchPaginatedQueries(
   queuedIds: Set<string>,
   pendingItems: readonly AnyRecord[],
   shouldIncludeItem: (queryKey: QueryKey, item: AnyRecord) => boolean = () => true,
+  shouldPatchQueryKey: (queryKey: QueryKey) => boolean,
 ): void {
   const queries = queryClient.getQueriesData<AnyPaginatedData>({
     queryKey: queryFilter,
   });
 
   for (const [queryKey, currentData] of queries) {
+    if (!shouldPatchQueryKey(queryKey)) {
+      continue;
+    }
+
     queryClient.setQueryData(
       queryKey,
       patchPaginatedData(currentData, queuedIds, pendingItems, shouldIncludeItem, queryKey),
@@ -279,13 +319,17 @@ function patchHomeFeed(queryClient: QueryClient, queuedIds: Set<string>, queuedW
     const typeFilter = queryKey[6];
     const searchQuery = String(queryKey[8] ?? '');
     queryClient.setQueryData<InfiniteData<{ items: AnyRecord[] }, unknown> | undefined>(queryKey, (current) => {
-      if (!current || current.pages.length === 0) {
+      if (!isPaginatedData(current) || current.pages.length === 0) {
         return current;
       }
 
       return {
         ...current,
         pages: current.pages.map((page, pageIndex) => {
+          if (!isPageWithItems(page)) {
+            return page;
+          }
+
           const nonStaleItems = page.items.filter(
             (item) => !isQueuedRecordId(item.id) || queuedIds.has(item.id),
           );
@@ -355,6 +399,7 @@ export function applyQueuedFeatureWritePatch(
         item.locationText as string | undefined,
       ]);
     },
+    isPaginatedNotesQueryKey,
   );
   patchPaginatedQueries(
     queryClient,
@@ -366,6 +411,7 @@ export function applyQueuedFeatureWritePatch(
         item.name as string,
         item.description as string | undefined,
       ]),
+    isRestaurantListPaginatedQueryKey,
   );
   patchBillsList(queryClient, queuedIds, queuedWrites);
   patchHomeFeed(queryClient, queuedIds, queuedWrites);
