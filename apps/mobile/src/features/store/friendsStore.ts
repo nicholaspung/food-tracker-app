@@ -68,6 +68,8 @@ interface FriendListApiResponse {
   summary?: FriendsCountSummary;
 }
 
+type UnsubscribeFriendshipChanges = () => void;
+
 function resolveFriendName(user: FriendshipUser | undefined): string {
   const trimmedName =
     user && 'name' in user && typeof user.name === 'string' && user.name.trim()
@@ -257,4 +259,36 @@ export async function removeFriend(
       headers: resolveFeatureWriteHeaders(requestOptions),
     });
   });
+}
+
+export function subscribeToFriendshipChanges(
+  onChange: () => void,
+  onError?: (error: unknown) => void,
+): UnsubscribeFriendshipChanges {
+  let unsubscribe: UnsubscribeFriendshipChanges | undefined;
+  let didCancel = false;
+
+  void pb
+    .collection('friendships')
+    .subscribe('*', () => {
+      onChange();
+    })
+    .then((nextUnsubscribe: UnsubscribeFriendshipChanges) => {
+      if (didCancel) {
+        nextUnsubscribe();
+        return;
+      }
+
+      unsubscribe = nextUnsubscribe;
+    })
+    .catch((error: unknown) => {
+      if (!didCancel) {
+        onError?.(error);
+      }
+    });
+
+  return () => {
+    didCancel = true;
+    unsubscribe?.();
+  };
 }

@@ -387,7 +387,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
   const handleShareInviteCode = async (codeId: string, code: string) => {
     trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_STARTED", {
-      codeId,
       source: "ProfileScreen",
     });
     setInviteErrorMessage(null);
@@ -400,7 +399,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
       if (shareResult.action !== Share.sharedAction) {
         trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_CANCELED", {
-          codeId,
           source: "ProfileScreen",
         });
         return;
@@ -408,7 +406,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
       await lockInviteCodeMutation.mutateAsync(codeId);
       trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_COMPLETED", {
-        codeId,
         source: "ProfileScreen",
       });
       trackProductEvent('social.invite_shared', {
@@ -417,7 +414,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       });
     } catch (error) {
       trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_FAILED", {
-        codeId,
         errorMessage: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.name : "unknown_error",
         source: "ProfileScreen",

@@ -643,6 +643,7 @@ export {
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
+  subscribeToFriendshipChanges,
 } from './friendsStore';
 
 export {

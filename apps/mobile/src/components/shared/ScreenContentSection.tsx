@@ -2,6 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../../lib/platformPointerEvents';
 import { createThemedStyles } from '../../theme';
 
 interface OverscrollBackgroundSplit {
@@ -43,7 +44,11 @@ export function ScreenContentSection({
   return (
     <View style={[styles.container, style]} testID={testID}>
       {overscrollBackgroundSplit ? (
-        <View pointerEvents="none" style={styles.splitBackdrop} testID={testID ? `${testID}-overscroll-backdrop` : undefined}>
+        <View
+          {...getPlatformPointerEventsProps('none')}
+          style={[styles.splitBackdrop, getPlatformPointerEventsStyle('none')]}
+          testID={testID ? `${testID}-overscroll-backdrop` : undefined}
+        >
           <View
             style={[
               styles.splitBackdropSegment,

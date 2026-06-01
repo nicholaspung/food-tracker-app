@@ -6,6 +6,7 @@ import { friendsQueryKeys, getCachedFriendsSummary, getFriendsCountSummary } fro
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuth } from '../../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../../theme';
+import { createPlatformShadow } from '../../theme/shadows';
 import { Text } from '../../ui';
 
 export type BottomTabRoute = 'Home' | 'AddVisit' | 'Friends' | 'Misc' | 'Profile';
@@ -72,14 +73,13 @@ const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
     backgroundColor: theme.colors.background.surface,
     borderTopColor: theme.colors.border.subtle,
     borderTopWidth: 1,
-    elevation: 10,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      elevation: 10,
+      offset: { width: 0, height: -2 },
+      opacity: 0.08,
+      radius: 4,
+    }),
   },
   row: {
     alignItems: 'center',

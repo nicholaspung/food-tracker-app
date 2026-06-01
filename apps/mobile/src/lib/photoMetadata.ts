@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Asset } from 'expo-media-library';
+import { Platform } from 'react-native';
 
 function normalizeTimestampCandidate(rawValue: unknown): number | null {
   if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
@@ -124,7 +124,13 @@ function extractPhotoCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | nu
 }
 
 async function getMediaLibraryCaptureDate(assetId: string): Promise<Date | null> {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native-only require avoids loading ExpoMediaLibraryNext on web.
+    const { Asset } = require('expo-media-library') as typeof import('expo-media-library');
     const mediaLibraryAsset = new Asset(assetId);
     return parseCreationTimestamp(await mediaLibraryAsset.getCreationTime());
   } catch {

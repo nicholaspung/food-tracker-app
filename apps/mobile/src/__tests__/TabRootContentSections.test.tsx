@@ -10,6 +10,7 @@ import {
   getVisitReminderNotificationStatus,
   scheduleVisitReminderNotification,
 } from '../notifications/notificationInteraction';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { AddVisitScreen } from '../screens/AddVisitScreen';
 import { MiscScreen } from '../screens/MiscScreen';
@@ -287,6 +288,9 @@ const mockedScheduleVisitReminderNotification = scheduleVisitReminderNotificatio
 >;
 const mockedLockInviteCode = lockInviteCode as jest.MockedFunction<typeof lockInviteCode>;
 const mockedShare = Share.share as jest.MockedFunction<typeof Share.share>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
 const mockedUseQueuedLogoutConfirmation = useQueuedLogoutConfirmation as jest.MockedFunction<
   typeof useQueuedLogoutConfirmation
 >;
@@ -332,6 +336,7 @@ describe('tab root content sections', () => {
     mockedScheduleVisitReminderNotification.mockReset();
     mockedLockInviteCode.mockReset();
     mockedShare.mockReset();
+    mockedTrackObservabilityEvent.mockReset();
     mockedUseQueuedLogoutConfirmation.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
@@ -1085,6 +1090,14 @@ describe('tab root content sections', () => {
       message: expect.stringContaining('Your invite code: INVITE123'),
     });
     expect(mockedLockInviteCode).toHaveBeenCalledWith('invite-code-1');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'PROFILE_INVITE_CODE_SHARE_STARTED',
+      expect.not.objectContaining({ codeId: expect.any(String) }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'PROFILE_INVITE_CODE_SHARE_COMPLETED',
+      expect.not.objectContaining({ codeId: expect.any(String) }),
+    );
   });
 
   it('does not lock signup invite codes when sharing is canceled', async () => {

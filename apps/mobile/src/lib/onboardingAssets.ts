@@ -3,18 +3,18 @@ import type { ImageSourcePropType } from 'react-native';
 import { env } from '../config/env';
 
 export interface TutorialMediaAsset {
+  gifSource: ImageSourcePropType;
   posterSource: ImageSourcePropType;
-  videoUri: string;
 }
 
-function buildTutorialVideoUri(slug: string): string {
-  return `${env.marketingUrl.replace(/\/+$/, '')}/tutorials/${slug}.mp4`;
+function buildTutorialGifUri(slug: string): string {
+  return `${env.marketingUrl.replace(/\/+$/, '')}/tutorials/${slug}.gif`;
 }
 
 function buildTutorialMediaAsset(slug: string, posterSource: ImageSourcePropType): TutorialMediaAsset {
   return {
+    gifSource: { uri: buildTutorialGifUri(slug) },
     posterSource,
-    videoUri: buildTutorialVideoUri(slug),
   };
 }
 

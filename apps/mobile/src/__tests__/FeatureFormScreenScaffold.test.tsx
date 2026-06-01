@@ -183,6 +183,22 @@ describe('FeatureFormScreenScaffold', () => {
     );
   });
 
+  it('can render without a sticky action footer', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        primaryAction: undefined,
+      });
+    });
+
+    const buttons = renderer!.root.findAllByType('Button');
+    const scrollView = renderer!.root.findByType('KeyboardAwareScrollView');
+
+    expect(buttons).toHaveLength(0);
+    expect(scrollView.props.bottomOffset).toBe(0);
+  });
+
   it('updates the keyboard bottom offset from the measured footer height', async () => {
     let renderer: any = null;
 

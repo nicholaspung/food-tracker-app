@@ -1,7 +1,7 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Linking, View } from 'react-native';
+import { Animated, Easing, Linking, Platform, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
@@ -18,6 +18,7 @@ type ReceiptScanScreenProps = NativeStackScreenProps<RootStackParamList, 'Receip
 
 const PROCESSING_PROGRESS_CAP = 0.94;
 const PROCESSING_PROGRESS_INTERVAL_MS = 500;
+const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
 
 function getNextProcessingProgress(currentValue: number): number {
   if (currentValue < 0.35) {
@@ -140,7 +141,7 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
           duration: 1200,
           easing: Easing.linear,
           toValue: 1,
-          useNativeDriver: true,
+          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
         }),
       );
       spinAnimation.start();

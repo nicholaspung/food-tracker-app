@@ -8,6 +8,7 @@ import type { ImageProps, ImageSourcePropType, ImageStyle, StyleProp, ViewStyle 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface TutorialMediaSource {
+  gifSource?: ImageSourcePropType;
   posterSource?: ImageSourcePropType;
   videoUri?: string;
 }
@@ -104,8 +105,9 @@ export function TutorialMedia({
   }, [isActive, playbackKey]);
 
   const posterSource = media?.posterSource;
+  const gifSource = media?.gifSource;
   const videoUri = media?.videoUri;
-  const hasMedia = Boolean(posterSource || videoUri);
+  const hasMedia = Boolean(posterSource || gifSource || videoUri);
   const videoContentFit: VideoContentFit = imageResizeMode === 'cover' ? 'cover' : 'contain';
   const videoStyle = styles.video ?? [styles.image as StyleProp<ViewStyle>, StyleSheet.absoluteFill];
 
@@ -121,7 +123,7 @@ export function TutorialMedia({
 
   return (
     <View style={styles.frame}>
-      {posterSource && (!isActive || !videoUri) ? (
+      {posterSource && (!isActive || (!gifSource && !videoUri)) ? (
         <Image
           key={`${playbackKey}:${activationCount}`}
           resizeMode={imageResizeMode}
@@ -129,7 +131,15 @@ export function TutorialMedia({
           style={styles.image}
         />
       ) : null}
-      {isActive && videoUri ? (
+      {isActive && gifSource ? (
+        <Image
+          key={`${playbackKey}:${activationCount}`}
+          resizeMode={imageResizeMode}
+          source={gifSource}
+          style={styles.image}
+        />
+      ) : null}
+      {isActive && !gifSource && videoUri ? (
         <TutorialVideo
           key={`${playbackKey}:${activationCount}`}
           contentFit={videoContentFit}

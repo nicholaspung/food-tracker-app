@@ -7,7 +7,7 @@ jest.mock('../config/env', () => ({
 }));
 
 describe('FEATURE_ONBOARDING_ASSETS', () => {
-  it('defines stable remote tutorial media for every published tutorial', () => {
+  it('defines stable remote GIF media for every published tutorial', () => {
     const expectedSlugsByKey = {
       gettingStartedSettings: 'settings',
       gettingStartedSupportInvites: 'support-invites',
@@ -28,8 +28,8 @@ describe('FEATURE_ONBOARDING_ASSETS', () => {
     for (const [key, slug] of Object.entries(expectedSlugsByKey)) {
       const media = FEATURE_ONBOARDING_ASSETS[key as keyof typeof FEATURE_ONBOARDING_ASSETS];
 
+      expect(media.gifSource).toEqual({ uri: `https://yummyrecs.com/tutorials/${slug}.gif` });
       expect(media.posterSource).toBeTruthy();
-      expect(media.videoUri).toBe(`https://yummyrecs.com/tutorials/${slug}.mp4`);
     }
   });
 });

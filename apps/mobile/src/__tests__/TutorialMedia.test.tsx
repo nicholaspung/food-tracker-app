@@ -87,6 +87,33 @@ describe('TutorialMedia', () => {
     expect(mockUseVideoPlayer).not.toHaveBeenCalled();
   });
 
+  it('renders animated GIF media while active', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <TutorialMedia
+          iconColor="brand"
+          iconName="play-circle-outline"
+          imageResizeMode="cover"
+          isActive
+          media={{
+            gifSource: { uri: 'https://yummyrecs.com/tutorials/poster.gif' },
+            posterSource: { uri: 'asset://poster' },
+          }}
+          playbackKey="gif"
+          styles={styles}
+        />,
+      );
+    });
+
+    const image = renderer.root.findByType(Image);
+    expect(image.props.source).toEqual({ uri: 'https://yummyrecs.com/tutorials/poster.gif' });
+    expect(image.props.resizeMode).toBe('cover');
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
+    expect(mockUseVideoPlayer).not.toHaveBeenCalled();
+  });
+
   it('renders muted looping remote video with poster while active', async () => {
     let renderer: any = null;
 

@@ -30,6 +30,7 @@ const warnedRedactionKeys = new Set<string>();
 const allowedIdentifierAnalyticsKeys = new Set([
   'anonymousid',
   'currentupdateid',
+  'tutorialid',
   'updateid',
 ]);
 const expoConstants = readExpoConstants();

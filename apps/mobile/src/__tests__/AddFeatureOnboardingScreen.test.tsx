@@ -90,24 +90,24 @@ jest.mock('../features', () => ({
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
     trackRestaurantVisit: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.gif' },
       posterSource: { uri: 'asset://track-restaurant-visit' },
-      videoUri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.mp4',
     },
     trackFoodProduct: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/track-food-product.gif' },
       posterSource: { uri: 'asset://track-food-product' },
-      videoUri: 'https://yummyrecs.com/tutorials/track-food-product.mp4',
     },
     logNote: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/log-note.gif' },
       posterSource: { uri: 'asset://log-note' },
-      videoUri: 'https://yummyrecs.com/tutorials/log-note.mp4',
     },
     processSavedPhotos: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/process-saved-photos.gif' },
       posterSource: { uri: 'asset://process-saved-photos' },
-      videoUri: 'https://yummyrecs.com/tutorials/process-saved-photos.mp4',
     },
     manageNotes: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/manage-notes.gif' },
       posterSource: { uri: 'asset://manage-notes' },
-      videoUri: 'https://yummyrecs.com/tutorials/manage-notes.mp4',
     },
   },
 }));
@@ -177,7 +177,7 @@ const expectedConfig: Record<
   {
     title: string;
     description: string;
-    media: { posterSource: { uri: string }; videoUri: string };
+    media: { gifSource: { uri: string }; posterSource: { uri: string } };
     primaryLabel: string;
     destination: 'CreateVisit' | 'FoodProduct' | 'NoteEditor' | 'ProcessPhotos' | 'Notes';
   }
@@ -186,8 +186,8 @@ const expectedConfig: Record<
     title: 'Track a restaurant visit',
     description: 'Add the restaurant, rate what you ordered, attach photos, and keep the visit ready for your feed.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.gif' },
       posterSource: { uri: 'asset://track-restaurant-visit' },
-      videoUri: 'https://yummyrecs.com/tutorials/track-restaurant-visit.mp4',
     },
     primaryLabel: 'Start Visit',
     destination: 'CreateVisit',
@@ -196,8 +196,8 @@ const expectedConfig: Record<
     title: 'Track a food product',
     description: 'Save groceries, market finds, snacks, and drinks without creating a full restaurant visit.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/track-food-product.gif' },
       posterSource: { uri: 'asset://track-food-product' },
-      videoUri: 'https://yummyrecs.com/tutorials/track-food-product.mp4',
     },
     primaryLabel: 'Track Product',
     destination: 'FoodProduct',
@@ -206,8 +206,8 @@ const expectedConfig: Record<
     title: 'Log a note',
     description: 'Capture food ideas, places, recipes, and reminders before turning them into entries later.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/log-note.gif' },
       posterSource: { uri: 'asset://log-note' },
-      videoUri: 'https://yummyrecs.com/tutorials/log-note.mp4',
     },
     primaryLabel: 'Write Note',
     destination: 'NoteEditor',
@@ -216,8 +216,8 @@ const expectedConfig: Record<
     title: 'Process saved photos',
     description: 'Review saved food photos and decide whether each one should become a visit or food product.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/process-saved-photos.gif' },
       posterSource: { uri: 'asset://process-saved-photos' },
-      videoUri: 'https://yummyrecs.com/tutorials/process-saved-photos.mp4',
     },
     primaryLabel: 'Process Photos',
     destination: 'ProcessPhotos',
@@ -226,8 +226,8 @@ const expectedConfig: Record<
     title: 'Manage notes',
     description: 'Search, edit, delete, and convert your notes when you are ready to track what they describe.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/manage-notes.gif' },
       posterSource: { uri: 'asset://manage-notes' },
-      videoUri: 'https://yummyrecs.com/tutorials/manage-notes.mp4',
     },
     primaryLabel: 'View Notes',
     destination: 'Notes',

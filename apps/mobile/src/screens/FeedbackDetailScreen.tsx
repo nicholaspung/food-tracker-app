@@ -43,6 +43,7 @@ const RECENT_THREAD_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 
 const useStyles = createThemedStyles((theme) => ({
   bodyRoot: {
+    backgroundColor: theme.colors.background.app,
     flex: 1,
     gap: 0,
     paddingBottom: 0,
@@ -409,7 +410,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     if (!draftMessage.trim()) {
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_VALIDATION_FAILED', {
         source: 'FeedbackDetailScreen',
-        feedbackId,
         reason: 'missing_message',
       });
       setSendError('Message is required.');
@@ -419,7 +419,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     setSendError(null);
     trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_STARTED', {
       source: 'FeedbackDetailScreen',
-      feedbackId,
       isOnline,
       messageLength: draftMessage.trim().length,
     });
@@ -435,7 +434,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         setDraftMessage('');
         trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
           source: 'FeedbackDetailScreen',
-          feedbackId,
           queued: true,
         });
         return;
@@ -444,7 +442,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       setDraftMessage('');
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
         source: 'FeedbackDetailScreen',
-        feedbackId,
         queued: false,
       });
     } catch (error) {
@@ -452,7 +449,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       setSendError(nextMessage);
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_FAILED', {
         source: 'FeedbackDetailScreen',
-        feedbackId,
         error: nextMessage,
       });
     } finally {
@@ -478,7 +474,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     <FeatureDetailScreenScaffold
       backAccessibilityLabel="Back to feedback"
       bodyStyle={styles.bodyRoot}
-      contentBackgroundTone="app"
+      contentBackgroundTone="surface"
       keyboardAware
       onBackPress={handleBackPress}
       scroll={false}

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBillById } from '../features';
 import { sendBillPaymentReminder } from '../features/store/billsStore';
 import { useBillWrites } from '../features/store/useBillWrites';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { BillDetailScreen } from '../screens/BillDetailScreen';
@@ -161,6 +162,9 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedSendBillPaymentReminder = sendBillPaymentReminder as jest.MockedFunction<typeof sendBillPaymentReminder>;
 const mockedUseBillWrites = useBillWrites as jest.MockedFunction<typeof useBillWrites>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
@@ -247,6 +251,12 @@ function findPressableByTestId(renderer: TestRenderer, testID: string) {
   return renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === testID);
 }
 
+function findPressableByAccessibilityLabel(renderer: TestRenderer, accessibilityLabel: string) {
+  return renderer.root
+    .findAllByType('Pressable')
+    .find((node: any) => node.props.accessibilityLabel === accessibilityLabel);
+}
+
 function findReminderResultModal(renderer: TestRenderer) {
   return renderer.root.findByProps({ testID: 'bill-payment-reminder-result-modal' });
 }
@@ -278,6 +288,40 @@ describe('BillDetailScreen payment reminders', () => {
       updateParticipantPaidStatus: jest.fn(),
     } as unknown as ReturnType<typeof useBillWrites>);
     mockedSendBillPaymentReminder.mockResolvedValue({ status: 'sent' });
+  });
+
+  it('tracks participant payment status changes without raw record identifiers', async () => {
+    const updateParticipantPaidStatus = jest.fn().mockResolvedValue({ status: 'executed' });
+    mockedUseBillWrites.mockReturnValue({
+      deleteBill: jest.fn(),
+      updateBillStatus: jest.fn(),
+      updateParticipantPaidStatus,
+    } as unknown as ReturnType<typeof useBillWrites>);
+    const renderer = await renderBillDetail();
+
+    await act(async () => {
+      findPressableByAccessibilityLabel(renderer, 'Mark Paid')?.props.onPress();
+    });
+
+    expect(updateParticipantPaidStatus).toHaveBeenCalledWith({
+      billId: 'bill_1',
+      participantId: 'eligible',
+      paidStatus: 'paid',
+    });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_STARTED',
+      expect.not.objectContaining({
+        billId: expect.any(String),
+        participantId: expect.any(String),
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED',
+      expect.not.objectContaining({
+        billId: expect.any(String),
+        participantId: expect.any(String),
+      }),
+    );
   });
 
   it('shows reminder only for pending mapped app-user participants when viewer is creator', async () => {

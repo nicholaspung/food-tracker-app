@@ -8,6 +8,7 @@ import {
   type ImageStyle,
   Modal as RNModal,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   StyleSheet,
   type StyleProp,
@@ -32,6 +33,8 @@ import {
 import { createThemedStyles, getPhotoViewerPalette, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { CachedRemoteImage } from './CachedRemoteImage';
+
+const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
 
 export interface PhotoViewerModalProps {
   visible: boolean;
@@ -484,7 +487,7 @@ function PhotoViewerSlide({
     Animated.timing(fullImageOpacity, {
       duration: 180,
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
     }).start();
   }, [fullImageOpacity, shouldShowPreview, uri]);
 

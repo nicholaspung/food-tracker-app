@@ -2,6 +2,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import type { QueuedMutation } from '../offline';
 import { logger } from '../lib/logger';
 import { trackObservabilityEvent } from '../observability';
@@ -203,8 +204,15 @@ export function SyncStatusBanner() {
   return (
     <>
       {isVisible ? (
-        <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.safeAreaContainer}>
-          <View pointerEvents="box-none" style={styles.indicatorContainer}>
+        <SafeAreaView
+          edges={['top']}
+          {...getPlatformPointerEventsProps('box-none')}
+          style={[styles.safeAreaContainer, getPlatformPointerEventsStyle('box-none')]}
+        >
+          <View
+            {...getPlatformPointerEventsProps('box-none')}
+            style={[styles.indicatorContainer, getPlatformPointerEventsStyle('box-none')]}
+          >
             <Pressable
               accessibilityLabel="Sync status"
               accessibilityRole="button"

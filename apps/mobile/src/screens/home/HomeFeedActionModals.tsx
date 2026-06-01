@@ -9,6 +9,7 @@ import type { VisitRecord } from '../../features';
 import { createThemedStyles, useTheme } from '../../theme';
 import { View } from 'react-native';
 import { Modal } from '../../ui';
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../../lib/platformPointerEvents';
 import { HomeFeedMoveVisitItemModal } from './HomeFeedMoveVisitItemModal';
 import type { HomeFeedActionController } from './useHomeFeedActionController';
 
@@ -164,8 +165,11 @@ export function HomeFeedActionModals({
         {controller.pendingDeleteTarget?.kind === 'visit' ? (
           <View
             collapsable={false}
-            pointerEvents="none"
-            style={styles.deleteConfirmationModalSentinel}
+            {...getPlatformPointerEventsProps('none')}
+            style={[
+              styles.deleteConfirmationModalSentinel,
+              getPlatformPointerEventsStyle('none'),
+            ]}
             testID="home-delete-confirmation-open"
           />
         ) : null}

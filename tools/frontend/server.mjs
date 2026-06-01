@@ -491,6 +491,13 @@ async function createPublishedGifAssignment(body) {
   });
 }
 
+async function copyBufferAtomically(buffer, targetPath) {
+  await mkdir(dirname(targetPath), { recursive: true });
+  const tempPath = join(dirname(targetPath), `.${basename(targetPath)}.${Date.now()}.tmp`);
+  await writeFile(tempPath, buffer);
+  await rename(tempPath, targetPath);
+}
+
 async function copyPublishedGifToMobileAsset(asset, buffer, flow) {
   if (!flow.mobileAssetFilename) {
     return {
@@ -504,19 +511,25 @@ async function copyPublishedGifToMobileAsset(asset, buffer, flow) {
 
   const targetRelativePath = join('apps/mobile/assets/onboarding', flow.mobileAssetFilename);
   const targetPath = resolve(REPO_ROOT, targetRelativePath);
+  const marketingRelativePath = join('apps/marketing/dist/tutorials', `${flow.slug}.gif`);
+  const marketingPath = resolve(REPO_ROOT, marketingRelativePath);
   const targetDir = resolve(REPO_ROOT, 'apps/mobile/assets/onboarding');
+  const marketingDir = resolve(REPO_ROOT, 'apps/marketing/dist/tutorials');
   const targetPrefix = `${targetDir}${sep}`;
+  const marketingPrefix = `${marketingDir}${sep}`;
   if (targetPath !== targetDir && !targetPath.startsWith(targetPrefix)) {
     throw userInputError('Published GIF target path is invalid.');
   }
+  if (marketingPath !== marketingDir && !marketingPath.startsWith(marketingPrefix)) {
+    throw userInputError('Published marketing GIF target path is invalid.');
+  }
 
-  const tempPath = join(targetDir, `.${flow.mobileAssetFilename}.${Date.now()}.tmp`);
-  await writeFile(tempPath, buffer);
-  await rename(tempPath, targetPath);
+  await copyBufferAtomically(buffer, targetPath);
+  await copyBufferAtomically(buffer, marketingPath);
   return {
     copyStatus: 'copied',
     copiedToPath: targetPath,
-    targetRelativePath,
+    targetRelativePath: `${targetRelativePath}, ${marketingRelativePath}`,
     copiedBytes: buffer.length || asset.bytes || 0,
     copyError: '',
   };

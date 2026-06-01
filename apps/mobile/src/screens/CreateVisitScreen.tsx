@@ -89,6 +89,7 @@ import {
 import { useCreateVisitDraftItems } from './createVisit/useCreateVisitDraftItems';
 import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission';
 import { createThemedStyles, useTheme } from '../theme';
+import { createPlatformShadow } from '../theme/shadows';
 import { Modal, Text } from '../ui';
 
 type CreateVisitEntrySource = 'add_visit' | 'source_note' | 'source_list' | 'edit';
@@ -256,17 +257,19 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.strong,
     borderRadius: theme.radii.md,
     borderWidth: 2,
-    elevation: 14,
     gap: theme.spacing.xs,
     maxWidth: 320,
     minWidth: 230,
     padding: theme.spacing.md,
     position: "absolute",
     right: theme.spacing.md,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      elevation: 14,
+      offset: { width: 0, height: 12 },
+      opacity: 0.2,
+      radius: 18,
+    }),
     top: 48,
     zIndex: 35,
   },

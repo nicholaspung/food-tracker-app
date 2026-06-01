@@ -197,7 +197,6 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
                   onPress={() => {
                     trackObservabilityEvent('FEEDBACK_THREAD_OPENED', {
                       source: 'FeedbackScreen',
-                      feedbackId: feedback.id,
                       status: feedback.status,
                       unreadCount,
                     });

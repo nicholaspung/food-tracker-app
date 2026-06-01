@@ -1,4 +1,5 @@
 import type * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 
@@ -25,9 +26,23 @@ function buildAsset(overrides: Record<string, unknown> = {}): ImagePicker.ImageP
 }
 
 describe('resolvePhotoCaptureDate', () => {
+  const originalPlatformOS = Platform.OS;
+
+  function setPlatformOS(os: typeof Platform.OS) {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => os,
+    });
+  }
+
   beforeEach(() => {
+    setPlatformOS('ios');
     mockGetCreationTime.mockReset();
     mockAssetConstructor.mockClear();
+  });
+
+  afterAll(() => {
+    setPlatformOS(originalPlatformOS);
   });
 
   it('uses current media library asset metadata when an asset id is available', async () => {
@@ -85,5 +100,22 @@ describe('resolvePhotoCaptureDate', () => {
         }),
       ),
     ).resolves.toEqual(new Date('2026-04-08T09:10:11.000Z'));
+  });
+
+  it('does not load native media library metadata on web', async () => {
+    setPlatformOS('web');
+
+    await expect(
+      resolvePhotoCaptureDate(
+        buildAsset({
+          assetId: 'web-asset',
+          exif: {
+            DateTimeOriginal: '2026:04:09 10:11:12Z',
+          },
+        }),
+      ),
+    ).resolves.toEqual(new Date('2026-04-09T10:11:12.000Z'));
+
+    expect(mockAssetConstructor).not.toHaveBeenCalled();
   });
 });

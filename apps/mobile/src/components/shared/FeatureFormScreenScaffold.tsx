@@ -24,7 +24,7 @@ export interface FeatureFormScreenScaffoldProps {
   scrollViewProps?: Omit<ScrollViewProps, 'ref' | 'contentContainerStyle' | 'style'>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
-  primaryAction: StickyActionFooterAction;
+  primaryAction?: StickyActionFooterAction;
   secondaryAction?: StickyActionFooterAction;
   testID?: string;
 }
@@ -81,7 +81,9 @@ export function FeatureFormScreenScaffold({
   const theme = useTheme();
   const internalScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
-  const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
+  const [footerHeight, setFooterHeight] = useState(
+    primaryAction ? theme.sizes.buttonHeight + theme.spacing.xl : 0,
+  );
   const styles = useStyles(headerBottomCompact);
 
   return (
@@ -106,7 +108,7 @@ export function FeatureFormScreenScaffold({
       <View style={styles.bodyContainer}>
         <KeyboardAwareScrollView
           automaticallyAdjustKeyboardInsets={false}
-          bottomOffset={keyboardAware ? footerHeight + theme.spacing.sm : 0}
+          bottomOffset={keyboardAware && primaryAction ? footerHeight + theme.spacing.sm : 0}
           contentContainerStyle={[
             styles.bodyContent,
             {
@@ -124,17 +126,19 @@ export function FeatureFormScreenScaffold({
           {children}
         </KeyboardAwareScrollView>
 
-        <StickyActionFooter
-          onLayout={(event) => {
-            const nextFooterHeight = event.nativeEvent.layout.height;
+        {primaryAction ? (
+          <StickyActionFooter
+            onLayout={(event) => {
+              const nextFooterHeight = event.nativeEvent.layout.height;
 
-            setFooterHeight((currentFooterHeight) =>
-              currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
-            );
-          }}
-          primaryAction={primaryAction}
-          secondaryAction={secondaryAction}
-        />
+              setFooterHeight((currentFooterHeight) =>
+                currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
+              );
+            }}
+            primaryAction={primaryAction}
+            secondaryAction={secondaryAction}
+          />
+        ) : null}
       </View>
     </Screen>
   );

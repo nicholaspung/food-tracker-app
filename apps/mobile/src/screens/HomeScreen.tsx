@@ -46,6 +46,7 @@ import {
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -1514,9 +1515,10 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       testID="home-screen"
     >
       <View
-        pointerEvents="none"
+        {...getPlatformPointerEventsProps('none')}
         style={[
           styles.headerBackdrop,
+          getPlatformPointerEventsStyle('none'),
           {
             backgroundColor: theme.colors.background.surface,
             height: headerHeight + topOverlayHeight,

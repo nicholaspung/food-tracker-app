@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
+
+const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
 
 export interface SkeletonProps {
   width?: number | `${number}%`;
@@ -34,13 +36,13 @@ export function Skeleton({ width = '100%', height = 16, borderRadius, style }: S
           toValue: 1,
           duration: theme.sizes.skeletonPulseMs,
           easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
+          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
         }),
         Animated.timing(opacity, {
           toValue: 0.35,
           duration: theme.sizes.skeletonPulseMs,
           easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
+          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
         }),
       ]),
     );

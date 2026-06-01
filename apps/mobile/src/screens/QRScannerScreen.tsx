@@ -12,6 +12,7 @@ import {
   useFriendWrites,
 } from '../features';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -327,7 +328,10 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
               style={styles.camera}
               zoom={QR_SCAN_ZOOM}
             />
-            <View pointerEvents="box-none" style={styles.overlay}>
+            <View
+              {...getPlatformPointerEventsProps('box-none')}
+              style={[styles.overlay, getPlatformPointerEventsStyle('box-none')]}
+            >
               <View style={styles.overlayTopCard}>
                 <View style={styles.overlayTopHeader}>
                   <Text style={styles.overlayTitle} variant="sectionTitleTight">Scan friend QR code</Text>
@@ -353,7 +357,10 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
                 </Text>
               </View>
 
-              <View pointerEvents="none" style={styles.scanWindowWrap}>
+              <View
+                {...getPlatformPointerEventsProps('none')}
+                style={[styles.scanWindowWrap, getPlatformPointerEventsStyle('none')]}
+              >
                 <View style={styles.scanWindow} />
               </View>
 

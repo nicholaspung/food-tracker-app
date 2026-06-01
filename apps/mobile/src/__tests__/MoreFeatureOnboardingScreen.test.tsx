@@ -90,16 +90,16 @@ jest.mock('../features', () => ({
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
     lists: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/lists.gif' },
       posterSource: { uri: 'asset://lists' },
-      videoUri: 'https://yummyrecs.com/tutorials/lists.mp4',
     },
     splitBill: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/split-bill.gif' },
       posterSource: { uri: 'asset://split-bill' },
-      videoUri: 'https://yummyrecs.com/tutorials/split-bill.mp4',
     },
     tipCalculator: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/tip-calculator.gif' },
       posterSource: { uri: 'asset://tip-calculator' },
-      videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4',
     },
   },
 }));
@@ -162,7 +162,7 @@ const mockedUseIsFocused = useIsFocused as jest.MockedFunction<typeof useIsFocus
 const expectedConfig: Record<MoreOnboardingCardId, {
   title: string;
   description: string;
-  media: { posterSource: { uri: string }; videoUri: string };
+  media: { gifSource: { uri: string }; posterSource: { uri: string } };
   primaryLabel: string;
   destination: 'Lists' | 'Bills' | 'TipCalculator';
 }> = {
@@ -170,8 +170,8 @@ const expectedConfig: Record<MoreOnboardingCardId, {
     title: 'Organize restaurants with lists',
     description: 'See how lists help you save restaurants, organize favorites, and keep ideas ready for later.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/lists.gif' },
       posterSource: { uri: 'asset://lists' },
-      videoUri: 'https://yummyrecs.com/tutorials/lists.mp4',
     },
     primaryLabel: 'View My Lists',
     destination: 'Lists',
@@ -180,8 +180,8 @@ const expectedConfig: Record<MoreOnboardingCardId, {
     title: 'Split a bill',
     description: 'See how to create a bill, assign items to friends, and track who has paid.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/split-bill.gif' },
       posterSource: { uri: 'asset://split-bill' },
-      videoUri: 'https://yummyrecs.com/tutorials/split-bill.mp4',
     },
     primaryLabel: 'Open Bills',
     destination: 'Bills',
@@ -190,8 +190,8 @@ const expectedConfig: Record<MoreOnboardingCardId, {
     title: 'Calculate tips quickly',
     description: 'Enter the bill details, choose a tip style, and see the total before you split or pay.',
     media: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/tip-calculator.gif' },
       posterSource: { uri: 'asset://tip-calculator' },
-      videoUri: 'https://yummyrecs.com/tutorials/tip-calculator.mp4',
     },
     primaryLabel: 'Open Tip Calculator',
     destination: 'TipCalculator',

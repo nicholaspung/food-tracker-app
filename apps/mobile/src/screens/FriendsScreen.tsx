@@ -26,10 +26,12 @@ import {
   listFriendsPage,
   resolveOwnFriendCode,
   selectFriendsSummary,
+  subscribeToFriendshipChanges,
   useFriendWrites,
   type FriendRecord,
 } from '../features';
 import type { FriendsPageResult } from '../features/store/friendsStore';
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -293,6 +295,35 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     ],
     [acceptedFriendsCount, pendingReceivedCount, pendingSentCount],
   );
+
+  const refreshFriendsQueries = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!userId) {
+      return undefined;
+    }
+
+    return subscribeToFriendshipChanges(
+      refreshFriendsQueries,
+      (error) => {
+        trackObservabilityEvent('FRIENDS_REALTIME_SUBSCRIPTION_FAILED', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          source: 'FriendsScreen',
+        });
+      },
+    );
+  }, [refreshFriendsQueries, userId]);
+
+  useEffect(() => {
+    if (!userId || typeof navigation.addListener !== 'function') {
+      return undefined;
+    }
+
+    return navigation.addListener('focus', refreshFriendsQueries);
+  }, [navigation, refreshFriendsQueries, userId]);
 
   useEffect(() => {
     if (!route.params?.initialSection && !route.params?.initialFriendsSubTab) {
@@ -813,9 +844,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       testID="friends-screen"
     >
       <View
-        pointerEvents="none"
+        {...getPlatformPointerEventsProps('none')}
         style={[
           styles.topBackdrop,
+          getPlatformPointerEventsStyle('none'),
           {
             backgroundColor: theme.colors.background.surface,
             height: topChromeHeight + topOverlayHeight,

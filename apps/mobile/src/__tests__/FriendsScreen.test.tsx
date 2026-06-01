@@ -3,7 +3,12 @@ import { StyleSheet } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { evictFriendshipDependentQueries, removeFriend, useFriendWrites } from '../features';
+import {
+  evictFriendshipDependentQueries,
+  removeFriend,
+  subscribeToFriendshipChanges,
+  useFriendWrites,
+} from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -57,6 +62,9 @@ jest.mock('react-native', () => {
           : renderListElement(ListEmptyComponent),
         renderListElement(ListFooterComponent),
       ),
+    Platform: {
+      select: (values: Record<string, unknown>) => values.default,
+    },
     Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       mockReact.createElement('Pressable', props, children),
     StyleSheet: {
@@ -188,6 +196,7 @@ jest.mock('../features', () => {
       requestsCount: 0,
       sentCount: 0,
     })),
+    subscribeToFriendshipChanges: jest.fn(() => jest.fn()),
     useFriendWrites: jest.fn(),
   };
 });
@@ -240,6 +249,9 @@ const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useC
 const mockedEvictFriendshipDependentQueries =
   evictFriendshipDependentQueries as jest.MockedFunction<typeof evictFriendshipDependentQueries>;
 const mockedRemoveFriend = removeFriend as jest.MockedFunction<typeof removeFriend>;
+const mockedSubscribeToFriendshipChanges = subscribeToFriendshipChanges as jest.MockedFunction<
+  typeof subscribeToFriendshipChanges
+>;
 const mockedUseFriendWrites = useFriendWrites as jest.MockedFunction<typeof useFriendWrites>;
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -316,6 +328,8 @@ describe('FriendsScreen', () => {
     mockedEvictFriendshipDependentQueries.mockResolvedValue(undefined);
     mockedRemoveFriend.mockReset();
     mockedRemoveFriend.mockResolvedValue(undefined);
+    mockedSubscribeToFriendshipChanges.mockReset();
+    mockedSubscribeToFriendshipChanges.mockReturnValue(jest.fn());
     mockedUseFriendWrites.mockReset();
     mockedUseFriendWrites.mockReturnValue({
       acceptFriendRequest: jest.fn().mockResolvedValue({ status: 'completed' }),
@@ -397,6 +411,29 @@ describe('FriendsScreen', () => {
 
     expect(list.props.onRefresh).toBeUndefined();
     expect(list.props.refreshing).toBe(false);
+  });
+
+  it('invalidates friends queries when a friendship realtime change arrives', async () => {
+    let realtimeChange: (() => void) | undefined;
+    mockedSubscribeToFriendshipChanges.mockImplementation((onChange) => {
+      realtimeChange = onChange;
+      return jest.fn();
+    });
+
+    await act(async () => {
+      renderFriendsScreen();
+    });
+
+    expect(mockedSubscribeToFriendshipChanges).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      realtimeChange?.();
+      await Promise.resolve();
+    });
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'friends'],
+    });
   });
 
   it('evicts friend-gated caches after confirming friend removal', async () => {

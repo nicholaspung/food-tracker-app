@@ -1,6 +1,6 @@
 import { Ionicons } from '../ui/AppIcon';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Easing, Linking, View } from 'react-native';
+import { Alert, Animated, Easing, Linking, Platform, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
@@ -18,6 +18,7 @@ import { Button, Card, Text } from '../ui';
 
 const PROCESSING_PROGRESS_CAP = 0.94;
 const PROCESSING_PROGRESS_INTERVAL_MS = 500;
+const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
 
 function getNextProcessingProgress(currentValue: number): number {
   if (currentValue < 0.35) {
@@ -224,7 +225,7 @@ export function MenuScanPhotoProcessingScreen({
           duration: 1200,
           easing: Easing.linear,
           toValue: 1,
-          useNativeDriver: true,
+          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
         }),
       );
       spinAnimation.start();

@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
+import { createPlatformShadow } from '../../theme/shadows';
 import { Text } from '../../ui';
 import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
@@ -60,13 +61,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   segmentButtonActive: {
     backgroundColor: theme.colors.background.surface,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 1,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      offset: { width: 0, height: 1 },
+      opacity: 0.08,
+      radius: 1,
+    }),
   },
   segmentLabel: {
     color: theme.colors.text.muted,
@@ -92,13 +92,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   viewModeSegmentActive: {
     backgroundColor: theme.colors.background.surface,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 1,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      offset: { width: 0, height: 1 },
+      opacity: 0.08,
+      radius: 1,
+    }),
   },
   viewModeLabel: {
     color: theme.colors.text.muted,

@@ -47,6 +47,7 @@ import { captureObservabilityError, trackObservabilityEvent } from '../observabi
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
+import { createPlatformShadow } from '../theme/shadows';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 import {
   createAIRequestCorrelation,
@@ -117,16 +118,15 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.default,
     borderRadius: theme.radii.md,
     borderWidth: 1,
-    elevation: 3,
     gap: theme.spacing.sm,
     padding: theme.spacing.sm,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      height: 2,
-      width: 0,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      elevation: 3,
+      offset: { height: 2, width: 0 },
+      opacity: 0.12,
+      radius: 4,
+    }),
   },
   mapSearchHeader: {
     alignItems: 'center',
@@ -164,15 +164,14 @@ const useStyles = createThemedStyles((theme) => ({
   },
   searchHereButtonWrap: {
     alignSelf: 'center',
-    elevation: 3,
     position: 'absolute',
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      height: 2,
-      width: 0,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      elevation: 3,
+      offset: { height: 2, width: 0 },
+      opacity: 0.12,
+      radius: 4,
+    }),
     zIndex: 2,
   },
   locationField: {
@@ -200,13 +199,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   viewModeSegmentActive: {
     backgroundColor: theme.colors.background.surface,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      height: 1,
-      width: 0,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 1,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      offset: { height: 1, width: 0 },
+      opacity: 0.08,
+      radius: 1,
+    }),
   },
   viewModeLabel: {
     color: theme.colors.text.muted,

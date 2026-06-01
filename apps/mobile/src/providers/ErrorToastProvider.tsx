@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
@@ -34,6 +35,7 @@ const ENTER_ANIMATION_MS = 180;
 const EXIT_ANIMATION_MS = 140;
 const HIDDEN_Y_OFFSET = -24;
 const AUTO_DISMISS_MS = 5000;
+const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
 
 export function ErrorToastProvider({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
@@ -49,12 +51,12 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       Animated.timing(translateY, {
         toValue: 0,
         duration: ENTER_ANIMATION_MS,
-        useNativeDriver: true,
+        useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
       }),
       Animated.timing(opacity, {
         toValue: 1,
         duration: ENTER_ANIMATION_MS,
-        useNativeDriver: true,
+        useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
       }),
     ]).start();
   }, [opacity, translateY]);
@@ -78,12 +80,12 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       Animated.timing(translateY, {
         toValue: HIDDEN_Y_OFFSET,
         duration: EXIT_ANIMATION_MS,
-        useNativeDriver: true,
+        useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
       }),
       Animated.timing(opacity, {
         toValue: 0,
         duration: EXIT_ANIMATION_MS,
-        useNativeDriver: true,
+        useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
       }),
     ]).start(({ finished }) => {
       if (finished) {
@@ -219,15 +221,22 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
     <ErrorToastContext.Provider value={contextValue}>
       {children}
       {toast ? (
-        <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.safeAreaContainer}>
+        <SafeAreaView
+          edges={['top']}
+          {...getPlatformPointerEventsProps('box-none')}
+          style={[styles.safeAreaContainer, getPlatformPointerEventsStyle('box-none')]}
+        >
           <Animated.View
-            pointerEvents="box-none"
-            style={{
+            {...getPlatformPointerEventsProps('box-none')}
+            style={[getPlatformPointerEventsStyle('box-none'), {
               transform: [{ translateY }],
               opacity,
-            }}
+            }]}
           >
-            <View pointerEvents="box-none" style={styles.container}>
+            <View
+              {...getPlatformPointerEventsProps('box-none')}
+              style={[styles.container, getPlatformPointerEventsStyle('box-none')]}
+            >
               <View
                 accessibilityLiveRegion="polite"
                 accessibilityRole="alert"

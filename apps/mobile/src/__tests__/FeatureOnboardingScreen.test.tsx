@@ -76,12 +76,12 @@ jest.mock('../features', () => ({
 jest.mock('../lib/onboardingAssets', () => ({
   FEATURE_ONBOARDING_ASSETS: {
     gettingStartedSettings: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/settings.gif' },
       posterSource: { uri: 'asset://getting-started-settings' },
-      videoUri: 'https://yummyrecs.com/tutorials/settings.mp4',
     },
     gettingStartedSupportInvites: {
+      gifSource: { uri: 'https://yummyrecs.com/tutorials/support-invites.gif' },
       posterSource: { uri: 'asset://getting-started-support-invites' },
-      videoUri: 'https://yummyrecs.com/tutorials/support-invites.mp4',
     },
   },
 }));
@@ -336,12 +336,11 @@ describe('FeatureOnboardingScreen', () => {
     const images = renderer.root.findAllByType('Image');
     const imageSources = images.map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-settings' });
     expect(imageSources).toContainEqual({ uri: 'asset://getting-started-support-invites' });
-    expect(renderer.root.findAllByType('VideoView')).toHaveLength(1);
-    expect(renderer.root.findByType('VideoView').props.contentFit).toBe('contain');
+    expect(imageSources).toContainEqual({ uri: 'https://yummyrecs.com/tutorials/settings.gif' });
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
     expect(
-      images.find((node: any) => node.props.source.uri === 'asset://getting-started-settings')?.props.resizeMode,
+      images.find((node: any) => node.props.source.uri === 'https://yummyrecs.com/tutorials/settings.gif')?.props.resizeMode,
     ).toBe('contain');
   });
 
@@ -357,7 +356,7 @@ describe('FeatureOnboardingScreen', () => {
     });
 
     expect(renderer.root.findAllByType('Image').map((node: any) => node.props.source)).toContainEqual({
-      uri: 'asset://getting-started-settings',
+      uri: 'https://yummyrecs.com/tutorials/settings.gif',
     });
 
     await act(async () => {
@@ -366,13 +365,13 @@ describe('FeatureOnboardingScreen', () => {
 
     const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
 
-    expect(imageSources).toContainEqual({ uri: 'asset://getting-started-support-invites' });
     expect(imageSources).toContainEqual({ uri: 'asset://getting-started-settings' });
-    expect(renderer.root.findAllByType('VideoView')).toHaveLength(1);
+    expect(imageSources).toContainEqual({ uri: 'https://yummyrecs.com/tutorials/support-invites.gif' });
+    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
     expect(
       renderer.root
         .findAllByType('Image')
-        .find((node: any) => node.props.source.uri === 'asset://getting-started-support-invites')?.props.resizeMode,
+        .find((node: any) => node.props.source.uri === 'https://yummyrecs.com/tutorials/support-invites.gif')?.props.resizeMode,
     ).toBe('contain');
   });
 

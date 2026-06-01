@@ -2,6 +2,7 @@ import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, View } from 'react-native';
 
 import { createThemedStyles } from '../../theme';
+import { createPlatformShadow } from '../../theme/shadows';
 import { Text } from '../../ui';
 import { StatusPill } from './StatusPill';
 
@@ -65,13 +66,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   segmentActive: {
     backgroundColor: theme.colors.background.surface,
-    shadowColor: theme.colors.background.inverse,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 1,
+    ...createPlatformShadow({
+      color: theme.colors.background.inverse,
+      offset: { width: 0, height: 1 },
+      opacity: 0.08,
+      radius: 1,
+    }),
   },
   label: {
     color: theme.colors.text.muted,

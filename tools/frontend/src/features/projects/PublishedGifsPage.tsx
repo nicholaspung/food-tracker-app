@@ -454,7 +454,10 @@ export function PublishedGifsPage({
                       </div>
                       <div className="published-target-summary">
                         {selectedFlow?.mobileAssetFilename ? (
-                          <span>Target: apps/mobile/assets/onboarding/{selectedFlow.mobileAssetFilename}</span>
+                          <span>
+                            Targets: apps/mobile/assets/onboarding/{selectedFlow.mobileAssetFilename} and
+                            apps/marketing/dist/tutorials/{selectedFlow.slug}.gif
+                          </span>
                         ) : (
                           <span>This flow is tracked in history only.</span>
                         )}

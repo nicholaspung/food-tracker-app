@@ -493,7 +493,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setErrorMessage(null);
     trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_STARTED', {
       source: 'BillDetailScreen',
-      billId,
       nextStatus,
       isOnline,
     });
@@ -508,7 +507,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       if (updateResult.status === 'queued') {
         trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
-          billId,
           nextStatus,
           queued: true,
         });
@@ -517,7 +515,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
       trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
-        billId,
         nextStatus,
         queued: false,
       });
@@ -526,7 +523,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       setErrorMessage(message);
       trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_FAILED', {
         source: 'BillDetailScreen',
-        billId,
         nextStatus,
         error: message,
       });
@@ -546,8 +542,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setErrorMessage(null);
     trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_STARTED', {
       source: 'BillDetailScreen',
-      billId,
-      participantId,
       nextPaidStatus,
       isOnline,
     });
@@ -563,8 +557,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       if (updateResult.status === 'queued') {
         trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
-          billId,
-          participantId,
           nextPaidStatus,
           queued: true,
         });
@@ -573,8 +565,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
       trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
-        billId,
-        participantId,
         nextPaidStatus,
         queued: false,
       });
@@ -583,8 +573,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       setErrorMessage(message);
       trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_FAILED', {
         source: 'BillDetailScreen',
-        billId,
-        participantId,
         nextPaidStatus,
         error: message,
       });
@@ -666,7 +654,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setErrorMessage(null);
     trackObservabilityEvent('BILL_DETAIL_DELETE_CONFIRMED', {
       source: 'BillDetailScreen',
-      billId: bill.id,
       isOnline,
     });
     setIsDeletingBill(true);
@@ -676,7 +663,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       if (deleteResult.status === 'queued') {
         trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
           source: 'BillDetailScreen',
-          billId: bill.id,
           queued: true,
         });
         navigateToBillsAfterDelete();
@@ -685,7 +671,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
       trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
         source: 'BillDetailScreen',
-        billId: bill.id,
         queued: false,
       });
       navigateToBillsAfterDelete();
@@ -694,7 +679,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       setErrorMessage(message);
       trackObservabilityEvent('BILL_DETAIL_DELETE_FAILED', {
         source: 'BillDetailScreen',
-        billId: bill.id,
         error: message,
       });
     } finally {
@@ -1090,7 +1074,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                 onPress={() => {
                   trackObservabilityEvent('BILL_DETAIL_DELETE_TAPPED', {
                     source: 'BillDetailScreen',
-                    billId: bill.id,
                     status: bill.status,
                   });
                   setIsDeleteConfirmVisible(true);

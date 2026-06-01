@@ -296,7 +296,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const appearanceSection = (
     <SectionCard
-      description="Choose how Yummy Recs looks on this device."
+      description="Applies immediately on this device."
       title="Appearance"
     >
       <SegmentedControl

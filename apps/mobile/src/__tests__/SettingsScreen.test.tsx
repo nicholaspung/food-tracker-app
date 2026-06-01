@@ -226,7 +226,7 @@ describe('SettingsScreen', () => {
 
     const sectionCards = renderer.root.findAllByType('SectionCard');
     expect(sectionCards[0].props.title).toBe('Appearance');
-    expect(sectionCards[0].props.description).toBe('Choose how Yummy Recs looks on this device.');
+    expect(sectionCards[0].props.description).toBe('Applies immediately on this device.');
 
     const appearanceOptions = renderer.root.findAllByType('SegmentedOption');
     expect(appearanceOptions.slice(0, 3).map((option: any) => option.props.label)).toEqual(['System', 'Light', 'Dark']);

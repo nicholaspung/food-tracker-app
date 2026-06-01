@@ -14,6 +14,7 @@ import type {
   ViewStyle,
 } from 'react-native';
 
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 
@@ -37,7 +38,6 @@ interface ScreenProps {
 }
 
 const DEFAULT_EDGES: Edge[] = ['top', 'bottom'];
-
 const useStyles = createThemedStyles((theme, background: ScreenProps['background'], padded: boolean) => ({
   safeArea: {
     flex: 1,
@@ -118,9 +118,10 @@ export function Screen({
     <SafeAreaView edges={resolvedEdges} onLayout={onLayout} style={[styles.safeArea, style]} testID={testID}>
       {scroll && scrollUnderlayColor ? (
         <View
-          pointerEvents="none"
+          {...getPlatformPointerEventsProps('none')}
           style={[
             StyleSheet.absoluteFill,
+            getPlatformPointerEventsStyle('none'),
             {
               top: scrollUnderlayTopInset + topOverlayHeight,
               backgroundColor: scrollUnderlayColor,

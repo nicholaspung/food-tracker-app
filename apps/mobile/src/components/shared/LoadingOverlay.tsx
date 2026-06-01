@@ -1,5 +1,6 @@
 import { ActivityIndicator, Modal, View } from 'react-native';
 
+import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../../lib/platformPointerEvents';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
@@ -32,6 +33,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function LoadingOverlay({ visible, label }: LoadingOverlayProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const pointerEventsStyle = getPlatformPointerEventsStyle('auto');
 
   return (
     <Modal
@@ -41,7 +43,10 @@ export function LoadingOverlay({ visible, label }: LoadingOverlayProps) {
       transparent
       visible={visible}
     >
-      <View pointerEvents="auto" style={styles.overlay}>
+      <View
+        {...getPlatformPointerEventsProps('auto')}
+        style={pointerEventsStyle ? [styles.overlay, pointerEventsStyle] : styles.overlay}
+      >
         <View style={styles.card}>
           <ActivityIndicator color={theme.colors.button.primaryBg} />
           {label ? <Text>{label}</Text> : null}

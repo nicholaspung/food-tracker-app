@@ -149,12 +149,9 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         return;
       }
 
-      const createdFeedback = createResult.result;
-
       trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
         source: 'CreateFeedbackScreen',
         queued: false,
-        feedbackId: createdFeedback.id,
       });
       hasCompletedFlowRef.current = true;
       navigation.replace('Feedback');
