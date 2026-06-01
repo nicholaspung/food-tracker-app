@@ -42,10 +42,6 @@ const TEST_THEME = {
   },
 } as const;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('../theme', () => ({
   createThemedStyles:
     <Args extends unknown[], Styles>(

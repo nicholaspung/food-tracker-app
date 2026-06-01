@@ -5,11 +5,6 @@ import { CreateVisitReviewStep } from '../screens/createVisit/CreateVisitReviewS
 
 const mockReact = React;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) =>
-    mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('../components/shared', () => ({
   ConfirmDestructiveModal: ({
     children,

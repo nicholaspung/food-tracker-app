@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../ui/AppIcon';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import type { ComponentProps } from 'react';

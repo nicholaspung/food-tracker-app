@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import type { ReactNode } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import { View } from 'react-native';

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import type { ContentReportReasonCode } from '../../features';

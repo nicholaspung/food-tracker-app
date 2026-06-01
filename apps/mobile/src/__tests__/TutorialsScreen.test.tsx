@@ -9,10 +9,6 @@ const mockGoBack = jest.fn();
 const mockCanGoBack = jest.fn();
 const mockTrackObservabilityEvent = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('../components/shared', () => ({
   BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('BackHeaderScreenScaffold', props, children),

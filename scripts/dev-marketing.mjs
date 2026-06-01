@@ -24,14 +24,9 @@ const appOpenUrl = process.env.APP_OPEN_URL ?? 'http://localhost:8081/';
 const iosAppStoreUrl =
   process.env.IOS_APP_STORE_URL ?? 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
 const browserSyncServer = browserSync.create('marketing-dev');
-const ioniconsFontPath = path.join(
-  path.dirname(
-    require.resolve('@expo/vector-icons/package.json', {
-      paths: [repoDir, path.join(repoDir, 'apps/mobile')],
-    }),
-  ),
-  'build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
-);
+const ioniconsFontPath = require.resolve('@react-native-vector-icons/ionicons/fonts/Ionicons.ttf', {
+  paths: [repoDir, path.join(repoDir, 'apps/mobile')],
+});
 const watchTargets = [
   sourceDir,
   path.join(repoDir, 'apps/mobile/assets/brand-logo.svg'),

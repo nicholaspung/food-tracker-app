@@ -21,10 +21,6 @@ const mockSetSearchQuery = jest.fn();
 const mockPickImageAssets = jest.fn();
 const mockInvalidateQueries = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('expo-clipboard', () => ({
   setStringAsync: jest.fn(),
 }));

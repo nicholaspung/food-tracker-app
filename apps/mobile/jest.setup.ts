@@ -34,6 +34,14 @@ timeoutManager.setTimeoutProvider({
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+jest.mock('./src/ui/AppIcon', () => {
+  const react = jest.requireActual<typeof import('react')>('react');
+
+  return {
+    Ionicons: (props: Record<string, unknown>) => react.createElement('Ionicons', props),
+  };
+});
+
 Object.defineProperty(globalThis, 'fetch', {
   configurable: true,
   value: jest.fn(),

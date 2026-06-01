@@ -10,10 +10,6 @@ const mockReact = React;
 const mockAnimateToRegion = jest.fn();
 const mockCaptureLocation = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => {
   const react = jest.requireActual<typeof import('react')>('react');
 

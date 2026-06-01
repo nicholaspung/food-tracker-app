@@ -17,10 +17,6 @@ const mockUseVideoPlayer = jest.fn((source: string, setup?: (player: any) => voi
   return player;
 });
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('expo-video', () => ({
   VideoView: (props: Record<string, unknown>) => mockReact.createElement('VideoView', props),
   useVideoPlayer: (...args: unknown[]) => (mockUseVideoPlayer as (...input: unknown[]) => unknown)(...args),

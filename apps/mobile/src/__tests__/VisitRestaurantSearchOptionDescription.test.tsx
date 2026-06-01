@@ -5,10 +5,6 @@ import { VisitRestaurantSearchOptionDescription } from '../components/shared/Vis
 
 const mockReact = React;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => ({
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),

@@ -1,6 +1,6 @@
 import { Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 
 import { friendsQueryKeys, getCachedFriendsSummary, getFriendsCountSummary } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';

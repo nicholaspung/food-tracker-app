@@ -9,10 +9,6 @@ import { useAuth } from '../providers/AuthProvider';
 const mockReact = React;
 const mockNavigate = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
 }));

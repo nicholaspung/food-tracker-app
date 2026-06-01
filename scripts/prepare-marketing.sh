@@ -16,15 +16,10 @@ IONICONS_FONT_SOURCE="$(
     node -e "
 const path = require('node:path');
 const repoDir = process.argv[1];
-const packageJsonPath = require.resolve('@expo/vector-icons/package.json', {
+const fontPath = require.resolve('@react-native-vector-icons/ionicons/fonts/Ionicons.ttf', {
   paths: [repoDir, path.join(repoDir, 'apps/mobile')],
 });
-process.stdout.write(
-  path.join(
-    path.dirname(packageJsonPath),
-    'build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
-  ),
-);
+process.stdout.write(fontPath);
 " "$REPO_DIR"
 )"
 

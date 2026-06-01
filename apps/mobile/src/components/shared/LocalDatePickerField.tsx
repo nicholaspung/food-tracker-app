@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { useMemo, useState } from 'react';
 import { Modal as RNModal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';

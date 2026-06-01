@@ -23,10 +23,6 @@ import { MenuScanPhotoProcessingScreen } from '../screens/MenuScanPhotoProcessin
 const mockReact = React;
 const mockUseMenuScanFlow = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
-}));
-
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));

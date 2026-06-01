@@ -1,5 +1,5 @@
 import type { ComponentType, ForwardRefExoticComponent, RefAttributes } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';

@@ -22,10 +22,6 @@ const mockMainOnboardingPublishedAssets: Record<string, boolean> = {
   support_invites: false,
 };
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('expo-video', () => ({
   VideoView: (props: Record<string, unknown>) => mockReact.createElement('VideoView', props),
   useVideoPlayer: (source: string, setup?: (player: Record<string, unknown> & { play: jest.Mock }) => void) => {

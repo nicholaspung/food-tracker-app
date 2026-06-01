@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { VideoView, useVideoPlayer, type VideoContentFit } from 'expo-video';
 import type { ComponentProps } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';

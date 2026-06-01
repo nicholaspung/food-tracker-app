@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { Pressable, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 

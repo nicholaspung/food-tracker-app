@@ -1,5 +1,6 @@
 export * from './Button';
 export * from './Card';
+export * from './AppIcon';
 export * from './Input';
 export * from './ListItem';
 export * from './Modal';

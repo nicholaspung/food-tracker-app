@@ -10,10 +10,6 @@ import { ListsScreen } from '../screens/ListsScreen';
 const mockReact = React;
 let mockQueuedWrites: Record<string, unknown>[] = [];
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
   useQueryClient: jest.fn(),

@@ -14,10 +14,6 @@ jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {

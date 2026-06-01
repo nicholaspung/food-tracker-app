@@ -9,10 +9,6 @@ const mockReact = React;
 const mockNavigate = jest.fn();
 const mockTrackObservabilityEvent = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => ({
   ActivityIndicator: (props: Record<string, unknown>) => mockReact.createElement('ActivityIndicator', props),
   Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>

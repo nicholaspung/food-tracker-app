@@ -53,10 +53,6 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('@react-navigation/native', () => ({
   CommonActions: {
     reset: (payload: unknown) => ({ payload, type: 'RESET' }),

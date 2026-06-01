@@ -29,10 +29,6 @@ jest.mock('react-native', () => ({
     mockReact.createElement('View', props, props.children),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('expo-camera', () => ({
   CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
   useCameraPermissions: jest.fn(),

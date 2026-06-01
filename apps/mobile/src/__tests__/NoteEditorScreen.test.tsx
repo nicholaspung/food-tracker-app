@@ -13,10 +13,6 @@ import { NoteEditorScreen } from '../screens/NoteEditorScreen';
 
 const mockReact = React;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
-}));
-
 jest.mock('expo-camera', () => ({
   CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
 }));

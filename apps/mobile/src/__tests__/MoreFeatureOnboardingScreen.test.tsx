@@ -15,10 +15,6 @@ const mockDismissMoreOnboardingCard = jest.fn();
 const mockSaveOptimisticMobileOnboardingState = jest.fn();
 const mockTrackObservabilityEvent = jest.fn();
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('@react-navigation/native', () => ({
   useIsFocused: jest.fn(),
 }));

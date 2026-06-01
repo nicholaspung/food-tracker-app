@@ -46,10 +46,6 @@ const theme = {
   },
 } as const;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => ({
   Image: (props: Record<string, unknown>) => mockReact.createElement('Image', props),
   Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>

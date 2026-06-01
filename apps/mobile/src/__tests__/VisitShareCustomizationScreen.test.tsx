@@ -7,10 +7,6 @@ import { VisitShareCustomizationScreen } from '../screens/VisitShareCustomizatio
 
 const mockReact = React;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({
     bottom: 0,

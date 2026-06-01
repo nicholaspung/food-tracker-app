@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { Pressable } from 'react-native';
 
 import { FoodItemRatingRecordCard, type FoodItemRatingRecordRow } from '../../components/shared';

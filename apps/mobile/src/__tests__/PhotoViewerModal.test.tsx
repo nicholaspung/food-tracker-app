@@ -8,13 +8,6 @@ import {
   markPhotoImagePrefetched,
 } from '../lib/photoImageCache';
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => {
-    const React = jest.requireActual<typeof import('react')>('react');
-    return React.createElement('Ionicons', props);
-  },
-}));
-
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
 

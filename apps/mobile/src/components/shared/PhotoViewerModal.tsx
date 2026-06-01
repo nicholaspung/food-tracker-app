@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,

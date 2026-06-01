@@ -10,10 +10,6 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({})),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: 'Ionicons',
-}));
-
 jest.mock('../features', () => ({
   friendsQueryKeys: {
     summary: jest.fn((userId?: string | null) => ['friends', userId ?? 'anonymous', 'summary']),

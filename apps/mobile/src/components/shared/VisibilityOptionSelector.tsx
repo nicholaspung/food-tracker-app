@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../ui/AppIcon';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Pressable, View } from 'react-native';
 

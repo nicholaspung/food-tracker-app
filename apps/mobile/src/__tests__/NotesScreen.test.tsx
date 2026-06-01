@@ -44,10 +44,6 @@ const theme = {
   },
 } as const;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
-}));
-
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
   useQueryClient: jest.fn(),

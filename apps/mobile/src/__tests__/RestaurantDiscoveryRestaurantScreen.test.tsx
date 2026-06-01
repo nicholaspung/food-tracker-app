@@ -10,10 +10,6 @@ const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 let mockIsOnline = true;
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
-}));
-
 jest.mock('react-native', () => ({
   Linking: {
     openSettings: jest.fn(),
