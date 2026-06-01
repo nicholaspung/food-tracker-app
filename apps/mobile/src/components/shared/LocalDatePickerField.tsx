@@ -1,7 +1,9 @@
 import { Ionicons } from '../../ui/AppIcon';
 import { useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import { Modal as RNModal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
+import type { DateTimePickerProps } from '@expo/ui/community/datetime-picker';
 
 import {
   formatDateToLocalDateString,
@@ -22,6 +24,8 @@ interface LocalDatePickerFieldProps {
   helperText?: string;
   highlighted?: boolean;
 }
+
+type NativeDateTimePickerComponent = ComponentType<DateTimePickerProps>;
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -108,10 +112,10 @@ export function LocalDatePickerField({
     isValidLocalDate(value) ? new Date(`${value}T00:00:00`) : new Date(),
   );
 
-  const NativeDateTimePicker = useMemo(() => {
+  const NativeDateTimePicker = useMemo<NativeDateTimePickerComponent | null>(() => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const module = require('@react-native-community/datetimepicker');
+      const module = require('@expo/ui/community/datetime-picker');
       return module?.default ?? null;
     } catch {
       return null;
@@ -129,18 +133,13 @@ export function LocalDatePickerField({
     setIsDatePickerOpen(true);
   };
 
-  const handleDatePickerChange = (event: { type?: string }, selectedDate?: Date) => {
-    if (event.type === 'dismissed') {
-      if (Platform.OS === 'android') {
-        setIsDatePickerOpen(false);
-      }
-      return;
+  const handleDatePickerDismiss = () => {
+    if (Platform.OS === 'android') {
+      setIsDatePickerOpen(false);
     }
+  };
 
-    if (!selectedDate) {
-      return;
-    }
-
+  const handleDatePickerValueChange = (_event: unknown, selectedDate: Date) => {
     if (Platform.OS === 'ios') {
       setPendingDate(selectedDate);
       return;
@@ -201,7 +200,11 @@ export function LocalDatePickerField({
             display="default"
             maximumDate={maximumDate}
             mode="date"
-            onChange={handleDatePickerChange}
+            negativeButton={{ label: 'Cancel' }}
+            onDismiss={handleDatePickerDismiss}
+            onValueChange={handleDatePickerValueChange}
+            positiveButton={{ label: 'OK' }}
+            presentation="dialog"
             value={parsedValue}
           />
         ) : null
@@ -211,7 +214,7 @@ export function LocalDatePickerField({
             Native date picker module is not in this app build.
           </Text>
           <Text tone="warning" variant="bodySm">
-            Install `@react-native-community/datetimepicker` and rebuild iOS/Android.
+            Install `@expo/ui` and rebuild iOS/Android.
           </Text>
           <Input
             autoCapitalize="none"
@@ -243,7 +246,7 @@ export function LocalDatePickerField({
                 display="spinner"
                 maximumDate={maximumDate}
                 mode="date"
-                onChange={handleDatePickerChange}
+                onValueChange={handleDatePickerValueChange}
                 value={pendingDate}
               />
               <View style={styles.datePickerModalActions}>

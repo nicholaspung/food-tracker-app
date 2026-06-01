@@ -261,6 +261,10 @@ PODS:
     - ExpoModulesCore
   - ExpoSystemUI (56.0.5):
     - ExpoModulesCore
+  - ExpoUI (56.0.15):
+    - ExpoModulesCore
+    - ExpoModulesWorklets
+    - React-RCTFabric
   - ExpoVideo (56.1.2):
     - ExpoModulesCore
   - EXStructuredHeaders (56.0.0)
@@ -2323,28 +2327,6 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNDateTimePicker (9.1.0):
-    - hermes-engine
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-Core-prebuilt
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - Yoga
   - RNGestureHandler (2.31.2):
     - hermes-engine
     - RCTRequired
@@ -2650,6 +2632,7 @@ DEPENDENCIES:
   - "ExpoSplashScreen (from `../../../node_modules/.pnpm/expo-splash-screen@56.0.10_expo@56.0.8_typescript@6.0.3/node_modules/expo-splash-screen/ios`)"
   - "ExpoSQLite (from `../../../node_modules/.pnpm/expo-sqlite@56.0.4_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-native+jes_65989ce171a705c7581df0b9b5e79cd8/node_modules/expo-sqlite/ios`)"
   - "ExpoSystemUI (from `../../../node_modules/.pnpm/expo-system-ui@56.0.5_expo@56.0.8_react-native-web@0.21.2_react-dom@19.2.3_react@19.2.3_07c0be9635703a546a87f36ae1ddfe58/node_modules/expo-system-ui/ios`)"
+  - "ExpoUI (from `../../../node_modules/.pnpm/@expo+ui@56.0.15_26bcfcb5dd36764029326f709960bd4a/node_modules/@expo/ui/ios`)"
   - "ExpoVideo (from `../../../node_modules/.pnpm/expo-video@56.1.2_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest_00091c810a4471920b863b3ff90715f4/node_modules/expo-video/ios`)"
   - "EXStructuredHeaders (from `../../../node_modules/.pnpm/expo-structured-headers@56.0.0/node_modules/expo-structured-headers/ios`)"
   - "EXUpdates (from `../../../node_modules/.pnpm/expo-updates@56.0.17_expo-dev-client@56.0.18_expo@56.0.8_react-native@0.85.3_@babel+cor_95f77a08795d1410901033f6259eaa72/node_modules/expo-updates/ios`)"
@@ -2735,7 +2718,6 @@ DEPENDENCIES:
   - "ReactCommon/turbomodule/core (from `../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-preset@0.85.3_@babel+core@7.2_87b68a5d07f50c0f905b0a793dc3ac61/node_modules/react-native/ReactCommon`)"
   - "ReactNativeDependencies (from `../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-preset@0.85.3_@babel+core@7.2_87b68a5d07f50c0f905b0a793dc3ac61/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)"
   - "RNCAsyncStorage (from `../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.85.3_@babel+core@7.29.0__27591e14ca494f9b7628f0f32a5ff12d/node_modules/@react-native-async-storage/async-storage`)"
-  - "RNDateTimePicker (from `../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@56.0.8_react-native@0.85.3_@babel+cor_9e072d37fb2f0b75115f2c047c961380/node_modules/@react-native-community/datetimepicker`)"
   - "RNGestureHandler (from `../../../node_modules/.pnpm/react-native-gesture-handler@2.31.2_react-native@0.85.3_@babel+core@7.29.0_@react-nativ_4aa270e7af61649779bc9356f6281a57/node_modules/react-native-gesture-handler`)"
   - "RNReanimated (from `../../../node_modules/.pnpm/react-native-reanimated@4.3.1_react-native-worklets@0.8.3_@babel+core@7.29.0_@react-nat_e21a315a47e883cff98765e3ecb0f177/node_modules/react-native-reanimated`)"
   - "RNScreens (from `../../../node_modules/.pnpm/react-native-screens@4.25.2_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-p_35de7bc54839d955207ae8616cd2e7cb/node_modules/react-native-screens`)"
@@ -2820,6 +2802,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-sqlite@56.0.4_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-native+jes_65989ce171a705c7581df0b9b5e79cd8/node_modules/expo-sqlite/ios"
   ExpoSystemUI:
     :path: "../../../node_modules/.pnpm/expo-system-ui@56.0.5_expo@56.0.8_react-native-web@0.21.2_react-dom@19.2.3_react@19.2.3_07c0be9635703a546a87f36ae1ddfe58/node_modules/expo-system-ui/ios"
+  ExpoUI:
+    :path: "../../../node_modules/.pnpm/@expo+ui@56.0.15_26bcfcb5dd36764029326f709960bd4a/node_modules/@expo/ui/ios"
   ExpoVideo:
     :path: "../../../node_modules/.pnpm/expo-video@56.1.2_expo@56.0.8_react-native@0.85.3_@babel+core@7.29.0_@react-native+jest_00091c810a4471920b863b3ff90715f4/node_modules/expo-video/ios"
   EXStructuredHeaders:
@@ -2989,8 +2973,6 @@ EXTERNAL SOURCES:
     :podspec: "../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.0_@react-native+jest-preset@0.85.3_@babel+core@7.2_87b68a5d07f50c0f905b0a793dc3ac61/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCAsyncStorage:
     :path: "../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.85.3_@babel+core@7.29.0__27591e14ca494f9b7628f0f32a5ff12d/node_modules/@react-native-async-storage/async-storage"
-  RNDateTimePicker:
-    :path: "../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@56.0.8_react-native@0.85.3_@babel+cor_9e072d37fb2f0b75115f2c047c961380/node_modules/@react-native-community/datetimepicker"
   RNGestureHandler:
     :path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.31.2_react-native@0.85.3_@babel+core@7.29.0_@react-nativ_4aa270e7af61649779bc9356f6281a57/node_modules/react-native-gesture-handler"
   RNReanimated:
@@ -3039,6 +3021,7 @@ SPEC CHECKSUMS:
   ExpoSplashScreen: 3fe3a57d56d7242a9109d9714a6f9fa1e256538b
   ExpoSQLite: 38a35f67bbb3370d9bb859aa65d106909c4e3b19
   ExpoSystemUI: 8f4fb641c6a6ebe2a01dda0fbd3fdd952ab5823a
+  ExpoUI: b298305aee92ad48ca29db29b9fa9265008b218a
   ExpoVideo: 8ebbbf65778c5f986d65fc17bb60b79e9d7624e6
   EXStructuredHeaders: 9e89bcdd636ae2ecb59995cfba3230f5d7547c08
   EXUpdates: c6488f0bebe92d6decb5f9b685d33ee91feeccf0
@@ -3125,7 +3108,6 @@ SPEC CHECKSUMS:
   ReactCommon: 7dfc3250793bf36cf221096ff59e1179e13eef7f
   ReactNativeDependencies: e428518be74ffa9e5822999b6e80c1752c7892d8
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
-  RNDateTimePicker: 7b2738f1e595f83c14580a11c476872755c5befc
   RNGestureHandler: 2ff61eac036eaf89f6818bf4ed9c39771a17d134
   RNReanimated: 0f3e304c4e6fa5eaaf32af93aba32024409ae90d
   RNScreens: 991cc417cd396602a6cf59a42139e5a9d91462a9

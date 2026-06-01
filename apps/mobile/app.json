@@ -77,7 +77,6 @@
       ],
       "expo-secure-store",
       "expo-localization",
-      "@react-native-community/datetimepicker",
       "expo-sqlite",
       "expo-notifications",
       "expo-video",
