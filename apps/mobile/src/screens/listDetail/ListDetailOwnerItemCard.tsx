@@ -22,6 +22,7 @@ interface ListDetailOwnerItemCardProps {
   photoEntries: OwnerItemPhotoEntry[];
   onConfirmDeleteItem: (item: PendingDeleteListItem) => void;
   onIWentThere: (input: { listItemId: string; name: string }) => void;
+  onLongPressItem?: (item: OwnerDisplayItem) => void;
   onOpenPhotos: (entries: OwnerItemPhotoEntry[]) => void;
 }
 
@@ -61,6 +62,7 @@ export function ListDetailOwnerItemCard({
   photoEntries,
   onConfirmDeleteItem,
   onIWentThere,
+  onLongPressItem,
   onOpenPhotos,
 }: ListDetailOwnerItemCardProps) {
   const theme = useTheme();
@@ -167,6 +169,13 @@ export function ListDetailOwnerItemCard({
   return (
     <FoodItemRatingRecordCard
       itemName={item.name}
+      onLongPress={
+        onLongPressItem
+          ? () => {
+              onLongPressItem(item);
+            }
+          : undefined
+      }
       onOpenPhotos={onOpenPhotos}
       photoAccessibilityLabel={`View photos for ${item.name}`}
       photoEntries={photoEntries}

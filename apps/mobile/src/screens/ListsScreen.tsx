@@ -75,7 +75,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
   screenBody: {
-    flex: 1,
     gap: 0,
     paddingBottom: 0,
     paddingHorizontal: 0,
@@ -294,7 +293,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const debouncedTrimmedSearchQuery = useDebouncedValue(trimmedSearchQuery, LIST_SEARCH_DEBOUNCE_MS);
 
   const myListsQuery = useInfiniteQuery({
-    queryKey: restaurantListQueryKeys.paginated('my', debouncedTrimmedSearchQuery),
+    queryKey: restaurantListQueryKeys.paginatedInfinite('my', debouncedTrimmedSearchQuery),
     queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'my',
@@ -309,7 +308,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   });
 
   const friendsListsQuery = useInfiniteQuery({
-    queryKey: restaurantListQueryKeys.paginated('friends', debouncedTrimmedSearchQuery),
+    queryKey: restaurantListQueryKeys.paginatedInfinite('friends', debouncedTrimmedSearchQuery),
     queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'friends',

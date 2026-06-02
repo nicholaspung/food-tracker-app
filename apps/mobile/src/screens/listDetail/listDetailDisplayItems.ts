@@ -22,6 +22,12 @@ export function buildOwnerDisplayItems(items: GroupedBookmarkedItem[]): OwnerDis
         key: normalizedKey || `${item.listItemId}:${item.foodItemId}`,
         name: item.name,
         orderIndex: index,
+        bookmark: {
+          listItemId: item.listItemId,
+          foodItemId: item.foodItemId,
+          ...(item.menuItemId ? { menuItemId: item.menuItemId } : {}),
+          ...(item.foodItemRestaurantId ? { restaurantId: item.foodItemRestaurantId } : {}),
+        },
       };
 
     const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
@@ -29,6 +35,9 @@ export function buildOwnerDisplayItems(items: GroupedBookmarkedItem[]): OwnerDis
       nextRow.source = {
         listItemId: item.listItemId,
         foodItemId: item.foodItemId,
+        ...(item.menuItemId ? { menuItemId: item.menuItemId } : {}),
+        ...(item.foodItemRestaurantId ? { restaurantId: item.foodItemRestaurantId } : {}),
+        ...(item.sourceUserId ? { sourceUserId: item.sourceUserId } : {}),
         sourceUserName: item.sourceUserName?.trim() || 'Friend',
         rating: item.rating,
         visitedAt: item.visitedAt,
@@ -41,6 +50,7 @@ export function buildOwnerDisplayItems(items: GroupedBookmarkedItem[]): OwnerDis
             kind: 'linked',
             listItemId: item.listItemId,
             userFoodItemId: item.userFoodItemId,
+            ...(item.userFoodItemRestaurantId ? { restaurantId: item.userFoodItemRestaurantId } : {}),
             rating: item.userFoodItemRating,
             visitedAt: item.userFoodItemVisitedAt,
           }
@@ -49,9 +59,11 @@ export function buildOwnerDisplayItems(items: GroupedBookmarkedItem[]): OwnerDis
     const standaloneUserRating: OwnerUserRating | null =
       !hasSourceBookmark && item.rating > 0
         ? {
-            kind: 'standalone',
-            listItemId: item.listItemId,
-            foodItemId: item.foodItemId,
+          kind: 'standalone',
+          listItemId: item.listItemId,
+          foodItemId: item.foodItemId,
+          ...(item.menuItemId ? { menuItemId: item.menuItemId } : {}),
+          ...(item.foodItemRestaurantId ? { restaurantId: item.foodItemRestaurantId } : {}),
             rating: item.rating,
             visitedAt: item.visitedAt,
           }

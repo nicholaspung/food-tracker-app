@@ -14,7 +14,7 @@ import {
   getBottomTabRouteForScreen,
   type BottomTabRoute,
 } from '../components/shared/BottomTabNavigation';
-import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
+import { EmailVerificationGraceBanner } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import { clearPendingAuthRedirect, getPendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import type { HomeInitialViewParams } from './homeRouteParams';
@@ -92,7 +92,6 @@ import {
   WaitlistConfirmationScreen,
 } from '../screens';
 import { useTheme } from '../theme';
-import { Screen } from '../ui';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 
 export type RestaurantDiscoveryRestaurantRouteParams = {
@@ -419,17 +418,6 @@ function getWebDocumentTitle(routeName?: keyof RootStackParamList) {
   return `${APP_NAME} - ${screenTitle}`;
 }
 
-function BetaFeatureRouteGuard() {
-  return (
-    <Screen>
-      <EmptyState
-        description="This beta feature is available to admins and beta users."
-        title="Access denied"
-      />
-    </Screen>
-  );
-}
-
 export function RootNavigator() {
   const { status, actualUser, user, verificationGraceEndsAt, verificationStatus, isSubmitting } = useAuth();
   const theme = useTheme();
@@ -587,7 +575,6 @@ export function RootNavigator() {
   const requiresFeatureOnboarding =
     status === 'authenticated' &&
     (user?.mobileOnboardingState?.main?.completedVersion ?? 0) < MAIN_ONBOARDING_VERSION;
-  const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
   const hasBottomTabsRoute =
     status === 'authenticated' &&
     !requiresFeatureOnboarding &&
@@ -760,12 +747,12 @@ export function RootNavigator() {
                   />
                   <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
                   <Stack.Screen
-                    component={canAccessFoodDiscovery ? RestaurantDiscoveryScreen : BetaFeatureRouteGuard}
+                    component={RestaurantDiscoveryScreen}
                     name="RestaurantDiscovery"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen
-                    component={canAccessFoodDiscovery ? RestaurantDiscoveryRestaurantScreen : BetaFeatureRouteGuard}
+                    component={RestaurantDiscoveryRestaurantScreen}
                     name="RestaurantDiscoveryRestaurant"
                     options={{ headerShown: false }}
                   />

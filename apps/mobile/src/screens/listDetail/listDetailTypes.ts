@@ -2,6 +2,8 @@ export interface GroupedBookmarkedItem {
   key: string;
   bookmarkLookupIds: string[];
   foodItemId: string;
+  foodItemRestaurantId?: string;
+  menuItemId?: string;
   listItemId: string;
   name: string;
   rating: number;
@@ -10,6 +12,7 @@ export interface GroupedBookmarkedItem {
   sourceUserName?: string;
   sourceNote?: string;
   userFoodItemId?: string;
+  userFoodItemRestaurantId?: string;
   userFoodItemRating?: number;
   userFoodItemVisitedAt?: string;
 }
@@ -17,6 +20,9 @@ export interface GroupedBookmarkedItem {
 export interface OwnerSourceRating {
   listItemId: string;
   foodItemId: string;
+  menuItemId?: string;
+  restaurantId?: string;
+  sourceUserId?: string;
   sourceUserName: string;
   rating: number;
   visitedAt?: string;
@@ -27,6 +33,7 @@ export type OwnerUserRating =
       kind: 'linked';
       listItemId: string;
       userFoodItemId: string;
+      restaurantId?: string;
       rating: number;
       visitedAt?: string;
     }
@@ -34,6 +41,8 @@ export type OwnerUserRating =
       kind: 'standalone';
       listItemId: string;
       foodItemId: string;
+      menuItemId?: string;
+      restaurantId?: string;
       rating: number;
       visitedAt?: string;
     };
@@ -42,6 +51,12 @@ export interface OwnerDisplayItem {
   key: string;
   name: string;
   orderIndex: number;
+  bookmark: {
+    listItemId: string;
+    foodItemId: string;
+    menuItemId?: string;
+    restaurantId?: string;
+  };
   source?: OwnerSourceRating;
   user?: OwnerUserRating;
 }
@@ -81,8 +96,16 @@ export interface SaveBookmarkTarget {
 }
 
 export interface SaveBookmarkTrackingContext {
-  entryMethod: 'quick_default' | 'selected_lists';
+  entryMethod: 'quick_default';
   createdDefaultList: boolean;
+}
+
+export interface PendingListItemTransferTarget {
+  itemName: string;
+  restaurantId: string;
+  restaurantName: string;
+  source?: OwnerSourceRating;
+  user?: OwnerUserRating;
 }
 
 export type PendingDeleteListItem =
@@ -90,6 +113,14 @@ export type PendingDeleteListItem =
       kind: 'restaurant-bookmark';
       restaurantId: string;
       restaurantName: string;
+    }
+  | {
+      kind: 'menu-bookmark';
+      itemName: string;
+      restaurantId: string;
+      listItemId: string;
+      foodItemId?: string;
+      menuItemId?: string;
     }
   | {
       kind: 'source';

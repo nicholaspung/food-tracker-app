@@ -285,6 +285,7 @@ export function VisitRestaurantSearchSection({
                     description={option.description}
                     key={option.key}
                     onPress={option.onPress}
+                    separateTrailingAction={Boolean(option.trailing)}
                     style={option.selected ? styles.selectedOption : undefined}
                     testID={option.testID}
                     title={option.title}
@@ -329,6 +330,7 @@ export function VisitRestaurantSearchSection({
                   description={option.description}
                   key={option.key}
                   onPress={option.onPress}
+                  separateTrailingAction={Boolean(option.trailing)}
                   style={option.selected ? styles.selectedOption : undefined}
                   testID={option.testID}
                   title={option.title}

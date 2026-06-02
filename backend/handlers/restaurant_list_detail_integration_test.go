@@ -286,11 +286,13 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 	user, token := createAuthUser(t, server.app, false, false)
 	friend, _ := createAuthUser(t, server.app, false, false)
 	secondFriend, _ := createAuthUser(t, server.app, false, false)
+	menuItemFriend, _ := createAuthUser(t, server.app, false, false)
 	pendingFriend, _ := createAuthUser(t, server.app, false, false)
 	stranger, _ := createAuthUser(t, server.app, false, false)
 
 	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
 	createFriendshipRecord(t, server.app, user.Id, secondFriend.Id, "accepted")
+	createFriendshipRecord(t, server.app, user.Id, menuItemFriend.Id, "accepted")
 	createFriendshipRecord(t, server.app, user.Id, pendingFriend.Id, "pending")
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
@@ -384,6 +386,32 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 		"position":   2,
 	})
 
+	menuItemFriendDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       menuItemFriend.Id,
+		"visibility": "friends",
+		"isDefault":  true,
+	})
+	menuItemFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       menuItemFriend.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	menuItemFriendFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  menuItemFriendVisit.Id,
+		"user":   menuItemFriend.Id,
+		"name":   "Burger",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       menuItemFriendDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    menuItemFriend.Id,
+		"foodItem":   menuItemFriendFoodItem.Id,
+		"position":   1,
+	})
+
 	response := performJSONRequest(
 		t,
 		server.mux,
@@ -409,8 +437,8 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 	if len(payload.Items) != 1 || payload.Items[0].ID != userListItem.Id {
 		t.Fatalf("expected one restaurant bookmark with one eligible friend overlap, got %#v", payload.Items)
 	}
-	if payload.Items[0].FriendOverlapCount != 1 {
-		t.Fatalf("expected only the visible accepted-friend restaurant bookmark to count, got %#v", payload.Items[0])
+	if payload.Items[0].FriendOverlapCount != 2 {
+		t.Fatalf("expected visible accepted-friend restaurant and menu-item bookmarks to count, got %#v", payload.Items[0])
 	}
 }
 

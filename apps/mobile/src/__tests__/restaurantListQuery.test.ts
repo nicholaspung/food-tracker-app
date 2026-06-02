@@ -59,6 +59,13 @@ describe('restaurantListQuery', () => {
       'paginated',
       'pizza',
     ]);
+    expect(restaurantListQueryKeys.paginatedInfinite('my', 'pizza')).toEqual([
+      'feature',
+      'restaurantLists',
+      'my',
+      'paginatedInfinite',
+      'pizza',
+    ]);
   });
 
   it('normalizes batched candidate food item photo keys deterministically', () => {
@@ -170,5 +177,29 @@ describe('restaurantListQuery', () => {
         sushiSearchKey,
       )?.pages[0]?.items.map((item) => item.id),
     ).toEqual(['list_other']);
+  });
+
+  it('replaces incompatible persisted list collection cache data when adding a list', () => {
+    const queryClient = createQueryClient();
+    const queuedList = buildList({ id: 'offline_list_1', name: 'Pizza Crawl' });
+    const badPersistedKey = restaurantListQueryKeys.paginated('my', '');
+
+    queryClient.setQueryData(badPersistedKey, {
+      items: [],
+      page: 1,
+      pageSize: 100,
+      totalItems: 0,
+      totalPages: 0,
+      hasNextPage: false,
+    });
+
+    expect(() => {
+      upsertRestaurantListInCollectionCaches(queryClient, queuedList, 'my');
+    }).not.toThrow();
+    expect(
+      queryClient.getQueryData<{ pages: { items: RestaurantListRecord[] }[] }>(
+        badPersistedKey,
+      )?.pages[0]?.items.map((item) => item.id),
+    ).toEqual(['offline_list_1']);
   });
 });

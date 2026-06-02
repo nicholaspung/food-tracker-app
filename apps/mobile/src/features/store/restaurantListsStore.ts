@@ -81,11 +81,13 @@ interface RestaurantListDetailApiBookmarkedItemRecord {
   listItemId: string;
   name: string;
   rating: number;
+  restaurantId?: string;
   menuItemId?: string;
   visitedAt?: string;
   sourceUserId?: string;
   sourceUserName?: string;
   userFoodItemId?: string;
+  userFoodItemRestaurantId?: string;
   userFoodItemName?: string;
   userFoodItemRating?: number;
   userFoodItemVisitedAt?: string;
@@ -280,11 +282,13 @@ function mapRestaurantListDetailBookmarkedItemRecord(
     listItemId: record.listItemId,
     name: record.name.trim(),
     rating: record.rating,
+    restaurantId: record.restaurantId?.trim() || undefined,
     menuItemId: record.menuItemId?.trim() || undefined,
     visitedAt: record.visitedAt,
     sourceUserId: record.sourceUserId?.trim() || undefined,
     sourceUserName: record.sourceUserName?.trim() || undefined,
     userFoodItemId: record.userFoodItemId?.trim() || undefined,
+    userFoodItemRestaurantId: record.userFoodItemRestaurantId?.trim() || undefined,
     userFoodItemName: record.userFoodItemName?.trim() || undefined,
     userFoodItemRating: record.userFoodItemRating,
     userFoodItemVisitedAt: record.userFoodItemVisitedAt,

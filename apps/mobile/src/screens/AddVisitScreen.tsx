@@ -100,7 +100,6 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const [reminderConfirmation, setReminderConfirmation] = useState<string | null>(null);
   const [schedulingReminderMinutes, setSchedulingReminderMinutes] = useState<VisitReminderMinutes | null>(null);
   const { actualUser, user } = useAuth();
-  const canAccessFoodDiscovery = actualUser?.isAdmin === true || user?.isBetaUser === true;
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
   const isDisplaySubscriberUser = user?.isSubscriber === true;
@@ -144,19 +143,14 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       iconBackground: optionColors.restaurantSoft,
       iconColor: optionColors.restaurant,
     },
-    ...(canAccessFoodDiscovery
-      ? [
-          {
-            id: 'food-discovery',
-            title: 'Food Discovery',
-            description: 'Find restaurants and scan menus',
-            icon: 'compass-outline',
-            iconBackground: optionColors.foodDiscoverySoft,
-            iconColor: optionColors.foodDiscovery,
-            titleAccessory: <StatusPill label="Beta" tone="brand" uppercase />,
-          } satisfies AddOptionConfig,
-        ]
-      : []),
+    {
+      id: 'food-discovery',
+      title: 'Food Discovery',
+      description: 'Find restaurants and scan menus',
+      icon: 'compass-outline',
+      iconBackground: optionColors.foodDiscoverySoft,
+      iconColor: optionColors.foodDiscovery,
+    },
     {
       id: 'food-product',
       onboardingCardId: 'trackFoodProduct',

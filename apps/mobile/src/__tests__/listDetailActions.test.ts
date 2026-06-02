@@ -5,9 +5,7 @@ import {
   reorderRestaurantAction,
   resolveListDetailShareUrl,
   saveBookmarkToDefaultListAction,
-  saveBookmarkToListsAction,
   shareListLinkAction,
-  trackNoSelectedSaveTarget,
   type ListDetailActionDependencies,
 } from '../screens/listDetail/listDetailActions';
 import type { RestaurantListRecord } from '../features';
@@ -208,38 +206,6 @@ describe('listDetailActions', () => {
     );
   });
 
-  it('returns failed bookmark save messages without throwing', async () => {
-    const deps = createDeps();
-    jest.mocked(deps.restaurantListWrites.saveBookmarkToLists).mockRejectedValue(new Error('Network down'));
-
-    await expect(
-      saveBookmarkToListsAction({
-        deps,
-        isOwner: false,
-        list: buildList(),
-        saveBookmarkTarget: buildSaveBookmarkTarget(),
-        targetListIds: ['list_2'],
-        trackingContext: {
-          entryMethod: 'selected_lists',
-          createdDefaultList: false,
-        },
-      }),
-    ).resolves.toEqual({
-      saved: false,
-      queued: false,
-      errorMessage: 'Network down',
-    });
-
-    expect(deps.trackObservabilityEvent).toHaveBeenCalledWith(
-      'LIST_DETAIL_SAVE_TO_LISTS_FAILED',
-      expect.objectContaining({
-        errorMessage: 'Network down',
-        entryMethod: 'selected_lists',
-        stage: 'bookmark_save',
-      }),
-    );
-  });
-
   it('throws normalized failed remove messages for screen error presentation', async () => {
     const deps = createDeps();
     jest.mocked(deps.restaurantListWrites.removeRestaurantListSourceRating).mockRejectedValue(
@@ -261,7 +227,7 @@ describe('listDetailActions', () => {
     );
   });
 
-  it('disables share links and tracks selected-list validation without mounting the screen', async () => {
+  it('disables share links without mounting the screen', async () => {
     const deps = createDeps();
 
     await disableShareLinkAction({
@@ -272,10 +238,5 @@ describe('listDetailActions', () => {
 
     expect(deps.shareLinkService.disable).toHaveBeenCalledWith('list_1');
     expect(deps.refetchDetail).toHaveBeenCalled();
-    expect(trackNoSelectedSaveTarget(deps, { hasDefaultList: true })).toBe('Select at least one list.');
-    expect(deps.trackObservabilityEvent).toHaveBeenCalledWith(
-      'LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED',
-      expect.objectContaining({ hasDefaultList: true, reason: 'no_target_lists' }),
-    );
   });
 });

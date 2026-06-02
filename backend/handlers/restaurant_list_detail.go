@@ -38,18 +38,20 @@ type restaurantListDetailListResponse struct {
 }
 
 type restaurantListDetailBookmarkedItemResponse struct {
-	ID                    string  `json:"id"`
-	ListItemID            string  `json:"listItemId"`
-	Name                  string  `json:"name"`
-	Rating                float64 `json:"rating"`
-	MenuItemID            string  `json:"menuItemId,omitempty"`
-	VisitedAt             string  `json:"visitedAt,omitempty"`
-	SourceUserID          string  `json:"sourceUserId,omitempty"`
-	SourceUserName        string  `json:"sourceUserName,omitempty"`
-	UserFoodItemID        string  `json:"userFoodItemId,omitempty"`
-	UserFoodItemName      string  `json:"userFoodItemName,omitempty"`
-	UserFoodItemRating    float64 `json:"userFoodItemRating,omitempty"`
-	UserFoodItemVisitedAt string  `json:"userFoodItemVisitedAt,omitempty"`
+	ID                       string  `json:"id"`
+	ListItemID               string  `json:"listItemId"`
+	Name                     string  `json:"name"`
+	Rating                   float64 `json:"rating"`
+	RestaurantID             string  `json:"restaurantId,omitempty"`
+	MenuItemID               string  `json:"menuItemId,omitempty"`
+	VisitedAt                string  `json:"visitedAt,omitempty"`
+	SourceUserID             string  `json:"sourceUserId,omitempty"`
+	SourceUserName           string  `json:"sourceUserName,omitempty"`
+	UserFoodItemID           string  `json:"userFoodItemId,omitempty"`
+	UserFoodItemRestaurantID string  `json:"userFoodItemRestaurantId,omitempty"`
+	UserFoodItemName         string  `json:"userFoodItemName,omitempty"`
+	UserFoodItemRating       float64 `json:"userFoodItemRating,omitempty"`
+	UserFoodItemVisitedAt    string  `json:"userFoodItemVisitedAt,omitempty"`
 }
 
 type restaurantListDetailItemResponse struct {
@@ -1421,9 +1423,6 @@ func buildWantToTryFriendOverlapCounts(
 			AND rl.visibility = 'friends'
 			AND COALESCE(rl.moderationStatus, '') IN ('', 'active', 'reviewed')
 			AND COALESCE(li.moderationStatus, '') IN ('', 'active', 'reviewed')
-			AND COALESCE(li.foodItem, '') = ''
-			AND COALESCE(li.userFoodItem, '') = ''
-			AND (li.recommendedItems IS NULL OR li.recommendedItems = '' OR li.recommendedItems = '[]')
 			AND (%s)
 		GROUP BY li.restaurant
 	`, strings.Join(restaurantClauses, " OR "))).
@@ -1543,6 +1542,7 @@ func buildRestaurantListDetailBookmarkedItemResponse(
 		ListItemID:     listItemID,
 		Name:           defaultString(strings.TrimSpace(foodItem.GetString("name")), "Unknown item"),
 		Rating:         foodItem.GetFloat("rating"),
+		RestaurantID:   resolveFoodItemRestaurantID(foodItem, visitsByID),
 		VisitedAt:      resolveFoodItemVisitedAt(foodItem, visitsByID),
 		SourceUserID:   sourceUserID,
 		SourceUserName: sourceUserName,
@@ -1550,12 +1550,31 @@ func buildRestaurantListDetailBookmarkedItemResponse(
 
 	if userFoodItem != nil {
 		response.UserFoodItemID = userFoodItem.Id
+		response.UserFoodItemRestaurantID = resolveFoodItemRestaurantID(userFoodItem, visitsByID)
 		response.UserFoodItemName = strings.TrimSpace(userFoodItem.GetString("name"))
 		response.UserFoodItemRating = userFoodItem.GetFloat("rating")
 		response.UserFoodItemVisitedAt = resolveFoodItemVisitedAt(userFoodItem, visitsByID)
 	}
 
 	return response
+}
+
+func resolveFoodItemRestaurantID(foodItem *core.Record, visitsByID map[string]*core.Record) string {
+	if foodItem == nil {
+		return ""
+	}
+
+	visitID := strings.TrimSpace(foodItem.GetString("visit"))
+	if visitID == "" {
+		return ""
+	}
+
+	visitRecord := visitsByID[visitID]
+	if visitRecord == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(visitRecord.GetString("restaurant"))
 }
 
 func buildRestaurantListDetailBookmarkState(

@@ -34,8 +34,7 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
-import { SaveRecommendationToListModal } from './listDetail/SaveRecommendationToListModal';
-import type { GroupedBookmarkedItem, OwnerItemPhotoEntry, SaveBookmarkTarget } from './listDetail/listDetailTypes';
+import type { GroupedBookmarkedItem, OwnerItemPhotoEntry } from './listDetail/listDetailTypes';
 
 type SharedRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'SharedRestaurantList'>;
 
@@ -79,6 +78,7 @@ function mapSharedBookmarkItem(item: RestaurantListBookmarkedItemRecord): Groupe
     key: `${item.listItemId}:${item.id}`,
     bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
     foodItemId: item.id,
+    foodItemRestaurantId: item.restaurantId,
     listItemId: item.listItemId,
     name: item.name,
     rating: item.rating,
@@ -166,13 +166,10 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
   const { shareToken } = route.params;
   const { status } = useAuth();
   const styles = useStyles();
-  const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
-  const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
   const [marketingLinkErrorMessage, setMarketingLinkErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
-  const [saveModalError, setSaveModalError] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
@@ -223,32 +220,8 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     }
     return mapping;
   }, [query.data?.bookmarkState.savedListIdsByBookmarkLookupId]);
-  const savedBookmarkLookupIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const bookmarkLookupId of savedListIdsByBookmarkLookupId.keys()) {
-      ids.add(bookmarkLookupId);
-    }
-    return ids;
-  }, [savedListIdsByBookmarkLookupId]);
   const viewerLists = query.data?.viewerLists ?? [];
   const defaultList = viewerLists.find((viewerList) => viewerList.isDefault);
-  const nonDefaultLists = viewerLists.filter((viewerList) => !viewerList.isDefault);
-  const alreadySavedListIdsForTarget = useMemo(() => {
-    const listIds = new Set<string>();
-    if (!saveBookmarkTarget) {
-      return listIds;
-    }
-    for (const bookmarkLookupId of saveBookmarkTarget.bookmarkLookupIds) {
-      const existingListIds = savedListIdsByBookmarkLookupId.get(bookmarkLookupId);
-      if (!existingListIds) {
-        continue;
-      }
-      for (const listId of existingListIds) {
-        listIds.add(listId);
-      }
-    }
-    return listIds;
-  }, [saveBookmarkTarget, savedListIdsByBookmarkLookupId]);
 
   const saveReturnTarget = async () => {
     await savePendingAuthRedirect({
@@ -296,100 +269,47 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     }
   };
 
-  const closeSaveModal = () => {
-    if (isSavingBookmark) {
-      return;
+  const isItemSavedToDefaultList = (item: GroupedBookmarkedItem) => {
+    const defaultListId = defaultList?.id;
+    if (!defaultListId) {
+      return false;
     }
-    setSaveBookmarkTarget(null);
-    setSelectedSaveListIds(new Set());
-    setSaveModalError(null);
+    return item.bookmarkLookupIds.some((bookmarkLookupId) =>
+      savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId),
+    );
   };
 
-  const openSaveModal = (group: GroupedSharedRestaurant, item: GroupedBookmarkedItem) => {
-    setSaveErrorMessage(null);
-    setSaveModalError(null);
-    setSelectedSaveListIds(new Set());
-    setSaveBookmarkTarget({
-      bookmarkLookupIds: item.bookmarkLookupIds,
-      restaurantId: group.restaurantId,
-      restaurantName: group.restaurantName,
-      foodItemId: item.foodItemId,
-      foodItemName: item.name,
-      foodItemRating: item.rating,
-      visitedAt: item.visitedAt,
-      sourceNote: item.sourceNote,
-    });
-  };
-
-  const toggleSaveListSelection = (listId: string) => {
-    setSelectedSaveListIds((current) => {
-      const next = new Set(current);
-      if (next.has(listId)) {
-        next.delete(listId);
-      } else {
-        next.add(listId);
-      }
-      return next;
-    });
-  };
-
-  const saveBookmark = async (targetListIds: string[], trackingContext: { entryMethod: 'quick_default' | 'selected_lists'; createdDefaultList: boolean }) => {
-    if (!saveBookmarkTarget) {
+  const saveBookmarkToWantToTry = async (
+    group: GroupedSharedRestaurant,
+    item: GroupedBookmarkedItem,
+  ) => {
+    if (isSavingBookmark || isItemSavedToDefaultList(item)) {
       return;
     }
 
     setIsSavingBookmark(true);
-    setSaveModalError(null);
     setSaveErrorMessage(null);
     try {
+      const targetListIds = defaultList?.id ? [defaultList.id] : [];
       await saveSharedRestaurantListRecommendation({
         shareToken,
-        restaurantId: saveBookmarkTarget.restaurantId,
-        foodItemId: saveBookmarkTarget.foodItemId,
+        restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
+        foodItemId: item.foodItemId,
         targetListIds,
       });
       await query.refetch();
       trackProductEvent('social.recommendation_saved', {
         source: 'SharedRestaurantListScreen',
-        entryMethod: trackingContext.entryMethod,
-        targetListCount: Math.max(1, targetListIds.length),
-        createdDefaultList: trackingContext.createdDefaultList,
+        entryMethod: 'quick_default',
+        targetListCount: 1,
+        createdDefaultList: !defaultList?.id,
       });
-      setSaveBookmarkTarget(null);
-      setSelectedSaveListIds(new Set());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
-      setSaveModalError(message);
       setSaveErrorMessage(message);
     } finally {
       setIsSavingBookmark(false);
     }
-  };
-
-  const handleQuickSaveToDefaultList = async () => {
-    if (!saveBookmarkTarget) {
-      return;
-    }
-    if (defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)) {
-      setSaveModalError('This item is already in your Want to Try list.');
-      return;
-    }
-    await saveBookmark(defaultList?.id ? [defaultList.id] : [], {
-      entryMethod: 'quick_default',
-      createdDefaultList: !defaultList?.id,
-    });
-  };
-
-  const handleSaveToSelectedLists = async () => {
-    const targetListIds = Array.from(selectedSaveListIds).filter((listId) => !alreadySavedListIdsForTarget.has(listId));
-    if (targetListIds.length === 0) {
-      setSaveModalError('Select at least one list.');
-      return;
-    }
-    await saveBookmark(targetListIds, {
-      entryMethod: 'selected_lists',
-      createdDefaultList: false,
-    });
   };
 
   const openPhotoViewer = (entries: OwnerItemPhotoEntry[]) => {
@@ -513,22 +433,19 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                     notes={group.notes}
                     primaryMetaLabel={primaryMetaLabel}
                     renderItem={(item, itemIndex) => {
-                      const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
-                        savedBookmarkLookupIds.has(bookmarkLookupId),
-                      );
                       const photoEntries = buildSharedPhotoEntries(item, photosByFoodItemId);
 
                       return (
                         <ListDetailBookmarkedItemRow
                           canSave={isAuthenticated}
                           groupIndex={groupIndex}
-                          isSaved={isSaved}
+                          isSaved={isItemSavedToDefaultList(item)}
                           item={item}
                           itemIndex={itemIndex}
                           key={item.key}
                           onOpenPhotos={openPhotoViewer}
                           onSave={(targetItem) => {
-                            openSaveModal(group, targetItem);
+                            void saveBookmarkToWantToTry(group, targetItem);
                           }}
                           photoEntries={photoEntries}
                         />
@@ -556,23 +473,6 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         visible={photoViewerVisible}
       />
 
-      <SaveRecommendationToListModal
-        alreadySavedListIds={alreadySavedListIdsForTarget}
-        defaultList={defaultList}
-        errorMessage={saveModalError}
-        isSaving={isSavingBookmark}
-        onClose={closeSaveModal}
-        onQuickSave={() => {
-          void handleQuickSaveToDefaultList();
-        }}
-        onSaveSelectedLists={() => {
-          void handleSaveToSelectedLists();
-        }}
-        onToggleList={toggleSaveListSelection}
-        selectedListIds={selectedSaveListIds}
-        target={saveBookmarkTarget}
-        targetLists={nonDefaultLists}
-      />
     </FeatureDetailScreenScaffold>
   );
 }

@@ -567,33 +567,18 @@ describe('tab root content sections', () => {
     expect(renderer.root.findAllByType('Text').some((node: any) => node.children.includes('Notification permission is off.'))).toBe(true);
   });
 
-  it('hides Food Discovery from non-beta non-admin users', async () => {
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = renderWithNavigation(
-        <AddVisitScreen
-          navigation={{ navigate: jest.fn() } as never}
-          route={{ key: 'add', name: 'AddVisit' } as never}
-        />,
-      );
-    });
-
-    expect(renderer.root.findAllByProps({ testID: 'add-option-food-discovery' })).toHaveLength(0);
-  });
-
-  it('shows Food Discovery for beta users', async () => {
+  it('shows Food Discovery for regular users without beta labeling', async () => {
     const navigate = jest.fn();
     mockedUseAuth.mockReturnValue({
       actualUser: {
         isAdmin: false,
-        isBetaUser: true,
+        isBetaUser: false,
         isSubscriber: false,
       },
       user: {
-        email: 'beta@example.com',
-        id: 'user-beta',
-        isBetaUser: true,
+        email: 'regular@example.com',
+        id: 'user-regular',
+        isBetaUser: false,
         verified: true,
       },
       verificationGraceEndsAt: null,
@@ -611,44 +596,13 @@ describe('tab root content sections', () => {
     });
 
     const foodDiscoveryCard = renderer.root.findByProps({ testID: 'add-option-food-discovery' });
-    expect(foodDiscoveryCard.props.titleAccessory).toBeTruthy();
+    expect(foodDiscoveryCard.props.titleAccessory).toBeUndefined();
 
     await act(async () => {
       foodDiscoveryCard.props.onPress();
     });
 
     expect(navigate).toHaveBeenCalledWith('RestaurantDiscovery');
-  });
-
-  it('shows Food Discovery for actual admins even when previewing non-admin', async () => {
-    mockedUseAuth.mockReturnValue({
-      actualUser: {
-        isAdmin: true,
-        isBetaUser: false,
-        isSubscriber: false,
-      },
-      user: {
-        email: 'admin@example.com',
-        id: 'user-admin',
-        isAdmin: false,
-        isBetaUser: false,
-        verified: true,
-      },
-      verificationGraceEndsAt: null,
-      verificationStatus: 'verified',
-    } as never);
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = renderWithNavigation(
-        <AddVisitScreen
-          navigation={{ navigate: jest.fn() } as never}
-          route={{ key: 'add', name: 'AddVisit' } as never}
-        />,
-      );
-    });
-
-    expect(renderer.root.findByProps({ testID: 'add-option-food-discovery' }).props.titleAccessory).toBeTruthy();
   });
 
   it('routes Add options through onboarding until the card is dismissed', async () => {

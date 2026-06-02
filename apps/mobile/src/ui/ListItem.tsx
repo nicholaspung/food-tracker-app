@@ -19,6 +19,7 @@ export interface ListItemProps {
   tone?: ListItemTone;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  separateTrailingAction?: boolean;
   testID?: string;
 }
 
@@ -34,6 +35,7 @@ export function ListItem({
   tone = 'default',
   style,
   contentStyle,
+  separateTrailingAction = false,
   testID,
 }: ListItemProps) {
   const theme = useTheme();
@@ -54,6 +56,12 @@ export function ListItem({
       flex: 1,
       gap: theme.spacing.xxs,
     },
+    pressableContent: {
+      alignItems: 'center',
+      flex: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
     titleRow: {
       alignItems: 'center',
       flexDirection: 'row',
@@ -68,7 +76,7 @@ export function ListItem({
     },
   });
 
-  const content = (
+  const mainContent = (
     <>
       {leading ? <View>{leading}</View> : null}
       <View style={[styles.content, contentStyle]}>
@@ -78,12 +86,39 @@ export function ListItem({
         </View>
         {typeof description === 'string' ? <Text tone="secondary">{description}</Text> : description ?? null}
       </View>
+    </>
+  );
+
+  const content = (
+    <>
+      {mainContent}
       {trailing ? <View>{trailing}</View> : null}
     </>
   );
 
   if (!onPress) {
     return <View style={[styles.item, style, disabled && styles.disabled]}>{content}</View>;
+  }
+
+  if (trailing && separateTrailingAction) {
+    return (
+      <View style={[styles.item, style, disabled && styles.disabled]}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={disabled}
+          onLongPress={onLongPress}
+          onPress={onPress}
+          style={({ pressed }) => [
+            styles.pressableContent,
+            pressed && !disabled && styles.pressed,
+          ]}
+          testID={testID}
+        >
+          {mainContent}
+        </Pressable>
+        <View>{trailing}</View>
+      </View>
+    );
   }
 
   return (

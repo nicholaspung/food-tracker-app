@@ -1318,12 +1318,13 @@ describe('HomeScreen', () => {
         items: [
           {
             restaurantId: 'restaurant-1',
-            bookmarkedItems: [
-              {
-                id: 'bookmark-1',
-                userFoodItemId: 'food-item-1',
-              },
-            ],
+	            bookmarkedItems: [
+	              {
+	                id: 'food-item-1',
+	                name: 'Friend Noodles',
+	                userFoodItemId: 'food-item-1',
+	              },
+	            ],
           },
         ],
       },
@@ -1502,6 +1503,125 @@ describe('HomeScreen', () => {
     ).toBe(true);
   });
 
+  it('reflects same restaurant item-name bookmarks across friend feed records without menu item ids', async () => {
+    const removeBookmarkFromDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
+    const setErrorMessage = jest.fn();
+    let renderer: any = null;
+
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockedUseRestaurantListWrites.mockReturnValue({
+      errorMessage: null,
+      isSubmitting: false,
+      removeBookmarkFromDefaultList,
+      saveBookmarkToDefaultList: jest.fn(),
+      setErrorMessage,
+    } as never);
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+      defaultListDetail: {
+        items: [
+          {
+            restaurantId: 'restaurant-1',
+            bookmarkedItems: [
+              {
+                id: 'food-item-1',
+                name: 'Cheeseburger',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    mockHomeFeedQuery({
+      items: [
+        {
+          eventAt: '2026-04-18T09:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-friend-1',
+            restaurantId: 'restaurant-1',
+            restaurantName: "McDonald's",
+            visitedAt: '2026-04-18T09:00:00.000Z',
+            items: [
+              {
+                id: 'food-item-1',
+                name: 'Cheeseburger',
+                rating: 9,
+              },
+              {
+                id: 'food-item-2',
+                name: 'Cheeseburger',
+                rating: 8,
+              },
+            ],
+            source: 'visit',
+            userId: 'friend-user-1',
+            userName: 'Friend One',
+            createdAt: '2026-04-18T09:00:00.000Z',
+            updatedAt: '2026-04-18T09:05:00.000Z',
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    const firstBookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Cheeseburger',
+      rating: 9,
+    });
+    const secondBookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-2',
+      name: 'Cheeseburger',
+      rating: 8,
+    });
+
+    expect(firstBookmarkElement.props.saved).toBe(true);
+    expect(secondBookmarkElement.props.saved).toBe(true);
+
+    await act(async () => {
+      await secondBookmarkElement.props.onPress();
+    });
+
+    expect(removeBookmarkFromDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        restaurantId: 'restaurant-1',
+        foodItemId: 'food-item-1',
+      },
+      defaultListId: 'default-list',
+      sourceListId: 'default-list',
+    });
+    expect(setErrorMessage).toHaveBeenCalledWith(null);
+  });
+
   it('saves and removes friend feed menu item recommendations by menu item id', async () => {
     const saveBookmarkToDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
     const removeBookmarkFromDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
@@ -1656,12 +1776,13 @@ describe('HomeScreen', () => {
         items: [
           {
             restaurantId: 'restaurant-1',
-            bookmarkedItems: [
-              {
-                id: 'bookmark-1',
-                userFoodItemId: 'food-item-1',
-              },
-            ],
+	            bookmarkedItems: [
+	              {
+	                id: 'food-item-1',
+	                name: 'Friend Noodles',
+	                userFoodItemId: 'food-item-1',
+	              },
+	            ],
           },
         ],
       },

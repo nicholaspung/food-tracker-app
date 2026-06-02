@@ -35,6 +35,13 @@ jest.mock('../features', () => ({
   listRestaurantListsPage: jest.fn(),
   restaurantListQueryKeys: {
     paginated: jest.fn((scope: string, search: string) => ['feature', 'restaurantLists', scope, 'paginated', search]),
+    paginatedInfinite: jest.fn((scope: string, search: string) => [
+      'feature',
+      'restaurantLists',
+      scope,
+      'paginatedInfinite',
+      search,
+    ]),
   },
 }));
 
@@ -416,7 +423,7 @@ describe('ListsScreen', () => {
 
     expect(mockedUseInfiniteQuery).toHaveBeenCalledWith(expect.objectContaining({
       enabled: true,
-      queryKey: ['feature', 'restaurantLists', 'my', 'paginated', 'tacos'],
+      queryKey: ['feature', 'restaurantLists', 'my', 'paginatedInfinite', 'tacos'],
     }));
 
     await act(async () => {

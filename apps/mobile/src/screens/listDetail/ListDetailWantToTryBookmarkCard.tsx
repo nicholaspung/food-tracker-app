@@ -95,8 +95,15 @@ const useStyles = createThemedStyles((theme) => ({
   section: {
     borderTopColor: theme.colors.border.subtle,
     borderTopWidth: 1,
-    gap: theme.spacing.xs,
+    gap: 0,
     paddingTop: theme.spacing.sm,
+  },
+  sectionHeader: {
+    marginBottom: theme.spacing.xs,
+  },
+  itemSeparator: {
+    backgroundColor: theme.colors.border.subtle,
+    height: 1,
   },
 }));
 
@@ -194,8 +201,15 @@ export function ListDetailWantToTryBookmarkCard<Item>({
 
       {items.length > 0 ? (
         <View style={styles.section}>
-          <SectionHeader title="Saved Recommendations" titleTone="secondary" />
-          {items.map(renderItem)}
+          <View style={styles.sectionHeader}>
+            <SectionHeader title="Saved Menu Items" titleTone="secondary" />
+          </View>
+          {items.map((item, itemIndex) => (
+            <View key={itemIndex}>
+              {renderItem(item, itemIndex)}
+              {itemIndex < items.length - 1 ? <View style={styles.itemSeparator} /> : null}
+            </View>
+          ))}
         </View>
       ) : null}
     </Card>

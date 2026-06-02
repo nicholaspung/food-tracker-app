@@ -19,6 +19,7 @@ import {
   disableRestaurantListShareLink,
   getOrCreateRestaurantListShareLink,
   getRestaurantListDetail,
+  listRestaurantListsPage,
   regenerateRestaurantListShareLink,
   restaurantListQueryKeys,
   useRestaurantListWrites,
@@ -40,33 +41,58 @@ import {
   removeUserRatingAction,
   reorderRestaurantAction,
   saveBookmarkToDefaultListAction,
-  saveBookmarkToListsAction,
   shareListLinkAction,
-  trackNoSelectedSaveTarget,
   type ListDetailActionDependencies,
 } from './listDetail/listDetailActions';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailOwnerItemCard } from './listDetail/ListDetailOwnerItemCard';
+import { ListItemTransferModal } from './listDetail/ListItemTransferModal';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
 import { ListDetailWantToTryBookmarkCard } from './listDetail/ListDetailWantToTryBookmarkCard';
-import { SaveRecommendationToListModal } from './listDetail/SaveRecommendationToListModal';
+import { ListDetailWantToTryMenuItemRow } from './listDetail/ListDetailWantToTryMenuItemRow';
 import { buildListDetailReadModel } from './listDetail/listDetailReadModel';
 import type {
   GroupedBookmarkedItem,
   GroupedRestaurant,
+  OwnerDisplayItem,
   OwnerItemPhotoEntry,
+  PendingListItemTransferTarget,
   PendingDeleteListItem,
   SaveBookmarkTarget,
-  SaveBookmarkTrackingContext,
 } from './listDetail/listDetailTypes';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
 type ListDetailViewMode = 'list' | 'map';
+type LocallyRemovedListItemKey =
+  | `restaurant-bookmark:${string}`
+  | `menu-bookmark:${string}`
+  | `source:${string}:${string}`
+  | `user-linked:${string}`
+  | `user-standalone:${string}:${string}`;
 
 const LIST_DETAIL_VIEW_OPTIONS: readonly SegmentedControlOption<ListDetailViewMode>[] = [
   { label: 'List', value: 'list' },
   { label: 'Map', value: 'map' },
 ];
+const TRANSFER_LIST_PAGE_SIZE = 100;
+const TRANSFER_LIST_QUERY_KEY = ['feature', 'restaurantLists', 'my', 'transferDestinations'] as const;
+
+function getLocallyRemovedListItemKey(
+  item: PendingDeleteListItem,
+): LocallyRemovedListItemKey {
+  switch (item.kind) {
+    case 'restaurant-bookmark':
+      return `restaurant-bookmark:${item.restaurantId}`;
+    case 'menu-bookmark':
+      return `menu-bookmark:${item.listItemId}`;
+    case 'source':
+      return `source:${item.listItemId}:${item.foodItemId}`;
+    case 'user-linked':
+      return `user-linked:${item.listItemId}`;
+    case 'user-standalone':
+      return `user-standalone:${item.listItemId}:${item.foodItemId}`;
+  }
+}
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -192,10 +218,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteListItem | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState(false);
-  const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
-  const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
+  const [locallyRemovedListItemKeys, setLocallyRemovedListItemKeys] = useState<Set<LocallyRemovedListItemKey>>(
+    new Set(),
+  );
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
-  const [saveModalError, setSaveModalError] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<PendingListItemTransferTarget | null>(null);
+  const [selectedTransferListIds, setSelectedTransferListIds] = useState<Set<string>>(new Set());
+  const [isTransferringItem, setIsTransferringItem] = useState(false);
+  const [transferModalError, setTransferModalError] = useState<string | null>(null);
   const [movingRestaurantId, setMovingRestaurantId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
@@ -215,6 +245,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     queryKey: restaurantListQueryKeys.detail(listId),
     queryFn: ({ signal }) => getRestaurantListDetail(listId, { signal }),
   });
+  const transferListsQuery = useQuery({
+    enabled: transferTarget !== null,
+    queryKey: TRANSFER_LIST_QUERY_KEY,
+    queryFn: ({ signal }) =>
+      listRestaurantListsPage({
+        page: 1,
+        pageSize: TRANSFER_LIST_PAGE_SIZE,
+        scope: 'my',
+        signal,
+      }),
+  });
 
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(detailQuery.isRefetching);
 
@@ -224,31 +265,26 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         detail: detailQuery.data,
         isError: detailQuery.isError,
         isLoading: detailQuery.isLoading,
-        saveBookmarkTarget,
+        saveBookmarkTarget: null,
         userId: user?.id,
       }),
     [
       detailQuery.data,
       detailQuery.isError,
       detailQuery.isLoading,
-      saveBookmarkTarget,
       user?.id,
     ],
   );
 
   const {
-    alreadySavedListIdsForTarget,
     analyticsContext: listAnalyticsContext,
     defaultList,
-    groupedRestaurants,
     hasBlockingListItemsError,
     hasListItemsRefreshError,
-    hasListsRefreshError,
-    isLoadingMyLists,
     isDefaultList,
     isOwner,
     list,
-    nonDefaultLists,
+    myLists,
     omittedMapRestaurantCount,
     restaurantRows,
     subtitle,
@@ -298,6 +334,39 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   }, [openPhotoViewer, readModel.mapGroups]);
 
   const styles = useStyles();
+
+  const visibleRestaurantRows = useMemo(
+    () =>
+      restaurantRows
+        .filter((row) => {
+          if (!isDefaultList) {
+            return true;
+          }
+          return !locallyRemovedListItemKeys.has(`restaurant-bookmark:${row.group.restaurantId}`);
+        })
+        .map((row) => {
+          const ownerItems = row.ownerItems.filter((item) => {
+            if (locallyRemovedListItemKeys.has(`menu-bookmark:${item.bookmark.listItemId}`)) {
+              return false;
+            }
+            const isSourceRemoved = item.source
+              ? locallyRemovedListItemKeys.has(`source:${item.source.listItemId}:${item.source.foodItemId}`)
+              : false;
+            const isUserRemoved = item.user
+              ? item.user.kind === 'linked'
+                ? locallyRemovedListItemKeys.has(`user-linked:${item.user.listItemId}`)
+                : locallyRemovedListItemKeys.has(`user-standalone:${item.user.listItemId}:${item.user.foodItemId}`)
+              : false;
+            return !isSourceRemoved && !isUserRemoved;
+          });
+
+          return {
+            ...row,
+            ownerItems,
+          };
+        }),
+    [isDefaultList, locallyRemovedListItemKeys, restaurantRows],
+  );
 
   const listDetailActionDependencies = useMemo<ListDetailActionDependencies>(
     () => ({
@@ -539,6 +608,21 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
   };
 
+  const confirmDeleteWantToTryMenuItem = (group: GroupedRestaurant, item: OwnerDisplayItem) => {
+    if (!isOwner || !isDefaultList) {
+      return;
+    }
+
+    setPendingDeleteItem({
+      kind: 'menu-bookmark',
+      itemName: item.name,
+      restaurantId: item.bookmark.restaurantId ?? group.restaurantId,
+      listItemId: item.bookmark.listItemId,
+      foodItemId: item.bookmark.foodItemId,
+      ...(item.bookmark.menuItemId ? { menuItemId: item.bookmark.menuItemId } : {}),
+    });
+  };
+
   const closeDeleteItemModal = () => {
     if (isDeletingItem) {
       return;
@@ -572,6 +656,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         } catch (error) {
           setErrorMessage(error instanceof Error ? error.message : 'Could not remove restaurant from Want to Try.');
         }
+      } else if (pendingDeleteItem.kind === 'menu-bookmark') {
+        setErrorMessage(null);
+        try {
+          await restaurantListWrites.removeBookmarkFromDefaultList({
+            bookmark: {
+              restaurantId: pendingDeleteItem.restaurantId,
+              ...(pendingDeleteItem.menuItemId
+                ? { menuItemId: pendingDeleteItem.menuItemId }
+                : { foodItemId: pendingDeleteItem.foodItemId }),
+            },
+            defaultListId: listId,
+            sourceListId: listId,
+          });
+          await detailQuery.refetch();
+          didDelete = true;
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : 'Could not remove menu item from Want to Try.');
+        }
       } else {
         didDelete =
           pendingDeleteItem.kind === 'source'
@@ -588,6 +690,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       }
 
       if (didDelete) {
+        setLocallyRemovedListItemKeys((currentKeys) => {
+          const nextKeys = new Set(currentKeys);
+          nextKeys.add(getLocallyRemovedListItemKey(pendingDeleteItem));
+          return nextKeys;
+        });
         setPendingDeleteItem(null);
       }
     } finally {
@@ -628,90 +735,66 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
   };
 
-  const openSaveModal = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
-    trackObservabilityEvent('LIST_DETAIL_SAVE_MODAL_OPENED', {
-      source: 'ListDetailScreen',
-      hasRestaurantId: Boolean(group.restaurantId),
-      hasSourceUser: Boolean(item.sourceUserId || item.sourceUserName),
-    });
-    setSaveModalError(null);
-    setSelectedSaveListIds(new Set());
-    setSaveBookmarkTarget({
-      bookmarkLookupIds: item.bookmarkLookupIds,
-      restaurantId: group.restaurantId,
-      restaurantName: group.restaurantName,
-      foodItemId: item.foodItemId,
-      foodItemName: item.name,
-      foodItemRating: item.rating,
-      visitedAt: item.visitedAt,
-      sourceNote: item.sourceNote,
-    });
-  };
+  const buildSaveBookmarkTarget = (
+    group: GroupedRestaurant,
+    item: GroupedBookmarkedItem,
+  ): SaveBookmarkTarget => ({
+    bookmarkLookupIds: item.bookmarkLookupIds,
+    restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
+    restaurantName: group.restaurantName,
+    foodItemId: item.foodItemId,
+    foodItemName: item.name,
+    foodItemRating: item.rating,
+    visitedAt: item.visitedAt,
+    sourceNote: item.sourceNote,
+  });
 
-  const closeSaveModal = () => {
-    if (isSavingBookmark) {
-      return;
-    }
-
-    setSaveBookmarkTarget(null);
-    setSelectedSaveListIds(new Set());
-    setSaveModalError(null);
-  };
-
-  const toggleSaveListSelection = (selectedListId: string) => {
-    if (alreadySavedListIdsForTarget.has(selectedListId)) {
-      return;
-    }
-
-    setSelectedSaveListIds((previousValue) => {
-      const nextValue = new Set(previousValue);
-      if (nextValue.has(selectedListId)) {
-        nextValue.delete(selectedListId);
-      } else {
-        nextValue.add(selectedListId);
+  const resolveAlreadySavedListIdsForBookmarkTarget = useCallback(
+    (target: SaveBookmarkTarget) => {
+      const listIds = new Set<string>();
+      for (const bookmarkLookupId of target.bookmarkLookupIds) {
+        const existingListIds = readModel.savedListIdsByBookmarkLookupId.get(bookmarkLookupId);
+        if (!existingListIds) {
+          continue;
+        }
+        for (const existingListId of existingListIds) {
+          listIds.add(existingListId);
+        }
       }
-      return nextValue;
-    });
-  };
+      return listIds;
+    },
+    [readModel.savedListIdsByBookmarkLookupId],
+  );
 
-  const saveBookmarkToLists = async (
-    targetListIds: string[],
-    trackingContext: SaveBookmarkTrackingContext,
+  const isBookmarkedItemSavedToDefaultList = useCallback(
+    (item: GroupedBookmarkedItem) => {
+      const defaultListId = defaultList?.id;
+      if (!defaultListId) {
+        return false;
+      }
+      return item.bookmarkLookupIds.some((bookmarkLookupId) =>
+        readModel.savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId),
+      );
+    },
+    [defaultList?.id, readModel.savedListIdsByBookmarkLookupId],
+  );
+
+  const saveBookmarkToWantToTry = async (
+    group: GroupedRestaurant,
+    item: GroupedBookmarkedItem,
   ) => {
-    if (!saveBookmarkTarget || !list || targetListIds.length === 0) {
+    if (isOwner || isSavingBookmark) {
       return;
     }
 
-    setSaveModalError(null);
-    setIsSavingBookmark(true);
-
-    try {
-      const result = await saveBookmarkToListsAction({
-        deps: listDetailActionDependencies,
-        isOwner,
-        list,
-        saveBookmarkTarget,
-        targetListIds,
-        trackingContext,
-      });
-      if (result.saved) {
-        setSaveBookmarkTarget(null);
-        setSelectedSaveListIds(new Set());
-        setSaveModalError(null);
-      } else if (result.errorMessage) {
-        setSaveModalError(result.errorMessage);
-      }
-    } finally {
-      setIsSavingBookmark(false);
-    }
-  };
-
-  const handleQuickSaveToDefaultList = async () => {
-    if (!saveBookmarkTarget) {
+    const saveBookmarkTarget = buildSaveBookmarkTarget(group, item);
+    const alreadySavedListIdsForTarget =
+      resolveAlreadySavedListIdsForBookmarkTarget(saveBookmarkTarget);
+    if (defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)) {
       return;
     }
 
-    setSaveModalError(null);
+    setErrorMessage(null);
     setIsSavingBookmark(true);
 
     try {
@@ -723,38 +806,265 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         list,
         saveBookmarkTarget,
       });
-      if (result.saved) {
-        setSaveBookmarkTarget(null);
-        setSelectedSaveListIds(new Set());
-        setSaveModalError(null);
-      } else if (result.errorMessage) {
-        setSaveModalError(result.errorMessage);
+      if (result.errorMessage) {
+        setErrorMessage(result.errorMessage);
       }
     } finally {
       setIsSavingBookmark(false);
     }
   };
 
-  const handleSaveToSelectedLists = async () => {
-    const targetListIds = Array.from(selectedSaveListIds).filter((targetListId) => !alreadySavedListIdsForTarget.has(targetListId));
-    trackObservabilityEvent('LIST_DETAIL_SAVE_SELECTED_TAPPED', {
-      source: 'ListDetailScreen',
-      selectedListCount: targetListIds.length,
-    });
-    if (targetListIds.length === 0) {
-      setSaveModalError(
-        trackNoSelectedSaveTarget(listDetailActionDependencies, {
-          hasDefaultList: Boolean(defaultList?.id),
-        }),
+  const transferLookupIds = useMemo(() => {
+    if (!transferTarget) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        [
+          transferTarget.source?.foodItemId,
+          transferTarget.user?.kind === 'linked'
+            ? transferTarget.user.userFoodItemId
+            : transferTarget.user?.foodItemId,
+        ].filter((value): value is string => Boolean(value?.trim())),
+      ),
+    );
+  }, [transferTarget]);
+
+  const transferTargetLists = useMemo(() => {
+    const listsById = new Map<string, (typeof myLists)[number]>();
+    for (const candidateList of myLists) {
+      if (!candidateList.isDefault) {
+        listsById.set(candidateList.id, candidateList);
+      }
+    }
+    if (list && !list.isDefault) {
+      listsById.set(list.id, list);
+    }
+
+    for (const candidateList of transferListsQuery.data?.items ?? []) {
+      if (!candidateList.isDefault) {
+        listsById.set(candidateList.id, candidateList);
+      }
+    }
+
+    return Array.from(listsById.values());
+  }, [list, myLists, transferListsQuery.data?.items]);
+
+  const alreadyTransferredListIds = useMemo(() => {
+    const listIds = new Set<string>();
+    if (transferLookupIds.length === 0) {
+      return listIds;
+    }
+
+    for (const candidateList of transferTargetLists) {
+      const hasEveryLookup = transferLookupIds.every((lookupId) =>
+        readModel.savedListIdsByBookmarkLookupId.get(lookupId)?.has(candidateList.id),
       );
+      if (hasEveryLookup) {
+        listIds.add(candidateList.id);
+      }
+    }
+
+    return listIds;
+  }, [readModel.savedListIdsByBookmarkLookupId, transferLookupIds, transferTargetLists]);
+
+  const selectedNewTransferListIds = useMemo(
+    () =>
+      Array.from(selectedTransferListIds).filter(
+        (targetListId) => targetListId !== listId && !alreadyTransferredListIds.has(targetListId),
+      ),
+    [alreadyTransferredListIds, listId, selectedTransferListIds],
+  );
+  const shouldRemoveTransferTargetFromCurrentList =
+    Boolean(transferTarget) && !selectedTransferListIds.has(listId);
+  const hasAnySelectedTransferList =
+    selectedTransferListIds.size > 0 ||
+    Array.from(alreadyTransferredListIds).some((targetListId) => targetListId !== listId);
+  const hasTransferSelectionChange =
+    selectedNewTransferListIds.length > 0 || shouldRemoveTransferTargetFromCurrentList;
+
+  const openTransferModal = (
+    group: GroupedRestaurant,
+    item: OwnerDisplayItem,
+  ) => {
+    if (!isOwner || isDefaultList || (!item.source && !item.user)) {
       return;
     }
 
-    await saveBookmarkToLists(targetListIds, {
-      entryMethod: 'selected_lists',
-      createdDefaultList: false,
+    trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_MENU_OPENED', {
+      source: 'ListDetailScreen',
+      hasSourceRating: Boolean(item.source),
+      hasUserRating: Boolean(item.user),
     });
+    setTransferTarget({
+      itemName: item.name,
+      restaurantId: group.restaurantId,
+      restaurantName: group.restaurantName,
+      ...(item.source ? { source: item.source } : {}),
+      ...(item.user ? { user: item.user } : {}),
+    });
+    setSelectedTransferListIds(new Set([listId]));
+    setTransferModalError(null);
   };
+
+  const closeTransferModal = () => {
+    if (isTransferringItem) {
+      return;
+    }
+
+    setTransferTarget(null);
+    setSelectedTransferListIds(new Set());
+    setTransferModalError(null);
+  };
+
+  const toggleTransferListSelection = (targetListId: string) => {
+    if (targetListId !== listId && alreadyTransferredListIds.has(targetListId)) {
+      return;
+    }
+
+    setSelectedTransferListIds((previousValue) => {
+      const nextValue = new Set(previousValue);
+      if (nextValue.has(targetListId)) {
+        nextValue.delete(targetListId);
+      } else {
+        nextValue.add(targetListId);
+      }
+      return nextValue;
+    });
+    setTransferModalError(null);
+  };
+
+  const addTransferTargetToList = async (
+    target: PendingListItemTransferTarget,
+    destinationListId: string,
+  ): Promise<boolean> => {
+    let queued = false;
+
+    if (target.source) {
+      const result = await restaurantListWrites.saveBookmarkToLists({
+        listIds: [destinationListId],
+        sourceListId: listId,
+        bookmark: {
+          restaurantId: target.source.restaurantId ?? target.restaurantId,
+          foodItemId: target.source.foodItemId,
+          ...(target.source.sourceUserId ? { sourceUserId: target.source.sourceUserId } : {}),
+        },
+      });
+      queued = queued || result.status === 'queued';
+    }
+
+    if (target.user) {
+      const foodItemId =
+        target.user.kind === 'linked' ? target.user.userFoodItemId : target.user.foodItemId;
+      const result = await restaurantListWrites.addRestaurant({
+        listId: destinationListId,
+        restaurantId: target.user.restaurantId ?? target.restaurantId,
+        foodItemIds: [foodItemId],
+      });
+      queued = queued || result.status === 'queued';
+    }
+
+    await queryClient.invalidateQueries({
+      queryKey: restaurantListQueryKeys.detail(destinationListId),
+    });
+
+    return queued;
+  };
+
+  const removeTransferTargetFromCurrentList = async (
+    target: PendingListItemTransferTarget,
+  ): Promise<boolean> => {
+    let queued = false;
+
+    if (target.source) {
+      const result = await restaurantListWrites.removeRestaurantListSourceRating({
+        listId,
+        listItemId: target.source.listItemId,
+        foodItemId: target.source.foodItemId,
+      });
+      queued = queued || result.status === 'queued';
+    }
+
+    if (target.user) {
+      const result =
+        target.user.kind === 'linked'
+          ? await restaurantListWrites.removeRestaurantListUserRating({
+              listId,
+              listItemId: target.user.listItemId,
+            })
+          : await restaurantListWrites.removeRestaurantListSourceRating({
+              listId,
+              listItemId: target.user.listItemId,
+              foodItemId: target.user.foodItemId,
+            });
+      queued = queued || result.status === 'queued';
+    }
+
+    return queued;
+  };
+
+  const confirmTransferItem = async () => {
+    if (!transferTarget || isTransferringItem) {
+      return;
+    }
+
+    if (!hasTransferSelectionChange) {
+      setTransferModalError('Choose at least one list change to save.');
+      return;
+    }
+
+    if (shouldRemoveTransferTargetFromCurrentList && !hasAnySelectedTransferList) {
+      setTransferModalError('Select at least one list before removing this item from the current list.');
+      return;
+    }
+
+    setTransferModalError(null);
+    setIsTransferringItem(true);
+    trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_STARTED', {
+      source: 'ListDetailScreen',
+      addListCount: selectedNewTransferListIds.length,
+      removeFromCurrentList: shouldRemoveTransferTargetFromCurrentList,
+      isOnline,
+      hasSourceRating: Boolean(transferTarget.source),
+      hasUserRating: Boolean(transferTarget.user),
+    });
+
+    try {
+      let addQueued = false;
+      for (const targetListId of selectedNewTransferListIds) {
+        addQueued = (await addTransferTargetToList(transferTarget, targetListId)) || addQueued;
+      }
+      const removeQueued = shouldRemoveTransferTargetFromCurrentList
+        ? await removeTransferTargetFromCurrentList(transferTarget)
+        : false;
+
+      await detailQuery.refetch();
+      trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_SUCCEEDED', {
+        source: 'ListDetailScreen',
+        addListCount: selectedNewTransferListIds.length,
+        removeFromCurrentList: shouldRemoveTransferTargetFromCurrentList,
+        queued: addQueued || removeQueued,
+      });
+      setTransferTarget(null);
+      setSelectedTransferListIds(new Set());
+      setTransferModalError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not organize this item.';
+      trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_FAILED', {
+        source: 'ListDetailScreen',
+        addListCount: selectedNewTransferListIds.length,
+        removeFromCurrentList: shouldRemoveTransferTargetFromCurrentList,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+      });
+      setTransferModalError(message);
+    } finally {
+      setIsTransferringItem(false);
+    }
+  };
+
   const handleRefresh = useCallback(async () => {
     await runPullRefresh(async () => {
       await detailQuery.refetch();
@@ -877,15 +1187,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           }}
           title="List detail unavailable"
         />
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={hasListsRefreshError ? 'Could not load your lists.' : null}
-          onAction={() => {
-            void detailQuery.refetch();
-          }}
-          title="Lists unavailable"
-        />
-
         {isOwner && list.shareEnabled ? (
           <Card style={styles.shareStatusCard} testID="list-detail-share-enabled-indicator" tone="info">
             <Ionicons color={theme.colors.text.info} name="link-outline" size={16} />
@@ -959,14 +1260,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               </Pressable>
             ) : null}
 
-            {groupedRestaurants.length === 0 ? (
+            {visibleRestaurantRows.length === 0 ? (
               <EmptyState
                 description={readModel.emptyRestaurantsDescription}
                 tone="default"
                 title="No restaurants yet"
               />
             ) : (
-              restaurantRows.map((row) => {
+              visibleRestaurantRows.map((row) => {
                 const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
                 return isDefaultList && isOwner ? (
@@ -993,18 +1294,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     }
                     primaryMetaLabel={primaryMetaLabel}
                     renderItem={(item, itemIndex) => (
-                      <ListDetailOwnerItemCard
+                      <ListDetailWantToTryMenuItemRow
                         canCreateVisitFromRestaurant={!isRestaurantLocked}
-                        groupIndex={groupIndex}
+                        canDelete
                         item={item}
                         itemIndex={itemIndex}
                         key={item.key}
-                        onConfirmDeleteItem={confirmDeleteItem}
+                        onDelete={(targetItem) => {
+                          confirmDeleteWantToTryMenuItem(group, targetItem);
+                        }}
                         onIWentThere={(input) => {
                           handleIWentThere(group, input);
                         }}
-                        onOpenPhotos={openPhotoViewer}
-                        photoEntries={item.photoEntries}
                       />
                     )}
                     restaurantName={group.restaurantName}
@@ -1031,6 +1332,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                         onIWentThere={(input) => {
                           handleIWentThere(group, input);
                         }}
+                        onLongPressItem={(targetItem) => {
+                          openTransferModal(group, targetItem);
+                        }}
                         onOpenPhotos={openPhotoViewer}
                         photoEntries={item.photoEntries}
                       />
@@ -1053,7 +1357,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                             <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
                           </Pressable>
                         ) : null}
-                        {groupIndex < groupedRestaurants.length - 1 ? (
+                        {groupIndex < visibleRestaurantRows.length - 1 ? (
                           <Pressable
                             accessibilityLabel={`Move ${group.restaurantName} down`}
                             accessibilityRole="button"
@@ -1085,13 +1389,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                       <ListDetailBookmarkedItemRow
                         canSave={!isRestaurantLocked}
                         groupIndex={groupIndex}
-                        isSaved={item.isSaved}
+                        isSaved={isBookmarkedItemSavedToDefaultList(item)}
                         item={item}
                         itemIndex={itemIndex}
                         key={item.key}
                         onOpenPhotos={openPhotoViewer}
                         onSave={(targetItem) => {
-                          openSaveModal(group, targetItem);
+                          void saveBookmarkToWantToTry(group, targetItem);
                         }}
                         photoEntries={item.photoEntries}
                       />
@@ -1196,12 +1500,20 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       <ConfirmDestructiveModal
         cancelLabel={pendingDeleteItem?.kind === 'restaurant-bookmark' ? 'Keep Restaurant' : 'Keep Item'}
-        confirmLabel={pendingDeleteItem?.kind === 'restaurant-bookmark' ? 'Remove Restaurant' : 'Delete Item'}
+        confirmLabel={
+          pendingDeleteItem?.kind === 'restaurant-bookmark'
+            ? 'Remove Restaurant'
+            : pendingDeleteItem?.kind === 'menu-bookmark'
+              ? 'Remove Menu Item'
+              : 'Delete Item'
+        }
         confirmLoadingLabel="Deleting..."
         description={
           pendingDeleteItem
             ? pendingDeleteItem.kind === 'restaurant-bookmark'
               ? `Remove "${pendingDeleteItem.restaurantName}" from your Want to Try list?`
+              : pendingDeleteItem.kind === 'menu-bookmark'
+                ? `Remove "${pendingDeleteItem.itemName}" from your Want to Try list?`
               : pendingDeleteItem.kind === 'source'
                 ? `Delete "${pendingDeleteItem.itemName}" from this list?`
                 : `Delete your rating for "${pendingDeleteItem.itemName}" from this list?`
@@ -1216,6 +1528,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         title={
           pendingDeleteItem?.kind === 'restaurant-bookmark'
             ? 'Remove Restaurant?'
+            : pendingDeleteItem?.kind === 'menu-bookmark'
+              ? 'Remove Menu Item?'
             : pendingDeleteItem?.kind === 'source'
               ? 'Delete Bookmarked Item?'
               : 'Delete Rating?'
@@ -1223,24 +1537,23 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         visible={Boolean(pendingDeleteItem)}
       />
 
-      <SaveRecommendationToListModal
-        alreadySavedListIds={alreadySavedListIdsForTarget}
-        defaultList={defaultList}
-        errorMessage={saveModalError}
-        isLoadingLists={isLoadingMyLists}
-        isSaving={isSavingBookmark}
-        onClose={closeSaveModal}
-        onQuickSave={() => {
-          void handleQuickSaveToDefaultList();
+      <ListItemTransferModal
+        alreadySavedListIds={alreadyTransferredListIds}
+        currentListId={listId}
+        errorMessage={transferModalError}
+        hasChanges={hasTransferSelectionChange}
+        isLoadingLists={transferListsQuery.isLoading && transferTargetLists.length === 0}
+        isSubmitting={isTransferringItem}
+        onClose={closeTransferModal}
+        onConfirm={() => {
+          void confirmTransferItem();
         }}
-        onSaveSelectedLists={() => {
-          void handleSaveToSelectedLists();
-        }}
-        onToggleList={toggleSaveListSelection}
-        selectedListIds={selectedSaveListIds}
-        target={saveBookmarkTarget}
-        targetLists={nonDefaultLists}
+        onToggleList={toggleTransferListSelection}
+        selectedListIds={selectedTransferListIds}
+        target={transferTarget}
+        targetLists={transferTargetLists}
       />
+
     </FeatureDetailScreenScaffold>
   );
 }

@@ -15,6 +15,8 @@ export const restaurantListQueryKeys = {
   scope: (scope: RestaurantListScope) => ['feature', 'restaurantLists', scope] as const,
   paginated: (scope: RestaurantListScope, searchQuery: string) =>
     ['feature', 'restaurantLists', scope, 'paginated', searchQuery] as const,
+  paginatedInfinite: (scope: RestaurantListScope, searchQuery: string) =>
+    ['feature', 'restaurantLists', scope, 'paginatedInfinite', searchQuery] as const,
   defaultList: ['feature', 'restaurantLists', 'my', 'default'] as const,
   listRoot: ['feature', 'restaurantList'] as const,
   list: (listId: string) => ['feature', 'restaurantList', listId] as const,
@@ -87,6 +89,17 @@ function createRestaurantListCollectionData(list: RestaurantListRecord): Restaur
   };
 }
 
+function isRestaurantListInfiniteData(
+  value: unknown,
+): value is RestaurantListInfiniteData {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as { pages?: unknown }).pages) &&
+    Array.isArray((value as { pageParams?: unknown }).pageParams)
+  );
+}
+
 function resolveNextTotalPages(totalItems: number, pageSize: number, currentTotalPages: number): number {
   if (!Number.isFinite(pageSize) || pageSize <= 0) {
     return currentTotalPages;
@@ -100,13 +113,17 @@ function resolveNextTotalPages(totalItems: number, pageSize: number, currentTota
 }
 
 function upsertRestaurantListInCollectionData(
-  currentData: RestaurantListInfiniteData | undefined,
+  currentData: unknown,
   list: RestaurantListRecord,
   searchQuery: string,
 ): RestaurantListInfiniteData | undefined {
   const shouldIncludeList = matchesRestaurantListSearch(list, searchQuery);
 
-  if (!currentData || currentData.pages.length === 0) {
+  if (!isRestaurantListInfiniteData(currentData)) {
+    return shouldIncludeList ? createRestaurantListCollectionData(list) : undefined;
+  }
+
+  if (currentData.pages.length === 0) {
     return shouldIncludeList ? createRestaurantListCollectionData(list) : currentData;
   }
 
@@ -144,7 +161,7 @@ function resolveRestaurantListSearchQuery(queryKey: QueryKey): string | null {
     queryKey[0] !== restaurantListQueryKeys.root[0] ||
     queryKey[1] !== restaurantListQueryKeys.root[1] ||
     typeof queryKey[2] !== 'string' ||
-    queryKey[3] !== 'paginated' ||
+    (queryKey[3] !== 'paginated' && queryKey[3] !== 'paginatedInfinite') ||
     typeof queryKey[4] !== 'string'
   ) {
     return null;
@@ -258,10 +275,14 @@ export function upsertRestaurantListInCollectionCaches(
     );
   }
 
-  const baseQueryKey = restaurantListQueryKeys.paginated(scope, '');
-  const baseQueryData = queryClient.getQueryData<RestaurantListInfiniteData>(baseQueryKey);
-  if (baseQueryData === undefined) {
-    queryClient.setQueryData(baseQueryKey, createRestaurantListCollectionData(list));
+  for (const baseQueryKey of [
+    restaurantListQueryKeys.paginated(scope, ''),
+    restaurantListQueryKeys.paginatedInfinite(scope, ''),
+  ]) {
+    const baseQueryData = queryClient.getQueryData<unknown>(baseQueryKey);
+    if (!isRestaurantListInfiniteData(baseQueryData)) {
+      queryClient.setQueryData(baseQueryKey, createRestaurantListCollectionData(list));
+    }
   }
 }
 

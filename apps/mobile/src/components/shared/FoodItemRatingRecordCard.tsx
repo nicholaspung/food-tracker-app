@@ -1,6 +1,6 @@
 import { Ionicons } from '../../ui/AppIcon';
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -19,6 +19,7 @@ export interface FoodItemRatingRecordRow {
 
 interface FoodItemRatingRecordCardProps {
   itemName: string;
+  onLongPress?: () => void;
   onOpenPhotos: (entries: RecordPhotoEntry[]) => void;
   photoAccessibilityLabel: string;
   photoEntries: RecordPhotoEntry[];
@@ -35,6 +36,9 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xxs,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
+  },
+  cardPressed: {
+    backgroundColor: theme.colors.status.infoBg,
   },
   headerRow: {
     alignItems: 'center',
@@ -109,6 +113,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function FoodItemRatingRecordCard({
   itemName,
+  onLongPress,
   onOpenPhotos,
   photoAccessibilityLabel,
   photoEntries,
@@ -118,8 +123,8 @@ export function FoodItemRatingRecordCard({
   const theme = useTheme();
   const styles = useStyles();
 
-  return (
-    <View style={styles.card}>
+  const renderContent = (pressed = false) => (
+    <View style={[styles.card, pressed ? styles.cardPressed : null]}>
       <View style={styles.headerRow}>
         <Text numberOfLines={1} style={styles.itemName}>
           {itemName}
@@ -157,4 +162,16 @@ export function FoodItemRatingRecordCard({
       ))}
     </View>
   );
+
+  if (onLongPress) {
+    return (
+      <Pressable
+        onLongPress={onLongPress}
+      >
+        {({ pressed }) => renderContent(pressed)}
+      </Pressable>
+    );
+  }
+
+  return renderContent();
 }

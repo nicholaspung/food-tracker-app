@@ -116,11 +116,13 @@ export interface RestaurantListBookmarkedItemRecord {
   listItemId: string;
   name: string;
   rating: number;
+  restaurantId?: string;
   menuItemId?: string;
   visitedAt?: string;
   sourceUserId?: string;
   sourceUserName?: string;
   userFoodItemId?: string;
+  userFoodItemRestaurantId?: string;
   userFoodItemName?: string;
   userFoodItemRating?: number;
   userFoodItemVisitedAt?: string;

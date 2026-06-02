@@ -156,6 +156,8 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
         key: `${listItem.id}:${item.id}`,
         bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
         foodItemId: item.id,
+        foodItemRestaurantId: item.restaurantId,
+        menuItemId: item.menuItemId,
         listItemId: listItem.id,
         name: item.name,
         rating: item.rating,
@@ -164,6 +166,7 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
         sourceUserName: item.sourceUserName ?? listItem.sourceUserName,
         sourceNote: listItem.note,
         userFoodItemId: item.userFoodItemId,
+        userFoodItemRestaurantId: item.userFoodItemRestaurantId,
         userFoodItemRating: item.userFoodItemRating,
         userFoodItemVisitedAt: item.userFoodItemVisitedAt,
       });

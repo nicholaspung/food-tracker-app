@@ -8,6 +8,7 @@ import {
   getRestaurantListDetail,
   getOrCreateRestaurantListShareLink,
   invalidateRestaurantListContentQueries,
+  listRestaurantListsPage,
   regenerateRestaurantListShareLink,
   useRestaurantListWrites,
 } from '../features';
@@ -94,11 +95,14 @@ jest.mock('../features', () => ({
   getOrCreateRestaurantListShareLink: jest.fn(),
   invalidateRestaurantListContentQueries: jest.fn(),
   invalidateRestaurantListSaveTargetQueries: jest.fn(),
+  listRestaurantListsPage: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
   regenerateRestaurantListShareLink: jest.fn(),
   restaurantListQueryKeys: {
     root: ['feature', 'restaurantLists'],
     detail: (listId: string) => ['feature', 'restaurantListDetail', listId],
+    paginated: (scope: string, searchQuery: string) =>
+      ['feature', 'restaurantLists', scope, 'paginated', searchQuery],
   },
   saveRestaurantFoodItemToList: jest.fn(),
   useRestaurantListWrites: jest.fn(),
@@ -144,6 +148,23 @@ jest.mock('../ui', () => ({
     ...props
   }: Record<string, unknown> & { children?: React.ReactNode; visible?: boolean }) =>
     visible ? mockReact.createElement('Modal', props, children) : null,
+  ListItem: ({
+    description,
+    trailing,
+    title,
+    ...props
+  }: Record<string, unknown> & {
+    description?: React.ReactNode;
+    title?: string;
+    trailing?: React.ReactNode;
+  }) =>
+    mockReact.createElement(
+      'ListItem',
+      { title, ...props },
+      title ? mockReact.createElement('Text', {}, title) : null,
+      description,
+      trailing,
+    ),
   Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Text', props, children),
 }));
@@ -164,18 +185,20 @@ jest.mock('../components/shared', () => ({
   ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
   FoodItemRatingRecordCard: ({
     itemName,
+    onLongPress,
     photoEntries,
     photoTestID,
     rows,
   }: Record<string, unknown> & {
     itemName?: string;
+    onLongPress?: () => void;
     photoEntries?: { previewUrl?: string; uri?: string }[];
     photoTestID?: string;
     rows?: { actions?: React.ReactNode; id: string }[];
   }) =>
     mockReact.createElement(
       'FoodItemRatingRecordCard',
-      { itemName },
+      { itemName, onLongPress },
       photoEntries && photoEntries.length > 0
         ? mockReact.createElement(
             'RecordPhotoThumbnailButton',
@@ -194,6 +217,7 @@ jest.mock('../components/shared', () => ({
         mockReact.createElement('FoodItemRatingRecordRow', { key: row.id }, row.actions),
       ),
     ),
+  LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PhotoViewerModal: () => null,
   RatingPill: () => null,
   RecordPhotoThumbnailButton: ({
@@ -231,6 +255,7 @@ const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<typeof getRestaurantListDetail>;
+const mockedListRestaurantListsPage = listRestaurantListsPage as jest.MockedFunction<typeof listRestaurantListsPage>;
 const mockedGetOrCreateRestaurantListShareLink = getOrCreateRestaurantListShareLink as jest.MockedFunction<
   typeof getOrCreateRestaurantListShareLink
 >;
@@ -414,6 +439,14 @@ describe('ListDetailScreen', () => {
     mockedUseQuery.mockReturnValue(buildQueryResult());
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
+    mockedListRestaurantListsPage.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      totalItems: 0,
+      totalPages: 0,
+      hasNextPage: false,
+    });
     mockedGetOrCreateRestaurantListShareLink.mockResolvedValue({
       listId: 'list_1',
       path: '/lists/shared/share-token-123',
@@ -432,6 +465,10 @@ describe('ListDetailScreen', () => {
     } as Awaited<ReturnType<typeof Share.share>>);
     restaurantListWrites.deleteRestaurantList.mockResolvedValue({ status: 'completed' });
     restaurantListWrites.reorderRestaurant.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.addRestaurant.mockResolvedValue({
       result: [],
       status: 'completed',
     });
@@ -694,6 +731,7 @@ describe('ListDetailScreen', () => {
                   listItemId: 'item_1',
                   name: 'Spicy Ramen',
                   rating: 5,
+                  restaurantId: 'restaurant_food_1',
                   sourceUserId: 'friend_1',
                   sourceUserName: 'Friend',
                   visitedAt: '2026-01-03T00:00:00.000Z',
@@ -846,6 +884,7 @@ describe('ListDetailScreen', () => {
                   listItemId: 'item_1',
                   name: 'Spicy Ramen',
                   rating: 5,
+                  restaurantId: 'restaurant_food_1',
                   sourceUserId: 'friend_1',
                   sourceUserName: 'Friend',
                   visitedAt: '2026-01-03T00:00:00.000Z',
@@ -878,6 +917,57 @@ describe('ListDetailScreen', () => {
     });
   });
 
+  it('hides a queued source rating removal from the current list detail', async () => {
+    restaurantListWrites.removeRestaurantListSourceRating.mockResolvedValue({
+      status: 'queued',
+    });
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-source-rating-item_1-food_item_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(renderer.root.findAllByProps({ itemName: 'Spicy Ramen' })).toHaveLength(0);
+  });
+
   it('delegates linked user rating deletion to restaurant list writes', async () => {
     const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
     mockedUseQueryClient.mockReturnValue(queryClient);
@@ -889,6 +979,202 @@ describe('ListDetailScreen', () => {
     mockedUseQuery.mockReturnValue(
       buildQueryResult(
         buildDetail({
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  restaurantId: 'restaurant_food_1',
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  userFoodItemId: 'user_food_item_1',
+                  userFoodItemName: 'Spicy Ramen',
+                  userFoodItemRating: 4,
+                  userFoodItemVisitedAt: '2026-01-04T00:00:00.000Z',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-user-rating-item_1-user_food_item_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(restaurantListWrites.removeRestaurantListUserRating).toHaveBeenCalledWith({
+      listId: 'list_1',
+      listItemId: 'item_1',
+    });
+  });
+
+  it('adds a long-pressed source item to another list', async () => {
+    const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
+    mockedUseQueryClient.mockReturnValue(queryClient);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          viewerLists: [
+            buildList({ id: 'default_list', name: 'Want to Try', isDefault: true }),
+            buildList({ id: 'list_1', name: 'Favorites' }),
+            buildList({ id: 'list_2', name: 'Date Night' }),
+          ],
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  restaurantId: 'restaurant_food_1',
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ itemName: 'Spicy Ramen' }).props.onLongPress();
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'list-item-transfer-list-default_list' })).toHaveLength(0);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'list-item-transfer-modal' }).props.primaryAction.onPress();
+    });
+
+    expect(restaurantListWrites.saveBookmarkToLists).toHaveBeenCalledWith({
+      listIds: ['list_2'],
+      sourceListId: 'list_1',
+      bookmark: {
+        restaurantId: 'restaurant_food_1',
+        foodItemId: 'food_item_1',
+        sourceUserId: 'friend_1',
+      },
+    });
+    expect(restaurantListWrites.removeRestaurantListSourceRating).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'restaurantListDetail', 'list_2'],
+    });
+  });
+
+  it('loads destination lists from the owner list query when detail viewer lists are empty', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'restaurantLists') {
+        return {
+          data: {
+            items: [
+              buildList({ id: 'default_list', name: 'Want to Try', isDefault: true }),
+              buildList({ id: 'list_1', name: 'Favorites' }),
+              buildList({ id: 'list_2', name: 'Date Night' }),
+            ],
+            page: 1,
+            pageSize: 100,
+            totalItems: 2,
+            totalPages: 1,
+            hasNextPage: false,
+          },
+          isError: false,
+          isFetching: false,
+          isLoading: false,
+          isRefetching: false,
+          isSuccess: true,
+          refetch: jest.fn(),
+        } as unknown as ReturnType<typeof useQuery>;
+      }
+
+      return buildQueryResult(
+        buildDetail({
+          viewerLists: [],
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      );
+    });
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ itemName: 'Spicy Ramen' }).props.onLongPress();
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'list-item-transfer-list-default_list' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' })).toBeTruthy();
+  });
+
+  it('moves a long-pressed linked user rating to another list', async () => {
+    const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
+    mockedUseQueryClient.mockReturnValue(queryClient);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          viewerLists: [
+            buildList({ id: 'list_1', name: 'Favorites' }),
+            buildList({ id: 'list_2', name: 'Date Night' }),
+          ],
           items: [
             buildListItem({
               bookmarkedItems: [
@@ -919,13 +1205,37 @@ describe('ListDetailScreen', () => {
     });
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'remove-user-rating-item_1-user_food_item_1' }).props.onPress();
+      renderer.root.findByProps({ itemName: 'Spicy Ramen' }).props.onLongPress();
     });
 
     await act(async () => {
-      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_1' }).props.onPress();
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' }).props.onPress();
     });
 
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'list-item-transfer-modal' }).props.primaryAction.onPress();
+    });
+
+    expect(restaurantListWrites.saveBookmarkToLists).toHaveBeenCalledWith({
+      listIds: ['list_2'],
+      sourceListId: 'list_1',
+      bookmark: {
+        restaurantId: 'restaurant_1',
+        foodItemId: 'food_item_1',
+        sourceUserId: 'friend_1',
+      },
+    });
+    expect(restaurantListWrites.addRestaurant).toHaveBeenCalledWith({
+      listId: 'list_2',
+      restaurantId: 'restaurant_1',
+      foodItemIds: ['user_food_item_1'],
+    });
+    expect(restaurantListWrites.removeRestaurantListSourceRating).toHaveBeenCalledWith({
+      listId: 'list_1',
+      listItemId: 'item_1',
+      foodItemId: 'food_item_1',
+    });
     expect(restaurantListWrites.removeRestaurantListUserRating).toHaveBeenCalledWith({
       listId: 'list_1',
       listItemId: 'item_1',
@@ -1020,6 +1330,65 @@ describe('ListDetailScreen', () => {
 
     expect(renderer.root.findAllByProps({ testID: 'list-detail-friend-photo-button-0-0' })).toHaveLength(0);
     expect(renderer.root.findByProps({ testID: 'save-list-item-item_1' })).toBeTruthy();
+  });
+
+  it('saves a friend list bookmark directly to Want to Try', async () => {
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          viewerLists: [
+            buildList({
+              id: 'default_list',
+              isDefault: true,
+              name: 'Want to Try',
+              userId: 'viewer_1',
+            }),
+            buildList({
+              id: 'other_list',
+              name: 'Date Night',
+              userId: 'viewer_1',
+            }),
+          ],
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  restaurantId: 'restaurant_food_1',
+                  sourceUserId: 'owner_1',
+                  sourceUserName: 'Owner',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'save-list-item-item_1' }).props.onPress();
+    });
+
+    expect(restaurantListWrites.saveBookmarkToDefaultList).toHaveBeenCalledWith({
+      defaultListId: 'default_list',
+      sourceListId: 'list_1',
+      bookmark: {
+        restaurantId: 'restaurant_food_1',
+        foodItemId: 'food_item_1',
+        sourceUserId: 'owner_1',
+      },
+    });
+    expect(restaurantListWrites.saveBookmarkToLists).not.toHaveBeenCalled();
   });
 
   it('renders the default Want to Try detail as restaurant bookmarks without item rating cards', async () => {
@@ -1152,7 +1521,58 @@ describe('ListDetailScreen', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it('does not render friend overlap copy for default-list menu item bookmarks', async () => {
+  it('hides a queued restaurant bookmark removal from Want to Try', async () => {
+    restaurantListWrites.removeBookmarkFromDefaultList.mockResolvedValue({
+      status: 'queued',
+    });
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+            restaurantCount: 1,
+          }),
+          items: [
+            buildListItem({
+              id: 'restaurant_bookmark_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Bookmark Cafe',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'delete-restaurant-bookmark-0' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(findExactTextNodes(renderer.root, 'Bookmark Cafe')).toHaveLength(0);
+  });
+
+  it('renders default-list menu item bookmarks as non-clickable rows with actions', async () => {
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'owner_1',
@@ -1176,6 +1596,7 @@ describe('ListDetailScreen', () => {
                 {
                   id: 'food_1',
                   listItemId: 'menu_item_bookmark_1',
+                  menuItemId: 'menu_item_1',
                   name: 'Croissant',
                   rating: 4,
                 },
@@ -1194,7 +1615,41 @@ describe('ListDetailScreen', () => {
     });
 
     expect(findExactTextNodes(renderer.root, '2 friends also want to try this')).toHaveLength(0);
-    expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(1);
+    expect(renderer.root.findByProps({ title: 'Saved Menu Items' })).toBeTruthy();
+    expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(0);
+    const menuItemRow = renderer.root.findByProps({ testID: 'want-to-try-menu-item-0' });
+    expect(menuItemRow.props.onPress).toBeUndefined();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'i-went-list-item-menu_item_bookmark_1' }).props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('CreateVisit', {
+      preselectedRestaurantId: 'restaurant_1',
+      preselectedRestaurantName: 'Bookmark Cafe',
+      preselectedMenuItemId: 'bookmark-menu_item_bookmark_1',
+      preselectedMenuItemName: 'Croissant',
+      sourceListId: 'list_1',
+      sourceListItemId: 'menu_item_bookmark_1',
+      returnToStep: 2,
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'remove-want-to-try-menu-item-menu_item_bookmark_1' }).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+    });
+
+    expect(restaurantListWrites.removeBookmarkFromDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        restaurantId: 'restaurant_1',
+        menuItemId: 'menu_item_1',
+      },
+      defaultListId: 'list_1',
+      sourceListId: 'list_1',
+    });
   });
 
   it('keeps curated owner lists on the recommendation rendering path', async () => {

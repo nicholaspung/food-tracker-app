@@ -264,56 +264,6 @@ export async function removeUserRatingAction({
   }
 }
 
-export async function saveBookmarkToListsAction({
-  deps,
-  isOwner,
-  list,
-  saveBookmarkTarget,
-  targetListIds,
-  trackingContext,
-}: ListDetailActionInput & {
-  list: RestaurantListRecord | null;
-  saveBookmarkTarget: SaveBookmarkTarget | null;
-  targetListIds: string[];
-  trackingContext: SaveBookmarkTrackingContext;
-}): Promise<SaveBookmarkActionResult> {
-  if (isOwner || !saveBookmarkTarget || !list || targetListIds.length === 0) {
-    return { saved: false, queued: false };
-  }
-
-  deps.trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {
-    source: 'ListDetailScreen',
-    targetListCount: targetListIds.length,
-    isOnline: deps.isOnline,
-  });
-
-  try {
-    const result = await deps.restaurantListWrites.saveBookmarkToLists({
-      listIds: targetListIds,
-      sourceListId: deps.listId,
-      bookmark: {
-        restaurantId: saveBookmarkTarget.restaurantId,
-        foodItemId: saveBookmarkTarget.foodItemId,
-        note: saveBookmarkTarget.sourceNote,
-        sourceUserId: list.userId,
-      },
-    });
-    const queued = result.status === 'queued';
-    trackSaveBookmarkSucceeded(deps, trackingContext, targetListIds.length, queued);
-    return { saved: true, queued };
-  } catch (error) {
-    const message = getErrorMessage(error, 'Could not save this bookmark.');
-    trackSaveBookmarkFailed(deps, trackingContext, {
-      createdDefaultList: trackingContext.createdDefaultList,
-      error,
-      message,
-      stage: 'bookmark_save',
-      targetListCount: targetListIds.length,
-    });
-    return { saved: false, queued: false, errorMessage: message };
-  }
-}
-
 export async function saveBookmarkToDefaultListAction({
   alreadySavedListIdsForTarget,
   defaultList,
@@ -404,21 +354,6 @@ export async function saveBookmarkToDefaultListAction({
     );
     return { saved: false, queued: false, errorMessage: message };
   }
-}
-
-export function trackNoSelectedSaveTarget(
-  deps: ListDetailActionDependencies,
-  options: { hasDefaultList: boolean },
-): string {
-  deps.trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
-    source: 'ListDetailScreen',
-    entryMethod: 'selected_lists',
-    reason: 'no_target_lists',
-    targetListCount: 0,
-    hasDefaultList: options.hasDefaultList,
-    isOnline: deps.isOnline,
-  });
-  return 'Select at least one list.';
 }
 
 function trackSaveBookmarkSucceeded(
