@@ -8,6 +8,10 @@ Food Tracker helps people record restaurant visits, rate food items, and share r
 A user-curated collection of restaurants with bookmarked food-item recommendations.
 _Avoid_: List, saved places
 
+**Want to Try**:
+The system-managed default Restaurant List for each user. It stores restaurants and recommendations the user wants to try later.
+_Avoid_: Saved list, default curated list
+
 **All Locations History**:
 A read-only view of a user's own ordered items across visited restaurants whose names match conservatively by normalized restaurant name.
 _Avoid for MVP_: Chain, Similar Restaurants, Same-name history
@@ -327,6 +331,9 @@ _Avoid_: notification inbox, user notification history
 > **Dev:** "Should **Food Discovery** show saved restaurants before nearby restaurants?"
 > **Domain expert:** "No - exploratory browsing should be nearby-first, with saved restaurants as fallback or recall content."
 
+> **Dev:** "Is **Want to Try** just another editable **Restaurant List**?"
+> **Domain expert:** "No - it is the user's system-managed default list for bookmarks and cannot be deleted or manually edited like curated lists."
+
 ## Flagged ambiguities
 
 - "lists feature" was used to mean both the top-level list index and the detail for one list - resolved: this map belongs to **List Detail**.
@@ -342,4 +349,5 @@ _Avoid_: notification inbox, user notification history
 - "remove" in tasting planning was ambiguous between restaurant removal and menu item removal - resolved: restaurant removal belongs to restaurant selection, while menu item removal belongs to the menu item picker.
 - "manual" in bill splitting was ambiguous with **Equal Split** because the setup screens are the same - resolved: **Manual Split** keeps the same setup but requires manually entered owed amounts at review.
 - "custom" in bill splitting was ambiguous with receipt scanning - resolved: **Custom Split** may start from a **Receipt Scan** or from manual item entry.
+- "Saved list" was ambiguous with generic saved states - resolved: the default Restaurant List is **Want to Try**.
 - "receipt review" was ambiguous between extraction preview and draft editing - resolved: **Receipt Scan** only previews extraction results; **Bill Draft** owns editing and assignment.

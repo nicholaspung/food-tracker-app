@@ -17,6 +17,7 @@ import type {
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
   SaveRestaurantFoodItemToListInput,
+  SaveRestaurantToDefaultListInput,
   UpdateRestaurantListInput,
   VisitPhotoRecord,
 } from './featureStore';
@@ -49,6 +50,7 @@ export type {
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
   SaveRestaurantFoodItemToListInput,
+  SaveRestaurantToDefaultListInput,
   UpdateRestaurantListInput,
 } from './featureStore';
 
@@ -101,6 +103,7 @@ interface RestaurantListDetailApiItemRecord {
   sourceUserName?: string;
   position: number;
   bookmarkedItems?: RestaurantListDetailApiBookmarkedItemRecord[];
+  friendOverlapCount?: number;
   note?: string;
   createdAt: string;
 }
@@ -300,6 +303,7 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     sourceUserName: record.sourceUserName?.trim() || undefined,
     position: record.position,
     bookmarkedItems: (record.bookmarkedItems ?? []).map(mapRestaurantListDetailBookmarkedItemRecord),
+    friendOverlapCount: normalizeOptionalCount(record.friendOverlapCount),
     note: record.note?.trim() || undefined,
     createdAt: record.createdAt,
   };
@@ -848,7 +852,7 @@ export async function updateRestaurantList(
       }
 
       if (currentList?.isDefault === true && Object.keys(payload).length > 0) {
-        throw new Error('The Saved list cannot be edited.');
+        throw new Error('The Want to Try list cannot be edited.');
       }
 
       const updatedRecord =
@@ -935,6 +939,42 @@ export async function saveRestaurantFoodItemToList(
     },
     {
       hasSourceUser: Boolean(input.sourceUserId?.trim()),
+      hasNote: Boolean(input.note?.trim()),
+    },
+  );
+}
+
+export async function saveRestaurantToDefaultList(
+  input: SaveRestaurantToDefaultListInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListItemRecord[]> {
+  return trackFeatureMutation(
+    'restaurant_list.default.restaurant.save',
+    async () => {
+      getAuthenticatedUserId();
+      const restaurantId = input.restaurantId.trim();
+      const trimmedNote = input.note?.trim() || undefined;
+
+      if (!restaurantId) {
+        throw new Error('Restaurant is required.');
+      }
+
+      const defaultList = await createDefaultRestaurantList(requestOptions);
+      const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
+        `/api/restaurant-lists/${encodeURIComponent(defaultList.id)}/bookmarks`,
+        {
+          method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          body: {
+            restaurantId,
+            note: trimmedNote,
+          },
+        },
+      );
+
+      return mapRestaurantListMutationGroupItems(response);
+    },
+    {
       hasNote: Boolean(input.note?.trim()),
     },
   );

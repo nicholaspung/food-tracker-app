@@ -12,12 +12,14 @@ import {
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
+  saveRestaurantToDefaultList,
   updateRestaurantList,
   type AddRestaurantVisitRatingsToListInput,
   type CreateRestaurantListInput,
   type MoveRestaurantListRestaurantInput,
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
+  type SaveRestaurantToDefaultListInput,
   type UpdateRestaurantListInput,
 } from './restaurantListsStore';
 import {
@@ -64,6 +66,11 @@ interface SaveBookmarkToDefaultListWriteInput {
   defaultListId?: string;
   sourceListId: string;
   bookmark: Omit<SaveRestaurantFoodItemToListInput, 'listId'>;
+}
+
+interface SaveRestaurantToDefaultListWriteInput {
+  sourceListId: string;
+  restaurant: SaveRestaurantToDefaultListInput;
 }
 
 async function syncDeletedRestaurantListCaches(
@@ -366,12 +373,37 @@ export function useRestaurantListWrites() {
       await syncRestaurantListSaveTargetCaches(queryClient, sourceListId);
 
       if (result.status === 'queued') {
-        showQueuedOfflineAlert('Saved list + bookmark');
+        showQueuedOfflineAlert('Want to Try bookmark');
       }
 
       return result;
     },
     [queryClient, saveBookmarkToListsWrite, writeFeature],
+  );
+
+  const saveRestaurantToDefaultListWrite = useCallback(
+    async ({
+      restaurant,
+      sourceListId,
+    }: SaveRestaurantToDefaultListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[]>> => {
+      const result = await writeFeature({
+        operationName: 'list.default.restaurant.save',
+        offline: {
+          strategy: 'outbox',
+          payload: restaurant,
+        },
+        execute: () => saveRestaurantToDefaultList(restaurant),
+      });
+
+      await syncRestaurantListSaveTargetCaches(queryClient, sourceListId);
+
+      if (result.status === 'queued') {
+        showQueuedOfflineAlert('Want to Try restaurant');
+      }
+
+      return result;
+    },
+    [queryClient, writeFeature],
   );
 
   const addRestaurantWrite = useCallback(
@@ -410,6 +442,7 @@ export function useRestaurantListWrites() {
     removeRestaurantListUserRating: removeUserRatingWrite,
     saveBookmarkToDefaultList: saveBookmarkToDefaultListWrite,
     saveBookmarkToLists: saveBookmarkToListsWrite,
+    saveRestaurantToDefaultList: saveRestaurantToDefaultListWrite,
     setErrorMessage,
     updateRestaurantList: updateListWrite,
   };

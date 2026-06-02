@@ -1,5 +1,6 @@
 import {
   getRestaurantListCandidateRestaurants,
+  saveRestaurantToDefaultList,
   updateRestaurantList,
 } from '../features/store/restaurantListsStore';
 import { listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
@@ -70,13 +71,13 @@ describe('restaurantListsStore.updateRestaurantList', () => {
       updateRestaurantList(
         'list-1',
         {
-          name: 'Saved',
+          name: 'Want to Try',
         },
         {
           isDefault: true,
         },
       ),
-    ).rejects.toThrow('The Saved list cannot be edited.');
+    ).rejects.toThrow('The Want to Try list cannot be edited.');
 
     expect(restaurantListsCollection.getOne).not.toHaveBeenCalled();
     expect(restaurantListsCollection.update).not.toHaveBeenCalled();
@@ -142,6 +143,80 @@ describe('restaurantListsStore.updateRestaurantList', () => {
       {
         expand: 'user',
         headers: undefined,
+      },
+    );
+  });
+});
+
+describe('restaurantListsStore.saveRestaurantToDefaultList', () => {
+  beforeEach(() => {
+    mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
+    mockedPocketBase.collection.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('creates the default list and saves a restaurant-only bookmark', async () => {
+    mockedSendApiRequest
+      .mockResolvedValueOnce({
+        id: 'default-list-1',
+        name: 'Want to Try',
+        visibility: 'private',
+        userId: 'user-1',
+        isDefault: true,
+        createdAt: '2026-05-01T18:00:00.000Z',
+        updatedAt: '2026-05-01T18:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        listId: 'default-list-1',
+        restaurantId: 'restaurant-1',
+        items: [
+          {
+            id: 'list-item-1',
+            listId: 'default-list-1',
+            restaurantId: 'restaurant-1',
+            restaurantName: '  Noodle House  ',
+            position: 1,
+            bookmarkedItems: [],
+            note: '  Try soon  ',
+            createdAt: '2026-05-01T18:05:00.000Z',
+          },
+        ],
+      });
+
+    await expect(
+      saveRestaurantToDefaultList({
+        restaurantId: '  restaurant-1  ',
+        note: '  Try soon  ',
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: 'list-item-1',
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Noodle House',
+        bookmarkedItems: [],
+        note: 'Try soon',
+      },
+    ]);
+
+    expect(mockedSendApiRequest).toHaveBeenNthCalledWith(1, '/api/restaurant-lists/default', {
+      method: 'POST',
+      headers: undefined,
+    });
+    expect(mockedSendApiRequest).toHaveBeenNthCalledWith(
+      2,
+      '/api/restaurant-lists/default-list-1/bookmarks',
+      {
+        method: 'POST',
+        headers: undefined,
+        body: {
+          restaurantId: 'restaurant-1',
+          note: 'Try soon',
+        },
       },
     );
   });

@@ -23,6 +23,7 @@ import {
   ScreenContentSection,
   Skeleton,
   TabRootScreenScaffold,
+  WantToTryBookmarkButton,
 } from '../components/shared';
 import {
   createFriendSuggestionAcceptance,
@@ -38,6 +39,12 @@ import {
   listHomeFeedPage,
   type VisitRecord,
 } from '../features';
+import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
+import {
+  getRestaurantListDetail,
+  listRestaurantListsPage,
+} from '../features/store/restaurantListsStore';
+import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
@@ -280,6 +287,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const trackWriteTelemetry = useWriteTelemetry();
+  const restaurantListWrites = useRestaurantListWrites();
   const { queuedWrites: pendingHomeCreateWrites } = useQueuedFeatureWrites([
     'visit.create',
     'food-product.create',
@@ -308,6 +316,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [pendingFocusVisitId, setPendingFocusVisitId] = useState<string | null>(null);
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
+  const [locallySavedFriendFeedItemIds, setLocallySavedFriendFeedItemIds] = useState<Set<string>>(new Set());
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
@@ -371,6 +380,26 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         sort: sortFilter,
         typeFilter,
       }),
+  });
+  const defaultListQuery = useQuery({
+    queryKey: restaurantListQueryKeys.defaultList,
+    queryFn: async ({ signal }) => {
+      const page = await listRestaurantListsPage({
+        scope: 'my',
+        page: 1,
+        pageSize: 100,
+        signal,
+      });
+      return page.items.find((list) => list.isDefault) ?? null;
+    },
+  });
+  const defaultListId = defaultListQuery.data?.id;
+  const defaultListDetailQuery = useQuery({
+    enabled: Boolean(defaultListId),
+    queryKey: defaultListId
+      ? restaurantListQueryKeys.detail(defaultListId)
+      : restaurantListQueryKeys.detail('__default_list_pending__'),
+    queryFn: ({ signal }) => defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
   });
   const resetMapState = useCallback(() => {
     setSelectedMapGroupId(null);
@@ -469,6 +498,20 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   );
   const mapPoints = homeFeedMapQuery.data?.points ?? [];
   const mapPhotoPreviews = homeFeedMapQuery.data?.photoPreviews ?? [];
+  const savedFriendFeedItemIds = useMemo(() => {
+    const ids = new Set(locallySavedFriendFeedItemIds);
+    for (const item of defaultListDetailQuery.data?.items ?? []) {
+      for (const bookmarkedItem of item.bookmarkedItems) {
+        if (bookmarkedItem.userFoodItemId) {
+          ids.add(bookmarkedItem.userFoodItemId);
+        }
+        if (bookmarkedItem.id) {
+          ids.add(bookmarkedItem.id);
+        }
+      }
+    }
+    return ids;
+  }, [defaultListDetailQuery.data?.items, locallySavedFriendFeedItemIds]);
 
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
@@ -913,6 +956,73 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     [buildVisitShareItems, navigation],
   );
 
+  const handleSaveFriendFeedItemToWantToTry = useCallback(
+    async ({
+      foodItemId,
+      itemName,
+      note,
+      restaurantId,
+      sourceUserId,
+    }: {
+      foodItemId: string;
+      itemName: string;
+      note?: string;
+      restaurantId: string;
+      sourceUserId?: string;
+    }) => {
+      if (savedFriendFeedItemIds.has(foodItemId)) {
+        return;
+      }
+
+      restaurantListWrites.setErrorMessage(null);
+      setLocallySavedFriendFeedItemIds((current) => new Set(current).add(foodItemId));
+
+      try {
+        const result = await restaurantListWrites.saveBookmarkToDefaultList({
+          bookmark: {
+            restaurantId,
+            foodItemId,
+            note,
+            sourceUserId,
+          },
+          defaultListId,
+          sourceListId: defaultListId ?? 'default',
+        });
+
+        if (result.status === 'completed') {
+          void defaultListQuery.refetch();
+          if (defaultListId) {
+            void defaultListDetailQuery.refetch();
+          }
+        }
+
+        trackObservabilityEvent('HOME_FRIEND_RECOMMENDATION_BOOKMARK_SAVED', {
+          source: 'HomeScreen',
+          status: result.status,
+        });
+        trackProductEvent('social.recommendation_saved', {
+          entryMethod: 'home_friend_feed_default',
+          itemName,
+          source: 'HomeScreen',
+          targetListCount: 1,
+        });
+      } catch {
+        setLocallySavedFriendFeedItemIds((current) => {
+          const next = new Set(current);
+          next.delete(foodItemId);
+          return next;
+        });
+      }
+    },
+    [
+      defaultListDetailQuery,
+      defaultListId,
+      defaultListQuery,
+      restaurantListWrites,
+      savedFriendFeedItemIds,
+    ],
+  );
+
   const handleToggleFilters = () => {
     setFiltersExpanded((previous) => {
       const next = !previous;
@@ -1104,6 +1214,34 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                 : undefined
             }
             moreActionsAccessibilityLabel="Visit actions"
+            renderItemBookmark={
+              feedItem.isFriend && visit.restaurantId
+                ? (item) => {
+                    const isSaved = savedFriendFeedItemIds.has(item.id);
+                    return (
+                      <WantToTryBookmarkButton
+                        accessibilityLabel={
+                          isSaved
+                            ? `${item.name} is saved to Want to Try`
+                            : `Save ${item.name} to Want to Try`
+                        }
+                        loading={restaurantListWrites.isSubmitting && !isSaved}
+                        onPress={() => {
+                          void handleSaveFriendFeedItemToWantToTry({
+                            foodItemId: item.id,
+                            itemName: item.name,
+                            note: item.notes,
+                            restaurantId: visit.restaurantId ?? '',
+                            sourceUserId: visit.userId,
+                          });
+                        }}
+                        saved={isSaved}
+                        testID={`home-friend-feed-bookmark-${item.id}`}
+                      />
+                    );
+                  }
+                : undefined
+            }
             restaurantMetaLabel={restaurantMeta}
             visit={visit}
           />
@@ -1167,6 +1305,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     },
     [
       buildVisitShareItems,
+      handleSaveFriendFeedItemToWantToTry,
       handleSharePhoto,
       handleShareVisit,
       highlightedVisitId,
@@ -1174,6 +1313,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       feedMode,
       navigation,
       photosByFoodItem,
+      restaurantListWrites.isSubmitting,
+      savedFriendFeedItemIds,
     ],
   );
 
@@ -1226,10 +1367,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       ? 'Could not refresh map. Showing saved locations.'
       : null;
   const deleteErrorMessage = homeFeedActions.deleteErrorMessage;
+  const bookmarkErrorMessage = restaurantListWrites.errorMessage;
   const showHomeListBody =
     (viewMode === 'list' && homeFeedErrorMessage !== null) ||
     homeFeedMapRefreshErrorMessage !== null ||
     deleteErrorMessage !== null ||
+    bookmarkErrorMessage !== null ||
     friendSuggestionErrorMessage !== null ||
     friendSuggestion !== null;
 
@@ -1362,6 +1505,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             analyticsSource="HomeScreen"
             errorMessage={deleteErrorMessage}
             title="Delete failed"
+          />
+          <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
+            errorMessage={bookmarkErrorMessage}
+            title="Could not save bookmark"
           />
           <PageErrorToast
             analyticsProps={buildBrowseAnalyticsPayload()}

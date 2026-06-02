@@ -8,6 +8,8 @@ import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 const mockReact = React;
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
+const mockSaveBookmarkToDefaultList = jest.fn();
+const mockSetRestaurantListWriteErrorMessage = jest.fn();
 let mockIsOnline = true;
 
 jest.mock('react-native', () => ({
@@ -33,11 +35,22 @@ jest.mock('../components/shared', () => ({
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
+  WantToTryBookmarkButton: (props: Record<string, unknown>) =>
+    mockReact.createElement('WantToTryBookmarkButton', props),
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
   getAllLocationsHistory: jest.fn(),
   listMenuItemsForRestaurant: jest.fn(),
+}));
+
+jest.mock('../features/store/useRestaurantListWrites', () => ({
+  useRestaurantListWrites: jest.fn(() => ({
+    errorMessage: null,
+    isSubmitting: false,
+    saveBookmarkToDefaultList: mockSaveBookmarkToDefaultList,
+    setErrorMessage: mockSetRestaurantListWriteErrorMessage,
+  })),
 }));
 
 jest.mock('../hooks/useImageSourcePicker', () => ({
@@ -144,6 +157,9 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     mockIsOnline = true;
     mockNavigate.mockReset();
     mockGoBack.mockReset();
+    mockSaveBookmarkToDefaultList.mockReset();
+    mockSaveBookmarkToDefaultList.mockResolvedValue({ status: 'completed', result: [[]] });
+    mockSetRestaurantListWriteErrorMessage.mockReset();
     mockedUseQueryClient.mockReturnValue({
       getQueryData: jest.fn(),
       invalidateQueries: jest.fn(),
@@ -199,6 +215,159 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       }),
     );
     expect(renderer.root.findByType('EmptyState').props.title).toBe('No menu items yet');
+  });
+
+  it('saves a discovered menu item to Want to Try without list selection', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('default')) {
+        return {
+          data: { id: 'default_list', isDefault: true },
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('restaurantListDetail')) {
+        return {
+          data: { items: [] },
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [
+          {
+            id: 'menu-item-1',
+            name: 'Tonic Bar Smoothie',
+            restaurant: 'restaurant-1',
+          },
+        ],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    let trailingRenderer: any;
+    act(() => {
+      trailingRenderer = create(renderer.root.findByType('ListItem').props.trailing);
+    });
+
+    const bookmarkButton = trailingRenderer.root.findByType('WantToTryBookmarkButton');
+    expect(bookmarkButton.props.saved).toBe(false);
+
+    await act(async () => {
+      await bookmarkButton.props.onPress();
+    });
+
+    expect(mockSetRestaurantListWriteErrorMessage).toHaveBeenCalledWith(null);
+    expect(mockSaveBookmarkToDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        foodItemId: 'menu-item-1',
+        restaurantId: 'restaurant-1',
+      },
+      defaultListId: 'default_list',
+      sourceListId: 'default_list',
+    });
+  });
+
+  it('shows existing default-list menu item bookmarks as saved', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('default')) {
+        return {
+          data: { id: 'default_list', isDefault: true },
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('restaurantListDetail')) {
+        return {
+          data: {
+            items: [
+              {
+                restaurantId: 'restaurant-1',
+                bookmarkedItems: [
+                  {
+                    userFoodItemId: 'menu-item-1',
+                  },
+                ],
+              },
+            ],
+          },
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [
+          {
+            id: 'menu-item-1',
+            name: 'Tonic Bar Smoothie',
+            restaurant: 'restaurant-1',
+          },
+        ],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    let trailingRenderer: any;
+    act(() => {
+      trailingRenderer = create(renderer.root.findByType('ListItem').props.trailing);
+    });
+
+    const bookmarkButton = trailingRenderer.root.findByType('WantToTryBookmarkButton');
+    expect(bookmarkButton.props.saved).toBe(true);
+
+    act(() => {
+      bookmarkButton.props.onPress();
+    });
+
+    expect(mockSaveBookmarkToDefaultList).not.toHaveBeenCalled();
   });
 
   it('disables scan menu items while offline', () => {

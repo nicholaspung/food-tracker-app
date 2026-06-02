@@ -341,7 +341,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       return;
     }
     if (defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)) {
-      setSaveModalError('This item is already in your Saved list.');
+      setSaveModalError('This item is already in your Want to Try list.');
       return;
     }
     await saveBookmark(defaultList?.id ? [defaultList.id] : [], {

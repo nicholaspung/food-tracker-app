@@ -66,6 +66,7 @@ type restaurantListDetailItemResponse struct {
 	SourceUserName        string                                       `json:"sourceUserName,omitempty"`
 	Position              int                                          `json:"position"`
 	BookmarkedItems       []restaurantListDetailBookmarkedItemResponse `json:"bookmarkedItems"`
+	FriendOverlapCount    int                                          `json:"friendOverlapCount,omitempty"`
 	Note                  string                                       `json:"note,omitempty"`
 	CreatedAt             string                                       `json:"createdAt"`
 }
@@ -649,6 +650,13 @@ func getRestaurantListDetailResponse(
 		return response, err
 	}
 	restaurantsByID := mapRecordsByID(restaurantRecords)
+	friendOverlapCountsByRestaurantID := map[string]int{}
+	if listRecord.GetBool("isDefault") {
+		friendOverlapCountsByRestaurantID, err = buildWantToTryFriendOverlapCounts(app, userID, restaurantIDs)
+		if err != nil {
+			return response, err
+		}
+	}
 
 	foodItemRecords, err := findRecordsByIDs(app, "food_items", foodItemIDs)
 	if err != nil {
@@ -734,6 +742,9 @@ func getRestaurantListDetailResponse(
 			visitsByID,
 		)
 		itemResponse.BookmarkedItems = bookmarkedItems
+		if isRestaurantOnlyListItem(listItem) {
+			itemResponse.FriendOverlapCount = friendOverlapCountsByRestaurantID[itemResponse.RestaurantID]
+		}
 
 		for _, bookmarkedItem := range bookmarkedItems {
 			visibleBookmarkLookupIDs = appendUniqueTrimmedID(
@@ -1342,6 +1353,88 @@ func listRestaurantListDetailItemRecords(
 		offset,
 		dbx.Params{"listId": listID},
 	)
+}
+
+func buildWantToTryFriendOverlapCounts(
+	app core.App,
+	userID string,
+	restaurantIDs []string,
+) (map[string]int, error) {
+	result := map[string]int{}
+	restaurantClauses := make([]string, 0, len(restaurantIDs))
+	params := dbx.Params{"userId": userID}
+	seen := map[string]struct{}{}
+
+	for index, restaurantID := range restaurantIDs {
+		trimmedID := strings.TrimSpace(restaurantID)
+		if trimmedID == "" {
+			continue
+		}
+		if _, exists := seen[trimmedID]; exists {
+			continue
+		}
+
+		seen[trimmedID] = struct{}{}
+		paramKey := fmt.Sprintf("restaurantId%d", index)
+		params[paramKey] = trimmedID
+		restaurantClauses = append(restaurantClauses, fmt.Sprintf("li.restaurant = {:%s}", paramKey))
+	}
+
+	if len(restaurantClauses) == 0 {
+		return result, nil
+	}
+
+	rows := []struct {
+		RestaurantID string `db:"restaurantId"`
+		Count        int    `db:"count"`
+	}{}
+
+	err := app.DB().NewQuery(fmt.Sprintf(`
+		SELECT li.restaurant AS [[restaurantId]], COUNT(DISTINCT rl.user) AS [[count]]
+		FROM list_items li
+		INNER JOIN restaurant_lists rl ON rl.id = li.list
+		INNER JOIN friendships f
+			ON f.status = 'accepted'
+			AND (
+				(f.user = {:userId} AND f.friend = rl.user) OR
+				(f.friend = {:userId} AND f.user = rl.user)
+			)
+		WHERE rl.isDefault = true
+			AND rl.user != {:userId}
+			AND rl.visibility = 'friends'
+			AND COALESCE(rl.moderationStatus, '') IN ('', 'active', 'reviewed')
+			AND COALESCE(li.moderationStatus, '') IN ('', 'active', 'reviewed')
+			AND COALESCE(li.foodItem, '') = ''
+			AND COALESCE(li.userFoodItem, '') = ''
+			AND (li.recommendedItems IS NULL OR li.recommendedItems = '' OR li.recommendedItems = '[]')
+			AND (%s)
+		GROUP BY li.restaurant
+	`, strings.Join(restaurantClauses, " OR "))).
+		Bind(params).
+		All(&rows)
+	if err != nil {
+		return result, err
+	}
+
+	for _, row := range rows {
+		restaurantID := strings.TrimSpace(row.RestaurantID)
+		if restaurantID == "" || row.Count <= 0 {
+			continue
+		}
+		result[restaurantID] = row.Count
+	}
+
+	return result, nil
+}
+
+func isRestaurantOnlyListItem(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	return strings.TrimSpace(record.GetString("foodItem")) == "" &&
+		strings.TrimSpace(record.GetString("userFoodItem")) == "" &&
+		len(record.GetStringSlice("recommendedItems")) == 0
 }
 
 func buildRestaurantListDetailListResponse(record *core.Record) restaurantListDetailListResponse {

@@ -345,7 +345,7 @@ export async function saveBookmarkToDefaultListAction({
       targetListCount: 1,
       hasDefaultList: Boolean(defaultList?.id),
     });
-    return { saved: false, queued: false, errorMessage: 'Saved list is not available.' };
+    return { saved: false, queued: false, errorMessage: 'Want to Try list is not available.' };
   }
 
   if (targetDefaultListId && alreadySavedListIdsForTarget.has(targetDefaultListId)) {
@@ -355,7 +355,7 @@ export async function saveBookmarkToDefaultListAction({
       targetListCount: 1,
       hasDefaultList: Boolean(defaultList?.id),
     });
-    return { saved: false, queued: false, errorMessage: 'This item is already in your Saved list.' };
+    return { saved: false, queued: false, errorMessage: 'This item is already in your Want to Try list.' };
   }
 
   deps.trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {

@@ -224,6 +224,88 @@ describe('buildListDetailReadModel', () => {
     expect(model.subtitle).toBe('0 restaurants\nPlaces to try');
   });
 
+  it('uses bookmark-oriented empty copy and map summary for the default list', () => {
+    const model = buildModel({
+      detail: buildDetail({
+        list: buildList({
+          isDefault: true,
+          name: 'Want to Try',
+          restaurantCount: 1,
+        }),
+        items: [
+          {
+            id: 'restaurant_bookmark_1',
+            listId: 'list_1',
+            restaurantId: 'restaurant_1',
+            restaurantName: 'Alpha Cafe',
+            restaurantLocation: '100 Main St',
+            restaurantCity: 'Berkeley',
+            restaurantCuisineType: 'Cafe',
+            restaurantVisibility: 'friends',
+            latitude: 37.8715,
+            longitude: -122.273,
+            position: 1,
+            bookmarkedItems: [],
+            friendOverlapCount: 2,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    });
+
+    expect(model.isDefaultList).toBe(true);
+    expect(model.groupedRestaurants[0]?.restaurantBookmarkListItemId).toBe('restaurant_bookmark_1');
+    expect(model.groupedRestaurants[0]?.friendOverlapCount).toBe(2);
+    expect(model.restaurantRows[0]?.ownerItems).toEqual([]);
+    expect(model.mapGroups[0]?.summary).toBe('1. bookmarked restaurant');
+    expect(
+      buildModel({
+        detail: buildDetail({
+          list: buildList({ isDefault: true, name: 'Want to Try', restaurantCount: 0 }),
+          items: [],
+        }),
+      }).emptyRestaurantsDescription,
+    ).toBe('Bookmark restaurants and recommendations from Food Discovery or your feed to save them here.');
+  });
+
+  it('does not copy friend overlap onto menu-item-only bookmark rows', () => {
+    const model = buildModel({
+      detail: buildDetail({
+        list: buildList({
+          isDefault: true,
+          name: 'Want to Try',
+          restaurantCount: 1,
+        }),
+        items: [
+          {
+            id: 'menu_item_bookmark_1',
+            listId: 'list_1',
+            restaurantId: 'restaurant_1',
+            restaurantName: 'Alpha Cafe',
+            restaurantCity: 'Berkeley',
+            restaurantCuisineType: 'Cafe',
+            restaurantVisibility: 'friends',
+            position: 1,
+            bookmarkedItems: [
+              {
+                id: 'food_1',
+                listItemId: 'menu_item_bookmark_1',
+                name: 'Pancakes',
+                rating: 9,
+              },
+            ],
+            friendOverlapCount: 2,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    });
+
+    expect(model.groupedRestaurants[0]?.restaurantBookmarkListItemId).toBeUndefined();
+    expect(model.groupedRestaurants[0]?.friendOverlapCount).toBeUndefined();
+    expect(model.restaurantRows[0]?.ownerItems).toHaveLength(1);
+  });
+
   it('keeps cached rows renderable on refresh errors', () => {
     const model = buildModel({ isError: true });
 

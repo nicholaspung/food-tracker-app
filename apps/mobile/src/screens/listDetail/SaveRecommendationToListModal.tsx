@@ -167,10 +167,10 @@ export function SaveRecommendationToListModal({
           isLoadingLists
             ? 'Loading your lists...'
             : isDefaultListAlreadySaved
-              ? 'Already in "Saved" list'
+              ? 'Already in "Want to Try" list'
               : defaultList
-                ? 'Quick Save to "Saved" list'
-                : 'Create & Save to "Saved" list'
+                ? 'Quick Save to "Want to Try" list'
+                : 'Create & Save to "Want to Try" list'
         }
         onPress={onQuickSave}
         variant="secondary"

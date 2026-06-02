@@ -1,4 +1,5 @@
 import { Ionicons } from '../../ui/AppIcon';
+import type { ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { VisitRecord } from '../../features';
@@ -46,6 +47,7 @@ interface HomeFeedVisitEntryCardProps {
   deleteTestID?: string;
   moreActionsTestID?: string;
   highlighted?: boolean;
+  renderItemBookmark?: (item: VisitRecord['items'][number]) => ReactNode;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -215,6 +217,7 @@ export function HomeFeedVisitEntryCard({
   deleteTestID,
   moreActionsTestID,
   highlighted = false,
+  renderItemBookmark,
 }: HomeFeedVisitEntryCardProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -375,6 +378,7 @@ export function HomeFeedVisitEntryCard({
                       <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
                     </Pressable>
                   ) : null}
+                  {renderItemBookmark?.(item)}
                 </View>
               </View>
             );

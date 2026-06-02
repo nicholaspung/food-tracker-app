@@ -277,6 +277,143 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	}
 }
 
+func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
+
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	secondFriend, _ := createAuthUser(t, server.app, false, false)
+	pendingFriend, _ := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+	createFriendshipRecord(t, server.app, user.Id, secondFriend.Id, "accepted")
+	createFriendshipRecord(t, server.app, user.Id, pendingFriend.Id, "pending")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Shared Bookmark Cafe",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+
+	userDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       user.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	userListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       userDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+
+	friendDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       friend.Id,
+		"visibility": "friends",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       friendDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    friend.Id,
+		"position":   1,
+	})
+
+	privateFriendDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       secondFriend.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       privateFriendDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    secondFriend.Id,
+		"position":   1,
+	})
+
+	pendingFriendDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       pendingFriend.Id,
+		"visibility": "friends",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       pendingFriendDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    pendingFriend.Id,
+		"position":   1,
+	})
+
+	strangerDefaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       stranger.Id,
+		"visibility": "friends",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       strangerDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    stranger.Id,
+		"position":   1,
+	})
+
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Latte",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       friendDefaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    friend.Id,
+		"foodItem":   friendFoodItem.Id,
+		"position":   2,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+userDefaultList.Id+"/detail",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                 string `json:"id"`
+			FriendOverlapCount int    `json:"friendOverlapCount"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v; body=%s", err, response.Body.String())
+	}
+
+	if len(payload.Items) != 1 || payload.Items[0].ID != userListItem.Id {
+		t.Fatalf("expected one restaurant bookmark with one eligible friend overlap, got %#v", payload.Items)
+	}
+	if payload.Items[0].FriendOverlapCount != 1 {
+		t.Fatalf("expected only the visible accepted-friend restaurant bookmark to count, got %#v", payload.Items[0])
+	}
+}
+
 func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

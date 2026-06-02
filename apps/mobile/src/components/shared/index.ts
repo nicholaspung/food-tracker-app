@@ -74,3 +74,4 @@ export * from './VisitRestaurantOptionTrailing';
 export * from './VisitRestaurantSearchHeaderToggle';
 export * from './VisitRestaurantSearchOptionDescription';
 export * from './VisitRestaurantSearchSection';
+export * from './WantToTryBookmarkButton';

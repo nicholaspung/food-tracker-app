@@ -426,8 +426,8 @@ describe('ListsScreen', () => {
     expect(renderer.root.findByProps({ testID: 'lists-search-input' }).props.value).toBe('');
   });
 
-  it('surfaces default Saved list auto-create failures', async () => {
-    const createDefaultList = jest.fn().mockRejectedValue(new Error('Could not create Saved'));
+  it('surfaces default Want to Try list auto-create failures', async () => {
+    const createDefaultList = jest.fn().mockRejectedValue(new Error('Could not create Want to Try'));
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(createDefaultList as never);
     mockedUseAuth.mockReturnValue({
       user: { id: 'user-1' },
@@ -443,7 +443,7 @@ describe('ListsScreen', () => {
     expect(createDefaultList).toHaveBeenCalledWith(expect.objectContaining({
       operationName: 'list.default.create',
     }));
-    expect(toastMessages).toContain('Could not create Saved');
+    expect(toastMessages).toContain('Could not create Want to Try');
   });
 
   it('renders pending list rows only on My Lists', async () => {

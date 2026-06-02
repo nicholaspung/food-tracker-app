@@ -139,6 +139,7 @@ export interface RestaurantListItemRecord {
   sourceUserName?: string;
   position: number;
   bookmarkedItems: RestaurantListBookmarkedItemRecord[];
+  friendOverlapCount?: number;
   note?: string;
   createdAt: string;
 }

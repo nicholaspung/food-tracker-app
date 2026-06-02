@@ -24,6 +24,7 @@ import {
   type MoveRestaurantListRestaurantInput,
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
+  type SaveRestaurantToDefaultListInput,
   type SendFeedbackMessageInput,
   type UpdateFoodProductInput,
   type UpdateRestaurantListInput,
@@ -89,6 +90,8 @@ interface SaveBookmarkToDefaultListOperationPayload {
   note?: string;
   sourceUserId?: string;
 }
+
+type SaveRestaurantToDefaultListOperationPayload = SaveRestaurantToDefaultListInput;
 
 interface RemoveRestaurantListUserRatingOperationPayload {
   listId: string;
@@ -174,6 +177,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'list.delete': RestaurantListDeleteOperationPayload;
   'list.default.create': EmptyOperationPayload;
   'list.default.bookmark.save': SaveBookmarkToDefaultListOperationPayload;
+  'list.default.restaurant.save': SaveRestaurantToDefaultListOperationPayload;
   'list.restaurant.add': AddRestaurantVisitRatingsToListInput;
   'list.restaurant.reorder': MoveRestaurantListRestaurantInput;
   'list.restaurant.remove.source': RemoveRestaurantListSourceRatingInput;
@@ -221,6 +225,7 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'list.delete',
   'list.default.create',
   'list.default.bookmark.save',
+  'list.default.restaurant.save',
   'list.restaurant.add',
   'list.restaurant.reorder',
   'list.restaurant.remove.source',

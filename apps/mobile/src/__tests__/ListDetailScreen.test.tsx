@@ -394,6 +394,7 @@ describe('ListDetailScreen', () => {
     removeRestaurantListUserRating: jest.fn(),
     saveBookmarkToDefaultList: jest.fn(),
     saveBookmarkToLists: jest.fn(),
+    saveRestaurantToDefaultList: jest.fn(),
     setErrorMessage: jest.fn(),
     updateRestaurantList: jest.fn(),
   };
@@ -446,6 +447,10 @@ describe('ListDetailScreen', () => {
       status: 'completed',
     });
     restaurantListWrites.saveBookmarkToLists.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.saveRestaurantToDefaultList.mockResolvedValue({
       result: [],
       status: 'completed',
     });
@@ -1010,6 +1015,155 @@ describe('ListDetailScreen', () => {
 
     expect(renderer.root.findAllByProps({ testID: 'list-detail-friend-photo-button-0-0' })).toHaveLength(0);
     expect(renderer.root.findByProps({ testID: 'save-list-item-item_1' })).toBeTruthy();
+  });
+
+  it('renders the default Want to Try detail as restaurant bookmarks without item rating cards', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+            restaurantCount: 1,
+          }),
+          items: [
+            buildListItem({
+              id: 'restaurant_bookmark_1',
+              restaurantName: 'Bookmark Cafe',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [],
+              friendOverlapCount: 2,
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(findExactTextNode(renderer.root, 'Bookmark Cafe')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, 'Oakland • Cafe')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, '2 friends also want to try this')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, 'Find Restaurants to Bookmark')).toBeTruthy();
+    expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ title: 'Bookmarked Items' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ title: 'Recommended Items' })).toHaveLength(0);
+    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.rightAccessory).toBeUndefined();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'i-went-restaurant-bookmark-0' }).props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('CreateVisit', {
+      preselectedRestaurantId: 'restaurant_1',
+      preselectedRestaurantName: 'Bookmark Cafe',
+      preselectedMenuItemId: undefined,
+      preselectedMenuItemName: undefined,
+      sourceListId: 'list_1',
+      sourceListItemId: 'restaurant_bookmark_1',
+      returnToStep: 1,
+    });
+  });
+
+  it('does not render friend overlap copy for default-list menu item bookmarks', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+            restaurantCount: 1,
+          }),
+          items: [
+            buildListItem({
+              id: 'menu_item_bookmark_1',
+              restaurantName: 'Bookmark Cafe',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [
+                {
+                  id: 'food_1',
+                  listItemId: 'menu_item_bookmark_1',
+                  name: 'Croissant',
+                  rating: 4,
+                },
+              ],
+              friendOverlapCount: 2,
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(findExactTextNodes(renderer.root, '2 friends also want to try this')).toHaveLength(0);
+    expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(1);
+  });
+
+  it('keeps curated owner lists on the recommendation rendering path', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: false,
+            name: 'Dinner Ideas',
+            restaurantCount: 1,
+          }),
+          items: [
+            buildListItem({
+              restaurantName: 'Curated Cafe',
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(findExactTextNode(renderer.root, 'Add Visit Ratings to List')).toBeTruthy();
+    expect(renderer.root.findByProps({ title: 'Bookmarked Items' })).toBeTruthy();
+    expect(renderer.root.findByType('FoodItemRatingRecordCard').props.itemName).toBe('Spicy Ramen');
+    expect(findRightAccessoryElementByTestID(renderer.root, 'list-detail-share-button')).toBeTruthy();
   });
 
   it('keeps the detail scaffold refreshing prop active until the refetch lifecycle settles', async () => {

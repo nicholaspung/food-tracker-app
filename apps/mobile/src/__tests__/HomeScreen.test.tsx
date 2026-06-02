@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   buildFoodProductCreatedHomeParams,
@@ -156,6 +157,8 @@ jest.mock('../components/shared', () => ({
   TabRootScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('TabRootScreenScaffold', props, children),
+  WantToTryBookmarkButton: (props: Record<string, unknown>) =>
+    mockReact.createElement('WantToTryBookmarkButton', props),
 }));
 
 jest.mock('../components/shared/PageErrorToast', () => ({
@@ -226,6 +229,10 @@ jest.mock('../features', () => ({
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
   useOfflineAwareFeatureWrite: jest.fn(),
+}));
+
+jest.mock('../features/store/useRestaurantListWrites', () => ({
+  useRestaurantListWrites: jest.fn(),
 }));
 
 jest.mock('../features/store/useWriteTelemetry', () => ({
@@ -316,6 +323,7 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
+const mockedUseRestaurantListWrites = useRestaurantListWrites as jest.MockedFunction<typeof useRestaurantListWrites>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedGetPendingFriendSuggestion = getPendingFriendSuggestion as jest.MockedFunction<
   typeof getPendingFriendSuggestion
@@ -406,6 +414,52 @@ function mockHomeFeedQuery({
   } as never);
 }
 
+function mockHomeAuxiliaryQueries({
+  defaultList = null,
+  defaultListDetail = null,
+  defaultListRefetch = jest.fn(),
+  defaultListDetailRefetch = jest.fn(),
+  mapRefetch = jest.fn(),
+}: {
+  defaultList?: unknown;
+  defaultListDetail?: unknown;
+  defaultListRefetch?: jest.Mock;
+  defaultListDetailRefetch?: jest.Mock;
+  mapRefetch?: jest.Mock;
+} = {}) {
+  mockedUseQuery.mockImplementation((options: any) => {
+    const queryKey = options.queryKey as unknown[];
+    if (Array.isArray(queryKey) && queryKey[0] === 'feature' && queryKey[1] === 'restaurantLists') {
+      return {
+        data: defaultList,
+        isError: false,
+        isLoading: false,
+        refetch: defaultListRefetch,
+      } as never;
+    }
+
+    if (Array.isArray(queryKey) && queryKey[0] === 'feature' && queryKey[1] === 'restaurantListDetail') {
+      return {
+        data: defaultListDetail,
+        isError: false,
+        isLoading: false,
+        refetch: defaultListDetailRefetch,
+      } as never;
+    }
+
+    return {
+      data: {
+        omittedWithoutCoordinates: 0,
+        points: [],
+        totalEntries: 0,
+      },
+      isError: false,
+      isLoading: false,
+      refetch: mapRefetch,
+    } as never;
+  });
+}
+
 describe('HomeScreen', () => {
   beforeEach(() => {
     mockFlatListScrollToIndex.mockClear();
@@ -454,6 +508,13 @@ describe('HomeScreen', () => {
     } as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
+    mockedUseRestaurantListWrites.mockReset();
+    mockedUseRestaurantListWrites.mockReturnValue({
+      errorMessage: null,
+      isSubmitting: false,
+      saveBookmarkToDefaultList: jest.fn(),
+      setErrorMessage: jest.fn(),
+    } as never);
     mockedUseWriteTelemetry.mockReset();
     mockedUseWriteTelemetry.mockReturnValue(jest.fn());
     mockedGetPendingFriendSuggestion.mockReset();
@@ -1106,6 +1167,199 @@ describe('HomeScreen', () => {
     expect(productCards).toHaveLength(2);
     expect(typeof productCards[0].props.onSharePhoto).toBe('function');
     expect(productCards[1].props.onSharePhoto).toBeUndefined();
+  });
+
+  it('saves a friend feed recommendation to the default Want to Try list', async () => {
+    const saveBookmarkToDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
+    const setErrorMessage = jest.fn();
+    const defaultListRefetch = jest.fn();
+    const defaultListDetailRefetch = jest.fn();
+    let renderer: any = null;
+
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockedUseRestaurantListWrites.mockReturnValue({
+      errorMessage: null,
+      isSubmitting: false,
+      saveBookmarkToDefaultList,
+      setErrorMessage,
+    } as never);
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+      defaultListDetail: {
+        items: [],
+      },
+      defaultListDetailRefetch,
+      defaultListRefetch,
+    });
+    mockHomeFeedQuery({
+      items: [
+        {
+          eventAt: '2026-04-18T09:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-friend',
+            restaurantId: 'restaurant-1',
+            restaurantName: 'Friend Bistro',
+            visitedAt: '2026-04-18T09:00:00.000Z',
+            items: [
+              {
+                id: 'food-item-1',
+                name: 'Friend Noodles',
+                notes: 'Order this.',
+                rating: 9,
+              },
+            ],
+            source: 'visit',
+            userId: 'friend-user',
+            userName: 'Friend',
+            createdAt: '2026-04-18T09:00:00.000Z',
+            updatedAt: '2026-04-18T09:05:00.000Z',
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    const bookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Friend Noodles',
+      notes: 'Order this.',
+      rating: 9,
+    });
+
+    expect(bookmarkElement.props.saved).toBe(false);
+
+    await act(async () => {
+      await bookmarkElement.props.onPress();
+    });
+
+    expect(setErrorMessage).toHaveBeenCalledWith(null);
+    expect(saveBookmarkToDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        restaurantId: 'restaurant-1',
+        foodItemId: 'food-item-1',
+        note: 'Order this.',
+        sourceUserId: 'friend-user',
+      },
+      defaultListId: 'default-list',
+      sourceListId: 'default-list',
+    });
+    expect(defaultListRefetch).toHaveBeenCalled();
+    expect(defaultListDetailRefetch).toHaveBeenCalled();
+  });
+
+  it('reflects friend feed recommendations already saved in Want to Try', async () => {
+    let renderer: any = null;
+
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+      defaultListDetail: {
+        items: [
+          {
+            restaurantId: 'restaurant-1',
+            bookmarkedItems: [
+              {
+                id: 'bookmark-1',
+                userFoodItemId: 'food-item-1',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    mockHomeFeedQuery({
+      items: [
+        {
+          eventAt: '2026-04-18T09:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-friend',
+            restaurantId: 'restaurant-1',
+            restaurantName: 'Friend Bistro',
+            visitedAt: '2026-04-18T09:00:00.000Z',
+            items: [
+              {
+                id: 'food-item-1',
+                name: 'Friend Noodles',
+                rating: 9,
+              },
+            ],
+            source: 'visit',
+            userId: 'friend-user',
+            userName: 'Friend',
+            createdAt: '2026-04-18T09:00:00.000Z',
+            updatedAt: '2026-04-18T09:05:00.000Z',
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    const bookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Friend Noodles',
+      rating: 9,
+    });
+
+    expect(bookmarkElement.props.saved).toBe(true);
+    expect(bookmarkElement.props.accessibilityLabel).toBe('Friend Noodles is saved to Want to Try');
   });
 
   it('renders the measured home header backdrop above the orange content area', async () => {

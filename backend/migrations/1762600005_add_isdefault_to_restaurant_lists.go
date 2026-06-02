@@ -15,7 +15,7 @@ func init() {
 			return err
 		}
 
-		// Add isDefault field (boolean) to mark the auto-created "Saved" list
+		// Add isDefault field (boolean) to mark the auto-created Want to Try list.
 		collection.Fields.Add(&core.BoolField{
 			Name:     "isDefault",
 			Required: false,

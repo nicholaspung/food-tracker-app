@@ -20,6 +20,8 @@ const mockSetIsSearchExpanded = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockPickImageAssets = jest.fn();
 const mockInvalidateQueries = jest.fn();
+const mockSaveRestaurantToDefaultList = jest.fn();
+const mockSetRestaurantListWriteErrorMessage = jest.fn();
 
 jest.mock('expo-clipboard', () => ({
   setStringAsync: jest.fn(),
@@ -79,6 +81,8 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('VisitRestaurantSearchOptionDescription', props),
   VisitRestaurantSearchSection: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantSearchSection', props),
+  WantToTryBookmarkButton: (props: Record<string, unknown>) =>
+    mockReact.createElement('WantToTryBookmarkButton', props),
 }));
 
 jest.mock('../components/maps', () => ({
@@ -107,6 +111,15 @@ jest.mock('../hooks/useImageSourcePicker', () => ({
 
 jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
   useRestaurantDiscoverySelectionFlow: jest.fn(),
+}));
+
+jest.mock('../features/store/useRestaurantListWrites', () => ({
+  useRestaurantListWrites: jest.fn(() => ({
+    errorMessage: null,
+    isSubmitting: false,
+    saveRestaurantToDefaultList: mockSaveRestaurantToDefaultList,
+    setErrorMessage: mockSetRestaurantListWriteErrorMessage,
+  })),
 }));
 
 jest.mock('../lib/photoStaging', () => ({
@@ -229,6 +242,9 @@ describe('RestaurantDiscoveryScreen', () => {
       status: 'success',
     });
     mockInvalidateQueries.mockReset();
+    mockSaveRestaurantToDefaultList.mockReset();
+    mockSaveRestaurantToDefaultList.mockResolvedValue({ status: 'completed', result: [] });
+    mockSetRestaurantListWriteErrorMessage.mockReset();
     mockedUseQuery.mockReset();
     mockedUseQuery.mockReturnValue({
       data: [],
@@ -464,6 +480,85 @@ describe('RestaurantDiscoveryScreen', () => {
         restaurantName: 'Erewhon West Hollywood',
       }),
     );
+  });
+
+  it('saves a discovery restaurant to Want to Try', async () => {
+    const renderer = renderScreen();
+
+    let trailingRenderer: any;
+    act(() => {
+      trailingRenderer = create(
+        renderer.root.findByType('VisitRestaurantSearchSection').props.savedOptions[0].trailing,
+      );
+    });
+
+    const bookmarkButton = trailingRenderer.root.findByType('WantToTryBookmarkButton');
+    expect(bookmarkButton.props.saved).toBe(false);
+
+    await act(async () => {
+      await bookmarkButton.props.onPress();
+    });
+
+    expect(mockSetRestaurantListWriteErrorMessage).toHaveBeenCalledWith(null);
+    expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledWith({
+      restaurant: {
+        restaurantId: 'restaurant-1',
+      },
+      sourceListId: 'default',
+    });
+
+    expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows existing default-list restaurant bookmarks as saved', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('default')) {
+        return {
+          data: { id: 'default_list', isDefault: true },
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('restaurantListDetail')) {
+        return {
+          data: {
+            items: [
+              {
+                restaurantId: 'restaurant-1',
+                bookmarkedItems: [],
+              },
+            ],
+          },
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      return {
+        data: [],
+        error: null,
+        isPending: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    let trailingRenderer: any;
+    act(() => {
+      trailingRenderer = create(
+        renderer.root.findByType('VisitRestaurantSearchSection').props.savedOptions[0].trailing,
+      );
+    });
+
+    expect(trailingRenderer.root.findByType('WantToTryBookmarkButton').props.saved).toBe(true);
+
+    act(() => {
+      trailingRenderer.root.findByType('WantToTryBookmarkButton').props.onPress();
+    });
+
+    expect(mockSaveRestaurantToDefaultList).not.toHaveBeenCalled();
   });
 
   it('places add new restaurant in the expanded search footer with detail return target', () => {

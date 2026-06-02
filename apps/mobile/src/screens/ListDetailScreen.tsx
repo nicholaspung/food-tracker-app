@@ -48,6 +48,7 @@ import {
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailOwnerItemCard } from './listDetail/ListDetailOwnerItemCard';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
+import { ListDetailWantToTryBookmarkCard } from './listDetail/ListDetailWantToTryBookmarkCard';
 import { SaveRecommendationToListModal } from './listDetail/SaveRecommendationToListModal';
 import { buildListDetailReadModel } from './listDetail/listDetailReadModel';
 import type {
@@ -244,6 +245,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     hasListItemsRefreshError,
     hasListsRefreshError,
     isLoadingMyLists,
+    isDefaultList,
     isOwner,
     list,
     nonDefaultLists,
@@ -440,7 +442,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         ...listAnalyticsContext,
         reason: 'default_list',
       });
-      setErrorMessage('The Saved list cannot be deleted.');
+      setErrorMessage('The Want to Try list cannot be deleted.');
       return;
     }
 
@@ -564,33 +566,34 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const handleIWentThere = (
     group: GroupedRestaurant,
-    item: { listItemId: string; name: string },
+    item?: { listItemId: string; name: string },
   ) => {
     trackObservabilityEvent('LIST_DETAIL_I_WENT_TAPPED', {
       source: 'ListDetailScreen',
       restaurantId: group.restaurantId,
+      hasPreselectedMenuItem: Boolean(item),
     });
     trackProductEvent('social.i_went_there_started', {
       source: 'ListDetailScreen',
       entryType: 'restaurant_visit',
-      hasRating: true,
+      hasRating: Boolean(item),
     });
     trackProductEvent('tracking.entry_started', {
       entryType: 'restaurant_visit',
       source: 'list',
       hasPhoto: false,
-      itemCount: 1,
-      ratingCount: 1,
+      itemCount: item ? 1 : 0,
+      ratingCount: item ? 1 : 0,
       completed: false,
     });
     navigation.navigate('CreateVisit', {
       preselectedRestaurantId: group.restaurantId,
       preselectedRestaurantName: group.restaurantName,
-      preselectedMenuItemId: `bookmark-${item.listItemId}`,
-      preselectedMenuItemName: item.name,
+      preselectedMenuItemId: item ? `bookmark-${item.listItemId}` : undefined,
+      preselectedMenuItemName: item?.name,
       sourceListId: route.params.listId,
-      sourceListItemId: item.listItemId,
-      returnToStep: 2,
+      sourceListItemId: item?.listItemId ?? group.restaurantBookmarkListItemId,
+      returnToStep: item ? 2 : 1,
     });
   };
 
@@ -778,7 +781,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       onBackPress={handleBack}
       refreshing={isPullRefreshing}
       rightAccessory={
-        isOwner ? (
+        isOwner && !isDefaultList ? (
           <View style={styles.headerRightRow}>
             <Pressable
               accessibilityLabel="Share list"
@@ -898,19 +901,30 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           <>
             {isOwner ? (
               <Pressable
-                accessibilityLabel="Add restaurant to list"
+                accessibilityLabel={isDefaultList ? 'Browse Food Discovery' : 'Add restaurant to list'}
                 accessibilityRole="button"
                 onPress={() => {
                   trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
                     source: 'ListDetailScreen',
+                    isDefaultList,
                   });
+                  if (isDefaultList) {
+                    navigation.navigate('RestaurantDiscovery');
+                    return;
+                  }
                   navigation.navigate('AddRestaurantToList', { listId });
                 }}
                 style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
                 testID="add-restaurant-banner"
               >
-                <Ionicons color={theme.colors.button.primaryText} name="add-outline" size={20} />
-                <Text style={styles.addBannerLabel}>Add Visit Ratings to List</Text>
+                <Ionicons
+                  color={theme.colors.button.primaryText}
+                  name={isDefaultList ? 'compass-outline' : 'add-outline'}
+                  size={20}
+                />
+                <Text style={styles.addBannerLabel}>
+                  {isDefaultList ? 'Find Restaurants to Bookmark' : 'Add Visit Ratings to List'}
+                </Text>
               </Pressable>
             ) : null}
 
@@ -924,7 +938,41 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               restaurantRows.map((row) => {
                 const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
-                return isOwner ? (
+                return isDefaultList && isOwner ? (
+                  <ListDetailWantToTryBookmarkCard
+                    friendOverlapCount={group.friendOverlapCount}
+                    groupIndex={groupIndex}
+                    isLocked={isRestaurantLocked}
+                    items={row.ownerItems}
+                    key={group.restaurantId}
+                    lockTestID={`locked-restaurant-${group.restaurantId}`}
+                    onIWentThere={
+                      isRestaurantLocked
+                        ? undefined
+                        : () => {
+                            handleIWentThere(group);
+                          }
+                    }
+                    primaryMetaLabel={primaryMetaLabel}
+                    renderItem={(item, itemIndex) => (
+                      <ListDetailOwnerItemCard
+                        canCreateVisitFromRestaurant={!isRestaurantLocked}
+                        groupIndex={groupIndex}
+                        item={item}
+                        itemIndex={itemIndex}
+                        key={item.key}
+                        onConfirmDeleteItem={confirmDeleteItem}
+                        onIWentThere={(input) => {
+                          handleIWentThere(group, input);
+                        }}
+                        onOpenPhotos={openPhotoViewer}
+                        photoEntries={item.photoEntries}
+                      />
+                    )}
+                    restaurantName={group.restaurantName}
+                    secondaryMetaLabel={secondaryMetaLabel}
+                  />
+                ) : isOwner ? (
                   <ListDetailRestaurantRecommendationGroupCard
                     groupIndex={groupIndex}
                     isLocked={isRestaurantLocked}

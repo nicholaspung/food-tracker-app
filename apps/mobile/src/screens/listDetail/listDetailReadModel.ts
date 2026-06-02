@@ -64,6 +64,7 @@ export interface ListDetailReadModel {
   list: RestaurantListRecord | null;
   listItems: RestaurantListDetailRecord['items'];
   isOwner: boolean;
+  isDefaultList: boolean;
   groupedRestaurants: GroupedRestaurant[];
   restaurantRows: ListDetailRestaurantRow[];
   mapGroups: ListDetailMapGroupRow[];
@@ -145,6 +146,11 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
       group.notes.push(listItem.note);
     }
 
+    if (normalizedBookmarkedItems.length === 0 && !group.restaurantBookmarkListItemId) {
+      group.restaurantBookmarkListItemId = listItem.id;
+      group.friendOverlapCount = listItem.friendOverlapCount;
+    }
+
     for (const item of normalizedBookmarkedItems) {
       group.items.push({
         key: `${listItem.id}:${item.id}`,
@@ -191,6 +197,7 @@ function buildSavedListIdsByBookmarkLookupId(
 function buildMapGroups(
   groupedRestaurants: GroupedRestaurant[],
   isOwner: boolean,
+  isDefaultList: boolean,
   photosByFoodItemId: ReturnType<typeof groupListDetailPhotosByFoodItemId>,
 ): ListDetailMapGroupRow[] {
   return groupedRestaurants.filter(hasUsableCoordinates).map((group, groupIndex) => {
@@ -252,7 +259,15 @@ function buildMapGroups(
       notes: group.notes,
       restaurantLocation: group.restaurantLocation ?? group.restaurantCity,
       restaurantName: group.restaurantName,
-      summary: `${groupIndex + 1}. ${pluralize(items.length, isOwner ? 'bookmarked item' : 'recommended item', isOwner ? 'bookmarked items' : 'recommended items')}`,
+      summary: `${groupIndex + 1}. ${
+        isDefaultList
+          ? 'bookmarked restaurant'
+          : pluralize(
+              items.length,
+              isOwner ? 'bookmarked item' : 'recommended item',
+              isOwner ? 'bookmarked items' : 'recommended items',
+            )
+      }`,
     };
   });
 }
@@ -266,6 +281,7 @@ export function buildListDetailReadModel({
 }: ListDetailReadModelInput): ListDetailReadModel {
   const list = detail?.list ?? null;
   const isOwner = Boolean(list && userId && list.userId === userId);
+  const isDefaultList = Boolean(list?.isDefault);
   const listItems = detail?.items ?? [];
   const hasBlockingListItemsError = isError && detail === undefined;
   const hasListItemsRefreshError = !hasBlockingListItemsError && isError;
@@ -316,7 +332,7 @@ export function buildListDetailReadModel({
       })),
     };
   });
-  const mapGroups = buildMapGroups(groupedRestaurants, isOwner, photosByFoodItemId);
+  const mapGroups = buildMapGroups(groupedRestaurants, isOwner, isDefaultList, photosByFoodItemId);
   const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
   const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
   const descriptionLabel = list?.description?.trim();
@@ -334,6 +350,7 @@ export function buildListDetailReadModel({
     list,
     listItems,
     isOwner,
+    isDefaultList,
     groupedRestaurants,
     restaurantRows,
     mapGroups,
@@ -349,9 +366,11 @@ export function buildListDetailReadModel({
     hasListItemsRefreshError,
     hasListsRefreshError: Boolean(saveBookmarkTarget && !isOwner && isError),
     subtitle,
-    emptyRestaurantsDescription: isOwner
-      ? 'Use Add Visit Ratings to List to save your first restaurant.'
-      : 'No restaurants have been added to this list yet.',
+    emptyRestaurantsDescription: isDefaultList
+      ? 'Bookmark restaurants and recommendations from Food Discovery or your feed to save them here.'
+      : isOwner
+        ? 'Use Add Visit Ratings to List to save your first restaurant.'
+        : 'No restaurants have been added to this list yet.',
     analyticsContext: {
       source: 'ListDetailScreen',
       isDefaultList: Boolean(list?.isDefault),

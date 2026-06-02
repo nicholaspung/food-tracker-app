@@ -64,6 +64,8 @@ export interface GroupedRestaurant {
   longitude?: number;
   notes: string[];
   firstPosition: number;
+  restaurantBookmarkListItemId?: string;
+  friendOverlapCount?: number;
   items: GroupedBookmarkedItem[];
 }
 

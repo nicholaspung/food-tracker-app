@@ -74,7 +74,7 @@ const TIPS: TipItem[] = [
   {
     title: 'Organize with Lists',
     description:
-      'Create restaurant lists to organize your favorites. Share them with friends or keep them private. Your "Saved" list is a quick way to bookmark places.',
+      'Create restaurant lists to organize your favorites. Share them with friends or keep them private. Your "Want to Try" list is a quick way to bookmark places.',
   },
   {
     title: 'Split Bills Easily',

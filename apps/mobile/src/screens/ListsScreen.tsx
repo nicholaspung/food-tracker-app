@@ -443,7 +443,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           trigger: 'missing_default_list',
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not prepare your Saved list.';
+        const message = error instanceof Error ? error.message : 'Could not prepare your Want to Try list.';
         trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_FAILED', {
           source: 'ListsScreen',
           errorMessage: message,

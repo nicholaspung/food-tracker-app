@@ -24,6 +24,7 @@ import {
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
+  saveRestaurantToDefaultList,
   sendFeedbackMessage,
   updateRestaurantList,
   updateFoodProduct,
@@ -73,6 +74,7 @@ const FEATURE_OUTBOX_REPLAY_ADAPTERS: Partial<Record<FeatureOutboxOperationName,
   'list.delete': replayRestaurantListDelete,
   'list.default.create': replayDefaultRestaurantListCreate,
   'list.default.bookmark.save': replayDefaultRestaurantListBookmarkSave,
+  'list.default.restaurant.save': replayDefaultRestaurantListRestaurantSave,
   'list.restaurant.add': replayRestaurantListRestaurantAdd,
   'list.restaurant.reorder': replayRestaurantListRestaurantReorder,
   'list.restaurant.remove.source': replayRestaurantListRestaurantRemoveSource,
@@ -365,6 +367,16 @@ async function replayDefaultRestaurantListBookmarkSave(
       note: saveToDefaultPayload.note,
       sourceUserId: saveToDefaultPayload.sourceUserId,
     },
+    requestOptions,
+  );
+}
+
+async function replayDefaultRestaurantListRestaurantSave(
+  payload: unknown,
+  requestOptions: FeatureWriteRequestOptions,
+): Promise<void> {
+  await saveRestaurantToDefaultList(
+    payload as FeatureOutboxOperationPayloadMap['list.default.restaurant.save'],
     requestOptions,
   );
 }

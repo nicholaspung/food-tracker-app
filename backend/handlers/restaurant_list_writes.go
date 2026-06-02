@@ -49,6 +49,9 @@ type restaurantListMutationListResponse struct {
 	Items  []restaurantListDetailItemResponse `json:"items"`
 }
 
+const defaultRestaurantListName = "Want to Try"
+const defaultRestaurantListDescription = "Restaurants and recommendations you want to try later"
+
 func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.POST("/api/restaurant-lists/default", func(e *core.RequestEvent) error {
 		var responsePayload restaurantListDetailListResponse
@@ -322,7 +325,52 @@ func saveRestaurantListBookmarkTransaction(
 
 	foodItemID := strings.TrimSpace(requestBody.FoodItemID)
 	if foodItemID == "" {
-		return "", apis.NewBadRequestError("foodItemId is required", nil)
+		if !listRecord.GetBool("isDefault") {
+			return "", apis.NewBadRequestError("restaurant-only bookmarks can only be saved to the default Want to Try list", nil)
+		}
+
+		existingItems, err := listRestaurantListGroupRecords(app, listRecord.Id, restaurantID, "position,created")
+		if err != nil {
+			return "", apis.NewApiError(500, "failed to load existing restaurant list item", err)
+		}
+		if len(existingItems) > 0 {
+			return restaurantID, nil
+		}
+
+		nextPosition, err := nextRestaurantListItemPosition(app, listRecord.Id)
+		if err != nil {
+			return "", apis.NewApiError(500, "failed to resolve next list position", err)
+		}
+
+		listItemsCollection, err := app.FindCollectionByNameOrId("list_items")
+		if err != nil {
+			return "", apis.NewApiError(500, "internal error", err)
+		}
+
+		record := core.NewRecord(listItemsCollection)
+		record.Set("list", listRecord.Id)
+		record.Set("restaurant", restaurantID)
+		record.Set("addedBy", authRecord.Id)
+		record.Set("position", nextPosition)
+		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
+
+		if err := app.Save(record); err != nil {
+			if !isUniqueConstraintError(err) {
+				return "", apis.NewApiError(500, "failed to save restaurant to default list", err)
+			}
+
+			existingItems, lookupErr := listRestaurantListGroupRecords(app, listRecord.Id, restaurantID, "position,created")
+			if lookupErr != nil {
+				return "", apis.NewApiError(500, "failed to reload existing restaurant list item", lookupErr)
+			}
+			if len(existingItems) > 0 {
+				return restaurantID, nil
+			}
+
+			return "", apis.NewApiError(500, "failed to save restaurant to default list", err)
+		}
+
+		return restaurantID, nil
 	}
 
 	foodItemRecord, visitRecord, err := findFoodItemWithVisit(app, foodItemID)
@@ -802,8 +850,8 @@ func createOrGetDefaultRestaurantListTransaction(app core.App, authRecord *core.
 	}
 
 	record := core.NewRecord(restaurantListsCollection)
-	record.Set("name", "Saved")
-	record.Set("description", "Items saved from other lists")
+	record.Set("name", defaultRestaurantListName)
+	record.Set("description", defaultRestaurantListDescription)
 	record.Set("visibility", "private")
 	record.Set("user", authRecord.Id)
 	record.Set("isDefault", true)
@@ -1061,7 +1109,13 @@ func buildRestaurantListMutationGroupResponse(
 		return response, nil
 	}
 
-	itemResponses, err := buildRestaurantListDetailItemResponses(app, userID, isAdmin, listItemRecords)
+	itemResponses, err := buildRestaurantListDetailItemResponses(
+		app,
+		userID,
+		isAdmin,
+		listItemRecords,
+		listRecord.GetBool("isDefault"),
+	)
 	if err != nil {
 		return response, err
 	}
@@ -1095,7 +1149,13 @@ func buildRestaurantListMutationListResponse(
 		return response, nil
 	}
 
-	itemResponses, err := buildRestaurantListDetailItemResponses(app, userID, isAdmin, listItemRecords)
+	itemResponses, err := buildRestaurantListDetailItemResponses(
+		app,
+		userID,
+		isAdmin,
+		listItemRecords,
+		listRecord.GetBool("isDefault"),
+	)
 	if err != nil {
 		return response, err
 	}
@@ -1109,6 +1169,7 @@ func buildRestaurantListDetailItemResponses(
 	userID string,
 	isAdmin bool,
 	listItemRecords []*core.Record,
+	includeFriendOverlap bool,
 ) ([]restaurantListDetailItemResponse, error) {
 	restaurantIDs := make([]string, 0, len(listItemRecords))
 	sourceUserIDs := make([]string, 0, len(listItemRecords))
@@ -1132,6 +1193,13 @@ func buildRestaurantListDetailItemResponses(
 		return nil, err
 	}
 	restaurantsByID := mapRecordsByID(restaurantRecords)
+	friendOverlapCountsByRestaurantID := map[string]int{}
+	if includeFriendOverlap {
+		friendOverlapCountsByRestaurantID, err = buildWantToTryFriendOverlapCounts(app, userID, restaurantIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	foodItemRecords, err := findRecordsByIDs(app, "food_items", foodItemIDs)
 	if err != nil {
@@ -1198,6 +1266,9 @@ func buildRestaurantListDetailItemResponses(
 			foodItemsByID,
 			visitsByID,
 		)
+		if isRestaurantOnlyListItem(listItem) {
+			itemResponse.FriendOverlapCount = friendOverlapCountsByRestaurantID[itemResponse.RestaurantID]
+		}
 
 		items = append(items, itemResponse)
 	}

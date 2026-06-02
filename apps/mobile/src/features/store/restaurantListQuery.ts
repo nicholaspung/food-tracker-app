@@ -15,6 +15,7 @@ export const restaurantListQueryKeys = {
   scope: (scope: RestaurantListScope) => ['feature', 'restaurantLists', scope] as const,
   paginated: (scope: RestaurantListScope, searchQuery: string) =>
     ['feature', 'restaurantLists', scope, 'paginated', searchQuery] as const,
+  defaultList: ['feature', 'restaurantLists', 'my', 'default'] as const,
   listRoot: ['feature', 'restaurantList'] as const,
   list: (listId: string) => ['feature', 'restaurantList', listId] as const,
   detailRoot: ['feature', 'restaurantListDetail'] as const,
