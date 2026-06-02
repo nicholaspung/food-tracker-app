@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 
 import {
   EmptyState,
@@ -22,12 +22,12 @@ import type {
 } from '../features';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { savePendingAuthRedirect } from '../lib/pendingAuthRedirect';
+import { env } from '../config/env';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
-import { Modal, Text } from '../ui';
+import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
@@ -146,10 +146,10 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
   const { shareToken } = route.params;
   const { status } = useAuth();
   const styles = useStyles();
-  const [ctaModalVisible, setCtaModalVisible] = useState(false);
   const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
   const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [saveModalError, setSaveModalError] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -236,23 +236,26 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     });
   };
 
-  const navigateToSignUp = async () => {
+  const navigateToLogin = async () => {
     await saveReturnTarget();
-    setCtaModalVisible(false);
-    navigation.navigate('SignUp', {
-      mode: 'join_waitlist',
+    navigation.navigate('Login', {
       source: 'shared_list',
       sharedListToken: shareToken,
     });
   };
 
-  const navigateToLogin = async () => {
-    await saveReturnTarget();
-    setCtaModalVisible(false);
-    navigation.navigate('Login', {
-      source: 'shared_list',
-      sharedListToken: shareToken,
+  const handleDownloadApp = async () => {
+    setDownloadErrorMessage(null);
+    trackProductEvent('social.invite_shared', {
+      source: 'SharedRestaurantListScreen',
+      shareMethod: 'shared_list_download_app',
     });
+
+    try {
+      await Linking.openURL(env.iosAppStoreUrl);
+    } catch (error) {
+      setDownloadErrorMessage(error instanceof Error ? error.message : 'Could not open the app download link.');
+    }
   };
 
   const handleBack = () => {
@@ -385,14 +388,11 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       primaryAction={
         !isAuthenticated
           ? {
-              label: 'Save Recommendations',
+              label: 'Download App',
               onPress: () => {
-                trackObservabilityEvent('SHARED_LIST_SAVE_RECOMMENDATIONS_TAPPED', {
-                  source: 'SharedRestaurantListScreen',
-                });
-                setCtaModalVisible(true);
+                void handleDownloadApp();
               },
-              testID: 'shared-list-save-recommendations-button',
+              testID: 'shared-list-download-app-button',
             }
           : undefined
       }
@@ -435,6 +435,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
           <>
             {list.description ? <Text tone="secondary">{list.description}</Text> : null}
 
+            <PageErrorToast errorMessage={downloadErrorMessage} title="Could not open download link" />
             <PageErrorToast errorMessage={saveErrorMessage} title="Could not save recommendation" />
 
             {groupedRestaurants.length === 0 ? (
@@ -498,30 +499,6 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
-      />
-
-      <Modal
-        description="Create an account or sign in to save recommendations from this list to your own lists."
-        onRequestClose={() => {
-          setCtaModalVisible(false);
-        }}
-        primaryAction={{
-          label: 'Join Waitlist',
-          onPress: () => {
-            void navigateToSignUp();
-          },
-          testID: 'shared-list-cta-signup-button',
-        }}
-        secondaryAction={{
-          label: 'Sign In',
-          onPress: () => {
-            void navigateToLogin();
-          },
-          testID: 'shared-list-cta-login-button',
-        }}
-        testID="shared-list-auth-cta-modal"
-        title="Save recommendations"
-        visible={ctaModalVisible}
       />
 
       <SaveRecommendationToListModal
