@@ -11,6 +11,7 @@ import {
   HeaderAccessoryButton,
   LoadingState,
   OptionList,
+  OptionListInlineBody,
   OptionListRow,
   PageErrorToast,
   StatusPill,
@@ -27,7 +28,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, ListItem, Text } from '../ui';
+import { Button, Text } from '../ui';
 import {
   formatTastingSessionStatusLabel,
   getTastingInviteDisplayStatus,
@@ -55,9 +56,6 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  sessionCards: {
-    gap: theme.spacing.sm,
   },
   joinBanner: {
     alignItems: 'center',
@@ -132,6 +130,21 @@ function formatCompletedSessionListSubtitle(session: TastingSessionRecord): stri
     locale: 'en-US',
   });
   return `${sessionDate} - ${formatCompletedSessionSummary(session)}`;
+}
+
+function getSessionSortTime(session: TastingSessionRecord): number {
+  const timestamp = Date.parse(session.updatedAt || session.createdAt);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function sortSessionsNewestFirst(sessions: TastingSessionRecord[]): TastingSessionRecord[] {
+  return [...sessions].sort((firstSession, secondSession) => {
+    const timeDifference = getSessionSortTime(secondSession) - getSessionSortTime(firstSession);
+    if (timeDifference !== 0) {
+      return timeDifference;
+    }
+    return secondSession.id.localeCompare(firstSession.id);
+  });
 }
 
 function isCurrentUserParticipant(session: TastingSessionRecord, userId: string | undefined): boolean {
@@ -248,11 +261,11 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
   );
   const hasExpiredPendingInvite = Boolean(expiredPendingInviteSession);
   const activeSessions = useMemo(
-    () => sessions.filter((session) => isVisibleActiveSession(session, user?.id)),
+    () => sortSessionsNewestFirst(sessions.filter((session) => isVisibleActiveSession(session, user?.id))),
     [sessions, user?.id],
   );
   const completedSessions = useMemo(
-    () => sessions.filter((session) => isVisibleCompletedSession(session, user?.id)),
+    () => sortSessionsNewestFirst(sessions.filter((session) => isVisibleCompletedSession(session, user?.id))),
     [sessions, user?.id],
   );
   const joinBannerDescription = activePendingInviteSession
@@ -423,7 +436,7 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
             <Text variant="titleMd">Active</Text>
             <Text tone="muted" variant="label">{formatCount(activeSessions.length, 'session', 'sessions')}</Text>
           </View>
-          <View style={styles.sessionCards}>
+          <OptionList>
             {activeSessions.map((session) => {
               const pendingInvite = session.invites.find(
                 (invite) => invite.invitedUserId === user?.id && invite.status === 'pending',
@@ -431,44 +444,48 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
               const pendingInviteDisplayStatus = pendingInvite
                 ? getTastingInviteDisplayStatus(pendingInvite, session)
                 : null;
+              const isLast = session.id === activeSessions[activeSessions.length - 1]?.id;
               return (
-                <Card key={session.id}>
-                  <ListItem
-                    description={`${session.joinedCount}/${session.maxParticipants} joined`}
+                <View key={session.id}>
+                  <OptionListRow
+                    isLast={isLast && !pendingInvite}
                     onPress={() => navigateToTastingSession(navigation, session)}
-                    title={session.name}
-                    trailing={
+                    rightAccessory={
                       <StatusPill
                         label={formatTastingSessionStatusLabel(session.status)}
                         tone={resolveTastingSessionStatusTone(session.status)}
                       />
                     }
+                    subtitle={`${session.joinedCount}/${session.maxParticipants} joined`}
+                    title={session.name}
                   />
                   {pendingInvite ? (
-                    <View style={styles.actions}>
-                      {pendingInviteDisplayStatus === 'expired' ? (
-                        <StatusPill label="Expired" tone="muted" />
-                      ) : (
+                    <OptionListInlineBody withBottomDivider={!isLast}>
+                      <View style={styles.actions}>
+                        {pendingInviteDisplayStatus === 'expired' ? (
+                          <StatusPill label="Expired" tone="muted" />
+                        ) : (
+                          <Button
+                            disabled={!isOnline}
+                            label="Join Invite"
+                            onPress={() => void handleAcceptInvite(session)}
+                            style={styles.action}
+                          />
+                        )}
                         <Button
                           disabled={!isOnline}
-                          label="Join Invite"
-                          onPress={() => void handleAcceptInvite(session)}
+                          label="Dismiss"
+                          onPress={() => void handleDismissInvite(session)}
                           style={styles.action}
+                          variant="secondary"
                         />
-                      )}
-                      <Button
-                        disabled={!isOnline}
-                        label="Dismiss"
-                        onPress={() => void handleDismissInvite(session)}
-                        style={styles.action}
-                        variant="secondary"
-                      />
-                    </View>
+                      </View>
+                    </OptionListInlineBody>
                   ) : null}
-                </Card>
+                </View>
               );
             })}
-          </View>
+          </OptionList>
         </View>
       ) : null}
 

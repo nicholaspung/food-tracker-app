@@ -211,9 +211,17 @@ export interface AddRestaurantVisitRatingsToListInput {
 export interface SaveRestaurantFoodItemToListInput {
   listId: string;
   restaurantId: string;
-  foodItemId: string;
+  foodItemId?: string;
+  menuItemId?: string;
   note?: string;
   sourceUserId?: string;
+}
+
+export interface RemoveRestaurantFoodItemBookmarkFromListInput {
+  listId: string;
+  restaurantId: string;
+  foodItemId?: string;
+  menuItemId?: string;
 }
 
 export interface SaveRestaurantToDefaultListInput {
@@ -624,6 +632,7 @@ export {
   listRestaurantListsPage,
   moveRestaurantListRestaurant,
   regenerateRestaurantListShareLink,
+  removeRestaurantFoodItemBookmarkFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,

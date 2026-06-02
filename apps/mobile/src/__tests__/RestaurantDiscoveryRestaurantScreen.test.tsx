@@ -9,6 +9,7 @@ const mockReact = React;
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 const mockSaveBookmarkToDefaultList = jest.fn();
+const mockRemoveBookmarkFromDefaultList = jest.fn();
 const mockSetRestaurantListWriteErrorMessage = jest.fn();
 let mockIsOnline = true;
 
@@ -48,6 +49,7 @@ jest.mock('../features/store/useRestaurantListWrites', () => ({
   useRestaurantListWrites: jest.fn(() => ({
     errorMessage: null,
     isSubmitting: false,
+    removeBookmarkFromDefaultList: mockRemoveBookmarkFromDefaultList,
     saveBookmarkToDefaultList: mockSaveBookmarkToDefaultList,
     setErrorMessage: mockSetRestaurantListWriteErrorMessage,
   })),
@@ -86,6 +88,9 @@ jest.mock('../theme', () => ({
       factory(
         {
           colors: {
+            border: {
+              subtle: 'border-subtle',
+            },
             status: {
               successBg: 'success-bg',
               successBorder: 'success-border',
@@ -157,6 +162,8 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     mockIsOnline = true;
     mockNavigate.mockReset();
     mockGoBack.mockReset();
+    mockRemoveBookmarkFromDefaultList.mockReset();
+    mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveBookmarkToDefaultList.mockReset();
     mockSaveBookmarkToDefaultList.mockResolvedValue({ status: 'completed', result: [[]] });
     mockSetRestaurantListWriteErrorMessage.mockReset();
@@ -284,7 +291,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     expect(mockSetRestaurantListWriteErrorMessage).toHaveBeenCalledWith(null);
     expect(mockSaveBookmarkToDefaultList).toHaveBeenCalledWith({
       bookmark: {
-        foodItemId: 'menu-item-1',
+        menuItemId: 'menu-item-1',
         restaurantId: 'restaurant-1',
       },
       defaultListId: 'default_list',
@@ -292,7 +299,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     });
   });
 
-  it('shows existing default-list menu item bookmarks as saved', () => {
+  it('removes existing default-list menu item bookmarks', async () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes('default')) {
@@ -310,7 +317,7 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
                 restaurantId: 'restaurant-1',
                 bookmarkedItems: [
                   {
-                    userFoodItemId: 'menu-item-1',
+                    menuItemId: 'menu-item-1',
                   },
                 ],
               },
@@ -363,11 +370,19 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     const bookmarkButton = trailingRenderer.root.findByType('WantToTryBookmarkButton');
     expect(bookmarkButton.props.saved).toBe(true);
 
-    act(() => {
-      bookmarkButton.props.onPress();
+    await act(async () => {
+      await bookmarkButton.props.onPress();
     });
 
     expect(mockSaveBookmarkToDefaultList).not.toHaveBeenCalled();
+    expect(mockRemoveBookmarkFromDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        menuItemId: 'menu-item-1',
+        restaurantId: 'restaurant-1',
+      },
+      defaultListId: 'default_list',
+      sourceListId: 'default_list',
+    });
   });
 
   it('disables scan menu items while offline', () => {

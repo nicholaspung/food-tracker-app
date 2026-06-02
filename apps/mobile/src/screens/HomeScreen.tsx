@@ -276,6 +276,10 @@ const HOME_FEED_SEARCH_DEBOUNCE_MS = 300;
 const VISIT_FOCUS_HIGHLIGHT_DURATION_MS = 2400;
 const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
 
+function getFriendFeedBookmarkKey(item: VisitRecord['items'][number]): string {
+  return item.menuItemId?.trim() || item.id;
+}
+
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
   const mineFeedListRef = useRef<FlatList<FeedItem> | null>(null);
@@ -317,6 +321,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [pendingFocusVisitId, setPendingFocusVisitId] = useState<string | null>(null);
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
   const [locallySavedFriendFeedItemIds, setLocallySavedFriendFeedItemIds] = useState<Set<string>>(new Set());
+  const [locallyRemovedFriendFeedItemIds, setLocallyRemovedFriendFeedItemIds] = useState<Set<string>>(new Set());
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
@@ -505,13 +510,19 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         if (bookmarkedItem.userFoodItemId) {
           ids.add(bookmarkedItem.userFoodItemId);
         }
+        if (bookmarkedItem.menuItemId) {
+          ids.add(bookmarkedItem.menuItemId);
+        }
         if (bookmarkedItem.id) {
           ids.add(bookmarkedItem.id);
         }
       }
     }
+    for (const foodItemId of locallyRemovedFriendFeedItemIds) {
+      ids.delete(foodItemId);
+    }
     return ids;
-  }, [defaultListDetailQuery.data?.items, locallySavedFriendFeedItemIds]);
+  }, [defaultListDetailQuery.data?.items, locallyRemovedFriendFeedItemIds, locallySavedFriendFeedItemIds]);
 
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
@@ -958,32 +969,38 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   const handleSaveFriendFeedItemToWantToTry = useCallback(
     async ({
+      bookmarkKey,
       foodItemId,
-      itemName,
+      menuItemId,
       note,
       restaurantId,
       sourceUserId,
     }: {
+      bookmarkKey: string;
       foodItemId: string;
-      itemName: string;
+      menuItemId?: string;
       note?: string;
       restaurantId: string;
       sourceUserId?: string;
     }) => {
-      if (savedFriendFeedItemIds.has(foodItemId)) {
+      if (savedFriendFeedItemIds.has(bookmarkKey)) {
         return;
       }
 
       restaurantListWrites.setErrorMessage(null);
-      setLocallySavedFriendFeedItemIds((current) => new Set(current).add(foodItemId));
+      setLocallySavedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
+      setLocallyRemovedFriendFeedItemIds((current) => {
+        const next = new Set(current);
+        next.delete(bookmarkKey);
+        return next;
+      });
 
       try {
         const result = await restaurantListWrites.saveBookmarkToDefaultList({
           bookmark: {
             restaurantId,
-            foodItemId,
+            ...(menuItemId ? { menuItemId } : { foodItemId, sourceUserId }),
             note,
-            sourceUserId,
           },
           defaultListId,
           sourceListId: defaultListId ?? 'default',
@@ -1002,14 +1019,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         });
         trackProductEvent('social.recommendation_saved', {
           entryMethod: 'home_friend_feed_default',
-          itemName,
           source: 'HomeScreen',
           targetListCount: 1,
         });
       } catch {
         setLocallySavedFriendFeedItemIds((current) => {
           const next = new Set(current);
-          next.delete(foodItemId);
+          next.delete(bookmarkKey);
           return next;
         });
       }
@@ -1018,6 +1034,64 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       defaultListDetailQuery,
       defaultListId,
       defaultListQuery,
+      restaurantListWrites,
+      savedFriendFeedItemIds,
+    ],
+  );
+
+  const handleRemoveFriendFeedItemFromWantToTry = useCallback(
+    async ({
+      bookmarkKey,
+      foodItemId,
+      menuItemId,
+      restaurantId,
+    }: {
+      bookmarkKey: string;
+      foodItemId: string;
+      menuItemId?: string;
+      restaurantId: string;
+    }) => {
+      if (!defaultListId || !savedFriendFeedItemIds.has(bookmarkKey)) {
+        return;
+      }
+
+      restaurantListWrites.setErrorMessage(null);
+      setLocallyRemovedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
+      setLocallySavedFriendFeedItemIds((current) => {
+        const next = new Set(current);
+        next.delete(bookmarkKey);
+        return next;
+      });
+
+      try {
+        const result = await restaurantListWrites.removeBookmarkFromDefaultList({
+          bookmark: {
+            restaurantId,
+            ...(menuItemId ? { menuItemId } : { foodItemId }),
+          },
+          defaultListId,
+          sourceListId: defaultListId,
+        });
+
+        if (result.status === 'completed') {
+          void defaultListDetailQuery.refetch();
+        }
+
+        trackObservabilityEvent('HOME_FRIEND_RECOMMENDATION_BOOKMARK_REMOVED', {
+          source: 'HomeScreen',
+          status: result.status,
+        });
+      } catch {
+        setLocallyRemovedFriendFeedItemIds((current) => {
+          const next = new Set(current);
+          next.delete(bookmarkKey);
+          return next;
+        });
+      }
+    },
+    [
+      defaultListDetailQuery,
+      defaultListId,
       restaurantListWrites,
       savedFriendFeedItemIds,
     ],
@@ -1217,19 +1291,32 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             renderItemBookmark={
               feedItem.isFriend && visit.restaurantId
                 ? (item) => {
-                    const isSaved = savedFriendFeedItemIds.has(item.id);
+                    const bookmarkKey = getFriendFeedBookmarkKey(item);
+                    const menuItemId = item.menuItemId?.trim() || undefined;
+                    const isSaved = savedFriendFeedItemIds.has(bookmarkKey);
                     return (
                       <WantToTryBookmarkButton
                         accessibilityLabel={
                           isSaved
-                            ? `${item.name} is saved to Want to Try`
+                            ? `Remove ${item.name} from Want to Try`
                             : `Save ${item.name} to Want to Try`
                         }
                         loading={restaurantListWrites.isSubmitting && !isSaved}
                         onPress={() => {
+                          if (isSaved) {
+                            void handleRemoveFriendFeedItemFromWantToTry({
+                              bookmarkKey,
+                              foodItemId: item.id,
+                              menuItemId,
+                              restaurantId: visit.restaurantId ?? '',
+                            });
+                            return;
+                          }
+
                           void handleSaveFriendFeedItemToWantToTry({
+                            bookmarkKey,
                             foodItemId: item.id,
-                            itemName: item.name,
+                            menuItemId,
                             note: item.notes,
                             restaurantId: visit.restaurantId ?? '',
                             sourceUserId: visit.userId,
@@ -1237,6 +1324,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                         }}
                         saved={isSaved}
                         testID={`home-friend-feed-bookmark-${item.id}`}
+                        variant="compact"
                       />
                     );
                   }
@@ -1305,6 +1393,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     },
     [
       buildVisitShareItems,
+      handleRemoveFriendFeedItemFromWantToTry,
       handleSaveFriendFeedItemToWantToTry,
       handleSharePhoto,
       handleShareVisit,

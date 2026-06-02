@@ -13,6 +13,7 @@ import (
 type restaurantListSaveBookmarkRequest struct {
 	RestaurantID string  `json:"restaurantId"`
 	FoodItemID   string  `json:"foodItemId"`
+	MenuItemID   string  `json:"menuItemId"`
 	Note         *string `json:"note"`
 	SourceUserID string  `json:"sourceUserId"`
 }
@@ -84,6 +85,43 @@ func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
 		var responsePayload restaurantListMutationGroupResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			restaurantID, err := saveRestaurantListBookmarkTransaction(txApp, e.Auth, listID, requestBody)
+			if err != nil {
+				return err
+			}
+
+			responsePayload, err = buildRestaurantListMutationGroupResponse(
+				txApp,
+				e.Auth.Id,
+				e.Auth.GetBool("isAdmin"),
+				listID,
+				restaurantID,
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load updated restaurant list items", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/bookmarks/remove", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if listID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		requestBody := restaurantListSaveBookmarkRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload restaurantListMutationGroupResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			restaurantID, err := removeRestaurantListBookmarkTransaction(txApp, e.Auth, listID, requestBody)
 			if err != nil {
 				return err
 			}
@@ -324,6 +362,57 @@ func saveRestaurantListBookmarkTransaction(
 	}
 
 	foodItemID := strings.TrimSpace(requestBody.FoodItemID)
+	menuItemID := strings.TrimSpace(requestBody.MenuItemID)
+	if foodItemID != "" && menuItemID != "" {
+		return "", apis.NewBadRequestError("only one bookmark item can be saved at a time", nil)
+	}
+
+	if menuItemID != "" {
+		if !listRecord.GetBool("isDefault") {
+			return "", apis.NewBadRequestError("menu item bookmarks can only be saved to the default Want to Try list", nil)
+		}
+
+		menuItemRecord, err := findVisibleMenuItemForRestaurant(app, authRecord, menuItemID, restaurantID)
+		if err != nil {
+			return "", err
+		}
+
+		existingItem, err := findRestaurantListItemByMenuItem(app, listRecord.Id, menuItemRecord.Id)
+		if err != nil {
+			return "", apis.NewApiError(500, "failed to load existing restaurant list item", err)
+		}
+		if existingItem != nil {
+			return restaurantID, nil
+		}
+
+		nextPosition, err := nextRestaurantListItemPosition(app, listRecord.Id)
+		if err != nil {
+			return "", apis.NewApiError(500, "failed to resolve next list position", err)
+		}
+
+		listItemsCollection, err := app.FindCollectionByNameOrId("list_items")
+		if err != nil {
+			return "", apis.NewApiError(500, "internal error", err)
+		}
+
+		record := core.NewRecord(listItemsCollection)
+		record.Set("list", listRecord.Id)
+		record.Set("restaurant", restaurantID)
+		record.Set("addedBy", authRecord.Id)
+		record.Set("menuItem", menuItemRecord.Id)
+		record.Set("position", nextPosition)
+		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
+
+		if err := app.Save(record); err != nil {
+			if !isUniqueConstraintError(err) {
+				return "", apis.NewApiError(500, "failed to save menu item to default list", err)
+			}
+			return restaurantID, nil
+		}
+
+		return restaurantID, nil
+	}
+
 	if foodItemID == "" {
 		if !listRecord.GetBool("isDefault") {
 			return "", apis.NewBadRequestError("restaurant-only bookmarks can only be saved to the default Want to Try list", nil)
@@ -432,6 +521,60 @@ func saveRestaurantListBookmarkTransaction(
 		}
 
 		return "", apis.NewApiError(500, "failed to save bookmark to restaurant list", err)
+	}
+
+	return restaurantID, nil
+}
+
+func removeRestaurantListBookmarkTransaction(
+	app core.App,
+	authRecord *core.Record,
+	listID string,
+	requestBody restaurantListSaveBookmarkRequest,
+) (string, error) {
+	listRecord, err := findOwnedRestaurantListRecord(app, listID, authRecord.Id)
+	if err != nil {
+		return "", err
+	}
+
+	if !listRecord.GetBool("isDefault") {
+		return "", apis.NewBadRequestError("Want to Try bookmarks can only be removed from the default list", nil)
+	}
+
+	restaurantID := strings.TrimSpace(requestBody.RestaurantID)
+	if restaurantID == "" {
+		return "", apis.NewBadRequestError("restaurantId is required", nil)
+	}
+
+	foodItemID := strings.TrimSpace(requestBody.FoodItemID)
+	menuItemID := strings.TrimSpace(requestBody.MenuItemID)
+	if foodItemID != "" && menuItemID != "" {
+		return "", apis.NewBadRequestError("only one bookmark item can be removed at a time", nil)
+	}
+
+	var targetItem *core.Record
+	if menuItemID != "" {
+		if _, err := findVisibleMenuItemForRestaurant(app, authRecord, menuItemID, restaurantID); err != nil {
+			return "", err
+		}
+		targetItem, err = findRestaurantListItemByMenuItem(app, listRecord.Id, menuItemID)
+	} else if foodItemID != "" {
+		targetItem, err = findRestaurantListItemByFoodItem(app, listRecord.Id, foodItemID)
+	} else {
+		targetItem, err = findRestaurantOnlyListItem(app, listRecord.Id, restaurantID)
+	}
+	if err != nil {
+		return "", apis.NewApiError(500, "failed to load existing restaurant list item", err)
+	}
+	if targetItem == nil {
+		return restaurantID, nil
+	}
+	if strings.TrimSpace(targetItem.GetString("restaurant")) != restaurantID {
+		return "", apis.NewBadRequestError("bookmark does not belong to this restaurant", nil)
+	}
+
+	if err := app.Delete(targetItem); err != nil {
+		return "", apis.NewApiError(500, "failed to remove Want to Try bookmark", err)
 	}
 
 	return restaurantID, nil
@@ -1036,6 +1179,69 @@ func findRestaurantListItemByFoodItem(app core.App, listID string, foodItemID st
 	return record, nil
 }
 
+func findRestaurantListItemByMenuItem(app core.App, listID string, menuItemID string) (*core.Record, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"list_items",
+		"list = {:listId} && menuItem = {:menuItemId}",
+		dbx.Params{
+			"listId":     listID,
+			"menuItemId": menuItemID,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func findRestaurantOnlyListItem(app core.App, listID string, restaurantID string) (*core.Record, error) {
+	records, err := listRestaurantListGroupRecords(app, listID, restaurantID, "position,created")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, record := range records {
+		if isRestaurantOnlyListItem(record) {
+			return record, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func findVisibleMenuItemForRestaurant(
+	app core.App,
+	authRecord *core.Record,
+	menuItemID string,
+	restaurantID string,
+) (*core.Record, error) {
+	record, err := app.FindRecordById("menu_items", menuItemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("menu item not found", err)
+		}
+		return nil, apis.NewApiError(500, "failed to load menu item", err)
+	}
+
+	if strings.TrimSpace(record.GetString("restaurant")) != restaurantID {
+		return nil, apis.NewBadRequestError("menu item does not belong to this restaurant", nil)
+	}
+
+	acceptedFriendIDs, err := listAcceptedFriendIDs(app, authRecord.Id)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to verify menu item visibility", err)
+	}
+	if !canAccessMenuItemRecord(record, authRecord.Id, authRecord.GetBool("isAdmin"), acceptedFriendIDs) {
+		return nil, apis.NewForbiddenError("you cannot use that menu item in this restaurant list", nil)
+	}
+
+	return record, nil
+}
+
 func listRestaurantListGroupRecords(
 	app core.App,
 	listID string,
@@ -1174,9 +1380,11 @@ func buildRestaurantListDetailItemResponses(
 	restaurantIDs := make([]string, 0, len(listItemRecords))
 	sourceUserIDs := make([]string, 0, len(listItemRecords))
 	foodItemIDs := make([]string, 0, len(listItemRecords)*3)
+	menuItemIDs := make([]string, 0, len(listItemRecords))
 	restaurantIDSet := map[string]struct{}{}
 	sourceUserIDSet := map[string]struct{}{}
 	foodItemIDSet := map[string]struct{}{}
+	menuItemIDSet := map[string]struct{}{}
 
 	for _, listItem := range listItemRecords {
 		restaurantIDs = appendUniqueTrimmedID(restaurantIDs, restaurantIDSet, listItem.GetString("restaurant"))
@@ -1186,6 +1394,7 @@ func buildRestaurantListDetailItemResponses(
 		for _, recommendedItemID := range listItem.GetStringSlice("recommendedItems") {
 			foodItemIDs = appendUniqueTrimmedID(foodItemIDs, foodItemIDSet, recommendedItemID)
 		}
+		menuItemIDs = appendUniqueTrimmedID(menuItemIDs, menuItemIDSet, listItem.GetString("menuItem"))
 	}
 
 	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
@@ -1232,6 +1441,18 @@ func buildRestaurantListDetailItemResponses(
 	}
 	foodItemsByID := mapRecordsByID(accessibleFoodItems)
 
+	menuItemRecords, err := findRecordsByIDs(app, "menu_items", menuItemIDs)
+	if err != nil {
+		return nil, err
+	}
+	accessibleMenuItems := make([]*core.Record, 0, len(menuItemRecords))
+	for _, menuItem := range menuItemRecords {
+		if canAccessMenuItemRecord(menuItem, userID, isAdmin, acceptedFriendIDs) {
+			accessibleMenuItems = append(accessibleMenuItems, menuItem)
+		}
+	}
+	menuItemsByID := mapRecordsByID(accessibleMenuItems)
+
 	userRecords, err := findRecordsByIDs(app, "users", sourceUserIDs)
 	if err != nil {
 		return nil, err
@@ -1264,6 +1485,7 @@ func buildRestaurantListDetailItemResponses(
 			listItem,
 			usersByID,
 			foodItemsByID,
+			menuItemsByID,
 			visitsByID,
 		)
 		if isRestaurantOnlyListItem(listItem) {

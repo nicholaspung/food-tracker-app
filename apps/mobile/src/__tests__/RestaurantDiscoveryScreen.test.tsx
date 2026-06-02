@@ -21,6 +21,7 @@ const mockSetSearchQuery = jest.fn();
 const mockPickImageAssets = jest.fn();
 const mockInvalidateQueries = jest.fn();
 const mockSaveRestaurantToDefaultList = jest.fn();
+const mockRemoveBookmarkFromDefaultList = jest.fn();
 const mockSetRestaurantListWriteErrorMessage = jest.fn();
 
 jest.mock('expo-clipboard', () => ({
@@ -117,6 +118,7 @@ jest.mock('../features/store/useRestaurantListWrites', () => ({
   useRestaurantListWrites: jest.fn(() => ({
     errorMessage: null,
     isSubmitting: false,
+    removeBookmarkFromDefaultList: mockRemoveBookmarkFromDefaultList,
     saveRestaurantToDefaultList: mockSaveRestaurantToDefaultList,
     setErrorMessage: mockSetRestaurantListWriteErrorMessage,
   })),
@@ -242,6 +244,8 @@ describe('RestaurantDiscoveryScreen', () => {
       status: 'success',
     });
     mockInvalidateQueries.mockReset();
+    mockRemoveBookmarkFromDefaultList.mockReset();
+    mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveRestaurantToDefaultList.mockReset();
     mockSaveRestaurantToDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSetRestaurantListWriteErrorMessage.mockReset();
@@ -510,7 +514,7 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledTimes(1);
   });
 
-  it('shows existing default-list restaurant bookmarks as saved', () => {
+  it('removes existing default-list restaurant bookmarks', async () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes('default')) {
@@ -554,11 +558,18 @@ describe('RestaurantDiscoveryScreen', () => {
 
     expect(trailingRenderer.root.findByType('WantToTryBookmarkButton').props.saved).toBe(true);
 
-    act(() => {
-      trailingRenderer.root.findByType('WantToTryBookmarkButton').props.onPress();
+    await act(async () => {
+      await trailingRenderer.root.findByType('WantToTryBookmarkButton').props.onPress();
     });
 
     expect(mockSaveRestaurantToDefaultList).not.toHaveBeenCalled();
+    expect(mockRemoveBookmarkFromDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        restaurantId: 'restaurant-1',
+      },
+      defaultListId: 'default_list',
+      sourceListId: 'default_list',
+    });
   });
 
   it('places add new restaurant in the expanded search footer with detail return target', () => {

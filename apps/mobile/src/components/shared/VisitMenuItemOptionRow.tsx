@@ -143,6 +143,7 @@ export function VisitMenuItemOptionRow({
 }: VisitMenuItemOptionRowProps) {
   const theme = useTheme();
   const resolvedVisibility = normalizeMenuItemVisibility(visibility);
+  const shouldShowVisibilityBadge = resolvedVisibility !== 'public';
   const trimmedDescription = description?.trim() || '';
   const normalizedEatenCount =
     typeof userEatenCount === 'number' && Number.isFinite(userEatenCount)
@@ -183,7 +184,7 @@ export function VisitMenuItemOptionRow({
 
         <View style={styles.metaRow}>
           <View style={styles.badgeRow}>
-            <VisibilityBadge value={resolvedVisibility} />
+            {shouldShowVisibilityBadge ? <VisibilityBadge value={resolvedVisibility} /> : null}
             {normalizedEatenCount > 0 ? (
               <View style={styles.eatenBadge}>
                 <Ionicons

@@ -42,6 +42,7 @@ type restaurantListDetailBookmarkedItemResponse struct {
 	ListItemID            string  `json:"listItemId"`
 	Name                  string  `json:"name"`
 	Rating                float64 `json:"rating"`
+	MenuItemID            string  `json:"menuItemId,omitempty"`
 	VisitedAt             string  `json:"visitedAt,omitempty"`
 	SourceUserID          string  `json:"sourceUserId,omitempty"`
 	SourceUserName        string  `json:"sourceUserName,omitempty"`
@@ -629,9 +630,11 @@ func getRestaurantListDetailResponse(
 	restaurantIDs := make([]string, 0, len(listItemRecords))
 	sourceUserIDs := make([]string, 0, len(listItemRecords)+1)
 	foodItemIDs := make([]string, 0, len(listItemRecords)*3)
+	menuItemIDs := make([]string, 0, len(listItemRecords))
 	restaurantIDSet := map[string]struct{}{}
 	sourceUserIDSet := map[string]struct{}{}
 	foodItemIDSet := map[string]struct{}{}
+	menuItemIDSet := map[string]struct{}{}
 
 	sourceUserIDs = appendUniqueTrimmedID(sourceUserIDs, sourceUserIDSet, listRecord.GetString("user"))
 
@@ -643,6 +646,7 @@ func getRestaurantListDetailResponse(
 		for _, recommendedItemID := range listItem.GetStringSlice("recommendedItems") {
 			foodItemIDs = appendUniqueTrimmedID(foodItemIDs, foodItemIDSet, recommendedItemID)
 		}
+		menuItemIDs = appendUniqueTrimmedID(menuItemIDs, menuItemIDSet, listItem.GetString("menuItem"))
 	}
 
 	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
@@ -683,6 +687,18 @@ func getRestaurantListDetailResponse(
 		}
 	}
 	foodItemsByID := mapRecordsByID(accessibleFoodItems)
+
+	menuItemRecords, err := findRecordsByIDs(app, "menu_items", menuItemIDs)
+	if err != nil {
+		return response, err
+	}
+	accessibleMenuItems := make([]*core.Record, 0, len(menuItemRecords))
+	for _, menuItem := range menuItemRecords {
+		if canAccessMenuItemRecord(menuItem, userID, isAdmin, acceptedFriendIDs) {
+			accessibleMenuItems = append(accessibleMenuItems, menuItem)
+		}
+	}
+	menuItemsByID := mapRecordsByID(accessibleMenuItems)
 
 	response.List = buildRestaurantListDetailListResponse(listRecord)
 
@@ -739,6 +755,7 @@ func getRestaurantListDetailResponse(
 			listItem,
 			usersByID,
 			foodItemsByID,
+			menuItemsByID,
 			visitsByID,
 		)
 		itemResponse.BookmarkedItems = bookmarkedItems
@@ -1434,6 +1451,7 @@ func isRestaurantOnlyListItem(record *core.Record) bool {
 
 	return strings.TrimSpace(record.GetString("foodItem")) == "" &&
 		strings.TrimSpace(record.GetString("userFoodItem")) == "" &&
+		strings.TrimSpace(record.GetString("menuItem")) == "" &&
 		len(record.GetStringSlice("recommendedItems")) == 0
 }
 
@@ -1458,6 +1476,7 @@ func buildRestaurantListDetailBookmarkedItems(
 	listItem *core.Record,
 	usersByID map[string]*core.Record,
 	foodItemsByID map[string]*core.Record,
+	menuItemsByID map[string]*core.Record,
 	visitsByID map[string]*core.Record,
 ) []restaurantListDetailBookmarkedItemResponse {
 	userFoodItem := foodItemsByID[strings.TrimSpace(listItem.GetString("userFoodItem"))]
@@ -1475,6 +1494,19 @@ func buildRestaurantListDetailBookmarkedItems(
 				userFoodItem,
 				visitsByID,
 			),
+		}
+	}
+
+	menuItemID := strings.TrimSpace(listItem.GetString("menuItem"))
+	if menuItem := menuItemsByID[menuItemID]; menuItem != nil {
+		return []restaurantListDetailBookmarkedItemResponse{
+			{
+				ID:         menuItem.Id,
+				ListItemID: listItem.Id,
+				Name:       defaultString(strings.TrimSpace(menuItem.GetString("name")), "Unknown item"),
+				Rating:     0,
+				MenuItemID: menuItem.Id,
+			},
 		}
 	}
 
@@ -1582,7 +1614,8 @@ func buildRestaurantListDetailBookmarkLookupFilter(userID string, bookmarkLookup
 		paramKey := fmt.Sprintf("lookupId%d", index)
 		params[paramKey] = trimmedID
 		clauses = append(clauses, fmt.Sprintf(
-			"(foodItem = {:%s} || userFoodItem = {:%s} || recommendedItems ?= {:%s})",
+			"(foodItem = {:%s} || userFoodItem = {:%s} || recommendedItems ?= {:%s} || menuItem = {:%s})",
+			paramKey,
 			paramKey,
 			paramKey,
 			paramKey,
@@ -1602,6 +1635,7 @@ func restaurantListDetailLookupIDsForRecord(record *core.Record) []string {
 
 	lookupIDs = appendUniqueTrimmedID(lookupIDs, lookupIDSet, record.GetString("foodItem"))
 	lookupIDs = appendUniqueTrimmedID(lookupIDs, lookupIDSet, record.GetString("userFoodItem"))
+	lookupIDs = appendUniqueTrimmedID(lookupIDs, lookupIDSet, record.GetString("menuItem"))
 	for _, recommendedItemID := range record.GetStringSlice("recommendedItems") {
 		lookupIDs = appendUniqueTrimmedID(lookupIDs, lookupIDSet, recommendedItemID)
 	}

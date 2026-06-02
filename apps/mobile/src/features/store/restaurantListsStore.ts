@@ -14,6 +14,7 @@ import type {
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
   PaginatedResult,
+  RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
   SaveRestaurantFoodItemToListInput,
@@ -47,6 +48,7 @@ export type {
   ListRestaurantListVisitedRestaurantsPageInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
+  RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
   SaveRestaurantFoodItemToListInput,
@@ -79,6 +81,7 @@ interface RestaurantListDetailApiBookmarkedItemRecord {
   listItemId: string;
   name: string;
   rating: number;
+  menuItemId?: string;
   visitedAt?: string;
   sourceUserId?: string;
   sourceUserName?: string;
@@ -277,6 +280,7 @@ function mapRestaurantListDetailBookmarkedItemRecord(
     listItemId: record.listItemId,
     name: record.name.trim(),
     rating: record.rating,
+    menuItemId: record.menuItemId?.trim() || undefined,
     visitedAt: record.visitedAt,
     sourceUserId: record.sourceUserId?.trim() || undefined,
     sourceUserName: record.sourceUserName?.trim() || undefined,
@@ -905,7 +909,8 @@ export async function saveRestaurantFoodItemToList(
       getAuthenticatedUserId();
       const listId = input.listId.trim();
       const restaurantId = input.restaurantId.trim();
-      const foodItemId = input.foodItemId.trim();
+      const foodItemId = input.foodItemId?.trim() || undefined;
+      const menuItemId = input.menuItemId?.trim() || undefined;
       const sourceUserId = input.sourceUserId?.trim() || undefined;
       const trimmedNote = input.note?.trim() || undefined;
 
@@ -917,8 +922,8 @@ export async function saveRestaurantFoodItemToList(
         throw new Error('Restaurant is required.');
       }
 
-      if (!foodItemId) {
-        throw new Error('Food item is required.');
+      if (foodItemId && menuItemId) {
+        throw new Error('Only one bookmark item can be saved at a time.');
       }
 
       const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
@@ -929,6 +934,7 @@ export async function saveRestaurantFoodItemToList(
           body: {
             restaurantId,
             foodItemId,
+            menuItemId,
             sourceUserId,
             note: trimmedNote,
           },
@@ -940,6 +946,53 @@ export async function saveRestaurantFoodItemToList(
     {
       hasSourceUser: Boolean(input.sourceUserId?.trim()),
       hasNote: Boolean(input.note?.trim()),
+    },
+  );
+}
+
+export async function removeRestaurantFoodItemBookmarkFromList(
+  input: RemoveRestaurantFoodItemBookmarkFromListInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListItemRecord[]> {
+  return trackFeatureMutation(
+    'restaurant_list.food_item_bookmark.remove',
+    async () => {
+      getAuthenticatedUserId();
+      const listId = input.listId.trim();
+      const restaurantId = input.restaurantId.trim();
+      const foodItemId = input.foodItemId?.trim() || undefined;
+      const menuItemId = input.menuItemId?.trim() || undefined;
+
+      if (!listId) {
+        throw new Error('List is required.');
+      }
+
+      if (!restaurantId) {
+        throw new Error('Restaurant is required.');
+      }
+
+      if (foodItemId && menuItemId) {
+        throw new Error('Only one bookmark item can be removed at a time.');
+      }
+
+      const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
+        `/api/restaurant-lists/${encodeURIComponent(listId)}/bookmarks/remove`,
+        {
+          method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          body: {
+            restaurantId,
+            foodItemId,
+            menuItemId,
+          },
+        },
+      );
+
+      return mapRestaurantListMutationGroupItems(response);
+    },
+    {
+      hasFoodItem: Boolean(input.foodItemId?.trim()),
+      hasMenuItem: Boolean(input.menuItemId?.trim()),
     },
   );
 }

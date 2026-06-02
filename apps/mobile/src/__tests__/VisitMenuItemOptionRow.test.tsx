@@ -62,6 +62,53 @@ jest.mock('../components/shared/VisibilityBadge', () => ({
 }));
 
 describe('VisitMenuItemOptionRow', () => {
+  it('does not render a visibility badge for public menu items', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          visibility="public"
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType('VisibilityBadge')).toHaveLength(0);
+  });
+
+  it('keeps friends and private visibility badges for menu items', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          visibility="friends"
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('VisibilityBadge').props.value).toBe('friends');
+
+    await act(async () => {
+      renderer.update(
+        <VisitMenuItemOptionRow
+          name="Iced Latte"
+          onPress={jest.fn()}
+          selected={false}
+          visibility="private"
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('VisibilityBadge').props.value).toBe('private');
+  });
+
   it('renders eaten count badges only when a menu item has history', async () => {
     let renderer: any = null;
 

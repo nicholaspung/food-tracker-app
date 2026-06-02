@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '../../ui/AppIcon';
 import { useTheme } from '../../theme';
 
+type WantToTryBookmarkButtonVariant = 'card' | 'compact' | 'inline';
+
 interface WantToTryBookmarkButtonProps {
   accessibilityLabel: string;
   disabled?: boolean;
@@ -10,6 +12,7 @@ interface WantToTryBookmarkButtonProps {
   onPress: () => void;
   saved: boolean;
   testID?: string;
+  variant?: WantToTryBookmarkButtonVariant;
 }
 
 export function WantToTryBookmarkButton({
@@ -19,27 +22,37 @@ export function WantToTryBookmarkButton({
   onPress,
   saved,
   testID,
+  variant = 'card',
 }: WantToTryBookmarkButtonProps) {
   const theme = useTheme();
-  const isDisabled = disabled || loading || saved;
+  const isDisabled = disabled || loading;
   const iconColor = saved ? theme.colors.text.warning : theme.colors.text.secondary;
+  const buttonSize = variant === 'card' ? 40 : variant === 'compact' ? 30 : 26;
+  const iconSize = variant === 'card' ? 19 : variant === 'compact' ? 16 : 18;
+  const borderRadius = variant === 'compact' ? 8 : variant === 'inline' ? theme.radii.sm : theme.radii.md;
 
   const styles = StyleSheet.create({
     button: {
       alignItems: 'center',
-      backgroundColor: saved ? theme.colors.status.warningBg : theme.colors.background.surface,
-      borderColor: saved ? theme.colors.status.warningBorder : theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: 40,
+      backgroundColor:
+        variant === 'compact'
+          ? 'transparent'
+          : variant === 'card' && saved
+            ? theme.colors.status.warningBg
+            : theme.colors.background.surface,
+      borderColor:
+        variant === 'card' && saved ? theme.colors.status.warningBorder : theme.colors.border.default,
+      borderRadius,
+      borderWidth: variant === 'inline' ? 0 : 1,
+      height: buttonSize,
       justifyContent: 'center',
-      width: 40,
+      width: buttonSize,
     },
     disabled: {
       opacity: 0.72,
     },
     pressed: {
-      backgroundColor: theme.colors.background.muted,
+      backgroundColor: variant === 'inline' ? theme.colors.status.infoBg : theme.colors.background.muted,
     },
   });
 
@@ -58,9 +71,9 @@ export function WantToTryBookmarkButton({
       testID={testID}
     >
       {loading ? (
-        <ActivityIndicator color={iconColor} />
+        <ActivityIndicator color={iconColor} size="small" />
       ) : (
-        <Ionicons color={iconColor} name={saved ? 'bookmark' : 'bookmark-outline'} size={19} />
+        <Ionicons color={iconColor} name={saved ? 'bookmark' : 'bookmark-outline'} size={iconSize} />
       )}
     </Pressable>
   );

@@ -419,6 +419,7 @@ export function RestaurantDiscoveryScreen({
   const [mapSheetTab, setMapSheetTab] = useState<RestaurantMapSheetTabId>('location');
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const [locallySavedRestaurantIds, setLocallySavedRestaurantIds] = useState<Set<string>>(() => new Set());
+  const [locallyRemovedRestaurantIds, setLocallyRemovedRestaurantIds] = useState<Set<string>>(() => new Set());
   const [showStorefrontPhotoSources, setShowStorefrontPhotoSources] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const hasAutoSearchedMapNearbyRef = useRef(false);
@@ -500,8 +501,11 @@ export function RestaurantDiscoveryScreen({
     for (const item of defaultListDetailQuery.data?.items ?? []) {
       ids.add(item.restaurantId);
     }
+    for (const restaurantId of locallyRemovedRestaurantIds) {
+      ids.delete(restaurantId);
+    }
     return ids;
-  }, [defaultListDetailQuery.data?.items, locallySavedRestaurantIds]);
+  }, [defaultListDetailQuery.data?.items, locallyRemovedRestaurantIds, locallySavedRestaurantIds]);
 
   const isBusyWithImage = isExtractingStorefront;
   const extractedNames = useMemo(() => getRestaurantNameOptions(storefrontResult), [storefrontResult]);
@@ -550,13 +554,50 @@ export function RestaurantDiscoveryScreen({
     });
   }, [navigation]);
 
-  const handleSaveRestaurantToWantToTry = useCallback(async (restaurant: RestaurantRecord) => {
+  const handleToggleRestaurantWantToTry = useCallback(async (restaurant: RestaurantRecord) => {
     if (savedRestaurantIds.has(restaurant.id)) {
+      if (!defaultListId) {
+        return;
+      }
+
+      restaurantListWrites.setErrorMessage(null);
+      setLocallyRemovedRestaurantIds((current) => new Set(current).add(restaurant.id));
+      setLocallySavedRestaurantIds((current) => {
+        const next = new Set(current);
+        next.delete(restaurant.id);
+        return next;
+      });
+
+      try {
+        const result = await restaurantListWrites.removeBookmarkFromDefaultList({
+          bookmark: {
+            restaurantId: restaurant.id,
+          },
+          defaultListId,
+          sourceListId: defaultListId,
+        });
+
+        if (result.status === 'completed') {
+          void defaultListQuery.refetch();
+          void defaultListDetailQuery.refetch();
+        }
+      } catch {
+        setLocallyRemovedRestaurantIds((current) => {
+          const next = new Set(current);
+          next.delete(restaurant.id);
+          return next;
+        });
+      }
       return;
     }
 
     restaurantListWrites.setErrorMessage(null);
     setLocallySavedRestaurantIds((current) => new Set(current).add(restaurant.id));
+    setLocallyRemovedRestaurantIds((current) => {
+      const next = new Set(current);
+      next.delete(restaurant.id);
+      return next;
+    });
 
     try {
       const result = await restaurantListWrites.saveRestaurantToDefaultList({
@@ -683,19 +724,20 @@ export function RestaurantDiscoveryScreen({
                   ? `${restaurant.name} is saved to Want to Try`
                   : `Save ${restaurant.name} to Want to Try`
               }
-              loading={restaurantListWrites.isSubmitting && !savedRestaurantIds.has(restaurant.id)}
+              loading={restaurantListWrites.isSubmitting}
               onPress={() => {
-                void handleSaveRestaurantToWantToTry(restaurant);
+                void handleToggleRestaurantWantToTry(restaurant);
               }}
               saved={savedRestaurantIds.has(restaurant.id)}
               testID={`restaurant-discovery-${source}-restaurant-bookmark-${index}`}
+              variant="inline"
             />
           </View>
         ),
       };
     },
     [
-      handleSaveRestaurantToWantToTry,
+      handleToggleRestaurantWantToTry,
       handleSelectRestaurant,
       restaurantListWrites.isSubmitting,
       savedRestaurantIds,

@@ -53,6 +53,7 @@ function createDeps(
     createRestaurantList: jest.fn(),
     deleteRestaurantList: jest.fn(),
     reorderRestaurant: jest.fn().mockResolvedValue({ result: [], status: 'completed' }),
+    removeBookmarkFromDefaultList: jest.fn().mockResolvedValue({ result: [], status: 'completed' }),
     removeRestaurantListSourceRating: jest.fn().mockResolvedValue({ result: [], status: 'completed' }),
     removeRestaurantListUserRating: jest.fn().mockResolvedValue({ result: [], status: 'completed' }),
     saveBookmarkToDefaultList: jest.fn().mockResolvedValue({ result: [], status: 'completed' }),

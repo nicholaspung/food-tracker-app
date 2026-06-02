@@ -23,6 +23,18 @@ export const TASTING_SESSION_LIFECYCLE_STEP_INDEX = {
   review: 3,
 } as const;
 
+export const TASTING_JOIN_WINDOW_DURATION_OPTIONS = [15, 30, 60, 120] as const;
+
+export function formatTastingJoinWindowDurationLabel(durationMinutes: number): string {
+  if (durationMinutes === 60) {
+    return '1 hour';
+  }
+  if (durationMinutes === 120) {
+    return '2 hours';
+  }
+  return `${durationMinutes} minutes`;
+}
+
 export function formatTastingSessionStatusLabel(status: TastingSessionStatus): string {
   switch (status) {
     case 'lobby':

@@ -326,18 +326,29 @@ describe('TastingSessionLobbyScreen', () => {
       findButton(renderer, 'Reopen Window').props.onPress();
     });
 
-    const optionTitles = renderer.root.findAllByType('OptionListRow').map((node: any) => node.props.title);
-    expect(optionTitles).toEqual(['15 minutes', '30 minutes', '1 hour', '2 hours']);
+    const durationOptions = [15, 30, 60, 120].map((durationMinutes) =>
+      renderer.root.findByProps({ testID: `tasting-join-window-duration-${durationMinutes}` }),
+    );
+    expect(durationOptions.map((node: any) => node.props.accessibilityLabel)).toEqual([
+      'Join window 15 minutes',
+      'Join window 30 minutes',
+      'Join window 1 hour',
+      'Join window 2 hours',
+    ]);
 
-    const oneHourOption = renderer.root.findAllByType('OptionListRow').find((node: any) => node.props.title === '1 hour');
     await act(async () => {
-      oneHourOption?.props.onPress();
+      renderer.root.findByProps({ testID: 'tasting-join-window-duration-120' }).props.onPress();
+    });
+
+    const modal = renderer.root.findByType('Modal');
+    await act(async () => {
+      modal.props.primaryAction.onPress();
       await Promise.resolve();
     });
 
     expect(reopenInviteWindow).toHaveBeenCalledWith({
       isOnline: true,
-      joinDurationMinutes: 60,
+      joinDurationMinutes: 120,
       sessionId: 'session_1',
     });
   });

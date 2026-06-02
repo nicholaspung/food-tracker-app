@@ -20,6 +20,7 @@ import {
   markFriendInviteAccepted,
   markNoteUsed,
   moveRestaurantListRestaurant,
+  removeRestaurantFoodItemBookmarkFromList,
   removeFriend,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
@@ -80,6 +81,7 @@ const FEATURE_OUTBOX_REPLAY_ADAPTERS: Partial<Record<FeatureOutboxOperationName,
   'list.restaurant.remove.source': replayRestaurantListRestaurantRemoveSource,
   'list.restaurant.remove.user': replayRestaurantListRestaurantRemoveUser,
   'list.bookmark.save': replayRestaurantListBookmarkSave,
+  'list.bookmark.remove': replayRestaurantListBookmarkRemove,
   'feedback.create': replayFeedbackCreate,
   'feedback.message.send': replayFeedbackMessageSend,
   'friend.accept': replayFriendAccept,
@@ -364,6 +366,7 @@ async function replayDefaultRestaurantListBookmarkSave(
       listId: defaultList.id,
       restaurantId: saveToDefaultPayload.restaurantId,
       foodItemId: saveToDefaultPayload.foodItemId,
+      menuItemId: saveToDefaultPayload.menuItemId,
       note: saveToDefaultPayload.note,
       sourceUserId: saveToDefaultPayload.sourceUserId,
     },
@@ -430,6 +433,16 @@ async function replayRestaurantListBookmarkSave(
 ): Promise<void> {
   await saveRestaurantFoodItemToList(
     payload as FeatureOutboxOperationPayloadMap['list.bookmark.save'],
+    requestOptions,
+  );
+}
+
+async function replayRestaurantListBookmarkRemove(
+  payload: unknown,
+  requestOptions: FeatureWriteRequestOptions,
+): Promise<void> {
+  await removeRestaurantFoodItemBookmarkFromList(
+    payload as FeatureOutboxOperationPayloadMap['list.bookmark.remove'],
     requestOptions,
   );
 }

@@ -12,6 +12,7 @@ interface ListDetailWantToTryBookmarkCardProps<Item> {
   isLocked?: boolean;
   items: readonly Item[];
   lockTestID?: string;
+  onDeleteRestaurantBookmark?: () => void;
   onIWentThere?: () => void;
   primaryMetaLabel: string;
   renderItem: (item: Item, itemIndex: number) => ReactNode;
@@ -62,28 +63,34 @@ const useStyles = createThemedStyles((theme) => ({
   actionsRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: theme.spacing.xs,
+    justifyContent: 'flex-end',
   },
   iWentButton: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
+    borderRadius: theme.radii.sm,
     flexDirection: 'row',
-    gap: theme.spacing.xxs,
-    minHeight: 32,
-    paddingHorizontal: theme.spacing.sm,
+    gap: 2,
+    minHeight: 22,
+    paddingHorizontal: theme.spacing.xs,
   },
   iWentButtonPressed: {
     backgroundColor: theme.colors.status.successBg,
-    borderColor: theme.colors.text.success,
   },
   iWentButtonLabel: {
     color: theme.colors.text.success,
     ...theme.typography.bodySmTightSemiBold,
+  },
+  deleteButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.sm,
+    flexDirection: 'row',
+    gap: 2,
+    minHeight: 22,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  deleteButtonPressed: {
+    backgroundColor: theme.colors.status.dangerBg,
   },
   section: {
     borderTopColor: theme.colors.border.subtle,
@@ -99,6 +106,7 @@ export function ListDetailWantToTryBookmarkCard<Item>({
   isLocked = false,
   items,
   lockTestID,
+  onDeleteRestaurantBookmark,
   onIWentThere,
   primaryMetaLabel,
   renderItem,
@@ -156,18 +164,31 @@ export function ListDetailWantToTryBookmarkCard<Item>({
         </View>
       ) : null}
 
-      {onIWentThere ? (
+      {onIWentThere || onDeleteRestaurantBookmark ? (
         <View style={styles.actionsRow}>
-          <Pressable
-            accessibilityLabel={`I went to ${restaurantName}`}
-            accessibilityRole="button"
-            onPress={onIWentThere}
-            style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
-            testID={`i-went-restaurant-bookmark-${groupIndex}`}
-          >
-            <Ionicons color={theme.colors.text.success} name="location-outline" size={13} />
-            <Text style={styles.iWentButtonLabel}>I went</Text>
-          </Pressable>
+          {onIWentThere ? (
+            <Pressable
+              accessibilityLabel={`I went to ${restaurantName}`}
+              accessibilityRole="button"
+              onPress={onIWentThere}
+              style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
+              testID={`i-went-restaurant-bookmark-${groupIndex}`}
+            >
+              <Ionicons color={theme.colors.text.success} name="location-outline" size={13} />
+              <Text style={styles.iWentButtonLabel}>I went</Text>
+            </Pressable>
+          ) : null}
+          {onDeleteRestaurantBookmark ? (
+            <Pressable
+              accessibilityLabel={`Remove ${restaurantName} from Want to Try`}
+              accessibilityRole="button"
+              onPress={onDeleteRestaurantBookmark}
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
+              testID={`delete-restaurant-bookmark-${groupIndex}`}
+            >
+              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={14} />
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 

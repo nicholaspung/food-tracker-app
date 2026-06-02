@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { Linking, Platform, Pressable, View } from 'react-native';
 
 import {
+  AuthBrandMark,
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
@@ -24,6 +25,7 @@ import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { savePendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import { env } from '../config/env';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { APP_NAME } from '../lib/branding';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
@@ -51,6 +53,24 @@ interface GroupedSharedRestaurant {
 const useStyles = createThemedStyles((theme) => ({
   container: {
     gap: theme.spacing.md,
+  },
+  guestHeader: {
+    backgroundColor: theme.colors.background.surface,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  guestHeaderBrandButton: {
+    alignSelf: 'flex-start',
+  },
+  guestHeaderTitle: {
+    color: theme.colors.text.primary,
+  },
+  guestHeaderSubtitle: {
+    color: theme.colors.text.muted,
   },
 }));
 
@@ -150,6 +170,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
   const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
+  const [marketingLinkErrorMessage, setMarketingLinkErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [saveModalError, setSaveModalError] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -255,6 +276,15 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       await Linking.openURL(env.iosAppStoreUrl);
     } catch (error) {
       setDownloadErrorMessage(error instanceof Error ? error.message : 'Could not open the app download link.');
+    }
+  };
+
+  const handleOpenMarketingPage = async () => {
+    setMarketingLinkErrorMessage(null);
+    try {
+      await Linking.openURL(env.marketingUrl);
+    } catch (error) {
+      setMarketingLinkErrorMessage(error instanceof Error ? error.message : 'Could not open the marketing page.');
     }
   };
 
@@ -380,9 +410,33 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         restaurantCount === 1 ? 'restaurant' : 'restaurants'
       }`
     : undefined;
+  const guestHeader = !isAuthenticated ? (
+    <View style={styles.guestHeader}>
+      <Pressable
+        accessibilityLabel={`Open ${APP_NAME} website`}
+        accessibilityRole="link"
+        onPress={() => {
+          void handleOpenMarketingPage();
+        }}
+        style={styles.guestHeaderBrandButton}
+        testID="shared-list-marketing-link"
+      >
+        <AuthBrandMark size="large" />
+      </Pressable>
+      <Text style={styles.guestHeaderTitle} variant="titleMd">
+        {list?.name ?? 'Shared List'}
+      </Text>
+      {subtitle ? (
+        <Text style={styles.guestHeaderSubtitle} tone="muted" variant="bodyMd">
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
+  ) : undefined;
 
   return (
     <FeatureDetailScreenScaffold
+      customHeader={guestHeader}
       headerScrollMode="fixed"
       onBackPress={handleBack}
       primaryAction={
@@ -436,6 +490,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
             {list.description ? <Text tone="secondary">{list.description}</Text> : null}
 
             <PageErrorToast errorMessage={downloadErrorMessage} title="Could not open download link" />
+            <PageErrorToast errorMessage={marketingLinkErrorMessage} title="Could not open website" />
             <PageErrorToast errorMessage={saveErrorMessage} title="Could not save recommendation" />
 
             {groupedRestaurants.length === 0 ? (

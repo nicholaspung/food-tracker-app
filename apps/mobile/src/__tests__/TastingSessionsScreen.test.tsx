@@ -38,6 +38,8 @@ jest.mock('../components/shared', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('OptionList', props, children),
+  OptionListInlineBody: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('OptionListInlineBody', props, children),
   OptionListRow: ({ rightAccessory, titleAccessory, ...props }: Record<string, unknown>) =>
     mockReact.createElement('OptionListRow', props, titleAccessory as React.ReactNode, rightAccessory as React.ReactNode),
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
@@ -240,6 +242,28 @@ function buildCompletedSession(): TastingSessionRecord {
   };
 }
 
+function buildUserOwnedSession(overrides: Partial<TastingSessionRecord> = {}): TastingSessionRecord {
+  return {
+    ...buildSession('2099-01-01T00:00:00.000Z'),
+    id: 'session_owned',
+    invites: [],
+    joinedCount: 1,
+    leaderUserId: 'user_1',
+    name: 'Owned tasting',
+    participants: [
+      {
+        id: 'participant_1',
+        joinedAt: '2026-05-20T11:00:00.000Z',
+        name: 'Pat',
+        role: 'leader',
+        userId: 'user_1',
+      },
+    ],
+    updatedAt: '2026-05-20T11:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function renderScreen(
   sessions: TastingSessionRecord[],
   routeParams?: RootStackParamList['TastingSessions'],
@@ -308,7 +332,7 @@ describe('TastingSessionsScreen', () => {
 
     expect(acceptInvite).not.toHaveBeenCalled();
     expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Join Invite')).toBe(false);
-    expect(renderer.root.findAllByType('ListItem').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
+    expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
     expect(renderer.root.findAllByType('Text').some((node: any) => node.children.join('') === 'Invite expired')).toBe(true);
   });
 
@@ -324,7 +348,7 @@ describe('TastingSessionsScreen', () => {
       isOnline: true,
       sessionId: 'session_2000-01-01T00:00:00.000Z',
     });
-    expect(renderer.root.findAllByType('ListItem').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
+    expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
   });
 
   it('shows join actions for pending invites while the invite window is open', () => {
@@ -337,14 +361,28 @@ describe('TastingSessionsScreen', () => {
   it('hides active lobby sessions when the user is not leader, participant, or actively invited', () => {
     const { renderer } = renderScreen([buildInviteOnlySessionWithoutInvite()]);
 
-    expect(renderer.root.findAllByType('ListItem').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
+    expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
     expect(renderer.root.findAllByType('Text').some((node: any) => node.children.join('') === 'Invite expired')).toBe(false);
   });
 
   it('hides revoked invite sessions even when cached participant data is stale', () => {
     const { renderer } = renderScreen([buildRevokedSessionWithStaleParticipant()]);
 
-    expect(renderer.root.findAllByType('ListItem').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
+    expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
+  });
+
+  it('renders all active sessions in one list container', () => {
+    const { renderer } = renderScreen([
+      buildUserOwnedSession({ id: 'session_lobby', name: 'Lobby tasting', status: 'lobby' }),
+      buildUserOwnedSession({ id: 'session_planning', name: 'Planning tasting', status: 'planning' }),
+    ]);
+
+    expect(renderer.root.findAllByType('OptionList')).toHaveLength(1);
+    expect(renderer.root.findAllByType('OptionListRow').map((node: any) => node.props.title)).toEqual([
+      'Planning tasting',
+      'Lobby tasting',
+    ]);
+    expect(renderer.root.findAllByType('Card')).toHaveLength(0);
   });
 
   it('uses the join banner for manual code entry instead of a standalone button', () => {
@@ -419,5 +457,39 @@ describe('TastingSessionsScreen', () => {
     expect(completedRow).toBeTruthy();
     expect(completedRow?.props.subtitle).toBe('May 22, 2026 - 1 restaurant, 1 item, 2 tasters');
     expect(renderer.root.findAllByType('Card')).toHaveLength(0);
+  });
+
+  it('orders visible sessions from newest to oldest in each section', () => {
+    const olderActive = buildUserOwnedSession({
+      id: 'session_older_active',
+      name: 'Older active',
+      updatedAt: '2026-05-20T11:00:00.000Z',
+    });
+    const newerActive = buildUserOwnedSession({
+      id: 'session_newer_active',
+      name: 'Newer active',
+      updatedAt: '2026-05-21T11:00:00.000Z',
+    });
+    const olderCompleted = {
+      ...buildCompletedSession(),
+      id: 'session_older_completed',
+      name: 'Older completed',
+      updatedAt: '2026-05-22T11:00:00.000Z',
+    };
+    const newerCompleted = {
+      ...buildCompletedSession(),
+      id: 'session_newer_completed',
+      name: 'Newer completed',
+      updatedAt: '2026-05-23T11:00:00.000Z',
+    };
+
+    const { renderer } = renderScreen([olderCompleted, olderActive, newerCompleted, newerActive]);
+
+    expect(renderer.root.findAllByType('OptionListRow').map((node: any) => node.props.title)).toEqual([
+      'Newer active',
+      'Older active',
+      'Newer completed',
+      'Older completed',
+    ]);
   });
 });

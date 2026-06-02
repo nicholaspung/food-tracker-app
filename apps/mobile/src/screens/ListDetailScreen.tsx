@@ -527,6 +527,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setPendingDeleteItem(item);
   };
 
+  const confirmDeleteRestaurantBookmark = (group: GroupedRestaurant) => {
+    if (!isOwner || !isDefaultList || !group.restaurantBookmarkListItemId) {
+      return;
+    }
+
+    setPendingDeleteItem({
+      kind: 'restaurant-bookmark',
+      restaurantId: group.restaurantId,
+      restaurantName: group.restaurantName,
+    });
+  };
+
   const closeDeleteItemModal = () => {
     if (isDeletingItem) {
       return;
@@ -543,18 +555,37 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsDeletingItem(true);
 
     try {
-      const didDelete =
-        pendingDeleteItem.kind === 'source'
-          ? await handleRemoveSourceRating({
-              listItemId: pendingDeleteItem.listItemId,
-              foodItemId: pendingDeleteItem.foodItemId,
-            })
-          : pendingDeleteItem.kind === 'user-linked'
-            ? await handleRemoveUserRating(pendingDeleteItem.listItemId)
-            : await handleRemoveSourceRating({
+      let didDelete = false;
+
+      if (pendingDeleteItem.kind === 'restaurant-bookmark') {
+        setErrorMessage(null);
+        try {
+          await restaurantListWrites.removeBookmarkFromDefaultList({
+            bookmark: {
+              restaurantId: pendingDeleteItem.restaurantId,
+            },
+            defaultListId: listId,
+            sourceListId: listId,
+          });
+          await detailQuery.refetch();
+          didDelete = true;
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : 'Could not remove restaurant from Want to Try.');
+        }
+      } else {
+        didDelete =
+          pendingDeleteItem.kind === 'source'
+            ? await handleRemoveSourceRating({
                 listItemId: pendingDeleteItem.listItemId,
                 foodItemId: pendingDeleteItem.foodItemId,
-              }, 'user_standalone');
+              })
+            : pendingDeleteItem.kind === 'user-linked'
+              ? await handleRemoveUserRating(pendingDeleteItem.listItemId)
+              : await handleRemoveSourceRating({
+                  listItemId: pendingDeleteItem.listItemId,
+                  foodItemId: pendingDeleteItem.foodItemId,
+                }, 'user_standalone');
+      }
 
       if (didDelete) {
         setPendingDeleteItem(null);
@@ -570,7 +601,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   ) => {
     trackObservabilityEvent('LIST_DETAIL_I_WENT_TAPPED', {
       source: 'ListDetailScreen',
-      restaurantId: group.restaurantId,
+      hasRestaurantId: Boolean(group.restaurantId),
       hasPreselectedMenuItem: Boolean(item),
     });
     trackProductEvent('social.i_went_there_started', {
@@ -600,7 +631,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const openSaveModal = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
     trackObservabilityEvent('LIST_DETAIL_SAVE_MODAL_OPENED', {
       source: 'ListDetailScreen',
-      restaurantId: group.restaurantId,
+      hasRestaurantId: Boolean(group.restaurantId),
       hasSourceUser: Boolean(item.sourceUserId || item.sourceUserName),
     });
     setSaveModalError(null);
@@ -953,6 +984,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                             handleIWentThere(group);
                           }
                     }
+                    onDeleteRestaurantBookmark={
+                      group.restaurantBookmarkListItemId
+                        ? () => {
+                            confirmDeleteRestaurantBookmark(group);
+                          }
+                        : undefined
+                    }
                     primaryMetaLabel={primaryMetaLabel}
                     renderItem={(item, itemIndex) => (
                       <ListDetailOwnerItemCard
@@ -1157,14 +1195,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       </Modal>
 
       <ConfirmDestructiveModal
-        cancelLabel="Keep Item"
-        confirmLabel="Delete Item"
+        cancelLabel={pendingDeleteItem?.kind === 'restaurant-bookmark' ? 'Keep Restaurant' : 'Keep Item'}
+        confirmLabel={pendingDeleteItem?.kind === 'restaurant-bookmark' ? 'Remove Restaurant' : 'Delete Item'}
         confirmLoadingLabel="Deleting..."
         description={
           pendingDeleteItem
-            ? pendingDeleteItem.kind === 'source'
-              ? `Delete "${pendingDeleteItem.itemName}" from this list?`
-              : `Delete your rating for "${pendingDeleteItem.itemName}" from this list?`
+            ? pendingDeleteItem.kind === 'restaurant-bookmark'
+              ? `Remove "${pendingDeleteItem.restaurantName}" from your Want to Try list?`
+              : pendingDeleteItem.kind === 'source'
+                ? `Delete "${pendingDeleteItem.itemName}" from this list?`
+                : `Delete your rating for "${pendingDeleteItem.itemName}" from this list?`
             : 'Delete this item from the list?'
         }
         loading={isDeletingItem}
@@ -1173,7 +1213,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           void handleConfirmDeleteItem();
         }}
         testID="delete-list-item-confirmation-modal"
-        title={pendingDeleteItem?.kind === 'source' ? 'Delete Bookmarked Item?' : 'Delete Rating?'}
+        title={
+          pendingDeleteItem?.kind === 'restaurant-bookmark'
+            ? 'Remove Restaurant?'
+            : pendingDeleteItem?.kind === 'source'
+              ? 'Delete Bookmarked Item?'
+              : 'Delete Rating?'
+        }
         visible={Boolean(pendingDeleteItem)}
       />
 

@@ -87,6 +87,11 @@ export interface SaveBookmarkTrackingContext {
 
 export type PendingDeleteListItem =
   | {
+      kind: 'restaurant-bookmark';
+      restaurantId: string;
+      restaurantName: string;
+    }
+  | {
       kind: 'source';
       itemName: string;
       listItemId: string;

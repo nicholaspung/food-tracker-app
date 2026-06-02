@@ -2940,6 +2940,12 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"location":   "Oakland, CA",
 		"visibility": "public",
 	})
+	spicyRamenMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantIDOrFail(visitRestaurant),
+		"createdBy":  friend.Id,
+		"name":       "Spicy Ramen",
+		"visibility": "friends",
+	})
 
 	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurantIDOrFail(visitRestaurant),
@@ -3024,9 +3030,10 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 				UserName         string `json:"userName"`
 				ModerationStatus string `json:"moderationStatus"`
 				Items            []struct {
-					ID    string `json:"id"`
-					Name  string `json:"name"`
-					Notes string `json:"notes"`
+					ID         string `json:"id"`
+					MenuItemID string `json:"menuItemId"`
+					Name       string `json:"name"`
+					Notes      string `json:"notes"`
 				} `json:"items"`
 			} `json:"visit"`
 			FoodProduct *struct {
@@ -3075,6 +3082,9 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	}
 	if payload.Items[0].Visit.Items[0].ID != friendVisitItem.Id || payload.Items[0].Visit.Items[0].Notes != "Great broth" {
 		t.Fatalf("expected visit item details, got %#v", payload.Items[0].Visit.Items)
+	}
+	if payload.Items[0].Visit.Items[0].MenuItemID != spicyRamenMenuItem.Id {
+		t.Fatalf("expected visit item to include matched menuItemId %q, got %#v", spicyRamenMenuItem.Id, payload.Items[0].Visit.Items[0])
 	}
 	if payload.Items[1].FoodProduct.RestaurantName != "Night Market" ||
 		payload.Items[1].FoodProduct.LocationText != "Night Market" ||

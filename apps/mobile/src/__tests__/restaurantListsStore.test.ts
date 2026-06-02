@@ -1,5 +1,6 @@
 import {
   getRestaurantListCandidateRestaurants,
+  removeRestaurantFoodItemBookmarkFromList,
   saveRestaurantToDefaultList,
   updateRestaurantList,
 } from '../features/store/restaurantListsStore';
@@ -216,6 +217,47 @@ describe('restaurantListsStore.saveRestaurantToDefaultList', () => {
         body: {
           restaurantId: 'restaurant-1',
           note: 'Try soon',
+        },
+      },
+    );
+  });
+});
+
+describe('restaurantListsStore.removeRestaurantFoodItemBookmarkFromList', () => {
+  beforeEach(() => {
+    mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
+    mockedPocketBase.collection.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('posts a bookmark removal to the restaurant list remove endpoint', async () => {
+    mockedSendApiRequest.mockResolvedValueOnce({
+      listId: 'default-list-1',
+      restaurantId: 'restaurant-1',
+      items: [],
+    });
+
+    await expect(
+      removeRestaurantFoodItemBookmarkFromList({
+        listId: '  default-list-1  ',
+        restaurantId: '  restaurant-1  ',
+        foodItemId: '  food-item-1  ',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurant-lists/default-list-1/bookmarks/remove',
+      {
+        method: 'POST',
+        headers: undefined,
+        body: {
+          restaurantId: 'restaurant-1',
+          foodItemId: 'food-item-1',
         },
       },
     );

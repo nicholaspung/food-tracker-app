@@ -33,10 +33,6 @@ function getRestaurantVisibilityIcon(restaurant: RestaurantRecord): RestaurantVi
     return { name: 'people-outline', tone: 'info' };
   }
 
-  if (visibility === 'public') {
-    return { name: 'earth-outline', tone: 'success' };
-  }
-
   return null;
 }
 

@@ -69,7 +69,7 @@ export function VisibilityBadge({
 
   return (
     <View style={[styles.badge, badgeStyle, style]}>
-      <Ionicons color={resolveToneColor()} name={optionMeta.icon} size={12} />
+      {optionMeta.icon ? <Ionicons color={resolveToneColor()} name={optionMeta.icon} size={12} /> : null}
       <Text tone={optionMeta.tone} variant="bodySm">
         {optionMeta.label}
       </Text>

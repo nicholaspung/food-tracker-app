@@ -49,6 +49,10 @@ const useStyles = createThemedStyles((theme) => ({
   compactPlanCard: {
     gap: theme.spacing.xs,
   },
+  interactiveSummaryCard: {
+    borderColor: theme.colors.border.info,
+    backgroundColor: theme.colors.status.infoBg,
+  },
   planHeaderRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -67,18 +71,20 @@ const useStyles = createThemedStyles((theme) => ({
   },
   iconButton: {
     alignItems: 'center',
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
+    borderRadius: theme.radii.pill,
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  destructiveIconButtonPressed: {
+    opacity: 0.7,
   },
   iconButtonDisabled: {
     opacity: 0.5,
   },
   compactRestaurantRow: {
     alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.md,
     borderWidth: 1,
@@ -425,7 +431,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
   const summaryCard = phase === 'restaurants' ? (
     <View style={styles.stickySummary}>
-      <Card style={styles.compactPlanCard}>
+      <Card style={[styles.compactPlanCard, styles.interactiveSummaryCard]}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: isPlanSummaryExpanded }}
@@ -444,7 +450,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             </View>
           </View>
           <Ionicons
-            color={theme.colors.text.primary}
+            color={theme.colors.text.info}
             name={isPlanSummaryExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
             size={18}
           />
@@ -465,8 +471,13 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                       accessibilityLabel={`Remove ${restaurant.restaurantName} from tasting plan`}
                       accessibilityRole="button"
                       disabled={!isOnline}
+                      hitSlop={12}
                       onPress={() => setPendingRemoveRestaurantId(restaurant.id)}
-                      style={[styles.iconButton, !isOnline ? styles.iconButtonDisabled : null]}
+                      style={({ pressed }) => [
+                        styles.iconButton,
+                        pressed ? styles.destructiveIconButtonPressed : null,
+                        !isOnline ? styles.iconButtonDisabled : null,
+                      ]}
                     >
                       <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
                     </Pressable>
@@ -482,7 +493,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     </View>
   ) : (
     <View style={styles.stickySummary}>
-      <Card style={styles.card}>
+      <Card style={[styles.card, styles.interactiveSummaryCard]}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: isMenuSummaryExpanded }}
@@ -498,7 +509,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             </Text>
           </View>
           <Ionicons
-            color={theme.colors.text.primary}
+            color={theme.colors.text.info}
             name={isMenuSummaryExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
             size={18}
           />

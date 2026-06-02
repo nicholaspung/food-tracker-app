@@ -34,6 +34,7 @@ type restaurantListMutationGroupPayload struct {
 		Note            string `json:"note"`
 		BookmarkedItems []struct {
 			ID             string `json:"id"`
+			MenuItemID     string `json:"menuItemId"`
 			UserFoodItemID string `json:"userFoodItemId"`
 		} `json:"bookmarkedItems"`
 	} `json:"items"`
@@ -302,6 +303,44 @@ func TestRestaurantListSaveBookmarkEndpointDedupesRestaurantOnlyDefaultBookmark(
 	}
 }
 
+func TestRestaurantListSaveBookmarkEndpointAllowsMultipleRestaurantOnlyDefaultBookmarks(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	firstRestaurant := seedRestaurantRecord(t, server.app, user.Id, "First Cafe")
+	secondRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Second Cafe")
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+
+	for _, restaurant := range []*core.Record{firstRestaurant, secondRestaurant} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			fmt.Sprintf("/api/restaurant-lists/%s/bookmarks", defaultList.Id),
+			token,
+			fmt.Sprintf(`{"restaurantId":"%s"}`, restaurant.Id),
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected restaurant-only bookmark save for %s to return 200, got %d: %s", restaurant.Id, response.Code, response.Body.String())
+		}
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId}",
+		map[string]any{"listId": defaultList.Id},
+	); count != 2 {
+		t.Fatalf("expected two restaurant-only bookmarks in Want to Try, got %d", count)
+	}
+}
+
 func TestRestaurantListSaveBookmarkEndpointRejectsRestaurantOnlyNonDefaultBookmark(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)
@@ -327,6 +366,134 @@ func TestRestaurantListSaveBookmarkEndpointRejectsRestaurantOnlyNonDefaultBookma
 	}
 	if !strings.Contains(response.Body.String(), "default Want to Try list") {
 		t.Fatalf("expected clear default-list error, got %s", response.Body.String())
+	}
+}
+
+func TestRestaurantListSaveBookmarkEndpointAllowsDefaultMenuItemBookmark(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Menu Cafe")
+	menuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Tonic Smoothie", "public", false)
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/bookmarks", defaultList.Id),
+		token,
+		fmt.Sprintf(`{"restaurantId":"%s","menuItemId":"%s"}`, restaurant.Id, menuItem.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected request 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantListMutationGroupPayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse menu item bookmark payload: %v", err)
+	}
+
+	if len(payload.Items) != 1 || len(payload.Items[0].BookmarkedItems) != 1 {
+		t.Fatalf("expected one menu item bookmark, got %#v", payload.Items)
+	}
+	if payload.Items[0].BookmarkedItems[0].MenuItemID != menuItem.Id {
+		t.Fatalf("expected menuItemId=%q, got %#v", menuItem.Id, payload.Items[0].BookmarkedItems[0])
+	}
+}
+
+func TestRestaurantListRemoveBookmarkEndpointRemovesRestaurantOnlyDefaultBookmark(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Remove Cafe")
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       defaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/bookmarks/remove", defaultList.Id),
+		token,
+		fmt.Sprintf(`{"restaurantId":"%s"}`, restaurant.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected request 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId} && restaurant = {:restaurantId}",
+		map[string]any{
+			"listId":       defaultList.Id,
+			"restaurantId": restaurant.Id,
+		},
+	); count != 0 {
+		t.Fatalf("expected restaurant-only bookmark to be removed, got %d records", count)
+	}
+}
+
+func TestRestaurantListRemoveBookmarkEndpointRemovesMenuItemBookmark(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Remove Menu Cafe")
+	menuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Matcha Latte", "public", false)
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       defaultList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"menuItem":   menuItem.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/bookmarks/remove", defaultList.Id),
+		token,
+		fmt.Sprintf(`{"restaurantId":"%s","menuItemId":"%s"}`, restaurant.Id, menuItem.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected request 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId} && menuItem = {:menuItemId}",
+		map[string]any{
+			"listId":     defaultList.Id,
+			"menuItemId": menuItem.Id,
+		},
+	); count != 0 {
+		t.Fatalf("expected menu item bookmark to be removed, got %d records", count)
 	}
 }
 
@@ -358,6 +525,66 @@ func TestRestaurantListSaveBookmarkEndpointRejectsMismatchedSourceUser(t *testin
 	)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestRestaurantListRemoveBookmarkEndpointDeletesSavedFoodItem(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Bookmark Bistro")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	foodItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Crispy Rice", 5)
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"foodItem":   foodItem.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/bookmarks/remove", list.Id),
+		token,
+		fmt.Sprintf(`{
+			"restaurantId":"%s",
+			"foodItemId":"%s"
+		}`, restaurant.Id, foodItem.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected request 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantListMutationGroupPayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse remove bookmark payload: %v", err)
+	}
+	if payload.RestaurantID != restaurant.Id {
+		t.Fatalf("expected restaurantId=%q, got %q", restaurant.Id, payload.RestaurantID)
+	}
+	if len(payload.Items) != 0 {
+		t.Fatalf("expected empty group after bookmark removal, got %#v", payload.Items)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId} && foodItem = {:foodItemId}",
+		map[string]any{
+			"listId":     list.Id,
+			"foodItemId": foodItem.Id,
+		},
+	); count != 0 {
+		t.Fatalf("expected saved bookmark list item to be deleted, got %d", count)
 	}
 }
 

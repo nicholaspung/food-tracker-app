@@ -1333,6 +1333,17 @@ func getVisitsPageResponse(
 		return response, err
 	}
 
+	menuItemIDsByRestaurantAndName, err := buildMenuItemIDsByRestaurantAndName(
+		app,
+		restaurantIDs,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return response, err
+	}
+
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
 
@@ -1357,7 +1368,7 @@ func getVisitsPageResponse(
 			RestaurantLocation:    resolveRestaurantLocation(restaurant),
 			RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 			VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-			Items:                 mapHomeFeedVisitItems(visitItemsByVisitID[visit.Id]),
+			Items:                 mapHomeFeedVisitItems(visitItemsByVisitID[visit.Id], visit.GetString("restaurant"), menuItemIDsByRestaurantAndName),
 			Source:                "visit",
 			UserID:                ownerID,
 			UserName:              userName,
@@ -1718,6 +1729,17 @@ func getHomeFeedResponse(
 		return response, err
 	}
 
+	menuItemIDsByRestaurantAndName, err := buildMenuItemIDsByRestaurantAndName(
+		app,
+		restaurantIDs,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return response, err
+	}
+
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
 	foodItemsByID := make(map[string]*core.Record, len(filteredVisitItems)+len(quickTrackRecords))
@@ -1766,7 +1788,7 @@ func getHomeFeedResponse(
 					RestaurantLocation:    resolveRestaurantLocation(restaurant),
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-					Items:                 mapHomeFeedVisitItems(entryItems),
+					Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemIDsByRestaurantAndName),
 					Source:                "visit",
 					UserID:                visit.GetString("user"),
 					UserName:              resolveHomeFeedUserName(user),
@@ -1943,6 +1965,17 @@ func getHomeFeedMapPointsResponse(
 		return response, err
 	}
 
+	menuItemIDsByRestaurantAndName, err := buildMenuItemIDsByRestaurantAndName(
+		app,
+		restaurantIDs,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return response, err
+	}
+
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
 	foodItemsByID := make(map[string]*core.Record, len(filteredVisitItems)+len(quickTrackRecords))
@@ -2008,7 +2041,7 @@ func getHomeFeedMapPointsResponse(
 					RestaurantLocation:    restaurantLocation,
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-					Items:                 mapHomeFeedVisitItems(entryItems),
+					Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemIDsByRestaurantAndName),
 					Source:                "visit",
 					UserID:                visit.GetString("user"),
 					UserName:              resolveHomeFeedUserName(user),
@@ -2586,11 +2619,64 @@ func buildHomeFeedSearchLike(search string) string {
 	return "%" + strings.ToLower(strings.TrimSpace(search)) + "%"
 }
 
-func mapHomeFeedVisitItems(records []*core.Record) []visitItemResponse {
+func homeFeedMenuItemLookupKey(restaurantID string, itemName string) string {
+	normalizedRestaurantID := strings.TrimSpace(restaurantID)
+	normalizedItemName := normalizeMenuItemName(itemName)
+	if normalizedRestaurantID == "" || normalizedItemName == "" {
+		return ""
+	}
+
+	return normalizedRestaurantID + "\x00" + normalizedItemName
+}
+
+func buildMenuItemIDsByRestaurantAndName(
+	app core.App,
+	restaurantIDs []string,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+) (map[string]string, error) {
+	result := map[string]string{}
+	normalizedRestaurantIDs := normalizeUniqueTrimmedIDs(restaurantIDs)
+	if len(normalizedRestaurantIDs) == 0 {
+		return result, nil
+	}
+
+	menuItems, err := findRecordsByRelationValues(app, "menu_items", "restaurant", normalizedRestaurantIDs, "-created")
+	if err != nil {
+		return result, err
+	}
+
+	for _, menuItem := range menuItems {
+		if !canAccessMenuItemRecord(menuItem, userID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
+
+		lookupKey := homeFeedMenuItemLookupKey(menuItem.GetString("restaurant"), menuItem.GetString("name"))
+		if lookupKey == "" {
+			continue
+		}
+		if _, exists := result[lookupKey]; exists {
+			continue
+		}
+
+		result[lookupKey] = menuItem.Id
+	}
+
+	return result, nil
+}
+
+func mapHomeFeedVisitItems(
+	records []*core.Record,
+	restaurantID string,
+	menuItemIDsByRestaurantAndName map[string]string,
+) []visitItemResponse {
 	items := make([]visitItemResponse, 0, len(records))
 	for _, record := range records {
+		lookupKey := homeFeedMenuItemLookupKey(restaurantID, record.GetString("name"))
 		items = append(items, visitItemResponse{
 			ID:          record.Id,
+			MenuItemID:  menuItemIDsByRestaurantAndName[lookupKey],
 			Name:        record.GetString("name"),
 			Rating:      record.GetFloat("rating"),
 			Description: strings.TrimSpace(record.GetString("description")),

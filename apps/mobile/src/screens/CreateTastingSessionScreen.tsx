@@ -19,13 +19,13 @@ import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { Button, Card, Input, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
 import { navigateToTastingSession } from './tastingSessions/shared';
+import { TastingJoinWindowDurationSelector } from './tastingSessions/TastingJoinWindowDurationSelector';
 
 type CreateTastingSessionScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateTastingSession'>;
 
-const DURATION_OPTIONS = [15, 30, 60, 120] as const;
 const FRIEND_SEARCH_DEBOUNCE_MS = 250;
 const MIN_SERVER_FRIEND_SEARCH_LENGTH = 2;
 
@@ -194,14 +194,7 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
         <Input label="Session name" onChangeText={setName} placeholder="Friday ramen tasting" value={name} />
         <Text variant="label">Join window</Text>
         <Text tone="secondary">Friends can join the lobby until this window closes.</Text>
-        {DURATION_OPTIONS.map((option) => (
-          <Button
-            key={option}
-            label={option === 60 ? '1 hour' : option === 120 ? '2 hours' : `${option} minutes`}
-            onPress={() => setDuration(option)}
-            variant={duration === option ? 'primary' : 'secondary'}
-          />
-        ))}
+        <TastingJoinWindowDurationSelector onChange={setDuration} value={duration} />
       </Card>
       <BillParticipantPickerSection
         allowCustomParticipants={false}

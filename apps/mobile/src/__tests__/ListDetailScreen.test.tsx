@@ -390,6 +390,7 @@ describe('ListDetailScreen', () => {
     errorMessage: null,
     isSubmitting: false,
     reorderRestaurant: jest.fn(),
+    removeBookmarkFromDefaultList: jest.fn(),
     removeRestaurantListSourceRating: jest.fn(),
     removeRestaurantListUserRating: jest.fn(),
     saveBookmarkToDefaultList: jest.fn(),
@@ -439,6 +440,10 @@ describe('ListDetailScreen', () => {
       status: 'completed',
     });
     restaurantListWrites.removeRestaurantListUserRating.mockResolvedValue({
+      result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.removeBookmarkFromDefaultList.mockResolvedValue({
       result: [],
       status: 'completed',
     });
@@ -1073,6 +1078,78 @@ describe('ListDetailScreen', () => {
       sourceListItemId: 'restaurant_bookmark_1',
       returnToStep: 1,
     });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'LIST_DETAIL_I_WENT_TAPPED',
+      expect.objectContaining({
+        source: 'ListDetailScreen',
+        hasRestaurantId: true,
+        hasPreselectedMenuItem: false,
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).not.toHaveBeenCalledWith(
+      'LIST_DETAIL_I_WENT_TAPPED',
+      expect.objectContaining({
+        restaurantId: expect.any(String),
+      }),
+    );
+  });
+
+  it('removes a restaurant bookmark from the default Want to Try detail', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    const refetch = jest.fn().mockResolvedValue(buildDetail());
+    mockedUseQuery.mockReturnValue({
+      ...buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+            restaurantCount: 1,
+          }),
+          items: [
+            buildListItem({
+              id: 'restaurant_bookmark_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Bookmark Cafe',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [],
+            }),
+          ],
+        }),
+      ),
+      refetch,
+    } as ReturnType<typeof useQuery>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'delete-restaurant-bookmark-0' }).props.onPress();
+    });
+
+    const modal = renderer.root.findByType('ConfirmDestructiveModal');
+    expect(modal.props.title).toBe('Remove Restaurant?');
+    expect(modal.props.confirmLabel).toBe('Remove Restaurant');
+
+    await act(async () => {
+      await modal.props.onConfirm();
+    });
+
+    expect(restaurantListWrites.removeBookmarkFromDefaultList).toHaveBeenCalledWith({
+      bookmark: {
+        restaurantId: 'restaurant_1',
+      },
+      defaultListId: 'list_1',
+      sourceListId: 'list_1',
+    });
+    expect(refetch).toHaveBeenCalled();
   });
 
   it('does not render friend overlap copy for default-list menu item bookmarks', async () => {
@@ -1265,6 +1342,20 @@ describe('ListDetailScreen', () => {
       sourceListItemId: 'list_item_1',
       returnToStep: 2,
     });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'LIST_DETAIL_I_WENT_TAPPED',
+      expect.objectContaining({
+        source: 'ListDetailScreen',
+        hasRestaurantId: true,
+        hasPreselectedMenuItem: true,
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).not.toHaveBeenCalledWith(
+      'LIST_DETAIL_I_WENT_TAPPED',
+      expect.objectContaining({
+        restaurantId: expect.any(String),
+      }),
+    );
   });
 
   it('renders a locked restaurant icon for private restaurants', async () => {

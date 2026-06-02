@@ -17,6 +17,7 @@ export type ContentReportReasonCode =
 
 export interface VisitItem {
   id: string;
+  menuItemId?: string;
   name: string;
   rating: number;
   description?: string;
@@ -115,6 +116,7 @@ export interface RestaurantListBookmarkedItemRecord {
   listItemId: string;
   name: string;
   rating: number;
+  menuItemId?: string;
   visitedAt?: string;
   sourceUserId?: string;
   sourceUserName?: string;

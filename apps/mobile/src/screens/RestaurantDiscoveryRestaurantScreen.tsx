@@ -1,6 +1,6 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -60,6 +60,19 @@ const useStyles = createThemedStyles((theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
   },
+  menuItemListItem: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: 0,
+  },
+  menuItemList: {
+    gap: 0,
+  },
+  menuItemSeparator: {
+    backgroundColor: theme.colors.border.subtle,
+    height: 1,
+  },
   summaryRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -96,9 +109,9 @@ function addQueuedMenuItemBookmarkToDefaultListDetail(
   const queuedBookmarkedItem = {
     id: `queued:want-to-try-menu-item:${input.menuItem.id}`,
     listItemId,
+    menuItemId: input.menuItem.id,
     name: input.menuItem.name,
     rating: 0,
-    userFoodItemId: input.menuItem.id,
   };
 
   const nextItems = existingRestaurantItem
@@ -183,6 +196,7 @@ export function RestaurantDiscoveryRestaurantScreen({
   const restaurant = useMemo(() => buildRestaurantFromRoute(route.params), [route.params]);
   const [detailScope, setDetailScope] = useState<RestaurantDetailScope>('location');
   const [locallySavedMenuItemIds, setLocallySavedMenuItemIds] = useState<Set<string>>(() => new Set());
+  const [locallyRemovedMenuItemIds, setLocallyRemovedMenuItemIds] = useState<Set<string>>(() => new Set());
   const restaurantDescription = useMemo(() => {
     const parts = [buildVisitRestaurantDescription(restaurant, null)];
     if (restaurant.userVisitCount && restaurant.userVisitCount > 0) {
@@ -230,29 +244,73 @@ export function RestaurantDiscoveryRestaurantScreen({
         continue;
       }
       for (const bookmarkedItem of item.bookmarkedItems) {
+        if (bookmarkedItem.menuItemId) {
+          ids.add(bookmarkedItem.menuItemId);
+        }
         if (bookmarkedItem.userFoodItemId) {
           ids.add(bookmarkedItem.userFoodItemId);
         }
       }
     }
+    for (const menuItemId of locallyRemovedMenuItemIds) {
+      ids.delete(menuItemId);
+    }
     return ids;
-  }, [defaultListDetailQuery.data?.items, locallySavedMenuItemIds, restaurant.id]);
+  }, [defaultListDetailQuery.data?.items, locallyRemovedMenuItemIds, locallySavedMenuItemIds, restaurant.id]);
 
   const allLocationsHistory = restaurantDetail.allLocationsHistory;
 
-  async function handleSaveMenuItemToWantToTry(menuItem: MenuItemRecord) {
+  async function handleToggleMenuItemWantToTry(menuItem: MenuItemRecord) {
     if (savedMenuItemIds.has(menuItem.id)) {
+      if (!defaultListId) {
+        return;
+      }
+
+      restaurantListWrites.setErrorMessage(null);
+      setLocallyRemovedMenuItemIds((current) => new Set(current).add(menuItem.id));
+      setLocallySavedMenuItemIds((current) => {
+        const next = new Set(current);
+        next.delete(menuItem.id);
+        return next;
+      });
+
+      try {
+        const result = await restaurantListWrites.removeBookmarkFromDefaultList({
+          bookmark: {
+            restaurantId: restaurant.id,
+            menuItemId: menuItem.id,
+          },
+          defaultListId,
+          sourceListId: defaultListId,
+        });
+
+        if (result.status === 'completed') {
+          void defaultListQuery.refetch();
+          void defaultListDetailQuery.refetch();
+        }
+      } catch {
+        setLocallyRemovedMenuItemIds((current) => {
+          const next = new Set(current);
+          next.delete(menuItem.id);
+          return next;
+        });
+      }
       return;
     }
 
     restaurantListWrites.setErrorMessage(null);
     setLocallySavedMenuItemIds((current) => new Set(current).add(menuItem.id));
+    setLocallyRemovedMenuItemIds((current) => {
+      const next = new Set(current);
+      next.delete(menuItem.id);
+      return next;
+    });
 
     try {
       const result = await restaurantListWrites.saveBookmarkToDefaultList({
         bookmark: {
           restaurantId: restaurant.id,
-          foodItemId: menuItem.id,
+          menuItemId: menuItem.id,
         },
         defaultListId,
         sourceListId: defaultListId ?? 'default',
@@ -403,31 +461,39 @@ export function RestaurantDiscoveryRestaurantScreen({
               title="Menu items unavailable"
             />
           ) : restaurantDetail.menuItems.length > 0 ? (
-            restaurantDetail.menuItems.map((item, index) => {
-              const isSaved = savedMenuItemIds.has(item.id);
+            <View style={styles.menuItemList}>
+              {restaurantDetail.menuItems.map((item, index) => {
+                const isSaved = savedMenuItemIds.has(item.id);
 
-              return (
-                <ListItem
-                  key={item.id}
-                  title={item.name}
-                  trailing={
-                    <WantToTryBookmarkButton
-                      accessibilityLabel={
-                        isSaved
-                          ? `${item.name} is saved to Want to Try`
-                          : `Save ${item.name} to Want to Try`
+                return (
+                  <Fragment key={item.id}>
+                    <ListItem
+                      style={styles.menuItemListItem}
+                      title={item.name}
+                      trailing={
+                        <WantToTryBookmarkButton
+                          accessibilityLabel={
+                            isSaved
+                              ? `${item.name} is saved to Want to Try`
+                              : `Save ${item.name} to Want to Try`
+                          }
+                          loading={restaurantListWrites.isSubmitting}
+                          onPress={() => {
+                            void handleToggleMenuItemWantToTry(item);
+                          }}
+                          saved={isSaved}
+                          testID={`restaurant-discovery-menu-item-bookmark-${index}`}
+                          variant="inline"
+                        />
                       }
-                      loading={restaurantListWrites.isSubmitting && !isSaved}
-                      onPress={() => {
-                        void handleSaveMenuItemToWantToTry(item);
-                      }}
-                      saved={isSaved}
-                      testID={`restaurant-discovery-menu-item-bookmark-${index}`}
                     />
-                  }
-                />
-              );
-            })
+                    {index < restaurantDetail.menuItems.length - 1 ? (
+                      <View style={styles.menuItemSeparator} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </View>
           ) : (
             <EmptyState
               description="Scan a menu photo to add items for this restaurant."

@@ -59,6 +59,7 @@ type convertVisitItemToFoodProductResponse struct {
 
 type visitItemResponse struct {
 	ID          string  `json:"id"`
+	MenuItemID  string  `json:"menuItemId,omitempty"`
 	Name        string  `json:"name"`
 	Rating      float64 `json:"rating"`
 	Description string  `json:"description,omitempty"`

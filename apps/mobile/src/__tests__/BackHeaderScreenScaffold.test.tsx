@@ -167,6 +167,21 @@ describe('BackHeaderScreenScaffold', () => {
     expect(scrollView.props.extraKeyboardSpace).toBe(0);
   });
 
+  it('renders a custom header when one is provided', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        customHeader: mockReact.createElement('CustomHeader', {
+          testID: 'custom-header',
+        }),
+      });
+    });
+
+    expect(renderer.root.findAllByType('ScreenHeader')).toHaveLength(0);
+    expect(renderer.root.findByType('CustomHeader').props.testID).toBe('custom-header');
+  });
+
   it('can reduce fixed-header keyboard spacing by the measured header height', async () => {
     let renderer: any = null;
 

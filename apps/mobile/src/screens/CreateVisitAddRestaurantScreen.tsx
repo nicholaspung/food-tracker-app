@@ -110,7 +110,7 @@ export function CreateVisitAddRestaurantScreen({
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurants'] });
       trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddRestaurantScreen',
-        restaurantId: createdRestaurant.id,
+        hasCreatedRestaurantId: Boolean(createdRestaurant.id),
         visibility,
       });
       if (returnTo === 'RestaurantDiscovery') {

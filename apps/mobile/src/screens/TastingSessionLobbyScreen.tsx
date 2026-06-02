@@ -8,8 +8,6 @@ import {
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
-  OptionList,
-  OptionListRow,
   PageErrorToast,
   StatusPill,
   StepProgressBar,
@@ -30,11 +28,10 @@ import {
   isTastingInviteWindowOpen,
   TASTING_SESSION_LIFECYCLE_STEPS,
 } from './tastingSessions/shared';
+import { TastingJoinWindowDurationSelector } from './tastingSessions/TastingJoinWindowDurationSelector';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionLobbyScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionLobby'>;
-
-const REOPEN_DURATION_OPTIONS = [15, 30, 60, 120] as const;
 
 const useStyles = createThemedStyles((theme) => ({
   row: {
@@ -49,23 +46,23 @@ const useStyles = createThemedStyles((theme) => ({
   },
   headerIconButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
+    borderRadius: theme.radii.pill,
     height: 32,
     justifyContent: 'center',
     width: 32,
   },
   rowIconButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    height: 44,
+    borderRadius: theme.radii.pill,
+    height: 32,
     justifyContent: 'center',
-    width: 44,
+    width: 32,
+  },
+  destructiveIconButtonPressed: {
+    opacity: 0.7,
+  },
+  iconButtonDisabled: {
+    opacity: 0.5,
   },
   statusBadge: {
     alignSelf: 'flex-start',
@@ -76,16 +73,6 @@ function getParticipantRoleBadge(participant: TastingParticipantRecord) {
   return participant.role === 'leader'
     ? { label: 'Leader', tone: 'brand' as const }
     : { label: 'Joined', tone: 'success' as const };
-}
-
-function formatDurationLabel(durationMinutes: number): string {
-  if (durationMinutes === 60) {
-    return '1 hour';
-  }
-  if (durationMinutes === 120) {
-    return '2 hours';
-  }
-  return `${durationMinutes} minutes`;
 }
 
 function getInviteStatusBadge(status: TastingInviteRecord['status'] | 'expired') {
@@ -125,6 +112,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [pendingKick, setPendingKick] = useState<TastingParticipantRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isReopenModalVisible, setIsReopenModalVisible] = useState(false);
+  const [reopenDuration, setReopenDuration] = useState<number>(60);
   const [isReopeningInviteWindow, setIsReopeningInviteWindow] = useState(false);
   const [isDeleteSessionModalVisible, setIsDeleteSessionModalVisible] = useState(false);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
@@ -185,13 +173,13 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     }
   };
 
-  const handleReopenInviteWindow = async (joinDurationMinutes: number) => {
+  const handleReopenInviteWindow = async () => {
     try {
       setErrorMessage(null);
       setIsReopeningInviteWindow(true);
       const reopenResult = await tastingSessionWrites.reopenInviteWindow({
         isOnline,
-        joinDurationMinutes,
+        joinDurationMinutes: reopenDuration,
         sessionId,
       });
       if (reopenResult.status === 'blocked') {
@@ -311,8 +299,13 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
             accessibilityLabel="Delete tasting session"
             accessibilityRole="button"
             disabled={!isOnline || isDeletingSession}
+            hitSlop={12}
             onPress={() => setIsDeleteSessionModalVisible(true)}
-            style={styles.headerIconButton}
+            style={({ pressed }) => [
+              styles.headerIconButton,
+              pressed ? styles.destructiveIconButtonPressed : null,
+              !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
+            ]}
             testID="delete-tasting-session-header-button"
           >
             <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
@@ -352,7 +345,10 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                 <Button
                   disabled={!isOnline}
                   label="Reopen Window"
-                  onPress={() => setIsReopenModalVisible(true)}
+                  onPress={() => {
+                    setReopenDuration(60);
+                    setIsReopenModalVisible(true);
+                  }}
                   style={styles.action}
                   variant="secondary"
                 />
@@ -409,8 +405,13 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                     accessibilityLabel={`Remove ${participant.name}`}
                     accessibilityRole="button"
                     disabled={!isOnline}
+                    hitSlop={12}
                     onPress={() => setPendingKick(participant)}
-                    style={styles.rowIconButton}
+                    style={({ pressed }) => [
+                      styles.rowIconButton,
+                      pressed ? styles.destructiveIconButtonPressed : null,
+                      !isOnline ? styles.iconButtonDisabled : null,
+                    ]}
                     testID={`remove-tasting-participant-${participant.id}`}
                   >
                     <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
@@ -512,25 +513,22 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
           label: 'Cancel',
           onPress: () => setIsReopenModalVisible(false),
         }}
+        primaryAction={{
+          disabled: isReopeningInviteWindow || !isOnline,
+          label: 'Reopen Window',
+          loading: isReopeningInviteWindow,
+          onPress: () => {
+            void handleReopenInviteWindow();
+          },
+        }}
         title="Reopen Invite Window"
         visible={isReopenModalVisible}
       >
-        <OptionList>
-          {REOPEN_DURATION_OPTIONS.map((durationMinutes, index) => (
-            <OptionListRow
-              iconName="time-outline"
-              isLast={index === REOPEN_DURATION_OPTIONS.length - 1}
-              key={durationMinutes}
-              onPress={() => {
-                if (!isReopeningInviteWindow) {
-                  void handleReopenInviteWindow(durationMinutes);
-                }
-              }}
-              subtitle={isReopeningInviteWindow ? 'Reopening...' : 'Generate a fresh code.'}
-              title={formatDurationLabel(durationMinutes)}
-            />
-          ))}
-        </OptionList>
+        <TastingJoinWindowDurationSelector
+          disabled={isReopeningInviteWindow}
+          onChange={setReopenDuration}
+          value={reopenDuration}
+        />
       </Modal>
     </FeatureDetailScreenScaffold>
   );

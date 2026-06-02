@@ -13,7 +13,7 @@ export type VisibilityLabelPreset = 'default' | 'personal';
 type VisibilityTone = 'secondary' | 'info' | 'success';
 
 interface VisibilityOptionMeta {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon?: keyof typeof Ionicons.glyphMap;
   label: string;
   tone: VisibilityTone;
 }
@@ -49,7 +49,6 @@ export function getVisibilityOptionMeta(
 
   if (value === 'public') {
     return {
-      icon: 'earth-outline',
       label: labelOverrides?.public ?? (labelPreset === 'personal' ? 'Everyone' : communityLabel),
       tone: 'success',
     };
@@ -285,7 +284,9 @@ export function VisibilityOptionSelector({
                 pressed && !disabled ? { opacity: 0.75 } : null,
               ]}
             >
-              <Ionicons color={optionIconColor} name={optionMeta.icon} size={isPersonalSegmentedLayout ? 16 : 13} />
+              {optionMeta.icon ? (
+                <Ionicons color={optionIconColor} name={optionMeta.icon} size={isPersonalSegmentedLayout ? 16 : 13} />
+              ) : null}
               <Text
                 style={[
                   styles.segmentedOptionLabel,
@@ -322,7 +323,7 @@ export function VisibilityOptionSelector({
               </View>
               <View style={styles.cardContent}>
                 <View style={styles.cardTitleRow}>
-                  <Ionicons color={optionIconColor} name={optionMeta.icon} size={16} />
+                  {optionMeta.icon ? <Ionicons color={optionIconColor} name={optionMeta.icon} size={16} /> : null}
                   <Text style={styles.cardLabel} variant="titleXs">
                     {optionMeta.label}
                   </Text>

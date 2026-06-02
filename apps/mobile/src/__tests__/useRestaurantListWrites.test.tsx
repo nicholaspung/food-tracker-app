@@ -9,6 +9,7 @@ import {
   createRestaurantList,
   deleteRestaurantList,
   moveRestaurantListRestaurant,
+  removeRestaurantFoodItemBookmarkFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
@@ -36,6 +37,7 @@ jest.mock('../features/store/restaurantListsStore', () => ({
   createRestaurantList: jest.fn(),
   deleteRestaurantList: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
+  removeRestaurantFoodItemBookmarkFromList: jest.fn(),
   removeRestaurantListSourceRating: jest.fn(),
   removeRestaurantListUserRating: jest.fn(),
   saveRestaurantFoodItemToList: jest.fn(),
@@ -69,6 +71,8 @@ const mockedCreateRestaurantList = createRestaurantList as jest.MockedFunction<t
 const mockedDeleteRestaurantList = deleteRestaurantList as jest.MockedFunction<typeof deleteRestaurantList>;
 const mockedMoveRestaurantListRestaurant =
   moveRestaurantListRestaurant as jest.MockedFunction<typeof moveRestaurantListRestaurant>;
+const mockedRemoveRestaurantFoodItemBookmarkFromList =
+  removeRestaurantFoodItemBookmarkFromList as jest.MockedFunction<typeof removeRestaurantFoodItemBookmarkFromList>;
 const mockedRemoveRestaurantListSourceRating =
   removeRestaurantListSourceRating as jest.MockedFunction<typeof removeRestaurantListSourceRating>;
 const mockedRemoveRestaurantListUserRating =
@@ -110,6 +114,7 @@ describe('useRestaurantListWrites', () => {
     mockedCreateRestaurantList.mockResolvedValue({ id: 'list_1' } as never);
     mockedDeleteRestaurantList.mockResolvedValue(undefined);
     mockedMoveRestaurantListRestaurant.mockResolvedValue([]);
+    mockedRemoveRestaurantFoodItemBookmarkFromList.mockResolvedValue([]);
     mockedRemoveRestaurantListSourceRating.mockResolvedValue([]);
     mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
     mockedSaveRestaurantFoodItemToList.mockResolvedValue([]);
@@ -679,6 +684,51 @@ describe('useRestaurantListWrites', () => {
       'source_list_1',
     );
     expect(result).toEqual({ status: 'completed', result: [savedItems] });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues bookmark removal from the default Want to Try list', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    let result: Awaited<ReturnType<typeof hook.removeBookmarkFromDefaultList>> | undefined;
+    await act(async () => {
+      result = await hook.removeBookmarkFromDefaultList({
+        defaultListId: 'default_list_1',
+        sourceListId: 'default_list_1',
+        bookmark: {
+          restaurantId: 'restaurant_1',
+          foodItemId: 'food_item_1',
+        },
+      });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.bookmark.remove',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId: 'default_list_1',
+            restaurantId: 'restaurant_1',
+            foodItemId: 'food_item_1',
+          },
+        },
+      }),
+    );
+    expect(mockedRemoveRestaurantFoodItemBookmarkFromList).not.toHaveBeenCalled();
+    expect(mockedInvalidateRestaurantListSaveTargetQueries).toHaveBeenCalledWith(
+      queryClient,
+      'default_list_1',
+    );
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Bookmark remove');
+    expect(result).toEqual({ status: 'queued' });
 
     await act(async () => {
       renderer.unmount();
