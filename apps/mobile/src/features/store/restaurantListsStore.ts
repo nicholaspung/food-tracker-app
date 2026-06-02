@@ -1,6 +1,7 @@
 import { pb } from '../../lib/pocketbase';
 import type {
   RestaurantListBookmarkedItemRecord,
+  RestaurantListFriendMatchRecord,
   RestaurantListItemRecord,
   RestaurantListRecord,
   SharedRestaurantListDetailRecord,
@@ -93,6 +94,15 @@ interface RestaurantListDetailApiBookmarkedItemRecord {
   userFoodItemVisitedAt?: string;
 }
 
+interface RestaurantListDetailApiFriendMatchRecord {
+  friendId: string;
+  friendName: string;
+  kind?: 'restaurant' | 'menu_item';
+  itemName?: string;
+  rating?: number;
+  savedAt?: string;
+}
+
 interface RestaurantListDetailApiItemRecord {
   id: string;
   listId: string;
@@ -109,6 +119,7 @@ interface RestaurantListDetailApiItemRecord {
   position: number;
   bookmarkedItems?: RestaurantListDetailApiBookmarkedItemRecord[];
   friendOverlapCount?: number;
+  friendMatches?: RestaurantListDetailApiFriendMatchRecord[];
   note?: string;
   createdAt: string;
 }
@@ -295,6 +306,25 @@ function mapRestaurantListDetailBookmarkedItemRecord(
   };
 }
 
+function mapRestaurantListDetailFriendMatchRecord(
+  record: RestaurantListDetailApiFriendMatchRecord,
+): RestaurantListFriendMatchRecord | null {
+  const friendId = record.friendId?.trim();
+  const friendName = record.friendName?.trim();
+  if (!friendId || !friendName) {
+    return null;
+  }
+
+  return {
+    friendId,
+    friendName,
+    kind: record.kind === 'menu_item' ? 'menu_item' : 'restaurant',
+    itemName: record.itemName?.trim() || undefined,
+    rating: typeof record.rating === 'number' && Number.isFinite(record.rating) ? record.rating : undefined,
+    savedAt: record.savedAt?.trim() || undefined,
+  };
+}
+
 function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRecord): RestaurantListItemRecord {
   return {
     id: record.id,
@@ -312,6 +342,9 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     position: record.position,
     bookmarkedItems: (record.bookmarkedItems ?? []).map(mapRestaurantListDetailBookmarkedItemRecord),
     friendOverlapCount: normalizeOptionalCount(record.friendOverlapCount),
+    friendMatches: (record.friendMatches ?? [])
+      .map(mapRestaurantListDetailFriendMatchRecord)
+      .filter((match): match is RestaurantListFriendMatchRecord => match !== null),
     note: record.note?.trim() || undefined,
     createdAt: record.createdAt,
   };

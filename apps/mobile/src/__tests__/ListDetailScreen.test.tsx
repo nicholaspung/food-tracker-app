@@ -42,6 +42,7 @@ const mockTheme = {
     border: {
       default: 'lightgray',
       info: 'lightblue',
+      strong: 'darkgray',
       subtle: 'silver',
     },
     button: {
@@ -53,6 +54,9 @@ const mockTheme = {
       dangerBg: 'mistyrose',
       infoBg: 'aliceblue',
       successBg: 'mintcream',
+    },
+    fill: {
+      brand: 'navy',
     },
   },
   spacing: {
@@ -74,6 +78,7 @@ const mockTheme = {
     bodyLgTightMedium: { fontSize: 18, fontWeight: '500' },
     bodyMd: { fontSize: 16 },
     bodySm: { fontSize: 12 },
+    bodySmTight: { fontSize: 12 },
     bodySmTightBold: { fontSize: 12, fontWeight: '700' },
     bodySmTightSemiBold: { fontSize: 12, fontWeight: '600' },
     label: { fontSize: 11 },
@@ -349,6 +354,25 @@ function findExactTextNodes(root: any, value: string) {
 
 function findExactTextNode(root: any, value: string) {
   return root.find((node: any) => node.type === 'Text' && node.props.children === value);
+}
+
+function flattenTextChildren(children: unknown): string {
+  if (typeof children === 'string' || typeof children === 'number') {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(flattenTextChildren).join('');
+  }
+  if (React.isValidElement(children)) {
+    return flattenTextChildren((children.props as { children?: unknown }).children);
+  }
+  return '';
+}
+
+function findTextNodeContaining(root: any, value: string) {
+  return root.find(
+    (node: any) => node.type === 'Text' && flattenTextChildren(node.props.children).includes(value),
+  );
 }
 
 function flattenStyle(style: any): Record<string, unknown> {
@@ -1408,11 +1432,36 @@ describe('ListDetailScreen', () => {
           items: [
             buildListItem({
               id: 'restaurant_bookmark_1',
+              restaurantId: 'restaurant_1',
               restaurantName: 'Bookmark Cafe',
               restaurantCity: 'Oakland',
               restaurantCuisineType: 'Cafe',
               bookmarkedItems: [],
               friendOverlapCount: 2,
+              friendMatches: [
+                {
+                  friendId: 'friend_1',
+                  friendName: 'Meri',
+                  kind: 'restaurant',
+                  savedAt: '2026-01-04T00:00:00.000Z',
+                },
+                {
+                  friendId: 'friend_2',
+                  friendName: 'Nicholas',
+                  kind: 'menu_item',
+                  itemName: 'Croissant',
+                  rating: 4,
+                  savedAt: '2026-01-05T00:00:00.000Z',
+                },
+              ],
+            }),
+            buildListItem({
+              id: 'restaurant_bookmark_2',
+              restaurantId: 'restaurant_2',
+              restaurantName: 'Solo Cafe',
+              restaurantCity: 'Berkeley',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [],
             }),
           ],
         }),
@@ -1426,8 +1475,23 @@ describe('ListDetailScreen', () => {
     });
 
     expect(findExactTextNode(renderer.root, 'Bookmark Cafe')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, 'Solo Cafe')).toBeTruthy();
     expect(findExactTextNode(renderer.root, 'Oakland • Cafe')).toBeTruthy();
-    expect(findExactTextNode(renderer.root, '2 friends also want to try this')).toBeTruthy();
+    expect(findExactTextNodes(renderer.root, 'Meri')).toHaveLength(0);
+    expect(findExactTextNodes(renderer.root, 'Nicholas')).toHaveLength(0);
+    expect(findExactTextNodes(renderer.root, '2 friends also want to try this')).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'want-to-try-friend-matches-toggle' })).toBeTruthy();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'want-to-try-friend-matches-toggle' }).props.onValueChange(true);
+    });
+
+    expect(renderer.root.findByProps({ title: 'Friends' })).toBeTruthy();
+    expect(findExactTextNodes(renderer.root, 'Solo Cafe')).toHaveLength(0);
+    expect(findExactTextNode(renderer.root, 'Meri')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, 'Nicholas')).toBeTruthy();
+    expect(findTextNodeContaining(renderer.root, 'Meri also wants to try this')).toBeTruthy();
+    expect(findTextNodeContaining(renderer.root, 'Nicholas saved Croissant')).toBeTruthy();
     expect(findExactTextNode(renderer.root, 'Find Restaurants to Bookmark')).toBeTruthy();
     expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(0);
     expect(renderer.root.findAllByProps({ title: 'Bookmarked Items' })).toHaveLength(0);

@@ -146,9 +146,17 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
       group.notes.push(listItem.note);
     }
 
+    if ((listItem.friendMatches?.length ?? 0) > 0 && (group.friendMatches?.length ?? 0) === 0) {
+      group.friendMatches = listItem.friendMatches;
+      group.friendOverlapCount = listItem.friendOverlapCount;
+    }
+
     if (normalizedBookmarkedItems.length === 0 && !group.restaurantBookmarkListItemId) {
       group.restaurantBookmarkListItemId = listItem.id;
-      group.friendOverlapCount = listItem.friendOverlapCount;
+      if ((group.friendMatches?.length ?? 0) === 0) {
+        group.friendOverlapCount = listItem.friendOverlapCount;
+        group.friendMatches = listItem.friendMatches;
+      }
     }
 
     for (const item of normalizedBookmarkedItems) {

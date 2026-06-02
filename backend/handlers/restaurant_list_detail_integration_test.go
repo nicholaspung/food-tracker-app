@@ -428,6 +428,13 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 		Items []struct {
 			ID                 string `json:"id"`
 			FriendOverlapCount int    `json:"friendOverlapCount"`
+			FriendMatches      []struct {
+				FriendID   string  `json:"friendId"`
+				FriendName string  `json:"friendName"`
+				Kind       string  `json:"kind"`
+				ItemName   string  `json:"itemName"`
+				Rating     float64 `json:"rating"`
+			} `json:"friendMatches"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -437,8 +444,28 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 	if len(payload.Items) != 1 || payload.Items[0].ID != userListItem.Id {
 		t.Fatalf("expected one restaurant bookmark with one eligible friend overlap, got %#v", payload.Items)
 	}
-	if payload.Items[0].FriendOverlapCount != 2 {
-		t.Fatalf("expected visible accepted-friend restaurant and menu-item bookmarks to count, got %#v", payload.Items[0])
+	if payload.Items[0].FriendOverlapCount != 3 {
+		t.Fatalf("expected accepted-friend restaurant and menu-item bookmarks to count, got %#v", payload.Items[0])
+	}
+	if len(payload.Items[0].FriendMatches) != 4 {
+		t.Fatalf("expected restaurant and menu-item friend match details, got %#v", payload.Items[0].FriendMatches)
+	}
+
+	hasMenuItemMatch := false
+	hasPrivateDefaultListMatch := false
+	for _, match := range payload.Items[0].FriendMatches {
+		if match.FriendID == menuItemFriend.Id && match.Kind == "menu_item" && match.ItemName == "Burger" && match.Rating == 5 {
+			hasMenuItemMatch = true
+		}
+		if match.FriendID == secondFriend.Id && match.Kind == "restaurant" {
+			hasPrivateDefaultListMatch = true
+		}
+	}
+	if !hasMenuItemMatch {
+		t.Fatalf("expected menu item friend match detail, got %#v", payload.Items[0].FriendMatches)
+	}
+	if !hasPrivateDefaultListMatch {
+		t.Fatalf("expected private default-list accepted-friend match detail, got %#v", payload.Items[0].FriendMatches)
 	}
 }
 

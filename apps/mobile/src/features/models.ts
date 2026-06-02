@@ -128,6 +128,15 @@ export interface RestaurantListBookmarkedItemRecord {
   userFoodItemVisitedAt?: string;
 }
 
+export interface RestaurantListFriendMatchRecord {
+  friendId: string;
+  friendName: string;
+  kind: 'restaurant' | 'menu_item';
+  itemName?: string;
+  rating?: number;
+  savedAt?: string;
+}
+
 export interface RestaurantListItemRecord {
   id: string;
   listId: string;
@@ -144,6 +153,7 @@ export interface RestaurantListItemRecord {
   position: number;
   bookmarkedItems: RestaurantListBookmarkedItemRecord[];
   friendOverlapCount?: number;
+  friendMatches?: RestaurantListFriendMatchRecord[];
   note?: string;
   createdAt: string;
 }

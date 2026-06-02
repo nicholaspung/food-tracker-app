@@ -1,7 +1,7 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { Pressable, Share, Switch, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -196,6 +196,29 @@ const useStyles = createThemedStyles((theme) => ({
   viewModeLabelActive: {
     color: theme.colors.text.primary,
   },
+  friendMatchesToggleRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  friendMatchesToggleTextWrap: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+    paddingRight: theme.spacing.sm,
+  },
+  friendMatchesToggleTitle: {
+    color: theme.colors.text.primary,
+  },
+  friendMatchesToggleSubtitle: {
+    color: theme.colors.text.secondary,
+  },
   mapWrap: {
     borderColor: theme.colors.border.default,
     borderRadius: theme.radii.lg,
@@ -235,6 +258,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ListDetailViewMode>('list');
+  const [showFriendMatches, setShowFriendMatches] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [isSharingList, setIsSharingList] = useState(false);
@@ -364,8 +388,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             ...row,
             ownerItems,
           };
+        })
+        .filter((row) => {
+          if (!isDefaultList || !showFriendMatches) {
+            return true;
+          }
+          return (row.group.friendMatches?.length ?? 0) > 0 || (row.group.friendOverlapCount ?? 0) > 0;
         }),
-    [isDefaultList, locallyRemovedListItemKeys, restaurantRows],
+    [isDefaultList, locallyRemovedListItemKeys, restaurantRows, showFriendMatches],
   );
 
   const listDetailActionDependencies = useMemo<ListDetailActionDependencies>(
@@ -1231,6 +1261,37 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           />
         ) : (
           <>
+            {isOwner && isDefaultList ? (
+              <View style={styles.friendMatchesToggleRow}>
+                <View style={styles.friendMatchesToggleTextWrap}>
+                  <Text style={styles.friendMatchesToggleTitle} variant="label">
+                    Show friend matches
+                  </Text>
+                  <Text style={styles.friendMatchesToggleSubtitle} variant="bodySmTight">
+                    Only show restaurants friends also saved, with their names.
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Show friend matches"
+                  ios_backgroundColor={theme.colors.border.strong}
+                  onValueChange={(nextValue) => {
+                    setShowFriendMatches(nextValue);
+                    trackObservabilityEvent('LIST_DETAIL_FRIEND_MATCHES_TOGGLED', {
+                      source: 'ListDetailScreen',
+                      enabled: nextValue,
+                    });
+                  }}
+                  testID="want-to-try-friend-matches-toggle"
+                  thumbColor={theme.colors.background.surface}
+                  trackColor={{
+                    false: theme.colors.border.strong,
+                    true: theme.colors.fill.brand,
+                  }}
+                  value={showFriendMatches}
+                />
+              </View>
+            ) : null}
+
             {isOwner ? (
               <Pressable
                 accessibilityLabel={isDefaultList ? 'Browse Food Discovery' : 'Add restaurant to list'}
@@ -1262,9 +1323,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
             {visibleRestaurantRows.length === 0 ? (
               <EmptyState
-                description={readModel.emptyRestaurantsDescription}
+                description={
+                  isOwner && isDefaultList && showFriendMatches
+                    ? 'No friends have matching Want to Try bookmarks for these restaurants yet.'
+                    : readModel.emptyRestaurantsDescription
+                }
                 tone="default"
-                title="No restaurants yet"
+                title={isOwner && isDefaultList && showFriendMatches ? 'No friend matches yet' : 'No restaurants yet'}
               />
             ) : (
               visibleRestaurantRows.map((row) => {
@@ -1272,6 +1337,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
                 return isDefaultList && isOwner ? (
                   <ListDetailWantToTryBookmarkCard
+                    friendMatches={group.friendMatches}
                     friendOverlapCount={group.friendOverlapCount}
                     groupIndex={groupIndex}
                     isLocked={isRestaurantLocked}
@@ -1310,6 +1376,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     )}
                     restaurantName={group.restaurantName}
                     secondaryMetaLabel={secondaryMetaLabel}
+                    showFriendMatches={showFriendMatches}
                   />
                 ) : isOwner ? (
                   <ListDetailRestaurantRecommendationGroupCard

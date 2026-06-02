@@ -1,3 +1,5 @@
+import type { RestaurantListFriendMatchRecord } from '../../features';
+
 export interface GroupedBookmarkedItem {
   key: string;
   bookmarkLookupIds: string[];
@@ -81,6 +83,7 @@ export interface GroupedRestaurant {
   firstPosition: number;
   restaurantBookmarkListItemId?: string;
   friendOverlapCount?: number;
+  friendMatches?: RestaurantListFriendMatchRecord[];
   items: GroupedBookmarkedItem[];
 }
 

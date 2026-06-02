@@ -54,6 +54,15 @@ type restaurantListDetailBookmarkedItemResponse struct {
 	UserFoodItemVisitedAt    string  `json:"userFoodItemVisitedAt,omitempty"`
 }
 
+type restaurantListDetailFriendMatchResponse struct {
+	FriendID   string  `json:"friendId"`
+	FriendName string  `json:"friendName"`
+	Kind       string  `json:"kind"`
+	ItemName   string  `json:"itemName,omitempty"`
+	Rating     float64 `json:"rating,omitempty"`
+	SavedAt    string  `json:"savedAt,omitempty"`
+}
+
 type restaurantListDetailItemResponse struct {
 	ID                    string                                       `json:"id"`
 	ListID                string                                       `json:"listId"`
@@ -70,6 +79,7 @@ type restaurantListDetailItemResponse struct {
 	Position              int                                          `json:"position"`
 	BookmarkedItems       []restaurantListDetailBookmarkedItemResponse `json:"bookmarkedItems"`
 	FriendOverlapCount    int                                          `json:"friendOverlapCount,omitempty"`
+	FriendMatches         []restaurantListDetailFriendMatchResponse    `json:"friendMatches,omitempty"`
 	Note                  string                                       `json:"note,omitempty"`
 	CreatedAt             string                                       `json:"createdAt"`
 }
@@ -657,11 +667,13 @@ func getRestaurantListDetailResponse(
 	}
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	friendOverlapCountsByRestaurantID := map[string]int{}
+	friendMatchesByRestaurantID := map[string][]restaurantListDetailFriendMatchResponse{}
 	if listRecord.GetBool("isDefault") {
-		friendOverlapCountsByRestaurantID, err = buildWantToTryFriendOverlapCounts(app, userID, restaurantIDs)
+		friendMatchesByRestaurantID, err = buildWantToTryFriendMatches(app, userID, restaurantIDs)
 		if err != nil {
 			return response, err
 		}
+		friendOverlapCountsByRestaurantID = buildFriendOverlapCountsFromMatches(friendMatchesByRestaurantID)
 	}
 
 	foodItemRecords, err := findRecordsByIDs(app, "food_items", foodItemIDs)
@@ -761,8 +773,9 @@ func getRestaurantListDetailResponse(
 			visitsByID,
 		)
 		itemResponse.BookmarkedItems = bookmarkedItems
-		if isRestaurantOnlyListItem(listItem) {
+		if listRecord.GetBool("isDefault") {
 			itemResponse.FriendOverlapCount = friendOverlapCountsByRestaurantID[itemResponse.RestaurantID]
+			itemResponse.FriendMatches = friendMatchesByRestaurantID[itemResponse.RestaurantID]
 		}
 
 		for _, bookmarkedItem := range bookmarkedItems {
@@ -1379,7 +1392,40 @@ func buildWantToTryFriendOverlapCounts(
 	userID string,
 	restaurantIDs []string,
 ) (map[string]int, error) {
+	friendMatchesByRestaurantID, err := buildWantToTryFriendMatches(app, userID, restaurantIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildFriendOverlapCountsFromMatches(friendMatchesByRestaurantID), nil
+}
+
+func buildFriendOverlapCountsFromMatches(
+	friendMatchesByRestaurantID map[string][]restaurantListDetailFriendMatchResponse,
+) map[string]int {
 	result := map[string]int{}
+	for restaurantID, matches := range friendMatchesByRestaurantID {
+		seenFriendIDs := map[string]struct{}{}
+		for _, match := range matches {
+			friendID := strings.TrimSpace(match.FriendID)
+			if friendID == "" {
+				continue
+			}
+			seenFriendIDs[friendID] = struct{}{}
+		}
+		if len(seenFriendIDs) > 0 {
+			result[restaurantID] = len(seenFriendIDs)
+		}
+	}
+	return result
+}
+
+func buildWantToTryFriendMatches(
+	app core.App,
+	userID string,
+	restaurantIDs []string,
+) (map[string][]restaurantListDetailFriendMatchResponse, error) {
+	result := map[string][]restaurantListDetailFriendMatchResponse{}
 	restaurantClauses := make([]string, 0, len(restaurantIDs))
 	params := dbx.Params{"userId": userID}
 	seen := map[string]struct{}{}
@@ -1404,27 +1450,56 @@ func buildWantToTryFriendOverlapCounts(
 	}
 
 	rows := []struct {
-		RestaurantID string `db:"restaurantId"`
-		Count        int    `db:"count"`
+		RestaurantID          string  `db:"restaurantId"`
+		FriendID              string  `db:"friendId"`
+		FriendName            string  `db:"friendName"`
+		FriendEmail           string  `db:"friendEmail"`
+		FoodItemID            string  `db:"foodItemId"`
+		FoodItemName          string  `db:"foodItemName"`
+		FoodItemRating        float64 `db:"foodItemRating"`
+		UserFoodItemID        string  `db:"userFoodItemId"`
+		UserFoodItemName      string  `db:"userFoodItemName"`
+		UserFoodItemRating    float64 `db:"userFoodItemRating"`
+		MenuItemID            string  `db:"menuItemId"`
+		MenuItemName          string  `db:"menuItemName"`
+		RecommendedItemIDsRaw string  `db:"recommendedItemIdsRaw"`
+		SavedAt               string  `db:"savedAt"`
 	}{}
 
 	err := app.DB().NewQuery(fmt.Sprintf(`
-		SELECT li.restaurant AS [[restaurantId]], COUNT(DISTINCT rl.user) AS [[count]]
+		SELECT
+			li.restaurant AS [[restaurantId]],
+			rl.user AS [[friendId]],
+			users.name AS [[friendName]],
+			users.email AS [[friendEmail]],
+			COALESCE(li.foodItem, '') AS [[foodItemId]],
+			COALESCE(food_items.name, '') AS [[foodItemName]],
+			COALESCE(food_items.rating, 0) AS [[foodItemRating]],
+			COALESCE(li.userFoodItem, '') AS [[userFoodItemId]],
+			COALESCE(user_food_items.name, '') AS [[userFoodItemName]],
+			COALESCE(user_food_items.rating, 0) AS [[userFoodItemRating]],
+			COALESCE(li.menuItem, '') AS [[menuItemId]],
+			COALESCE(menu_items.name, '') AS [[menuItemName]],
+			COALESCE(li.recommendedItems, '') AS [[recommendedItemIdsRaw]],
+			li.created AS [[savedAt]]
 		FROM list_items li
 		INNER JOIN restaurant_lists rl ON rl.id = li.list
+		INNER JOIN users ON users.id = rl.user
 		INNER JOIN friendships f
 			ON f.status = 'accepted'
 			AND (
 				(f.user = {:userId} AND f.friend = rl.user) OR
 				(f.friend = {:userId} AND f.user = rl.user)
 			)
+		LEFT JOIN food_items ON food_items.id = li.foodItem
+		LEFT JOIN food_items user_food_items ON user_food_items.id = li.userFoodItem
+		LEFT JOIN menu_items ON menu_items.id = li.menuItem
 		WHERE rl.isDefault = true
 			AND rl.user != {:userId}
-			AND rl.visibility = 'friends'
 			AND COALESCE(rl.moderationStatus, '') IN ('', 'active', 'reviewed')
 			AND COALESCE(li.moderationStatus, '') IN ('', 'active', 'reviewed')
 			AND (%s)
-		GROUP BY li.restaurant
+		ORDER BY li.restaurant ASC, li.created DESC, li.id DESC
 	`, strings.Join(restaurantClauses, " OR "))).
 		Bind(params).
 		All(&rows)
@@ -1434,10 +1509,46 @@ func buildWantToTryFriendOverlapCounts(
 
 	for _, row := range rows {
 		restaurantID := strings.TrimSpace(row.RestaurantID)
-		if restaurantID == "" || row.Count <= 0 {
+		friendID := strings.TrimSpace(row.FriendID)
+		if restaurantID == "" || friendID == "" {
 			continue
 		}
-		result[restaurantID] = row.Count
+
+		friendName := strings.TrimSpace(row.FriendName)
+		if friendName == "" {
+			email := strings.TrimSpace(row.FriendEmail)
+			if email != "" {
+				friendName = strings.SplitN(email, "@", 2)[0]
+			}
+		}
+		if friendName == "" {
+			friendName = "Friend"
+		}
+
+		match := restaurantListDetailFriendMatchResponse{
+			FriendID:   friendID,
+			FriendName: friendName,
+			Kind:       "restaurant",
+			SavedAt:    strings.TrimSpace(row.SavedAt),
+		}
+
+		if itemName := strings.TrimSpace(row.FoodItemName); strings.TrimSpace(row.FoodItemID) != "" && itemName != "" {
+			match.Kind = "menu_item"
+			match.ItemName = itemName
+			match.Rating = row.FoodItemRating
+		} else if itemName := strings.TrimSpace(row.UserFoodItemName); strings.TrimSpace(row.UserFoodItemID) != "" && itemName != "" {
+			match.Kind = "menu_item"
+			match.ItemName = itemName
+			match.Rating = row.UserFoodItemRating
+		} else if itemName := strings.TrimSpace(row.MenuItemName); strings.TrimSpace(row.MenuItemID) != "" && itemName != "" {
+			match.Kind = "menu_item"
+			match.ItemName = itemName
+		} else if strings.TrimSpace(row.RecommendedItemIDsRaw) != "" && strings.TrimSpace(row.RecommendedItemIDsRaw) != "[]" {
+			match.Kind = "menu_item"
+			match.ItemName = "recommended items"
+		}
+
+		result[restaurantID] = append(result[restaurantID], match)
 	}
 
 	return result, nil

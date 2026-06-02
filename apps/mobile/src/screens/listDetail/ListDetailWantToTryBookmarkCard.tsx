@@ -3,10 +3,12 @@ import type { ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { SectionHeader } from '../../components/shared';
+import type { RestaurantListFriendMatchRecord } from '../../features';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Text } from '../../ui';
 
 interface ListDetailWantToTryBookmarkCardProps<Item> {
+  friendMatches?: readonly RestaurantListFriendMatchRecord[];
   groupIndex: number;
   friendOverlapCount?: number;
   isLocked?: boolean;
@@ -18,6 +20,7 @@ interface ListDetailWantToTryBookmarkCardProps<Item> {
   renderItem: (item: Item, itemIndex: number) => ReactNode;
   restaurantName: string;
   secondaryMetaLabel: string | null;
+  showFriendMatches?: boolean;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -98,8 +101,33 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 0,
     paddingTop: theme.spacing.sm,
   },
+  friendSection: {
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    gap: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
+  },
   sectionHeader: {
     marginBottom: theme.spacing.xs,
+  },
+  friendMatchRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  friendMatchIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  friendMatchText: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+    minWidth: 0,
+    ...theme.typography.bodySmTight,
+  },
+  friendMatchName: {
+    color: theme.colors.text.primary,
+    ...theme.typography.bodySmTightSemiBold,
   },
   itemSeparator: {
     backgroundColor: theme.colors.border.subtle,
@@ -107,7 +135,17 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+function buildFriendMatchLabel(match: RestaurantListFriendMatchRecord): string {
+  const itemName = match.itemName?.trim();
+  if (match.kind === 'menu_item' && itemName) {
+    return `saved ${itemName}`;
+  }
+
+  return 'also wants to try this';
+}
+
 export function ListDetailWantToTryBookmarkCard<Item>({
+  friendMatches = [],
   groupIndex,
   friendOverlapCount,
   isLocked = false,
@@ -119,14 +157,19 @@ export function ListDetailWantToTryBookmarkCard<Item>({
   renderItem,
   restaurantName,
   secondaryMetaLabel,
+  showFriendMatches = false,
 }: ListDetailWantToTryBookmarkCardProps<Item>) {
   const theme = useTheme();
   const styles = useStyles();
   const metadataLabel = secondaryMetaLabel
     ? `${primaryMetaLabel} • ${secondaryMetaLabel}`
     : primaryMetaLabel;
+  const visibleFriendMatches = showFriendMatches ? friendMatches : [];
   const friendOverlapLabel =
-    typeof friendOverlapCount === 'number' && friendOverlapCount > 0
+    showFriendMatches &&
+    visibleFriendMatches.length === 0 &&
+    typeof friendOverlapCount === 'number' &&
+    friendOverlapCount > 0
       ? `${friendOverlapCount} ${friendOverlapCount === 1 ? 'friend also wants' : 'friends also want'} to try this`
       : null;
 
@@ -168,6 +211,26 @@ export function ListDetailWantToTryBookmarkCard<Item>({
             style={styles.metaIcon}
           />
           <Text style={styles.metaText}>{friendOverlapLabel}</Text>
+        </View>
+      ) : null}
+
+      {visibleFriendMatches.length > 0 ? (
+        <View style={styles.friendSection} testID={`want-to-try-friend-matches-${groupIndex}`}>
+          <SectionHeader title="Friends" titleTone="secondary" />
+          {visibleFriendMatches.map((match, matchIndex) => (
+            <View key={`${match.friendId}-${match.savedAt ?? matchIndex}`} style={styles.friendMatchRow}>
+              <Ionicons
+                color={theme.colors.text.muted}
+                name={match.kind === 'menu_item' ? 'restaurant-outline' : 'people-outline'}
+                size={13}
+                style={styles.friendMatchIcon}
+              />
+              <Text style={styles.friendMatchText}>
+                <Text style={styles.friendMatchName}>{match.friendName}</Text>
+                {` ${buildFriendMatchLabel(match)}`}
+              </Text>
+            </View>
+          ))}
         </View>
       ) : null}
 
