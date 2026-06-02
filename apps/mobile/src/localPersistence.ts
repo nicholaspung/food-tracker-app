@@ -6,12 +6,6 @@ type AsyncKeyValueStorage = Pick<typeof AsyncStorageModule, 'getItem' | 'setItem
 
 const queryCacheKeys = {
   active: getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5'),
-  legacy: [
-    getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
-    getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
-    getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3'),
-    getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4'),
-  ],
 } as const;
 
 const localPersistenceAsyncStorage: AsyncKeyValueStorage = {
@@ -62,7 +56,6 @@ function setLocalStorageItem(key: string, value: string): void {
 export const localPersistence = {
   queryCache: {
     activeStorageKey: queryCacheKeys.active,
-    legacyStorageKeys: [...queryCacheKeys.legacy],
     storage: localPersistenceAsyncStorage,
   },
   uiPreferences: {

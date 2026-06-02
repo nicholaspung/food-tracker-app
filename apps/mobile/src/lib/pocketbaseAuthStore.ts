@@ -145,21 +145,12 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       const secureValue = await secureStore.getItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
       if (secureValue) {
         await localPersistence.authFallback.storage.removeItem(this.storageKey);
-        return secureValue;
       }
+
+      return secureValue;
     }
 
-    const legacyValue = await localPersistence.authFallback.storage.getItem(this.storageKey);
-    if (!legacyValue) {
-      return null;
-    }
-
-    if (secureStore) {
-      await secureStore.setItemAsync(this.storageKey, legacyValue, getSecureStoreOptions(secureStore));
-      await localPersistence.authFallback.storage.removeItem(this.storageKey);
-    }
-
-    return legacyValue;
+    return localPersistence.authFallback.storage.getItem(this.storageKey);
   }
 
   private async clearPersistedStorage(): Promise<void> {

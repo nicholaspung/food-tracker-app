@@ -233,6 +233,26 @@ function renderListsScreen() {
   );
 }
 
+function collectTextContent(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') {
+    return '';
+  }
+
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(collectTextContent).join('');
+  }
+
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return collectTextContent(node.props.children);
+  }
+
+  return '';
+}
+
 describe('ListsScreen', () => {
   beforeEach(() => {
     mockQueuedWrites = [];
@@ -276,6 +296,33 @@ describe('ListsScreen', () => {
     expect(renderer.root.findByProps({ testID: 'lists-search-input' })).toBeTruthy();
     expect(renderer.root.findByProps({ testID: 'lists-list-card-my-0' })).toBeTruthy();
     expect(renderer.root.findByType('FeatureListFooter').props.label).toBe('Load more lists');
+  });
+
+  it('renders current list summary counts and updated date', async () => {
+    mockedUseInfiniteQuery.mockImplementation((options) =>
+      options.enabled === false
+        ? buildQueryResult({ isSuccess: false })
+        : buildQueryResult({}, [
+            buildList({
+              menuItemCount: 5,
+              restaurantCount: 2,
+              updatedAt: '2026-04-03T00:00:00.000Z',
+            }),
+          ]),
+    );
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderListsScreen();
+    });
+
+    const listItem = renderer.root.findByProps({ testID: 'lists-list-card-my-0' });
+    const summaryText = collectTextContent(listItem.props.description);
+
+    expect(summaryText).toContain('2 restaurants');
+    expect(summaryText).toContain('5 menu items');
+    expect(summaryText).toContain('Updated');
+    expect(summaryText).toContain(new Date(2026, 3, 3).toLocaleDateString());
   });
 
   it('promotes shared-link state with a pill on my list cards', async () => {

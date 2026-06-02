@@ -33,10 +33,6 @@ jest.mock('react-native', () => ({
   RefreshControl: (props: Record<string, unknown>) => mockReact.createElement('RefreshControl', props),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
-  useWindowDimensions: () => ({
-    height: 640,
-    width: 360,
-  }),
 }));
 
 jest.mock('react-native-keyboard-controller', () => ({
@@ -210,28 +206,6 @@ describe('BackHeaderScreenScaffold', () => {
         backgroundColor: 'muted-background',
       }),
     );
-  });
-
-  it('supports opting back into the legacy midpoint overscroll split', async () => {
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = renderScaffold({
-        overscrollBackgroundStrategy: 'legacy-midpoint',
-      });
-    });
-
-    triggerHeaderLayout(renderer, 72);
-
-    const screen = renderer.root.findByType('Screen');
-
-    expect(flattenStyle(screen.props.contentStyle)).toEqual(
-      expect.objectContaining({
-        backgroundColor: 'app-background',
-      }),
-    );
-    expect(screen.props.scroll).toBe(true);
-    expect(screen.props.scrollUnderlayTopInset).toBe(320);
   });
 
   it('does not render a sticky action footer by default', async () => {

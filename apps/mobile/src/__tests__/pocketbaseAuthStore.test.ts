@@ -3,13 +3,15 @@ import * as SecureStore from 'expo-secure-store';
 
 import { SecureStoreAuthStore } from '../lib/pocketbaseAuthStore';
 
+const mockedAsyncStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
+
 describe('SecureStoreAuthStore', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     await SecureStore.deleteItemAsync('test_auth_key');
     await SecureStore.deleteItemAsync('test_auth_key_backend_mismatch');
     await SecureStore.deleteItemAsync('test_auth_key_clear');
-    await SecureStore.deleteItemAsync('test_auth_key_migrate');
+    await SecureStore.deleteItemAsync('test_auth_key_legacy');
   });
 
   it('persists auth state and restores it for a fresh store instance', async () => {
@@ -35,9 +37,9 @@ describe('SecureStoreAuthStore', () => {
     expect(restoredStore.record?.id).toBe('user_1');
   });
 
-  it('migrates legacy AsyncStorage auth state into SecureStore', async () => {
+  it('ignores legacy AsyncStorage auth state when SecureStore is available', async () => {
     await AsyncStorage.setItem(
-      'test_auth_key_migrate',
+      'test_auth_key_legacy',
       JSON.stringify({
         token: 'legacy_jwt',
         record: {
@@ -47,14 +49,16 @@ describe('SecureStoreAuthStore', () => {
         },
       }),
     );
+    mockedAsyncStorage.getItem.mockClear();
 
-    const store = new SecureStoreAuthStore('test_auth_key_migrate');
+    const store = new SecureStoreAuthStore('test_auth_key_legacy');
     await store.waitUntilReady();
 
-    expect(store.token).toBe('legacy_jwt');
-    expect(store.record?.id).toBe('user_legacy');
-    expect(await AsyncStorage.getItem('test_auth_key_migrate')).toBeNull();
-    expect(await SecureStore.getItemAsync('test_auth_key_migrate')).toContain('legacy_jwt');
+    expect(store.token).toBe('');
+    expect(store.record).toBeNull();
+    expect(mockedAsyncStorage.getItem).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('test_auth_key_legacy')).toContain('legacy_jwt');
+    expect(await SecureStore.getItemAsync('test_auth_key_legacy')).toBeNull();
   });
 
   it('clears persisted auth state on clear', async () => {

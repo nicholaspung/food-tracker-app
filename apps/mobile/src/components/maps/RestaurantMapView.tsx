@@ -1,9 +1,8 @@
-import type { ComponentType, ForwardRefExoticComponent, RefAttributes } from 'react';
 import { Ionicons } from '../../ui/AppIcon';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import type { MapMarkerProps, MapViewProps, Region } from 'react-native-maps';
+import MapView, { Marker, type Region } from 'react-native-maps';
 
 import {
   CurrentLocationButton,
@@ -49,40 +48,6 @@ interface RestaurantMapViewProps {
   preserveRegionOnGroupsChange?: boolean;
   showCurrentLocationControl?: boolean;
   style?: StyleProp<ViewStyle>;
-}
-
-type MapViewHandle = {
-  animateToRegion?: (region: ReturnType<typeof buildCurrentLocationRegion>, duration?: number) => void;
-};
-
-type MapsComponents = {
-  MapView: ForwardRefExoticComponent<MapViewProps & RefAttributes<MapViewHandle>>;
-  Marker: ComponentType<MapMarkerProps>;
-};
-
-let mapsComponents: MapsComponents | null | undefined;
-
-function loadMapsComponents(): MapsComponents | null {
-  if (mapsComponents !== undefined) {
-    return mapsComponents;
-  }
-
-  try {
-    // Lazy-load so older dev-client binaries can render a fallback instead of crashing at module import time.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const maps = require('react-native-maps') as {
-      default: ComponentType<MapViewProps>;
-      Marker: ComponentType<MapMarkerProps>;
-    };
-    mapsComponents = {
-      MapView: maps.default as ForwardRefExoticComponent<MapViewProps & RefAttributes<MapViewHandle>>,
-      Marker: maps.Marker,
-    };
-  } catch {
-    mapsComponents = null;
-  }
-
-  return mapsComponents;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -216,7 +181,7 @@ export function RestaurantMapView({
 }: RestaurantMapViewProps) {
   const styles = useStyles();
   const theme = useTheme();
-  const mapRef = useRef<MapViewHandle | null>(null);
+  const mapRef = useRef<MapView | null>(null);
   const userPanPendingRef = useRef(false);
   const didHandleInitialRegionRef = useRef(false);
   const lastHandledResetSignalRef = useRef(resetSignal);
@@ -225,7 +190,6 @@ export function RestaurantMapView({
   const [mapOpenLoading, setMapOpenLoading] = useState(false);
   const [hiddenLocationBannerDismissed, setHiddenLocationBannerDismissed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(initialUserCoordinates);
-  const maps = loadMapsComponents();
   const initialRegion = useMemo(() => buildInitialMapRegion(groups), [groups]);
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
   const {
@@ -259,7 +223,7 @@ export function RestaurantMapView({
   }, [selectedGroupId]);
 
   useEffect(() => {
-    if (!maps || groups.length === 0) {
+    if (groups.length === 0) {
       return;
     }
 
@@ -269,7 +233,7 @@ export function RestaurantMapView({
 
     didHandleInitialRegionRef.current = true;
     mapRef.current?.animateToRegion?.(initialRegion, 0);
-  }, [groups.length, initialRegion, maps, preserveRegionOnGroupsChange]);
+  }, [groups.length, initialRegion, preserveRegionOnGroupsChange]);
 
   useEffect(() => {
     if (lastHandledResetSignalRef.current === resetSignal) {
@@ -277,13 +241,13 @@ export function RestaurantMapView({
     }
 
     lastHandledResetSignalRef.current = resetSignal;
-    if (!maps || groups.length === 0) {
+    if (groups.length === 0) {
       return;
     }
 
     didHandleInitialRegionRef.current = true;
     mapRef.current?.animateToRegion?.(initialRegion, 300);
-  }, [groups.length, initialRegion, maps, resetSignal]);
+  }, [groups.length, initialRegion, resetSignal]);
 
   if (loading && groups.length === 0) {
     return (
@@ -325,21 +289,6 @@ export function RestaurantMapView({
     );
   }
 
-  if (!maps) {
-    return (
-      <View style={[styles.container, style]} testID={testID}>
-        <View style={styles.stateWrap}>
-          <ErrorState
-            analyticsSource={analyticsSource}
-            description="Map support was added to JavaScript, but this development build does not include the native maps module yet. Rebuild the iOS app to use map view."
-            title="Map build required"
-          />
-        </View>
-      </View>
-    );
-  }
-
-  const { MapView, Marker } = maps;
   const helperTop = theme.spacing.sm + externalTopInset;
   const controlsTop = showHiddenLocationBanner
     ? theme.spacing.xxl + theme.spacing.lg + externalTopInset

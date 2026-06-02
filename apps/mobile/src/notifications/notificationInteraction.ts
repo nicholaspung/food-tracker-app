@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import type * as ExpoNotifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
-import { AppState, NativeModules, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import {
   deactivateNotificationDevice,
@@ -778,16 +778,7 @@ async function loadNotificationsModule(): Promise<NotificationsModule | null> {
 }
 
 function hasNotificationsNativeModule(): boolean {
-  if (hasExpoModule('ExpoPushTokenManager')) {
-    return true;
-  }
-
-  const legacyProxy = NativeModules?.NativeUnimoduleProxy as
-    | {
-        exportedMethods?: Record<string, unknown>;
-      }
-    | undefined;
-  return Boolean(legacyProxy?.exportedMethods?.ExpoPushTokenManager);
+  return hasExpoModule('ExpoPushTokenManager');
 }
 
 function hasExpoModule(moduleName: string): boolean {

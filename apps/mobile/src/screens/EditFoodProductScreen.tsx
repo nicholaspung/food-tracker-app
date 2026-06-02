@@ -45,7 +45,7 @@ import type { TrackingEntryProperties } from '../observability/productAnalytics'
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Text } from '../ui';
 
 type EditFoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'EditFoodProduct'>;
 type FoodProductEditorExitMethod =
@@ -77,7 +77,6 @@ function buildExistingPhotoAttachment(photo: VisitPhotoRecord, itemDate?: string
 
 export function EditFoodProductScreen({ navigation, route }: EditFoodProductScreenProps) {
   const { exitToHomeOnClose, foodProductId } = route.params;
-  const legacyFoodProductId = foodProductId;
   const styles = useStyles();
   const foodProductWrites = useFoodProductWrites();
   const { isOnline } = useConnectivity();
@@ -116,7 +115,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setForm(buildDefaultFoodProductForm());
     setHydratedFoodProductId(null);
     setErrorMessage(null);
-  }, [legacyFoodProductId]);
+  }, [foodProductId]);
 
   useEffect(() => {
     if (!foodProductQuery.data || hydratedFoodProductId === foodProductQuery.data.id) {
@@ -129,7 +128,6 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   }, [hydratedFoodProductId, foodProductQuery.data]);
 
   const primaryExistingPhoto = foodProductPhotosQuery.data?.[0] ?? null;
-  const extraLegacyPhotoCount = Math.max((foodProductPhotosQuery.data?.length ?? 0) - 1, 0);
   const existingPhotoAttachment = useMemo(
     () =>
       primaryExistingPhoto
@@ -168,8 +166,8 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         date: dateValue,
       }));
     },
-    pendingPickerRestoreKey: hydratedFoodProductId === legacyFoodProductId ? legacyFoodProductId : null,
-    resetKey: legacyFoodProductId,
+    pendingPickerRestoreKey: hydratedFoodProductId === foodProductId ? foodProductId : null,
+    resetKey: foodProductId,
     shouldEnforceUsageLimitsClientSide,
     trackingProperties: photoTrackingProperties,
   });
@@ -204,8 +202,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setIsSubmitting(true);
 
     const result = await submitEditFoodProductEditor({
-      extraLegacyPhotoCount,
-      foodProductId: legacyFoodProductId,
+      foodProductId,
       foodProductWrites,
       form,
       isDisplayFreeUser,
@@ -447,15 +444,6 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
             message="Could not load the current food product photo. You can still upload a new one."
             style={styles.sectionCard}
           />
-        ) : null}
-
-        {extraLegacyPhotoCount > 0 ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="secondary">
-              This food product has additional linked photos. Editing here changes only the primary photo and keeps the
-              other {extraLegacyPhotoCount === 1 ? 'photo' : 'photos'} attached.
-            </Text>
-          </Card>
         ) : null}
 
         <FoodProductFormFields

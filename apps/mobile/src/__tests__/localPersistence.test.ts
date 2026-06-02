@@ -13,12 +13,6 @@ describe('localPersistence', () => {
     expect(localPersistence.queryCache.activeStorageKey).toBe(
       getEnvironmentStorageKey('food_tracker_mobile_query_cache_v5'),
     );
-    expect(localPersistence.queryCache.legacyStorageKeys).toEqual([
-      getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
-      getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
-      getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3'),
-      getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4'),
-    ]);
     expect(localPersistence.uiPreferences.keys).toEqual({
       foodProductRatedBefore: 'ui.foodProduct.hasRatedBefore',
       ratingGuideExpanded: 'ui.ratingGuide.expanded',

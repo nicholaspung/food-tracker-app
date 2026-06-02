@@ -19,6 +19,67 @@ describe('SQLiteMutationQueueStore retention cleanup', () => {
     mockRunAsync.mockResolvedValue({ changes: 0 });
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('initializes native SQLite storage without deleting endpoint-specific rows', async () => {
+    const store = new NativeSQLiteMutationQueueStore();
+
+    await store.initialize();
+
+    expect(mockRunAsync).toHaveBeenCalledTimes(1);
+    expect(mockRunAsync).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE status = 'in_flight'"),
+      expect.any(Number),
+    );
+    expect(mockRunAsync).not.toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM offline_mutation_queue'),
+      expect.anything(),
+    );
+  });
+
+  it('initializes the web queue without filtering endpoint-specific rows', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const storage = createLocalStorageMock([
+      buildQueuedMutation({
+        id: 'old_probe',
+        status: 'pending',
+        url: 'https://api.example.com/api/mobile/offline-probe',
+        updatedAt: 100,
+      }),
+      buildQueuedMutation({
+        id: 'old_in_flight',
+        status: 'in_flight',
+        url: 'local://feature/note.create',
+        updatedAt: 100,
+      }),
+    ]);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+    const store = new WebSQLiteMutationQueueStore();
+
+    await store.initialize();
+    const queuedMutations = await store.getQueuedMutations(10);
+
+    expect(queuedMutations.map((mutation) => mutation.id).sort()).toEqual([
+      'old_in_flight',
+      'old_probe',
+    ]);
+    expect(queuedMutations.find((mutation) => mutation.id === 'old_probe')?.url).toBe(
+      'https://api.example.com/api/mobile/offline-probe',
+    );
+    expect(queuedMutations.find((mutation) => mutation.id === 'old_in_flight')).toEqual(
+      expect.objectContaining({
+        nextRetryAt: 0,
+        status: 'pending',
+        updatedAt: 1_700_000_000_000,
+      }),
+    );
+  });
+
   it('removes only terminal failed native SQLite rows older than the cutoff', async () => {
     mockRunAsync.mockResolvedValueOnce({ changes: 2 });
     const store = new NativeSQLiteMutationQueueStore();

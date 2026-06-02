@@ -481,4 +481,53 @@ describe('visitsStore.getVisitById', () => {
     );
     expect(operationOrder).toEqual(['delete:photo-1', 'delete:photo-2', 'upload']);
   });
+
+  it('reports unmatchable edit photo reconciliation instead of using an arbitrary response item', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      id: 'visit-123',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-05T18:00:00.000Z',
+      visibility: 'friends',
+      items: [
+        {
+          id: 'unrelated-item-1',
+          name: 'Soup Dumplings',
+          rating: 5,
+          description: 'Juicy',
+          notes: 'Order again',
+        },
+      ],
+      source: 'visit',
+      createdAt: '2026-04-05T18:00:00.000Z',
+      updatedAt: '2026-04-05T18:10:00.000Z',
+    });
+
+    await expect(
+      updateVisit('visit-123', {
+        restaurantName: 'Noodle House',
+        visitedAt: '2026-04-05T18:00:00.000Z',
+        visitedOn: '2026-04-05',
+        visibility: 'friends',
+        items: [
+          {
+            id: 'draft-item-1',
+            name: 'Spicy Wontons',
+            rating: 4,
+            description: 'Crispy',
+            notes: 'Shareable',
+            newPhotos: [
+              {
+                uri: 'file:///wontons.jpg',
+                name: 'wontons.jpg',
+                mimeType: 'image/jpeg',
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow('Updated visit item could not be matched for photo upload.');
+
+    expect(mockedUploadVisitPhotos).not.toHaveBeenCalled();
+  });
 });

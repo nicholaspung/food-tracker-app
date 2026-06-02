@@ -11,7 +11,7 @@ import {
   trackProductEvent,
 } from '../observability/productAnalytics';
 import { SplashScreen } from '../screens/SplashScreen';
-import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './queryPersistence';
+import { queryPersister, shouldPersistQuery } from './queryPersistence';
 import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
@@ -68,16 +68,6 @@ export function AppProviders({ children }: AppProvidersProps) {
     let unsubscribe = () => {};
 
     const restorePersistedQueries = async () => {
-      try {
-        const removedLegacyKeys = await removeLegacyQueryCache();
-        trackObservabilityEvent('QUERY_CACHE_RESET_APPLIED', {
-          removedLegacyKeys,
-          source: 'AppProviders',
-        });
-      } catch (error) {
-        logger.warn('[AppProviders] Failed to remove legacy React Query cache:', error);
-      }
-
       const [nextUnsubscribe, restorePromise] = persistQueryClient({
         queryClient,
         persister: queryPersister,

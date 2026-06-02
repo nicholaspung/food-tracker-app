@@ -43,10 +43,6 @@ type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 type ListTab = 'my' | 'friends';
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type RestaurantListsInfiniteData = InfiniteData<PaginatedResult<RestaurantListRecord>, unknown>;
-type ListCountSummary = {
-  restaurantCount: number;
-  menuItemCount: number;
-};
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -195,56 +191,6 @@ const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
 const LIST_SEARCH_DEBOUNCE_MS = 300;
 const LIST_PENDING_OPERATION_NAMES = ['list.create'] as const;
 
-function toSafeNonNegativeInteger(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-
-  if (value <= 0) {
-    return 0;
-  }
-
-  return Math.floor(value);
-}
-
-function normalizeListCountSummary(value: unknown): ListCountSummary {
-  if (typeof value === 'number') {
-    const legacyCount = toSafeNonNegativeInteger(value);
-    if (legacyCount !== null) {
-      return {
-        restaurantCount: legacyCount,
-        menuItemCount: legacyCount,
-      };
-    }
-  }
-
-  if (!value || typeof value !== 'object') {
-    return {
-      restaurantCount: 0,
-      menuItemCount: 0,
-    };
-  }
-
-  const record = value as Record<string, unknown>;
-  const restaurantCount = toSafeNonNegativeInteger(record.restaurantCount);
-  const menuItemCount = toSafeNonNegativeInteger(record.menuItemCount);
-
-  if (restaurantCount === null && menuItemCount === null) {
-    return {
-      restaurantCount: 0,
-      menuItemCount: 0,
-    };
-  }
-
-  const resolvedRestaurantCount = restaurantCount ?? menuItemCount ?? 0;
-  const resolvedMenuItemCount = menuItemCount ?? resolvedRestaurantCount;
-
-  return {
-    restaurantCount: resolvedRestaurantCount,
-    menuItemCount: resolvedMenuItemCount,
-  };
-}
-
 function getListCoverImageUrl(list: RestaurantListRecord): string | null {
   if (!list.coverImage) {
     return null;
@@ -260,27 +206,6 @@ function getListCoverImageUrl(list: RestaurantListRecord): string | null {
 
 function getVisibilityIconName(visibility: RestaurantListRecord['visibility']): IoniconName {
   return visibility === 'friends' ? 'people-outline' : 'lock-closed-outline';
-}
-
-function resolveListUpdatedValue(list: RestaurantListRecord): unknown {
-  if (typeof list.updatedAt === 'string' && list.updatedAt.trim()) {
-    return list.updatedAt;
-  }
-
-  const legacyRecord = list as unknown as Record<string, unknown>;
-  const fallbackCandidates = [legacyRecord.updated, legacyRecord.updated_at, list.createdAt];
-
-  for (const candidate of fallbackCandidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate;
-    }
-
-    if (typeof candidate === 'number' || candidate instanceof Date) {
-      return candidate;
-    }
-  }
-
-  return undefined;
 }
 
 function formatDateFromRawTimestamp(value: string): string | null {
@@ -320,29 +245,12 @@ function formatDateFromRawTimestamp(value: string): string | null {
 }
 
 function getUpdatedLabel(list: RestaurantListRecord): string {
-  const primaryValue = resolveListUpdatedValue(list);
-  const fallbackValue = list.createdAt;
-  const candidates: unknown[] = [primaryValue, fallbackValue];
-
-  for (const candidate of candidates) {
-    if (candidate === undefined || candidate === null) {
-      continue;
-    }
-
-    if (typeof candidate === 'string') {
-      const direct = formatDateFromRawTimestamp(candidate);
-      if (direct) {
-        return direct;
-      }
-    }
-
-    const parsed = formatDisplayDate(candidate, { fallback: 'Unknown' });
-    if (parsed !== 'Unknown') {
-      return parsed;
-    }
+  const direct = formatDateFromRawTimestamp(list.updatedAt);
+  if (direct) {
+    return direct;
   }
 
-  return 'recently';
+  return formatDisplayDate(list.updatedAt, { fallback: 'recently' });
 }
 
 function getRestaurantListsFromInfiniteData(
@@ -694,12 +602,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   );
 
   const renderListCard = (list: RestaurantListRecord, listIndex: number) => {
-    const counts = normalizeListCountSummary({
-      restaurantCount: list.restaurantCount,
-      menuItemCount: list.menuItemCount,
-    });
-    const restaurantCount = counts.restaurantCount;
-    const menuItemCount = counts.menuItemCount;
+    const restaurantCount = list.restaurantCount ?? 0;
+    const menuItemCount = list.menuItemCount ?? 0;
     const coverImage = getListCoverImageUrl(list);
     const updatedLabel = getUpdatedLabel(list);
 

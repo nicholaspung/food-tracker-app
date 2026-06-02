@@ -107,7 +107,6 @@ describe('food product editor submission lifecycle', () => {
     overrides: Partial<SubmitEditFoodProductEditorInput> = {},
   ): SubmitEditFoodProductEditorInput {
     return {
-      extraLegacyPhotoCount: 0,
       foodProductId: 'food-product-1',
       foodProductWrites: {
         updateFoodProduct,
@@ -335,6 +334,12 @@ describe('food product editor submission lifecycle', () => {
       }),
     );
     expect(mockedCleanupStagedPhotoFiles).not.toHaveBeenCalled();
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'EDIT_FOOD_PRODUCT_SUBMIT_STARTED',
+      expect.not.objectContaining({
+        extraLegacyPhotoCount: expect.anything(),
+      }),
+    );
     expect(result).toEqual({
       destination: { name: 'Previous' },
       status: 'queued',

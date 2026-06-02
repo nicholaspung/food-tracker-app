@@ -2,9 +2,9 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 import type { PersistedClient } from '@tanstack/query-persist-client-core';
 import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstack/react-query';
 
-import type { FeedbackRecord, NoteRecord } from '../features/models';
+import type { FeedbackMessageRecord, FeedbackRecord } from '../features/models';
 import { isBillDetailQueryKey } from '../features/store/billsQuery';
-import { isFeedbackListQueryKey } from '../features/store/feedbackQuery';
+import { isFeedbackListQueryKey, isFeedbackMessagesQueryKey } from '../features/store/feedbackQuery';
 import { isFriendsSummaryQueryKey, isPaginatedFriendsQueryKey } from '../features/store/friendsQuery';
 import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
 import { isNotesSummaryQueryKey, isPaginatedNotesQueryKey } from '../features/store/notesQuery';
@@ -18,14 +18,6 @@ function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ..
 
 function hasQueryKeyPrefix(queryKey: QueryKey, prefix: readonly unknown[]): boolean {
   return Array.isArray(queryKey) && prefix.every((segment, index) => queryKey[index] === segment);
-}
-
-function isLegacyFeedbackListQuery(queryKey: QueryKey): boolean {
-  if (!isFeatureQueryKey(queryKey) || queryKey[1] !== 'feedback') {
-    return false;
-  }
-
-  return queryKey.length === 2 || (queryKey.length === 3 && queryKey[2] === 'all');
 }
 
 function isBrowseNotePhotosQuery(queryKey: QueryKey): boolean {
@@ -78,101 +70,68 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
     case 'tasting-sessions':
       return isTastingSessionsListQueryKey(queryKey);
     case 'feedback':
-      return (
-        isLegacyFeedbackListQuery(queryKey) ||
-        isPaginatedFeedbackListQuery(queryKey) ||
-        isFeedbackSummaryQuery(queryKey)
-      );
+      return isPaginatedFeedbackListQuery(queryKey) || isFeedbackSummaryQuery(queryKey);
+    case 'feedback-messages':
+      return isFeedbackMessagesQueryKey(queryKey);
     default:
       return false;
   }
-}
-
-function sanitizeNoteRecord(note: NoteRecord): NoteRecord {
-  const sanitized = {
-    ...(note as NoteRecord & {
-      latitude?: number;
-      longitude?: number;
-    }),
-  };
-
-  delete sanitized.latitude;
-  delete sanitized.longitude;
-
-  return sanitized;
-}
-
-function sanitizeFeedbackRecord(feedback: FeedbackRecord): FeedbackRecord {
-  return {
-    ...feedback,
-    assignedAdminId: undefined,
-    userEmail: undefined,
-  };
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function sanitizePersistedCollectionData<TRecord>(
-  data: unknown,
-  sanitizeRecord: (record: TRecord) => TRecord,
-): unknown {
-  if (Array.isArray(data)) {
-    return data.map((record) => sanitizeRecord(record as TRecord));
-  }
+function redactFeedbackRecord(record: FeedbackRecord): FeedbackRecord {
+  const { assignedAdminId: _assignedAdminId, userEmail: _userEmail, ...redacted } = record;
+  return redacted;
+}
 
-  if (!isObjectRecord(data)) {
+function redactFeedbackMessageRecord(record: FeedbackMessageRecord): FeedbackMessageRecord {
+  const { userEmail: _userEmail, ...redacted } = record;
+  return redacted;
+}
+
+function redactPersistedInfiniteItems<TRecord>(
+  data: unknown,
+  redactRecord: (record: TRecord) => TRecord,
+): unknown {
+  if (!isObjectRecord(data) || !Array.isArray(data.pages)) {
     return data;
   }
 
-  if (Array.isArray(data.pages)) {
-    return {
-      ...data,
-      pages: data.pages.map((page) => {
-        if (!isObjectRecord(page) || !Array.isArray(page.items)) {
-          return page;
-        }
+  return {
+    ...data,
+    pages: data.pages.map((page) => {
+      if (!isObjectRecord(page) || !Array.isArray(page.items)) {
+        return page;
+      }
 
-        return {
-          ...page,
-          items: page.items.map((record) => sanitizeRecord(record as TRecord)),
-        };
-      }),
-    };
-  }
-
-  if (Array.isArray(data.records)) {
-    return {
-      ...data,
-      records: data.records.map((record) => sanitizeRecord(record as TRecord)),
-    };
-  }
-
-  return data;
+      return {
+        ...page,
+        items: page.items.map((record) => redactRecord(record as TRecord)),
+      };
+    }),
+  };
 }
 
-function sanitizePersistedQueryData(queryKey: QueryKey, data: unknown): unknown {
+function redactPersistedQueryData(queryKey: QueryKey, data: unknown): unknown {
   if (!data) {
     return data;
   }
 
-  if (isFeatureQueryKey(queryKey) && queryKey[1] === 'notes') {
-    return sanitizePersistedCollectionData(data, sanitizeNoteRecord);
+  if (isPaginatedFeedbackListQuery(queryKey)) {
+    return redactPersistedInfiniteItems(data, redactFeedbackRecord);
   }
 
-  if (isLegacyFeedbackListQuery(queryKey) || isPaginatedFeedbackListQuery(queryKey)) {
-    return sanitizePersistedCollectionData(data, sanitizeFeedbackRecord);
+  if (isFeedbackMessagesQueryKey(queryKey)) {
+    return redactPersistedInfiniteItems(data, redactFeedbackMessageRecord);
   }
 
   return data;
 }
 
-export function shouldPersistQuery(query: Query): boolean {
-  return defaultShouldDehydrateQuery(query) && isPersistedFeatureQuery(query.queryKey);
-}
-
-export function sanitizePersistedClient(persistedClient: PersistedClient): PersistedClient {
+function redactPersistedClient(persistedClient: PersistedClient): PersistedClient {
   return {
     ...persistedClient,
     clientState: {
@@ -181,20 +140,15 @@ export function sanitizePersistedClient(persistedClient: PersistedClient): Persi
         ...persistedQuery,
         state: {
           ...persistedQuery.state,
-          data: sanitizePersistedQueryData(persistedQuery.queryKey, persistedQuery.state.data),
+          data: redactPersistedQueryData(persistedQuery.queryKey, persistedQuery.state.data),
         },
       })),
     },
   };
 }
 
-export async function removeLegacyQueryCache(): Promise<string[]> {
-  await Promise.all(
-    localPersistence.queryCache.legacyStorageKeys.map((storageKey) =>
-      localPersistence.queryCache.storage.removeItem(storageKey),
-    ),
-  );
-  return [...localPersistence.queryCache.legacyStorageKeys];
+export function shouldPersistQuery(query: Query): boolean {
+  return defaultShouldDehydrateQuery(query) && isPersistedFeatureQuery(query.queryKey);
 }
 
 export async function clearPersistedQueryCache(): Promise<void> {
@@ -205,5 +159,5 @@ export const queryPersister = createAsyncStoragePersister({
   storage: localPersistence.queryCache.storage,
   key: localPersistence.queryCache.activeStorageKey,
   throttleTime: 1000,
-  serialize: (persistedClient) => JSON.stringify(sanitizePersistedClient(persistedClient)),
+  serialize: (persistedClient) => JSON.stringify(redactPersistedClient(persistedClient)),
 });

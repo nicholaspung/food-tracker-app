@@ -16,7 +16,7 @@ export interface FeatureIntroConfig<Destination extends keyof RootStackParamList
   title: string;
   subtitle: string;
   description: string;
-  media?: TutorialMediaSource;
+  media: TutorialMediaSource;
   iconName: IoniconName;
   iconTone: FeatureIntroIconTone;
   destination: Destination;
@@ -66,16 +66,6 @@ const useStyles = createThemedStyles((theme, mediaHeight: number) => ({
     top: 0,
     width: '100%',
   },
-  iconFrame: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    height: 96,
-    justifyContent: 'center',
-    width: 96,
-  },
   titleRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -118,15 +108,12 @@ export function FeatureIntroScreenContent<Destination extends keyof RootStackPar
   return (
     <View style={[styles.body, isImmersiveLayout ? styles.immersiveBody : null]}>
       <TutorialMedia
-        iconColor={iconColor}
-        iconName={config.iconName}
         imageResizeMode={imageResizeMode}
         isActive={isMediaActive}
         media={config.media}
         playbackKey={mediaPlaybackKey}
         styles={{
           frame: styles.imageFrame,
-          iconFrame: styles.iconFrame,
           image: styles.image,
           video: styles.video,
         }}

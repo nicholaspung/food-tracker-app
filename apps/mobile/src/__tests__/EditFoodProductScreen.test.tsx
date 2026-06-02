@@ -316,6 +316,86 @@ describe('EditFoodProductScreen', () => {
     });
   });
 
+  it('does not show the legacy multi-photo warning when multiple food product photos are returned', async () => {
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
+        return buildQueryResult({
+          data: {
+            id: 'food-product-1',
+            restaurantName: 'Food Product',
+            itemCategory: 'Packaged food',
+            itemName: 'Iced Coffee',
+            locationText: 'Mission District',
+            rating: 4,
+            notes: 'Smooth and sweet',
+            visibility: 'friends',
+            itemDate: '2026-04-12T18:30:00.000Z',
+            createdAt: '2026-04-12T18:30:00.000Z',
+            updatedAt: '2026-04-12T18:30:00.000Z',
+          },
+        });
+      }
+
+      if (Array.isArray(queryKey) && queryKey[1] === 'visitPhotos') {
+        return buildQueryResult({
+          data: [
+            {
+              id: 'photo-1',
+              food_item: 'food-product-1',
+              photo: 'iced-coffee.jpg',
+              collectionName: 'visit_photos',
+              created: '2026-04-13T18:31:00.000Z',
+            },
+            {
+              id: 'photo-2',
+              food_item: 'food-product-1',
+              photo: 'extra.jpg',
+              collectionName: 'visit_photos',
+              created: '2026-04-13T18:32:00.000Z',
+            },
+          ],
+        });
+      }
+
+      return buildQueryResult({ data: null });
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
+      expect.objectContaining({
+        id: 'photo-1',
+        uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
+      }),
+    ]);
+    expect(renderer.root.findAllByType('Text')).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          props: expect.objectContaining({
+            children: expect.stringContaining('additional linked photos'),
+          }),
+        }),
+      ]),
+    );
+  });
+
   it('shows a replacement photo immediately and restores the original when the draft is removed', async () => {
     let renderer: any = null;
 

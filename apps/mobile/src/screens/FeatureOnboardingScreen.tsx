@@ -333,15 +333,12 @@ function FeatureOnboardingCardView({
     <Card style={styles.card}>
       {media ? (
         <TutorialMedia
-          iconColor={theme.colors.text.brand}
-          iconName={card.icon}
           imageResizeMode="contain"
           isActive={isActive}
           media={media}
           playbackKey={playbackKey}
           styles={{
             frame: styles.imageFrame,
-            iconFrame: styles.heroIconFrame,
             image: styles.image,
             video: styles.video,
           }}

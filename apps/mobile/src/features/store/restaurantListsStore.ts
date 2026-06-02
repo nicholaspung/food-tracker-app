@@ -454,71 +454,6 @@ function mapRestaurantListMutationListItems(
   return (response.items ?? []).map(mapRestaurantListDetailItemRecord);
 }
 
-interface CandidateFoodItemPhotoFallback {
-  photoCount: number;
-  photoPreview?: {
-    id: string;
-    photo: string;
-  };
-}
-
-function buildCandidateFoodItemPhotoFallbacks(
-  records: VisitPhotoCollectionRecord[],
-): Map<string, CandidateFoodItemPhotoFallback> {
-  const map = new Map<string, CandidateFoodItemPhotoFallback>();
-
-  for (const record of records) {
-    const foodItemId = record.food_item?.trim();
-    if (!foodItemId) {
-      continue;
-    }
-
-    const existing = map.get(foodItemId);
-    if (existing) {
-      existing.photoCount += 1;
-      continue;
-    }
-
-    const photoId = record.id.trim();
-    const photoFilename = record.photo.trim();
-    map.set(foodItemId, {
-      photoCount: 1,
-      photoPreview:
-        photoId && photoFilename
-          ? {
-              id: photoId,
-              photo: photoFilename,
-            }
-          : undefined,
-    });
-  }
-
-  return map;
-}
-
-async function listCandidateFoodItemPhotoFallbacks(
-  foodItemIds: string[],
-  options?: ReadRequestOptions,
-): Promise<Map<string, CandidateFoodItemPhotoFallback>> {
-  const normalizedFoodItemIds = Array.from(
-    new Set(foodItemIds.map((foodItemId) => foodItemId.trim()).filter((foodItemId) => foodItemId.length > 0)),
-  );
-
-  if (normalizedFoodItemIds.length === 0) {
-    return new Map();
-  }
-
-  const records = await listCollectionRecords<VisitPhotoCollectionRecord>('visit_photos', {
-    fields: 'id,food_item,photo,created',
-    filter: buildOrFilter('food_item', normalizedFoodItemIds),
-    pageSize: 200,
-    signal: options?.signal,
-    sort: '-created',
-  });
-
-  return buildCandidateFoodItemPhotoFallbacks(records);
-}
-
 function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): VisitPhotoRecord {
   return {
     id: record.id,
@@ -724,38 +659,9 @@ export async function getRestaurantListCandidateRestaurants(
       },
     );
 
-    const items = (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord);
-    const missingPhotoFoodItemIds = Array.from(
-      new Set(
-        items.flatMap((restaurant) =>
-          restaurant.foodItems
-            .filter((item) => !item.photoPreview || item.photoCount === undefined)
-            .map((item) => item.id),
-        ),
-      ),
-    );
-    const photoFallbacks =
-      missingPhotoFoodItemIds.length > 0
-        ? await listCandidateFoodItemPhotoFallbacks(missingPhotoFoodItemIds, options)
-        : new Map<string, CandidateFoodItemPhotoFallback>();
-
     return {
       list: mapRestaurantListDetailApiListRecord(response.list),
-      items: items.map((restaurant) => ({
-        ...restaurant,
-        foodItems: restaurant.foodItems.map((item) => {
-          const fallback = photoFallbacks.get(item.id);
-          if (!fallback) {
-            return item;
-          }
-
-          return {
-            ...item,
-            photoPreview: item.photoPreview ?? fallback.photoPreview,
-            photoCount: item.photoCount ?? fallback.photoCount,
-          };
-        }),
-      })),
+      items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord),
     };
   } catch (error) {
     if (isNotFoundError(error)) {

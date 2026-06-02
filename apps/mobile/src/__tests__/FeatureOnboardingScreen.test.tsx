@@ -298,31 +298,6 @@ describe('FeatureOnboardingScreen', () => {
     expect(descriptionText?.props.ellipsizeMode).toBe('tail');
   });
 
-  it('renders icon fallback media until Getting Started tutorials are published', async () => {
-    const renderer = await renderFeatureOnboardingScreen();
-    const imageSources = renderer.root.findAllByType('Image').map((node: any) => node.props.source);
-
-    expect(imageSources).toContainEqual({ uri: 'asset://brand-logo' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-welcome' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-month-privacy' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-tutorials' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-friends' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-more-tools' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-lists-intro' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-bills-tips' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-settings' });
-    expect(imageSources).not.toContainEqual({ uri: 'asset://getting-started-support-invites' });
-    expect(
-      renderer.root.findAll(
-        (node: any) =>
-          node.type === 'Ionicons' &&
-          node.props.name === 'calendar-outline' &&
-          node.props.color === 'brand' &&
-          node.props.size === 44,
-      ),
-    ).toHaveLength(1);
-  });
-
   it('only mounts configured Getting Started tutorial media for the active card', async () => {
     Object.assign(mockMainOnboardingPublishedAssets, {
       settings: true,

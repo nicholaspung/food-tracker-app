@@ -374,15 +374,7 @@ export async function updateVisit(
           return contentMatch.id;
         }
 
-        const fallbackMatch = updatedVisit.items.find(
-          (item) => !matchedResponseItemIds.has(item.id),
-        );
-        if (!fallbackMatch) {
-          return null;
-        }
-
-        matchedResponseItemIds.add(fallbackMatch.id);
-        return fallbackMatch.id;
+        return null;
       };
 
       for (const item of normalizedItems) {
@@ -398,7 +390,7 @@ export async function updateVisit(
 
         const updatedItemId = resolveUpdatedItemId(item);
         if (!updatedItemId) {
-          continue;
+          throw new Error('Updated visit item could not be matched for photo upload.');
         }
 
         await uploadVisitPhotos(

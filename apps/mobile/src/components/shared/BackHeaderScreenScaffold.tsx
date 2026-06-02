@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { Platform, RefreshControl, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { useWindowDimensions } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Screen } from '../../ui';
@@ -10,7 +9,6 @@ import { ScreenHeader } from './ScreenHeader';
 import { StickyActionFooter, type StickyActionFooterAction } from './StickyActionFooter';
 
 type ContentBackgroundTone = 'app' | 'surface' | 'muted';
-type OverscrollBackgroundStrategy = 'measured-header' | 'legacy-midpoint';
 type HeaderScrollMode = 'attached' | 'fixed';
 
 /**
@@ -32,7 +30,6 @@ export interface BackHeaderScreenScaffoldProps {
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
-  overscrollBackgroundStrategy?: OverscrollBackgroundStrategy;
   headerScrollMode?: HeaderScrollMode;
   adjustKeyboardSpaceForFixedHeader?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
@@ -92,7 +89,6 @@ export function BackHeaderScreenScaffold({
   onRefresh,
   refreshing = false,
   contentBackgroundTone = 'app',
-  overscrollBackgroundStrategy = 'measured-header',
   headerScrollMode = 'attached',
   adjustKeyboardSpaceForFixedHeader = false,
   contentStyle,
@@ -104,7 +100,6 @@ export function BackHeaderScreenScaffold({
   testID,
 }: BackHeaderScreenScaffoldProps) {
   const theme = useTheme();
-  const { height } = useWindowDimensions();
   const [headerHeight, setHeaderHeight] = useState(0);
 
   const backgroundColor =
@@ -114,11 +109,6 @@ export function BackHeaderScreenScaffold({
         ? theme.colors.background.surface
         : theme.colors.background.muted;
   const usesFixedHeaderScroll = scroll && headerScrollMode === 'fixed';
-  const legacyMidpointInset = Math.max(220, Math.round(height / 2));
-  const scrollUnderlayTopInset =
-    overscrollBackgroundStrategy === 'legacy-midpoint'
-      ? legacyMidpointInset
-      : headerHeight;
   const styles = useStyles(
     usesFixedHeaderScroll ? theme.colors.background.surface : backgroundColor,
     backgroundColor,
@@ -140,7 +130,7 @@ export function BackHeaderScreenScaffold({
       refreshing={usesFixedHeaderScroll ? false : refreshing}
       scroll={usesFixedHeaderScroll ? false : scroll}
       scrollUnderlayColor={usesFixedHeaderScroll ? undefined : scroll ? backgroundColor : undefined}
-      scrollUnderlayTopInset={usesFixedHeaderScroll ? undefined : scroll ? scrollUnderlayTopInset : undefined}
+      scrollUnderlayTopInset={usesFixedHeaderScroll ? undefined : scroll ? headerHeight : undefined}
       testID={testID}
     >
       <View

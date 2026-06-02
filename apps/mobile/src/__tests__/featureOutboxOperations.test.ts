@@ -431,47 +431,6 @@ describe('featureOutboxOperations', () => {
     );
   });
 
-  it('does not replay legacy tasting session item adds', async () => {
-    const handled = await replayFeatureOutboxMutation(
-      createQueuedMutation({
-        url: 'local://feature/tasting-session.item.add',
-        body: JSON.stringify({
-          sessionId: 'session-1',
-          input: {
-            name: 'Espresso',
-            description: 'Bright',
-          },
-        }),
-        headers: {
-          'X-Mobile-Write-Operation': 'tasting-session.item.add',
-        },
-      }),
-    );
-
-    expect(handled).toBe(false);
-  });
-
-  it('does not replay legacy tasting session rating submissions', async () => {
-    const handled = await replayFeatureOutboxMutation(
-      createQueuedMutation({
-        url: 'local://feature/tasting-session.rating.submit',
-        body: JSON.stringify({
-          sessionId: 'session-1',
-          itemId: 'item-1',
-          input: {
-            rating: 4,
-            note: 'Balanced',
-          },
-        }),
-        headers: {
-          'X-Mobile-Write-Operation': 'tasting-session.rating.submit',
-        },
-      }),
-    );
-
-    expect(handled).toBe(false);
-  });
-
   it('lets the replay adapter registry ignore operations it does not own', async () => {
     const handled = await replayRegisteredFeatureOutboxOperation(
       'tasting-session.create',

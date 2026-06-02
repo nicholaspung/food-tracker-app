@@ -13,29 +13,33 @@ describe('friendCodeUtils', () => {
   });
 
   describe('extractFriendCodeFromQrPayload', () => {
-    it('parses a raw 8-character friend code', () => {
-      expect(extractFriendCodeFromQrPayload('ABCD1234')).toBe('ABCD1234');
-    });
-
-    it('normalizes a lowercase raw friend code', () => {
-      expect(extractFriendCodeFromQrPayload('abcd1234')).toBe('ABCD1234');
-    });
-
     it('parses the generated Yummy Recs friend invite URL', () => {
       expect(extractFriendCodeFromQrPayload('yummyrecs://friends/add?friendCode=ABCD1234')).toBe('ABCD1234');
     });
 
-    it('parses a code query param URL', () => {
-      expect(extractFriendCodeFromQrPayload('https://example.com/friends/add?code=ABCD1234')).toBe('ABCD1234');
+    it('normalizes a lowercase friend code from the generated invite URL', () => {
+      expect(extractFriendCodeFromQrPayload('yummyrecs://friends/add?friendCode=abcd1234')).toBe('ABCD1234');
     });
 
-    it('parses a path-style payload ending with the friend code', () => {
-      expect(extractFriendCodeFromQrPayload('https://example.com/friends/add/ABCD1234')).toBe('ABCD1234');
+    it('round-trips generated Yummy Recs friend invite URLs', () => {
+      const payload = createFriendQrPayload('abcd1234');
+
+      expect(extractFriendCodeFromQrPayload(payload)).toBe('ABCD1234');
     });
 
-    it('returns null for invalid, short, and empty payloads', () => {
+    it('rejects legacy raw-code and fallback URL payloads', () => {
+      expect(extractFriendCodeFromQrPayload('ABCD1234')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('abcd1234')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('https://example.com/friends/add?code=ABCD1234')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('https://example.com/friends/add/ABCD1234')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('yummyrecs://friends/add?code=ABCD1234')).toBeNull();
+    });
+
+    it('returns null for wrong Yummy Recs routes, invalid codes, and empty payloads', () => {
+      expect(extractFriendCodeFromQrPayload('yummyrecs://friends/request?friendCode=ABCD1234')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('yummyrecs://profile/add?friendCode=ABCD1234')).toBeNull();
       expect(extractFriendCodeFromQrPayload('not-a-yummy-recs-invite')).toBeNull();
-      expect(extractFriendCodeFromQrPayload('ABC123')).toBeNull();
+      expect(extractFriendCodeFromQrPayload('yummyrecs://friends/add?friendCode=ABC123')).toBeNull();
       expect(extractFriendCodeFromQrPayload('   ')).toBeNull();
     });
   });

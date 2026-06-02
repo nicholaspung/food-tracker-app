@@ -26,6 +26,16 @@ export function isFeedbackListQueryKey(queryKey: QueryKey): boolean {
   );
 }
 
+export function isFeedbackMessagesQueryKey(queryKey: QueryKey): boolean {
+  return (
+    Array.isArray(queryKey) &&
+    queryKey.length === 3 &&
+    queryKey[0] === feedbackQueryKeys.messages('')[0] &&
+    queryKey[1] === feedbackQueryKeys.messages('')[1] &&
+    typeof queryKey[2] === 'string'
+  );
+}
+
 function buildFeedbackPage<T>(input: {
   items: T[];
   page: number;

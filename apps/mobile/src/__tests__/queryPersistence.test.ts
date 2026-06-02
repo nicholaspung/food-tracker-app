@@ -10,13 +10,8 @@ import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
-import {
-  clearPersistedQueryCache,
-  queryPersister,
-  removeLegacyQueryCache,
-  sanitizePersistedClient,
-  shouldPersistQuery,
-} from '../providers/queryPersistence';
+import { localPersistence } from '../localPersistence';
+import { clearPersistedQueryCache, queryPersister, shouldPersistQuery } from '../providers/queryPersistence';
 
 describe('React Query persistence', () => {
   beforeEach(async () => {
@@ -177,6 +172,28 @@ describe('React Query persistence', () => {
       allCount: 4,
       activeCount: 2,
     });
+    sourceClient.setQueryData(feedbackQueryKeys.messages('feedback_1'), {
+      pages: [
+        {
+          items: [
+            {
+              id: 'feedback_message_1',
+              feedbackId: 'feedback_1',
+              userId: 'user_1',
+              message: 'Any update?',
+              isAdminMessage: false,
+              createdAt: '2026-02-12T00:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
     sourceClient.setQueryData(profileQueryKeys.profile, {
       displayName: 'Should persist',
       bio: 'Private bio',
@@ -214,6 +231,18 @@ describe('React Query persistence', () => {
       id: 'thread_1',
       description: 'Thread detail should not persist',
     });
+    sourceClient.setQueryData(['feature', 'feedback'], [
+      {
+        id: 'legacy_feedback_1',
+        title: 'Legacy root feedback should not persist',
+      },
+    ]);
+    sourceClient.setQueryData(['feature', 'feedback', 'all'], [
+      {
+        id: 'legacy_feedback_2',
+        title: 'Legacy all feedback should not persist',
+      },
+    ]);
     sourceClient.setQueryData(['feature', 'quickTracks'], [
       {
         id: 'legacy_food_product_1',
@@ -297,6 +326,9 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(feedbackQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(feedbackQueryKeys.summary),
     );
+    expect(restoredClient.getQueryData(feedbackQueryKeys.messages('feedback_1'))).toEqual(
+      sourceClient.getQueryData(feedbackQueryKeys.messages('feedback_1')),
+    );
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
     );
@@ -308,6 +340,8 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(['feature', 'quickTracks'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
+    expect(restoredClient.getQueryData(['feature', 'feedback'])).toBeUndefined();
+    expect(restoredClient.getQueryData(['feature', 'feedback', 'all'])).toBeUndefined();
     expect(restoredClient.getQueryData(friendsQueryKeys.paginated('user-1', 'friends', 'tay'))).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'homeFeed', 'paginated', 'friends', 'all', 'created', ''])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'friends', 'summary'])).toBeUndefined();
@@ -316,7 +350,7 @@ describe('React Query persistence', () => {
     restoredClient.clear();
   });
 
-  it('stores persisted queries under the v5 cache key and removes legacy cache keys', async () => {
+  it('stores persisted queries under the v5 cache key without touching retired legacy cache keys', async () => {
     const legacyCacheKeyV1 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1');
     const legacyCacheKeyV2 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
     const legacyCacheKeyV3 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
@@ -327,15 +361,6 @@ describe('React Query persistence', () => {
     await AsyncStorage.setItem(legacyCacheKeyV2, 'legacy-v2');
     await AsyncStorage.setItem(legacyCacheKeyV3, 'legacy-v3');
     await AsyncStorage.setItem(legacyCacheKeyV4, 'legacy-v4');
-
-    const removedLegacyKeys = await removeLegacyQueryCache();
-
-    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2, legacyCacheKeyV3, legacyCacheKeyV4]);
-    expect(await AsyncStorage.getItem(legacyCacheKeyV1)).toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV4)).toBeNull();
-    expect(await AsyncStorage.getItem(activeCacheKeyV5)).toBeNull();
 
     const queryClient = new QueryClient();
     queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
@@ -349,9 +374,10 @@ describe('React Query persistence', () => {
     });
 
     expect(await AsyncStorage.getItem(activeCacheKeyV5)).not.toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
-    expect(await AsyncStorage.getItem(legacyCacheKeyV4)).toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV1)).toBe('legacy-v1');
+    expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBe('legacy-v2');
+    expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBe('legacy-v3');
+    expect(await AsyncStorage.getItem(legacyCacheKeyV4)).toBe('legacy-v4');
 
     queryClient.clear();
   });
@@ -377,202 +403,145 @@ describe('React Query persistence', () => {
     queryClient.clear();
   });
 
-  it('redacts sensitive fields and retains offline browse fields in persisted query data', async () => {
-    const persistedClient = sanitizePersistedClient({
-      buster: '',
-      timestamp: Date.now(),
-      clientState: {
-        mutations: [],
-        queries: [
-          {
-            dehydratedAt: Date.now(),
-            queryHash: 'notes-paginated-draft',
-            queryKey: ['feature', 'notes', 'paginated', 'draft'],
-            state: {
-              data: {
-                pages: [
-                  {
-                    items: [
-                      {
-                        id: 'note_1',
-                        title: 'Saved place',
-                        content: 'Try the noodles',
-                        locationText: 'Mission District',
-                        status: 'draft',
-                        latitude: 37.7749,
-                        longitude: -122.4194,
-                        createdAt: '2026-01-01T00:00:00.000Z',
-                        updatedAt: '2026-01-01T00:00:00.000Z',
-                      },
-                    ],
-                    page: 1,
-                    pageSize: 20,
-                    totalItems: 1,
-                    totalPages: 1,
-                    hasNextPage: false,
-                  },
-                ],
-                pageParams: [1],
-              },
-              dataUpdateCount: 1,
-              dataUpdatedAt: Date.now(),
-              error: null,
-              errorUpdateCount: 0,
-              errorUpdatedAt: 0,
-              fetchFailureCount: 0,
-              fetchFailureReason: null,
-              fetchMeta: null,
-              isInvalidated: false,
-              status: 'success',
-              fetchStatus: 'idle',
+  it('round-trips current Notes data and redacts private Feedback fields', async () => {
+    const notesData = {
+      pages: [
+        {
+          items: [
+            {
+              id: 'note_1',
+              title: 'Saved place',
+              content: 'Try the noodles',
+              locationText: 'Mission District',
+              status: 'draft',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
             },
-          },
-          {
-            dehydratedAt: Date.now(),
-            queryHash: 'notes-paginated-draft-search',
-            queryKey: ['feature', 'notes', 'paginated', 'draft', 'noodles'],
-            state: {
-              data: {
-                pages: [
-                  {
-                    items: [
-                      {
-                        id: 'note_2',
-                        title: 'Saved place',
-                        content: 'Try the noodles',
-                        locationText: 'Mission District',
-                        status: 'draft',
-                        latitude: 40.7128,
-                        longitude: -74.006,
-                        createdAt: '2026-01-02T00:00:00.000Z',
-                        updatedAt: '2026-01-02T00:00:00.000Z',
-                      },
-                    ],
-                    page: 1,
-                    pageSize: 20,
-                    totalItems: 1,
-                    totalPages: 1,
-                    hasNextPage: false,
-                  },
-                ],
-                pageParams: [1],
-              },
-              dataUpdateCount: 1,
-              dataUpdatedAt: Date.now(),
-              error: null,
-              errorUpdateCount: 0,
-              errorUpdatedAt: 0,
-              fetchFailureCount: 0,
-              fetchFailureReason: null,
-              fetchMeta: null,
-              isInvalidated: false,
-              status: 'success',
-              fetchStatus: 'idle',
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    };
+    const feedbackData = {
+      pages: [
+        {
+          items: [
+            {
+              id: 'feedback_1',
+              userId: 'user_1',
+              userEmail: 'private@example.com',
+              assignedAdminId: 'admin_1',
+              title: 'Bug',
+              description: 'App crashed',
+              status: 'open',
+              adminUnreadCount: 0,
+              userUnreadCount: 1,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
             },
-          },
-          {
-            dehydratedAt: Date.now(),
-            queryHash: 'feedback-all-paginated',
-            queryKey: feedbackQueryKeys.list,
-            state: {
-              data: {
-                pages: [
-                  {
-                    items: [
-                      {
-                        id: 'feedback_1',
-                        userId: 'user_1',
-                        userEmail: 'private@example.com',
-                        assignedAdminId: 'admin_1',
-                        title: 'Bug',
-                        description: 'App crashed',
-                        status: 'open',
-                        adminUnreadCount: 0,
-                        userUnreadCount: 1,
-                        createdAt: '2026-01-01T00:00:00.000Z',
-                        updatedAt: '2026-01-01T00:00:00.000Z',
-                      },
-                    ],
-                    page: 1,
-                    pageSize: 20,
-                    totalItems: 1,
-                    totalPages: 1,
-                    hasNextPage: false,
-                  },
-                ],
-                pageParams: [1],
-              },
-              dataUpdateCount: 1,
-              dataUpdatedAt: Date.now(),
-              error: null,
-              errorUpdateCount: 0,
-              errorUpdatedAt: 0,
-              fetchFailureCount: 0,
-              fetchFailureReason: null,
-              fetchMeta: null,
-              isInvalidated: false,
-              status: 'success',
-              fetchStatus: 'idle',
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    };
+    const feedbackMessagesData = {
+      pages: [
+        {
+          items: [
+            {
+              id: 'feedback_message_1',
+              feedbackId: 'feedback_1',
+              userId: 'user_1',
+              userEmail: 'private-message@example.com',
+              message: 'Can you help?',
+              isAdminMessage: false,
+              createdAt: '2026-01-01T00:00:00.000Z',
             },
-          },
-        ],
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    };
+    const redactedFeedbackData = {
+      ...feedbackData,
+      pages: [
+        {
+          ...feedbackData.pages[0],
+          items: [
+            {
+              ...feedbackData.pages[0].items[0],
+              assignedAdminId: undefined,
+              userEmail: undefined,
+            },
+          ],
+        },
+      ],
+    };
+    const redactedFeedbackMessagesData = {
+      ...feedbackMessagesData,
+      pages: [
+        {
+          ...feedbackMessagesData.pages[0],
+          items: [
+            {
+              ...feedbackMessagesData.pages[0].items[0],
+              userEmail: undefined,
+            },
+          ],
+        },
+      ],
+    };
+    const sourceClient = new QueryClient();
+    sourceClient.setQueryData(notesQueryKeys.paginated('draft'), notesData);
+    sourceClient.setQueryData(notesQueryKeys.paginated('draft', 'noodles'), notesData);
+    sourceClient.setQueryData(feedbackQueryKeys.list, feedbackData);
+    sourceClient.setQueryData(feedbackQueryKeys.messages('feedback_1'), feedbackMessagesData);
+
+    await persistQueryClientSave({
+      queryClient: sourceClient,
+      persister: queryPersister,
+      dehydrateOptions: {
+        shouldDehydrateQuery: shouldPersistQuery,
       },
-    } as never);
+    });
 
-    const note = (
-      ((persistedClient.clientState.queries[0]?.state.data as {
-        pages?: {
-          items?: {
-            content?: string;
-            latitude?: number;
-            locationText?: string;
-            longitude?: number;
-            title?: string;
-          }[];
-        }[];
-      })?.pages ?? [])[0]?.items ?? []
-    )[0];
-    const feedback = (
-      ((persistedClient.clientState.queries[2]?.state.data as {
-        pages?: {
-          items?: {
-            assignedAdminId?: string;
-            description?: string;
-            status?: string;
-            title?: string;
-            userEmail?: string;
-            userId?: string;
-          }[];
-        }[];
-      })?.pages ?? [])[0]?.items ?? []
-    )[0];
+    const restoredClient = new QueryClient();
+    await persistQueryClientRestore({
+      queryClient: restoredClient,
+      persister: queryPersister,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
 
-    expect(note).toBeDefined();
-    expect(feedback).toBeDefined();
-    expect(note?.title).toBe('Saved place');
-    expect(note?.content).toBe('Try the noodles');
-    expect(note?.locationText).toBe('Mission District');
-    expect(note?.latitude).toBeUndefined();
-    expect(note?.longitude).toBeUndefined();
-    const searchedNote = (
-      ((persistedClient.clientState.queries[1]?.state.data as {
-        pages?: {
-          items?: {
-            latitude?: number;
-            locationText?: string;
-            longitude?: number;
-          }[];
-        }[];
-      })?.pages ?? [])[0]?.items ?? []
-    )[0];
-    expect(searchedNote?.locationText).toBe('Mission District');
-    expect(searchedNote?.latitude).toBeUndefined();
-    expect(searchedNote?.longitude).toBeUndefined();
-    expect(feedback?.userId).toBe('user_1');
-    expect(feedback?.title).toBe('Bug');
-    expect(feedback?.description).toBe('App crashed');
-    expect(feedback?.status).toBe('open');
-    expect(feedback?.userEmail).toBeUndefined();
-    expect(feedback?.assignedAdminId).toBeUndefined();
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft'))).toEqual(notesData);
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toEqual(notesData);
+    expect(restoredClient.getQueryData(feedbackQueryKeys.list)).toEqual(redactedFeedbackData);
+    expect(restoredClient.getQueryData(feedbackQueryKeys.messages('feedback_1'))).toEqual(
+      redactedFeedbackMessagesData,
+    );
+    expect(await AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).not.toContain(
+      'private@example.com',
+    );
+    expect(await AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).not.toContain(
+      'private-message@example.com',
+    );
+    expect(await AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).not.toContain('admin_1');
+
+    sourceClient.clear();
+    restoredClient.clear();
   });
 });

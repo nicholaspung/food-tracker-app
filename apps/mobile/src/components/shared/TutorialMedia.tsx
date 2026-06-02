@@ -1,28 +1,20 @@
-import { Ionicons } from '../../ui/AppIcon';
 import { VideoView, useVideoPlayer, type VideoContentFit } from 'expo-video';
-import type { ComponentProps } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import type { ImageProps, ImageSourcePropType, ImageStyle, StyleProp, ViewStyle } from 'react-native';
 
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
-
-export interface TutorialMediaSource {
-  gifSource?: ImageSourcePropType;
-  posterSource?: ImageSourcePropType;
-  videoUri?: string;
-}
+export type TutorialMediaSource =
+  | { gifSource: ImageSourcePropType; posterSource?: ImageSourcePropType; videoUri?: string }
+  | { gifSource?: ImageSourcePropType; posterSource: ImageSourcePropType; videoUri?: string }
+  | { gifSource?: ImageSourcePropType; posterSource?: ImageSourcePropType; videoUri: string };
 
 interface TutorialMediaProps {
-  iconColor: string;
-  iconName: IoniconName;
   imageResizeMode: NonNullable<ImageProps['resizeMode']>;
   isActive: boolean;
-  media?: TutorialMediaSource;
+  media: TutorialMediaSource;
   playbackKey: string;
   styles: {
     frame: StyleProp<ViewStyle>;
-    iconFrame: StyleProp<ViewStyle>;
     image: StyleProp<ImageStyle>;
     video?: StyleProp<ViewStyle>;
   };
@@ -77,8 +69,6 @@ function TutorialVideo({
 }
 
 export function TutorialMedia({
-  iconColor,
-  iconName,
   imageResizeMode,
   isActive,
   media,
@@ -104,22 +94,11 @@ export function TutorialMedia({
     previousIsActiveRef.current = isActive;
   }, [isActive, playbackKey]);
 
-  const posterSource = media?.posterSource;
-  const gifSource = media?.gifSource;
-  const videoUri = media?.videoUri;
-  const hasMedia = Boolean(posterSource || gifSource || videoUri);
+  const posterSource = media.posterSource;
+  const gifSource = media.gifSource;
+  const videoUri = media.videoUri;
   const videoContentFit: VideoContentFit = imageResizeMode === 'cover' ? 'cover' : 'contain';
   const videoStyle = styles.video ?? [styles.image as StyleProp<ViewStyle>, StyleSheet.absoluteFill];
-
-  if (!hasMedia) {
-    return (
-      <View style={styles.frame}>
-        <View style={styles.iconFrame}>
-          <Ionicons color={iconColor} name={iconName} size={44} />
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.frame}>

@@ -73,15 +73,6 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       ON ${TABLE_NAME}(updated_at DESC);
     `);
 
-    // Cleanup for legacy dev-only probe endpoint that never existed on backend.
-    await database.runAsync(
-      `
-      DELETE FROM ${TABLE_NAME}
-      WHERE url LIKE ?;
-      `,
-      '%/api/mobile/offline-probe',
-    );
-
     // A previous app process may have crashed after marking a row in-flight.
     // Those writes are safe to replay because the queue stores idempotency keys.
     await database.runAsync(

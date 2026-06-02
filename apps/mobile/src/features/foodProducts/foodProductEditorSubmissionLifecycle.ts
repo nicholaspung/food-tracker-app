@@ -96,7 +96,6 @@ export interface SubmitCreateFoodProductEditorInput {
 }
 
 export interface SubmitEditFoodProductEditorInput {
-  extraLegacyPhotoCount: number;
   foodProductId: string;
   foodProductWrites: Pick<FoodProductEditorWrites, 'updateFoodProduct'>;
   form: FoodProductFormValues;
@@ -389,7 +388,6 @@ export async function submitEditFoodProductEditor(
     visibility: input.form.visibility,
     photoMode: input.photoMode,
     hasPrimaryPhoto: Boolean(input.primaryExistingPhotoId),
-    extraLegacyPhotoCount: input.extraLegacyPhotoCount,
   });
 
   try {

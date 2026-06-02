@@ -24,12 +24,10 @@ jest.mock('expo-video', () => ({
 
 const styles: {
   frame: StyleProp<ViewStyle>;
-  iconFrame: StyleProp<ViewStyle>;
   image: StyleProp<ImageStyle>;
   video: StyleProp<ViewStyle>;
 } = {
   frame: { height: 200, width: 120 },
-  iconFrame: { height: 80, width: 80 },
   image: { height: '100%', width: '100%' },
   video: { ...StyleSheet.absoluteFill },
 };
@@ -39,35 +37,12 @@ describe('TutorialMedia', () => {
     mockUseVideoPlayer.mockClear();
   });
 
-  it('renders the icon fallback when no media is configured', async () => {
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = create(
-        <TutorialMedia
-          iconColor="brand"
-          iconName="play-circle-outline"
-          imageResizeMode="contain"
-          isActive
-          playbackKey="fallback"
-          styles={styles}
-        />,
-      );
-    });
-
-    expect(renderer.root.findAllByType(Image)).toHaveLength(0);
-    expect(renderer.root.findAllByType('VideoView')).toHaveLength(0);
-    expect(renderer.root.findByType('Ionicons').props.name).toBe('play-circle-outline');
-  });
-
   it('renders poster media without mounting video while inactive', async () => {
     let renderer: any = null;
 
     await act(async () => {
       renderer = create(
         <TutorialMedia
-          iconColor="brand"
-          iconName="play-circle-outline"
           imageResizeMode="cover"
           isActive={false}
           media={{
@@ -93,8 +68,6 @@ describe('TutorialMedia', () => {
     await act(async () => {
       renderer = create(
         <TutorialMedia
-          iconColor="brand"
-          iconName="play-circle-outline"
           imageResizeMode="cover"
           isActive
           media={{
@@ -120,8 +93,6 @@ describe('TutorialMedia', () => {
     await act(async () => {
       renderer = create(
         <TutorialMedia
-          iconColor="brand"
-          iconName="play-circle-outline"
           imageResizeMode="cover"
           isActive
           media={{
@@ -152,8 +123,6 @@ describe('TutorialMedia', () => {
     await act(async () => {
       renderer = create(
         <TutorialMedia
-          iconColor="brand"
-          iconName="play-circle-outline"
           imageResizeMode="contain"
           isActive
           media={{
