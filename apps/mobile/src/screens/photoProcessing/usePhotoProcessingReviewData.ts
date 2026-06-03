@@ -9,6 +9,7 @@ import {
   formatReviewEntryFooterLabel,
   type DraftPhotoAsset,
   type FoodProductReviewEntry,
+  type RestaurantPhotoGroup,
   type RestaurantPhotoForm,
   type ReviewFoodProductCardData,
   type ReviewVisitCardData,
@@ -19,6 +20,7 @@ interface UsePhotoProcessingReviewDataParams {
   currentUserId: string | null;
   photos: DraftPhotoAsset[];
   foodProductForms: Record<string, FoodProductFormValues>;
+  restaurantPhotoGroups?: RestaurantPhotoGroup[];
   restaurantForms: Record<string, RestaurantPhotoForm>;
   userName?: string;
   visitVisibility: 'friends' | 'private';
@@ -28,13 +30,14 @@ export function usePhotoProcessingReviewData({
   currentUserId,
   photos,
   foodProductForms,
+  restaurantPhotoGroups,
   restaurantForms,
   userName,
   visitVisibility,
 }: UsePhotoProcessingReviewDataParams) {
   const restaurantReviewGroups = useMemo(
-    () => buildRestaurantReviewGroups(photos, restaurantForms),
-    [photos, restaurantForms],
+    () => buildRestaurantReviewGroups(photos, restaurantForms, restaurantPhotoGroups),
+    [photos, restaurantForms, restaurantPhotoGroups],
   );
 
   const foodProductReviewEntries = useMemo<FoodProductReviewEntry[]>(
@@ -82,12 +85,15 @@ export function usePhotoProcessingReviewData({
   const reviewVisitCards = useMemo<ReviewVisitCardData[]>(() => {
     return restaurantReviewGroups.map((group, groupIndex) => {
       const representativeTimestamp =
-        group.items.find((entry) => entry.photo.captureDate)?.photo.captureDate?.toISOString() ??
+        group.items
+          .flatMap((entry) => entry.photos)
+          .find((photo) => photo.captureDate)
+          ?.captureDate?.toISOString() ??
         null;
       const eventAt = representativeTimestamp ?? localDateStringToUTC(group.date);
       const footerLabel = formatReviewEntryFooterLabel(eventAt, group.date);
       const visitItems = group.items.map((entry, itemIndex) => ({
-        id: `review-visit-item-${groupIndex}-${itemIndex}-${entry.photo.id}`,
+        id: `review-visit-item-${groupIndex}-${itemIndex}-${entry.photos[0]?.id ?? itemIndex}`,
         name: entry.form.menuItemName.trim(),
         rating: entry.form.rating,
         description: entry.form.description.trim() || undefined,
@@ -101,15 +107,16 @@ export function usePhotoProcessingReviewData({
           return;
         }
 
-        photosByFoodItem.set(visitItemId, [
-          {
-            id: entry.photo.id,
+        photosByFoodItem.set(
+          visitItemId,
+          entry.photos.map((photo) => ({
+            id: photo.id,
             food_item: visitItemId,
-            photo: entry.photo.name,
-            uri: entry.photo.uri,
-            created: entry.photo.captureDate?.toISOString() ?? eventAt,
-          },
-        ]);
+            photo: photo.name,
+            uri: photo.uri,
+            created: photo.captureDate?.toISOString() ?? eventAt,
+          })),
+        );
       });
 
       const visit: VisitRecord = {

@@ -4,7 +4,7 @@ import { act, create } from 'react-test-renderer';
 import { AboutScreen } from '../screens/AboutScreen';
 
 const mockReact = React;
-const mockFormatAppVersionLabel = jest.fn(() => 'v1.2.3 (45)');
+const mockFormatAppVersionLabel = jest.fn(() => 'v1.2.3');
 
 jest.mock('../lib/appMetadata', () => ({
   formatAppVersionLabel: () => mockFormatAppVersionLabel(),
@@ -73,7 +73,7 @@ describe('AboutScreen', () => {
     const versionRow = optionRows.find((node: any) => node.props.title === 'Version');
 
     expect(versionRow).toBeDefined();
-    expect(versionRow?.props.subtitle).toBe('Current app version and native build');
+    expect(versionRow?.props.subtitle).toBe('Current app version');
     expect(versionRow?.props.rightAccessory).toBeDefined();
     expect(optionRows.map((node: any) => node.props.title)).toEqual([
       'Version',
@@ -82,7 +82,7 @@ describe('AboutScreen', () => {
     ]);
 
     const renderedText = collectText(renderer);
-    expect(renderedText).toContain('v1.2.3 (45)');
+    expect(renderedText).toContain('v1.2.3');
     expect(renderedText).not.toContain('Runtime');
     expect(renderedText).not.toContain('Channel');
     expect(renderedText).not.toContain('Current OTA');

@@ -90,6 +90,7 @@ export async function createVisitWithOfflineSupport({
   if (result.status === 'queued') {
     await syncVisitMutationCaches(queryClient, {
       includeUsage: hasPhotoUploads,
+      includeVisitPhotos: hasPhotoUploads,
       sourceNoteId: sourceNote?.noteId,
     });
     if (queuedAlert !== false) {
@@ -106,6 +107,7 @@ export async function createVisitWithOfflineSupport({
   await syncVisitMutationCaches(queryClient, {
     visit: result.result,
     includeUsage: hasPhotoUploads,
+    includeVisitPhotos: hasPhotoUploads,
     sourceNoteId: sourceNote?.noteId,
   });
   return result;

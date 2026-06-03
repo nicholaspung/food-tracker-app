@@ -74,6 +74,9 @@ export function ListItem({
     pressed: {
       backgroundColor: tone === 'muted' ? theme.colors.background.surface : theme.colors.background.muted,
     },
+    pressedInline: {
+      opacity: 0.75,
+    },
   });
 
   const mainContent = (
@@ -110,7 +113,7 @@ export function ListItem({
           onPress={onPress}
           style={({ pressed }) => [
             styles.pressableContent,
-            pressed && !disabled && styles.pressed,
+            pressed && !disabled && styles.pressedInline,
           ]}
           testID={testID}
         >

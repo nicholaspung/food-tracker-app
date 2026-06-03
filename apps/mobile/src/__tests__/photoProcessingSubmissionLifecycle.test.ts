@@ -250,6 +250,10 @@ describe('submitProcessedPhotos', () => {
 
     const result = await submitProcessedPhotos(buildInput());
 
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeed'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeedMap'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visits'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visitPhotos'] });
     expect(result).toEqual({
       errorMessage: 'Upload failed',
       status: 'failed',

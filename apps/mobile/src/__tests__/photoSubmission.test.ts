@@ -175,6 +175,49 @@ describe('photo submission module', () => {
     ]);
   });
 
+  it('builds one restaurant visit item with multiple photos for a photo group', () => {
+    const inputs = buildRestaurantVisitInputsFromPhotos({
+      photos,
+      restaurantPhotoGroups: [
+        {
+          id: 'group-ramen',
+          photoIds: ['photo-1', 'photo-2'],
+        },
+      ],
+      restaurantForms: {
+        'group-ramen': {
+          date: '2026-05-18',
+          description: 'Rich broth',
+          menuItemName: 'Ramen',
+          notes: 'Shared bowl',
+          rating: 5,
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Ramen House',
+        },
+      },
+      sourceNoteId: 'note-1',
+      visitVisibility: 'friends',
+    });
+
+    expect(inputs).toEqual([
+      expect.objectContaining({
+        restaurantId: 'restaurant-1',
+        sourceNoteId: 'note-1',
+        items: [
+          expect.objectContaining({
+            name: 'Ramen',
+            notes: 'Shared bowl',
+            photos: [
+              { uri: 'file:///photo-1.jpg', name: 'photo-1.jpg', mimeType: 'image/jpeg' },
+              { uri: 'file:///photo-2.jpg', name: 'photo-2.jpg', mimeType: 'image/jpeg' },
+            ],
+            rating: 5,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('builds food product inputs with a source note only for single-photo submissions', () => {
     const inputs = buildFoodProductInputsFromPhotos({
       foodProductForms,

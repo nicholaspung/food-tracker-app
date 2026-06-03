@@ -88,4 +88,19 @@ describe('visitsQuery', () => {
       queryKey: visitsQueryKeys.detail('visit-2'),
     });
   });
+
+  it('invalidates the visit photo root when photo-backed writes do not have a visit id yet', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn().mockResolvedValue(undefined),
+      setQueryData: jest.fn(),
+    } as unknown as QueryClient;
+
+    await syncVisitMutationCaches(queryClient, {
+      includeVisitPhotos: true,
+    });
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitPhotosQueryKeys.root,
+    });
+  });
 });

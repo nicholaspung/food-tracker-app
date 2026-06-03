@@ -366,6 +366,109 @@ describe('visitsStore.getVisitById', () => {
     );
   });
 
+  it('uploads multiple photos to each matching item when creating a grouped photo visit', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      id: 'visit-123',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-05T18:00:00.000Z',
+      visibility: 'friends',
+      items: [
+        {
+          id: 'visit-item-new-1',
+          name: 'Spicy Wontons',
+          rating: 4,
+        },
+        {
+          id: 'visit-item-new-2',
+          name: 'Dan Dan Noodles',
+          rating: 5,
+        },
+        {
+          id: 'visit-item-new-3',
+          name: 'Tea',
+          rating: 3,
+        },
+      ],
+      source: 'visit',
+      createdAt: '2026-04-05T18:00:00.000Z',
+      updatedAt: '2026-04-05T18:10:00.000Z',
+    });
+
+    await createVisit({
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-05T18:00:00.000Z',
+      visitedOn: '2026-04-05',
+      visibility: 'friends',
+      items: [
+        {
+          name: 'Spicy Wontons',
+          rating: 4,
+          photos: [
+            { uri: 'file:///wontons-1.jpg', name: 'wontons-1.jpg', mimeType: 'image/jpeg' },
+            { uri: 'file:///wontons-2.jpg', name: 'wontons-2.jpg', mimeType: 'image/jpeg' },
+            { uri: 'file:///wontons-3.jpg', name: 'wontons-3.jpg', mimeType: 'image/jpeg' },
+          ],
+        },
+        {
+          name: 'Dan Dan Noodles',
+          rating: 5,
+          photos: [
+            { uri: 'file:///noodles-1.jpg', name: 'noodles-1.jpg', mimeType: 'image/jpeg' },
+            { uri: 'file:///noodles-2.jpg', name: 'noodles-2.jpg', mimeType: 'image/jpeg' },
+            { uri: 'file:///noodles-3.jpg', name: 'noodles-3.jpg', mimeType: 'image/jpeg' },
+          ],
+        },
+        {
+          name: 'Tea',
+          rating: 3,
+          photos: [
+            { uri: 'file:///tea.jpg', name: 'tea.jpg', mimeType: 'image/jpeg' },
+          ],
+        },
+      ],
+    });
+
+    expect(mockedUploadVisitPhotos).toHaveBeenNthCalledWith(
+      1,
+      'visit-123',
+      'visit-item-new-1',
+      'user-1',
+      [
+        { uri: 'file:///wontons-1.jpg', name: 'wontons-1.jpg', mimeType: 'image/jpeg' },
+        { uri: 'file:///wontons-2.jpg', name: 'wontons-2.jpg', mimeType: 'image/jpeg' },
+        { uri: 'file:///wontons-3.jpg', name: 'wontons-3.jpg', mimeType: 'image/jpeg' },
+      ],
+      'Spicy Wontons',
+      undefined,
+    );
+    expect(mockedUploadVisitPhotos).toHaveBeenNthCalledWith(
+      2,
+      'visit-123',
+      'visit-item-new-2',
+      'user-1',
+      [
+        { uri: 'file:///noodles-1.jpg', name: 'noodles-1.jpg', mimeType: 'image/jpeg' },
+        { uri: 'file:///noodles-2.jpg', name: 'noodles-2.jpg', mimeType: 'image/jpeg' },
+        { uri: 'file:///noodles-3.jpg', name: 'noodles-3.jpg', mimeType: 'image/jpeg' },
+      ],
+      'Dan Dan Noodles',
+      undefined,
+    );
+    expect(mockedUploadVisitPhotos).toHaveBeenNthCalledWith(
+      3,
+      'visit-123',
+      'visit-item-new-3',
+      'user-1',
+      [
+        { uri: 'file:///tea.jpg', name: 'tea.jpg', mimeType: 'image/jpeg' },
+      ],
+      'Tea',
+      undefined,
+    );
+  });
+
   it('deletes removed photo ids before uploading new visit item photos during edit', async () => {
     const operationOrder: string[] = [];
     const visitPhotosCollection = {

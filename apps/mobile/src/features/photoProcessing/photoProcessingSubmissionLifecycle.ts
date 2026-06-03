@@ -13,6 +13,7 @@ import type { FoodProductFormValues } from '../../lib/foodProductForm';
 import type {
   DraftPhotoAsset,
   ProcessType,
+  RestaurantPhotoGroup,
   RestaurantPhotoForm,
 } from './photoProcessingTypes';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './photoProcessingTypes';
@@ -54,6 +55,7 @@ export interface SubmitProcessedPhotosInput {
   photos: DraftPhotoAsset[];
   processType: NonNullable<ProcessType>;
   queryClient: QueryClient;
+  restaurantPhotoGroups?: RestaurantPhotoGroup[];
   restaurantForms: Record<string, RestaurantPhotoForm>;
   shouldEnforceUsageLimitsClientSide: boolean;
   sourceNoteId?: string;
@@ -62,12 +64,17 @@ export interface SubmitProcessedPhotosInput {
 }
 
 function buildTrackingProperties(input: SubmitProcessedPhotosInput): TrackingEntryProperties {
+  const itemCount =
+    input.processType === 'restaurant'
+      ? input.restaurantPhotoGroups?.length ?? input.photos.length
+      : input.photos.length;
+
   return {
     entryType: input.processType === 'restaurant' ? 'restaurant_visit' : 'food_product',
     source: input.sourceNoteId ? 'note' : 'photo_processing',
     hasPhoto: input.photos.length > 0,
-    itemCount: input.photos.length,
-    ratingCount: input.photos.length,
+    itemCount,
+    ratingCount: itemCount,
     visibility: input.processType === 'restaurant' ? input.visitVisibility : undefined,
     completed: false,
   };
@@ -117,10 +124,12 @@ async function submitPhotoEntries(input: SubmitProcessedPhotosInput): Promise<{
   visitCount?: number;
 }> {
   if (input.processType === 'restaurant') {
+    const itemCount = input.restaurantPhotoGroups?.length ?? input.photos.length;
     const result = await submitRestaurantPhotoEntries({
       noteId: input.sourceNoteId,
       photos: input.photos,
       queryClient: input.queryClient,
+      restaurantPhotoGroups: input.restaurantPhotoGroups,
       restaurantForms: input.restaurantForms,
       visitVisibility: input.visitVisibility,
       writeFeature: input.writeFeature,
@@ -130,14 +139,15 @@ async function submitPhotoEntries(input: SubmitProcessedPhotosInput): Promise<{
       processType: 'restaurant',
       source: 'PhotoProcessingScreen',
       photoCount: input.photos.length,
+      itemCount,
       visitCount: result.visitCount ?? 0,
     });
     trackProductEvent('tracking.entry_completed', {
       entryType: 'restaurant_visit',
       source: input.sourceNoteId ? 'note' : 'photo_processing',
       hasPhoto: true,
-      itemCount: input.photos.length,
-      ratingCount: input.photos.length,
+      itemCount,
+      ratingCount: itemCount,
       visibility: input.visitVisibility,
       completed: true,
       queued: result.queued,
@@ -147,8 +157,8 @@ async function submitPhotoEntries(input: SubmitProcessedPhotosInput): Promise<{
       entryType: 'restaurant_visit',
       source: input.sourceNoteId ? 'note' : 'photo_processing',
       hasPhoto: true,
-      itemCount: input.photos.length,
-      ratingCount: input.photos.length,
+      itemCount,
+      ratingCount: itemCount,
       visibility: input.visitVisibility,
       completed: true,
     });
@@ -218,6 +228,15 @@ async function refreshAffectedPhotoSubmissionQueries(input: SubmitProcessedPhoto
   ]);
 }
 
+async function refreshAffectedPhotoSubmissionQueriesAfterFailure(input: SubmitProcessedPhotosInput): Promise<void> {
+  try {
+    await refreshAffectedPhotoSubmissionQueries(input);
+  } catch {
+    // Preserve the original submit/upload failure. A failed refresh should not
+    // replace the actionable error shown to the user.
+  }
+}
+
 function resolvePhotoSubmissionDestination(
   processType: NonNullable<ProcessType>,
 ): PhotoProcessingSubmissionDestination {
@@ -281,6 +300,8 @@ export async function submitProcessedPhotos(
       status: submitResult.queued ? 'queued' : 'completed',
     };
   } catch (error) {
+    await refreshAffectedPhotoSubmissionQueriesAfterFailure(input);
+
     const limitPayload = parseLimitExceededError(error);
     if (limitPayload) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {

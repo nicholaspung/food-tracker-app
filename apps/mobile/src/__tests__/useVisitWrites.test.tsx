@@ -199,6 +199,37 @@ describe('useVisitWrites', () => {
     expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
       visit: expect.objectContaining({ id: 'visit_1' }),
       includeUsage: false,
+      includeVisitPhotos: false,
+      sourceNoteId: undefined,
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('invalidates visit photos after completed photo-backed creates', async () => {
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    await act(async () => {
+      await hook.createVisit({
+        input: createInput,
+        hasPhotoUploads: true,
+        useApiReplay: false,
+      });
+    });
+
+    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
+      visit: expect.objectContaining({ id: 'visit_1' }),
+      includeUsage: true,
+      includeVisitPhotos: true,
       sourceNoteId: undefined,
     });
 
@@ -244,6 +275,7 @@ describe('useVisitWrites', () => {
     });
     expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
       includeUsage: true,
+      includeVisitPhotos: true,
       sourceNoteId: 'note_1',
     });
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({

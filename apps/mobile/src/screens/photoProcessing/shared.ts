@@ -22,6 +22,7 @@ import type {
   DraftPhotoAsset,
   PhotoCoordinates,
   ProcessType,
+  RestaurantPhotoGroup,
   RestaurantPhotoForm,
 } from '../../features/photoProcessing/photoProcessingTypes';
 export { FREE_MONTHLY_PHOTO_LIMIT } from '../../features/photoProcessing/photoProcessingTypes';
@@ -29,6 +30,7 @@ export type {
   DraftPhotoAsset,
   PhotoCoordinates,
   ProcessType,
+  RestaurantPhotoGroup,
   RestaurantPhotoForm,
 } from '../../features/photoProcessing/photoProcessingTypes';
 
@@ -38,7 +40,7 @@ export type PhotoProcessingScreenProps = NativeStackScreenProps<
 >;
 export type ScanSource = PhotoPickerPermissionSource;
 export type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
-export type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
+export type GeneralPhotoStep = 'choice' | 'upload' | 'group' | 'process' | 'review';
 
 export interface CreatedMenuItemRecord {
   id: string;
@@ -77,7 +79,7 @@ export interface RestaurantReviewGroup {
   restaurantId: string;
   restaurantName: string;
   date: string;
-  items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
+  items: { photos: DraftPhotoAsset[]; form: RestaurantPhotoForm }[];
 }
 
 export interface FoodProductReviewEntry {
@@ -104,8 +106,42 @@ export function formatReviewEntryFooterLabel(
 export function buildRestaurantReviewGroups(
   photos: DraftPhotoAsset[],
   restaurantForms: Record<string, RestaurantPhotoForm>,
+  restaurantPhotoGroups?: RestaurantPhotoGroup[],
 ): RestaurantReviewGroup[] {
   const groups = new Map<string, RestaurantReviewGroup>();
+  const photosById = new Map(photos.map((photo) => [photo.id, photo]));
+
+  if (restaurantPhotoGroups) {
+    for (const photoGroup of restaurantPhotoGroups) {
+      const form = restaurantForms[photoGroup.id];
+      if (!form) {
+        continue;
+      }
+
+      const groupPhotos = photoGroup.photoIds
+        .map((photoId) => photosById.get(photoId))
+        .filter((photo): photo is DraftPhotoAsset => Boolean(photo));
+      if (groupPhotos.length === 0) {
+        continue;
+      }
+
+      const key = `${form.restaurantId.trim()}__${form.date}`;
+      const existing =
+        groups.get(key) ?? {
+          restaurantId: form.restaurantId.trim(),
+          restaurantName: form.restaurantName.trim(),
+          date: form.date,
+          items: [],
+        };
+
+      groups.set(key, {
+        ...existing,
+        items: [...existing.items, { photos: groupPhotos, form }],
+      });
+    }
+
+    return Array.from(groups.values());
+  }
 
   for (const photo of photos) {
     const form = restaurantForms[photo.id];
@@ -124,7 +160,7 @@ export function buildRestaurantReviewGroups(
 
     groups.set(key, {
       ...existing,
-      items: [...existing.items, { photo, form }],
+      items: [...existing.items, { photos: [photo], form }],
     });
   }
 
@@ -355,6 +391,15 @@ export function buildDefaultRestaurantForm(
   };
 }
 
+export function buildDefaultRestaurantPhotoGroups(
+  photos: DraftPhotoAsset[],
+): RestaurantPhotoGroup[] {
+  return photos.map((photo) => ({
+    id: `restaurant-photo-group-${photo.id}`,
+    photoIds: [photo.id],
+  }));
+}
+
 export function formatDraftPhotoMetadataLabel(photo: DraftPhotoAsset): string {
   return formatDisplayDate(photo.metadataDate, {
     fallback: 'Date unavailable',
@@ -366,7 +411,10 @@ export function formatDraftPhotoMetadataLabel(photo: DraftPhotoAsset): string {
   });
 }
 
-export function resolveWizardStepIndex(step: GeneralPhotoStep): number {
+export function resolveWizardStepIndex(
+  step: GeneralPhotoStep,
+  processType: ProcessType | null = null,
+): number {
   if (step === 'choice') {
     return 0;
   }
@@ -375,11 +423,15 @@ export function resolveWizardStepIndex(step: GeneralPhotoStep): number {
     return 1;
   }
 
-  if (step === 'process') {
+  if (step === 'group') {
     return 2;
   }
 
-  return 3;
+  if (step === 'process') {
+    return processType === 'restaurant' ? 3 : 2;
+  }
+
+  return processType === 'restaurant' ? 4 : 3;
 }
 
 export function resolveProgressSteps(
@@ -392,5 +444,15 @@ export function resolveProgressSteps(
         ? 'Restaurant Visit'
         : 'Food Product';
 
-  return [{ label: firstLabel }, ...PROGRESS_FLOW_TAIL];
+  const tail =
+    processType === 'restaurant'
+      ? [
+          { label: 'Upload' },
+          { label: 'Group' },
+          { label: 'Process' },
+          { label: 'Review' },
+        ]
+      : PROGRESS_FLOW_TAIL;
+
+  return [{ label: firstLabel }, ...tail];
 }

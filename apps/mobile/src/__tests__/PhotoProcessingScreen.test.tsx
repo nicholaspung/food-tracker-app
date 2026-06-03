@@ -100,6 +100,8 @@ jest.mock('react-native', () => {
         props,
         typeof children === 'function' ? children({ pressed: false }) : children,
       ),
+    ScrollView: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      React.createElement('ScrollView', props, children),
     View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       React.createElement('View', props, children),
   };
@@ -200,6 +202,7 @@ jest.mock('../lib/foodProductForm', () => ({
 }));
 
 jest.mock('../lib/usageUiRules', () => ({
+  resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 20),
   shouldShowOfflineUsageWarning: jest.fn(() => false),
 }));
 
@@ -264,6 +267,12 @@ jest.mock('../screens/photoProcessing/shared', () => ({
   buildDefaultRestaurantForm: jest.fn(() => ({
     date: '2026-04-18',
   })),
+  buildDefaultRestaurantPhotoGroups: jest.fn((photos: { id: string }[]) =>
+    photos.map((photo) => ({
+      id: `restaurant-photo-group-${photo.id}`,
+      photoIds: [photo.id],
+    })),
+  ),
   collapseRestaurantOptionsToSelection: jest.fn(
     ({
       savedRestaurants,
@@ -479,7 +488,18 @@ describe('PhotoProcessingScreen', () => {
       replacePhotos: jest.fn(),
       resetDraftState: jest.fn(),
       resetProcessingForms: jest.fn(),
-      restaurantForms: {},
+      restaurantForms: {
+        'restaurant-photo-group-photo-1': {
+          date: '2026-04-18',
+          description: '',
+          menuItemId: '',
+          menuItemName: '',
+          notes: '',
+          rating: 3,
+          restaurantId: '',
+          restaurantName: '',
+        },
+      },
       setCurrentPhotoIndex: jest.fn(),
       setFoodProductForms: jest.fn(),
       setRestaurantForms: jest.fn(),
@@ -719,6 +739,10 @@ describe('PhotoProcessingScreen', () => {
     });
 
     await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    await act(async () => {
       renderer.root.findByProps({ testID: 'process-photo-preview-button' }).props.onPress();
     });
 
@@ -844,7 +868,18 @@ describe('PhotoProcessingScreen', () => {
       replacePhotos: jest.fn(),
       resetDraftState: jest.fn(),
       resetProcessingForms: jest.fn(),
-      restaurantForms: {},
+      restaurantForms: {
+        'restaurant-photo-group-photo-1': {
+          date: '2026-04-18',
+          description: '',
+          menuItemId: 'menu-item-1',
+          menuItemName: 'Ramen',
+          notes: '',
+          rating: 5,
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Noodle House',
+        },
+      },
       setCurrentPhotoIndex: jest.fn(),
       setFoodProductForms: jest.fn(),
       setRestaurantForms: jest.fn(),
@@ -856,6 +891,10 @@ describe('PhotoProcessingScreen', () => {
 
     await act(async () => {
       renderer.root.findAllByType('IconActionCard')[0].props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
     });
 
     await act(async () => {

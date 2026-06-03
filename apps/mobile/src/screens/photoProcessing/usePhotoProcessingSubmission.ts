@@ -15,6 +15,7 @@ import {
   type GeneralPhotoStep,
   type PhotoProcessingScreenProps,
   type ProcessType,
+  type RestaurantPhotoGroup,
   type RestaurantPhotoForm,
 } from './shared';
 import { validateRestaurantPhotoSubmissionForm } from '../../features/photoProcessing/photoSubmission';
@@ -30,10 +31,12 @@ interface UsePhotoProcessingSubmissionParams {
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
   navigation: PhotoProcessingScreenProps['navigation'];
   photos: DraftPhotoAsset[];
+  processUnitCount?: number;
   processType: ProcessType | null;
   queryClient: QueryClient;
   foodProductForms: Record<string, FoodProductFormValues>;
   onSubmitSucceeded?: () => void;
+  restaurantPhotoGroups?: RestaurantPhotoGroup[];
   restaurantForms: Record<string, RestaurantPhotoForm>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<GeneralPhotoStep>>;
@@ -54,10 +57,12 @@ export function usePhotoProcessingSubmission({
   monthlyUsageSnapshot,
   navigation,
   photos,
+  processUnitCount,
   processType,
   queryClient,
   foodProductForms,
   onSubmitSucceeded,
+  restaurantPhotoGroups,
   restaurantForms,
   setErrorMessage,
   setStep,
@@ -99,7 +104,8 @@ export function usePhotoProcessingSubmission({
     }
 
     setErrorMessage(null);
-    if (currentPhotoIndex < photos.length - 1) {
+    const totalProcessUnits = processUnitCount ?? photos.length;
+    if (currentPhotoIndex < totalProcessUnits - 1) {
       goToProcessPhoto(currentPhotoIndex + 1);
       return;
     }
@@ -112,6 +118,7 @@ export function usePhotoProcessingSubmission({
     currentRestaurantForm,
     goToProcessPhoto,
     photos.length,
+    processUnitCount,
     processType,
     setErrorMessage,
     setStep,
@@ -135,6 +142,7 @@ export function usePhotoProcessingSubmission({
         photos,
         processType,
         queryClient,
+        restaurantPhotoGroups,
         restaurantForms,
         shouldEnforceUsageLimitsClientSide,
         sourceNoteId,
@@ -165,6 +173,7 @@ export function usePhotoProcessingSubmission({
     photos,
     processType,
     queryClient,
+    restaurantPhotoGroups,
     restaurantForms,
     setErrorMessage,
     shouldEnforceUsageLimitsClientSide,

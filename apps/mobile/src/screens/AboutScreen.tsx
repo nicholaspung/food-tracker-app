@@ -51,7 +51,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
             iconName="phone-portrait-outline"
             isLast
             rightAccessory={<Text style={styles.metaValue}>{appVersionLabel}</Text>}
-            subtitle="Current app version and native build"
+            subtitle="Current app version"
             title="Version"
           />
         </OptionList>

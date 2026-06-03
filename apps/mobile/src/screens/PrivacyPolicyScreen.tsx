@@ -9,17 +9,17 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Information We Collect',
     body:
-      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, food products, restaurant lists, feedback messages, friend connections, invitations, photos you choose to upload, manual location text you add to supported content such as notes and food products, and restaurant search text or typed search locations you submit while using restaurant search features.',
+      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, food products, restaurant lists and Want to Try bookmarks, bills and payment split details, feedback messages, friend connections, invitations, photos you choose to upload, manual location text you add to supported content such as notes and food products, and restaurant search text or typed search locations you submit while using restaurant search features.',
   },
   {
     title: 'Device Data and Permissions',
     body:
-      'Some features request device access only when needed. This can include camera access for food photos, receipt photos, and QR codes, photo library access for selecting images, location access for nearby restaurant search, notification permission for reminders and activity alerts, and technical diagnostics such as app version, platform details, crash details, and usage events. If you allow push notifications, we store a generated device identifier, platform, push token, and notification preferences so we can deliver the categories you choose. If you choose menu scanning, receipt scanning, or restaurant identification from a photo, the selected image is also sent for server-side processing.',
+      'Some features request device access only when needed. This can include camera access for food photos, receipt photos, and QR codes, photo library access for selecting images, location access for nearby restaurant search, notification permission for reminders and activity alerts, and technical diagnostics such as app version, platform details, crash details, and usage events. If you allow push notifications, we store a generated device identifier, platform, push token, notification preferences, and limited delivery records used for deduplication, rate limiting, troubleshooting, and honoring your choices. If you choose menu scanning, receipt scanning, or restaurant identification from a photo, the selected image is also sent for server-side processing.',
   },
   {
     title: 'How We Use Data',
     body:
-      'We use collected information to create and manage your account, store, sync, and display your food records and friend activity, support offline-safe write replay across sessions and devices, provide support, enforce product rules, protect the service against misuse, respond to legal obligations, and improve reliability through analytics and observability tools.',
+      'We use collected information to create and manage your account, store, sync, and display your food records, bills, reminders, and friend activity, support offline-safe write replay across sessions and devices, provide support, enforce product rules, protect the service against misuse, respond to legal obligations, and improve reliability through analytics and observability tools.',
   },
   {
     title: 'Sharing and Visibility',
@@ -65,7 +65,7 @@ export function PrivacyPolicyScreen({ navigation }: PrivacyPolicyScreenProps) {
 
   return (
     <StaticContentSectionsScreen
-      introCaption="Effective April 18, 2026"
+      introCaption="Effective June 3, 2026"
       introDescription="This policy explains what information Yummy Recs collects, how it is used, when it may be shared, and what choices you have when using the website, mobile app, and related services."
       introTitle="How Yummy Recs handles your information"
       onBackPress={handleBackPress}

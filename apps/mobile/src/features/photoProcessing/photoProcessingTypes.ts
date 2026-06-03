@@ -26,4 +26,9 @@ export interface RestaurantPhotoForm {
   date: string;
 }
 
+export interface RestaurantPhotoGroup {
+  id: string;
+  photoIds: string[];
+}
+
 export const FREE_MONTHLY_PHOTO_LIMIT = 100;

@@ -5,6 +5,7 @@ import {
   Keyboard,
   Linking,
   Pressable,
+  ScrollView,
   View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,7 +59,10 @@ import {
   buildVisitRestaurantDescription,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
-import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
+import {
+  resolveDisplayPhotoUploadsPerRecordLimit,
+  shouldShowOfflineUsageWarning,
+} from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
@@ -68,6 +72,7 @@ import { formatFriendCount, formatVisitCount } from './createVisit/shared';
 import { PhotoProcessingReviewStep } from './photoProcessing/PhotoProcessingReviewStep';
 import {
   buildDefaultRestaurantForm,
+  buildDefaultRestaurantPhotoGroups,
   collapseRestaurantOptionsToSelection,
   formatCoordinatesForDisplay,
   FREE_MONTHLY_PHOTO_LIMIT,
@@ -76,10 +81,12 @@ import {
   resolveProgressSteps,
   resolveWizardStepIndex,
   formatDraftPhotoMetadataLabel,
+  type DraftPhotoAsset,
   type GeneralPhotoStep,
   type MenuItemMode,
   type PhotoProcessingScreenProps,
   type ProcessType,
+  type RestaurantPhotoGroup,
   type RestaurantPhotoForm,
   type ScanSource,
 } from './photoProcessing/shared';
@@ -156,6 +163,91 @@ const useStyles = createThemedStyles((theme) => ({
   },
   photoPreviewCard: {
     gap: theme.spacing.xs,
+  },
+  groupingCard: {
+    gap: theme.spacing.sm,
+  },
+  groupingHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  groupingPhotoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  groupingHorizontalContent: {
+    gap: theme.spacing.sm,
+    paddingRight: theme.spacing.md,
+  },
+  groupingPhotoTile: {
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+    width: '30%',
+  },
+  groupingHorizontalTile: {
+    width: 132,
+  },
+  groupingPhotoTileSelected: {
+    borderColor: theme.colors.border.strong,
+    borderWidth: 2,
+  },
+  groupingPhotoFrame: {
+    position: 'relative',
+  },
+  groupingPhotoImage: {
+    backgroundColor: theme.colors.background.app,
+    height: 92,
+    width: '100%',
+  },
+  groupingIconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: theme.spacing.xs,
+    top: theme.spacing.xs,
+    width: 28,
+  },
+  groupingPhotoAction: {
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
+  },
+  groupingPhotoStrip: {
+    gap: theme.spacing.xs,
+  },
+  groupingStripContent: {
+    gap: theme.spacing.xs,
+  },
+  groupingStripPhotoWrap: {
+    position: 'relative',
+  },
+  groupingStripImage: {
+    backgroundColor: theme.colors.background.app,
+    borderRadius: theme.radii.sm,
+    height: 56,
+    width: 56,
+  },
+  groupingStripRemoveButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: -6,
+    top: -6,
+    width: 22,
   },
   largePhotoPreview: {
     backgroundColor: theme.colors.background.app,
@@ -300,6 +392,15 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const sourceNoteId = route.params?.sourceNoteId;
   const isNoteDrivenFlow = Boolean(sourceNoteId);
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
+  const displayMaxPhotosPerRestaurantItem = resolveDisplayPhotoUploadsPerRecordLimit({
+    snapshotLimit: monthlyUsage.snapshot?.limits?.photoUploadsPerRecord,
+    isDisplayAdminUser,
+    isDisplaySubscriberUser,
+    isDisplayFreeUser,
+  });
+  const effectiveMaxPhotosPerRestaurantItem = isActualAdmin
+    ? null
+    : displayMaxPhotosPerRestaurantItem;
   const currentUserId = getAuthenticatedUserIdOrNull();
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
@@ -314,10 +415,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [processType, setProcessType] = useState<ProcessType | null>(null);
   const {
     appendAssets,
-    currentPhoto,
+    currentPhoto: indexedCurrentPhoto,
     currentPhotoIndex,
     currentFoodProductForm,
-    currentRestaurantForm,
+    currentRestaurantForm: indexedCurrentRestaurantForm,
     dismissCurrentPhotoLocationHint,
     locationMetadataHintDismissedByPhotoId,
     photos,
@@ -331,8 +432,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setFoodProductForms,
     setRestaurantForms,
     updateCurrentFoodProductForm,
-    updateCurrentRestaurantForm,
+    updateCurrentRestaurantForm: updateIndexedCurrentRestaurantForm,
   } = usePhotoProcessingDraftState();
+  const [restaurantPhotoGroups, setRestaurantPhotoGroups] = useState<RestaurantPhotoGroup[]>([]);
+  const [selectedRestaurantPhotoGroupId, setSelectedRestaurantPhotoGroupId] =
+    useState<string | null>(null);
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
     resolveDefaultFoodProductVisibility(),
   );
@@ -346,6 +450,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [isSelectingSource, setIsSelectingSource] = useState(false);
   const [isPreparingNotePhotos, setIsPreparingNotePhotos] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [groupingPhotoViewerVisible, setGroupingPhotoViewerVisible] = useState(false);
+  const [groupingPhotoViewerUrls, setGroupingPhotoViewerUrls] = useState<string[]>([]);
+  const [groupingPhotoViewerInitialIndex, setGroupingPhotoViewerInitialIndex] = useState(0);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const processStepScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
@@ -360,6 +468,74 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
     galleryRequiredMessage: 'Photo library permission is required to upload images.',
   });
+  const photosById = useMemo(
+    () => new Map(photos.map((photo) => [photo.id, photo])),
+    [photos],
+  );
+  const currentRestaurantGroup =
+    processType === 'restaurant' ? restaurantPhotoGroups[currentPhotoIndex] ?? null : null;
+  const currentRestaurantGroupId = currentRestaurantGroup?.id ?? null;
+  const currentRestaurantGroupPhotos = useMemo(
+    () =>
+      currentRestaurantGroup
+        ? currentRestaurantGroup.photoIds
+            .map((photoId) => photosById.get(photoId))
+            .filter((photo): photo is DraftPhotoAsset => Boolean(photo))
+        : [],
+    [currentRestaurantGroup, photosById],
+  );
+  const selectedRestaurantPhotoGroup = useMemo(
+    () =>
+      restaurantPhotoGroups.find((group) => group.id === selectedRestaurantPhotoGroupId) ??
+      restaurantPhotoGroups[0] ??
+      null,
+    [restaurantPhotoGroups, selectedRestaurantPhotoGroupId],
+  );
+  const selectedRestaurantPhotoGroupPhotos = useMemo(
+    () =>
+      selectedRestaurantPhotoGroup
+        ? selectedRestaurantPhotoGroup.photoIds
+            .map((photoId) => photosById.get(photoId))
+            .filter((photo): photo is DraftPhotoAsset => Boolean(photo))
+        : [],
+    [photosById, selectedRestaurantPhotoGroup],
+  );
+  const currentPhoto =
+    processType === 'restaurant'
+      ? currentRestaurantGroupPhotos[0] ?? null
+      : indexedCurrentPhoto;
+  const currentRestaurantForm =
+    processType === 'restaurant' && currentRestaurantGroup
+      ? restaurantForms[currentRestaurantGroup.id]
+      : indexedCurrentRestaurantForm;
+  const updateCurrentRestaurantForm = useCallback(
+    (updates: Partial<RestaurantPhotoForm>) => {
+      if (processType !== 'restaurant' || !currentRestaurantGroup || !currentPhoto) {
+        updateIndexedCurrentRestaurantForm(updates);
+        return;
+      }
+
+      setRestaurantForms((current) => {
+        const currentForm =
+          current[currentRestaurantGroup.id] ??
+          buildDefaultRestaurantForm(currentPhoto, undefined);
+        return {
+          ...current,
+          [currentRestaurantGroup.id]: {
+            ...currentForm,
+            ...updates,
+          },
+        };
+      });
+    },
+    [
+      currentPhoto,
+      currentRestaurantGroup,
+      processType,
+      setRestaurantForms,
+      updateIndexedCurrentRestaurantForm,
+    ],
+  );
   const currentRestaurantId = currentRestaurantForm?.restaurantId ?? null;
   const shouldEnableRestaurantSelectionQueries = processType === 'restaurant' && step === 'process';
   const restaurantSelection = usePhotoProcessingRestaurantSelectionFlow({
@@ -424,6 +600,34 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const isBlockingNotePhotoLoad = isNoteDrivenFlow && noteDetailQuery.isLoading && !noteDetailQuery.data;
   const hasBlockingNotePhotoError = isNoteDrivenFlow && noteDetailQuery.isError && !noteDetailQuery.data;
 
+  const normalizeRestaurantPhotoGroups = useCallback((groups: RestaurantPhotoGroup[]) => {
+    const usedGroupIds = new Set<string>();
+    const usedPhotoIds = new Set<string>();
+
+    return groups
+      .map((group) => {
+        let nextGroupId = group.id;
+        if (usedGroupIds.has(nextGroupId)) {
+          nextGroupId = `${group.id}-${usedGroupIds.size}`;
+        }
+        usedGroupIds.add(nextGroupId);
+
+        const nextPhotoIds = group.photoIds.filter((photoId) => {
+          if (usedPhotoIds.has(photoId)) {
+            return false;
+          }
+          usedPhotoIds.add(photoId);
+          return true;
+        });
+
+        return {
+          id: nextGroupId,
+          photoIds: nextPhotoIds,
+        };
+      })
+      .filter((group) => group.photoIds.length > 0);
+  }, []);
+
   useEffect(() => {
     if (!sourceNoteId) {
       return undefined;
@@ -436,17 +640,55 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
   useEffect(() => {
     if (photos.length === 0) {
-      if (step === 'process' || step === 'review') {
+      if (step === 'group' || step === 'process' || step === 'review') {
         setStep('upload');
       }
       setCurrentPhotoIndex(0);
+      setRestaurantPhotoGroups([]);
       return;
     }
 
-    if (currentPhotoIndex >= photos.length) {
-      setCurrentPhotoIndex(photos.length - 1);
+    const maxIndex =
+      processType === 'restaurant' && (step === 'process' || step === 'review')
+        ? restaurantPhotoGroups.length - 1
+        : photos.length - 1;
+    if (currentPhotoIndex > maxIndex) {
+      setCurrentPhotoIndex(Math.max(maxIndex, 0));
     }
-  }, [currentPhotoIndex, photos.length, setCurrentPhotoIndex, step]);
+  }, [
+    currentPhotoIndex,
+    photos.length,
+    processType,
+    restaurantPhotoGroups.length,
+    setCurrentPhotoIndex,
+    step,
+  ]);
+
+  useEffect(() => {
+    if (restaurantPhotoGroups.length === 0) {
+      setSelectedRestaurantPhotoGroupId(null);
+      return;
+    }
+
+    const photoIds = new Set(photos.map((photo) => photo.id));
+    setRestaurantPhotoGroups((current) =>
+      normalizeRestaurantPhotoGroups(
+        current.map((group) => ({
+          ...group,
+          photoIds: group.photoIds.filter((photoId) => photoIds.has(photoId)),
+        })),
+      ),
+    );
+  }, [normalizeRestaurantPhotoGroups, photos, restaurantPhotoGroups.length]);
+
+  useEffect(() => {
+    if (
+      selectedRestaurantPhotoGroupId &&
+      !restaurantPhotoGroups.some((group) => group.id === selectedRestaurantPhotoGroupId)
+    ) {
+      setSelectedRestaurantPhotoGroupId(restaurantPhotoGroups[0]?.id ?? null);
+    }
+  }, [restaurantPhotoGroups, selectedRestaurantPhotoGroupId]);
 
   useEffect(() => {
     if (step !== 'process' || !currentPhoto) {
@@ -455,22 +697,33 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   }, [currentPhoto, step]);
 
   useEffect(() => {
+    if (step !== 'group') {
+      setGroupingPhotoViewerVisible(false);
+    }
+  }, [step]);
+
+  useEffect(() => {
     if (step !== 'process' || !processType || !currentPhoto) {
       return;
     }
 
     if (processType === 'restaurant') {
+      if (!currentRestaurantGroup) {
+        return;
+      }
+
       setRestaurantForms((current) => {
-        if (current[currentPhoto.id]) {
+        if (current[currentRestaurantGroup.id]) {
           return current;
         }
 
-        const previousPhoto = currentPhotoIndex > 0 ? photos[currentPhotoIndex - 1] : null;
-        const previousForm = previousPhoto ? current[previousPhoto.id] : undefined;
+        const previousGroup =
+          currentPhotoIndex > 0 ? restaurantPhotoGroups[currentPhotoIndex - 1] : null;
+        const previousForm = previousGroup ? current[previousGroup.id] : undefined;
 
         return {
           ...current,
-          [currentPhoto.id]: buildDefaultRestaurantForm(currentPhoto, previousForm),
+          [currentRestaurantGroup.id]: buildDefaultRestaurantForm(currentPhoto, previousForm),
         };
       });
       return;
@@ -498,6 +751,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     currentPhotoIndex,
     photos,
     processType,
+    currentRestaurantGroup,
+    restaurantPhotoGroups,
     setFoodProductForms,
     setRestaurantForms,
     step,
@@ -510,13 +765,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       setIsEditingMenuItemInline(false);
       setEditingMenuItemName('');
     }
-  }, [currentPhoto?.id, processType, step]);
+  }, [currentPhoto?.id, currentRestaurantGroupId, processType, step]);
 
   useEffect(() => {
     if (step === 'process' && processType === 'restaurant') {
       setMenuItemMode('existing');
     }
-  }, [currentPhoto?.id, processType, step]);
+  }, [currentPhoto?.id, currentRestaurantGroupId, processType, step]);
 
   const resetFlowSelectionState = useCallback(() => {
     resetRestaurantSelectionFlow();
@@ -527,11 +782,137 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setEditingMenuItemName('');
   }, [resetRestaurantSelectionFlow]);
 
+  const initializeRestaurantPhotoGroups = useCallback(() => {
+    const nextGroups = normalizeRestaurantPhotoGroups(buildDefaultRestaurantPhotoGroups(photos));
+    setRestaurantPhotoGroups(nextGroups);
+    setSelectedRestaurantPhotoGroupId(nextGroups[0]?.id ?? null);
+    setRestaurantForms({});
+    setCurrentPhotoIndex(0);
+  }, [normalizeRestaurantPhotoGroups, photos, setCurrentPhotoIndex, setRestaurantForms]);
+
+  const handleRemovePhoto = useCallback(
+    (photoId: string) => {
+      removePhoto(photoId);
+      setRestaurantPhotoGroups((current) =>
+        normalizeRestaurantPhotoGroups(
+          current.map((group) => ({
+            ...group,
+            photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
+          })),
+        ),
+      );
+    },
+    [normalizeRestaurantPhotoGroups, removePhoto],
+  );
+
+  const movePhotoToRestaurantGroup = useCallback(
+    (photoId: string, targetGroupId: string) => {
+      const targetGroup = restaurantPhotoGroups.find((group) => group.id === targetGroupId);
+      if (!targetGroup || targetGroup.photoIds.includes(photoId)) {
+        return;
+      }
+
+      if (
+        effectiveMaxPhotosPerRestaurantItem !== null &&
+        targetGroup.photoIds.length >= effectiveMaxPhotosPerRestaurantItem
+      ) {
+        setErrorMessage(
+          effectiveMaxPhotosPerRestaurantItem === 1
+            ? 'Free users can keep one photo per menu item. Keep this photo as its own item, or replace the selected item photo.'
+            : `You can group up to ${effectiveMaxPhotosPerRestaurantItem} photos per menu item.`,
+        );
+        return;
+      }
+
+      setErrorMessage(null);
+      setRestaurantPhotoGroups((current) =>
+        normalizeRestaurantPhotoGroups(
+          current.map((group) => {
+            const withoutPhoto = group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId);
+            if (group.id !== targetGroupId) {
+              return {
+                ...group,
+                photoIds: withoutPhoto,
+              };
+            }
+
+            return {
+              ...group,
+              photoIds: [...withoutPhoto, photoId],
+            };
+          }),
+        ),
+      );
+      setSelectedRestaurantPhotoGroupId(targetGroupId);
+    },
+    [effectiveMaxPhotosPerRestaurantItem, normalizeRestaurantPhotoGroups, restaurantPhotoGroups],
+  );
+
+  const replaceRestaurantGroupPhoto = useCallback(
+    (photoId: string, targetGroupId: string) => {
+      const targetGroup = restaurantPhotoGroups.find((group) => group.id === targetGroupId);
+      if (!targetGroup || targetGroup.photoIds.includes(photoId)) {
+        return;
+      }
+
+      setErrorMessage(null);
+      const replacedPhotoIds = targetGroup.photoIds;
+      setRestaurantPhotoGroups((current) => {
+        const nextGroups = current
+          .map((group) => ({
+            ...group,
+            photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
+          }))
+          .filter((group) => group.photoIds.length > 0 && group.id !== targetGroupId);
+
+        return normalizeRestaurantPhotoGroups([
+          ...nextGroups,
+          {
+            id: targetGroupId,
+            photoIds: [photoId],
+          },
+          ...replacedPhotoIds
+            .filter((replacedPhotoId) => replacedPhotoId !== photoId)
+            .map((replacedPhotoId) => ({
+              id: `restaurant-photo-group-${replacedPhotoId}`,
+              photoIds: [replacedPhotoId],
+            })),
+        ]);
+      });
+      setSelectedRestaurantPhotoGroupId(targetGroupId);
+    },
+    [normalizeRestaurantPhotoGroups, restaurantPhotoGroups],
+  );
+
+  const splitPhotoToRestaurantGroup = useCallback((photoId: string) => {
+    const nextGroupId = `restaurant-photo-group-${photoId}`;
+    setErrorMessage(null);
+    setRestaurantPhotoGroups((current) => {
+      if (current.some((group) => group.id === nextGroupId && group.photoIds.includes(photoId))) {
+        return current;
+      }
+
+      return normalizeRestaurantPhotoGroups([
+        ...current.map((group) => ({
+          ...group,
+          photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
+        })),
+        {
+          id: nextGroupId,
+          photoIds: [photoId],
+        },
+      ]);
+    });
+    setSelectedRestaurantPhotoGroupId(nextGroupId);
+  }, [normalizeRestaurantPhotoGroups]);
+
   const beginStandardProcessFlow = useCallback(
     (nextProcessType: ProcessType) => {
       setProcessType(nextProcessType);
       setStep('upload');
       resetDraftState();
+      setRestaurantPhotoGroups([]);
+      setSelectedRestaurantPhotoGroupId(null);
       resetFlowSelectionState();
       setErrorMessage(null);
     },
@@ -555,6 +936,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           resetProcessingForms();
         }
 
+        setRestaurantPhotoGroups([]);
+        setSelectedRestaurantPhotoGroupId(null);
         resetFlowSelectionState();
         setProcessType(nextProcessType);
         setStep('upload');
@@ -594,12 +977,35 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     [scrollProcessStepToTop, setCurrentPhotoIndex],
   );
 
-  const openPhotoViewer = useCallback(() => {
+  const openPhotoViewer = useCallback((initialIndex = 0) => {
+    setPhotoViewerInitialIndex(initialIndex);
     setIsPhotoViewerVisible(true);
   }, []);
 
   const closePhotoViewer = useCallback(() => {
     setIsPhotoViewerVisible(false);
+  }, []);
+
+  const openGroupingPhotoViewer = useCallback(
+    (viewerPhotos: DraftPhotoAsset[], initialIndex = 0) => {
+      const urls = viewerPhotos
+        .map((photo) => photo.uri.trim())
+        .filter((uri) => uri.length > 0);
+      if (urls.length === 0) {
+        return;
+      }
+
+      setGroupingPhotoViewerUrls(urls);
+      setGroupingPhotoViewerInitialIndex(
+        Math.max(0, Math.min(initialIndex, urls.length - 1)),
+      );
+      setGroupingPhotoViewerVisible(true);
+    },
+    [],
+  );
+
+  const closeGroupingPhotoViewer = useCallback(() => {
+    setGroupingPhotoViewerVisible(false);
   }, []);
 
   const displayedSavedRestaurants = useMemo(() => {
@@ -717,6 +1123,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     currentUserId,
     photos,
     foodProductForms,
+    restaurantPhotoGroups,
     restaurantForms,
     userName: user?.name?.trim() || undefined,
     visitVisibility,
@@ -786,9 +1193,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         hasCompletedFlowRef.current = true;
       },
       photos,
+      processUnitCount:
+        processType === 'restaurant' ? restaurantPhotoGroups.length : photos.length,
       processType,
       queryClient,
       foodProductForms,
+      restaurantPhotoGroups:
+        processType === 'restaurant' ? restaurantPhotoGroups : undefined,
       restaurantForms,
       setErrorMessage,
       setStep,
@@ -1362,7 +1773,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const progressHeaderContent = processType ? (
     <StepProgressBar
       compact
-      currentStep={resolveWizardStepIndex(step)}
+      currentStep={resolveWizardStepIndex(step, processType)}
       showCompletedCheckmark={false}
       steps={progressSteps}
     />
@@ -1398,7 +1809,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           {linkedNoteCard}
           <StepProgressBar
             compact
-            currentStep={resolveWizardStepIndex('choice')}
+            currentStep={resolveWizardStepIndex('choice', null)}
             showCompletedCheckmark={false}
             steps={resolveProgressSteps(null)}
           />
@@ -1549,7 +1960,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                   accessibilityLabel="Remove photo"
                   accessibilityRole="button"
                   onPress={() => {
-                    removePhoto(photo.id);
+                    handleRemovePhoto(photo.id);
                   }}
                   style={styles.photoRemoveButton}
                 >
@@ -1564,6 +1975,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
     return (
       <FeatureFormScreenScaffold
+        key={`photo-processing-${processType}-upload`}
         headerBottomCompact
         headerBottomContent={progressHeaderContent}
         keyboardAware={false}
@@ -1583,6 +1995,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
             setCurrentPhotoIndex(0);
             setErrorMessage(null);
+            if (processType === 'restaurant') {
+              initializeRestaurantPhotoGroups();
+              setStep('group');
+              return;
+            }
+
             setStep('process');
           },
         }}
@@ -1617,8 +2035,254 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     );
   }
 
+  if (step === 'group' && processType === 'restaurant') {
+    const selectedGroupId = selectedRestaurantPhotoGroup?.id ?? null;
+    const selectedPhotoIds = new Set(selectedRestaurantPhotoGroup?.photoIds ?? []);
+    const availablePhotos = restaurantPhotoGroups
+      .filter((group) => group.id !== selectedGroupId && group.photoIds.length === 1)
+      .map((group) => photosById.get(group.photoIds[0] ?? ''))
+      .filter((photo): photo is DraftPhotoAsset => {
+        if (!photo) {
+          return false;
+        }
+
+        return !selectedPhotoIds.has(photo.id);
+      });
+    const selectedGroupIndex = selectedGroupId
+      ? restaurantPhotoGroups.findIndex((group) => group.id === selectedGroupId)
+      : -1;
+    const selectedGroupTitle =
+      selectedGroupIndex >= 0 ? `Item ${selectedGroupIndex + 1}` : 'Selected item';
+    const isSelectedGroupAtLimit =
+      effectiveMaxPhotosPerRestaurantItem !== null &&
+      selectedRestaurantPhotoGroupPhotos.length >= effectiveMaxPhotosPerRestaurantItem;
+
+    return (
+      <FeatureFormScreenScaffold
+        key="photo-processing-restaurant-group"
+        headerBottomCompact
+        headerBottomContent={progressHeaderContent}
+        keyboardAware={false}
+        onBackPress={() => {
+          setStep('upload');
+          setErrorMessage(null);
+        }}
+        primaryAction={{
+          label: 'Next',
+          disabled: restaurantPhotoGroups.length === 0,
+          onPress: () => {
+            if (restaurantPhotoGroups.length === 0) {
+              setErrorMessage('Group at least one photo before continuing.');
+              return;
+            }
+
+            setCurrentPhotoIndex(0);
+            setErrorMessage(null);
+            setStep('process');
+          },
+        }}
+        secondaryAction={{
+          label: 'Back to Upload',
+          onPress: () => {
+            setStep('upload');
+            setErrorMessage(null);
+          },
+          variant: 'secondary',
+        }}
+        subtitle={`${restaurantPhotoGroups.length} item${restaurantPhotoGroups.length === 1 ? '' : 's'} from ${photos.length} photo${photos.length === 1 ? '' : 's'}`}
+        title="Group Photos"
+      >
+        <PageErrorToast
+          analyticsProps={buildFlowAnalyticsPayload()}
+          analyticsSource="PhotoProcessingScreen"
+          errorMessage={errorMessage}
+          title="Photo grouping issue"
+        />
+        {linkedNoteCard}
+
+        {effectiveMaxPhotosPerRestaurantItem === 1 ? (
+          <LightweightStatusCard
+            message="Free users can keep one photo per menu item. Subscriber accounts can group multiple photos for one item."
+            style={styles.sectionCard}
+          />
+        ) : null}
+
+        <Card style={styles.groupingCard}>
+          <Text variant="label">Item Groups</Text>
+          <Text tone="secondary">
+            Select an item group, then add matching photos to it.
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupingHorizontalContent}
+          >
+            {restaurantPhotoGroups.map((group, index) => {
+              const groupPhotos = group.photoIds
+                .map((photoId) => photosById.get(photoId))
+                .filter((photo): photo is DraftPhotoAsset => Boolean(photo));
+              const primaryPhotoUri = groupPhotos[0]?.uri ?? '';
+              const isSelected = group.id === selectedGroupId;
+              return (
+                <Pressable
+                  accessibilityLabel={`Select item group ${index + 1}`}
+                  accessibilityRole="button"
+                  key={group.id}
+                  onPress={() => {
+                    setSelectedRestaurantPhotoGroupId(group.id);
+                    setErrorMessage(null);
+                  }}
+                  style={[
+                    styles.groupingPhotoTile,
+                    styles.groupingHorizontalTile,
+                    isSelected ? styles.groupingPhotoTileSelected : null,
+                  ]}
+                >
+                  <Image
+                    source={{ uri: primaryPhotoUri }}
+                    style={styles.groupingPhotoImage}
+                  />
+                  <View style={styles.groupingPhotoAction}>
+                    <Text variant="bodySmTightBold">Item {index + 1}</Text>
+                    <Text tone="secondary" variant="bodySm">
+                      {groupPhotos.length} photo{groupPhotos.length === 1 ? '' : 's'}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Card>
+
+        {selectedRestaurantPhotoGroup ? (
+          <Card style={styles.groupingCard}>
+            <View style={styles.groupingHeaderRow}>
+              <View>
+                <Text variant="label">{selectedGroupTitle}</Text>
+                <Text tone="secondary" variant="bodySm">
+                  {selectedRestaurantPhotoGroupPhotos.length} photo{selectedRestaurantPhotoGroupPhotos.length === 1 ? '' : 's'} selected
+                </Text>
+              </View>
+              {displayMaxPhotosPerRestaurantItem === null ? (
+                <StatusPill label="No item limit" tone="success" />
+              ) : (
+                <StatusPill
+                  label={`${selectedRestaurantPhotoGroupPhotos.length}/${displayMaxPhotosPerRestaurantItem}`}
+                  tone={isSelectedGroupAtLimit ? 'warning' : 'info'}
+                />
+              )}
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.groupingPhotoStrip}
+              contentContainerStyle={styles.groupingStripContent}
+            >
+              {selectedRestaurantPhotoGroupPhotos.map((photo, index) => (
+                <View key={photo.id} style={styles.groupingStripPhotoWrap}>
+                  <Pressable
+                    accessibilityLabel={`View ${photo.name} full screen`}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      openGroupingPhotoViewer(selectedRestaurantPhotoGroupPhotos, index);
+                    }}
+                  >
+                    <Image source={{ uri: photo.uri }} style={styles.groupingStripImage} />
+                  </Pressable>
+                  {index > 0 ? (
+                    <Pressable
+                      accessibilityLabel={`Remove ${photo.name} from ${selectedGroupTitle}`}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        splitPhotoToRestaurantGroup(photo.id);
+                      }}
+                      style={styles.groupingStripRemoveButton}
+                    >
+                      <Ionicons color={theme.colors.text.secondary} name="close" size={14} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          </Card>
+        ) : null}
+
+        <Card style={styles.groupingCard}>
+          <Text variant="label">Other Photos</Text>
+          {availablePhotos.length === 0 ? (
+            <EmptyState
+              analyticsProps={buildFlowAnalyticsPayload()}
+              analyticsSource="PhotoProcessingScreen"
+              description="All photos are already in the selected item group."
+              title="No other photos"
+            />
+          ) : (
+            <View style={styles.groupingPhotoGrid}>
+              {availablePhotos.map((photo, index) => (
+                <View key={photo.id} style={styles.groupingPhotoTile}>
+                  <View style={styles.groupingPhotoFrame}>
+                    <Pressable
+                      accessibilityLabel={`View ${photo.name} full screen`}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        openGroupingPhotoViewer(availablePhotos, index);
+                      }}
+                    >
+                      <Image source={{ uri: photo.uri }} style={styles.groupingPhotoImage} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Add ${photo.name} to ${selectedGroupTitle}`}
+                      accessibilityRole="button"
+                      disabled={!selectedGroupId}
+                      onPress={() => {
+                        if (selectedGroupId) {
+                          movePhotoToRestaurantGroup(photo.id, selectedGroupId);
+                        }
+                      }}
+                      style={styles.groupingIconButton}
+                    >
+                      <Ionicons color={theme.colors.text.secondary} name="add" size={18} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.groupingPhotoAction}>
+                    <Text
+                      ellipsizeMode="tail"
+                      numberOfLines={1}
+                      tone="secondary"
+                      variant="bodySm"
+                    >
+                      {formatDraftPhotoMetadataLabel(photo)}
+                    </Text>
+                    {selectedGroupId && effectiveMaxPhotosPerRestaurantItem === 1 ? (
+                      <Button
+                        label="Replace"
+                        onPress={() => {
+                          replaceRestaurantGroupPhoto(photo.id, selectedGroupId);
+                        }}
+                        variant="secondary"
+                      />
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </Card>
+        <PhotoViewerModal
+          initialIndex={groupingPhotoViewerInitialIndex}
+          onRequestClose={closeGroupingPhotoViewer}
+          urls={groupingPhotoViewerUrls}
+          visible={groupingPhotoViewerVisible}
+        />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
   if (step === 'process' && processType && currentPhoto) {
-    const isLastPhoto = currentPhotoIndex === photos.length - 1;
+    const processUnitCount =
+      processType === 'restaurant' ? restaurantPhotoGroups.length : photos.length;
+    const isLastPhoto = currentPhotoIndex === processUnitCount - 1;
     const detectedDateValue = resolveDraftPhotoDetectedDateValue(currentPhoto);
     const captureCoordinatesLabel = currentPhoto.captureCoordinates
       ? formatCoordinatesForDisplay(currentPhoto.captureCoordinates)
@@ -1638,11 +2302,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
             return;
           }
           Keyboard.dismiss();
-          setStep('upload');
+          setStep(processType === 'restaurant' ? 'group' : 'upload');
           setErrorMessage(null);
         }}
         primaryAction={{
-          label: isLastPhoto ? 'Review' : 'Next Photo',
+          label: isLastPhoto ? 'Review' : processType === 'restaurant' ? 'Next Item' : 'Next Photo',
           onPress: handleProcessNext,
         }}
         scrollViewProps={{
@@ -1650,19 +2314,28 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         }}
         scrollViewRef={processStepScrollViewRef}
         secondaryAction={{
-          label: currentPhotoIndex > 0 ? 'Previous' : 'Back to Upload',
+          label:
+            currentPhotoIndex > 0
+              ? 'Previous'
+              : processType === 'restaurant'
+                ? 'Back to Group'
+                : 'Back to Upload',
           onPress: () => {
             if (currentPhotoIndex > 0) {
               goToProcessPhoto(currentPhotoIndex - 1);
               return;
             }
             Keyboard.dismiss();
-            setStep('upload');
+            setStep(processType === 'restaurant' ? 'group' : 'upload');
             setErrorMessage(null);
           },
           variant: 'secondary',
         }}
-        subtitle={`Photo ${currentPhotoIndex + 1} of ${photos.length}`}
+        subtitle={
+          processType === 'restaurant'
+            ? `Item ${currentPhotoIndex + 1} of ${processUnitCount}`
+            : `Photo ${currentPhotoIndex + 1} of ${processUnitCount}`
+        }
         title={processType === 'restaurant' ? 'Process Saved Photos' : 'Food Product'}
       >
         <PageErrorToast
@@ -1676,14 +2349,42 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         {linkedNoteCard}
 
         <Card style={styles.photoPreviewCard}>
-          <Pressable
-            accessibilityLabel={`View photo ${currentPhotoIndex + 1} full screen`}
-            accessibilityRole="button"
-            onPress={openPhotoViewer}
-            testID="process-photo-preview-button"
-          >
-            <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
-          </Pressable>
+          {processType === 'restaurant' && currentRestaurantGroupPhotos.length > 1 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.groupingPhotoStrip}
+              contentContainerStyle={styles.groupingStripContent}
+            >
+              {currentRestaurantGroupPhotos.map((photo, index) => (
+                <Pressable
+                  accessibilityLabel={`View item photo ${index + 1}`}
+                  accessibilityRole="button"
+                  key={photo.id}
+                  onPress={() => {
+                    openPhotoViewer(index);
+                  }}
+                >
+                  <Image source={{ uri: photo.uri }} style={styles.groupingStripImage} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <Pressable
+              accessibilityLabel={
+                processType === 'restaurant'
+                  ? `View photos for item ${currentPhotoIndex + 1} full screen`
+                  : `View photo ${currentPhotoIndex + 1} full screen`
+              }
+              accessibilityRole="button"
+              onPress={() => {
+                openPhotoViewer(0);
+              }}
+              testID="process-photo-preview-button"
+            >
+              <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
+            </Pressable>
+          )}
         </Card>
 
         {processType === 'restaurant' ? (
@@ -2008,9 +2709,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         )}
 
         <PhotoViewerModal
-          initialIndex={0}
+          initialIndex={photoViewerInitialIndex}
           onRequestClose={closePhotoViewer}
-          urls={[currentPhoto.uri]}
+          urls={
+            processType === 'restaurant'
+              ? currentRestaurantGroupPhotos.map((photo) => photo.uri)
+              : [currentPhoto.uri]
+          }
           visible={isPhotoViewerVisible}
         />
       </FeatureFormScreenScaffold>
@@ -2020,12 +2725,17 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   if (step === 'review' && processType) {
     return (
       <FeatureFormScreenScaffold
+        key={`photo-processing-${processType}-review`}
         headerBottomCompact
         headerBottomContent={progressHeaderContent}
         keyboardAware={false}
         onBackPress={() => {
           setStep('process');
-          setCurrentPhotoIndex(Math.max(photos.length - 1, 0));
+          setCurrentPhotoIndex(
+            processType === 'restaurant'
+              ? Math.max(restaurantPhotoGroups.length - 1, 0)
+              : Math.max(photos.length - 1, 0),
+          );
           setErrorMessage(null);
         }}
         primaryAction={{
@@ -2040,14 +2750,18 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           label: 'Edit',
           onPress: () => {
             setStep('process');
-            setCurrentPhotoIndex(Math.max(photos.length - 1, 0));
+            setCurrentPhotoIndex(
+              processType === 'restaurant'
+                ? Math.max(restaurantPhotoGroups.length - 1, 0)
+                : Math.max(photos.length - 1, 0),
+            );
             setErrorMessage(null);
           },
           variant: 'secondary',
         }}
         subtitle={
           processType === 'restaurant'
-            ? `${restaurantReviewGroups.length} visit${restaurantReviewGroups.length === 1 ? '' : 's'} • ${photos.length} item${photos.length === 1 ? '' : 's'}`
+            ? `${restaurantReviewGroups.length} visit${restaurantReviewGroups.length === 1 ? '' : 's'} • ${restaurantPhotoGroups.length} item${restaurantPhotoGroups.length === 1 ? '' : 's'}`
             : `${foodProductReviewEntries.length} item${foodProductReviewEntries.length === 1 ? '' : 's'} ready to save`
         }
         title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Food Products'}
@@ -2070,6 +2784,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
   return (
     <FeatureFormScreenScaffold
+      key="photo-processing-fallback"
       keyboardAware={false}
       onBackPress={() => {
         exitMethodRef.current = 'header_back';

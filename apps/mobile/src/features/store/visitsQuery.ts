@@ -73,13 +73,21 @@ export async function syncVisitMutationCaches(
     invalidations.push(invalidateMonthlyUsageQueries(queryClient));
   }
 
-  if (options.includeVisitPhotos && visitId) {
-    invalidations.push(
-      invalidateVisitPhotoQuery(
-        queryClient,
-        visitPhotosQueryKeys.visit(visitId),
-      ),
-    );
+  if (options.includeVisitPhotos) {
+    if (visitId) {
+      invalidations.push(
+        invalidateVisitPhotoQuery(
+          queryClient,
+          visitPhotosQueryKeys.visit(visitId),
+        ),
+      );
+    } else {
+      invalidations.push(
+        queryClient.invalidateQueries({
+          queryKey: visitPhotosQueryKeys.root,
+        }),
+      );
+    }
   }
 
   if (hasNonEmptyValue(options.sourceNoteId)) {

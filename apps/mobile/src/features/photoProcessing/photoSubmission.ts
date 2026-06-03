@@ -15,6 +15,7 @@ import {
   validateFoodProductForm,
   type FoodProductFormValues,
 } from '../../lib/foodProductForm';
+import type { RestaurantPhotoGroup } from './photoProcessingTypes';
 
 export interface PhotoSubmissionDraftAsset {
   id: string;
@@ -47,6 +48,7 @@ interface SourceNoteSubmissionParams {
 
 interface SubmitRestaurantPhotoEntriesParams extends SourceNoteSubmissionParams {
   photos: PhotoSubmissionDraftAsset[];
+  restaurantPhotoGroups?: RestaurantPhotoGroup[];
   restaurantForms: Record<string, RestaurantPhotoSubmissionForm>;
   visitVisibility: 'friends' | 'private';
 }
@@ -88,11 +90,13 @@ export function validateRestaurantPhotoSubmissionForm(
 
 export function buildRestaurantVisitInputsFromPhotos({
   photos,
+  restaurantPhotoGroups,
   restaurantForms,
   sourceNoteId,
   visitVisibility,
 }: {
   photos: PhotoSubmissionDraftAsset[];
+  restaurantPhotoGroups?: RestaurantPhotoGroup[];
   restaurantForms: Record<string, RestaurantPhotoSubmissionForm>;
   sourceNoteId?: string;
   visitVisibility: 'friends' | 'private';
@@ -103,19 +107,37 @@ export function buildRestaurantVisitInputsFromPhotos({
       restaurantId: string;
       restaurantName: string;
       date: string;
-      items: { photo: PhotoSubmissionDraftAsset; form: RestaurantPhotoSubmissionForm }[];
+      items: { photos: PhotoSubmissionDraftAsset[]; form: RestaurantPhotoSubmissionForm }[];
     }
   >();
+  const photosById = new Map(photos.map((photo) => [photo.id, photo]));
+  const entries = restaurantPhotoGroups
+    ? restaurantPhotoGroups.map((group, index) => ({
+        form: restaurantForms[group.id],
+        index,
+        photos: group.photoIds
+          .map((photoId) => photosById.get(photoId))
+          .filter((photo): photo is PhotoSubmissionDraftAsset => Boolean(photo)),
+      }))
+    : photos.map((photo, index) => ({
+        form: restaurantForms[photo.id],
+        index,
+        photos: [photo],
+      }));
 
-  for (const [index, photo] of photos.entries()) {
-    const form = restaurantForms[photo.id];
+  for (const entry of entries) {
+    const form = entry.form;
     if (!form) {
-      throw new Error(`Photo ${index + 1} is missing restaurant details.`);
+      throw new Error(`Photo group ${entry.index + 1} is missing restaurant details.`);
+    }
+
+    if (entry.photos.length === 0) {
+      throw new Error(`Photo group ${entry.index + 1} has no photos.`);
     }
 
     const validationMessage = validateRestaurantPhotoSubmissionForm(form);
     if (validationMessage) {
-      throw new Error(`Photo ${index + 1}: ${validationMessage}`);
+      throw new Error(`Photo group ${entry.index + 1}: ${validationMessage}`);
     }
 
     const key = `${form.restaurantId.trim()}__${form.date}`;
@@ -129,7 +151,7 @@ export function buildRestaurantVisitInputsFromPhotos({
 
     groupedVisits.set(key, {
       ...existingVisit,
-      items: [...existingVisit.items, { photo, form }],
+      items: [...existingVisit.items, { photos: entry.photos, form }],
     });
   }
 
@@ -148,7 +170,7 @@ export function buildRestaurantVisitInputsFromPhotos({
       rating: entry.form.rating,
       description: entry.form.description.trim() || undefined,
       notes: entry.form.notes.trim() || undefined,
-      photos: [buildPhotoUploadInput(entry.photo)],
+      photos: entry.photos.map(buildPhotoUploadInput),
     })),
   }));
 }
@@ -184,6 +206,7 @@ export async function submitRestaurantPhotoEntries({
   noteId,
   photos,
   queryClient,
+  restaurantPhotoGroups,
   restaurantForms,
   visitVisibility,
   writeFeature,
@@ -192,6 +215,7 @@ export async function submitRestaurantPhotoEntries({
   let queued = false;
   const visitInputs = buildRestaurantVisitInputsFromPhotos({
     photos,
+    restaurantPhotoGroups,
     restaurantForms,
     sourceNoteId: noteId,
     visitVisibility,
