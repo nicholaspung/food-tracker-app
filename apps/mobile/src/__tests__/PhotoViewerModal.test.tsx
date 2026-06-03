@@ -134,9 +134,20 @@ jest.mock('react-native', () => {
     ),
     Modal: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       React.createElement('Modal', props, children),
+    Platform: {
+      OS: 'ios',
+      select: <T,>(options: { default?: T; ios?: T }) => options.ios ?? options.default,
+    },
     Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       React.createElement('Pressable', props, children),
     StyleSheet: {
+      absoluteFill: {
+        bottom: 0,
+        left: 0,
+        position: 'absolute',
+        right: 0,
+        top: 0,
+      },
       absoluteFillObject: {
         bottom: 0,
         left: 0,

@@ -63,6 +63,17 @@ jobs:
           done
           exit 1
 
+      - name: App link association check Beta
+        run: |
+          for path in /.well-known/apple-app-site-association /.well-known/assetlinks.json; do
+            body="$(curl -fsS "https://beta.app.yummyrecs.com${path}")"
+            if printf '%s' "$body" | grep -qiE '<!doctype html>|<html[[:space:]>]'; then
+              echo "Expected app-link association JSON at ${path}, got HTML"
+              exit 1
+            fi
+            BODY="$body" node -e "JSON.parse(process.env.BODY)"
+          done
+
       - name: Beta deployment summary
         if: always()
         run: |
@@ -120,6 +131,17 @@ jobs:
             sleep 6
           done
           exit 1
+
+      - name: App link association check Production
+        run: |
+          for path in /.well-known/apple-app-site-association /.well-known/assetlinks.json; do
+            body="$(curl -fsS "https://app.yummyrecs.com${path}")"
+            if printf '%s' "$body" | grep -qiE '<!doctype html>|<html[[:space:]>]'; then
+              echo "Expected app-link association JSON at ${path}, got HTML"
+              exit 1
+            fi
+            BODY="$body" node -e "JSON.parse(process.env.BODY)"
+          done
 
       - name: Production deployment summary
         if: always()

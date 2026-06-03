@@ -790,6 +790,7 @@ deploy_static_sites() {
 
         if [ "$site_key" = "app" ]; then
             node "$APP_DIR/scripts/write-app-link-associations.mjs" "${build_dir}_new" "$ENVIRONMENT"
+            validate_app_link_associations "${build_dir}_new"
         fi
 
         if [ ! -d "${build_dir}_new" ] || [ ! -f "${build_dir}_new/index.html" ]; then
@@ -1039,10 +1040,110 @@ body_looks_like_html() {
     grep -qiE '<!doctype html>|<html[[:space:]>]' "$body_file"
 }
 
+body_looks_like_json() {
+    local body_file="$1"
+
+    grep -qE '^[[:space:]]*[\[{]' "$body_file"
+}
+
 response_preview() {
     local body_file="$1"
 
     LC_ALL=C head -c 200 "$body_file" | tr '\r\n' '  '
+}
+
+validate_app_link_association_file() {
+    local build_dir="$1"
+    local relative_path="$2"
+    local file_path="$build_dir/$relative_path"
+
+    if [ ! -f "$file_path" ]; then
+        error "Missing app-link association file: $file_path"
+        error "Set FOOD_TRACKER_IOS_TEAM_ID and FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS in the $ENVIRONMENT environment before deploying."
+        return 1
+    fi
+
+    if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file_path" >/dev/null 2>&1; then
+        error "Invalid JSON in app-link association file: $file_path"
+        return 1
+    fi
+}
+
+validate_app_link_associations() {
+    local build_dir="$1"
+
+    validate_app_link_association_file "$build_dir" ".well-known/apple-app-site-association" || return 1
+    validate_app_link_association_file "$build_dir" ".well-known/assetlinks.json" || return 1
+}
+
+probe_app_link_association() {
+    local domain="$1"
+    local path="$2"
+    local headers_file="$3"
+    local body_file="$4"
+    local error_file="$5"
+
+    curl -k -f -s -S -L \
+        --connect-timeout 3 \
+        --max-time 10 \
+        --dump-header "$headers_file" \
+        --output "$body_file" \
+        --resolve "$domain:80:127.0.0.1" \
+        --resolve "$domain:443:127.0.0.1" \
+        "http://$domain$path" > /dev/null 2>"$error_file"
+}
+
+smoke_test_app_link_associations() {
+    local domain="$1"
+    local path
+
+    for path in "/.well-known/apple-app-site-association" "/.well-known/assetlinks.json"; do
+        local headers_file
+        local body_file
+        local error_file
+        local content_type
+        local preview
+
+        headers_file=$(mktemp)
+        body_file=$(mktemp)
+        error_file=$(mktemp)
+
+        if ! probe_app_link_association "$domain" "$path" "$headers_file" "$body_file" "$error_file"; then
+            local curl_error
+            curl_error=$(tr '\r\n' ' ' < "$error_file" | sed 's/[[:space:]]\+/ /g')
+            rm -f "$headers_file" "$body_file" "$error_file"
+            error "Smoke test failed: app-link association path is not reachable for $domain$path"
+            if [ -n "$curl_error" ]; then
+                error "curl: $curl_error"
+            fi
+            return 1
+        fi
+
+        content_type=$(response_content_type "$headers_file")
+        if body_looks_like_html "$body_file" || ! body_looks_like_json "$body_file"; then
+            preview=$(response_preview "$body_file")
+            rm -f "$headers_file" "$body_file" "$error_file"
+            error "Smoke test failed: $domain$path did not serve association JSON (content-type: ${content_type:-unknown})"
+            if [ -n "$preview" ]; then
+                error "Response preview: $preview"
+            fi
+            return 1
+        fi
+
+        if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$body_file" >/dev/null 2>&1; then
+            preview=$(response_preview "$body_file")
+            rm -f "$headers_file" "$body_file" "$error_file"
+            error "Smoke test failed: $domain$path returned invalid JSON"
+            if [ -n "$preview" ]; then
+                error "Response preview: $preview"
+            fi
+            return 1
+        fi
+
+        rm -f "$headers_file" "$body_file" "$error_file"
+    done
+
+    log "App-link association files are reachable via $domain ✓"
 }
 
 health_check_static_site() {
@@ -1152,6 +1253,10 @@ smoke_test() {
     done
 
     if ! pocketbase_domain_health_check "$POCKETBASE_DOMAIN"; then
+        return 1
+    fi
+
+    if ! smoke_test_app_link_associations "$APP_DOMAIN"; then
         return 1
     fi
 

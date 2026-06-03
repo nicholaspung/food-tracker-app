@@ -10,8 +10,38 @@ import { AddFriendScreen } from '../screens/AddFriendScreen';
 const mockReact = React;
 
 jest.mock('react-native', () => ({
+  ActivityIndicator: (props: Record<string, unknown>) => mockReact.createElement('ActivityIndicator', props),
+  Linking: {
+    openSettings: jest.fn(),
+  },
+  Platform: {
+    OS: 'ios',
+    select: <T,>(options: { default?: T; ios?: T }) => options.ios ?? options.default,
+  },
+  Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Pressable', props, children),
+  StyleSheet: {
+    absoluteFill: {
+      bottom: 0,
+      left: 0,
+      position: 'absolute',
+      right: 0,
+      top: 0,
+    },
+    create: <T,>(styles: T) => styles,
+  },
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
+}));
+
+jest.mock('expo-camera', () => ({
+  CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
+  useCameraPermissions: jest.fn(() => [
+    {
+      granted: true,
+    },
+    jest.fn(),
+  ]),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -49,6 +79,28 @@ jest.mock('../providers/ConnectivityProvider', () => ({
 jest.mock('../theme', () => ({
   createThemedStyles: (factory: (theme: Record<string, any>) => Record<string, unknown>) => () =>
     factory({
+      colors: {
+        background: {
+          surface: 'surface',
+        },
+        border: {
+          default: 'defaultBorder',
+          info: 'infoBorder',
+          subtle: 'subtleBorder',
+        },
+        status: {
+          infoBg: 'infoBg',
+        },
+        text: {
+          primary: 'primaryText',
+          secondary: 'secondaryText',
+        },
+      },
+      radii: {
+        lg: 12,
+        md: 8,
+        pill: 999,
+      },
       spacing: {
         md: 16,
         sm: 8,
@@ -56,6 +108,14 @@ jest.mock('../theme', () => ({
         xxs: 4,
       },
     }),
+  useTheme: () => ({
+    colors: {
+      text: {
+        brand: 'brandText',
+        secondary: 'secondaryText',
+      },
+    },
+  }),
 }));
 
 jest.mock('../ui', () => ({
