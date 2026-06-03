@@ -5,7 +5,11 @@
   },
   "build": {
     "base": {
-      "node": "22.14.0"
+      "node": "22.14.0",
+      "env": {
+        "POSTHOG_CLI_GITHUB_REPOSITORY": "nicholaspung/food-tracker-app",
+        "POSTHOG_CLI_GITHUB_SERVER_URL": "https://github.com"
+      }
     },
     "development": {
       "extends": "base",

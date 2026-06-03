@@ -56,20 +56,37 @@ resolve_posthog_cli() {
 
 POSTHOG_CLI_BIN="$(resolve_posthog_cli || true)"
 HAS_POSTHOG_CONFIG="false"
+HAS_POSTHOG_GIT_CONTEXT="false"
 
 if [[ -n "${POSTHOG_CLI_API_KEY:-}" && -n "${POSTHOG_CLI_HOST:-}" && -n "${POSTHOG_CLI_PROJECT_ID:-}" ]]; then
   HAS_POSTHOG_CONFIG="true"
 fi
 
+if [[ -z "${GITHUB_SHA:-}" && -n "${EAS_BUILD_GIT_COMMIT_HASH:-}" && -n "${POSTHOG_CLI_GITHUB_REPOSITORY:-}" ]]; then
+  export GITHUB_ACTIONS="true"
+  export GITHUB_SHA="$EAS_BUILD_GIT_COMMIT_HASH"
+  export GITHUB_REPOSITORY="$POSTHOG_CLI_GITHUB_REPOSITORY"
+  export GITHUB_SERVER_URL="${POSTHOG_CLI_GITHUB_SERVER_URL:-https://github.com}"
+  export GITHUB_REF_NAME="${POSTHOG_CLI_GITHUB_REF_NAME:-${EAS_BUILD_PROFILE:-eas-build}}"
+fi
+
+if [[ -n "${GITHUB_SHA:-}" || -n "${VERCEL:-}" ]]; then
+  HAS_POSTHOG_GIT_CONTEXT="true"
+elif git -C "${SRCROOT:-$PROJECT_ROOT}" rev-parse --show-toplevel >/dev/null 2>&1; then
+  HAS_POSTHOG_GIT_CONTEXT="true"
+fi
+
 # PostHog sourcemap upload is optional. Fall back to the standard React Native
-# bundling script when the CLI or its required credentials are unavailable.
-if [[ -n "$POSTHOG_CLI_BIN" && "$HAS_POSTHOG_CONFIG" = "true" ]]; then
+# bundling script when the CLI, its credentials, or Git/CI metadata are unavailable.
+if [[ -n "$POSTHOG_CLI_BIN" && "$HAS_POSTHOG_CONFIG" = "true" && "$HAS_POSTHOG_GIT_CONTEXT" = "true" ]]; then
   /bin/sh "$POSTHOG_XCODE_SCRIPT" "$REACT_NATIVE_XCODE_SCRIPT"
 else
   if [[ -z "$POSTHOG_CLI_BIN" ]]; then
     echo "warning: posthog-cli unavailable in this build environment; skipping sourcemap upload."
-  else
+  elif [[ "$HAS_POSTHOG_CONFIG" != "true" ]]; then
     echo "warning: POSTHOG_CLI_* values are incomplete; skipping sourcemap upload."
+  else
+    echo "warning: Git/CI metadata unavailable; skipping PostHog sourcemap upload."
   fi
 
   /bin/sh "$REACT_NATIVE_XCODE_SCRIPT"
