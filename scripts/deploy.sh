@@ -1046,6 +1046,10 @@ body_looks_like_json() {
     grep -qE '^[[:space:]]*[\[{]' "$body_file"
 }
 
+android_app_link_association_enabled() {
+    [ -n "${FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS:-}" ]
+}
+
 response_preview() {
     local body_file="$1"
 
@@ -1059,7 +1063,7 @@ validate_app_link_association_file() {
 
     if [ ! -f "$file_path" ]; then
         error "Missing app-link association file: $file_path"
-        error "Set FOOD_TRACKER_IOS_TEAM_ID and FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS in the $ENVIRONMENT environment before deploying."
+        error "Set the required app-link association secret for the $ENVIRONMENT environment before deploying."
         return 1
     fi
 
@@ -1073,7 +1077,12 @@ validate_app_link_associations() {
     local build_dir="$1"
 
     validate_app_link_association_file "$build_dir" ".well-known/apple-app-site-association" || return 1
-    validate_app_link_association_file "$build_dir" ".well-known/assetlinks.json" || return 1
+
+    if android_app_link_association_enabled; then
+        validate_app_link_association_file "$build_dir" ".well-known/assetlinks.json" || return 1
+    else
+        log "Skipping Android app-link association validation; FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS is not set."
+    fi
 }
 
 probe_app_link_association() {
@@ -1096,8 +1105,15 @@ probe_app_link_association() {
 smoke_test_app_link_associations() {
     local domain="$1"
     local path
+    local paths=("/.well-known/apple-app-site-association")
 
-    for path in "/.well-known/apple-app-site-association" "/.well-known/assetlinks.json"; do
+    if android_app_link_association_enabled; then
+        paths+=("/.well-known/assetlinks.json")
+    else
+        log "Skipping Android app-link association smoke test; FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS is not set."
+    fi
+
+    for path in "${paths[@]}"; do
         local headers_file
         local body_file
         local error_file

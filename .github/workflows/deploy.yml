@@ -64,8 +64,17 @@ jobs:
           exit 1
 
       - name: App link association check Beta
+        env:
+          FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS: ${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}
         run: |
-          for path in /.well-known/apple-app-site-association /.well-known/assetlinks.json; do
+          paths=(/.well-known/apple-app-site-association)
+          if [ -n "$FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS" ]; then
+            paths+=(/.well-known/assetlinks.json)
+          else
+            echo "Skipping Android app-link association check; FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS is not set."
+          fi
+
+          for path in "${paths[@]}"; do
             body="$(curl -fsS "https://beta.app.yummyrecs.com${path}")"
             if printf '%s' "$body" | grep -qiE '<!doctype html>|<html[[:space:]>]'; then
               echo "Expected app-link association JSON at ${path}, got HTML"
@@ -133,8 +142,17 @@ jobs:
           exit 1
 
       - name: App link association check Production
+        env:
+          FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS: ${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}
         run: |
-          for path in /.well-known/apple-app-site-association /.well-known/assetlinks.json; do
+          paths=(/.well-known/apple-app-site-association)
+          if [ -n "$FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS" ]; then
+            paths+=(/.well-known/assetlinks.json)
+          else
+            echo "Skipping Android app-link association check; FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS is not set."
+          fi
+
+          for path in "${paths[@]}"; do
             body="$(curl -fsS "https://app.yummyrecs.com${path}")"
             if printf '%s' "$body" | grep -qiE '<!doctype html>|<html[[:space:]>]'; then
               echo "Expected app-link association JSON at ${path}, got HTML"

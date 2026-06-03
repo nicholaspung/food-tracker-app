@@ -1882,6 +1882,7 @@ func sendRemoteNotificationToActiveDevices(
 		}
 		seenPushTokens[pushToken] = struct{}{}
 
+		deviceCount++
 		messageID, err := activeNotificationPushSender.SendRemoteDeviceNotification(pushToken, payload)
 		if err != nil {
 			errorCode := normalizeProviderErrorCode(err, payload)
@@ -1910,7 +1911,6 @@ func sendRemoteNotificationToActiveDevices(
 			providerMessageID = messageID
 			notificationDeviceID = device.Id
 		}
-		deviceCount++
 		if strings.TrimSpace(messageID) != "" {
 			receipts = append(receipts, remoteNotificationReceiptInput{
 				NotificationDeviceID: device.Id,
