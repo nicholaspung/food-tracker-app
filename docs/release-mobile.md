@@ -98,7 +98,30 @@ pnpm exec eas build --platform ios --profile production
 - Submit Android production build to the intended Play Console track.
 - Confirm release notes match the shipped behavior.
 - Confirm store review answers, privacy details, and data safety details are still accurate.
+- Add or update App Review notes for any new permissions, notification behavior, login/setup requirements, or reviewer-visible feature changes.
 - Record App Store Connect and Play Console links in the release record.
+
+### App Review Notes Template
+
+Use this release-specific summary for version `1.1.0` submissions:
+
+```text
+Yummy Recs 1.1.0 updates the mobile runtime to Expo SDK 56 / React Native 0.85 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
+
+Reviewer-visible changes:
+- Push notifications are now supported for visit reminders, bill reminders, and monthly friend activity. Notification preferences are available from Settings > Notifications and are opt-in based on system permission.
+- The default saved list is now presented as Want to Try. Users can save restaurants and menu items, see friend overlap, filter friend matches, and remove Want to Try bookmarks.
+- Bills now refresh more reliably after notification taps, focus changes, reconnects, and detail navigation.
+- Tasting sessions include improved reminder/deep-link behavior, an exit flow, and clearer delete/trash confirmations.
+- Onboarding/tutorial media has been refreshed and converted to GIF assets.
+- Photo intake and uploads were updated for Expo SDK 56 file-system behavior.
+
+Existing review context:
+- Camera is used for QR scanning and food/receipt photo capture.
+- Photo library access is used to select food photos.
+- Location is used to find nearby restaurants during restaurant search.
+- Account deletion remains available from the profile/account flow.
+```
 
 Common commands:
 

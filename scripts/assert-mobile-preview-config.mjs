@@ -20,8 +20,8 @@ expectEqual('EXPO_PUBLIC_APP_ENV', appEnvironment, expectedAppEnvironment);
 expectEqual('name', config.name, 'Yummy Recs Preview');
 expectEqual('scheme', config.scheme, 'yummyrecs-preview');
 expectEqual('ios.bundleIdentifier', config.ios?.bundleIdentifier, 'com.yummyrecs.mobile.preview');
-expectEqual('runtimeVersion', config.runtimeVersion, '1.0.2-preview-embedded-1');
-expectEqual('ios.runtimeVersion', config.ios?.runtimeVersion, '1.0.2-preview-embedded-1');
+expectEqual('runtimeVersion', config.runtimeVersion, '1.1.0-preview-embedded-1');
+expectEqual('ios.runtimeVersion', config.ios?.runtimeVersion, '1.1.0-preview-embedded-1');
 expectEqual('updates.checkAutomatically', config.updates?.checkAutomatically, 'ON_ERROR_RECOVERY');
 expectEqual('updates.fallbackToCacheTimeout', config.updates?.fallbackToCacheTimeout, 0);
 expectIncludes(
