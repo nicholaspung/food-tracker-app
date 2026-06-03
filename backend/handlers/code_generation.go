@@ -43,5 +43,7 @@ func isUniqueConstraintError(err error) bool {
 
 	normalized := strings.ToLower(err.Error())
 	return strings.Contains(normalized, "unique constraint") ||
-		strings.Contains(normalized, "is not unique")
+		strings.Contains(normalized, "is not unique") ||
+		strings.Contains(normalized, "must be unique") ||
+		strings.Contains(normalized, "validation_not_unique")
 }

@@ -180,6 +180,41 @@ func TestNotificationDeviceRegistrationDeactivatesMatchingDevicesForOtherUsers(t
 	}
 }
 
+func TestNotificationDeviceRegistrationDeactivatesDuplicateTokenForSameUser(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	currentUser, token := createAuthUser(t, server.app, false, false)
+	duplicateToken := createNotificationDeviceRecord(t, server.app, currentUser.Id, "old-device", "ExponentPushToken[shared]", true)
+	unrelatedToken := createNotificationDeviceRecord(t, server.app, currentUser.Id, "unrelated-device", "ExponentPushToken[unrelated]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices",
+		token,
+		`{"deviceId":"current-device","platform":"ios","pushToken":"ExponentPushToken[shared]"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected notification device registration to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	assertNotificationDeviceActiveState(t, server.app, duplicateToken.Id, false)
+	assertNotificationDeviceActiveState(t, server.app, unrelatedToken.Id, true)
+	currentRecord, err := server.app.FindFirstRecordByFilter(
+		"notification_devices",
+		"user = {:user} && device_id = {:deviceID}",
+		map[string]any{"deviceID": "current-device", "user": currentUser.Id},
+	)
+	if err != nil {
+		t.Fatalf("expected current device record to exist: %v", err)
+	}
+	if !currentRecord.GetBool("active") || currentRecord.GetString("push_token") != "ExponentPushToken[shared]" {
+		t.Fatalf("expected current device to remain active with shared token, got %#v", currentRecord)
+	}
+}
+
 func TestNotificationDeviceEndpointsRequireAuthentication(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterNotificationHandlers(se, app)
@@ -1160,6 +1195,95 @@ func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
 		t.Fatalf("expected rate limit to avoid another provider send, got %#v", sender.calls)
 	}
 	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "skipped_rate_limited", 0)
+}
+
+func TestBillPaymentReminderDeduplicatesActiveDevicesWithSamePushToken(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	firstDevice := createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device-1", "ExponentPushToken[participant]", true)
+	secondDevice := createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device-2", "ExponentPushToken[participant]", true)
+	bill := seedBillRecord(t, server.app, creator.Id, "Duplicate Device Reminder")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected payment reminder to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one provider send for duplicate push token, got %#v", sender.calls)
+	}
+	if sender.calls[0].token != "ExponentPushToken[participant]" {
+		t.Fatalf("expected participant token, got %q", sender.calls[0].token)
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, participant.Id, "bill_payment_reminder", "sent", 1)
+
+	reloadedFirstDevice, err := server.app.FindRecordById("notification_devices", firstDevice.Id)
+	if err != nil {
+		t.Fatalf("failed to reload first device: %v", err)
+	}
+	reloadedSecondDevice, err := server.app.FindRecordById("notification_devices", secondDevice.Id)
+	if err != nil {
+		t.Fatalf("failed to reload second device: %v", err)
+	}
+	activeCount := 0
+	for _, device := range []*core.Record{reloadedFirstDevice, reloadedSecondDevice} {
+		if device.GetBool("active") {
+			activeCount++
+		}
+	}
+	if activeCount != 1 {
+		t.Fatalf("expected exactly one duplicate-token device to remain active, got %d", activeCount)
+	}
+}
+
+func TestBillPaymentReminderReservationPreventsDuplicateProviderSend(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	participant, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[participant]", true)
+	bill := seedBillRecord(t, server.app, creator.Id, "Reserved Reminder")
+	participantRecord := seedBillParticipantRecord(t, server.app, bill.Id, participant.Id, "Friend", 18, "pending")
+	createCollectionRecord(t, server.app, "notification_delivery_logs", map[string]any{
+		"user":              participant.Id,
+		"signal_type":       "bill_payment_reminder",
+		"source_collection": "bill_participants",
+		"source_record":     participantRecord.Id,
+		"actor":             creator.Id,
+		"delivery_key":      "bill_payment_reminder:" + participantRecord.Id + ":" + participant.Id,
+		"status":            "provider_failed",
+		"device_count":      0,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills/"+bill.Id+"/participants/"+participantRecord.Id+"/payment-reminder",
+		creatorToken,
+		"",
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected reserved reminder to be rate limited, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected reservation to avoid provider send, got %#v", sender.calls)
+	}
 }
 
 func TestBillPaymentReminderCooldownSurvivesPerDeviceReceiptFailure(t *testing.T) {

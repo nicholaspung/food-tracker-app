@@ -1143,7 +1143,7 @@ func deliverMonthlyFriendsActivityNotificationWithOptions(
 	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
 	if sendResult.Err != nil {
 		baseLog.Status = "provider_failed"
-		baseLog.DeviceCount = len(devices)
+		baseLog.DeviceCount = sendResult.DeviceCount
 		baseLog.ErrorCode = sendResult.ErrorCode
 		if err := createNotificationDeliveryLogWithReceipts(app, baseLog, sendResult); err != nil {
 			return "", err
@@ -1152,7 +1152,7 @@ func deliverMonthlyFriendsActivityNotificationWithOptions(
 	}
 
 	baseLog.Status = "sent"
-	baseLog.DeviceCount = len(devices)
+	baseLog.DeviceCount = sendResult.DeviceCount
 	baseLog.ProviderMessageID = sendResult.ProviderMessageID
 	baseLog.NotificationDeviceID = sendResult.NotificationDeviceID
 	logRecord, err := createNotificationDeliveryLogRecord(app, baseLog)
@@ -1285,7 +1285,7 @@ func deliverTastingInviteNotification(app core.App, sessionID string, actorUserI
 			ActorUserID:      actorUserID,
 			DeliveryKey:      deliveryKey,
 			Status:           "provider_failed",
-			DeviceCount:      len(devices),
+			DeviceCount:      sendResult.DeviceCount,
 			ErrorCode:        sendResult.ErrorCode,
 		}, sendResult)
 	}
@@ -1298,7 +1298,7 @@ func deliverTastingInviteNotification(app core.App, sessionID string, actorUserI
 		ActorUserID:          actorUserID,
 		DeliveryKey:          deliveryKey,
 		Status:               "sent",
-		DeviceCount:          len(devices),
+		DeviceCount:          sendResult.DeviceCount,
 		ProviderMessageID:    sendResult.ProviderMessageID,
 		NotificationDeviceID: sendResult.NotificationDeviceID,
 	})
@@ -1426,7 +1426,7 @@ func deliverBillOwedNotification(app core.App, billID string, actorUserID string
 			ActorUserID:      actorUserID,
 			DeliveryKey:      deliveryKey,
 			Status:           "provider_failed",
-			DeviceCount:      len(devices),
+			DeviceCount:      sendResult.DeviceCount,
 			ErrorCode:        sendResult.ErrorCode,
 		}, sendResult)
 	}
@@ -1439,7 +1439,7 @@ func deliverBillOwedNotification(app core.App, billID string, actorUserID string
 		ActorUserID:          actorUserID,
 		DeliveryKey:          deliveryKey,
 		Status:               "sent",
-		DeviceCount:          len(devices),
+		DeviceCount:          sendResult.DeviceCount,
 		ProviderMessageID:    sendResult.ProviderMessageID,
 		NotificationDeviceID: sendResult.NotificationDeviceID,
 	})
@@ -1455,7 +1455,7 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 	actorUserID := strings.TrimSpace(input.ActorUserID)
 	recipientID := strings.TrimSpace(input.RecipientID)
 
-	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billPaymentReminderSignalType, participantID, recipientID, time.Now().UTC().UnixNano())
+	deliveryKey := billPaymentReminderDeliveryAttemptKey(participantID, recipientID)
 	baseLog := notificationDeliveryLogInput{
 		UserID:           recipientID,
 		SignalType:       billPaymentReminderSignalType,
@@ -1505,6 +1505,16 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 		return billPaymentReminderResult{Status: "skipped_no_active_device"}, nil
 	}
 
+	baseLog.Status = "sent"
+	baseLog.DeliveryKey = billPaymentReminderReservationDeliveryKey(participantID, recipientID)
+	logRecord, err := createNotificationDeliveryLogRecord(app, baseLog)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return billPaymentReminderResult{Status: "skipped_rate_limited"}, nil
+		}
+		return billPaymentReminderResult{}, err
+	}
+
 	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
 		SignalType: billPaymentReminderSignalType,
 		BillID:     billID,
@@ -1512,21 +1522,29 @@ func deliverBillPaymentReminder(app core.App, input billPaymentReminderInput) (b
 
 	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
 	if sendResult.Err != nil {
-		baseLog.Status = "provider_failed"
-		baseLog.DeviceCount = len(devices)
-		baseLog.ErrorCode = sendResult.ErrorCode
-		if err := createNotificationDeliveryLogWithReceipts(app, baseLog, sendResult); err != nil {
+		if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
+			DeliveryKey:          billPaymentReminderDeliveryAttemptKey(participantID, recipientID),
+			Status:               "provider_failed",
+			DeviceCount:          sendResult.DeviceCount,
+			ErrorCode:            sendResult.ErrorCode,
+			NotificationDeviceID: sendResult.NotificationDeviceID,
+			ProviderMessageID:    sendResult.ProviderMessageID,
+		}); err != nil {
+			return billPaymentReminderResult{}, err
+		}
+		if err := createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts); err != nil {
 			return billPaymentReminderResult{}, err
 		}
 		return billPaymentReminderResult{Status: "provider_failed"}, nil
 	}
 
-	baseLog.Status = "sent"
-	baseLog.DeviceCount = len(devices)
-	baseLog.ProviderMessageID = sendResult.ProviderMessageID
-	baseLog.NotificationDeviceID = sendResult.NotificationDeviceID
-	logRecord, err := createNotificationDeliveryLogRecord(app, baseLog)
-	if err != nil {
+	if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
+		DeliveryKey:          billPaymentReminderDeliveryAttemptKey(participantID, recipientID),
+		Status:               "sent",
+		DeviceCount:          sendResult.DeviceCount,
+		NotificationDeviceID: sendResult.NotificationDeviceID,
+		ProviderMessageID:    sendResult.ProviderMessageID,
+	}); err != nil {
 		return billPaymentReminderResult{}, err
 	}
 	if err := createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts); err != nil {
@@ -1603,6 +1621,15 @@ type notificationDeliveryLogInput struct {
 	ErrorCode            string
 }
 
+type notificationDeliveryLogSendUpdate struct {
+	DeliveryKey          string
+	Status               string
+	DeviceCount          int
+	NotificationDeviceID string
+	ProviderMessageID    string
+	ErrorCode            string
+}
+
 func createNotificationDeliveryLog(app core.App, input notificationDeliveryLogInput) error {
 	_, err := createNotificationDeliveryLogRecord(app, input)
 	return err
@@ -1658,6 +1685,26 @@ func createNotificationDeliveryLogRecord(app core.App, input notificationDeliver
 		return nil, err
 	}
 	return record, nil
+}
+
+func updateNotificationDeliveryLogAfterSend(app core.App, record *core.Record, input notificationDeliveryLogSendUpdate) error {
+	if strings.TrimSpace(input.DeliveryKey) != "" {
+		record.Set("delivery_key", input.DeliveryKey)
+	}
+	record.Set("status", input.Status)
+	record.Set("device_count", input.DeviceCount)
+	if strings.TrimSpace(input.ProviderMessageID) != "" {
+		record.Set("provider_message_id", input.ProviderMessageID)
+	}
+	if strings.TrimSpace(input.NotificationDeviceID) != "" {
+		record.Set("notification_device", input.NotificationDeviceID)
+		record.Set("receipt_status", "pending")
+		record.Set("receipt_next_check_at", time.Now().UTC().Add(notificationReceiptPendingDelay))
+	}
+	if strings.TrimSpace(input.ErrorCode) != "" {
+		record.Set("error_code", input.ErrorCode)
+	}
+	return app.Save(record)
 }
 
 func isTastingInviteNotificationPreferenceEnabled(app core.App, userID string) (bool, error) {
@@ -1772,6 +1819,14 @@ func hasNotificationDeliveryLogWithKey(app core.App, deliveryKey string) (bool, 
 	return len(records) > 0, nil
 }
 
+func billPaymentReminderReservationDeliveryKey(participantID string, recipientID string) string {
+	return fmt.Sprintf("%s:%s:%s", billPaymentReminderSignalType, strings.TrimSpace(participantID), strings.TrimSpace(recipientID))
+}
+
+func billPaymentReminderDeliveryAttemptKey(participantID string, recipientID string) string {
+	return fmt.Sprintf("%s:%s:%s:%d", billPaymentReminderSignalType, strings.TrimSpace(participantID), strings.TrimSpace(recipientID), time.Now().UTC().UnixNano())
+}
+
 func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record, error) {
 	return app.FindRecordsByFilter(
 		"notification_devices",
@@ -1787,6 +1842,7 @@ type remoteNotificationSendResult struct {
 	ProviderMessageID    string
 	NotificationDeviceID string
 	Receipts             []remoteNotificationReceiptInput
+	DeviceCount          int
 	ErrorCode            string
 	Err                  error
 }
@@ -1804,8 +1860,29 @@ func sendRemoteNotificationToActiveDevices(
 	var providerMessageID string
 	var notificationDeviceID string
 	receipts := make([]remoteNotificationReceiptInput, 0, len(devices))
+	seenPushTokens := map[string]struct{}{}
+	deviceCount := 0
 	for _, device := range devices {
-		messageID, err := activeNotificationPushSender.SendRemoteDeviceNotification(device.GetString("push_token"), payload)
+		pushToken := strings.TrimSpace(device.GetString("push_token"))
+		if pushToken == "" {
+			continue
+		}
+		if _, alreadyQueued := seenPushTokens[pushToken]; alreadyQueued {
+			if err := deactivateNotificationDeviceRecord(app, device); err != nil {
+				return remoteNotificationSendResult{
+					ProviderMessageID:    providerMessageID,
+					NotificationDeviceID: notificationDeviceID,
+					Receipts:             receipts,
+					DeviceCount:          deviceCount,
+					ErrorCode:            "duplicate_push_token_cleanup_failed",
+					Err:                  err,
+				}
+			}
+			continue
+		}
+		seenPushTokens[pushToken] = struct{}{}
+
+		messageID, err := activeNotificationPushSender.SendRemoteDeviceNotification(pushToken, payload)
 		if err != nil {
 			errorCode := normalizeProviderErrorCode(err, payload)
 			if isInvalidProviderTokenErrorCode(errorCode) {
@@ -1814,6 +1891,7 @@ func sendRemoteNotificationToActiveDevices(
 						ProviderMessageID:    providerMessageID,
 						NotificationDeviceID: notificationDeviceID,
 						Receipts:             receipts,
+						DeviceCount:          deviceCount,
 						ErrorCode:            errorCode,
 						Err:                  deactivateErr,
 					}
@@ -1823,6 +1901,7 @@ func sendRemoteNotificationToActiveDevices(
 				ProviderMessageID:    providerMessageID,
 				NotificationDeviceID: notificationDeviceID,
 				Receipts:             receipts,
+				DeviceCount:          deviceCount,
 				ErrorCode:            errorCode,
 				Err:                  err,
 			}
@@ -1831,6 +1910,7 @@ func sendRemoteNotificationToActiveDevices(
 			providerMessageID = messageID
 			notificationDeviceID = device.Id
 		}
+		deviceCount++
 		if strings.TrimSpace(messageID) != "" {
 			receipts = append(receipts, remoteNotificationReceiptInput{
 				NotificationDeviceID: device.Id,
@@ -1842,6 +1922,7 @@ func sendRemoteNotificationToActiveDevices(
 		ProviderMessageID:    providerMessageID,
 		NotificationDeviceID: notificationDeviceID,
 		Receipts:             receipts,
+		DeviceCount:          deviceCount,
 	}
 }
 
@@ -1884,7 +1965,7 @@ func deactivateNotificationDeviceRecord(app core.App, record *core.Record) error
 func deactivateOtherNotificationDevicesForRegistration(app core.App, userID string, deviceID string, pushToken string) error {
 	records, err := app.FindRecordsByFilter(
 		"notification_devices",
-		"active = true && user != {:user} && (device_id = {:deviceID} || push_token = {:pushToken})",
+		"active = true && ((user != {:user} && (device_id = {:deviceID} || push_token = {:pushToken})) || (user = {:user} && device_id != {:deviceID} && push_token = {:pushToken}))",
 		"",
 		100,
 		0,
