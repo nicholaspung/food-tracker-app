@@ -1,0 +1,82 @@
+# EAS builds for the mobile app archive the monorepo root so workspace installs
+# can resolve package metadata. Keep generated and local-only files out.
+
+# VCS metadata is not needed by the remote builder and can be large.
+.git
+.git/
+
+# Node/package manager artifacts
+node_modules/
+.pnpm-store/
+
+# Environment files
+.env
+frontend/.env
+apps/mobile/.env
+apps/mobile/google-service-account.json
+
+# Local tool caches and scratch output
+.cache/
+.local/
+.scratch/
+.turbo/
+.expo/
+
+# Build artifacts
+frontend_build/
+frontend_build_beta/
+dist/
+!apps/marketing/dist/
+!apps/marketing/dist/**
+build/
+.eas-artifacts/
+
+# Marketing web output is not used by native mobile builds.
+apps/marketing/dist/
+apps/marketing/.dev-dist/
+apps/marketing/.verify-dist/
+
+# Mobile generated output not needed for native EAS builds.
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/dist/
+apps/mobile/web-dist/
+apps/mobile/e2e/artifacts/
+apps/mobile/e2e/baselines/
+apps/mobile/e2e/.env.local
+
+# iOS generated artifacts
+apps/mobile/ios/build/
+apps/mobile/ios/Pods/
+apps/mobile/ios/DerivedData/
+apps/mobile/ios/*.jsbundle
+apps/mobile/ios/*.ipa
+apps/mobile/ios/*.xcuserstate
+
+# Tutorial recording artifacts
+tutorial-artifacts/
+
+# Generated backend/runtime data
+backend/myapp
+backend/pocketbase_test
+backend/pb_data/
+backend/pb_data_production/
+backend/pb_data_beta/
+tools/pb_data/
+tools/backend/pocketbase
+
+# Logs and OS/editor files
+*.log
+logs/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.backup
+*.bak
+
+# Local scripts with machine-specific or sensitive details
+scripts/ssh-vps.sh
