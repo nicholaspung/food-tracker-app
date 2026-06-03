@@ -132,6 +132,7 @@ export function BackHeaderScreenScaffold({
       refreshing={usesFixedHeaderScroll ? false : refreshing}
       scroll={usesFixedHeaderScroll ? false : scroll}
       scrollUnderlayColor={usesFixedHeaderScroll ? undefined : scroll ? backgroundColor : undefined}
+      scrollUnderlayTopColor={usesFixedHeaderScroll ? undefined : scroll ? theme.colors.background.surface : undefined}
       scrollUnderlayTopInset={usesFixedHeaderScroll ? undefined : scroll ? headerHeight : undefined}
       testID={testID}
     >

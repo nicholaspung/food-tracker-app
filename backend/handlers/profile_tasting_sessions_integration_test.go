@@ -487,7 +487,7 @@ func TestTastingSessionReopenInviteWindowRequiresLeaderExpiredLobby(t *testing.T
 	}
 }
 
-func TestTastingSessionDeleteRequiresLeaderLobby(t *testing.T) {
+func TestTastingSessionDeleteRequiresLeaderLobbyOrPlanning(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
@@ -569,6 +569,18 @@ func TestTastingSessionDeleteRequiresLeaderLobby(t *testing.T) {
 	}
 	planningSession := parseJSONResponse[tastingSessionResponse](t, planningCreateResponse.Body.Bytes())
 
+	planningJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		participantToken,
+		`{"code":"`+planningSession.InviteCode+`"}`,
+	)
+	if planningJoinResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant join for planning session to succeed, got %d: %s", planningJoinResponse.Code, planningJoinResponse.Body.String())
+	}
+
 	lockResponse := performJSONRequest(
 		t,
 		server.mux,
@@ -581,6 +593,39 @@ func TestTastingSessionDeleteRequiresLeaderLobby(t *testing.T) {
 		t.Fatalf("expected lock to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
 	}
 
+	suggestRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+planningSession.ID+"/restaurants",
+		leaderToken,
+		`{"restaurantName":"Planning Burger Stand"}`,
+	)
+	if suggestRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected planning restaurant add to succeed, got %d: %s", suggestRestaurantResponse.Code, suggestRestaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, suggestRestaurantResponse.Body.Bytes())
+	if len(sessionWithRestaurant.Restaurants) != 1 {
+		t.Fatalf("expected 1 restaurant after planning add, got %#v", sessionWithRestaurant)
+	}
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": sessionWithRestaurant.Restaurants[0].RestaurantID,
+		"name":       "Animal Fries",
+		"createdBy":  sessionWithRestaurant.LeaderUserID,
+		"visibility": "friends",
+	})
+	addItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+planningSession.ID+"/restaurants/"+sessionWithRestaurant.Restaurants[0].ID+"/items",
+		leaderToken,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
+	)
+	if addItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected planning item add to succeed, got %d: %s", addItemResponse.Code, addItemResponse.Body.String())
+	}
+
 	planningDeleteResponse := performJSONRequest(
 		t,
 		server.mux,
@@ -589,8 +634,20 @@ func TestTastingSessionDeleteRequiresLeaderLobby(t *testing.T) {
 		leaderToken,
 		"",
 	)
-	if planningDeleteResponse.Code != http.StatusBadRequest {
-		t.Fatalf("expected planning delete to fail, got %d: %s", planningDeleteResponse.Code, planningDeleteResponse.Body.String())
+	if planningDeleteResponse.Code != http.StatusOK {
+		t.Fatalf("expected planning delete to succeed, got %d: %s", planningDeleteResponse.Code, planningDeleteResponse.Body.String())
+	}
+
+	deletedPlanningDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+planningSession.ID,
+		leaderToken,
+		"",
+	)
+	if deletedPlanningDetailResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected deleted planning session detail to be missing, got %d: %s", deletedPlanningDetailResponse.Code, deletedPlanningDetailResponse.Body.String())
 	}
 }
 

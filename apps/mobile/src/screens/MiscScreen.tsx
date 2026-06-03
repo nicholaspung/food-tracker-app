@@ -52,6 +52,11 @@ interface ActionItem {
 
 const TIPS: TipItem[] = [
   {
+    title: 'Turn Tastings into Bills',
+    description:
+      'After a group tasting is completed, open the results and tap "Create Bill from Session" to start a bill with the session name and tasters already filled in.',
+  },
+  {
     title: 'Food Products for Fast Logging',
     description:
       'Use Food Product when you want to save a grocery, convenience-store, or market item without creating a full restaurant visit. Add notes or a photo if you want extra context.',
@@ -69,17 +74,17 @@ const TIPS: TipItem[] = [
   {
     title: 'Share with Friends',
     description:
-      'Connect with friends to see their food recommendations in your home feed. Save restaurants from their lists to your own with one tap.',
+      'Connect with friends to see their food recommendations in your home feed, compare shared Want to Try matches, and save their recommendations to your own list.',
   },
   {
     title: 'Organize with Lists',
     description:
-      'Create restaurant lists to organize your favorites. Share them with friends or keep them private. Your "Want to Try" list is a quick way to bookmark places.',
+      'Use your Want to Try list as a quick restaurant bookmark, then create focused lists for favorites, trips, or shared recommendations.',
   },
   {
     title: 'Split Bills Easily',
     description:
-      'Use the Bill Splitter to divide bills evenly or by item. Assign specific items to each person and set custom tip amounts.',
+      'Use the Bill Splitter to divide bills evenly or by item, assign friends or custom participants, and track who still has a balance due.',
   },
   {
     title: '"I Went There" Shortcut',

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -66,6 +66,22 @@ const useStyles = createThemedStyles((theme) => ({
   },
   statusBadge: {
     alignSelf: 'flex-start',
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  lobbyList: {
+    gap: 0,
+  },
+  lobbyListItem: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: 0,
+  },
+  lobbyListSeparator: {
+    backgroundColor: theme.colors.border.subtle,
+    height: 1,
   },
 }));
 
@@ -389,64 +405,74 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
         )}
       </Card>
 
-      <Card>
+      <Card style={styles.sectionCard}>
         <Text variant="label">Participants</Text>
-        {session.participants.map((participant) => {
-          const roleBadge = getParticipantRoleBadge(participant);
+        <View style={styles.lobbyList}>
+          {session.participants.map((participant, index) => {
+            const roleBadge = getParticipantRoleBadge(participant);
 
-          return (
-            <ListItem
-              key={participant.id}
-              title={participant.name}
-              titleAccessory={<StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />}
-              trailing={
-                isLeader && participant.role !== 'leader' ? (
-                  <Pressable
-                    accessibilityLabel={`Remove ${participant.name}`}
-                    accessibilityRole="button"
-                    disabled={!isOnline}
-                    hitSlop={12}
-                    onPress={() => setPendingKick(participant)}
-                    style={({ pressed }) => [
-                      styles.rowIconButton,
-                      pressed ? styles.destructiveIconButtonPressed : null,
-                      !isOnline ? styles.iconButtonDisabled : null,
-                    ]}
-                    testID={`remove-tasting-participant-${participant.id}`}
-                  >
-                    <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-                  </Pressable>
-                ) : null
-              }
-            />
-          );
-        })}
+            return (
+              <Fragment key={participant.id}>
+                <ListItem
+                  style={styles.lobbyListItem}
+                  title={participant.name}
+                  titleAccessory={<StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />}
+                  trailing={
+                    isLeader && participant.role !== 'leader' ? (
+                      <Pressable
+                        accessibilityLabel={`Remove ${participant.name}`}
+                        accessibilityRole="button"
+                        disabled={!isOnline}
+                        hitSlop={12}
+                        onPress={() => setPendingKick(participant)}
+                        style={({ pressed }) => [
+                          styles.rowIconButton,
+                          pressed ? styles.destructiveIconButtonPressed : null,
+                          !isOnline ? styles.iconButtonDisabled : null,
+                        ]}
+                        testID={`remove-tasting-participant-${participant.id}`}
+                      >
+                        <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+                      </Pressable>
+                    ) : null
+                  }
+                />
+                {index < session.participants.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+              </Fragment>
+            );
+          })}
+        </View>
       </Card>
 
       {isLeader && session.invites.length > 0 ? (
-        <Card>
+        <Card style={styles.sectionCard}>
           <Text variant="label">Invites</Text>
-          {session.invites.map((invite) => {
-            const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, session));
+          <View style={styles.lobbyList}>
+            {session.invites.map((invite, index) => {
+              const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, session));
 
-            return (
-              <ListItem
-                key={invite.id}
-                title={invite.invitedUserName}
-                titleAccessory={<StatusPill label={statusBadge.label} style={styles.statusBadge} tone={statusBadge.tone} />}
-                trailing={
-                  isLeader && (invite.status === 'dismissed' || invite.status === 'revoked') && inviteWindowOpen ? (
-                    <Button
-                      disabled={!isOnline}
-                      label="Resend"
-                      onPress={() => void handleResendInvite(invite)}
-                      variant="secondary"
-                    />
-                  ) : null
-                }
-              />
-            );
-          })}
+              return (
+                <Fragment key={invite.id}>
+                  <ListItem
+                    style={styles.lobbyListItem}
+                    title={invite.invitedUserName}
+                    titleAccessory={<StatusPill label={statusBadge.label} style={styles.statusBadge} tone={statusBadge.tone} />}
+                    trailing={
+                      isLeader && (invite.status === 'dismissed' || invite.status === 'revoked') && inviteWindowOpen ? (
+                        <Button
+                          disabled={!isOnline}
+                          label="Resend"
+                          onPress={() => void handleResendInvite(invite)}
+                          variant="secondary"
+                        />
+                      ) : null
+                    }
+                  />
+                  {index < session.invites.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+                </Fragment>
+              );
+            })}
+          </View>
         </Card>
       ) : null}
 

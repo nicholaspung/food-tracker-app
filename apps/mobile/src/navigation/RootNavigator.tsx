@@ -292,7 +292,13 @@ export type RootStackParamList = {
         refreshSignal?: number;
       }
     | undefined;
-  CreateBill: { billId?: string; receiptScanResult?: ReceiptScanDraftResult } | undefined;
+  CreateBill:
+    | {
+        billId?: string;
+        receiptScanResult?: ReceiptScanDraftResult;
+        sourceTastingSessionId?: string;
+      }
+    | undefined;
   ReceiptScan: { billId?: string; returnTo: 'CreateBill' };
   BillDetail: { billId: string };
   TipCalculator: undefined;

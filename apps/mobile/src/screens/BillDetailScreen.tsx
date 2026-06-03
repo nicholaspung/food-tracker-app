@@ -1,7 +1,7 @@
 import { Ionicons } from '../ui/AppIcon';
 import { CommonActions } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -378,6 +378,10 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     queryKey: billsQueryKeys.detail(billId),
     queryFn: ({ signal }) => getBillById(billId, { signal }),
     initialData: () => getCachedBillDetail(queryClient, billId),
+    refetchOnMount: 'always',
+    refetchOnReconnect: 'always',
+    refetchOnWindowFocus: 'always',
+    staleTime: 0,
   });
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -461,6 +465,23 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       0,
     );
   }, [bill]);
+
+  const hasSkippedInitialFocusRefreshRef = useRef(false);
+  const refetchBillDetail = billQuery.refetch;
+  useEffect(() => {
+    if (typeof navigation.addListener !== 'function') {
+      return undefined;
+    }
+
+    return navigation.addListener('focus', () => {
+      if (!hasSkippedInitialFocusRefreshRef.current) {
+        hasSkippedInitialFocusRefreshRef.current = true;
+        return;
+      }
+
+      void refetchBillDetail();
+    });
+  }, [navigation, refetchBillDetail]);
 
   const navigateToBillsAfterDelete = useCallback(() => {
     setIsDeleteConfirmVisible(false);

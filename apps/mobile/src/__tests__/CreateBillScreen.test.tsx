@@ -6,6 +6,7 @@ import {
   createBill,
   createEntityId,
   getBillById,
+  getTastingSessionById,
   updateBill,
 } from '../features';
 import { useBillWrites } from '../features/store/useBillWrites';
@@ -141,6 +142,7 @@ jest.mock('../features', () => ({
         : ['feature', 'friends', 'user', userId ?? 'anonymous', 'paginated', section],
   },
   getBillById: jest.fn(),
+  getTastingSessionById: jest.fn(),
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),
   listFriendsPage: jest.fn(),
   submitCreateBill: jest.requireActual('../features/bills/createBillSubmissionLifecycle').submitCreateBill,
@@ -200,6 +202,8 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedCreateBill = createBill as jest.MockedFunction<typeof createBill>;
 const mockedCreateEntityId = createEntityId as jest.MockedFunction<typeof createEntityId>;
 const mockedGetBillById = getBillById as jest.MockedFunction<typeof getBillById>;
+const mockedGetTastingSessionById =
+  getTastingSessionById as jest.MockedFunction<typeof getTastingSessionById>;
 const mockedUpdateBill = updateBill as jest.MockedFunction<typeof updateBill>;
 const mockedUseBillWrites = useBillWrites as jest.MockedFunction<typeof useBillWrites>;
 const mockedTrackObservabilityEvent =
@@ -243,6 +247,51 @@ function buildBillQueryResult(data: Record<string, unknown> | null) {
     isSuccess: Boolean(data),
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useQuery>;
+}
+
+function buildTastingSession(overrides: Record<string, unknown> = {}) {
+  return {
+    createdAt: '2026-04-20T00:00:00.000Z',
+    createdByUserId: 'user-1',
+    id: 'session_1',
+    inviteCode: 'TASTE1',
+    invites: [],
+    joinedCount: 3,
+    joinExpiresAt: '2026-04-20T01:00:00.000Z',
+    leaderUserId: 'user-1',
+    maxApprovedItems: 10,
+    maxParticipants: 8,
+    maxRestaurants: 3,
+    name: 'Friday ramen tasting',
+    participants: [
+      {
+        id: 'participant_self',
+        joinedAt: '2026-04-20T00:00:00.000Z',
+        name: 'Pat',
+        role: 'leader',
+        userId: 'user-1',
+      },
+      {
+        id: 'participant_friend',
+        joinedAt: '2026-04-20T00:00:00.000Z',
+        name: 'Friend Alex',
+        role: 'participant',
+        userId: 'user-2',
+      },
+      {
+        id: 'participant_non_friend',
+        joinedAt: '2026-04-20T00:00:00.000Z',
+        name: 'Session Jamie',
+        role: 'participant',
+        userId: 'user-3',
+      },
+    ],
+    restaurantName: 'Ramen House',
+    restaurants: [],
+    status: 'completed',
+    updatedAt: '2026-04-20T00:00:00.000Z',
+    ...overrides,
+  } as Awaited<ReturnType<typeof getTastingSessionById>> & Record<string, unknown>;
 }
 
 function buildBill(overrides: Record<string, unknown> = {}) {
@@ -366,6 +415,7 @@ async function flushMicrotasks() {
 
 describe('CreateBillScreen', () => {
   let billQueryData: Record<string, unknown> | null;
+  let tastingSessionQueryData: Record<string, unknown> | null;
   let friendsItems: Record<string, unknown>[];
   let entityCounter: number;
   let navigation: {
@@ -381,6 +431,7 @@ describe('CreateBillScreen', () => {
 
   beforeEach(() => {
     billQueryData = null;
+    tastingSessionQueryData = null;
     friendsItems = [];
     entityCounter = 0;
     navigation = {
@@ -399,7 +450,14 @@ describe('CreateBillScreen', () => {
     mockedUseInfiniteQuery.mockImplementation(() => friendsQueryResult);
 
     mockedUseQuery.mockReset();
-    mockedUseQuery.mockImplementation(() => buildBillQueryResult(billQueryData));
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      const queryKey = options.queryKey ?? [];
+      if (queryKey[0] === 'feature' && queryKey[1] === 'tasting-sessions') {
+        return buildBillQueryResult(tastingSessionQueryData);
+      }
+
+      return buildBillQueryResult(billQueryData);
+    });
 
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
@@ -414,6 +472,7 @@ describe('CreateBillScreen', () => {
     });
 
     mockedGetBillById.mockReset();
+    mockedGetTastingSessionById.mockReset();
     mockedUpdateBill.mockReset();
     mockedTrackObservabilityEvent.mockReset();
 
@@ -452,6 +511,7 @@ describe('CreateBillScreen', () => {
 
   async function renderScreen(routeParams?: {
     billId?: string;
+    sourceTastingSessionId?: string;
     receiptScanResult?: {
       requestCorrelation: string;
       restaurantName?: string;
@@ -649,6 +709,80 @@ describe('CreateBillScreen', () => {
         expect.objectContaining({
           name: 'Alex',
           userId: undefined,
+        }),
+      ]),
+    );
+  });
+
+  it('seeds bill participants from a tasting session and preserves non-friend user ids', async () => {
+    friendsItems = [
+      {
+        createdAt: '2026-04-20T00:00:00.000Z',
+        email: 'alex@example.com',
+        id: 'friendship_user_2',
+        name: 'Friend Alex',
+        status: 'friend',
+        userId: 'user-2',
+      },
+    ];
+    mockedUseInfiniteQuery.mockImplementation(() => buildInfiniteQueryResult(friendsItems));
+    tastingSessionQueryData = buildTastingSession();
+
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+
+    expect(hasExactText(renderer, 'Custom Split Source')).toBe(true);
+    const appliedAnalyticsEvent = mockedTrackObservabilityEvent.mock.calls.find(
+      ([eventName]) => eventName === 'CREATE_BILL_TASTING_SESSION_APPLIED',
+    );
+    expect(appliedAnalyticsEvent?.[1]).toEqual({
+      source: 'CreateBillScreen',
+      selectedFriendCount: 1,
+      customParticipantCount: 1,
+    });
+    expect(appliedAnalyticsEvent?.[1]).not.toHaveProperty('sessionId');
+
+    const manualItemsButton = findByTestId(renderer, 'Button', 'bill-source-manual-items-button');
+    await act(async () => {
+      manualItemsButton.props.onPress();
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-name-input').props.value).toBe('Ramen House');
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe(
+      'Friend Alex, Session Jamie',
+    );
+
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    await addBillItem(renderer, 'Ramen', '60.00');
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+    await flushMicrotasks();
+
+    expect(mockedCreateBill).toHaveBeenCalledTimes(1);
+    expect(mockedCreateBill.mock.calls[0]?.[0].participants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Pat',
+          userId: 'user-1',
+        }),
+        expect.objectContaining({
+          name: 'Friend Alex',
+          userId: 'user-2',
+        }),
+        expect.objectContaining({
+          name: 'Session Jamie',
+          userId: 'user-3',
         }),
       ]),
     );

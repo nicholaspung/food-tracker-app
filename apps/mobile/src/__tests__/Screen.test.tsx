@@ -102,21 +102,33 @@ describe('Screen', () => {
     await act(async () => {
       renderer = create(
         <LayoutChromeProvider topInsetConsumedByOverlay topOverlayHeight={72}>
-          <Screen scroll scrollUnderlayColor="app-background" scrollUnderlayTopInset={240}>
+          <Screen
+            scroll
+            scrollUnderlayColor="app-background"
+            scrollUnderlayTopColor="surface-background"
+            scrollUnderlayTopInset={240}
+          >
             Body
           </Screen>
         </LayoutChromeProvider>,
       );
     });
 
-    const underlay = renderer.root.find(
+    const underlays = renderer.root.findAll(
       (node: any) => node.type === 'View' && node.props.pointerEvents === 'none',
     );
 
-    expect(flattenStyle(underlay.props.style)).toEqual(
+    expect(underlays).toHaveLength(2);
+    expect(flattenStyle(underlays[0].props.style)).toEqual(
       expect.objectContaining({
         backgroundColor: 'app-background',
         top: 312,
+      }),
+    );
+    expect(flattenStyle(underlays[1].props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'surface-background',
+        height: 824,
       }),
     );
   });

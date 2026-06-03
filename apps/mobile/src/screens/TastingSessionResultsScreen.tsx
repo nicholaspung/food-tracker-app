@@ -18,7 +18,7 @@ import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
-import { Card, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionResults'>;
@@ -35,6 +35,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderTopWidth: 1,
     gap: theme.spacing.sm,
     paddingTop: theme.spacing.md,
+  },
+  createBillButton: {
+    width: '100%',
   },
 }));
 
@@ -86,6 +89,12 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
   });
   const sessionQuery = lifecycle.query;
   const session = sessionQuery.data;
+  const canCreateBillFromSession = Boolean(
+    session &&
+      session.status === 'completed' &&
+      user?.id &&
+      session.leaderUserId === user.id,
+  );
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
@@ -236,6 +245,16 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
               );
             })
         : null}
+
+      {canCreateBillFromSession ? (
+        <Button
+          label="Create Bill from Session"
+          onPress={() => {
+            navigation.navigate('CreateBill', { sourceTastingSessionId: session.id });
+          }}
+          style={styles.createBillButton}
+        />
+      ) : null}
 
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}

@@ -27,6 +27,7 @@ interface ScreenProps {
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   scrollStyle?: StyleProp<ViewStyle>;
+  scrollUnderlayTopColor?: string;
   scrollUnderlayColor?: string;
   scrollUnderlayTopInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -38,6 +39,7 @@ interface ScreenProps {
 }
 
 const DEFAULT_EDGES: Edge[] = ['top', 'bottom'];
+const TOP_UNDERLAY_OVERSCROLL_EXTENT = 512;
 const useStyles = createThemedStyles((theme, background: ScreenProps['background'], padded: boolean) => ({
   safeArea: {
     flex: 1,
@@ -69,6 +71,7 @@ export function Screen({
   style,
   contentStyle,
   scrollStyle,
+  scrollUnderlayTopColor,
   scrollUnderlayColor,
   scrollUnderlayTopInset = 0,
   onScroll,
@@ -125,6 +128,20 @@ export function Screen({
             {
               top: scrollUnderlayTopInset + topOverlayHeight,
               backgroundColor: scrollUnderlayColor,
+            },
+          ]}
+        />
+      ) : null}
+      {scroll && scrollUnderlayTopColor ? (
+        <View
+          {...getPlatformPointerEventsProps('none')}
+          style={[
+            StyleSheet.absoluteFill,
+            getPlatformPointerEventsStyle('none'),
+            {
+              backgroundColor: scrollUnderlayTopColor,
+              bottom: undefined,
+              height: scrollUnderlayTopInset + topOverlayHeight + TOP_UNDERLAY_OVERSCROLL_EXTENT,
             },
           ]}
         />

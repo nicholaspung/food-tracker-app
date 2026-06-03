@@ -1574,6 +1574,86 @@ func TestBillCreateEndpointCreatesNestedRecords(t *testing.T) {
 	}
 }
 
+func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	leader, leaderToken := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	nonFriend, nonFriendToken := createAuthUser(t, server.app, false, true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills",
+		leaderToken,
+		`{
+			"title":"Tasting Session Bill",
+			"totalAmount":90,
+			"tax":0,
+			"tip":0,
+			"fees":0,
+			"extrasSplitMode":"equal",
+			"participants":[
+				{"id":"user:`+leader.Id+`","name":"Leader","userId":"`+leader.Id+`","amountOwed":30,"paidStatus":"paid"},
+				{"id":"user:friendship_1","name":"Friend","userId":"`+friend.Id+`","amountOwed":30,"paidStatus":"pending"},
+				{"id":"custom:tasting:participant_1","name":"Non Friend","userId":"`+nonFriend.Id+`","amountOwed":30,"paidStatus":"pending"}
+			],
+			"items":[
+				{
+					"id":"item_1",
+					"itemName":"Shared meal",
+					"price":90,
+					"assignedToParticipantIds":["user:`+leader.Id+`","user:friendship_1","custom:tasting:participant_1"],
+					"splitMode":"simple"
+				}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var createdBill billResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &createdBill); err != nil {
+		t.Fatalf("failed to parse bill payload: %v", err)
+	}
+
+	assertBillSummaryContains := func(token string, userLabel string, expectedYouOwe float64) {
+		t.Helper()
+
+		summaryResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/bills/summary", token, "")
+		if summaryResponse.Code != http.StatusOK {
+			t.Fatalf("expected %s summary 200, got %d: %s", userLabel, summaryResponse.Code, summaryResponse.Body.String())
+		}
+
+		var summaries []struct {
+			ID     string  `json:"id"`
+			YouOwe float64 `json:"youOwe"`
+		}
+		if err := json.Unmarshal(summaryResponse.Body.Bytes(), &summaries); err != nil {
+			t.Fatalf("failed to parse %s summary: %v; body=%s", userLabel, err, summaryResponse.Body.String())
+		}
+
+		for _, summary := range summaries {
+			if summary.ID == createdBill.ID {
+				if summary.YouOwe != expectedYouOwe {
+					t.Fatalf("expected %s youOwe=%v, got %v", userLabel, expectedYouOwe, summary.YouOwe)
+				}
+				return
+			}
+		}
+
+		t.Fatalf("expected %s summary to include created bill %s, got %#v", userLabel, createdBill.ID, summaries)
+	}
+
+	assertBillSummaryContains(leaderToken, "leader", 0)
+	assertBillSummaryContains(friendToken, "friend", 30)
+	assertBillSummaryContains(nonFriendToken, "non-friend", 30)
+}
+
 func TestBillUpdateEndpointRequiresCreatorAndRollsBackOnInvalidNestedItem(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	creator, creatorToken := createAuthUser(t, server.app, false, true)

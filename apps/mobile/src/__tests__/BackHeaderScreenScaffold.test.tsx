@@ -131,6 +131,7 @@ describe('BackHeaderScreenScaffold', () => {
     );
     expect(screen.props.scroll).toBe(true);
     expect(screen.props.scrollUnderlayColor).toBe('app-background');
+    expect(screen.props.scrollUnderlayTopColor).toBe('surface-background');
     expect(screen.props.scrollUnderlayTopInset).toBe(96);
   });
 

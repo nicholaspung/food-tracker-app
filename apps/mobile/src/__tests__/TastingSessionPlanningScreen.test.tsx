@@ -1,7 +1,12 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { type TastingSessionRecord, useTastingPlanMenuCatalog, useTastingPlanWrites } from '../features';
+import {
+  type TastingSessionRecord,
+  useTastingPlanMenuCatalog,
+  useTastingPlanWrites,
+  useTastingSessionWrites,
+} from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -23,6 +28,7 @@ const mockAddRestaurant = jest.fn();
 const mockRemoveMenuItem = jest.fn();
 const mockRemoveRestaurant = jest.fn();
 const mockStartTasting = jest.fn();
+const mockDeleteSession = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -88,6 +94,7 @@ jest.mock('../features', () => {
     useTastingPlanMenuCatalog: jest.fn(),
     useTastingPlanPlanningState: planningState.useTastingPlanPlanningState,
     useTastingPlanWrites: jest.fn(),
+    useTastingSessionWrites: jest.fn(),
   };
 });
 
@@ -178,6 +185,7 @@ jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () =
 }));
 
 const mockedUseTastingPlanWrites = useTastingPlanWrites as jest.MockedFunction<typeof useTastingPlanWrites>;
+const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<typeof useTastingSessionWrites>;
 const mockedUseTastingPlanMenuCatalog = useTastingPlanMenuCatalog as jest.MockedFunction<
   typeof useTastingPlanMenuCatalog
 >;
@@ -365,6 +373,8 @@ describe('TastingSessionPlanningScreen', () => {
     mockRemoveRestaurant.mockResolvedValue({ result: planningSession, status: 'completed' });
     mockStartTasting.mockReset();
     mockStartTasting.mockResolvedValue({ result: sessionWithRestaurant, status: 'completed' });
+    mockDeleteSession.mockReset();
+    mockDeleteSession.mockResolvedValue({ result: { success: true }, status: 'completed' });
     mockedUseTastingPlanWrites.mockReturnValue({
       addMenuItem: mockAddMenuItem,
       addRestaurant: mockAddRestaurant,
@@ -372,6 +382,9 @@ describe('TastingSessionPlanningScreen', () => {
       removeRestaurant: mockRemoveRestaurant,
       startTasting: mockStartTasting,
     } as unknown as ReturnType<typeof useTastingPlanWrites>);
+    mockedUseTastingSessionWrites.mockReturnValue({
+      deleteSession: mockDeleteSession,
+    } as unknown as ReturnType<typeof useTastingSessionWrites>);
     mockedUseAuth.mockReturnValue({
       actualUser: { isAdmin: false },
       user: {
@@ -577,6 +590,51 @@ describe('TastingSessionPlanningScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith('TastingSessionTasting', {
       sessionId: 'session-1',
     });
+  });
+
+  it('lets the leader delete the session from the planning header', async () => {
+    const renderer = renderScreen();
+    const scaffold = renderer.root.findByType('FeatureDetailScreenScaffold');
+    const deleteButton = scaffold.props.rightAccessory;
+
+    expect(deleteButton.props.testID).toBe('delete-tasting-session-header-button');
+
+    act(() => {
+      deleteButton.props.onPress();
+    });
+
+    const deleteModal = renderer.root.findAllByType('ConfirmDestructiveModal').find(
+      (node: any) => node.props.title === 'Delete Tasting Session?',
+    );
+
+    expect(deleteModal?.props.visible).toBe(true);
+    expect(deleteModal?.props.confirmLabel).toBe('Delete Session');
+
+    await act(async () => {
+      await deleteModal?.props.onConfirm();
+    });
+
+    expect(mockDeleteSession).toHaveBeenCalledWith({
+      isOnline: true,
+      sessionId: 'session-1',
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('TastingSessions');
+  });
+
+  it('does not show the planning delete action to non-leaders', () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { isAdmin: false },
+      user: {
+        id: 'user-2',
+        isAdmin: false,
+        isSubscriber: false,
+      },
+    } as never);
+    mockLifecycleSession(sessionWithRestaurant);
+
+    const renderer = renderScreen();
+
+    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.rightAccessory).toBeUndefined();
   });
 
   it('renders the plan read-only for non-leaders', () => {

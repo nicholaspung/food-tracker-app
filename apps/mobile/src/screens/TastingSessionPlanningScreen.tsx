@@ -24,6 +24,7 @@ import {
   useTastingPlanMenuCatalog,
   useTastingPlanPlanningState,
   useTastingPlanWrites,
+  useTastingSessionWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
@@ -82,6 +83,13 @@ const useStyles = createThemedStyles((theme) => ({
   iconButtonDisabled: {
     opacity: 0.5,
   },
+  headerIconButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
   compactRestaurantRow: {
     alignItems: 'center',
     backgroundColor: theme.colors.background.surface,
@@ -116,6 +124,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const tastingPlanWrites = useTastingPlanWrites();
+  const tastingSessionWrites = useTastingSessionWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
@@ -133,6 +142,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [pendingRemoveRestaurantId, setPendingRemoveRestaurantId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
+  const [isDeleteSessionModalVisible, setIsDeleteSessionModalVisible] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const isLeader = lifecycle.roles.isLeader;
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
@@ -279,6 +290,24 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     }
 
     void handleStartTasting();
+  };
+
+  const handleConfirmDeleteSession = async () => {
+    try {
+      setErrorMessage(null);
+      setIsDeletingSession(true);
+      const deleteResult = await tastingSessionWrites.deleteSession({ isOnline, sessionId });
+      if (deleteResult.status === 'blocked') {
+        setErrorMessage(deleteResult.message);
+        return;
+      }
+      setIsDeleteSessionModalVisible(false);
+      navigation.navigate('TastingSessions');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not delete tasting session.');
+    } finally {
+      setIsDeletingSession(false);
+    }
   };
 
   const handleAddRestaurant = async (restaurant: RestaurantRecord) => {
@@ -551,6 +580,25 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       headerScrollMode="fixed"
       stickyHeaderIndices={isLeader ? [0] : undefined}
       onBackPress={() => navigation.navigate('TastingSessions')}
+      rightAccessory={
+        isLeader ? (
+          <Pressable
+            accessibilityLabel="Delete tasting session"
+            accessibilityRole="button"
+            disabled={!isOnline || isDeletingSession}
+            hitSlop={12}
+            onPress={() => setIsDeleteSessionModalVisible(true)}
+            style={({ pressed }) => [
+              styles.headerIconButton,
+              pressed ? styles.destructiveIconButtonPressed : null,
+              !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
+            ]}
+            testID="delete-tasting-session-header-button"
+          >
+            <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+          </Pressable>
+        ) : undefined
+      }
       primaryAction={
         isLeader
           ? phase === 'restaurants'
@@ -754,6 +802,24 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         }}
         title="Remove Restaurant?"
         visible={Boolean(pendingRemoveRestaurant)}
+      />
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Session"
+        confirmLabel="Delete Session"
+        confirmLoadingLabel="Deleting..."
+        description={`Delete "${session.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
+        disabled={isDeletingSession}
+        loading={isDeletingSession}
+        onCancel={() => {
+          if (!isDeletingSession) {
+            setIsDeleteSessionModalVisible(false);
+          }
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteSession();
+        }}
+        title="Delete Tasting Session?"
+        visible={isDeleteSessionModalVisible}
       />
       <Modal
         description={missingItemConfirmation.description}

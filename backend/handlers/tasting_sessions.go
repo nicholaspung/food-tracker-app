@@ -519,8 +519,12 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
 				return apis.NewForbiddenError("only the leader can delete this tasting session", nil)
 			}
-			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
-				return apis.NewBadRequestError("only lobby sessions can be deleted", nil)
+			sessionStatus := strings.TrimSpace(sessionRecord.GetString("status"))
+			if sessionStatus != tastingSessionStatusLobby && sessionStatus != tastingSessionStatusPlanning {
+				return apis.NewBadRequestError("only lobby or planning sessions can be deleted", nil)
+			}
+			if err := deleteTastingSessionDependents(txApp, sessionRecord.Id); err != nil {
+				return err
 			}
 			if err := txApp.Delete(sessionRecord); err != nil {
 				return apis.NewApiError(500, "failed to delete tasting session", err)
@@ -1342,6 +1346,36 @@ func createTastingBlock(app core.App, sessionID string, userID string, blockedBy
 	record.Set("reason", "removed_from_lobby")
 	if err := app.Save(record); err != nil {
 		return apis.NewApiError(500, "failed to block participant", err)
+	}
+	return nil
+}
+
+func deleteTastingSessionDependents(app core.App, sessionID string) error {
+	collections := []string{
+		"tasting_session_ratings",
+		"tasting_session_items",
+		"tasting_session_restaurants",
+		"tasting_session_blocks",
+		"tasting_session_invites",
+		"tasting_session_participants",
+	}
+	for _, collectionName := range collections {
+		records, err := app.FindRecordsByFilter(
+			collectionName,
+			"session = {:session}",
+			"",
+			5000,
+			0,
+			dbx.Params{"session": sessionID},
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load tasting session dependents", err)
+		}
+		for _, record := range records {
+			if err := app.Delete(record); err != nil {
+				return apis.NewApiError(500, "failed to delete tasting session dependents", err)
+			}
+		}
 	}
 	return nil
 }

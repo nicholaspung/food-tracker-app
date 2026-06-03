@@ -175,6 +175,16 @@ const queryClient = {
   setQueryData: jest.fn(),
 };
 
+function buildNavigation(overrides: Record<string, unknown> = {}) {
+  return {
+    canGoBack: () => true,
+    dispatch: jest.fn(),
+    goBack: jest.fn(),
+    navigate: jest.fn(),
+    ...overrides,
+  } as any;
+}
+
 function buildBill(overrides: Record<string, unknown> = {}) {
   return {
     createdAt: '2026-05-19T12:00:00.000Z',
@@ -218,27 +228,25 @@ function buildBill(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function renderBillDetail(bill = buildBill()): Promise<TestRenderer> {
+async function renderBillDetail(
+  bill = buildBill(),
+  navigation = buildNavigation(),
+  queryOverrides: Partial<ReturnType<typeof useQuery>> = {},
+): Promise<TestRenderer> {
   mockedUseQuery.mockReturnValue({
     data: bill,
     isError: false,
     isLoading: false,
     isRefetching: false,
     refetch: jest.fn(),
+    ...queryOverrides,
   } as unknown as ReturnType<typeof useQuery>);
 
   const rendererRef: { current?: TestRenderer } = {};
   await act(async () => {
     rendererRef.current = create(
       <BillDetailScreen
-        navigation={
-          {
-            canGoBack: () => true,
-            dispatch: jest.fn(),
-            goBack: jest.fn(),
-            navigate: jest.fn(),
-          } as any
-        }
+        navigation={navigation}
         route={{ key: 'BillDetail-key', name: 'BillDetail', params: { billId: 'bill_1' } }}
       />,
     ) as TestRenderer;
@@ -288,6 +296,47 @@ describe('BillDetailScreen payment reminders', () => {
       updateParticipantPaidStatus: jest.fn(),
     } as unknown as ReturnType<typeof useBillWrites>);
     mockedSendBillPaymentReminder.mockResolvedValue({ status: 'sent' });
+  });
+
+  it('refetches bill detail aggressively so persisted participant status does not stay stale', async () => {
+    await renderBillDetail();
+
+    expect(mockedUseQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['feature', 'bills', 'detail', 'bill_1'],
+        refetchOnMount: 'always',
+        refetchOnReconnect: 'always',
+        refetchOnWindowFocus: 'always',
+        staleTime: 0,
+      }),
+    );
+  });
+
+  it('refetches when an already-mounted bill detail screen regains navigation focus', async () => {
+    const refetch = jest.fn();
+    let focusListener: (() => void) | undefined;
+    const navigation = buildNavigation({
+      addListener: jest.fn((eventName: string, listener: () => void) => {
+        if (eventName === 'focus') {
+          focusListener = listener;
+        }
+        return jest.fn();
+      }),
+    });
+
+    await renderBillDetail(buildBill(), navigation, { refetch });
+
+    expect(navigation.addListener).toHaveBeenCalledWith('focus', expect.any(Function));
+
+    await act(async () => {
+      focusListener?.();
+    });
+    expect(refetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      focusListener?.();
+    });
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it('tracks participant payment status changes without raw record identifiers', async () => {

@@ -1,5 +1,6 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
@@ -12,8 +13,10 @@ import {
 } from '../components/shared';
 import {
   createEntityId,
+  getTastingSessionById,
   submitCreateBill,
   type FriendRecord,
+  type TastingSessionRecord,
 } from '../features';
 import {
   formatCurrency,
@@ -31,8 +34,10 @@ import {
   type DraftAdvancedSplitEntry,
   type DraftAdvancedSplitType,
   type DraftBillItem,
+  type DraftCustomParticipant,
 } from '../features/bills/billDraft';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
+import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { useBillWrites } from '../features/store/useBillWrites';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -321,6 +326,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const { isOnline } = useConnectivity();
   const editBillId = route.params?.billId;
   const isEditMode = Boolean(editBillId);
+  const sourceTastingSessionId = !editBillId ? route.params?.sourceTastingSessionId?.trim() : undefined;
 
   const [createStep, setCreateStep] = useState<CreateBillWizardStep>('splitType');
   const [splitMode, setSplitMode] = useState<CreateBillSplitMode>('equal');
@@ -346,6 +352,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const hasCompletedFlowRef = useRef(false);
   const exitMethodRef = useRef<CreateBillExitMethod | null>(null);
   const appliedReceiptScanCorrelationRef = useRef<string | null>(null);
+  const appliedSourceTastingSessionIdRef = useRef<string | null>(null);
 
   const currentUserName = sanitizeParticipantName(
     user?.name?.trim() || user?.email?.split('@')[0] || 'You',
@@ -380,6 +387,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     editBillId,
     isEditMode,
   });
+  const sourceTastingSessionQuery = useQuery({
+    queryKey: tastingSessionsQueryKeys.detail(sourceTastingSessionId ?? ''),
+    queryFn: ({ signal }) => getTastingSessionById(sourceTastingSessionId as string, { signal }),
+    enabled: Boolean(sourceTastingSessionId),
+  });
   const acceptedFriendById = useMemo(
     () => new Map(acceptedFriends.map((friend) => [friend.id, friend])),
     [acceptedFriends],
@@ -391,6 +403,115 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         .filter((friend): friend is FriendRecord => Boolean(friend)),
     [acceptedFriendById, selectedFriendIds],
   );
+
+  const buildTastingSessionBillDraft = useCallback(
+    (session: TastingSessionRecord) => {
+      const friendByUserId = new Map(
+        acceptedFriends
+          .filter((friend) => Boolean(friend.userId?.trim()))
+          .map((friend) => [friend.userId as string, friend]),
+      );
+      const nextSelectedFriendIds: string[] = [];
+      const nextCustomParticipants: DraftCustomParticipant[] = [];
+      const seenUserIds = new Set<string>();
+      const seenCustomNames = new Set<string>();
+
+      session.participants.forEach((participant, participantIndex) => {
+        const participantUserId = participant.userId?.trim();
+        if (participantUserId && participantUserId === user?.id) {
+          return;
+        }
+
+        if (participantUserId && seenUserIds.has(participantUserId)) {
+          return;
+        }
+
+        const friend = participantUserId ? friendByUserId.get(participantUserId) : undefined;
+        if (friend) {
+          if (!nextSelectedFriendIds.includes(friend.id)) {
+            nextSelectedFriendIds.push(friend.id);
+          }
+          if (participantUserId) {
+            seenUserIds.add(participantUserId);
+          }
+          return;
+        }
+
+        const participantName = sanitizeParticipantName(
+          participant.name,
+          `Taster ${participantIndex + 1}`,
+        );
+        const normalizedParticipantName = participantName.trim().toLowerCase();
+        if (!participantUserId && seenCustomNames.has(normalizedParticipantName)) {
+          return;
+        }
+
+        nextCustomParticipants.push({
+          id: `custom:tasting:${participant.id}`,
+          name: participantName,
+          userId: participantUserId || undefined,
+        });
+
+        if (participantUserId) {
+          seenUserIds.add(participantUserId);
+        } else {
+          seenCustomNames.add(normalizedParticipantName);
+        }
+      });
+
+      return {
+        billTitle: sanitizeParticipantName(
+          session.restaurantName?.trim() || session.name,
+          'Tasting Bill',
+        ),
+        customParticipants: nextCustomParticipants,
+        selectedFriendIds: nextSelectedFriendIds,
+      };
+    },
+    [acceptedFriends, user?.id],
+  );
+
+  useEffect(() => {
+    if (
+      isEditMode ||
+      !sourceTastingSessionId ||
+      appliedSourceTastingSessionIdRef.current === sourceTastingSessionId ||
+      friendsQuery.isLoading
+    ) {
+      return;
+    }
+
+    const sourceSession = sourceTastingSessionQuery.data;
+    if (!sourceSession) {
+      return;
+    }
+
+    const seededDraft = buildTastingSessionBillDraft(sourceSession);
+    setBillTitle(seededDraft.billTitle);
+    setSplitMode('custom');
+    setCreateStep('source');
+    setSelectedFriendIds(seededDraft.selectedFriendIds);
+    setCustomParticipants(seededDraft.customParticipants);
+    setPayerParticipantId(currentUserDraftId);
+    setErrorMessage(null);
+    appliedSourceTastingSessionIdRef.current = sourceTastingSessionId;
+
+    trackObservabilityEvent('CREATE_BILL_TASTING_SESSION_APPLIED', {
+      source: 'CreateBillScreen',
+      selectedFriendCount: seededDraft.selectedFriendIds.length,
+      customParticipantCount: seededDraft.customParticipants.length,
+    });
+  }, [
+    buildTastingSessionBillDraft,
+    currentUserDraftId,
+    friendsQuery.isLoading,
+    isEditMode,
+    setCustomParticipants,
+    setPayerParticipantId,
+    setSelectedFriendIds,
+    sourceTastingSessionId,
+    sourceTastingSessionQuery.data,
+  ]);
   const participantIds = useMemo(
     () => participants.map((participant) => participant.id),
     [participants],
