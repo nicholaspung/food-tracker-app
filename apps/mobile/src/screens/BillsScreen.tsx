@@ -26,7 +26,7 @@ import { createThemedStyles } from '../theme';
 import { Card, Text } from '../ui';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
-type BillFilter = 'active' | 'you_owe' | 'you_are_owed' | 'settled';
+type BillFilter = 'you_owe' | 'you_are_owed' | 'settled';
 
 const BILL_PENDING_OPERATION_NAMES = ['bill.create'] as const;
 
@@ -70,7 +70,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
 
-  const [activeFilter, setActiveFilter] = useState<BillFilter>('active');
+  const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
   const consumedNotificationRouteKeyRef = useRef<string | null>(null);
   const styles = useStyles();
   const refetchBills = billsQuery.refetch;
@@ -99,10 +99,6 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
 
   const filteredBills = useMemo(() => {
     const bills = billsQuery.data ?? [];
-
-    if (activeFilter === 'active') {
-      return bills.filter((bill) => bill.status !== 'settled');
-    }
 
     if (activeFilter === 'settled') {
       return bills.filter((bill) => bill.status === 'settled');
@@ -223,7 +219,6 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
               setActiveFilter(nextFilter);
             }}
             options={[
-              { label: 'Active', value: 'active' },
               { label: 'You Owe', value: 'you_owe' },
               { label: "You're Owed", value: 'you_are_owed' },
               { label: 'Settled', value: 'settled' },
@@ -267,11 +262,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
           analyticsSource="BillsScreen"
           blockingErrorMessage="Could not load bills."
           emptyDescription={
-            activeFilter === 'active'
-              ? 'No active bills right now.'
-              : activeFilter === 'you_owe'
-                ? 'No unpaid bills right now.'
-                : 'No bills found for this filter.'
+            activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
           }
           emptyTitle="No matching bills"
           hasBlockingError={browseState.hasBlockingError}

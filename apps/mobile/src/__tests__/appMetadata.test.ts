@@ -1,40 +1,40 @@
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
+
+import { formatAppVersionLabel } from '../lib/appMetadata';
+
+function setExpoConfig(expoConfig: unknown) {
+  Object.defineProperty(Constants, 'expoConfig', {
+    configurable: true,
+    value: expoConfig,
+  });
+}
+
+function setNativeApplicationVersion(version: string | null) {
+  Object.defineProperty(Application, 'nativeApplicationVersion', {
+    configurable: true,
+    value: version,
+  });
+}
+
 describe('appMetadata', () => {
-  afterEach(() => {
-    jest.resetModules();
-    jest.dontMock('expo-constants');
-    jest.dontMock('expo-application');
+  beforeEach(() => {
+    setExpoConfig(null);
+    setNativeApplicationVersion(null);
   });
 
   it('formats only the app version from Expo config', () => {
-    jest.doMock('expo-constants', () => ({
-      __esModule: true,
-      default: {
-        expoConfig: {
-          version: '1.1.0',
-        },
-      },
-    }));
-    jest.doMock('expo-application', () => ({
-      nativeApplicationVersion: '1.0.2',
-      nativeBuildVersion: '1',
-    }));
-
-    const { formatAppVersionLabel } = require('../lib/appMetadata') as typeof import('../lib/appMetadata');
+    setExpoConfig({
+      version: '1.1.0',
+    });
+    setNativeApplicationVersion('1.0.2');
 
     expect(formatAppVersionLabel()).toBe('v1.1.0');
   });
 
   it('falls back to the native app version when Expo config is unavailable', () => {
-    jest.doMock('expo-constants', () => ({
-      __esModule: true,
-      default: {},
-    }));
-    jest.doMock('expo-application', () => ({
-      nativeApplicationVersion: '1.1.0',
-      nativeBuildVersion: '1',
-    }));
-
-    const { formatAppVersionLabel } = require('../lib/appMetadata') as typeof import('../lib/appMetadata');
+    setExpoConfig({});
+    setNativeApplicationVersion('1.1.0');
 
     expect(formatAppVersionLabel()).toBe('v1.1.0');
   });
