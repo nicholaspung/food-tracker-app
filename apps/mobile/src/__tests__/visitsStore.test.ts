@@ -297,6 +297,7 @@ describe('visitsStore.getVisitById', () => {
       createVisit({
         restaurantId: 'restaurant-1',
         restaurantName: 'Noodle House',
+        sourceListItemId: 'list-item-1',
         visitedAt: '2026-04-05T18:00:00.000Z',
         visitedOn: '2026-04-05',
         visibility: 'friends',
@@ -304,6 +305,7 @@ describe('visitsStore.getVisitById', () => {
           {
             name: 'Spicy Wontons',
             rating: 4,
+            menuItemId: 'menu-item-1',
             description: 'Crispy',
             notes: 'Shareable',
             photos: [
@@ -337,10 +339,12 @@ describe('visitsStore.getVisitById', () => {
       body: {
         restaurantId: 'restaurant-1',
         restaurantName: 'Noodle House',
+        sourceListItemId: 'list-item-1',
         items: [
           {
             name: 'Spicy Wontons',
             rating: 4,
+            menuItemId: 'menu-item-1',
             description: 'Crispy',
             notes: 'Shareable',
           },

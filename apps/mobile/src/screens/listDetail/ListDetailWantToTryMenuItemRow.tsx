@@ -11,7 +11,7 @@ interface ListDetailWantToTryMenuItemRowProps {
   item: OwnerDisplayItem;
   itemIndex: number;
   onDelete: (item: OwnerDisplayItem) => void;
-  onIWentThere: (input: { listItemId: string; name: string }) => void;
+  onIWentThere: (input: { listItemId: string; menuItemId?: string; name: string }) => void;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -84,6 +84,7 @@ export function ListDetailWantToTryMenuItemRow({
               onPress={() => {
                 onIWentThere({
                   listItemId,
+                  menuItemId: item.bookmark.menuItemId,
                   name: item.name,
                 });
               }}

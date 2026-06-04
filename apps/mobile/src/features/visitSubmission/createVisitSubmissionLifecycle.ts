@@ -64,6 +64,7 @@ export interface CreateVisitSubmissionDraftItem {
   description: string;
   notes: string;
   photos: CreateVisitSubmissionDraftPhoto[];
+  sourceMenuItemId?: string;
 }
 
 export interface EditVisitSubmissionDraftItem extends CreateVisitSubmissionDraftItem {
@@ -130,6 +131,7 @@ export interface SubmitEditVisitInput {
 
 interface ParsedCreateVisitItem {
   description?: string;
+  menuItemId?: string;
   name: string;
   notes?: string;
   photos: VisitPhotoUploadInput[];
@@ -182,6 +184,9 @@ function parseDraftItems(
   return draftItems.map((item) => ({
     name: item.name,
     rating: item.rating,
+    ...(item.sourceMenuItemId?.trim() && !item.sourceMenuItemId.trim().startsWith('bookmark-')
+      ? { menuItemId: item.sourceMenuItemId.trim() }
+      : {}),
     description: item.description.trim() || undefined,
     notes: item.notes.trim() || undefined,
     photos: item.photos.flatMap((photo) =>

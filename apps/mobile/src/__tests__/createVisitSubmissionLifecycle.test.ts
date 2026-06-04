@@ -284,6 +284,37 @@ describe('submitCreateVisit', () => {
     );
   });
 
+  it('passes selected menu item ids through the visit write', async () => {
+    await submitCreateVisit(
+      buildInput({
+        draftItems: [
+          {
+            description: '',
+            id: 'draft-item-1',
+            name: 'Spicy Wontons',
+            notes: '',
+            photos: [],
+            rating: 4,
+            sourceMenuItemId: 'menu-item-1',
+          },
+        ],
+      }),
+    );
+
+    expect(createVisit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          items: [
+            expect.objectContaining({
+              menuItemId: 'menu-item-1',
+              name: 'Spicy Wontons',
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it('links the first created visit item back to a source restaurant list item', async () => {
     await submitCreateVisit(
       buildInput({

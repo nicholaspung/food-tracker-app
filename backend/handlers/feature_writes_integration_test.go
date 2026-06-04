@@ -418,6 +418,185 @@ func TestVisitCreateEndpointAllowsSourceListItemRestaurantFromAccessibleFriendBo
 	}
 }
 
+func TestVisitCreateEndpointRemovesSourceWantToTryRestaurantBookmark(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Bookmark Cafe")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Bookmark Cafe",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Latte","rating":5}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"id = {:listItemId}",
+		map[string]any{"listItemId": listItem.Id},
+	); count != 0 {
+		t.Fatalf("expected source Want to Try restaurant bookmark to be removed, got %d", count)
+	}
+}
+
+func TestVisitCreateEndpointRemovesSourceWantToTryMenuItemBookmark(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Tea Room")
+	menuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Matcha Latte", "public", false)
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"menuItem":   menuItem.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Tea Room",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Matcha Latte","rating":5,"menuItemId":"`+menuItem.Id+`"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"id = {:listItemId}",
+		map[string]any{"listItemId": listItem.Id},
+	); count != 0 {
+		t.Fatalf("expected source Want to Try menu item bookmark to be removed, got %d", count)
+	}
+}
+
+func TestVisitCreateEndpointRemovesMatchingWantToTryBookmarks(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Ramen Bar")
+	targetMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Tonkotsu", "public", false)
+	otherMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Karaage", "public", false)
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	restaurantBookmark := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+	targetMenuBookmark := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"menuItem":   targetMenuItem.Id,
+		"position":   2,
+	})
+	otherMenuBookmark := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"menuItem":   otherMenuItem.Id,
+		"position":   3,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Ramen Bar",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Tonkotsu","rating":5,"menuItemId":"`+targetMenuItem.Id+`"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	for _, removedID := range []string{restaurantBookmark.Id, targetMenuBookmark.Id} {
+		if count := countRecordsByFilter(
+			t,
+			server.app,
+			"list_items",
+			"id = {:listItemId}",
+			map[string]any{"listItemId": removedID},
+		); count != 0 {
+			t.Fatalf("expected Want to Try bookmark %s to be removed, got %d", removedID, count)
+		}
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"id = {:listItemId}",
+		map[string]any{"listItemId": otherMenuBookmark.Id},
+	); count != 1 {
+		t.Fatalf("expected unrelated Want to Try menu item bookmark to remain, got %d", count)
+	}
+}
+
 func TestVisitCreateEndpointRejectsSourceListItemFromAnotherUserList(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	owner, _ := createAuthUser(t, server.app, false, true)

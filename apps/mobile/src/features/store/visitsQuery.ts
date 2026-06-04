@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { VisitRecord } from '../models';
 import { invalidateHomeFeedQueries } from './homeFeedQuery';
 import { notesQueryKeys } from './notesQuery';
+import { restaurantListQueryKeys } from './restaurantListQuery';
 import { restaurantsQueryKeys } from './restaurantsQuery';
 import { invalidateMonthlyUsageQueries } from './usageQuery';
 import { invalidateVisitPhotoQuery, visitPhotosQueryKeys } from './visitPhotosQuery';
@@ -58,6 +59,9 @@ export async function syncVisitMutationCaches(
   const invalidations: Promise<unknown>[] = [
     invalidateHomeFeedQueries(queryClient),
     queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultList }),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root }),
     queryClient.invalidateQueries({ queryKey: restaurantsQueryKeys.root }),
   ];
 

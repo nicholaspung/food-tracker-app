@@ -4,6 +4,7 @@ import type { VisitRecord } from '../features/models';
 import { homeFeedMapQueryKeys } from '../features/store/homeFeedMapQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
+import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { usageQueryKeys } from '../features/store/usageQuery';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
@@ -52,6 +53,15 @@ describe('visitsQuery', () => {
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: visitsQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.defaultList,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.detailRoot,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: restaurantsQueryKeys.root,

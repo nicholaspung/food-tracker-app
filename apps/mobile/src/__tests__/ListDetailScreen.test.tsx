@@ -1695,7 +1695,7 @@ describe('ListDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('CreateVisit', {
       preselectedRestaurantId: 'restaurant_1',
       preselectedRestaurantName: 'Bookmark Cafe',
-      preselectedMenuItemId: 'bookmark-menu_item_bookmark_1',
+      preselectedMenuItemId: 'menu_item_1',
       preselectedMenuItemName: 'Croissant',
       sourceListId: 'list_1',
       sourceListItemId: 'menu_item_bookmark_1',

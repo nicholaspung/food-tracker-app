@@ -17,6 +17,7 @@ export interface CreateVisitInput {
   items: {
     name: string;
     rating: number;
+    menuItemId?: string;
     description?: string;
     notes?: string;
     photos?: VisitPhotoUploadInput[];

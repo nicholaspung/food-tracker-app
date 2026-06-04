@@ -815,7 +815,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const handleIWentThere = (
     group: GroupedRestaurant,
-    item?: { listItemId: string; name: string },
+    item?: { listItemId: string; menuItemId?: string; name: string },
   ) => {
     trackObservabilityEvent('LIST_DETAIL_I_WENT_TAPPED', {
       source: 'ListDetailScreen',
@@ -838,7 +838,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     navigation.navigate('CreateVisit', {
       preselectedRestaurantId: group.restaurantId,
       preselectedRestaurantName: group.restaurantName,
-      preselectedMenuItemId: item ? `bookmark-${item.listItemId}` : undefined,
+      preselectedMenuItemId: item ? item.menuItemId ?? `bookmark-${item.listItemId}` : undefined,
       preselectedMenuItemName: item?.name,
       sourceListId: route.params.listId,
       sourceListItemId: item?.listItemId ?? group.restaurantBookmarkListItemId,

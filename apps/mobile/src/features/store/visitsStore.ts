@@ -243,9 +243,11 @@ export async function createVisit(
         body: {
           restaurantId: input.restaurantId?.trim() || undefined,
           restaurantName: trimmedRestaurantName,
+          sourceListItemId: input.sourceListItemId?.trim() || undefined,
           items: input.items.map((item) => ({
             name: item.name.trim(),
             rating: item.rating,
+            menuItemId: item.menuItemId?.trim() || undefined,
             description: item.description?.trim() || undefined,
             notes: item.notes?.trim() || undefined,
           })),
