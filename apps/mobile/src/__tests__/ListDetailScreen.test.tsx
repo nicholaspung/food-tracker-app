@@ -65,6 +65,9 @@ const mockTheme = {
     xs: 8,
     xxs: 4,
   },
+  sizes: {
+    secondaryButtonHeight: 44,
+  },
   radii: {
     lg: 16,
     md: 12,
@@ -147,6 +150,7 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
+  Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   Modal: ({
     children,
     visible,
@@ -1760,6 +1764,134 @@ describe('ListDetailScreen', () => {
     expect(renderer.root.findByProps({ title: 'Bookmarked Items' })).toBeTruthy();
     expect(renderer.root.findByType('FoodItemRatingRecordCard').props.itemName).toBe('Spicy Ramen');
     expect(findRightAccessoryElementByTestID(renderer.root, 'list-detail-share-button')).toBeTruthy();
+  });
+
+  it('filters Want to Try detail restaurants by search query', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+            restaurantCount: 2,
+          }),
+          items: [
+            buildListItem({
+              id: 'restaurant_bookmark_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Bookmark Cafe',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Cafe',
+              bookmarkedItems: [],
+            }),
+            buildListItem({
+              id: 'restaurant_bookmark_2',
+              restaurantId: 'restaurant_2',
+              restaurantName: 'Solo Bistro',
+              restaurantCity: 'Berkeley',
+              restaurantCuisineType: 'Japanese',
+              bookmarkedItems: [],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-search-input' }).props.onChangeText('solo');
+    });
+
+    expect(findExactTextNodes(renderer.root, 'Bookmark Cafe')).toHaveLength(0);
+    expect(findExactTextNode(renderer.root, 'Solo Bistro')).toBeTruthy();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-clear-search-button' }).props.onPress();
+    });
+
+    expect(findExactTextNode(renderer.root, 'Bookmark Cafe')).toBeTruthy();
+    expect(findExactTextNode(renderer.root, 'Solo Bistro')).toBeTruthy();
+  });
+
+  it('filters regular list detail restaurants by bookmarked item search query', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: false,
+            name: 'Dinner Ideas',
+            restaurantCount: 2,
+          }),
+          items: [
+            buildListItem({
+              id: 'list_item_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Ramen House',
+              restaurantCity: 'Oakland',
+              restaurantCuisineType: 'Japanese',
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'list_item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                },
+              ],
+            }),
+            buildListItem({
+              id: 'list_item_2',
+              restaurantId: 'restaurant_2',
+              restaurantName: 'Noodle Bar',
+              restaurantCity: 'Berkeley',
+              restaurantCuisineType: 'Japanese',
+              bookmarkedItems: [
+                {
+                  id: 'food_item_2',
+                  listItemId: 'list_item_2',
+                  name: 'Udon',
+                  rating: 4,
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-search-input' }).props.onChangeText('udon');
+    });
+
+    expect(findExactTextNodes(renderer.root, 'Ramen House')).toHaveLength(0);
+    expect(findExactTextNode(renderer.root, 'Noodle Bar')).toBeTruthy();
+    expect(renderer.root.findByType('FoodItemRatingRecordCard').props.itemName).toBe('Udon');
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-search-input' }).props.onChangeText('taco');
+    });
+
+    expect(renderer.root.findByProps({ title: 'No matching restaurants' })).toBeTruthy();
   });
 
   it('keeps the detail scaffold refreshing prop active until the refetch lifecycle settles', async () => {

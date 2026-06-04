@@ -49,6 +49,7 @@ apps/mobile/e2e/.env.local
 apps/mobile/ios/build/
 apps/mobile/ios/Pods/
 apps/mobile/ios/DerivedData/
+apps/mobile/ios/.xcode.env.local
 apps/mobile/ios/*.jsbundle
 apps/mobile/ios/*.ipa
 apps/mobile/ios/*.xcuserstate

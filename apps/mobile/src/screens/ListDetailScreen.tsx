@@ -33,7 +33,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { createPlatformShadow } from '../theme/shadows';
-import { Button, Card, Modal, Text } from '../ui';
+import { Button, Card, Input, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
   disableShareLinkAction,
@@ -76,6 +76,52 @@ const LIST_DETAIL_VIEW_OPTIONS: readonly SegmentedControlOption<ListDetailViewMo
 ];
 const TRANSFER_LIST_PAGE_SIZE = 100;
 const TRANSFER_LIST_QUERY_KEY = ['feature', 'restaurantLists', 'my', 'transferDestinations'] as const;
+
+function normalizeListDetailSearchValue(value: string | null | undefined): string {
+  return value?.trim().toLocaleLowerCase() ?? '';
+}
+
+function doesListDetailRestaurantRowMatchSearch(
+  row: ReturnType<typeof buildListDetailReadModel>['restaurantRows'][number],
+  searchTokens: string[],
+): boolean {
+  if (searchTokens.length === 0) {
+    return true;
+  }
+
+  const searchableText = [
+    row.group.restaurantName,
+    row.group.restaurantLocation,
+    row.group.restaurantCity,
+    row.group.restaurantCuisineType,
+    row.primaryMetaLabel,
+    row.secondaryMetaLabel,
+    ...row.group.notes,
+    ...row.group.items.flatMap((item) => [
+      item.name,
+      item.sourceNote,
+      item.sourceUserName,
+    ]),
+    ...(row.group.friendMatches?.flatMap((match) => [
+      match.friendName,
+      match.itemName,
+    ]) ?? []),
+    ...row.ownerItems.flatMap((item) => [
+      item.name,
+      item.source?.sourceUserName,
+    ]),
+    ...row.bookmarkedItems.flatMap((item) => [
+      item.name,
+      item.sourceUserName,
+      item.sourceNote,
+    ]),
+  ]
+    .map(normalizeListDetailSearchValue)
+    .filter(Boolean)
+    .join(' ');
+
+  return searchTokens.every((token) => searchableText.includes(token));
+}
 
 function getLocallyRemovedListItemKey(
   item: PendingDeleteListItem,
@@ -219,6 +265,26 @@ const useStyles = createThemedStyles((theme) => ({
   friendMatchesToggleSubtitle: {
     color: theme.colors.text.secondary,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  searchField: {
+    flex: 1,
+  },
+  clearSearchButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: theme.sizes.secondaryButtonHeight,
+    paddingHorizontal: theme.spacing.md,
+  },
+  clearSearchButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
   mapWrap: {
     borderColor: theme.colors.border.default,
     borderRadius: theme.radii.lg,
@@ -264,6 +330,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [isSharingList, setIsSharingList] = useState(false);
   const [isRegeneratingShareLink, setIsRegeneratingShareLink] = useState(false);
   const [isDisablingShareLink, setIsDisablingShareLink] = useState(false);
+  const [listSearchQuery, setListSearchQuery] = useState('');
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
@@ -309,7 +376,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     isOwner,
     list,
     myLists,
-    omittedMapRestaurantCount,
     restaurantRows,
     subtitle,
   } = readModel;
@@ -337,27 +403,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setPhotoViewerVisible(false);
   }, []);
 
-  const listDetailMapGroups = useMemo<RestaurantMapGroup[]>(() => {
-    return readModel.mapGroups.map((group) => ({
-      ...group,
-      items: group.items.map((item) => ({
-        id: item.id,
-        meta: item.meta,
-        name: item.name,
-        notes: item.notes,
-        onOpenPhotos:
-          item.photoEntries.length > 0
-            ? () => {
-                openPhotoViewer(item.photoEntries);
-              }
-            : undefined,
-        photoCount: item.photoCount,
-        photoThumbnailUrl: item.photoThumbnailUrl,
-      })),
-    }));
-  }, [openPhotoViewer, readModel.mapGroups]);
-
   const styles = useStyles();
+  const trimmedListSearchQuery = listSearchQuery.trim();
+  const listSearchTokens = useMemo(
+    () =>
+      normalizeListDetailSearchValue(trimmedListSearchQuery)
+        .split(/\s+/)
+        .filter(Boolean),
+    [trimmedListSearchQuery],
+  );
+  const hasListSearch = listSearchTokens.length > 0;
 
   const visibleRestaurantRows = useMemo(
     () =>
@@ -394,9 +449,35 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             return true;
           }
           return (row.group.friendMatches?.length ?? 0) > 0 || (row.group.friendOverlapCount ?? 0) > 0;
-        }),
-    [isDefaultList, locallyRemovedListItemKeys, restaurantRows, showFriendMatches],
+        })
+        .filter((row) => doesListDetailRestaurantRowMatchSearch(row, listSearchTokens)),
+    [isDefaultList, listSearchTokens, locallyRemovedListItemKeys, restaurantRows, showFriendMatches],
   );
+
+  const listDetailMapGroups = useMemo<RestaurantMapGroup[]>(() => {
+    const visibleRestaurantIds = new Set(visibleRestaurantRows.map((row) => row.group.restaurantId));
+
+    return readModel.mapGroups
+      .filter((group) => visibleRestaurantIds.has(group.id))
+      .map((group) => ({
+        ...group,
+        items: group.items.map((item) => ({
+          id: item.id,
+          meta: item.meta,
+          name: item.name,
+          notes: item.notes,
+          onOpenPhotos:
+            item.photoEntries.length > 0
+              ? () => {
+                  openPhotoViewer(item.photoEntries);
+                }
+              : undefined,
+          photoCount: item.photoCount,
+          photoThumbnailUrl: item.photoThumbnailUrl,
+        })),
+      }));
+  }, [openPhotoViewer, readModel.mapGroups, visibleRestaurantRows]);
+  const omittedVisibleMapRestaurantCount = visibleRestaurantRows.length - listDetailMapGroups.length;
 
   const listDetailActionDependencies = useMemo<ListDetailActionDependencies>(
     () => ({
@@ -1239,18 +1320,53 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           value={viewMode}
         />
 
+        <View style={styles.searchRow}>
+          <Input
+            accessibilityLabel="Search list"
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            containerStyle={styles.searchField}
+            onChangeText={setListSearchQuery}
+            placeholder="Search restaurants or items"
+            returnKeyType="search"
+            testID="list-detail-search-input"
+            value={listSearchQuery}
+          />
+          {hasListSearch ? (
+            <Pressable
+              accessibilityLabel="Clear list search"
+              accessibilityRole="button"
+              onPress={() => {
+                setListSearchQuery('');
+                trackObservabilityEvent('LIST_DETAIL_SEARCH_CLEARED', {
+                  source: 'ListDetailScreen',
+                });
+              }}
+              style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
+              testID="list-detail-clear-search-button"
+            >
+              <Ionicons color={theme.colors.text.secondary} name="close-outline" size={20} />
+            </Pressable>
+          ) : null}
+        </View>
+
         {viewMode === 'map' ? (
           <RestaurantMapView
             analyticsSource="ListDetailMapView"
-            emptyDescription="Restaurants need a saved location before they can appear here."
-            emptyTitle="No map locations yet"
+            emptyDescription={
+              hasListSearch
+                ? 'Try another restaurant, city, cuisine, or menu item.'
+                : 'Restaurants need a saved location before they can appear here.'
+            }
+            emptyTitle={hasListSearch ? 'No matching restaurants' : 'No map locations yet'}
             errorMessage={null}
             groups={listDetailMapGroups}
             hiddenLocationPluralLabel="restaurants"
             hiddenLocationSingularLabel="restaurant"
             loading={false}
             mapTestID="list-detail-map"
-            omittedWithoutCoordinates={omittedMapRestaurantCount}
+            omittedWithoutCoordinates={omittedVisibleMapRestaurantCount}
             onRetry={() => {
               void detailQuery.refetch();
             }}
@@ -1323,16 +1439,32 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
             {visibleRestaurantRows.length === 0 ? (
               <EmptyState
+                actionLabel={hasListSearch ? 'Clear Search' : undefined}
                 description={
-                  isOwner && isDefaultList && showFriendMatches
+                  hasListSearch
+                    ? 'Try another restaurant, city, cuisine, or menu item.'
+                    : isOwner && isDefaultList && showFriendMatches
                     ? 'No friends have matching Want to Try bookmarks for these restaurants yet.'
                     : readModel.emptyRestaurantsDescription
                 }
+                onAction={
+                  hasListSearch
+                    ? () => {
+                        setListSearchQuery('');
+                      }
+                    : undefined
+                }
                 tone="default"
-                title={isOwner && isDefaultList && showFriendMatches ? 'No friend matches yet' : 'No restaurants yet'}
+                title={
+                  hasListSearch
+                    ? 'No matching restaurants'
+                    : isOwner && isDefaultList && showFriendMatches
+                      ? 'No friend matches yet'
+                      : 'No restaurants yet'
+                }
               />
             ) : (
-              visibleRestaurantRows.map((row) => {
+              visibleRestaurantRows.map((row, visibleRowIndex) => {
                 const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
                 return isDefaultList && isOwner ? (
@@ -1409,36 +1541,40 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     restaurantId={group.restaurantId}
                     restaurantName={group.restaurantName}
                     reorderControls={
-                      <View style={styles.reorderControls}>
-                        {groupIndex > 0 ? (
-                          <Pressable
-                            accessibilityLabel={`Move ${group.restaurantName} up`}
-                            accessibilityRole="button"
-                            disabled={Boolean(movingRestaurantId)}
-                            onPress={() => {
-                              void handleMoveRestaurant(group.restaurantId, 'up');
-                            }}
-                            style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                            testID={`move-restaurant-up-${group.restaurantId}`}
-                          >
-                            <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
-                          </Pressable>
-                        ) : null}
-                        {groupIndex < visibleRestaurantRows.length - 1 ? (
-                          <Pressable
-                            accessibilityLabel={`Move ${group.restaurantName} down`}
-                            accessibilityRole="button"
-                            disabled={Boolean(movingRestaurantId)}
-                            onPress={() => {
-                              void handleMoveRestaurant(group.restaurantId, 'down');
-                            }}
-                            style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
-                            testID={`move-restaurant-down-${group.restaurantId}`}
-                          >
-                            <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
-                          </Pressable>
-                        ) : null}
-                      </View>
+                      hasListSearch
+                        ? undefined
+                        : (
+                            <View style={styles.reorderControls}>
+                              {visibleRowIndex > 0 ? (
+                                <Pressable
+                                  accessibilityLabel={`Move ${group.restaurantName} up`}
+                                  accessibilityRole="button"
+                                  disabled={Boolean(movingRestaurantId)}
+                                  onPress={() => {
+                                    void handleMoveRestaurant(group.restaurantId, 'up');
+                                  }}
+                                  style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                                  testID={`move-restaurant-up-${group.restaurantId}`}
+                                >
+                                  <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
+                                </Pressable>
+                              ) : null}
+                              {visibleRowIndex < visibleRestaurantRows.length - 1 ? (
+                                <Pressable
+                                  accessibilityLabel={`Move ${group.restaurantName} down`}
+                                  accessibilityRole="button"
+                                  disabled={Boolean(movingRestaurantId)}
+                                  onPress={() => {
+                                    void handleMoveRestaurant(group.restaurantId, 'down');
+                                  }}
+                                  style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                                  testID={`move-restaurant-down-${group.restaurantId}`}
+                                >
+                                  <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          )
                     }
                     secondaryMetaLabel={secondaryMetaLabel}
                   />
