@@ -80,6 +80,7 @@ type adminMenuInventoryMenuItemRow struct {
 	CreatorIsSubscriber        int    `db:"creatorIsSubscriber"`
 	CreatorName                string `db:"creatorName"`
 	CreatorUpdated             string `db:"creatorUpdated"`
+	GroupSuitable              int    `db:"groupSuitable"`
 	ID                         string `db:"id"`
 	IsFromOCR                  int    `db:"isFromOcr"`
 	Name                       string `db:"name"`
@@ -517,6 +518,7 @@ func loadAdminMenuImageAttachedMenuItemRows(app core.App, imageID string) ([]adm
 			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
 			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
 			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
 ` + adminMenuInventoryLinkedMenuItemSelect + `
@@ -562,6 +564,7 @@ func loadAdminMenuImageUnattachedRestaurantMenuItemRows(app core.App, restaurant
 			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
 			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
 			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
 ` + adminMenuInventoryLinkedMenuItemSelect + `
@@ -664,6 +667,7 @@ func loadAdminRestaurantMenuItemRows(app core.App, restaurantID string, orderBy 
 			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
 			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
 			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
 ` + adminMenuInventoryLinkedMenuItemSelect + `
@@ -778,6 +782,7 @@ func loadAdminMenuItemInventory(app core.App, query adminMenuInventoryQuery) (ma
 			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
 			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
 			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
 ` + adminMenuInventoryLinkedMenuItemSelect + `
@@ -990,6 +995,7 @@ func serializeAdminMenuItemInventoryRow(row adminMenuInventoryMenuItemRow) map[s
 		"approvalStatus":     resolveMenuItemApprovalStatus(row.ApprovalStatus),
 		"approvalReviewedBy": row.ApprovalReviewedBy,
 		"approvalReviewedAt": row.ApprovalReviewedAt,
+		"groupSuitable":      row.GroupSuitable != 0,
 		"promotedFrom":       row.PromotedFrom,
 		"promotedTo":         row.PromotedTo,
 		"promotedFromItem":   serializeAdminLinkedMenuItemInventorySummary(row.PromotedFrom, row.PromotedFromName, row.PromotedFromVisibility, row.PromotedFromApprovalStatus, row.PromotedFromCreatedBy, row.PromotedFromCreatorEmail),

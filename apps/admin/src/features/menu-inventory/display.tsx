@@ -23,6 +23,14 @@ export function renderMenuItemApprovalStatus(value?: string) {
   return <span className={`status-pill ${normalized}`}>{normalized}</span>;
 }
 
+export function renderMenuItemGroupSuitableStatus(value: boolean) {
+  return (
+    <span className={`status-pill ${value ? 'group_suitable' : 'not_group_suitable'}`}>
+      {value ? 'group-suitable' : 'not group-suitable'}
+    </span>
+  );
+}
+
 export function renderInventoryUser(user: MenuInventoryUserSummary | null, fallbackId?: string) {
   if (!user) {
     return (

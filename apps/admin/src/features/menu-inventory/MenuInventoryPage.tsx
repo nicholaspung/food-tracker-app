@@ -6,6 +6,7 @@ import {
   getAdminMenuInventory,
   promoteAdminMenuItemContribution,
   updateAdminMenuItemApproval,
+  updateAdminMenuItemGroupSuitable,
   type MenuItemApprovalStatus,
   type MenuImageInventoryRow,
   type MenuInventoryType,
@@ -18,6 +19,7 @@ import {
   getLinkedMenuItemDisplaySummary,
   renderLinkedMenuItemSummary,
   renderMenuItemApprovalStatus,
+  renderMenuItemGroupSuitableStatus,
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
@@ -183,7 +185,18 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
     },
   });
 
-  const isActionPending = approvalMutation.isPending || promotionMutation.isPending;
+  const groupSuitableMutation = useMutation({
+    mutationFn: (input: { groupSuitable: boolean; itemId: string }) =>
+      updateAdminMenuItemGroupSuitable(input),
+    onMutate: () => setActionError(''),
+    onSuccess: invalidateMenuInventory,
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update menu item group-suitable status.');
+    },
+  });
+
+  const isActionPending =
+    approvalMutation.isPending || promotionMutation.isPending || groupSuitableMutation.isPending;
 
   return (
     <>
@@ -204,6 +217,7 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
               <th>Source</th>
               <th>Visibility</th>
               <th>Approval</th>
+              <th>Group suitable</th>
               <th>Actions</th>
               <th>Updated</th>
             </tr>
@@ -211,6 +225,8 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
           <tbody>
             {rows.map((row) => {
               const linkedSummary = getLinkedMenuItemDisplaySummary(row);
+              const canEnableGroupSuitable =
+                row.approvalStatus === 'approved' && row.visibility === 'public';
 
               return (
                 <Fragment key={row.id}>
@@ -247,6 +263,14 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                           <span className="inventory-secondary-text">
                             {formatDateTime(row.approvalReviewedAt)}
                           </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="inventory-primary-cell">
+                        {renderMenuItemGroupSuitableStatus(row.groupSuitable)}
+                        {!canEnableGroupSuitable ? (
+                          <span className="inventory-secondary-text">Requires public approved</span>
                         ) : null}
                       </div>
                     </td>
@@ -294,13 +318,26 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                             Promote
                           </button>
                         ) : null}
+                        <button
+                          className={row.groupSuitable ? 'button reverse' : 'button ghost'}
+                          disabled={isActionPending || (!row.groupSuitable && !canEnableGroupSuitable)}
+                          onClick={() =>
+                            groupSuitableMutation.mutate({
+                              groupSuitable: !row.groupSuitable,
+                              itemId: row.id,
+                            })
+                          }
+                          type="button"
+                        >
+                          {row.groupSuitable ? 'Disable group' : 'Enable group'}
+                        </button>
                       </div>
                     </td>
                     <td>{formatDateTime(row.updated || row.created)}</td>
                   </tr>
                   {linkedSummary ? (
                     <tr className="inventory-linked-row">
-                      <td colSpan={8}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                      <td colSpan={9}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
                     </tr>
                   ) : null}
                 </Fragment>

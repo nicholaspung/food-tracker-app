@@ -8,6 +8,7 @@ import {
   getAdminRestaurantInventoryDetail,
   promoteAdminMenuItemContribution,
   updateAdminMenuItemApproval,
+  updateAdminMenuItemGroupSuitable,
   updateAdminRestaurantGroupMetadata,
   updateAdminRestaurantGroupMembership,
   type MenuItemApprovalStatus,
@@ -23,6 +24,7 @@ import {
   getLinkedMenuItemDisplaySummary,
   renderLinkedMenuItemSummary,
   renderMenuItemApprovalStatus,
+  renderMenuItemGroupSuitableStatus,
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
@@ -102,7 +104,20 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
     },
   });
 
-  const isActionPending = approvalMutation.isPending || promotionMutation.isPending;
+  const groupSuitableMutation = useMutation({
+    mutationFn: (input: { groupSuitable: boolean; itemId: string; restaurantId?: string }) =>
+      updateAdminMenuItemGroupSuitable({ itemId: input.itemId, groupSuitable: input.groupSuitable }),
+    onMutate: () => setActionError(''),
+    onSuccess: async (_data, input) => {
+      await invalidateMenuItemContext(input.restaurantId);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update menu item group-suitable status.');
+    },
+  });
+
+  const isActionPending =
+    approvalMutation.isPending || promotionMutation.isPending || groupSuitableMutation.isPending;
 
   return (
     <>
@@ -124,6 +139,7 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                   <th>Source</th>
                   <th>Visibility</th>
                   <th>Approval</th>
+                  <th>Group suitable</th>
                   <th>Actions</th>
                   <th>Updated</th>
                 </tr>
@@ -131,6 +147,8 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
               <tbody>
                 {pageRows.map((row) => {
                   const linkedSummary = getLinkedMenuItemDisplaySummary(row);
+                  const canEnableGroupSuitable =
+                    row.approvalStatus === 'approved' && row.visibility === 'public';
 
                   return (
                     <Fragment key={row.id}>
@@ -153,6 +171,14 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                         </td>
                         <td>{renderInventoryVisibility(row.visibility)}</td>
                         <td>{renderMenuItemApprovalStatus(row.approvalStatus)}</td>
+                        <td>
+                          <div className="inventory-primary-cell">
+                            {renderMenuItemGroupSuitableStatus(row.groupSuitable)}
+                            {!canEnableGroupSuitable ? (
+                              <span className="inventory-secondary-text">Requires public approved</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td>
                           <div className="compact-action-row">
                             {row.approvalStatus !== 'approved' ? (
@@ -220,13 +246,27 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                                 Promote
                               </button>
                             ) : null}
+                            <button
+                              className={row.groupSuitable ? 'button reverse' : 'button ghost'}
+                              disabled={isActionPending || (!row.groupSuitable && !canEnableGroupSuitable)}
+                              onClick={() =>
+                                groupSuitableMutation.mutate({
+                                  groupSuitable: !row.groupSuitable,
+                                  itemId: row.id,
+                                  restaurantId: row.restaurant,
+                                })
+                              }
+                              type="button"
+                            >
+                              {row.groupSuitable ? 'Disable group' : 'Enable group'}
+                            </button>
                           </div>
                         </td>
                         <td>{formatDateTime(row.updated || row.created)}</td>
                       </tr>
                       {linkedSummary ? (
                         <tr className="inventory-linked-row">
-                          <td colSpan={7}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                          <td colSpan={8}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
                         </tr>
                       ) : null}
                     </Fragment>

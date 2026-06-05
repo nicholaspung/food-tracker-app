@@ -55,6 +55,7 @@ export interface MenuItemInventoryRow {
   approvalStatus?: MenuItemApprovalStatus;
   approvalReviewedBy?: string;
   approvalReviewedAt?: string;
+  groupSuitable: boolean;
   promotedFrom?: string;
   promotedTo?: string;
   promotedFromItem?: LinkedMenuItemInventorySummary | null;
@@ -265,7 +266,10 @@ export async function updateAdminMenuItem(
   },
 ): Promise<MenuItemInventoryRow> {
   try {
-    return await pb.collection('menu_items').update<MenuItemInventoryRow>(itemId, payload);
+    return await pb.send<MenuItemInventoryRow>(`/api/admin/menu-items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: payload,
+    });
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not update menu item.'));
   }
@@ -287,6 +291,25 @@ export async function updateAdminMenuItemApproval(input: {
     );
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not update menu item approval.'));
+  }
+}
+
+export async function updateAdminMenuItemGroupSuitable(input: {
+  itemId: string;
+  groupSuitable: boolean;
+}): Promise<MenuItemInventoryRow> {
+  try {
+    return await pb.send<MenuItemInventoryRow>(
+      `/api/admin/menu-items/${encodeURIComponent(input.itemId)}/group-suitable`,
+      {
+        method: 'PATCH',
+        body: {
+          groupSuitable: input.groupSuitable,
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update menu item group-suitable status.'));
   }
 }
 

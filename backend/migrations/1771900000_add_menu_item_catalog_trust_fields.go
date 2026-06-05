@@ -59,12 +59,20 @@ func init() {
 				CascadeDelete: false,
 			})
 		}
+		if collection.Fields.GetByName("groupSuitable") == nil {
+			collection.Fields.Add(&core.BoolField{
+				Name: "groupSuitable",
+			})
+		}
 
 		if !hasCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_approval_status ON menu_items (approvalStatus)") {
 			collection.Indexes = append(collection.Indexes, "CREATE INDEX idx_menu_items_approval_status ON menu_items (approvalStatus)")
 		}
 		if !hasCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_approved_restaurant_name ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved'") {
 			collection.Indexes = append(collection.Indexes, "CREATE INDEX idx_menu_items_approved_restaurant_name ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved'")
+		}
+		if !hasCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_group_suitable ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved' AND visibility = 'public' AND groupSuitable = TRUE") {
+			collection.Indexes = append(collection.Indexes, "CREATE INDEX idx_menu_items_group_suitable ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved' AND visibility = 'public' AND groupSuitable = TRUE")
 		}
 
 		if err := app.Save(collection); err != nil {
@@ -89,11 +97,13 @@ func init() {
 
 		collection.Indexes = removeCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_approval_status ON menu_items (approvalStatus)")
 		collection.Indexes = removeCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_approved_restaurant_name ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved'")
+		collection.Indexes = removeCollectionIndex(collection.Indexes, "CREATE INDEX idx_menu_items_group_suitable ON menu_items (restaurant, LOWER(TRIM(name))) WHERE approvalStatus = 'approved' AND visibility = 'public' AND groupSuitable = TRUE")
 		collection.Fields.RemoveByName("approvalStatus")
 		collection.Fields.RemoveByName("approvalReviewedBy")
 		collection.Fields.RemoveByName("approvalReviewedAt")
 		collection.Fields.RemoveByName("promotedFrom")
 		collection.Fields.RemoveByName("promotedTo")
+		collection.Fields.RemoveByName("groupSuitable")
 
 		if err := app.Save(collection); err != nil {
 			return err

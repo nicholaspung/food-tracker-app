@@ -871,12 +871,16 @@ button {
 
 .status-pill.reviewed,
 .status-pill.resolved,
-.status-pill.closed {
+.status-pill.closed,
+.status-pill.approved,
+.status-pill.group_suitable {
   background: var(--success-bg);
   color: var(--success);
 }
 
-.status-pill.dismissed {
+.status-pill.dismissed,
+.status-pill.unreviewed,
+.status-pill.not_group_suitable {
   background: rgba(142, 142, 147, 0.1);
   color: #8e8e93;
 }
@@ -924,6 +928,11 @@ button {
 .status-pill.low_confidence {
   background: var(--warning-bg);
   color: var(--warning);
+}
+
+.status-pill.rejected {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 /* ─── Table ──────────────────────────────────────────────────────────────── */

@@ -55,6 +55,7 @@ type adminMenuInventoryMenuItem struct {
 	ApprovalStatus     string                  `json:"approvalStatus"`
 	CreatedBy          string                  `json:"createdBy"`
 	Creator            *adminMenuInventoryUser `json:"creator"`
+	GroupSuitable      bool                    `json:"groupSuitable"`
 	ID                 string                  `json:"id"`
 	IsFromOCR          bool                    `json:"isFromOcr"`
 	Name               string                  `json:"name"`
@@ -1178,6 +1179,190 @@ func TestAdminMenuItemApprovalTransitions(t *testing.T) {
 		if !auditedStatuses[expectedStatus] {
 			t.Fatalf("expected audit status %q in %#v", expectedStatus, auditedStatuses)
 		}
+	}
+}
+
+func TestAdminMenuItemGroupSuitableTransitions(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Group Suitable Cafe",
+		"location":   "Berkeley, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Shared Pancakes",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  false,
+	})
+
+	enableResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/group-suitable",
+		adminToken,
+		`{"groupSuitable":true}`,
+	)
+	if enableResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 enabling group suitable, got %d: %s", enableResponse.Code, enableResponse.Body.String())
+	}
+	enablePayload := adminMenuInventoryMenuItem{}
+	if err := json.Unmarshal(enableResponse.Body.Bytes(), &enablePayload); err != nil {
+		t.Fatalf("failed to decode group suitable payload: %v", err)
+	}
+	if !enablePayload.GroupSuitable {
+		t.Fatalf("expected enabled groupSuitable response, got %#v", enablePayload)
+	}
+	reloaded, err := server.app.FindRecordById("menu_items", menuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload menu item: %v", err)
+	}
+	if !reloaded.GetBool("groupSuitable") {
+		t.Fatalf("expected stored groupSuitable=true")
+	}
+
+	rejectResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/approval",
+		adminToken,
+		`{"status":"rejected"}`,
+	)
+	if rejectResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 rejecting item, got %d: %s", rejectResponse.Code, rejectResponse.Body.String())
+	}
+	reloaded, err = server.app.FindRecordById("menu_items", menuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload rejected menu item: %v", err)
+	}
+	if reloaded.GetBool("groupSuitable") {
+		t.Fatalf("expected groupSuitable to clear when item is rejected")
+	}
+
+	invalidRejectedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/group-suitable",
+		adminToken,
+		`{"groupSuitable":true}`,
+	)
+	if invalidRejectedResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 enabling rejected item, got %d: %s", invalidRejectedResponse.Code, invalidRejectedResponse.Body.String())
+	}
+
+	unreviewedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Unreviewed Shared Pancakes",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "unreviewed",
+	})
+	invalidUnreviewedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+unreviewedItem.Id+"/group-suitable",
+		adminToken,
+		`{"groupSuitable":true}`,
+	)
+	if invalidUnreviewedResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 enabling unreviewed item, got %d: %s", invalidUnreviewedResponse.Code, invalidUnreviewedResponse.Body.String())
+	}
+
+	approveResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/approval",
+		adminToken,
+		`{"status":"approved"}`,
+	)
+	if approveResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 re-approving item, got %d: %s", approveResponse.Code, approveResponse.Body.String())
+	}
+	enableResponse = performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/group-suitable",
+		adminToken,
+		`{"groupSuitable":true}`,
+	)
+	if enableResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 re-enabling group suitable, got %d: %s", enableResponse.Code, enableResponse.Body.String())
+	}
+
+	updateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id,
+		adminToken,
+		`{"name":"Shared Pancakes","visibility":"friends"}`,
+	)
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 changing visibility, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+	reloaded, err = server.app.FindRecordById("menu_items", menuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload private menu item: %v", err)
+	}
+	if reloaded.GetString("visibility") != "friends" {
+		t.Fatalf("expected visibility=friends, got %q", reloaded.GetString("visibility"))
+	}
+	if reloaded.GetBool("groupSuitable") {
+		t.Fatalf("expected groupSuitable to clear when item stops being public")
+	}
+
+	invalidPrivateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/group-suitable",
+		adminToken,
+		`{"groupSuitable":true}`,
+	)
+	if invalidPrivateResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 enabling non-public item, got %d: %s", invalidPrivateResponse.Code, invalidPrivateResponse.Body.String())
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "menu_items",
+			"targetRecordId": menuItem.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load group suitable audit logs: %v", err)
+	}
+	foundGroupSuitableAudit := false
+	for _, auditLog := range auditLogs {
+		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
+		if metadataMap["source"] == "admin_menu_item_group_suitable" {
+			foundGroupSuitableAudit = true
+			break
+		}
+	}
+	if !foundGroupSuitableAudit {
+		t.Fatalf("expected group suitable audit log in %#v", auditLogs)
 	}
 }
 
