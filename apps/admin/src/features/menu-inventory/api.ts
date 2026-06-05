@@ -28,8 +28,19 @@ export interface RestaurantInventoryRow {
   updated: string;
   createdBy?: string;
   creator: MenuInventoryUserSummary | null;
+  restaurantGroupId?: string;
+  restaurantGroup: RestaurantGroupInventorySummary | null;
   menuItemCount: number;
   menuImageCount: number;
+}
+
+export interface RestaurantGroupInventorySummary {
+  id: string;
+  name: string;
+  notes?: string;
+  createdBy?: string;
+  created: string;
+  updated: string;
 }
 
 export interface MenuItemInventoryRow {
@@ -76,8 +87,15 @@ export interface AdminMenuInventoryResponse<T extends MenuInventoryRow> {
 
 export interface RestaurantInventoryDetailResponse {
   restaurant: RestaurantInventoryRow;
+  restaurantGroup: RestaurantGroupInventorySummary | null;
+  sameNameCandidates: RestaurantInventoryRow[];
   menuItems: MenuItemInventoryRow[];
   menuImages: MenuImageInventoryRow[];
+}
+
+export interface RestaurantGroupCreateResponse {
+  restaurantGroup: RestaurantGroupInventorySummary;
+  restaurantDetail?: RestaurantInventoryDetailResponse;
 }
 
 export interface MenuImageInventoryDetailResponse {
@@ -139,6 +157,65 @@ export async function getAdminRestaurantInventoryDetail(
     );
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not load restaurant inventory detail.'));
+  }
+}
+
+export async function createAdminRestaurantGroup(input: {
+  name: string;
+  notes?: string;
+  restaurantId?: string;
+}): Promise<RestaurantGroupCreateResponse> {
+  try {
+    return await pb.send<RestaurantGroupCreateResponse>('/api/admin/menu-inventory/restaurant-groups', {
+      method: 'POST',
+      body: {
+        name: input.name.trim(),
+        notes: input.notes?.trim() ?? '',
+        restaurantId: input.restaurantId?.trim() ?? '',
+      },
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not create restaurant group.'));
+  }
+}
+
+export async function updateAdminRestaurantGroupMetadata(input: {
+  groupId: string;
+  name: string;
+  notes?: string;
+}): Promise<RestaurantGroupInventorySummary> {
+  try {
+    return await pb.send<RestaurantGroupInventorySummary>(
+      `/api/admin/menu-inventory/restaurant-groups/${encodeURIComponent(input.groupId)}`,
+      {
+        method: 'PATCH',
+        body: {
+          name: input.name.trim(),
+          notes: input.notes?.trim() ?? '',
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update restaurant group.'));
+  }
+}
+
+export async function updateAdminRestaurantGroupMembership(input: {
+  restaurantId: string;
+  groupId: string;
+}): Promise<RestaurantInventoryDetailResponse> {
+  try {
+    return await pb.send<RestaurantInventoryDetailResponse>(
+      `/api/admin/menu-inventory/restaurants/${encodeURIComponent(input.restaurantId)}/restaurant-group`,
+      {
+        method: 'POST',
+        body: {
+          groupId: input.groupId.trim(),
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update restaurant group membership.'));
   }
 }
 

@@ -42,6 +42,13 @@ type adminMenuInventoryRestaurantRow struct {
 	MenuItemCount       int     `db:"menuItemCount"`
 	Name                string  `db:"name"`
 	PlaceID             string  `db:"placeId"`
+	RestaurantGroup     string  `db:"restaurantGroup"`
+	GroupCreated        string  `db:"groupCreated"`
+	GroupCreatedBy      string  `db:"groupCreatedBy"`
+	GroupID             string  `db:"groupId"`
+	GroupName           string  `db:"groupName"`
+	GroupNotes          string  `db:"groupNotes"`
+	GroupUpdated        string  `db:"groupUpdated"`
 	Updated             string  `db:"updated"`
 	Visibility          string  `db:"visibility"`
 }
@@ -101,8 +108,49 @@ type adminMenuInventoryQuery struct {
 	Search        string
 }
 
-// RegisterAdminMenuInventoryHandlers registers read-only admin inventory endpoints for menu moderation.
+// RegisterAdminMenuInventoryHandlers registers admin inventory endpoints for menu moderation.
 func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
+	se.Router.POST("/api/admin/menu-inventory/restaurant-groups", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		var requestBody adminRestaurantGroupCreateRequest
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		result, err := createAdminRestaurantGroup(app, e.Auth.Id, requestBody)
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, result)
+	})
+
+	se.Router.PATCH("/api/admin/menu-inventory/restaurant-groups/{groupId}", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		groupID := strings.TrimSpace(e.Request.PathValue("groupId"))
+		if groupID == "" {
+			return apis.NewBadRequestError("groupId is required", nil)
+		}
+
+		var requestBody adminRestaurantGroupMetadataRequest
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		result, err := updateAdminRestaurantGroupMetadata(app, groupID, requestBody)
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, result)
+	})
+
 	se.Router.GET("/api/admin/menu-inventory/restaurants/{restaurantId}", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {
 			return err
@@ -121,6 +169,29 @@ func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
 
 			log.Printf("Admin restaurant inventory detail query failed for restaurant=%q: %v", restaurantID, err)
 			return apis.NewApiError(500, "failed to load restaurant inventory detail", err)
+		}
+
+		return e.JSON(200, result)
+	})
+
+	se.Router.POST("/api/admin/menu-inventory/restaurants/{restaurantId}/restaurant-group", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if restaurantID == "" {
+			return apis.NewBadRequestError("restaurantId is required", nil)
+		}
+
+		var requestBody adminRestaurantGroupMembershipRequest
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		result, err := updateAdminRestaurantGroupMembership(app, restaurantID, requestBody)
+		if err != nil {
+			return err
 		}
 
 		return e.JSON(200, result)
@@ -226,12 +297,17 @@ func loadAdminRestaurantInventory(app core.App, query adminMenuInventoryQuery) (
 			"restaurants.location",
 			"restaurants.cuisineType",
 			"restaurants.placeId",
+			"restaurant_groups.name",
 			"creator.email",
 			"creator.name",
 		},
 	)
 
-	total, err := countAdminMenuInventoryRows(app, "restaurants LEFT JOIN users creator ON creator.id = restaurants.createdBy", whereClause, params)
+	total, err := countAdminMenuInventoryRows(app, `
+		restaurants
+		LEFT JOIN users creator ON creator.id = restaurants.createdBy
+		LEFT JOIN restaurant_groups ON restaurant_groups.id = restaurants.restaurantGroup
+	`, whereClause, params)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +328,13 @@ func loadAdminRestaurantInventory(app core.App, query adminMenuInventoryQuery) (
 			COALESCE(restaurants.created, '') AS [[created]],
 			COALESCE(restaurants.updated, '') AS [[updated]],
 			COALESCE(restaurants.createdBy, '') AS [[createdBy]],
+			COALESCE(restaurants.restaurantGroup, '') AS [[restaurantGroup]],
+			COALESCE(restaurant_groups.id, '') AS [[groupId]],
+			COALESCE(restaurant_groups.name, '') AS [[groupName]],
+			COALESCE(restaurant_groups.notes, '') AS [[groupNotes]],
+			COALESCE(restaurant_groups.createdBy, '') AS [[groupCreatedBy]],
+			COALESCE(restaurant_groups.created, '') AS [[groupCreated]],
+			COALESCE(restaurant_groups.updated, '') AS [[groupUpdated]],
 			COALESCE(creator.id, '') AS [[creatorId]],
 			COALESCE(creator.email, '') AS [[creatorEmail]],
 			COALESCE(creator.name, '') AS [[creatorName]],
@@ -272,6 +355,7 @@ func loadAdminRestaurantInventory(app core.App, query adminMenuInventoryQuery) (
 			) AS [[menuImageCount]]
 		FROM restaurants
 		LEFT JOIN users creator ON creator.id = restaurants.createdBy
+		LEFT JOIN restaurant_groups ON restaurant_groups.id = restaurants.restaurantGroup
 		` + whereClause + `
 		ORDER BY restaurants.updated DESC, restaurants.created DESC, restaurants.name ASC
 		LIMIT {:limit} OFFSET {:offset}
@@ -303,10 +387,17 @@ func loadAdminRestaurantInventoryDetail(app core.App, restaurantID string) (map[
 		return nil, err
 	}
 
+	sameNameCandidates, err := loadAdminRestaurantGroupSameNameCandidates(app, restaurant)
+	if err != nil {
+		return nil, err
+	}
+
 	return map[string]any{
-		"restaurant": serializeAdminRestaurantInventoryRow(restaurant),
-		"menuItems":  serializeAdminMenuItemInventoryRows(menuItems),
-		"menuImages": serializeAdminMenuImageInventoryRows(menuImages),
+		"restaurant":         serializeAdminRestaurantInventoryRow(restaurant),
+		"restaurantGroup":    serializeAdminRestaurantGroupFromRestaurantRow(restaurant),
+		"sameNameCandidates": serializeAdminRestaurantInventoryRows(sameNameCandidates),
+		"menuItems":          serializeAdminMenuItemInventoryRows(menuItems),
+		"menuImages":         serializeAdminMenuImageInventoryRows(menuImages),
 	}, nil
 }
 
@@ -480,6 +571,13 @@ func loadAdminRestaurantInventoryRowByID(app core.App, restaurantID string) (adm
 			COALESCE(restaurants.created, '') AS [[created]],
 			COALESCE(restaurants.updated, '') AS [[updated]],
 			COALESCE(restaurants.createdBy, '') AS [[createdBy]],
+			COALESCE(restaurants.restaurantGroup, '') AS [[restaurantGroup]],
+			COALESCE(restaurant_groups.id, '') AS [[groupId]],
+			COALESCE(restaurant_groups.name, '') AS [[groupName]],
+			COALESCE(restaurant_groups.notes, '') AS [[groupNotes]],
+			COALESCE(restaurant_groups.createdBy, '') AS [[groupCreatedBy]],
+			COALESCE(restaurant_groups.created, '') AS [[groupCreated]],
+			COALESCE(restaurant_groups.updated, '') AS [[groupUpdated]],
 			COALESCE(creator.id, '') AS [[creatorId]],
 			COALESCE(creator.email, '') AS [[creatorEmail]],
 			COALESCE(creator.name, '') AS [[creatorName]],
@@ -500,6 +598,7 @@ func loadAdminRestaurantInventoryRowByID(app core.App, restaurantID string) (adm
 			) AS [[menuImageCount]]
 		FROM restaurants
 		LEFT JOIN users creator ON creator.id = restaurants.createdBy
+		LEFT JOIN restaurant_groups ON restaurant_groups.id = restaurants.restaurantGroup
 		WHERE restaurants.id = {:restaurantId}
 	`).Bind(dbx.Params{
 		"restaurantId": restaurantID,
@@ -788,9 +887,19 @@ func serializeAdminRestaurantInventoryRow(row adminMenuInventoryRestaurantRow) m
 		"updated":             row.Updated,
 		"createdBy":           row.CreatedBy,
 		"creator":             serializeAdminMenuInventoryUser(row.CreatorID, row.CreatorEmail, row.CreatorName, row.CreatorIsAdmin, row.CreatorIsSubscriber, row.CreatorIsBetaUser, row.CreatorCreated, row.CreatorUpdated),
+		"restaurantGroupId":   row.RestaurantGroup,
+		"restaurantGroup":     serializeAdminRestaurantGroupFromRestaurantRow(row),
 		"menuItemCount":       row.MenuItemCount,
 		"menuImageCount":      row.MenuImageCount,
 	}
+}
+
+func serializeAdminRestaurantInventoryRows(rows []adminMenuInventoryRestaurantRow) []map[string]any {
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, serializeAdminRestaurantInventoryRow(row))
+	}
+	return items
 }
 
 func serializeAdminMenuItemInventoryRows(rows []adminMenuInventoryMenuItemRow) []map[string]any {

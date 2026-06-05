@@ -58,6 +58,50 @@ func TestRestaurantCreateRejectsCrossUserCreatedBySpoofing(t *testing.T) {
 	}
 }
 
+func TestRestaurantGroupMembershipRejectsNonAdminRawWrites(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+		hooks.RegisterRestaurantGroupMembershipSecurityHooks(app)
+	})
+
+	admin, _ := createAuthUser(t, server.app, true, false)
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Raw Write Group",
+		"createdBy": admin.Id,
+	})
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/restaurants/records",
+		ownerToken,
+		fmt.Sprintf(`{"name":"Raw Membership Create","location":"Los Angeles","createdBy":"%s","visibility":"friends","restaurantGroup":"%s"}`, owner.Id, group.Id),
+	)
+	if createResponse.Code == http.StatusOK {
+		t.Fatalf("expected raw restaurant create membership to be rejected, got 200: %s", createResponse.Body.String())
+	}
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Raw Membership Update",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "friends",
+	})
+	updateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/restaurants/records/"+restaurant.Id,
+		ownerToken,
+		fmt.Sprintf(`{"restaurantGroup":"%s"}`, group.Id),
+	)
+	if updateResponse.Code == http.StatusOK {
+		t.Fatalf("expected raw restaurant update membership to be rejected, got 200: %s", updateResponse.Body.String())
+	}
+}
+
 func TestNoteUpdateRejectsOwnerTransfer(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
 		hooks.RegisterRecordOwnershipHooks(app)

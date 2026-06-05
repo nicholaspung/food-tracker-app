@@ -1,11 +1,18 @@
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
+  createAdminRestaurantGroup,
   getAdminRestaurantInventoryDetail,
+  updateAdminRestaurantGroupMetadata,
+  updateAdminRestaurantGroupMembership,
   type MenuImageInventoryRow,
   type MenuItemInventoryRow,
+  type RestaurantGroupInventorySummary,
+  type RestaurantInventoryDetailResponse,
+  type RestaurantInventoryRow,
 } from '@/features/menu-inventory/api';
 import {
   buildMenuImageUrl,
@@ -25,6 +32,29 @@ function formatCoordinates(latitude?: number, longitude?: number) {
   }
 
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function RestaurantGroupSummary({
+  group,
+}: {
+  group: RestaurantGroupInventorySummary | null;
+}) {
+  if (!group) {
+    return (
+      <div className="inventory-primary-cell">
+        <strong>No restaurant group</strong>
+        <span className="inventory-secondary-text">This restaurant is not assigned to a trusted group.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="inventory-primary-cell">
+      <strong>{formatOptional(group.name, 'Unnamed restaurant group')}</strong>
+      {group.notes?.trim() ? <span className="inventory-secondary-text">{group.notes}</span> : null}
+      <span className="inventory-secondary-text">{group.id}</span>
+    </div>
+  );
 }
 
 function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
@@ -130,6 +160,12 @@ function MenuPhotosTable({ rows }: { rows: MenuImageInventoryRow[] }) {
 
 export function RestaurantInventoryDetailPage() {
   const { restaurantId = '' } = useParams();
+  const queryClient = useQueryClient();
+  const [groupName, setGroupName] = useState('');
+  const [groupNotes, setGroupNotes] = useState('');
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupNotes, setEditGroupNotes] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const detailQuery = useQuery({
     enabled: Boolean(restaurantId),
@@ -138,6 +174,150 @@ export function RestaurantInventoryDetailPage() {
   });
 
   const restaurant = detailQuery.data?.restaurant;
+  const restaurantGroup = detailQuery.data?.restaurantGroup ?? restaurant?.restaurantGroup ?? null;
+
+  useEffect(() => {
+    setEditGroupName(restaurantGroup?.name ?? '');
+    setEditGroupNotes(restaurantGroup?.notes ?? '');
+  }, [restaurantGroup?.id, restaurantGroup?.name, restaurantGroup?.notes]);
+
+  const setRestaurantDetailData = (data: RestaurantInventoryDetailResponse) => {
+    queryClient.setQueryData(['admin', 'menu-inventory', 'restaurant-detail', restaurantId], data);
+  };
+
+  const invalidateInventoryQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory', 'restaurant-detail', restaurantId] }),
+    ]);
+  };
+
+  const createGroupMutation = useMutation({
+    mutationFn: () =>
+      createAdminRestaurantGroup({
+        name: groupName.trim() || restaurant?.name || 'Unnamed restaurant group',
+        notes: groupNotes,
+        restaurantId,
+      }),
+    onMutate: () => setActionError(''),
+    onSuccess: async (payload) => {
+      if (payload.restaurantDetail) {
+        setRestaurantDetailData(payload.restaurantDetail);
+      }
+      setGroupName('');
+      setGroupNotes('');
+      await invalidateInventoryQueries();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not create restaurant group.');
+    },
+  });
+
+  const membershipMutation = useMutation({
+    mutationFn: (input: { groupId: string; targetRestaurantId: string }) =>
+      updateAdminRestaurantGroupMembership({
+        restaurantId: input.targetRestaurantId,
+        groupId: input.groupId,
+      }),
+    onMutate: () => setActionError(''),
+    onSuccess: async (data, input) => {
+      if (input.targetRestaurantId === restaurantId) {
+        setRestaurantDetailData(data);
+      }
+      await invalidateInventoryQueries();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update restaurant group membership.');
+    },
+  });
+
+  const updateGroupMetadataMutation = useMutation({
+    mutationFn: () => {
+      if (!restaurantGroup) {
+        throw new Error('No restaurant group is assigned.');
+      }
+
+      return updateAdminRestaurantGroupMetadata({
+        groupId: restaurantGroup.id,
+        name: editGroupName,
+        notes: editGroupNotes,
+      });
+    },
+    onMutate: () => setActionError(''),
+    onSuccess: async (updatedGroup) => {
+      const currentDetail = detailQuery.data;
+      if (currentDetail) {
+        setRestaurantDetailData({
+          ...currentDetail,
+          restaurantGroup: updatedGroup,
+          restaurant: {
+            ...currentDetail.restaurant,
+            restaurantGroup: updatedGroup,
+            restaurantGroupId: updatedGroup.id,
+          },
+          sameNameCandidates: currentDetail.sameNameCandidates.map((candidate) =>
+            candidate.restaurantGroupId === updatedGroup.id
+              ? {
+                  ...candidate,
+                  restaurantGroup: updatedGroup,
+                }
+              : candidate,
+          ),
+        });
+      }
+      await invalidateInventoryQueries();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update restaurant group.');
+    },
+  });
+
+  const isMembershipBusy =
+    createGroupMutation.isPending || membershipMutation.isPending || updateGroupMetadataMutation.isPending;
+
+  const handleCreateGroup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!restaurantId || isMembershipBusy) {
+      return;
+    }
+    void createGroupMutation.mutate();
+  };
+
+  const handleUnassignCurrentRestaurant = () => {
+    if (!restaurantId || isMembershipBusy) {
+      return;
+    }
+    membershipMutation.mutate({ groupId: '', targetRestaurantId: restaurantId });
+  };
+
+  const handleUpdateGroupMetadata = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!restaurantGroup || isMembershipBusy) {
+      return;
+    }
+    void updateGroupMetadataMutation.mutate();
+  };
+
+  const handleCandidateAction = (candidate: RestaurantInventoryRow) => {
+    if (isMembershipBusy) {
+      return;
+    }
+
+    if (restaurantGroup) {
+      membershipMutation.mutate({
+        groupId: restaurantGroup.id,
+        targetRestaurantId: candidate.id,
+      });
+      return;
+    }
+
+    if (candidate.restaurantGroup) {
+      membershipMutation.mutate({
+        groupId: candidate.restaurantGroup.id,
+        targetRestaurantId: restaurantId,
+      });
+    }
+  };
 
   return (
     <>
@@ -245,6 +425,154 @@ export function RestaurantInventoryDetailPage() {
                   <span className="text-muted">{restaurant.id}</span>
                 </div>
               </div>
+            </article>
+          </section>
+
+          <section className="detail-grid">
+            <article className="detail-card">
+              <div className="summary-row">
+                <div>
+                  <p className="eyebrow">Restaurant group</p>
+                  <h3>Membership</h3>
+                </div>
+                {restaurantGroup ? <span className="tag">Assigned</span> : <span className="tag">Unassigned</span>}
+              </div>
+
+              <RestaurantGroupSummary group={restaurantGroup} />
+
+              {actionError ? (
+                <div className="state-panel error">
+                  <strong>Group action failed</strong>
+                  <span>{actionError}</span>
+                </div>
+              ) : null}
+
+              {restaurantGroup ? (
+                <form className="menu-item-editor" onSubmit={handleUpdateGroupMetadata}>
+                  <div className="field">
+                    <label htmlFor="restaurant-group-edit-name">Group name</label>
+                    <input
+                      className="input"
+                      id="restaurant-group-edit-name"
+                      onChange={(event) => setEditGroupName(event.target.value)}
+                      value={editGroupName}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="restaurant-group-edit-notes">Group notes</label>
+                    <textarea
+                      className="textarea"
+                      id="restaurant-group-edit-notes"
+                      onChange={(event) => setEditGroupNotes(event.target.value)}
+                      placeholder="Optional admin notes"
+                      value={editGroupNotes}
+                    />
+                  </div>
+                  <div className="button-row">
+                    <button className="button primary" disabled={isMembershipBusy || !editGroupName.trim()} type="submit">
+                      {updateGroupMetadataMutation.isPending ? 'Saving...' : 'Save group details'}
+                    </button>
+                    <button
+                      className="button warn"
+                      disabled={isMembershipBusy}
+                      onClick={handleUnassignCurrentRestaurant}
+                      type="button"
+                    >
+                      {membershipMutation.isPending ? 'Updating...' : 'Unassign restaurant'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="menu-item-editor" onSubmit={handleCreateGroup}>
+                  <div className="field">
+                    <label htmlFor="restaurant-group-name">New group name</label>
+                    <input
+                      className="input"
+                      id="restaurant-group-name"
+                      onChange={(event) => setGroupName(event.target.value)}
+                      placeholder={restaurant.name ? `${restaurant.name} group` : 'Restaurant group name'}
+                      value={groupName}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="restaurant-group-notes">Notes</label>
+                    <textarea
+                      className="textarea"
+                      id="restaurant-group-notes"
+                      onChange={(event) => setGroupNotes(event.target.value)}
+                      placeholder="Optional admin notes"
+                      value={groupNotes}
+                    />
+                  </div>
+                  <div className="button-row">
+                    <button className="button primary" disabled={isMembershipBusy} type="submit">
+                      {createGroupMutation.isPending ? 'Creating...' : 'Create group and assign'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </article>
+
+            <article className="detail-card">
+              <div>
+                <p className="eyebrow">Same-name candidates</p>
+                <h3>{detailQuery.data.sameNameCandidates.length} candidate(s)</h3>
+              </div>
+
+              {detailQuery.data.sameNameCandidates.length === 0 ? (
+                <div className="state-panel">
+                  <span className="text-muted">No exact same-name restaurant candidates found.</span>
+                </div>
+              ) : (
+                <div className="menu-item-editor">
+                  {detailQuery.data.sameNameCandidates.map((candidate) => {
+                    const candidateGroup = candidate.restaurantGroup;
+                    const isAlreadyInCurrentGroup =
+                      Boolean(restaurantGroup) && candidate.restaurantGroupId === restaurantGroup?.id;
+                    const canAssignToCurrentGroup = Boolean(restaurantGroup) && !isAlreadyInCurrentGroup;
+                    const canUseCandidateGroup = !restaurantGroup && Boolean(candidateGroup);
+                    const actionLabel = restaurantGroup
+                      ? isAlreadyInCurrentGroup
+                        ? 'Already in group'
+                        : 'Add to current group'
+                      : candidateGroup
+                        ? 'Use candidate group'
+                        : 'Create group first';
+
+                    return (
+                      <article className="inline-edit-row" key={candidate.id}>
+                        <div className="inline-edit-main">
+                          <div className="inventory-primary-cell">
+                            <Link className="route-link" to={`/menu-inventory/restaurants/${candidate.id}`}>
+                              {formatOptional(candidate.name, 'Unnamed restaurant')}
+                            </Link>
+                            <span className="inventory-secondary-text">{formatOptional(candidate.location)}</span>
+                          </div>
+                          <div className="tag-row tag-row-start">
+                            {candidateGroup ? (
+                              <span className="tag">{formatOptional(candidateGroup.name, candidateGroup.id)}</span>
+                            ) : (
+                              <span className="tag">No group</span>
+                            )}
+                            <span className="tag">{candidate.menuItemCount} item(s)</span>
+                            <span className="tag">{candidate.menuImageCount} photo(s)</span>
+                          </div>
+                        </div>
+                        <div className="compact-action-row">
+                          <button
+                            className="button ghost"
+                            disabled={isMembershipBusy || (!canAssignToCurrentGroup && !canUseCandidateGroup)}
+                            onClick={() => handleCandidateAction(candidate)}
+                            type="button"
+                          >
+                            {actionLabel}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </article>
           </section>
 

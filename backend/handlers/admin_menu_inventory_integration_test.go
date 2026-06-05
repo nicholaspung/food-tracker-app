@@ -36,7 +36,16 @@ type adminMenuInventoryRestaurant struct {
 	Name                string                  `json:"name"`
 	PlaceID             string                  `json:"placeId"`
 	GooglePlaceCachedAt string                  `json:"googlePlaceCachedAt"`
+	RestaurantGroupID   string                  `json:"restaurantGroupId"`
+	RestaurantGroup     *adminRestaurantGroup   `json:"restaurantGroup"`
 	Visibility          string                  `json:"visibility"`
+}
+
+type adminRestaurantGroup struct {
+	CreatedBy string `json:"createdBy"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Notes     string `json:"notes"`
 }
 
 type adminMenuInventoryMenuItem struct {
@@ -64,9 +73,16 @@ type adminMenuInventoryMenuImage struct {
 }
 
 type adminRestaurantInventoryDetailResponse struct {
-	MenuImages []adminMenuInventoryMenuImage `json:"menuImages"`
-	MenuItems  []adminMenuInventoryMenuItem  `json:"menuItems"`
-	Restaurant adminMenuInventoryRestaurant  `json:"restaurant"`
+	MenuImages         []adminMenuInventoryMenuImage  `json:"menuImages"`
+	MenuItems          []adminMenuInventoryMenuItem   `json:"menuItems"`
+	Restaurant         adminMenuInventoryRestaurant   `json:"restaurant"`
+	RestaurantGroup    *adminRestaurantGroup          `json:"restaurantGroup"`
+	SameNameCandidates []adminMenuInventoryRestaurant `json:"sameNameCandidates"`
+}
+
+type adminRestaurantGroupCreateResponse struct {
+	RestaurantDetail *adminRestaurantInventoryDetailResponse `json:"restaurantDetail"`
+	RestaurantGroup  adminRestaurantGroup                    `json:"restaurantGroup"`
 }
 
 type adminMenuImageInventoryDetailResponse struct {
@@ -116,6 +132,34 @@ func adminMenuInventoryItemIDs(rows []adminMenuInventoryMenuItem) map[string]boo
 		ids[row.ID] = true
 	}
 	return ids
+}
+
+func loadAdminRestaurantInventoryDetailResponse(
+	t *testing.T,
+	server *preparedServer,
+	adminToken string,
+	restaurantID string,
+) adminRestaurantInventoryDetailResponse {
+	t.Helper()
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory/restaurants/"+restaurantID,
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminRestaurantInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode restaurant detail response: %v", err)
+	}
+
+	return payload
 }
 
 func TestAdminMenuInventoryRejectsNonAdmin(t *testing.T) {
@@ -396,6 +440,298 @@ func TestAdminMenuInventoryRestaurantDetailRejectsNonAdmin(t *testing.T) {
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAdminMenuInventoryCreatesRestaurantGroupAndAssignsRestaurant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Group Detail Cafe",
+		"location":   "San Francisco, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurant-groups",
+		adminToken,
+		`{"name":"Group Detail Cafe Bay Area","notes":"Confirmed by admin.","restaurantId":"`+restaurant.Id+`"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminRestaurantGroupCreateResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode group create response: %v", err)
+	}
+
+	if payload.RestaurantGroup.ID == "" || payload.RestaurantGroup.Name != "Group Detail Cafe Bay Area" {
+		t.Fatalf("expected created restaurant group, got %#v", payload.RestaurantGroup)
+	}
+	if payload.RestaurantGroup.CreatedBy != admin.Id {
+		t.Fatalf("expected createdBy admin %q, got %#v", admin.Id, payload.RestaurantGroup)
+	}
+	if payload.RestaurantDetail == nil || payload.RestaurantDetail.Restaurant.RestaurantGroupID != payload.RestaurantGroup.ID {
+		t.Fatalf("expected restaurant detail assignment, got %#v", payload.RestaurantDetail)
+	}
+
+	detail := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
+	if detail.RestaurantGroup == nil || detail.RestaurantGroup.ID != payload.RestaurantGroup.ID {
+		t.Fatalf("expected current group on detail, got %#v", detail.RestaurantGroup)
+	}
+	if detail.Restaurant.RestaurantGroup == nil || detail.Restaurant.RestaurantGroup.Name != "Group Detail Cafe Bay Area" {
+		t.Fatalf("expected serialized group on restaurant row, got %#v", detail.Restaurant)
+	}
+}
+
+func TestAdminMenuInventoryAssignsUnassignsAndKeepsOneRestaurantGroup(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Membership Diner",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	firstGroup := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Membership Diner North",
+		"createdBy": admin.Id,
+	})
+	secondGroup := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Membership Diner West",
+		"createdBy": admin.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurants/"+restaurant.Id+"/restaurant-group",
+		adminToken,
+		`{"groupId":"`+firstGroup.Id+`"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected first assignment 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	firstDetail := adminRestaurantInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &firstDetail); err != nil {
+		t.Fatalf("failed to decode first membership response: %v", err)
+	}
+	if firstDetail.RestaurantGroup == nil || firstDetail.RestaurantGroup.ID != firstGroup.Id {
+		t.Fatalf("expected first group assignment, got %#v", firstDetail.RestaurantGroup)
+	}
+
+	response = performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurants/"+restaurant.Id+"/restaurant-group",
+		adminToken,
+		`{"groupId":"`+secondGroup.Id+`"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected replacement assignment 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	secondDetail := adminRestaurantInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &secondDetail); err != nil {
+		t.Fatalf("failed to decode second membership response: %v", err)
+	}
+	if secondDetail.RestaurantGroup == nil || secondDetail.RestaurantGroup.ID != secondGroup.Id {
+		t.Fatalf("expected second group assignment, got %#v", secondDetail.RestaurantGroup)
+	}
+	if secondDetail.Restaurant.RestaurantGroupID == firstGroup.Id {
+		t.Fatalf("expected zero-or-one membership replacement, got %#v", secondDetail.Restaurant)
+	}
+
+	response = performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurants/"+restaurant.Id+"/restaurant-group",
+		adminToken,
+		`{"groupId":""}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected unassignment 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	unassignedDetail := adminRestaurantInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &unassignedDetail); err != nil {
+		t.Fatalf("failed to decode unassignment response: %v", err)
+	}
+	if unassignedDetail.RestaurantGroup != nil || unassignedDetail.Restaurant.RestaurantGroupID != "" {
+		t.Fatalf("expected restaurant to be unassigned, got %#v", unassignedDetail.Restaurant)
+	}
+}
+
+func TestAdminMenuInventoryUpdatesRestaurantGroupMetadata(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Original Group Name",
+		"notes":     "Original notes",
+		"createdBy": admin.Id,
+	})
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Metadata Cafe",
+		"location":        "Oakland, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-inventory/restaurant-groups/"+group.Id,
+		adminToken,
+		`{"name":"Updated Group Name","notes":"Updated notes"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected metadata update 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	updatedGroup := adminRestaurantGroup{}
+	if err := json.Unmarshal(response.Body.Bytes(), &updatedGroup); err != nil {
+		t.Fatalf("failed to decode group metadata response: %v", err)
+	}
+	if updatedGroup.ID != group.Id || updatedGroup.Name != "Updated Group Name" || updatedGroup.Notes != "Updated notes" {
+		t.Fatalf("expected updated group metadata, got %#v", updatedGroup)
+	}
+
+	detail := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
+	if detail.RestaurantGroup == nil || detail.RestaurantGroup.Name != "Updated Group Name" || detail.RestaurantGroup.Notes != "Updated notes" {
+		t.Fatalf("expected updated metadata on restaurant detail, got %#v", detail.RestaurantGroup)
+	}
+
+	blankResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-inventory/restaurant-groups/"+group.Id,
+		adminToken,
+		`{"name":"   ","notes":"Ignored"}`,
+	)
+	if blankResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected blank name 400, got %d: %s", blankResponse.Code, blankResponse.Body.String())
+	}
+}
+
+func TestAdminMenuInventoryRestaurantDetailIncludesSameNameCandidates(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Candidate Cafe Group",
+		"createdBy": admin.Id,
+	})
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Candidate Cafe",
+		"location":        "San Francisco, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	sameName := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       " candidate cafe ",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	otherName := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Candidate Cafe Express",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	detail := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
+	if len(detail.SameNameCandidates) != 1 {
+		t.Fatalf("expected one same-name candidate, got %#v", detail.SameNameCandidates)
+	}
+	if detail.SameNameCandidates[0].ID != sameName.Id {
+		t.Fatalf("expected same-name candidate %s, got %#v", sameName.Id, detail.SameNameCandidates)
+	}
+	if detail.SameNameCandidates[0].ID == restaurant.Id || detail.SameNameCandidates[0].ID == otherName.Id {
+		t.Fatalf("candidate list included selected or non-exact name restaurant: %#v", detail.SameNameCandidates)
+	}
+}
+
+func TestAdminMenuInventoryRestaurantGroupWritesRejectNonAdmin(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, _ := createAuthUser(t, server.app, true, false)
+	user, userToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Non Admin Grouping",
+		"location":   "San Jose, CA",
+		"createdBy":  user.Id,
+		"visibility": "public",
+	})
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Existing Admin Group",
+		"createdBy": admin.Id,
+	})
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurant-groups",
+		userToken,
+		`{"name":"Forbidden Group","restaurantId":"`+restaurant.Id+`"}`,
+	)
+	if createResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected group create 403, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	updateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-inventory/restaurant-groups/"+group.Id,
+		userToken,
+		`{"name":"Forbidden Update","notes":"Nope"}`,
+	)
+	if updateResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected group update 403, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+
+	assignResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-inventory/restaurants/"+restaurant.Id+"/restaurant-group",
+		userToken,
+		`{"groupId":"`+group.Id+`"}`,
+	)
+	if assignResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected group assignment 403, got %d: %s", assignResponse.Code, assignResponse.Body.String())
 	}
 }
 

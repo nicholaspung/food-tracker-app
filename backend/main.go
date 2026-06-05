@@ -268,6 +268,7 @@ func main() {
 	hooks.RegisterRecordOwnershipHooks(app)
 	hooks.RegisterFriendshipSecurityHooks(app)
 	hooks.RegisterUserProfileSecurityHooks(app)
+	hooks.RegisterRestaurantGroupMembershipSecurityHooks(app)
 	hooks.RegisterRestaurantListCountHooks(app)
 	hooks.RegisterFeedbackSecurityHooks(app)
 	hooks.RegisterFeedbackMessageSecurityHooks(app)

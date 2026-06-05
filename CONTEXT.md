@@ -17,8 +17,8 @@ A read-only view of a user's own ordered items across visited restaurants whose 
 _Avoid for MVP_: Chain, Similar Restaurants, Same-name history
 
 **Restaurant Group**:
-A future persisted grouping and correction concept for restaurants that represent the same chain, brand, or user-corrected group across locations. It is not part of **All Locations History**.
-_Avoid for MVP_: Chain, same-name history, similar restaurants
+A future admin/system-managed grouping concept for exact **Restaurant** locations that may share menu suggestions under the same brand or cluster. It is not part of **All Locations History**.
+_Avoid for MVP_: Chain, same-name history, similar restaurants, user group
 
 **Visit Writes**:
 The mobile module that owns creating and updating restaurant visit records, including offline replay payloads, cache effects, source Note completion timing, and queued feedback.
@@ -80,6 +80,10 @@ _Avoid_: discovery feed map, saved places map, list map
 A user's own item-backed food records at one exact restaurant location.
 _Avoid_: Your Records, Your Activity
 
+**Visit Item**:
+A user-owned food record attached to one restaurant Visit.
+_Avoid_: Menu item, catalog item
+
 **Tasting Plan**:
 The leader-selected set of restaurants and menu items for a group tasting session.
 _Avoid_: Suggestions, readiness
@@ -107,6 +111,22 @@ _Avoid_: tasting submit helper, rating mutation wrapper
 **Menu Item Catalog Writes**:
 The mobile module that owns creating and updating a restaurant's saved menu item catalog, including cache insertion, invalidation, scan-created records, and tasting-plan handoff after catalog changes.
 _Avoid_: menu item form helper, menu item cache snippet
+
+**Approved Location Menu Item**:
+A menu item that an admin has accepted as suitable for one exact **Restaurant** location's menu catalog.
+_Avoid_: verified menu item, public menu item
+
+**Group Menu Suggestion**:
+An **Approved Location Menu Item** that is safe to show as a tracking shortcut at related restaurant locations without claiming location-specific availability.
+_Avoid_: chain menu item, group-level menu item, verified everywhere
+
+**Suggestion Provenance**:
+Admin-only evidence that a **Visit Item** was tracked from a **Group Menu Suggestion**.
+_Avoid_: user-facing source, review request
+
+**Catalog Contribution**:
+Admin-only evidence that user-entered or scanned menu content contributed to an approved catalog menu item.
+_Avoid_: duplicate menu item, rewritten history
 
 **Photo Processing Submission**:
 The workflow that validates processed photos, creates Visit or Food Product entries, applies usage-limit handling, updates affected caches, handles queued feedback, cleans up staged files, and returns the post-submit navigation outcome.
@@ -188,7 +208,15 @@ _Avoid_: notification inbox, user notification history
 - **All Locations History** may help a user start a new Visit by copying a previously ordered item name onto the currently selected restaurant's menu catalog.
 - Copying an **All Locations History** item into a Visit creates or reuses a current-restaurant menu item by normalized item name; it does not create or persist a **Restaurant Group**.
 - Copying cross-location menu items is an online-only menu catalog action.
-- A future **Restaurant Group** may introduce persisted grouping, manual correction, and broader brand matching after the MVP proves useful.
+- A future **Restaurant Group** may introduce persisted grouping and broader brand matching after the MVP proves useful.
+- **Restaurant Group** is the grouping source for **Group Menu Suggestions**; user-scoped grouping remains personal memory and correction work, not trusted menu seeding.
+- **All Locations History** remains a separate personal-history read model from **Group Menu Suggestions**.
+- **Restaurant Group** membership is admin-confirmed, though the system may suggest candidate memberships from conservative name matching.
+- The system suggests **Restaurant Group** candidates but does not auto-create trusted groups in the first implementation.
+- A **Restaurant** belongs to zero or one **Restaurant Group** in the first implementation.
+- A **Restaurant Group** may contain many **Restaurant** locations.
+- The first implementation models **Restaurant Group** membership as an optional relation from **Restaurant** to **Restaurant Group**.
+- Admin Restaurant Inventory owns **Restaurant Group** creation and membership; menu review consumes existing group membership.
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
@@ -255,6 +283,43 @@ _Avoid_: notification inbox, user notification history
 - **Tasting Plan Writes** preserve the write lifecycle for leader-selected restaurants and menu items inside a **Tasting Plan**.
 - **Tasting Rating Submission Writes** preserve the write lifecycle for participant ratings and generated Visit photo handoff.
 - **Menu Item Catalog Writes** preserve menu item catalog write behavior across Visit creation, Photo Processing, menu scan, and Tasting Plan adapters.
+- An **Approved Location Menu Item** belongs to one exact **Restaurant** location.
+- A **Group Menu Suggestion** starts from an **Approved Location Menu Item** but may be shown at related restaurant locations as memory assistance.
+- A **Group Menu Suggestion** does not prove the item is available at every related restaurant location.
+- Menu item visibility answers who can see an item; menu item approval answers whether an admin trusts the item for one exact location.
+- Menu item approval states are `unreviewed`, `approved`, and `rejected`.
+- Admin approval uses the edited menu item name as the canonical **Group Menu Suggestion** label in the first implementation.
+- A rejected menu item is excluded from trusted catalog and suggestion use; rejection does not delete or rewrite user history.
+- Menu item approval does not automatically change visibility.
+- A menu item must be approved before it can become an **Approved Location Menu Item**.
+- A **Group Menu Suggestion** source item must be public, approved, and group-suitable.
+- Public approved group-suitable source items may produce **Group Menu Suggestions** for any authenticated user who can access the target **Restaurant**.
+- Admin promotion may create a system/admin-owned public **Approved Location Menu Item** from a **Catalog Contribution**.
+- Admin promotion links the source **Catalog Contribution** automatically but does not rewrite historical user-entered item text.
+- **Catalog Contribution** may reference different evidence sources, including user-entered Visit Items, scanned menu items, and menu images.
+- Admins may promote a **Visit Item** into a system/admin-owned public **Approved Location Menu Item** without rewriting the original **Visit Item**.
+- Admin promotion reuses an existing approved exact-location menu item by normalized name instead of creating a duplicate.
+- **Catalog Contribution** records approval evidence, while **Suggestion Provenance** records tracking usage evidence.
+- Approved catalog menu items suppress linked or same-name contribution rows in mobile menu selection.
+- Linked **Catalog Contributions** may count toward the approved catalog menu item's ordered history without changing the historical item text.
+- A **Restaurant Group** does not have its own menu catalog in the first implementation; **Group Menu Suggestions** are aggregated from group-suitable **Approved Location Menu Items** at member restaurants.
+- Admins decide whether an **Approved Location Menu Item** is group-suitable; the default is not group-suitable and rejected or unreviewed menu items cannot be group-suitable.
+- Selecting a **Group Menu Suggestion** while tracking a Visit creates a **Visit Item**, not an **Approved Location Menu Item**.
+- A **Visit Item** inherits its sharing behavior from its Visit.
+- **Suggestion Provenance** is accumulated passively for admin review workflows and does not create a review request by itself.
+- During Visit tracking, exact-location menu items appear before **Group Menu Suggestions**, and personal history remains a fallback after trusted suggestions.
+- **All Locations History** remains the personal-history fallback when trusted **Group Menu Suggestions** are unavailable or sparse.
+- Mobile surfaces dedupe **Group Menu Suggestions** by normalized item name while preserving all source evidence internally.
+- Exact-location menu items take precedence over **Group Menu Suggestions** with the same normalized item name.
+- **Group Menu Suggestions** emphasize approval/source and ordered-history context rather than cross-location rating summaries.
+- Restaurant detail may show **Group Menu Suggestions**, but they remain visually separated from exact-location menu items.
+- Restaurant detail **Group Menu Suggestions** may start a Visit with the exact Restaurant preselected and the suggested item preselected.
+- Restaurant detail distinguishes exact-location ordered history from related-location ordered history.
+- Restaurant detail enhancements for **Group Menu Suggestions** are a later implementation slice after Create Visit suggestions.
+- Restaurant search remains focused on exact restaurant selection and does not surface **Group Menu Suggestions** in the first implementation.
+- Mobile copy describes **Restaurant Group** content as related locations rather than exposing the term Restaurant Group.
+- **Group Menu Suggestions** are optional cached assistance while offline and never block Visit creation.
+- Queued Visit replay may preserve **Suggestion Provenance**, but stale provenance must not block creating the **Visit Item**.
 - **Photo Processing Submission** uses **Visit Writes** and **Food Product Writes** to create entries from processed photos.
 - **Friend Writes** preserve the write lifecycle for friend request send, accept, decline, cancel, and remove actions.
 - **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
