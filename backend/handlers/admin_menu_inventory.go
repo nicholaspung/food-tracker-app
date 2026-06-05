@@ -20,6 +20,19 @@ const (
 	adminMenuInventoryMaxPerPage     = 100
 )
 
+const adminMenuInventoryLinkedMenuItemSelect = `
+			COALESCE((SELECT linked.name FROM menu_items linked WHERE linked.id = menu_items.promotedFrom), '') AS [[promotedFromName]],
+			COALESCE((SELECT linked.visibility FROM menu_items linked WHERE linked.id = menu_items.promotedFrom), '') AS [[promotedFromVisibility]],
+			COALESCE((SELECT linked.approvalStatus FROM menu_items linked WHERE linked.id = menu_items.promotedFrom), 'unreviewed') AS [[promotedFromApprovalStatus]],
+			COALESCE((SELECT linked.createdBy FROM menu_items linked WHERE linked.id = menu_items.promotedFrom), '') AS [[promotedFromCreatedBy]],
+			COALESCE((SELECT linkedCreator.email FROM menu_items linked LEFT JOIN users linkedCreator ON linkedCreator.id = linked.createdBy WHERE linked.id = menu_items.promotedFrom), '') AS [[promotedFromCreatorEmail]],
+			COALESCE((SELECT linked.name FROM menu_items linked WHERE linked.id = menu_items.promotedTo), '') AS [[promotedToName]],
+			COALESCE((SELECT linked.visibility FROM menu_items linked WHERE linked.id = menu_items.promotedTo), '') AS [[promotedToVisibility]],
+			COALESCE((SELECT linked.approvalStatus FROM menu_items linked WHERE linked.id = menu_items.promotedTo), 'unreviewed') AS [[promotedToApprovalStatus]],
+			COALESCE((SELECT linked.createdBy FROM menu_items linked WHERE linked.id = menu_items.promotedTo), '') AS [[promotedToCreatedBy]],
+			COALESCE((SELECT linkedCreator.email FROM menu_items linked LEFT JOIN users linkedCreator ON linkedCreator.id = linked.createdBy WHERE linked.id = menu_items.promotedTo), '') AS [[promotedToCreatorEmail]],
+`
+
 type adminMenuInventoryRestaurantRow struct {
 	Created             string  `db:"created"`
 	CreatedBy           string  `db:"createdBy"`
@@ -54,26 +67,41 @@ type adminMenuInventoryRestaurantRow struct {
 }
 
 type adminMenuInventoryMenuItemRow struct {
-	Created             string `db:"created"`
-	CreatedBy           string `db:"createdBy"`
-	CreatorCreated      string `db:"creatorCreated"`
-	CreatorEmail        string `db:"creatorEmail"`
-	CreatorID           string `db:"creatorId"`
-	CreatorIsAdmin      int    `db:"creatorIsAdmin"`
-	CreatorIsBetaUser   int    `db:"creatorIsBetaUser"`
-	CreatorIsSubscriber int    `db:"creatorIsSubscriber"`
-	CreatorName         string `db:"creatorName"`
-	CreatorUpdated      string `db:"creatorUpdated"`
-	ID                  string `db:"id"`
-	IsFromOCR           int    `db:"isFromOcr"`
-	Name                string `db:"name"`
-	Restaurant          string `db:"restaurant"`
-	RestaurantLocation  string `db:"restaurantLocation"`
-	RestaurantName      string `db:"restaurantName"`
-	SourceImage         string `db:"sourceImage"`
-	SourceImageFile     string `db:"sourceImageFile"`
-	Updated             string `db:"updated"`
-	Visibility          string `db:"visibility"`
+	ApprovalReviewedAt         string `db:"approvalReviewedAt"`
+	ApprovalReviewedBy         string `db:"approvalReviewedBy"`
+	ApprovalStatus             string `db:"approvalStatus"`
+	Created                    string `db:"created"`
+	CreatedBy                  string `db:"createdBy"`
+	CreatorCreated             string `db:"creatorCreated"`
+	CreatorEmail               string `db:"creatorEmail"`
+	CreatorID                  string `db:"creatorId"`
+	CreatorIsAdmin             int    `db:"creatorIsAdmin"`
+	CreatorIsBetaUser          int    `db:"creatorIsBetaUser"`
+	CreatorIsSubscriber        int    `db:"creatorIsSubscriber"`
+	CreatorName                string `db:"creatorName"`
+	CreatorUpdated             string `db:"creatorUpdated"`
+	ID                         string `db:"id"`
+	IsFromOCR                  int    `db:"isFromOcr"`
+	Name                       string `db:"name"`
+	PromotedFrom               string `db:"promotedFrom"`
+	PromotedFromApprovalStatus string `db:"promotedFromApprovalStatus"`
+	PromotedFromCreatedBy      string `db:"promotedFromCreatedBy"`
+	PromotedFromCreatorEmail   string `db:"promotedFromCreatorEmail"`
+	PromotedFromName           string `db:"promotedFromName"`
+	PromotedFromVisibility     string `db:"promotedFromVisibility"`
+	PromotedTo                 string `db:"promotedTo"`
+	PromotedToApprovalStatus   string `db:"promotedToApprovalStatus"`
+	PromotedToCreatedBy        string `db:"promotedToCreatedBy"`
+	PromotedToCreatorEmail     string `db:"promotedToCreatorEmail"`
+	PromotedToName             string `db:"promotedToName"`
+	PromotedToVisibility       string `db:"promotedToVisibility"`
+	Restaurant                 string `db:"restaurant"`
+	RestaurantLocation         string `db:"restaurantLocation"`
+	RestaurantName             string `db:"restaurantName"`
+	SourceImage                string `db:"sourceImage"`
+	SourceImageFile            string `db:"sourceImageFile"`
+	Updated                    string `db:"updated"`
+	Visibility                 string `db:"visibility"`
 }
 
 type adminMenuInventoryMenuImageRow struct {
@@ -486,6 +514,12 @@ func loadAdminMenuImageAttachedMenuItemRows(app core.App, imageID string) ([]adm
 			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
 			COALESCE(source.image, '') AS [[sourceImageFile]],
 			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
+			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
+			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
+			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
@@ -525,6 +559,12 @@ func loadAdminMenuImageUnattachedRestaurantMenuItemRows(app core.App, restaurant
 			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
 			COALESCE(source.image, '') AS [[sourceImageFile]],
 			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
+			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
+			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
+			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
@@ -621,6 +661,12 @@ func loadAdminRestaurantMenuItemRows(app core.App, restaurantID string, orderBy 
 			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
 			COALESCE(source.image, '') AS [[sourceImageFile]],
 			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
+			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
+			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
+			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
@@ -729,6 +775,12 @@ func loadAdminMenuItemInventory(app core.App, query adminMenuInventoryQuery) (ma
 			COALESCE(menu_items.sourceImage, '') AS [[sourceImage]],
 			COALESCE(source.image, '') AS [[sourceImageFile]],
 			COALESCE(menu_items.visibility, '') AS [[visibility]],
+			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
+			COALESCE(menu_items.approvalReviewedBy, '') AS [[approvalReviewedBy]],
+			COALESCE(menu_items.approvalReviewedAt, '') AS [[approvalReviewedAt]],
+			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
+			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
@@ -910,6 +962,21 @@ func serializeAdminMenuItemInventoryRows(rows []adminMenuInventoryMenuItemRow) [
 	return items
 }
 
+func serializeAdminLinkedMenuItemInventorySummary(id string, name string, visibility string, approvalStatus string, createdBy string, creatorEmail string) map[string]any {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+
+	return map[string]any{
+		"id":             id,
+		"name":           name,
+		"visibility":     visibility,
+		"approvalStatus": resolveMenuItemApprovalStatus(approvalStatus),
+		"createdBy":      createdBy,
+		"creatorEmail":   creatorEmail,
+	}
+}
+
 func serializeAdminMenuItemInventoryRow(row adminMenuInventoryMenuItemRow) map[string]any {
 	return map[string]any{
 		"id":                 row.ID,
@@ -920,6 +987,13 @@ func serializeAdminMenuItemInventoryRow(row adminMenuInventoryMenuItemRow) map[s
 		"sourceImage":        row.SourceImage,
 		"sourceImageFile":    row.SourceImageFile,
 		"visibility":         row.Visibility,
+		"approvalStatus":     resolveMenuItemApprovalStatus(row.ApprovalStatus),
+		"approvalReviewedBy": row.ApprovalReviewedBy,
+		"approvalReviewedAt": row.ApprovalReviewedAt,
+		"promotedFrom":       row.PromotedFrom,
+		"promotedTo":         row.PromotedTo,
+		"promotedFromItem":   serializeAdminLinkedMenuItemInventorySummary(row.PromotedFrom, row.PromotedFromName, row.PromotedFromVisibility, row.PromotedFromApprovalStatus, row.PromotedFromCreatedBy, row.PromotedFromCreatorEmail),
+		"promotedToItem":     serializeAdminLinkedMenuItemInventorySummary(row.PromotedTo, row.PromotedToName, row.PromotedToVisibility, row.PromotedToApprovalStatus, row.PromotedToCreatedBy, row.PromotedToCreatorEmail),
 		"isFromOcr":          row.IsFromOCR != 0,
 		"created":            row.Created,
 		"updated":            row.Updated,

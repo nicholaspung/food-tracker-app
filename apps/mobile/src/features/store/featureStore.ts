@@ -417,6 +417,7 @@ export interface MenuItemRecord {
   description?: string;
   createdBy?: string;
   visibility?: 'private' | 'friends' | 'public';
+  approvalStatus?: 'unreviewed' | 'approved' | 'rejected';
   isFromOCR?: boolean;
   userEatenCount?: number;
   friendEatenCount?: number;

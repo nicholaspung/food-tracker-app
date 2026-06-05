@@ -53,6 +53,11 @@ export interface MenuItemRecord {
   restaurantName?: string;
   name: string;
   visibility?: 'private' | 'friends' | 'public';
+  approvalStatus?: 'unreviewed' | 'approved' | 'rejected';
+  approvalReviewedBy?: string;
+  approvalReviewedAt?: string;
+  promotedFrom?: string;
+  promotedTo?: string;
   created: string;
   updated: string;
 }

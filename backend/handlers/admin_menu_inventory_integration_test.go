@@ -9,6 +9,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/lib"
 )
 
 type adminMenuInventoryResponse[T any] struct {
@@ -49,17 +50,33 @@ type adminRestaurantGroup struct {
 }
 
 type adminMenuInventoryMenuItem struct {
+	ApprovalReviewedAt string                  `json:"approvalReviewedAt"`
+	ApprovalReviewedBy string                  `json:"approvalReviewedBy"`
+	ApprovalStatus     string                  `json:"approvalStatus"`
 	CreatedBy          string                  `json:"createdBy"`
 	Creator            *adminMenuInventoryUser `json:"creator"`
 	ID                 string                  `json:"id"`
 	IsFromOCR          bool                    `json:"isFromOcr"`
 	Name               string                  `json:"name"`
+	PromotedFrom       string                  `json:"promotedFrom"`
+	PromotedFromItem   *adminLinkedMenuItem    `json:"promotedFromItem"`
+	PromotedTo         string                  `json:"promotedTo"`
+	PromotedToItem     *adminLinkedMenuItem    `json:"promotedToItem"`
 	Restaurant         string                  `json:"restaurant"`
 	RestaurantName     string                  `json:"restaurantName"`
 	RestaurantLocation string                  `json:"restaurantLocation"`
 	SourceImage        string                  `json:"sourceImage"`
 	SourceImageFile    string                  `json:"sourceImageFile"`
 	Visibility         string                  `json:"visibility"`
+}
+
+type adminLinkedMenuItem struct {
+	ApprovalStatus string `json:"approvalStatus"`
+	CreatedBy      string `json:"createdBy"`
+	CreatorEmail   string `json:"creatorEmail"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Visibility     string `json:"visibility"`
 }
 
 type adminMenuInventoryMenuImage struct {
@@ -90,6 +107,12 @@ type adminMenuImageInventoryDetailResponse struct {
 	MenuImage                     adminMenuInventoryMenuImage   `json:"menuImage"`
 	Restaurant                    *adminMenuInventoryRestaurant `json:"restaurant"`
 	UnattachedRestaurantMenuItems []adminMenuInventoryMenuItem  `json:"unattachedRestaurantMenuItems"`
+}
+
+type adminMenuItemPromotionResponse struct {
+	Contribution   adminMenuInventoryMenuItem `json:"contribution"`
+	MenuItem       adminMenuInventoryMenuItem `json:"menuItem"`
+	ReusedExisting bool                       `json:"reusedExisting"`
 }
 
 func loadAdminMenuInventoryResponse[T any](
@@ -132,6 +155,19 @@ func adminMenuInventoryItemIDs(rows []adminMenuInventoryMenuItem) map[string]boo
 		ids[row.ID] = true
 	}
 	return ids
+}
+
+func findAdminMenuInventoryMenuItem(
+	rows []adminMenuInventoryMenuItem,
+	recordID string,
+) (adminMenuInventoryMenuItem, bool) {
+	for _, row := range rows {
+		if row.ID == recordID {
+			return row, true
+		}
+	}
+
+	return adminMenuInventoryMenuItem{}, false
 }
 
 func loadAdminRestaurantInventoryDetailResponse(
@@ -1036,5 +1072,346 @@ func TestAdminMenuInventoryRestaurantDetailReturnsNotFound(t *testing.T) {
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAdminMenuItemApprovalTransitions(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Approval Cafe",
+		"location":   "San Francisco, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Approval Toast",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+
+	for _, step := range []struct {
+		body           string
+		expectedStatus string
+	}{
+		{body: `{"status":"approved"}`, expectedStatus: "approved"},
+		{body: `{"status":"rejected"}`, expectedStatus: "rejected"},
+		{body: `{"status":"unreviewed"}`, expectedStatus: "unreviewed"},
+	} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPatch,
+			"/api/admin/menu-items/"+menuItem.Id+"/approval",
+			adminToken,
+			step.body,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200 for %s, got %d: %s", step.expectedStatus, response.Code, response.Body.String())
+		}
+
+		payload := adminMenuInventoryMenuItem{}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("failed to decode approval payload: %v", err)
+		}
+		if payload.ApprovalStatus != step.expectedStatus {
+			t.Fatalf("expected status %q, got %#v", step.expectedStatus, payload)
+		}
+
+		reloaded, err := server.app.FindRecordById("menu_items", menuItem.Id)
+		if err != nil {
+			t.Fatalf("failed to reload menu item: %v", err)
+		}
+		if got := reloaded.GetString("approvalStatus"); got != step.expectedStatus {
+			t.Fatalf("expected stored status %q, got %q", step.expectedStatus, got)
+		}
+		if step.expectedStatus == "unreviewed" {
+			if got := reloaded.GetString("approvalReviewedBy"); got != "" {
+				t.Fatalf("expected review admin to be cleared, got %q", got)
+			}
+			continue
+		}
+		if got := reloaded.GetString("approvalReviewedBy"); got != admin.Id {
+			t.Fatalf("expected reviewedBy=%s, got %s", admin.Id, got)
+		}
+		if got := reloaded.GetString("approvalReviewedAt"); got == "" {
+			t.Fatalf("expected reviewedAt to be set")
+		}
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "menu_items",
+			"targetRecordId": menuItem.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load menu item approval audit logs: %v", err)
+	}
+	if len(auditLogs) != 3 {
+		t.Fatalf("expected 3 approval audit logs, got %d", len(auditLogs))
+	}
+	auditedStatuses := map[string]bool{}
+	for _, auditLog := range auditLogs {
+		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
+		if metadataMap["source"] != "admin_menu_item_approval" {
+			t.Fatalf("unexpected approval audit metadata: %#v", metadataMap)
+		}
+		if status, ok := metadataMap["approvalStatus"].(string); ok {
+			auditedStatuses[status] = true
+		}
+	}
+	for _, expectedStatus := range []string{"approved", "rejected", "unreviewed"} {
+		if !auditedStatuses[expectedStatus] {
+			t.Fatalf("expected audit status %q in %#v", expectedStatus, auditedStatuses)
+		}
+	}
+}
+
+func TestAdminMenuItemPromotionCreatesApprovedPublicItemAndPreservesVisitText(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	contributor, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Promotion Ramen",
+		"location":   "Oakland, CA",
+		"createdBy":  contributor.Id,
+		"visibility": "public",
+	})
+	contribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Spicy Miso Ramen",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+		"isFromOCR":      true,
+	})
+	visit := seedVisitRecord(t, server.app, restaurant.Id, contributor.Id, "friends")
+	visitItem := seedFoodItemRecord(t, server.app, visit.Id, contributor.Id, "User typed ramen text", 4)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-items/"+contribution.Id+"/promote",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminMenuItemPromotionResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode promotion response: %v", err)
+	}
+	if payload.ReusedExisting {
+		t.Fatalf("expected new approved item, got reused response %#v", payload)
+	}
+	if payload.MenuItem.ID == "" || payload.MenuItem.ID == contribution.Id {
+		t.Fatalf("expected separate promoted menu item, got %#v", payload.MenuItem)
+	}
+
+	promoted, err := server.app.FindRecordById("menu_items", payload.MenuItem.ID)
+	if err != nil {
+		t.Fatalf("failed to load promoted menu item: %v", err)
+	}
+	if promoted.GetString("createdBy") != admin.Id {
+		t.Fatalf("expected promoted item createdBy admin %s, got %s", admin.Id, promoted.GetString("createdBy"))
+	}
+	if promoted.GetString("visibility") != "public" {
+		t.Fatalf("expected promoted item to be public, got %q", promoted.GetString("visibility"))
+	}
+	if promoted.GetString("approvalStatus") != "approved" {
+		t.Fatalf("expected promoted item approved, got %q", promoted.GetString("approvalStatus"))
+	}
+	if promoted.GetString("promotedFrom") != contribution.Id {
+		t.Fatalf("expected promotedFrom=%s, got %s", contribution.Id, promoted.GetString("promotedFrom"))
+	}
+
+	reloadedContribution, err := server.app.FindRecordById("menu_items", contribution.Id)
+	if err != nil {
+		t.Fatalf("failed to reload contribution: %v", err)
+	}
+	if reloadedContribution.GetString("promotedTo") != promoted.Id {
+		t.Fatalf("expected contribution promotedTo=%s, got %s", promoted.Id, reloadedContribution.GetString("promotedTo"))
+	}
+	if reloadedContribution.GetString("visibility") != "friends" {
+		t.Fatalf("expected contribution visibility to be preserved, got %q", reloadedContribution.GetString("visibility"))
+	}
+
+	detailPayload := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
+	sourceRow, ok := findAdminMenuInventoryMenuItem(detailPayload.MenuItems, contribution.Id)
+	if !ok {
+		t.Fatalf("expected contribution row in restaurant inventory detail")
+	}
+	if sourceRow.PromotedToItem == nil {
+		t.Fatalf("expected contribution row to include promotedToItem summary")
+	}
+	if sourceRow.PromotedToItem.ID != promoted.Id ||
+		sourceRow.PromotedToItem.Name != "Spicy Miso Ramen" ||
+		sourceRow.PromotedToItem.Visibility != "public" ||
+		sourceRow.PromotedToItem.ApprovalStatus != "approved" ||
+		sourceRow.PromotedToItem.CreatedBy != admin.Id {
+		t.Fatalf("unexpected promotedToItem summary: %#v", sourceRow.PromotedToItem)
+	}
+
+	promotedRow, ok := findAdminMenuInventoryMenuItem(detailPayload.MenuItems, promoted.Id)
+	if !ok {
+		t.Fatalf("expected promoted row in restaurant inventory detail")
+	}
+	if promotedRow.PromotedFromItem == nil {
+		t.Fatalf("expected promoted row to include promotedFromItem summary")
+	}
+	if promotedRow.PromotedFromItem.ID != contribution.Id ||
+		promotedRow.PromotedFromItem.Name != "Spicy Miso Ramen" ||
+		promotedRow.PromotedFromItem.Visibility != "friends" ||
+		promotedRow.PromotedFromItem.CreatedBy != contributor.Id {
+		t.Fatalf("unexpected promotedFromItem summary: %#v", promotedRow.PromotedFromItem)
+	}
+
+	reloadedVisitItem, err := server.app.FindRecordById("food_items", visitItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit item: %v", err)
+	}
+	if got := reloadedVisitItem.GetString("name"); got != "User typed ramen text" {
+		t.Fatalf("expected historical visit item text to be preserved, got %q", got)
+	}
+
+	promotedAuditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeCreate,
+			"collection":     "menu_items",
+			"targetRecordId": promoted.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load promoted item audit logs: %v", err)
+	}
+	if len(promotedAuditLogs) != 1 {
+		t.Fatalf("expected promoted item create audit log, got %d", len(promotedAuditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, promotedAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_menu_item_promotion" || metadataMap["contributionId"] != contribution.Id {
+		t.Fatalf("unexpected promoted item audit metadata: %#v", metadataMap)
+	}
+
+	contributionAuditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "menu_items",
+			"targetRecordId": contribution.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load contribution audit logs: %v", err)
+	}
+	if len(contributionAuditLogs) != 1 {
+		t.Fatalf("expected contribution update audit log, got %d", len(contributionAuditLogs))
+	}
+	metadataMap = parseAuditMetadata(t, contributionAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_menu_item_promotion" || metadataMap["promotedTo"] != promoted.Id {
+		t.Fatalf("unexpected contribution audit metadata: %#v", metadataMap)
+	}
+}
+
+func TestAdminMenuItemPromotionReusesApprovedExactLocationItemByNormalizedName(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	contributor, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Reuse Pho",
+		"location":   "San Jose, CA",
+		"createdBy":  contributor.Id,
+		"visibility": "public",
+	})
+	existingApproved := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Pho Dac Biet",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	contribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "  pho dac biet  ",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-items/"+contribution.Id+"/promote",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminMenuItemPromotionResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode promotion response: %v", err)
+	}
+	if !payload.ReusedExisting {
+		t.Fatalf("expected promotion to reuse existing approved item, got %#v", payload)
+	}
+	if payload.MenuItem.ID != existingApproved.Id {
+		t.Fatalf("expected reused item %s, got %#v", existingApproved.Id, payload.MenuItem)
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"menu_items",
+		"restaurant = {:restaurantId} && approvalStatus = 'approved'",
+		map[string]any{"restaurantId": restaurant.Id},
+	); count != 1 {
+		t.Fatalf("expected one approved exact-location item after reuse, got %d", count)
+	}
+
+	reloadedContribution, err := server.app.FindRecordById("menu_items", contribution.Id)
+	if err != nil {
+		t.Fatalf("failed to reload contribution: %v", err)
+	}
+	if reloadedContribution.GetString("promotedTo") != existingApproved.Id {
+		t.Fatalf("expected contribution to link to existing approved item, got %s", reloadedContribution.GetString("promotedTo"))
+	}
+	if reloadedContribution.GetString("approvalStatus") != "unreviewed" {
+		t.Fatalf("expected contribution approval state to remain unreviewed, got %q", reloadedContribution.GetString("approvalStatus"))
 	}
 }

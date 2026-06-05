@@ -10,6 +10,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/lib"
 )
 
 type recordingNotificationPushSender struct {
@@ -1658,6 +1659,31 @@ func TestAdminMonthlyFriendsActivityTestEndpointTargetsUserAndCanForceSend(t *te
 	if len(sender.calls) != 2 {
 		t.Fatalf("expected forced test send to bypass monthly dedupe, got %#v", sender.calls)
 	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeCreate,
+			"collection":     "notification_delivery_logs",
+			"targetRecordId": viewer.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load monthly notification test audit logs: %v", err)
+	}
+	if len(auditLogs) != 2 {
+		t.Fatalf("expected 2 monthly notification test audit logs, got %d", len(auditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_monthly_friends_activity_notification_test" ||
+		metadataMap["status"] != "sent" ||
+		metadataMap["force"] != true {
+		t.Fatalf("unexpected monthly notification test audit metadata: %#v", metadataMap)
+	}
 }
 
 func TestAdminMonthlyFriendsActivityTestEndpointReturnsDiagnosticsWhenNoMatch(t *testing.T) {
@@ -1707,6 +1733,30 @@ func TestAdminMonthlyFriendsActivityTestEndpointReturnsDiagnosticsWhenNoMatch(t 
 	}
 	if len(sender.calls) != 0 {
 		t.Fatalf("expected no provider send for no-match diagnostic response, got %#v", sender.calls)
+	}
+
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeCreate,
+			"collection":     "notification_delivery_logs",
+			"targetRecordId": viewer.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load monthly notification diagnostic audit logs: %v", err)
+	}
+	if len(auditLogs) != 1 {
+		t.Fatalf("expected 1 monthly notification diagnostic audit log, got %d", len(auditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_monthly_friends_activity_notification_test" ||
+		metadataMap["status"] != "skipped_no_matching_activity" {
+		t.Fatalf("unexpected monthly notification diagnostic audit metadata: %#v", metadataMap)
 	}
 }
 

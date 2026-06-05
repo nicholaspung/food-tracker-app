@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom';
 
-import type { MenuImageInventoryRow, MenuInventoryUserSummary } from '@/features/menu-inventory/api';
+import type {
+  LinkedMenuItemInventorySummary,
+  MenuImageInventoryRow,
+  MenuInventoryUserSummary,
+  MenuItemInventoryRow,
+} from '@/features/menu-inventory/api';
 import { pb } from '@/lib/pocketbase';
 
 export function formatOptional(value?: string | null, fallback = 'Unknown') {
@@ -10,6 +15,11 @@ export function formatOptional(value?: string | null, fallback = 'Unknown') {
 
 export function renderInventoryVisibility(value?: string) {
   const normalized = value?.trim() || 'unknown';
+  return <span className={`status-pill ${normalized}`}>{normalized}</span>;
+}
+
+export function renderMenuItemApprovalStatus(value?: string) {
+  const normalized = value?.trim() || 'unreviewed';
   return <span className={`status-pill ${normalized}`}>{normalized}</span>;
 }
 
@@ -31,6 +41,62 @@ export function renderInventoryUser(user: MenuInventoryUserSummary | null, fallb
         {formatOptional(user.email, user.id)}
       </Link>
       {user.name?.trim() ? <span className="inventory-secondary-text">{user.name}</span> : null}
+    </div>
+  );
+}
+
+export interface LinkedMenuItemDisplaySummary {
+  label: string;
+  relation: string;
+  item: LinkedMenuItemInventorySummary;
+}
+
+export function getLinkedMenuItemDisplaySummary(
+  row: Pick<MenuItemInventoryRow, 'promotedFrom' | 'promotedFromItem' | 'promotedTo' | 'promotedToItem'>,
+): LinkedMenuItemDisplaySummary | null {
+  const promotedTo = row.promotedTo?.trim();
+  if (promotedTo) {
+    return {
+      label: 'Promoted catalog item',
+      relation: 'Promoted to',
+      item: row.promotedToItem ?? { id: promotedTo },
+    };
+  }
+
+  const promotedFrom = row.promotedFrom?.trim();
+  if (promotedFrom) {
+    return {
+      label: 'Source contribution',
+      relation: 'Promoted from',
+      item: row.promotedFromItem ?? { id: promotedFrom },
+    };
+  }
+
+  return null;
+}
+
+export function renderLinkedMenuItemSummary(summary: LinkedMenuItemDisplaySummary) {
+  return (
+    <div className="linked-menu-item-summary">
+      <div aria-hidden="true" className="linked-menu-item-marker" />
+      <div className="linked-menu-item-main">
+        <div className="inventory-primary-cell">
+          <strong>{summary.label}</strong>
+          {summary.item.name?.trim() ? <span>{summary.item.name}</span> : null}
+          <span className="inventory-secondary-text">
+            {summary.relation} {summary.item.id}
+          </span>
+        </div>
+        <div className="tag-row tag-row-start">
+          {summary.item.visibility?.trim() ? renderInventoryVisibility(summary.item.visibility) : null}
+          {summary.item.approvalStatus?.trim()
+            ? renderMenuItemApprovalStatus(summary.item.approvalStatus)
+            : null}
+          {summary.item.creatorEmail?.trim() ? (
+            <span className="tag">{summary.item.creatorEmail}</span>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

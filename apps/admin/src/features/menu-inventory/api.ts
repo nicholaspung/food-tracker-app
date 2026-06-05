@@ -52,11 +52,29 @@ export interface MenuItemInventoryRow {
   sourceImage?: string;
   sourceImageFile?: string;
   visibility?: 'private' | 'friends' | 'public' | '';
+  approvalStatus?: MenuItemApprovalStatus;
+  approvalReviewedBy?: string;
+  approvalReviewedAt?: string;
+  promotedFrom?: string;
+  promotedTo?: string;
+  promotedFromItem?: LinkedMenuItemInventorySummary | null;
+  promotedToItem?: LinkedMenuItemInventorySummary | null;
   isFromOcr: boolean;
   created: string;
   updated: string;
   createdBy?: string;
   creator: MenuInventoryUserSummary | null;
+}
+
+export type MenuItemApprovalStatus = 'unreviewed' | 'approved' | 'rejected';
+
+export interface LinkedMenuItemInventorySummary {
+  id: string;
+  name?: string;
+  visibility?: 'private' | 'friends' | 'public' | '';
+  approvalStatus?: MenuItemApprovalStatus;
+  createdBy?: string;
+  creatorEmail?: string;
 }
 
 export interface MenuImageInventoryRow {
@@ -103,6 +121,12 @@ export interface MenuImageInventoryDetailResponse {
   restaurant: RestaurantInventoryRow | null;
   attachedMenuItems: MenuItemInventoryRow[];
   unattachedRestaurantMenuItems: MenuItemInventoryRow[];
+}
+
+export interface MenuItemPromotionResponse {
+  menuItem: MenuItemInventoryRow;
+  contribution: MenuItemInventoryRow;
+  reusedExisting: boolean;
 }
 
 type MenuInventoryResponseForType<T extends MenuInventoryType> =
@@ -244,5 +268,39 @@ export async function updateAdminMenuItem(
     return await pb.collection('menu_items').update<MenuItemInventoryRow>(itemId, payload);
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not update menu item.'));
+  }
+}
+
+export async function updateAdminMenuItemApproval(input: {
+  itemId: string;
+  status: MenuItemApprovalStatus;
+}): Promise<MenuItemInventoryRow> {
+  try {
+    return await pb.send<MenuItemInventoryRow>(
+      `/api/admin/menu-items/${encodeURIComponent(input.itemId)}/approval`,
+      {
+        method: 'PATCH',
+        body: {
+          status: input.status,
+        },
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update menu item approval.'));
+  }
+}
+
+export async function promoteAdminMenuItemContribution(
+  itemId: string,
+): Promise<MenuItemPromotionResponse> {
+  try {
+    return await pb.send<MenuItemPromotionResponse>(
+      `/api/admin/menu-items/${encodeURIComponent(itemId)}/promote`,
+      {
+        method: 'POST',
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not promote menu item.'));
   }
 }

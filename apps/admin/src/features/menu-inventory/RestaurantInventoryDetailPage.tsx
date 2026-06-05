@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -6,8 +6,11 @@ import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
   createAdminRestaurantGroup,
   getAdminRestaurantInventoryDetail,
+  promoteAdminMenuItemContribution,
+  updateAdminMenuItemApproval,
   updateAdminRestaurantGroupMetadata,
   updateAdminRestaurantGroupMembership,
+  type MenuItemApprovalStatus,
   type MenuImageInventoryRow,
   type MenuItemInventoryRow,
   type RestaurantGroupInventorySummary,
@@ -17,6 +20,9 @@ import {
 import {
   buildMenuImageUrl,
   formatOptional,
+  getLinkedMenuItemDisplaySummary,
+  renderLinkedMenuItemSummary,
+  renderMenuItemApprovalStatus,
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
@@ -58,48 +64,180 @@ function RestaurantGroupSummary({
 }
 
 function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState('');
+
+  const invalidateMenuItemContext = async (restaurantId?: string) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      restaurantId
+        ? queryClient.invalidateQueries({
+            queryKey: ['admin', 'menu-inventory', 'restaurant-detail', restaurantId],
+          })
+        : Promise.resolve(),
+    ]);
+  };
+
+  const approvalMutation = useMutation({
+    mutationFn: (input: { itemId: string; restaurantId?: string; status: MenuItemApprovalStatus }) =>
+      updateAdminMenuItemApproval({ itemId: input.itemId, status: input.status }),
+    onMutate: () => setActionError(''),
+    onSuccess: async (_data, input) => {
+      await invalidateMenuItemContext(input.restaurantId);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update menu item approval.');
+    },
+  });
+
+  const promotionMutation = useMutation({
+    mutationFn: (input: { itemId: string; restaurantId?: string }) =>
+      promoteAdminMenuItemContribution(input.itemId),
+    onMutate: () => setActionError(''),
+    onSuccess: async (_data, input) => {
+      await invalidateMenuItemContext(input.restaurantId);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not promote menu item.');
+    },
+  });
+
+  const isActionPending = approvalMutation.isPending || promotionMutation.isPending;
+
   return (
-    <PaginatedCollection items={rows} itemsPerPage={25} resetKey={rows.map((row) => row.id).join(':')}>
-      {(pageRows) => (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Created by</th>
-                <th>Source</th>
-                <th>Visibility</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <div className="inventory-primary-cell">
-                      <strong>{formatOptional(row.name, 'Unnamed item')}</strong>
-                      <span className="inventory-secondary-text">{row.id}</span>
-                    </div>
-                  </td>
-                  <td>{renderInventoryUser(row.creator, row.createdBy)}</td>
-                  <td>
-                    <div className="tag-row tag-row-start">
-                      {row.isFromOcr ? <span className="tag">OCR</span> : <span className="tag">Manual</span>}
-                      {row.sourceImage?.trim() ? <span className="tag">Photo source</span> : null}
-                    </div>
-                    {row.sourceImageFile?.trim() ? (
-                      <span className="inventory-secondary-text">{row.sourceImageFile}</span>
-                    ) : null}
-                  </td>
-                  <td>{renderInventoryVisibility(row.visibility)}</td>
-                  <td>{formatDateTime(row.updated || row.created)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <>
+      {actionError ? (
+        <div className="state-panel error">
+          <strong>Menu item action failed</strong>
+          <span className="text-muted">{actionError}</span>
         </div>
-      )}
-    </PaginatedCollection>
+      ) : null}
+
+      <PaginatedCollection items={rows} itemsPerPage={25} resetKey={rows.map((row) => row.id).join(':')}>
+        {(pageRows) => (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Created by</th>
+                  <th>Source</th>
+                  <th>Visibility</th>
+                  <th>Approval</th>
+                  <th>Actions</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((row) => {
+                  const linkedSummary = getLinkedMenuItemDisplaySummary(row);
+
+                  return (
+                    <Fragment key={row.id}>
+                      <tr>
+                        <td>
+                          <div className="inventory-primary-cell">
+                            <strong>{formatOptional(row.name, 'Unnamed item')}</strong>
+                            <span className="inventory-secondary-text">{row.id}</span>
+                          </div>
+                        </td>
+                        <td>{renderInventoryUser(row.creator, row.createdBy)}</td>
+                        <td>
+                          <div className="tag-row tag-row-start">
+                            {row.isFromOcr ? <span className="tag">OCR</span> : <span className="tag">Manual</span>}
+                            {row.sourceImage?.trim() ? <span className="tag">Photo source</span> : null}
+                          </div>
+                          {row.sourceImageFile?.trim() ? (
+                            <span className="inventory-secondary-text">{row.sourceImageFile}</span>
+                          ) : null}
+                        </td>
+                        <td>{renderInventoryVisibility(row.visibility)}</td>
+                        <td>{renderMenuItemApprovalStatus(row.approvalStatus)}</td>
+                        <td>
+                          <div className="compact-action-row">
+                            {row.approvalStatus !== 'approved' ? (
+                              <button
+                                className="button ghost"
+                                disabled={isActionPending}
+                                onClick={() =>
+                                  approvalMutation.mutate({
+                                    itemId: row.id,
+                                    restaurantId: row.restaurant,
+                                    status: 'approved',
+                                  })
+                                }
+                                type="button"
+                              >
+                                Approve
+                              </button>
+                            ) : null}
+                            {row.approvalStatus !== 'rejected' ? (
+                              <button
+                                className="button warn"
+                                disabled={isActionPending}
+                                onClick={() =>
+                                  approvalMutation.mutate({
+                                    itemId: row.id,
+                                    restaurantId: row.restaurant,
+                                    status: 'rejected',
+                                  })
+                                }
+                                type="button"
+                              >
+                                Reject
+                              </button>
+                            ) : null}
+                            {row.approvalStatus !== 'unreviewed' ? (
+                              <button
+                                className="button reverse"
+                                disabled={isActionPending}
+                                onClick={() =>
+                                  approvalMutation.mutate({
+                                    itemId: row.id,
+                                    restaurantId: row.restaurant,
+                                    status: 'unreviewed',
+                                  })
+                                }
+                                type="button"
+                              >
+                                Restore
+                              </button>
+                            ) : null}
+                            {row.approvalStatus === 'approved' &&
+                            !row.promotedTo?.trim() &&
+                            !row.promotedFrom?.trim() ? (
+                              <button
+                                className="button primary"
+                                disabled={isActionPending}
+                                onClick={() =>
+                                  promotionMutation.mutate({
+                                    itemId: row.id,
+                                    restaurantId: row.restaurant,
+                                  })
+                                }
+                                type="button"
+                              >
+                                Promote
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>{formatDateTime(row.updated || row.created)}</td>
+                      </tr>
+                      {linkedSummary ? (
+                        <tr className="inventory-linked-row">
+                          <td colSpan={7}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </PaginatedCollection>
+    </>
   );
 }
 

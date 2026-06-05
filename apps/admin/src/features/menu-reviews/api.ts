@@ -1,5 +1,12 @@
 import { pb } from '@/lib/pocketbase';
-import { escapeFilterValue, toPocketBaseDateTime } from '@/lib/formatters';
+import { toPocketBaseDateTime } from '@/lib/formatters';
+import {
+  getAdminRestaurantInventoryDetail,
+  promoteAdminMenuItemContribution,
+  updateAdminMenuItemApproval,
+  type MenuItemInventoryRow,
+  type MenuItemApprovalStatus,
+} from '@/features/menu-inventory/api';
 import type { MenuItemRecord, MenuReviewRequest } from '@/lib/types';
 
 export type MenuReviewStatusFilter = 'pending' | 'reviewed' | 'dismissed' | 'all';
@@ -47,13 +54,9 @@ export async function getMenuReviewRequest(requestId: string) {
   });
 }
 
-export async function listRestaurantMenuItems(restaurantId: string) {
-  const response = await pb.collection('menu_items').getList<MenuItemRecord>(1, 100, {
-    filter: `restaurant = "${escapeFilterValue(restaurantId)}"`,
-    sort: 'name',
-  });
-
-  return response.items;
+export async function listRestaurantMenuItems(restaurantId: string): Promise<MenuItemInventoryRow[]> {
+  const detail = await getAdminRestaurantInventoryDetail(restaurantId);
+  return detail.menuItems;
 }
 
 export async function updateMenuReviewRequest(
@@ -74,4 +77,12 @@ export async function updateMenuItem(
   },
 ) {
   return pb.collection('menu_items').update<MenuItemRecord>(itemId, payload);
+}
+
+export async function updateMenuItemApproval(itemId: string, status: MenuItemApprovalStatus) {
+  return updateAdminMenuItemApproval({ itemId, status });
+}
+
+export async function promoteMenuItemContribution(itemId: string) {
+  return promoteAdminMenuItemContribution(itemId);
 }

@@ -1,9 +1,12 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Fragment, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   getAdminMenuInventory,
+  promoteAdminMenuItemContribution,
+  updateAdminMenuItemApproval,
+  type MenuItemApprovalStatus,
   type MenuImageInventoryRow,
   type MenuInventoryType,
   type MenuItemInventoryRow,
@@ -12,6 +15,9 @@ import {
 import {
   buildMenuImageUrl,
   formatOptional,
+  getLinkedMenuItemDisplaySummary,
+  renderLinkedMenuItemSummary,
+  renderMenuItemApprovalStatus,
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
@@ -151,53 +157,159 @@ function RestaurantInventoryTable({ rows }: { rows: RestaurantInventoryRow[] }) 
 }
 
 function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState('');
+
+  const invalidateMenuInventory = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] });
+  };
+
+  const approvalMutation = useMutation({
+    mutationFn: (input: { itemId: string; status: MenuItemApprovalStatus }) =>
+      updateAdminMenuItemApproval(input),
+    onMutate: () => setActionError(''),
+    onSuccess: invalidateMenuInventory,
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not update menu item approval.');
+    },
+  });
+
+  const promotionMutation = useMutation({
+    mutationFn: (itemId: string) => promoteAdminMenuItemContribution(itemId),
+    onMutate: () => setActionError(''),
+    onSuccess: invalidateMenuInventory,
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not promote menu item.');
+    },
+  });
+
+  const isActionPending = approvalMutation.isPending || promotionMutation.isPending;
+
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Restaurant</th>
-            <th>Created by</th>
-            <th>Source</th>
-            <th>Visibility</th>
-            <th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td>
-                <div className="inventory-primary-cell">
-                  <strong>{formatOptional(row.name, 'Unnamed item')}</strong>
-                  <span className="inventory-secondary-text">{row.id}</span>
-                </div>
-              </td>
-              <td>
-                <div className="inventory-primary-cell">
-                  <span>{formatOptional(row.restaurantName, 'Unknown restaurant')}</span>
-                  <span className="inventory-secondary-text">
-                    {formatOptional(row.restaurantLocation, row.restaurant || 'No restaurant id')}
-                  </span>
-                </div>
-              </td>
-              <td>{renderInventoryUser(row.creator, row.createdBy)}</td>
-              <td>
-                <div className="tag-row tag-row-start">
-                  {row.isFromOcr ? <span className="tag">OCR</span> : <span className="tag">Manual</span>}
-                  {row.sourceImage?.trim() ? <span className="tag">Photo source</span> : null}
-                </div>
-                {row.sourceImageFile?.trim() ? (
-                  <span className="inventory-secondary-text">{row.sourceImageFile}</span>
-                ) : null}
-              </td>
-              <td>{renderInventoryVisibility(row.visibility)}</td>
-              <td>{formatDateTime(row.updated || row.created)}</td>
+    <>
+      {actionError ? (
+        <div className="state-panel error">
+          <strong>Menu item action failed</strong>
+          <span className="text-muted">{actionError}</span>
+        </div>
+      ) : null}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Restaurant</th>
+              <th>Created by</th>
+              <th>Source</th>
+              <th>Visibility</th>
+              <th>Approval</th>
+              <th>Actions</th>
+              <th>Updated</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const linkedSummary = getLinkedMenuItemDisplaySummary(row);
+
+              return (
+                <Fragment key={row.id}>
+                  <tr>
+                    <td>
+                      <div className="inventory-primary-cell">
+                        <strong>{formatOptional(row.name, 'Unnamed item')}</strong>
+                        <span className="inventory-secondary-text">{row.id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="inventory-primary-cell">
+                        <span>{formatOptional(row.restaurantName, 'Unknown restaurant')}</span>
+                        <span className="inventory-secondary-text">
+                          {formatOptional(row.restaurantLocation, row.restaurant || 'No restaurant id')}
+                        </span>
+                      </div>
+                    </td>
+                    <td>{renderInventoryUser(row.creator, row.createdBy)}</td>
+                    <td>
+                      <div className="tag-row tag-row-start">
+                        {row.isFromOcr ? <span className="tag">OCR</span> : <span className="tag">Manual</span>}
+                        {row.sourceImage?.trim() ? <span className="tag">Photo source</span> : null}
+                      </div>
+                      {row.sourceImageFile?.trim() ? (
+                        <span className="inventory-secondary-text">{row.sourceImageFile}</span>
+                      ) : null}
+                    </td>
+                    <td>{renderInventoryVisibility(row.visibility)}</td>
+                    <td>
+                      <div className="inventory-primary-cell">
+                        {renderMenuItemApprovalStatus(row.approvalStatus)}
+                        {row.approvalReviewedAt?.trim() ? (
+                          <span className="inventory-secondary-text">
+                            {formatDateTime(row.approvalReviewedAt)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="compact-action-row">
+                        {row.approvalStatus !== 'approved' ? (
+                          <button
+                            className="button ghost"
+                            disabled={isActionPending}
+                            onClick={() => approvalMutation.mutate({ itemId: row.id, status: 'approved' })}
+                            type="button"
+                          >
+                            Approve
+                          </button>
+                        ) : null}
+                        {row.approvalStatus !== 'rejected' ? (
+                          <button
+                            className="button warn"
+                            disabled={isActionPending}
+                            onClick={() => approvalMutation.mutate({ itemId: row.id, status: 'rejected' })}
+                            type="button"
+                          >
+                            Reject
+                          </button>
+                        ) : null}
+                        {row.approvalStatus !== 'unreviewed' ? (
+                          <button
+                            className="button reverse"
+                            disabled={isActionPending}
+                            onClick={() => approvalMutation.mutate({ itemId: row.id, status: 'unreviewed' })}
+                            type="button"
+                          >
+                            Restore
+                          </button>
+                        ) : null}
+                        {row.approvalStatus === 'approved' &&
+                        !row.promotedTo?.trim() &&
+                        !row.promotedFrom?.trim() ? (
+                          <button
+                            className="button primary"
+                            disabled={isActionPending}
+                            onClick={() => promotionMutation.mutate(row.id)}
+                            type="button"
+                          >
+                            Promote
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{formatDateTime(row.updated || row.created)}</td>
+                  </tr>
+                  {linkedSummary ? (
+                    <tr className="inventory-linked-row">
+                      <td colSpan={8}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

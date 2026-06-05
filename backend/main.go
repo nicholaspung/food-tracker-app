@@ -69,6 +69,7 @@ func main() {
 		handlers.RegisterContentReportHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
 		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
 		handlers.RegisterModerationHandlers(se, app)
 		handlers.RegisterFeedbackHandlers(se, app)
 		handlers.RegisterFriendHandlers(se, app)

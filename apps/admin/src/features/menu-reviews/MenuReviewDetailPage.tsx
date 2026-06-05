@@ -6,11 +6,19 @@ import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
   getMenuReviewRequest,
   listRestaurantMenuItems,
+  promoteMenuItemContribution,
+  updateMenuItemApproval,
   updateMenuItem,
   updateMenuReviewRequest,
 } from '@/features/menu-reviews/api';
+import {
+  getLinkedMenuItemDisplaySummary,
+  renderLinkedMenuItemSummary,
+  renderMenuItemApprovalStatus,
+} from '@/features/menu-inventory/display';
 import { getCreatedUpdatedDisplay } from '@/lib/formatters';
 import type { MenuItemRecord } from '@/lib/types';
+import type { MenuItemInventoryRow } from '@/features/menu-inventory/api';
 
 const visibilityOptions: Array<MenuItemRecord['visibility']> = ['private', 'friends', 'public'];
 
@@ -90,6 +98,41 @@ export function MenuReviewDetailPage() {
     },
   });
 
+  const menuItemApprovalMutation = useMutation({
+    mutationFn: (input: { itemId: string; status: NonNullable<MenuItemRecord['approvalStatus']> }) =>
+      updateMenuItemApproval(input.itemId, input.status),
+    onMutate: () => setMenuItemError(null),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['admin', 'menu-review-items', requestQuery.data?.restaurant],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      ]);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not update menu item approval.';
+      setMenuItemError(message);
+    },
+  });
+
+  const menuItemPromotionMutation = useMutation({
+    mutationFn: (itemId: string) => promoteMenuItemContribution(itemId),
+    onMutate: () => setMenuItemError(null),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['admin', 'menu-review-items', requestQuery.data?.restaurant],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      ]);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not promote this menu item.';
+      setMenuItemError(message);
+    },
+  });
+
   const activityDisplay = getCreatedUpdatedDisplay(request?.created, request?.updated);
   const requestActions =
     request?.status === 'reviewed'
@@ -114,14 +157,14 @@ export function MenuReviewDetailPage() {
     setMenuItemError(null);
   }, [canEditMenuItems]);
 
-  const handleStartEditingMenuItem = (item: MenuItemRecord) => {
+  const handleStartEditingMenuItem = (item: MenuItemInventoryRow) => {
     if (!canEditMenuItems) {
       return;
     }
 
     setEditingItemId(item.id);
     setDraftName(item.name);
-    setDraftVisibility(item.visibility ?? 'friends');
+    setDraftVisibility((item.visibility || 'friends') as MenuItemRecord['visibility']);
     setMenuItemError(null);
   };
 
@@ -129,6 +172,9 @@ export function MenuReviewDetailPage() {
     setEditingItemId(null);
     setMenuItemError(null);
   };
+
+  const isMenuItemActionPending =
+    menuItemMutation.isPending || menuItemApprovalMutation.isPending || menuItemPromotionMutation.isPending;
 
   return (
     <>
@@ -260,23 +306,82 @@ export function MenuReviewDetailPage() {
             >
               {(pageItems) => (
                 <div className="inline-list">
-                  {pageItems.map((item) => (
-                    <div className="list-item" key={item.id}>
-                      <div className="summary-row">
-                        <strong>{item.name}</strong>
-                        <div className="summary-actions">
-                          <span className="tag">{item.visibility ?? 'friends'}</span>
-                          {canEditMenuItems && editingItemId !== item.id ? (
-                            <button
-                              className="button ghost"
-                              onClick={() => handleStartEditingMenuItem(item)}
-                              type="button"
-                            >
-                              Edit
-                            </button>
-                          ) : null}
+                  {pageItems.map((item) => {
+                    const linkedSummary = getLinkedMenuItemDisplaySummary(item);
+
+                    return (
+                      <div className="list-item" key={item.id}>
+                        <div className="summary-row">
+                          <strong>{item.name}</strong>
+                          <div className="summary-actions">
+                            <span className="tag">{item.visibility || 'friends'}</span>
+                            {renderMenuItemApprovalStatus(item.approvalStatus ?? 'unreviewed')}
+                            {canEditMenuItems && editingItemId !== item.id ? (
+                              <button
+                                className="button ghost"
+                                onClick={() => handleStartEditingMenuItem(item)}
+                                type="button"
+                              >
+                                Edit
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
+
+                        {linkedSummary ? renderLinkedMenuItemSummary(linkedSummary) : null}
+
+                        {canEditMenuItems && editingItemId !== item.id ? (
+                          <div className="compact-action-row">
+                            {(item.approvalStatus ?? 'unreviewed') !== 'approved' ? (
+                              <button
+                                className="button ghost"
+                                disabled={isMenuItemActionPending}
+                                onClick={() =>
+                                  menuItemApprovalMutation.mutate({ itemId: item.id, status: 'approved' })
+                                }
+                                type="button"
+                              >
+                                Approve
+                              </button>
+                            ) : null}
+                            {(item.approvalStatus ?? 'unreviewed') !== 'rejected' ? (
+                              <button
+                                className="button warn"
+                                disabled={isMenuItemActionPending}
+                                onClick={() =>
+                                  menuItemApprovalMutation.mutate({ itemId: item.id, status: 'rejected' })
+                                }
+                                type="button"
+                              >
+                                Reject
+                              </button>
+                            ) : null}
+                            {(item.approvalStatus ?? 'unreviewed') !== 'unreviewed' ? (
+                              <button
+                                className="button reverse"
+                                disabled={isMenuItemActionPending}
+                                onClick={() =>
+                                  menuItemApprovalMutation.mutate({ itemId: item.id, status: 'unreviewed' })
+                                }
+                                type="button"
+                              >
+                                Restore
+                              </button>
+                            ) : null}
+                            {(item.approvalStatus ?? 'unreviewed') === 'approved' &&
+                            !item.promotedTo?.trim() &&
+                            !item.promotedFrom?.trim() ? (
+                              <button
+                                className="button primary"
+                                disabled={isMenuItemActionPending}
+                                onClick={() => menuItemPromotionMutation.mutate(item.id)}
+                                type="button"
+                              >
+                                Promote
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                       {canEditMenuItems && editingItemId === item.id ? (
                         <div className="menu-item-editor">
@@ -315,7 +420,7 @@ export function MenuReviewDetailPage() {
                           <div className="button-row">
                             <button
                               className="button primary"
-                              disabled={menuItemMutation.isPending || draftName.trim().length === 0}
+                              disabled={isMenuItemActionPending || draftName.trim().length === 0}
                               onClick={() => menuItemMutation.mutate()}
                               type="button"
                             >
@@ -323,7 +428,7 @@ export function MenuReviewDetailPage() {
                             </button>
                             <button
                               className="button ghost"
-                              disabled={menuItemMutation.isPending}
+                              disabled={isMenuItemActionPending}
                               onClick={handleCancelEditingMenuItem}
                               type="button"
                             >
@@ -332,8 +437,9 @@ export function MenuReviewDetailPage() {
                           </div>
                         </div>
                       ) : null}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </PaginatedCollection>

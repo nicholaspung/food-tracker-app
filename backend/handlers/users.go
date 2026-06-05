@@ -620,10 +620,24 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewNotFoundError("user not found with that email address", nil)
 		}
 
+		beforeSnapshot := lib.RecordAuditSnapshot(user)
 		user.Set("isSubscriber", true)
 		if err := app.Save(user); err != nil {
 			log.Printf("Failed to update user %s to subscriber: %v", user.Id, err)
 			return apis.NewApiError(500, "failed to elevate user to subscriber", err)
+		}
+
+		if err := createAdminRecordAuditLog(
+			app,
+			e,
+			user,
+			core.ModelEventTypeUpdate,
+			beforeSnapshot,
+			lib.RecordAuditSnapshot(user),
+			map[string]any{"source": "legacy_admin_subscriber_elevation"},
+			fmt.Sprintf("Elevated %s to subscriber", user.Email()),
+		); err != nil {
+			log.Printf("Legacy subscriber elevation audit log failed for user %s: %v", user.Id, err)
 		}
 
 		log.Printf("Admin %s elevated user %s (%s) to subscriber", e.Auth.Id, user.Id, data.Email)

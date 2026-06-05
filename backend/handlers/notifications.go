@@ -226,6 +226,24 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			if diagnosticsErr != nil {
 				return apis.NewApiError(500, "failed to inspect monthly friends activity diagnostics", diagnosticsErr)
 			}
+			if auditErr := createAdminActionAuditLog(
+				app,
+				e,
+				core.ModelEventTypeCreate,
+				"notification_delivery_logs",
+				userID,
+				userID,
+				map[string]any{
+					"force":  requestBody.Force,
+					"month":  monthStart.Format("2006-01"),
+					"source": "admin_monthly_friends_activity_notification_test",
+					"status": "skipped_no_matching_activity",
+					"userId": userID,
+				},
+				"Tested monthly friends activity notification for "+userID,
+			); auditErr != nil {
+				log.Printf("Admin monthly friends activity notification test audit failed for user %s: %v", userID, auditErr)
+			}
 			return e.JSON(200, map[string]any{
 				"diagnostics": diagnostics,
 				"month":       monthStart.Format("2006-01"),
@@ -242,6 +260,27 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 		}
 		if status == "" {
 			status = "skipped_duplicate"
+		}
+
+		if auditErr := createAdminActionAuditLog(
+			app,
+			e,
+			core.ModelEventTypeCreate,
+			"notification_delivery_logs",
+			candidate.UserID,
+			candidate.UserID,
+			map[string]any{
+				"force":       requestBody.Force,
+				"friendCount": candidate.FriendCount,
+				"month":       monthStart.Format("2006-01"),
+				"source":      "admin_monthly_friends_activity_notification_test",
+				"status":      status,
+				"userId":      candidate.UserID,
+				"visitCount":  candidate.VisitCount,
+			},
+			"Tested monthly friends activity notification for "+candidate.UserID,
+		); auditErr != nil {
+			log.Printf("Admin monthly friends activity notification test audit failed for user %s: %v", candidate.UserID, auditErr)
 		}
 
 		return e.JSON(200, map[string]any{

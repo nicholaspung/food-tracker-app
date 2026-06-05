@@ -136,6 +136,7 @@ export function useMenuItemCatalogWrites() {
         createdBy,
         visibility,
         isFromOCR,
+        approvalStatus: 'unreviewed',
       });
 
       applyMenuItemsToCache(queryClient, restaurantId, [createdItem]);

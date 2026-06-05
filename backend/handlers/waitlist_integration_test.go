@@ -149,6 +149,28 @@ func TestAdminWaitlistApproveAndReject(t *testing.T) {
 	if got := reloaded.GetString("approvedBy"); got != admin.Id {
 		t.Fatalf("expected approvedBy=%s, got %s", admin.Id, got)
 	}
+	auditLogs, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "waitlist_entries",
+			"targetRecordId": entry.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load approve audit logs: %v", err)
+	}
+	if len(auditLogs) != 1 {
+		t.Fatalf("expected 1 approve audit log, got %d", len(auditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_waitlist_decision" || metadataMap["decision"] != "approved" {
+		t.Fatalf("unexpected approve audit metadata: %#v", metadataMap)
+	}
 
 	response = performJSONRequest(
 		t,
@@ -167,5 +189,27 @@ func TestAdminWaitlistApproveAndReject(t *testing.T) {
 	}
 	if got := reloaded.GetString("status"); got != "rejected" {
 		t.Fatalf("expected rejected status, got %q", got)
+	}
+	auditLogs, err = server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		10,
+		0,
+		map[string]any{
+			"action":         core.ModelEventTypeUpdate,
+			"collection":     "waitlist_entries",
+			"targetRecordId": entry.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load reject audit logs: %v", err)
+	}
+	if len(auditLogs) != 2 {
+		t.Fatalf("expected approve and reject audit logs, got %d", len(auditLogs))
+	}
+	metadataMap = parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_waitlist_decision" || metadataMap["decision"] != "rejected" {
+		t.Fatalf("unexpected reject audit metadata: %#v", metadataMap)
 	}
 }

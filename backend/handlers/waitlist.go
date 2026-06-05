@@ -134,7 +134,25 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 			return err
 		}
 
-		record, err := updateWaitlistDecision(app, e.Request.PathValue("entryId"), WaitlistStatusApproved, e.Auth.Id)
+		var record *core.Record
+		err := app.RunInTransaction(func(txApp core.App) error {
+			updated, beforeSnapshot, updateErr := updateWaitlistDecision(txApp, e.Request.PathValue("entryId"), WaitlistStatusApproved, e.Auth.Id)
+			if updateErr != nil {
+				return updateErr
+			}
+			record = updated
+
+			return createAdminRecordAuditLog(
+				txApp,
+				e,
+				record,
+				core.ModelEventTypeUpdate,
+				beforeSnapshot,
+				lib.RecordAuditSnapshot(record),
+				map[string]any{"source": "admin_waitlist_decision", "decision": WaitlistStatusApproved},
+				fmt.Sprintf("Approved waitlist entry for %s", record.GetString("email")),
+			)
+		})
 		if err != nil {
 			return err
 		}
@@ -151,7 +169,25 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 			return err
 		}
 
-		record, err := updateWaitlistDecision(app, e.Request.PathValue("entryId"), WaitlistStatusRejected, e.Auth.Id)
+		var record *core.Record
+		err := app.RunInTransaction(func(txApp core.App) error {
+			updated, beforeSnapshot, updateErr := updateWaitlistDecision(txApp, e.Request.PathValue("entryId"), WaitlistStatusRejected, e.Auth.Id)
+			if updateErr != nil {
+				return updateErr
+			}
+			record = updated
+
+			return createAdminRecordAuditLog(
+				txApp,
+				e,
+				record,
+				core.ModelEventTypeUpdate,
+				beforeSnapshot,
+				lib.RecordAuditSnapshot(record),
+				map[string]any{"source": "admin_waitlist_decision", "decision": WaitlistStatusRejected},
+				fmt.Sprintf("Rejected waitlist entry for %s", record.GetString("email")),
+			)
+		})
 		if err != nil {
 			return err
 		}
@@ -391,17 +427,18 @@ func listWaitlistEntries(app core.App, query url.Values) ([]*core.Record, int, i
 	return ordered, page, pageSize, countRow.Total, totalPages, nil
 }
 
-func updateWaitlistDecision(app core.App, entryID string, status string, adminID string) (*core.Record, error) {
+func updateWaitlistDecision(app core.App, entryID string, status string, adminID string) (*core.Record, map[string]any, error) {
 	entryID = strings.TrimSpace(entryID)
 	if entryID == "" {
-		return nil, apis.NewBadRequestError("entryId is required", nil)
+		return nil, nil, apis.NewBadRequestError("entryId is required", nil)
 	}
 
 	record, err := app.FindRecordById("waitlist_entries", entryID)
 	if err != nil {
-		return nil, apis.NewNotFoundError("waitlist entry not found", err)
+		return nil, nil, apis.NewNotFoundError("waitlist entry not found", err)
 	}
 
+	beforeSnapshot := lib.RecordAuditSnapshot(record)
 	now := time.Now().UTC()
 	record.Set("status", status)
 	record.Set("lastLoopsSyncError", "")
@@ -417,10 +454,10 @@ func updateWaitlistDecision(app core.App, entryID string, status string, adminID
 	}
 
 	if err := app.Save(record); err != nil {
-		return nil, apis.NewApiError(500, "failed to update waitlist entry", err)
+		return nil, nil, apis.NewApiError(500, "failed to update waitlist entry", err)
 	}
 
-	return record, nil
+	return record, beforeSnapshot, nil
 }
 
 func syncWaitlistJoinedToLoops(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {

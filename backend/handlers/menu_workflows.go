@@ -284,6 +284,7 @@ func createMenuItemsFromScan(
 		record.Set("createdBy", viewerUserID)
 		record.Set("visibility", "friends")
 		record.Set("isFromOCR", true)
+		record.Set("approvalStatus", menuItemApprovalStatusUnreviewed)
 		if sourceImageID != "" {
 			record.Set("sourceImage", sourceImageID)
 		}
