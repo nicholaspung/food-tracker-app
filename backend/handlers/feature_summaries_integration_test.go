@@ -76,6 +76,44 @@ func setNoteUsedAt(
 	setCollectionRecordFieldValue(t, app, "notes", noteID, "usedAt", usedAt)
 }
 
+type groupMenuSuggestionsPayload struct {
+	RestaurantID      string                       `json:"restaurantId"`
+	RestaurantGroupID string                       `json:"restaurantGroupId"`
+	Suggestions       []groupMenuSuggestionPayload `json:"suggestions"`
+}
+
+type groupMenuSuggestionPayload struct {
+	NormalizedItemName    string                             `json:"normalizedItemName"`
+	DisplayName           string                             `json:"displayName"`
+	SourceRestaurantCount int                                `json:"sourceRestaurantCount"`
+	SourceItemCount       int                                `json:"sourceItemCount"`
+	LatestSourceUpdatedAt string                             `json:"latestSourceUpdatedAt"`
+	OwnOrderCount         int                                `json:"ownOrderCount"`
+	LatestOwnOrderedAt    string                             `json:"latestOwnOrderedAt"`
+	Sources               []groupMenuSuggestionSourcePayload `json:"sources"`
+}
+
+type groupMenuSuggestionSourcePayload struct {
+	RestaurantID       string   `json:"restaurantId"`
+	RestaurantName     string   `json:"restaurantName"`
+	RestaurantLocation string   `json:"restaurantLocation"`
+	MenuItemIDs        []string `json:"menuItemIds"`
+	MenuItemCount      int      `json:"menuItemCount"`
+	LatestUpdatedAt    string   `json:"latestUpdatedAt"`
+}
+
+func findGroupSuggestionPayload(
+	suggestions []groupMenuSuggestionPayload,
+	normalizedItemName string,
+) *groupMenuSuggestionPayload {
+	for index := range suggestions {
+		if suggestions[index].NormalizedItemName == normalizedItemName {
+			return &suggestions[index]
+		}
+	}
+	return nil
+}
+
 func TestNotesSummaryEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
@@ -2378,6 +2416,385 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 	if itemsByID[friendsItem.Id].FriendEatenCount != 0 {
 		t.Fatalf("expected gyoza to have no friend eaten count, got %#v", itemsByID[friendsItem.Id])
+	}
+}
+
+func TestGroupMenuSuggestionsEndpointRequiresAccessibleRestaurant(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	owner, _ := createAuthUser(t, server.app, false, false)
+	viewer, token := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Private Group",
+	})
+	privateRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Private Spot",
+		"location":        "Los Angeles, CA",
+		"visibility":      "private",
+		"createdBy":       owner.Id,
+		"restaurantGroup": group.Id,
+	})
+
+	unauthenticatedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", privateRestaurant.Id),
+		"",
+		"",
+	)
+	if unauthenticatedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated request to be rejected, got %d: %s", unauthenticatedResponse.Code, unauthenticatedResponse.Body.String())
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", privateRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected inaccessible restaurant to return 404 for viewer %s, got %d: %s", viewer.Id, response.Code, response.Body.String())
+	}
+}
+
+func TestGroupMenuSuggestionsEndpointOmitsUnqualifiedSources(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Noodle Group",
+	})
+	noGroupRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Ungrouped Noodles",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	lonelyGroup := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Lonely Group",
+	})
+	lonelyRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Solo Noodles",
+		"location":        "Burbank, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": lonelyGroup.Id,
+	})
+	targetRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Grouped Noodles",
+		"location":        "Los Angeles, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	siblingRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Grouped Noodles",
+		"location":        "Pasadena, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+
+	for _, item := range []map[string]any{
+		{
+			"name":           "Private Ramen",
+			"restaurant":     siblingRestaurant.Id,
+			"visibility":     "private",
+			"approvalStatus": "approved",
+			"groupSuitable":  true,
+		},
+		{
+			"name":           "Unreviewed Ramen",
+			"restaurant":     siblingRestaurant.Id,
+			"visibility":     "public",
+			"approvalStatus": "unreviewed",
+			"groupSuitable":  true,
+		},
+		{
+			"name":           "Not Group Suitable",
+			"restaurant":     siblingRestaurant.Id,
+			"visibility":     "public",
+			"approvalStatus": "approved",
+			"groupSuitable":  false,
+		},
+		{
+			"name":           "Exact Location",
+			"restaurant":     targetRestaurant.Id,
+			"visibility":     "public",
+			"approvalStatus": "approved",
+			"groupSuitable":  true,
+		},
+	} {
+		createCollectionRecord(t, server.app, "menu_items", item)
+	}
+
+	noGroupResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", noGroupRestaurant.Id),
+		token,
+		"",
+	)
+	if noGroupResponse.Code != http.StatusOK {
+		t.Fatalf("expected no-group request to succeed with empty suggestions, got %d: %s", noGroupResponse.Code, noGroupResponse.Body.String())
+	}
+	noGroupPayload := groupMenuSuggestionsPayload{}
+	if err := json.Unmarshal(noGroupResponse.Body.Bytes(), &noGroupPayload); err != nil {
+		t.Fatalf("failed to parse no-group suggestions response: %v", err)
+	}
+	if noGroupPayload.RestaurantGroupID != "" || len(noGroupPayload.Suggestions) != 0 {
+		t.Fatalf("expected no group and no suggestions, got %#v", noGroupPayload)
+	}
+
+	noSiblingResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", lonelyRestaurant.Id),
+		token,
+		"",
+	)
+	if noSiblingResponse.Code != http.StatusOK {
+		t.Fatalf("expected no-sibling request to succeed with empty suggestions, got %d: %s", noSiblingResponse.Code, noSiblingResponse.Body.String())
+	}
+	noSiblingPayload := groupMenuSuggestionsPayload{}
+	if err := json.Unmarshal(noSiblingResponse.Body.Bytes(), &noSiblingPayload); err != nil {
+		t.Fatalf("failed to parse no-sibling suggestions response: %v", err)
+	}
+	if noSiblingPayload.RestaurantGroupID != lonelyGroup.Id || len(noSiblingPayload.Suggestions) != 0 {
+		t.Fatalf("expected group with no siblings to return no suggestions, got %#v", noSiblingPayload)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", targetRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := groupMenuSuggestionsPayload{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse group suggestions response: %v; body=%s", err, response.Body.String())
+	}
+	if payload.RestaurantGroupID != group.Id {
+		t.Fatalf("expected restaurant group id %s, got %#v", group.Id, payload)
+	}
+	if len(payload.Suggestions) != 0 {
+		t.Fatalf("expected no qualified sibling suggestions, got %#v", payload.Suggestions)
+	}
+}
+
+func TestGroupMenuSuggestionsEndpointDedupeSourcesAndOwnHistoryContext(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Ramen Group",
+	})
+	targetRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Ramen House",
+		"location":        "Los Angeles, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	siblingA := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Ramen House",
+		"location":        "Pasadena, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	siblingB := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Ramen House",
+		"location":        "Glendale, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	otherGroup := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Other Group",
+	})
+	otherGroupRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Ramen House",
+		"location":        "Long Beach, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": otherGroup.Id,
+	})
+
+	itemA := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Tonkotsu Ramen",
+		"restaurant":     siblingA.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	itemB := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "  tonkotsu ramen  ",
+		"restaurant":     siblingB.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Shoyu Ramen",
+		"restaurant":     siblingB.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Other Group Ramen",
+		"restaurant":     otherGroupRestaurant.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": targetRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    visit.Id,
+		"user":     user.Id,
+		"name":     "tonkotsu ramen",
+		"rating":   5,
+		"itemType": "visit-item",
+	})
+	otherLocationVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": siblingA.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    otherLocationVisit.Id,
+		"user":     user.Id,
+		"name":     "Shoyu Ramen",
+		"rating":   1,
+		"itemType": "visit-item",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", targetRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := groupMenuSuggestionsPayload{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse group suggestions response: %v; body=%s", err, response.Body.String())
+	}
+	if len(payload.Suggestions) != 2 {
+		t.Fatalf("expected two group suggestions, got %#v", payload.Suggestions)
+	}
+
+	tonkotsu := findGroupSuggestionPayload(payload.Suggestions, "tonkotsu ramen")
+	if tonkotsu == nil {
+		t.Fatalf("expected deduped tonkotsu suggestion, got %#v", payload.Suggestions)
+	}
+	if tonkotsu.SourceRestaurantCount != 2 || tonkotsu.SourceItemCount != 2 {
+		t.Fatalf("expected two source restaurants/items for tonkotsu, got %#v", tonkotsu)
+	}
+	if tonkotsu.OwnOrderCount != 1 || tonkotsu.LatestOwnOrderedAt == "" {
+		t.Fatalf("expected exact-location own ordered context for tonkotsu, got %#v", tonkotsu)
+	}
+	if len(tonkotsu.Sources) != 2 {
+		t.Fatalf("expected source evidence for both sibling restaurants, got %#v", tonkotsu.Sources)
+	}
+	sourceItemIDs := map[string]bool{}
+	for _, source := range tonkotsu.Sources {
+		for _, itemID := range source.MenuItemIDs {
+			sourceItemIDs[itemID] = true
+		}
+	}
+	if !sourceItemIDs[itemA.Id] || !sourceItemIDs[itemB.Id] {
+		t.Fatalf("expected source evidence to preserve source menu item ids, got %#v", tonkotsu.Sources)
+	}
+
+	shoyu := findGroupSuggestionPayload(payload.Suggestions, "shoyu ramen")
+	if shoyu == nil {
+		t.Fatalf("expected shoyu suggestion, got %#v", payload.Suggestions)
+	}
+	if shoyu.OwnOrderCount != 0 {
+		t.Fatalf("expected all-locations history not to contribute own ordered context for shoyu, got %#v", shoyu)
+	}
+}
+
+func TestGroupMenuSuggestionsEndpointSuppressesExactLocationMenuNames(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name": "Burger Group",
+	})
+	targetRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Burger House",
+		"location":        "Los Angeles, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	siblingRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Burger House",
+		"location":        "Pasadena, CA",
+		"visibility":      "public",
+		"createdBy":       user.Id,
+		"restaurantGroup": group.Id,
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Classic Burger",
+		"restaurant":     targetRestaurant.Id,
+		"visibility":     "private",
+		"approvalStatus": "unreviewed",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           " classic burger ",
+		"restaurant":     siblingRestaurant.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Onion Rings",
+		"restaurant":     siblingRestaurant.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurants/%s/group-menu-suggestions", targetRestaurant.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := groupMenuSuggestionsPayload{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse group suggestions response: %v; body=%s", err, response.Body.String())
+	}
+	if findGroupSuggestionPayload(payload.Suggestions, "classic burger") != nil {
+		t.Fatalf("expected exact-location menu item to suppress matching group suggestion, got %#v", payload.Suggestions)
+	}
+	if findGroupSuggestionPayload(payload.Suggestions, "onion rings") == nil {
+		t.Fatalf("expected non-overlapping sibling item to remain suggested, got %#v", payload.Suggestions)
 	}
 }
 

@@ -741,6 +741,25 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, items)
 	}).Bind(apis.RequireAuth())
 
+	se.Router.GET("/api/restaurants/{restaurantId}/group-menu-suggestions", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if restaurantID == "" {
+			return apis.NewBadRequestError("restaurantId is required", nil)
+		}
+
+		suggestions, err := getGroupMenuSuggestionsForRestaurant(app, e.Auth, restaurantID)
+		if err != nil {
+			log.Printf("Failed to load group menu suggestions for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
+			return err
+		}
+
+		return e.JSON(200, suggestions)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.GET("/api/restaurants/{restaurantId}/ordered-items", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)

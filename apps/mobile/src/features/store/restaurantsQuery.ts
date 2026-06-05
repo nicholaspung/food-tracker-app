@@ -4,6 +4,9 @@ export const restaurantsQueryKeys = {
   allLocationsHistoryRoot: ['feature', 'restaurants', 'allLocationsHistory'] as const,
   allLocationsHistory: (restaurantId: string) =>
     ['feature', 'restaurants', 'allLocationsHistory', restaurantId.trim()] as const,
+  groupMenuSuggestionsRoot: ['feature', 'restaurants', 'groupMenuSuggestions'] as const,
+  groupMenuSuggestions: (restaurantId: string) =>
+    ['feature', 'restaurants', 'groupMenuSuggestions', restaurantId.trim()] as const,
   suggestionsRoot: ['feature', 'restaurants', 'suggestions'] as const,
   suggestions: (limit: number, search = '') =>
     [

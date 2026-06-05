@@ -426,6 +426,32 @@ export interface MenuItemRecord {
   updated?: string;
 }
 
+export interface GroupMenuSuggestionSourceRecord {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantLocation?: string;
+  menuItemIds: string[];
+  menuItemCount: number;
+  latestUpdatedAt?: string;
+}
+
+export interface GroupMenuSuggestionRecord {
+  normalizedItemName: string;
+  displayName: string;
+  sourceRestaurantCount: number;
+  sourceItemCount: number;
+  latestSourceUpdatedAt?: string;
+  ownOrderCount?: number;
+  latestOwnOrderedAt?: string;
+  sources: GroupMenuSuggestionSourceRecord[];
+}
+
+export interface GroupMenuSuggestionsRecord {
+  restaurantId: string;
+  restaurantGroupId?: string;
+  suggestions: GroupMenuSuggestionRecord[];
+}
+
 export interface AcceptedFriendshipRecord {
   user: string;
   friend: string;

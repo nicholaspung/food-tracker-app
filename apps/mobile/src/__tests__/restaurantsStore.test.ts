@@ -1,4 +1,7 @@
-import { getAllLocationsHistory } from '../features/store/restaurantsStore';
+import {
+  getAllLocationsHistory,
+  getGroupMenuSuggestionsForRestaurant,
+} from '../features/store/restaurantsStore';
 import { sendApiRequest } from '../features/store/pocketbaseGateway';
 import { pb } from '../lib/pocketbase';
 
@@ -69,5 +72,54 @@ describe('restaurantsStore', () => {
         signal: abortController.signal,
       },
     );
+  });
+
+  it('loads group menu suggestions from the feature endpoint', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValue({
+      restaurantId: 'restaurant-1',
+      restaurantGroupId: 'group-1',
+      suggestions: [
+        {
+          normalizedItemName: 'tonkotsu ramen',
+          displayName: 'Tonkotsu Ramen',
+          sourceRestaurantCount: 2,
+          sourceItemCount: 2,
+          sources: [],
+        },
+      ],
+    });
+
+    await expect(
+      getGroupMenuSuggestionsForRestaurant(' restaurant-1 ', {
+        signal: abortController.signal,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        restaurantGroupId: 'group-1',
+        suggestions: expect.arrayContaining([
+          expect.objectContaining({ normalizedItemName: 'tonkotsu ramen' }),
+        ]),
+      }),
+    );
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurants/restaurant-1/group-menu-suggestions',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
+  });
+
+  it('returns empty group menu suggestions when unauthenticated', async () => {
+    mockedPocketBase.authStore.record = null;
+
+    await expect(getGroupMenuSuggestionsForRestaurant(' restaurant-1 ')).resolves.toEqual({
+      restaurantId: 'restaurant-1',
+      suggestions: [],
+    });
+
+    expect(mockedSendApiRequest).not.toHaveBeenCalled();
   });
 });

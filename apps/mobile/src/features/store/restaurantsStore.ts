@@ -2,6 +2,7 @@ import { pb } from '../../lib/pocketbase';
 import type { RestaurantRecord } from '../models';
 import type {
   AllLocationsHistoryRecord,
+  GroupMenuSuggestionsRecord,
   ListRestaurantSuggestionsInput,
   MenuItemRecord,
   PaginatedResult,
@@ -18,6 +19,9 @@ import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
   AllLocationsHistoryRecord,
+  GroupMenuSuggestionRecord,
+  GroupMenuSuggestionSourceRecord,
+  GroupMenuSuggestionsRecord,
   ListRestaurantSuggestionsInput,
   MenuItemRecord,
   SearchRestaurantsPageInput,
@@ -238,6 +242,27 @@ export async function listMenuItemsForRestaurant(
 
   return sendApiRequest<MenuItemRecord[]>(
     `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
+}
+
+export async function getGroupMenuSuggestionsForRestaurant(
+  restaurantId: string,
+  options?: SearchRestaurantsPageOptions,
+): Promise<GroupMenuSuggestionsRecord> {
+  const trimmedRestaurantId = restaurantId.trim();
+  if (!pb.authStore.record?.id || !trimmedRestaurantId) {
+    return {
+      restaurantId: trimmedRestaurantId,
+      suggestions: [],
+    };
+  }
+
+  return sendApiRequest<GroupMenuSuggestionsRecord>(
+    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/group-menu-suggestions`,
     {
       method: 'GET',
       signal: options?.signal,
