@@ -1,4 +1,5 @@
 import React from 'react';
+import { VirtualizedList } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -262,6 +263,104 @@ describe('FeedbackDetailScreen', () => {
     expect(statusPills).toHaveLength(1);
     expect(statusPills[0].props.label).toBe('Queued');
     expect(renderer.root.findAllByType('EmptyState')).toHaveLength(0);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('renders messages through a virtualized paged adapter', async () => {
+    const baseMessagesQuery = buildMessagesQueryResult() as Record<string, unknown>;
+
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites: [],
+      refreshQueuedWrites: mockRefreshQueuedWrites,
+    } as never);
+    mockedUseInfiniteQuery.mockReturnValue({
+      ...baseMessagesQuery,
+      data: {
+        pages: [
+          {
+            hasNextPage: true,
+            items: [
+              {
+                createdAt: '2026-06-01T12:02:00.000Z',
+                feedbackId: 'feedback_1',
+                id: 'message_new',
+                isAdminMessage: false,
+                message: 'Newest reply',
+                userId: 'user_1',
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            totalItems: 2,
+            totalPages: 2,
+          },
+          {
+            hasNextPage: false,
+            items: [
+              {
+                createdAt: '2026-06-01T12:01:00.000Z',
+                feedbackId: 'feedback_1',
+                id: 'message_old',
+                isAdminMessage: true,
+                message: 'Older admin reply',
+                userId: 'admin_1',
+                userName: 'Support',
+              },
+            ],
+            page: 2,
+            pageSize: 20,
+            totalItems: 2,
+            totalPages: 2,
+          },
+        ],
+        pageParams: [1, 2],
+      },
+      hasNextPage: true,
+    } as never);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderFeedbackDetailScreen();
+    });
+
+    const messageList = renderer.root.findByType(VirtualizedList);
+    expect(messageList.props.inverted).toBe(true);
+    expect(messageList.props.maintainVisibleContentPosition).toEqual({
+      autoscrollToTopThreshold: 80,
+      minIndexForVisible: 0,
+    });
+    expect(messageList.props.getItemCount(messageList.props.data)).toBe(2);
+    expect(messageList.props.getItem(messageList.props.data, 0)).toEqual({
+      kind: 'message',
+      message: expect.objectContaining({ id: 'message_new' }),
+    });
+    expect(messageList.props.getItem(messageList.props.data, 1)).toEqual({
+      kind: 'message',
+      message: expect.objectContaining({ id: 'message_old' }),
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('does not invert the empty thread state', async () => {
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites: [],
+      refreshQueuedWrites: mockRefreshQueuedWrites,
+    } as never);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderFeedbackDetailScreen();
+    });
+
+    const messageList = renderer.root.findByType(VirtualizedList);
+    expect(messageList.props.inverted).toBe(false);
+    expect(renderer.root.findByType('EmptyState').props.title).toBe('No messages yet');
 
     await act(async () => {
       renderer.unmount();

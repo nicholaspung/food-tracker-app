@@ -8,8 +8,7 @@ import {
   ErrorState,
   FeatureFormScreenScaffold,
   PageErrorToast,
-  VisibilityOptionSelector,
-  type VisibilityOptionValue,
+  RestaurantListEditorFormFields,
   Skeleton,
 } from '../components/shared';
 import {
@@ -22,23 +21,13 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Card, Input, Text } from '../ui';
 
 type EditRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'EditRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
-const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
-  },
-  formCard: {
-    borderColor: theme.colors.border.info,
-    gap: theme.spacing.sm,
-  },
-  descriptionInput: {
-    minHeight: 110,
-    textAlignVertical: 'top',
   },
 }));
 
@@ -275,40 +264,25 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Could not save list" />
 
-        <Card style={styles.formCard} tone="default">
-          <Input
-            autoCapitalize="words"
-            label="List name"
-            onChangeText={setName}
-            placeholder="List name"
-            testID="edit-list-name-input"
-            value={name}
-          />
-          <Input
-            label="Description"
-            inputStyle={styles.descriptionInput}
-            multiline
-            onChangeText={setDescription}
-            placeholder="Optional description"
-            testID="edit-list-description-input"
-            value={description}
-          />
-          <Text variant="label">Visibility</Text>
-          <VisibilityOptionSelector
-            onChange={(nextVisibility) => {
-              const resolvedVisibility: ListVisibility = nextVisibility === 'friends' ? 'friends' : 'private';
-              trackObservabilityEvent('EDIT_RESTAURANT_LIST_VISIBILITY_CHANGED', {
-                source: 'EditRestaurantListScreen',
-                listId,
-                previousVisibility: visibility,
-                nextVisibility: resolvedVisibility,
-              });
-              setVisibility(resolvedVisibility);
-            }}
-            options={LIST_VISIBILITY_OPTIONS}
-            value={visibility as VisibilityOptionValue}
-          />
-        </Card>
+        <RestaurantListEditorFormFields
+          description={description}
+          descriptionTestID="edit-list-description-input"
+          name={name}
+          namePlaceholder="List name"
+          nameTestID="edit-list-name-input"
+          onDescriptionChange={setDescription}
+          onNameChange={setName}
+          onVisibilityChange={(nextVisibility) => {
+            trackObservabilityEvent('EDIT_RESTAURANT_LIST_VISIBILITY_CHANGED', {
+              source: 'EditRestaurantListScreen',
+              listId,
+              previousVisibility: visibility,
+              nextVisibility,
+            });
+            setVisibility(nextVisibility);
+          }}
+          visibility={visibility}
+        />
       </View>
     </FeatureFormScreenScaffold>
   );

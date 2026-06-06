@@ -2,7 +2,7 @@ import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { FlatList, Pressable, View, type ListRenderItem } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 
@@ -75,6 +75,7 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
   screenBody: {
+    flex: 1,
     gap: 0,
     paddingBottom: 0,
     paddingHorizontal: 0,
@@ -600,7 +601,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     />
   );
 
-  const renderListCard = (list: RestaurantListRecord, listIndex: number) => {
+  const renderListCard = useCallback((list: RestaurantListRecord, listIndex: number) => {
     const restaurantCount = list.restaurantCount ?? 0;
     const menuItemCount = list.menuItemCount ?? 0;
     const coverImage = getListCoverImageUrl(list);
@@ -680,7 +681,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         />
       </Card>
       );
-  };
+  }, [activeTab, navigation, styles, theme.colors.text.info, theme.colors.text.muted, theme.colors.text.warning]);
+
+  const renderListItem = useCallback<ListRenderItem<RestaurantListRecord>>(
+    ({ item, index }) => renderListCard(item, index),
+    [renderListCard],
+  );
 
   const listsHeader = (
     <View style={styles.listHeader}>
@@ -762,16 +768,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     </View>
   );
 
-  const listsFooter =
-    !isLoading && !browseState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (
-      <FeatureListFooter
-        isFetchingNextPage={browseState.isFetchingNextPage}
-        label="Load more lists"
-        onLoadMore={browseState.onEndReached}
-      />
-    ) : null;
-
-  const listsBodyContent = (() => {
+  const listsListEmptyComponent = (() => {
     if (isLoading) {
       return (
         <View style={styles.skeletonWrap}>
@@ -800,22 +797,21 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return hasSearch ? renderNoSearchResults() : renderEmptyState();
     }
 
-    return (
-      <View>
-        {visibleLists.map((list, index) => (
-          <View key={list.id}>
-            {index > 0 ? <View style={styles.listSeparator} /> : null}
-            {renderListCard(list, index)}
-          </View>
-        ))}
-      </View>
-    );
+    return null;
   })();
+
+  const listsFooter =
+    !isLoading && !browseState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (
+      <FeatureListFooter
+        isFetchingNextPage={browseState.isFetchingNextPage}
+        label="Load more lists"
+        onLoadMore={browseState.onEndReached}
+      />
+    ) : null;
 
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.screenBody}
-      headerScrollMode="fixed"
       keyboardAware
       onBackPress={() => {
         navigation.navigate('Misc');
@@ -838,14 +834,27 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       subtitle="Create, organize, and browse the restaurant lists your friends share."
       testID="lists-screen"
       title="Lists"
-      onRefresh={browseState.onRefresh}
-      refreshing={browseState.isRefreshing}
+      scroll={false}
+      screenBackgroundTone="surface"
     >
-      <View style={styles.listContent}>
-        {listsHeader}
-        {listsBodyContent}
-        {listsFooter}
-      </View>
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={isLoading || browseState.hasBlockingError ? [] : visibleLists}
+        initialNumToRender={10}
+        ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(list) => list.id}
+        ListEmptyComponent={listsListEmptyComponent}
+        ListFooterComponent={listsFooter}
+        ListHeaderComponent={listsHeader}
+        maxToRenderPerBatch={10}
+        onRefresh={browseState.onRefresh}
+        refreshing={browseState.isRefreshing}
+        removeClippedSubviews
+        renderItem={renderListItem}
+        style={styles.list}
+        windowSize={7}
+      />
     </BackHeaderScreenScaffold>
   );
 }

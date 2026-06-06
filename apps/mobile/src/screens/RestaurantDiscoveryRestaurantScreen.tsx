@@ -18,8 +18,8 @@ import {
 import { type AllLocationsHistoryRecord, type GroupMenuSuggestionsRecord } from '../features';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import {
+  getDefaultRestaurantList,
   getRestaurantListDetail,
-  listRestaurantListsPage,
   type RestaurantListDetailRecord,
 } from '../features/store/restaurantListsStore';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
@@ -256,15 +256,7 @@ export function RestaurantDiscoveryRestaurantScreen({
   });
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: async ({ signal }) => {
-      const page = await listRestaurantListsPage({
-        scope: 'my',
-        page: 1,
-        pageSize: 100,
-        signal,
-      });
-      return page.items.find((list) => list.isDefault) ?? null;
-    },
+    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
   });
   const defaultListId = defaultListQuery.data?.id;
   const defaultListDetailQuery = useQuery({

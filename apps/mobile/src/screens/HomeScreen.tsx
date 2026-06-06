@@ -42,8 +42,8 @@ import {
 } from '../features';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import {
+  getDefaultRestaurantList,
   getRestaurantListDetail,
-  listRestaurantListsPage,
 } from '../features/store/restaurantListsStore';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -447,15 +447,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   });
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: async ({ signal }) => {
-      const page = await listRestaurantListsPage({
-        scope: 'my',
-        page: 1,
-        pageSize: 100,
-        signal,
-      });
-      return page.items.find((list) => list.isDefault) ?? null;
-    },
+    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
   });
   const defaultListId = defaultListQuery.data?.id;
   const defaultListDetailQuery = useQuery({

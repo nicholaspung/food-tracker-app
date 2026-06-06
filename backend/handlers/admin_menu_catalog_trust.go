@@ -240,8 +240,11 @@ func updateAdminMenuItemApprovalStatus(
 		core.ModelEventTypeUpdate,
 		beforeSnapshot,
 		lib.RecordAuditSnapshot(item),
-		map[string]any{"source": "admin_menu_item_approval", "approvalStatus": status},
-		"Updated menu item approval for "+strings.TrimSpace(item.GetString("name")),
+		adminMenuItemTrustAuditMetadata(app, "admin_menu_item_approval", item, map[string]any{
+			"approvalStatus": status,
+			"menuItemId":     item.Id,
+		}),
+		adminMenuItemApprovalAuditSummary(status, item),
 	); err != nil {
 		return nil, apis.NewApiError(500, "failed to audit menu item approval", err)
 	}
@@ -293,12 +296,13 @@ func updateAdminMenuItemTrustFields(
 		core.ModelEventTypeUpdate,
 		beforeSnapshot,
 		lib.RecordAuditSnapshot(item),
-		map[string]any{
+		adminMenuItemTrustAuditMetadata(app, "admin_menu_item_update", item, map[string]any{
 			"source":         "admin_menu_item_update",
 			"visibility":     visibility,
 			"groupSuitable":  item.GetBool("groupSuitable"),
 			"approvalStatus": menuItemApprovalStatus(item),
-		},
+			"menuItemId":     item.Id,
+		}),
 		"Updated menu item "+strings.TrimSpace(item.GetString("name")),
 	); err != nil {
 		return nil, apis.NewApiError(500, "failed to audit menu item update", err)
@@ -359,13 +363,13 @@ func updateAdminMenuItemGroupSuitable(
 		core.ModelEventTypeUpdate,
 		beforeSnapshot,
 		lib.RecordAuditSnapshot(item),
-		map[string]any{
-			"source":         "admin_menu_item_group_suitable",
+		adminMenuItemTrustAuditMetadata(app, "admin_menu_item_group_suitable", item, map[string]any{
 			"groupSuitable":  item.GetBool("groupSuitable"),
 			"approvalStatus": menuItemApprovalStatus(item),
 			"visibility":     strings.TrimSpace(item.GetString("visibility")),
-		},
-		"Updated menu item group suitability for "+strings.TrimSpace(item.GetString("name")),
+			"menuItemId":     item.Id,
+		}),
+		adminMenuItemGroupSuitableAuditSummary(item),
 	); err != nil {
 		return nil, apis.NewApiError(500, "failed to audit menu item group-suitable update", err)
 	}
@@ -456,11 +460,12 @@ func promoteAdminMenuItemContribution(
 			core.ModelEventTypeCreate,
 			nil,
 			lib.RecordAuditSnapshot(target),
-			map[string]any{
-				"source":         "admin_menu_item_promotion",
-				"contributionId": contribution.Id,
-				"restaurantId":   restaurantID,
-			},
+			adminMenuItemTrustAuditMetadata(app, "admin_menu_item_promotion", target, map[string]any{
+				"catalogContributionId": contribution.Id,
+				"contributionId":        contribution.Id,
+				"menuItemId":            target.Id,
+				"restaurantId":          restaurantID,
+			}),
 			"Promoted menu contribution into approved item "+strings.TrimSpace(target.GetString("name")),
 		); err != nil {
 			return adminMenuItemPromotionResponse{}, apis.NewApiError(500, "failed to audit promoted menu item", err)
@@ -475,12 +480,13 @@ func promoteAdminMenuItemContribution(
 			core.ModelEventTypeUpdate,
 			contributionBeforeSnapshot,
 			lib.RecordAuditSnapshot(contribution),
-			map[string]any{
-				"source":         "admin_menu_item_promotion",
-				"promotedTo":     targetID,
-				"restaurantId":   restaurantID,
-				"reusedExisting": reusedExisting,
-			},
+			adminMenuItemTrustAuditMetadata(app, "admin_menu_item_promotion", contribution, map[string]any{
+				"catalogContributionId": contribution.Id,
+				"menuItemId":            targetID,
+				"promotedTo":            targetID,
+				"restaurantId":          restaurantID,
+				"reusedExisting":        reusedExisting,
+			}),
 			"Linked menu contribution to approved item "+strings.TrimSpace(contribution.GetString("name")),
 		); err != nil {
 			return adminMenuItemPromotionResponse{}, apis.NewApiError(500, "failed to audit menu item promotion link", err)
@@ -492,6 +498,66 @@ func promoteAdminMenuItemContribution(
 		Contribution:   serializeAdminMenuItemRecord(contribution),
 		ReusedExisting: reusedExisting,
 	}, nil
+}
+
+func adminMenuItemTrustAuditMetadata(
+	app core.App,
+	source string,
+	item *core.Record,
+	extra map[string]any,
+) map[string]any {
+	metadata := map[string]any{
+		"source": strings.TrimSpace(source),
+	}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+
+	if item == nil {
+		return metadata
+	}
+
+	if _, ok := metadata["menuItemId"]; !ok {
+		metadata["menuItemId"] = item.Id
+	}
+
+	restaurantID := strings.TrimSpace(item.GetString("restaurant"))
+	if restaurantID == "" {
+		return metadata
+	}
+	metadata["restaurantId"] = restaurantID
+
+	restaurant, err := app.FindRecordById("restaurants", restaurantID)
+	if err != nil {
+		return metadata
+	}
+	if restaurantGroupID := strings.TrimSpace(restaurant.GetString("restaurantGroup")); restaurantGroupID != "" {
+		metadata["restaurantGroupId"] = restaurantGroupID
+	}
+
+	return metadata
+}
+
+func adminMenuItemApprovalAuditSummary(status string, item *core.Record) string {
+	name := strings.TrimSpace(item.GetString("name"))
+	switch status {
+	case menuItemApprovalStatusApproved:
+		return "Approved menu item " + name
+	case menuItemApprovalStatusRejected:
+		return "Rejected menu item " + name
+	case menuItemApprovalStatusUnreviewed:
+		return "Restored menu item " + name + " to unreviewed"
+	default:
+		return "Updated menu item approval for " + name
+	}
+}
+
+func adminMenuItemGroupSuitableAuditSummary(item *core.Record) string {
+	name := strings.TrimSpace(item.GetString("name"))
+	if item.GetBool("groupSuitable") {
+		return "Enabled group suggestions for menu item " + name
+	}
+	return "Disabled group suggestions for menu item " + name
 }
 
 func applyMenuItemApprovalStatus(record *core.Record, status string, adminID string) {

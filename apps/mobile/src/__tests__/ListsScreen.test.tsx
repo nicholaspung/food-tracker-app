@@ -1,4 +1,5 @@
 import React from 'react';
+import { FlatList } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -9,6 +10,53 @@ import { ListsScreen } from '../screens/ListsScreen';
 
 const mockReact = React;
 let mockQueuedWrites: Record<string, unknown>[] = [];
+
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('react-native');
+  const react = jest.requireActual<typeof import('react')>('react');
+  const renderListSlot = (slot: unknown) => {
+    if (!slot) {
+      return null;
+    }
+
+    return react.isValidElement(slot) ? slot : react.createElement(slot as any);
+  };
+  const MockFlatList = ({
+    data,
+    ItemSeparatorComponent,
+    ListEmptyComponent,
+    ListFooterComponent,
+    ListHeaderComponent,
+    renderItem,
+    ...props
+  }: Record<string, unknown>) =>
+    react.createElement(
+      'FlatList',
+      { ...props, data, renderItem },
+      renderListSlot(ListHeaderComponent),
+      Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
+        ? data.map((item, index) =>
+            react.createElement(
+              react.Fragment,
+              { key: item && typeof item === 'object' && 'id' in item ? String(item.id) : index },
+              index > 0 ? renderListSlot(ItemSeparatorComponent) : null,
+              (renderItem as any)({ item, index }),
+            ),
+          )
+        : renderListSlot(ListEmptyComponent),
+      renderListSlot(ListFooterComponent),
+    );
+
+  return Object.defineProperties({}, {
+    ...Object.getOwnPropertyDescriptors(actual),
+    FlatList: {
+      configurable: true,
+      enumerable: true,
+      value: MockFlatList,
+      writable: true,
+    },
+  });
+});
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
@@ -283,7 +331,7 @@ describe('ListsScreen', () => {
     } as never);
   });
 
-  it('uses scaffold-level refresh and renders list content without a local FlatList', async () => {
+  it('lets the list own refresh and renders list content with a local FlatList', async () => {
     mockedUseInfiniteQuery.mockImplementation((options) =>
       options.enabled === false
         ? buildQueryResult({ hasNextPage: false, isSuccess: false })
@@ -296,10 +344,11 @@ describe('ListsScreen', () => {
     });
 
     const scaffold = renderer.root.findByType('BackHeaderScreenScaffold');
+    const flatList = renderer.root.findByType(FlatList);
 
-    expect(typeof scaffold.props.onRefresh).toBe('function');
-    expect(scaffold.props.refreshing).toBe(false);
-    expect(renderer.root.findAllByType('FlatList')).toHaveLength(0);
+    expect(scaffold.props.scroll).toBe(false);
+    expect(typeof flatList.props.onRefresh).toBe('function');
+    expect(flatList.props.refreshing).toBe(false);
     expect(renderer.root.findByProps({ testID: 'lists-search-input' })).toBeTruthy();
     expect(renderer.root.findByProps({ testID: 'lists-list-card-my-0' })).toBeTruthy();
     expect(renderer.root.findByType('FeatureListFooter').props.label).toBe('Load more lists');

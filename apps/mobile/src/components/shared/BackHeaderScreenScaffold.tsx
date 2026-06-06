@@ -9,6 +9,7 @@ import { ScreenHeader } from './ScreenHeader';
 import { StickyActionFooter, type StickyActionFooterAction } from './StickyActionFooter';
 
 type ContentBackgroundTone = 'app' | 'surface' | 'muted';
+type ScreenBackgroundTone = 'app' | 'surface';
 type HeaderScrollMode = 'attached' | 'fixed';
 
 /**
@@ -31,6 +32,7 @@ export interface BackHeaderScreenScaffoldProps {
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
+  screenBackgroundTone?: ScreenBackgroundTone;
   headerScrollMode?: HeaderScrollMode;
   adjustKeyboardSpaceForFixedHeader?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
@@ -91,6 +93,7 @@ export function BackHeaderScreenScaffold({
   onRefresh,
   refreshing = false,
   contentBackgroundTone = 'app',
+  screenBackgroundTone,
   headerScrollMode = 'attached',
   adjustKeyboardSpaceForFixedHeader = false,
   contentStyle,
@@ -111,6 +114,8 @@ export function BackHeaderScreenScaffold({
         ? theme.colors.background.surface
         : theme.colors.background.muted;
   const usesFixedHeaderScroll = scroll && headerScrollMode === 'fixed';
+  const resolvedScreenBackgroundTone =
+    screenBackgroundTone ?? (scroll ? 'surface' : contentBackgroundTone === 'app' ? 'app' : 'surface');
   const styles = useStyles(
     usesFixedHeaderScroll ? theme.colors.background.surface : backgroundColor,
     backgroundColor,
@@ -123,7 +128,7 @@ export function BackHeaderScreenScaffold({
 
   return (
     <Screen
-      background={scroll ? 'surface' : contentBackgroundTone === 'app' ? 'app' : 'surface'}
+      background={resolvedScreenBackgroundTone}
       contentStyle={[styles.screenContent, contentStyle]}
       edges={['top']}
       keyboardAware={usesFixedHeaderScroll ? false : keyboardAware}

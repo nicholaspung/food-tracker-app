@@ -5,8 +5,7 @@ import { View } from 'react-native';
 import {
   FeatureFormScreenScaffold,
   PageErrorToast,
-  VisibilityOptionSelector,
-  type VisibilityOptionValue,
+  RestaurantListEditorFormFields,
 } from '../components/shared';
 import {
   resolveDefaultListVisibilityFromAuth,
@@ -18,23 +17,13 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
-import { Card, Input, Text } from '../ui';
 
 type CreateRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
-const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
-  },
-  formCard: {
-    borderColor: theme.colors.border.info,
-    gap: theme.spacing.sm,
-  },
-  descriptionInput: {
-    minHeight: 110,
-    textAlignVertical: 'top',
   },
 }));
 
@@ -184,39 +173,24 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Could not create list" />
 
-        <Card style={styles.formCard} tone="default">
-          <Input
-            autoCapitalize="words"
-            label="List name"
-            onChangeText={setName}
-            placeholder="Best pizza spots"
-            testID="create-list-name-input"
-            value={name}
-          />
-          <Input
-            label="Description"
-            inputStyle={styles.descriptionInput}
-            multiline
-            onChangeText={setDescription}
-            placeholder="Optional description"
-            testID="create-list-description-input"
-            value={description}
-          />
-          <Text variant="label">Visibility</Text>
-          <VisibilityOptionSelector
-            onChange={(nextVisibility) => {
-              const resolvedVisibility: ListVisibility = nextVisibility === 'friends' ? 'friends' : 'private';
-              trackObservabilityEvent('CREATE_RESTAURANT_LIST_VISIBILITY_CHANGED', {
-                source: 'CreateRestaurantListScreen',
-                previousVisibility: visibility,
-                nextVisibility: resolvedVisibility,
-              });
-              setVisibility(resolvedVisibility);
-            }}
-            options={LIST_VISIBILITY_OPTIONS}
-            value={visibility as VisibilityOptionValue}
-          />
-        </Card>
+        <RestaurantListEditorFormFields
+          description={description}
+          descriptionTestID="create-list-description-input"
+          name={name}
+          namePlaceholder="Best pizza spots"
+          nameTestID="create-list-name-input"
+          onDescriptionChange={setDescription}
+          onNameChange={setName}
+          onVisibilityChange={(nextVisibility) => {
+            trackObservabilityEvent('CREATE_RESTAURANT_LIST_VISIBILITY_CHANGED', {
+              source: 'CreateRestaurantListScreen',
+              previousVisibility: visibility,
+              nextVisibility,
+            });
+            setVisibility(nextVisibility);
+          }}
+          visibility={visibility}
+        />
       </View>
     </FeatureFormScreenScaffold>
   );

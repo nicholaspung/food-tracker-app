@@ -7,6 +7,8 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 const adminRestaurantGroupCandidateLimit = 25
@@ -26,7 +28,12 @@ type adminRestaurantGroupMembershipRequest struct {
 	GroupID string `json:"groupId"`
 }
 
-func createAdminRestaurantGroup(app core.App, adminID string, request adminRestaurantGroupCreateRequest) (map[string]any, error) {
+func createAdminRestaurantGroup(
+	app core.App,
+	e *core.RequestEvent,
+	adminID string,
+	request adminRestaurantGroupCreateRequest,
+) (map[string]any, error) {
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
 		return nil, apis.NewBadRequestError("group name is required", nil)
@@ -42,10 +49,15 @@ func createAdminRestaurantGroup(app core.App, adminID string, request adminResta
 			return apis.NewApiError(500, "restaurant groups are not available", err)
 		}
 
+		var restaurant *core.Record
+		var restaurantBeforeSnapshot map[string]any
 		if restaurantID != "" {
-			if _, err := txApp.FindRecordById("restaurants", restaurantID); err != nil {
+			var err error
+			restaurant, err = txApp.FindRecordById("restaurants", restaurantID)
+			if err != nil {
 				return apis.NewNotFoundError("restaurant was not found", err)
 			}
+			restaurantBeforeSnapshot = lib.RecordAuditSnapshot(restaurant)
 		}
 
 		group := core.NewRecord(groupsCollection)
@@ -58,15 +70,46 @@ func createAdminRestaurantGroup(app core.App, adminID string, request adminResta
 		}
 		groupID = group.Id
 
-		if restaurantID != "" {
-			restaurant, err := txApp.FindRecordById("restaurants", restaurantID)
-			if err != nil {
-				return apis.NewNotFoundError("restaurant was not found", err)
-			}
+		if err := createAdminRecordAuditLog(
+			txApp,
+			e,
+			group,
+			core.ModelEventTypeCreate,
+			nil,
+			lib.RecordAuditSnapshot(group),
+			map[string]any{
+				"source":            "admin_restaurant_group_inventory",
+				"restaurantGroupId": group.Id,
+				"restaurantId":      restaurantID,
+			},
+			"Created Restaurant Group "+name,
+		); err != nil {
+			return apis.NewApiError(500, "failed to audit restaurant group creation", err)
+		}
+
+		if restaurant != nil {
 			restaurant.Set("restaurantGroup", groupID)
 			if err := txApp.Save(restaurant); err != nil {
 				log.Printf("Admin restaurant group assignment failed for restaurant=%q group=%q: %v", restaurantID, groupID, err)
 				return apis.NewApiError(500, "failed to assign restaurant group", err)
+			}
+
+			if err := createAdminRecordAuditLog(
+				txApp,
+				e,
+				restaurant,
+				core.ModelEventTypeUpdate,
+				restaurantBeforeSnapshot,
+				lib.RecordAuditSnapshot(restaurant),
+				map[string]any{
+					"source":                    "admin_restaurant_group_membership",
+					"restaurantId":              restaurant.Id,
+					"restaurantGroupId":         groupID,
+					"previousRestaurantGroupId": restaurantBeforeSnapshot["restaurantGroup"],
+				},
+				"Assigned restaurant "+strings.TrimSpace(restaurant.GetString("name"))+" to Restaurant Group "+name,
+			); err != nil {
+				return apis.NewApiError(500, "failed to audit restaurant group assignment", err)
 			}
 		}
 
@@ -95,7 +138,12 @@ func createAdminRestaurantGroup(app core.App, adminID string, request adminResta
 	return result, nil
 }
 
-func updateAdminRestaurantGroupMetadata(app core.App, groupID string, request adminRestaurantGroupMetadataRequest) (map[string]any, error) {
+func updateAdminRestaurantGroupMetadata(
+	app core.App,
+	e *core.RequestEvent,
+	groupID string,
+	request adminRestaurantGroupMetadataRequest,
+) (map[string]any, error) {
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
 		return nil, apis.NewBadRequestError("group name is required", nil)
@@ -108,6 +156,7 @@ func updateAdminRestaurantGroupMetadata(app core.App, groupID string, request ad
 		return nil, apis.NewNotFoundError("restaurant group was not found", err)
 	}
 
+	beforeSnapshot := lib.RecordAuditSnapshot(group)
 	group.Set("name", name)
 	group.Set("notes", notes)
 	if err := app.Save(group); err != nil {
@@ -115,10 +164,31 @@ func updateAdminRestaurantGroupMetadata(app core.App, groupID string, request ad
 		return nil, apis.NewApiError(500, "failed to update restaurant group", err)
 	}
 
+	if err := createAdminRecordAuditLog(
+		app,
+		e,
+		group,
+		core.ModelEventTypeUpdate,
+		beforeSnapshot,
+		lib.RecordAuditSnapshot(group),
+		map[string]any{
+			"source":            "admin_restaurant_group_inventory",
+			"restaurantGroupId": group.Id,
+		},
+		"Updated Restaurant Group "+strings.TrimSpace(group.GetString("name")),
+	); err != nil {
+		return nil, apis.NewApiError(500, "failed to audit restaurant group metadata update", err)
+	}
+
 	return serializeAdminRestaurantGroupRecord(group), nil
 }
 
-func updateAdminRestaurantGroupMembership(app core.App, restaurantID string, request adminRestaurantGroupMembershipRequest) (map[string]any, error) {
+func updateAdminRestaurantGroupMembership(
+	app core.App,
+	e *core.RequestEvent,
+	restaurantID string,
+	request adminRestaurantGroupMembershipRequest,
+) (map[string]any, error) {
 	groupID := strings.TrimSpace(request.GroupID)
 
 	if err := app.RunInTransaction(func(txApp core.App) error {
@@ -127,16 +197,43 @@ func updateAdminRestaurantGroupMembership(app core.App, restaurantID string, req
 			return apis.NewNotFoundError("restaurant was not found", err)
 		}
 
+		beforeSnapshot := lib.RecordAuditSnapshot(restaurant)
+		previousGroupID := strings.TrimSpace(restaurant.GetString("restaurantGroup"))
+		groupName := ""
 		if groupID != "" {
-			if _, err := txApp.FindRecordById("restaurant_groups", groupID); err != nil {
+			group, err := txApp.FindRecordById("restaurant_groups", groupID)
+			if err != nil {
 				return apis.NewNotFoundError("restaurant group was not found", err)
 			}
+			groupName = strings.TrimSpace(group.GetString("name"))
 		}
 
 		restaurant.Set("restaurantGroup", groupID)
 		if err := txApp.Save(restaurant); err != nil {
 			log.Printf("Admin restaurant group membership update failed for restaurant=%q group=%q: %v", restaurantID, groupID, err)
 			return apis.NewApiError(500, "failed to update restaurant group membership", err)
+		}
+
+		summary := "Unassigned restaurant " + strings.TrimSpace(restaurant.GetString("name")) + " from Restaurant Group"
+		if groupID != "" {
+			summary = "Assigned restaurant " + strings.TrimSpace(restaurant.GetString("name")) + " to Restaurant Group " + groupName
+		}
+		if err := createAdminRecordAuditLog(
+			txApp,
+			e,
+			restaurant,
+			core.ModelEventTypeUpdate,
+			beforeSnapshot,
+			lib.RecordAuditSnapshot(restaurant),
+			map[string]any{
+				"source":                    "admin_restaurant_group_membership",
+				"restaurantId":              restaurant.Id,
+				"restaurantGroupId":         groupID,
+				"previousRestaurantGroupId": previousGroupID,
+			},
+			summary,
+		); err != nil {
+			return apis.NewApiError(500, "failed to audit restaurant group membership update", err)
 		}
 
 		return nil

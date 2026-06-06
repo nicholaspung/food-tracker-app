@@ -591,6 +591,29 @@ export async function listRestaurantListsPage(
   };
 }
 
+export async function getDefaultRestaurantList(
+  options?: ReadRequestOptions,
+): Promise<RestaurantListRecord | null> {
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const response = await sendApiRequest<RestaurantListDetailApiListRecord>('/api/restaurant-lists/default', {
+      method: 'GET',
+      signal: options?.signal,
+    });
+
+    return mapRestaurantListDetailApiListRecord(response);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 export async function getRestaurantListById(
   listId: string,
   options?: ReadRequestOptions,

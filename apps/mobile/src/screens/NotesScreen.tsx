@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { FlatList, Pressable, View, type ListRenderItem } from 'react-native';
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 
 import {
@@ -88,6 +88,7 @@ const useStyles = createThemedStyles((theme) => ({
     height: theme.spacing.md,
   },
   screenBody: {
+    flex: 1,
     gap: 0,
     paddingBottom: 0,
     paddingHorizontal: 0,
@@ -594,6 +595,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     ),
     [handleOpenNotePhotos, loadingPhotoNoteId, navigation, styles],
   );
+  const renderNoteItem = useCallback<ListRenderItem<NoteOverviewItemRecord>>(
+    ({ item }) => renderNoteCard(item),
+    [renderNoteCard],
+  );
 
   const notesListHeader = (
     <View style={styles.listHeader}>
@@ -765,56 +770,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       />
     ) : null;
 
-  const notesBodyContent = (() => {
-    if (browseState.isLoading) {
-      return (
-        <View style={styles.body}>
-          <Skeleton height={20} />
-          <Skeleton height={20} />
-          <Skeleton height={20} />
-        </View>
-      );
-    }
-
-    if (browseState.hasBlockingError) {
-      return (
-        <ErrorState
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="NotesScreen"
-          description="Could not load notes."
-          onRetry={() => {
-            void baseNotesQuery.refetch();
-          }}
-          title="Notes unavailable"
-        />
-      );
-    }
-
-    if (browseState.showEmpty) {
-      return notesListEmptyComponent;
-    }
-
-    return (
-      <View>
-        {notes.map((note, index) => (
-          <View key={note.id}>
-            {index > 0 ? <View style={styles.noteSeparator} /> : null}
-            {renderNoteCard(note)}
-          </View>
-        ))}
-      </View>
-    );
-  })();
-
   return (
     <FeatureDetailScreenScaffold
       bodyStyle={styles.screenBody}
-      headerScrollMode="fixed"
       onBackPress={() => {
         navigation.navigate('AddVisit');
       }}
-      onRefresh={browseState.onRefresh}
-      refreshing={browseState.isRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create note"
@@ -829,14 +790,29 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           testID="notes-create-button"
         />
       }
+      scroll={false}
+      screenBackgroundTone="surface"
       subtitle="View, edit, or delete your saved notes."
       title="My Notes"
     >
-      <View style={styles.listContent}>
-        {notesListHeader}
-        {notesBodyContent}
-        {notesListFooter}
-      </View>
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={browseState.isLoading || browseState.hasBlockingError ? [] : notes}
+        initialNumToRender={10}
+        ItemSeparatorComponent={() => <View style={styles.noteSeparator} />}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(note) => note.id}
+        ListEmptyComponent={notesListEmptyComponent}
+        ListFooterComponent={notesListFooter}
+        ListHeaderComponent={notesListHeader}
+        maxToRenderPerBatch={10}
+        onRefresh={browseState.onRefresh}
+        refreshing={browseState.isRefreshing}
+        removeClippedSubviews
+        renderItem={renderNoteItem}
+        style={styles.list}
+        windowSize={7}
+      />
 
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}

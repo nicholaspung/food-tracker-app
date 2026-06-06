@@ -168,6 +168,27 @@ describe('BackHeaderScreenScaffold', () => {
     expect(scrollView.props.extraKeyboardSpace).toBe(0);
   });
 
+  it('supports non-scroll virtualized bodies with a surface top background', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        screenBackgroundTone: 'surface',
+        scroll: false,
+      });
+    });
+
+    const screen = renderer.root.findByType('Screen');
+
+    expect(screen.props.background).toBe('surface');
+    expect(screen.props.scroll).toBe(false);
+    expect(flattenStyle(screen.props.contentStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+      }),
+    );
+  });
+
   it('renders a custom header when one is provided', async () => {
     let renderer: any = null;
 

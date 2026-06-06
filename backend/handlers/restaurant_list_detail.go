@@ -210,6 +210,18 @@ type restaurantListsPageRow struct {
 }
 
 func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.App) {
+	se.Router.GET("/api/restaurant-lists/default", func(e *core.RequestEvent) error {
+		listRecord, err := findDefaultRestaurantListRecordForUser(app, e.Auth.Id)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load default restaurant list", err)
+		}
+		if listRecord == nil {
+			return apis.NewNotFoundError("default restaurant list not found", nil)
+		}
+
+		return e.JSON(200, buildRestaurantListDetailListResponse(listRecord))
+	}).Bind(apis.RequireAuth())
+
 	se.Router.GET("/api/restaurant-lists", func(e *core.RequestEvent) error {
 		scope, err := normalizeRestaurantListsScope(e.Request.URL.Query().Get("scope"))
 		if err != nil {

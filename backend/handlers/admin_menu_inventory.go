@@ -153,7 +153,7 @@ func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		result, err := createAdminRestaurantGroup(app, e.Auth.Id, requestBody)
+		result, err := createAdminRestaurantGroup(app, e, e.Auth.Id, requestBody)
 		if err != nil {
 			return err
 		}
@@ -176,7 +176,7 @@ func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		result, err := updateAdminRestaurantGroupMetadata(app, groupID, requestBody)
+		result, err := updateAdminRestaurantGroupMetadata(app, e, groupID, requestBody)
 		if err != nil {
 			return err
 		}
@@ -222,7 +222,7 @@ func RegisterAdminMenuInventoryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		result, err := updateAdminRestaurantGroupMembership(app, restaurantID, requestBody)
+		result, err := updateAdminRestaurantGroupMembership(app, e, restaurantID, requestBody)
 		if err != nil {
 			return err
 		}

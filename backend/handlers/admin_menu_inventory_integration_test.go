@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	"myapp/handlers"
 	"myapp/lib"
@@ -201,6 +202,67 @@ func loadAdminRestaurantInventoryDetailResponse(
 	}
 
 	return payload
+}
+
+func loadAuditLogsForTarget(
+	t *testing.T,
+	server *preparedServer,
+	action string,
+	collection string,
+	recordID string,
+	limit int,
+) []*core.Record {
+	t.Helper()
+
+	records, err := server.app.FindRecordsByFilter(
+		lib.AuditLogsCollectionName,
+		"action = {:action} && targetCollection = {:collection} && targetRecordId = {:targetRecordId}",
+		"-created",
+		limit,
+		0,
+		map[string]any{
+			"action":         action,
+			"collection":     collection,
+			"targetRecordId": recordID,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load audit logs for %s/%s: %v", collection, recordID, err)
+	}
+
+	return records
+}
+
+func parseAuditStringSlice(t *testing.T, value any) []string {
+	t.Helper()
+
+	var raw []byte
+	switch typed := value.(type) {
+	case types.JSONRaw:
+		raw = typed
+	case []byte:
+		raw = typed
+	case string:
+		raw = []byte(typed)
+	default:
+		t.Fatalf("expected JSON string slice, got %#v", value)
+	}
+
+	result := []string{}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("failed to parse JSON string slice: %v", err)
+	}
+
+	return result
+}
+
+func auditStringSliceContains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAdminMenuInventoryRejectsNonAdmin(t *testing.T) {
@@ -532,6 +594,58 @@ func TestAdminMenuInventoryCreatesRestaurantGroupAndAssignsRestaurant(t *testing
 	if detail.Restaurant.RestaurantGroup == nil || detail.Restaurant.RestaurantGroup.Name != "Group Detail Cafe Bay Area" {
 		t.Fatalf("expected serialized group on restaurant row, got %#v", detail.Restaurant)
 	}
+
+	groupAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeCreate,
+		"restaurant_groups",
+		payload.RestaurantGroup.ID,
+		5,
+	)
+	if len(groupAuditLogs) != 1 {
+		t.Fatalf("expected one restaurant group create audit log, got %d", len(groupAuditLogs))
+	}
+	groupAudit := groupAuditLogs[0]
+	if groupAudit.GetString("actor") != admin.Id ||
+		groupAudit.GetString("requestMethod") != http.MethodPost ||
+		groupAudit.GetString("requestPath") != "/api/admin/menu-inventory/restaurant-groups" {
+		t.Fatalf("unexpected restaurant group create audit envelope: %#v", groupAudit)
+	}
+	if groupAudit.GetString("summary") != "Created Restaurant Group Group Detail Cafe Bay Area" {
+		t.Fatalf("unexpected group create audit summary: %q", groupAudit.GetString("summary"))
+	}
+	metadataMap := parseAuditMetadata(t, groupAudit.Get("metadataJson"))
+	if metadataMap["source"] != "admin_restaurant_group_inventory" ||
+		metadataMap["restaurantGroupId"] != payload.RestaurantGroup.ID ||
+		metadataMap["restaurantId"] != restaurant.Id {
+		t.Fatalf("unexpected restaurant group create audit metadata: %#v", metadataMap)
+	}
+	afterMap := parseAuditMetadata(t, groupAudit.Get("afterJson"))
+	if afterMap["name"] != "Group Detail Cafe Bay Area" || afterMap["createdBy"] != admin.Id {
+		t.Fatalf("unexpected restaurant group create audit after snapshot: %#v", afterMap)
+	}
+
+	restaurantAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"restaurants",
+		restaurant.Id,
+		5,
+	)
+	if len(restaurantAuditLogs) != 1 {
+		t.Fatalf("expected one restaurant assignment audit log, got %d", len(restaurantAuditLogs))
+	}
+	metadataMap = parseAuditMetadata(t, restaurantAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_restaurant_group_membership" ||
+		metadataMap["restaurantGroupId"] != payload.RestaurantGroup.ID ||
+		metadataMap["restaurantId"] != restaurant.Id {
+		t.Fatalf("unexpected restaurant assignment audit metadata: %#v", metadataMap)
+	}
+	if !auditStringSliceContains(parseAuditStringSlice(t, restaurantAuditLogs[0].Get("changedFields")), "restaurantGroup") {
+		t.Fatalf("expected restaurantGroup changed field, got %s", restaurantAuditLogs[0].Get("changedFields"))
+	}
 }
 
 func TestAdminMenuInventoryAssignsUnassignsAndKeepsOneRestaurantGroup(t *testing.T) {
@@ -618,6 +732,50 @@ func TestAdminMenuInventoryAssignsUnassignsAndKeepsOneRestaurantGroup(t *testing
 	if unassignedDetail.RestaurantGroup != nil || unassignedDetail.Restaurant.RestaurantGroupID != "" {
 		t.Fatalf("expected restaurant to be unassigned, got %#v", unassignedDetail.Restaurant)
 	}
+
+	auditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"restaurants",
+		restaurant.Id,
+		10,
+	)
+	if len(auditLogs) != 3 {
+		t.Fatalf("expected 3 membership audit logs, got %d", len(auditLogs))
+	}
+	seenGroupIDs := map[string]bool{}
+	for _, auditLog := range auditLogs {
+		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
+		if metadataMap["source"] != "admin_restaurant_group_membership" ||
+			metadataMap["restaurantId"] != restaurant.Id {
+			t.Fatalf("unexpected membership audit metadata: %#v", metadataMap)
+		}
+		if auditLog.GetString("actor") != admin.Id ||
+			auditLog.GetString("requestMethod") != http.MethodPost ||
+			auditLog.GetString("requestPath") != "/api/admin/menu-inventory/restaurants/"+restaurant.Id+"/restaurant-group" {
+			t.Fatalf("unexpected membership audit envelope: %#v", auditLog)
+		}
+		if !auditStringSliceContains(parseAuditStringSlice(t, auditLog.Get("changedFields")), "restaurantGroup") {
+			t.Fatalf("expected restaurantGroup changed field, got %#v", auditLog.Get("changedFields"))
+		}
+		if groupID, ok := metadataMap["restaurantGroupId"].(string); ok {
+			seenGroupIDs[groupID] = true
+		}
+	}
+	if !seenGroupIDs[firstGroup.Id] || !seenGroupIDs[secondGroup.Id] || !seenGroupIDs[""] {
+		t.Fatalf("expected assignment, replacement, and unassignment audit group ids, got %#v", seenGroupIDs)
+	}
+
+	unassignAudit := auditLogs[0]
+	if !strings.Contains(unassignAudit.GetString("summary"), "Unassigned restaurant Membership Diner") {
+		t.Fatalf("unexpected unassignment audit summary: %q", unassignAudit.GetString("summary"))
+	}
+	beforeMap := parseAuditMetadata(t, unassignAudit.Get("beforeJson"))
+	afterMap := parseAuditMetadata(t, unassignAudit.Get("afterJson"))
+	if beforeMap["restaurantGroup"] != secondGroup.Id || afterMap["restaurantGroup"] != "" {
+		t.Fatalf("unexpected unassignment snapshots: before=%#v after=%#v", beforeMap, afterMap)
+	}
 }
 
 func TestAdminMenuInventoryUpdatesRestaurantGroupMetadata(t *testing.T) {
@@ -663,6 +821,44 @@ func TestAdminMenuInventoryUpdatesRestaurantGroupMetadata(t *testing.T) {
 	detail := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
 	if detail.RestaurantGroup == nil || detail.RestaurantGroup.Name != "Updated Group Name" || detail.RestaurantGroup.Notes != "Updated notes" {
 		t.Fatalf("expected updated metadata on restaurant detail, got %#v", detail.RestaurantGroup)
+	}
+
+	auditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"restaurant_groups",
+		group.Id,
+		5,
+	)
+	if len(auditLogs) != 1 {
+		t.Fatalf("expected one restaurant group metadata audit log, got %d", len(auditLogs))
+	}
+	auditLog := auditLogs[0]
+	if auditLog.GetString("actor") != admin.Id ||
+		auditLog.GetString("requestMethod") != http.MethodPatch ||
+		auditLog.GetString("requestPath") != "/api/admin/menu-inventory/restaurant-groups/"+group.Id {
+		t.Fatalf("unexpected restaurant group metadata audit envelope: %#v", auditLog)
+	}
+	if auditLog.GetString("summary") != "Updated Restaurant Group Updated Group Name" {
+		t.Fatalf("unexpected group metadata audit summary: %q", auditLog.GetString("summary"))
+	}
+	metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
+	if metadataMap["source"] != "admin_restaurant_group_inventory" ||
+		metadataMap["restaurantGroupId"] != group.Id {
+		t.Fatalf("unexpected restaurant group metadata audit metadata: %#v", metadataMap)
+	}
+	changedFields := parseAuditStringSlice(t, auditLog.Get("changedFields"))
+	if !auditStringSliceContains(changedFields, "name") || !auditStringSliceContains(changedFields, "notes") {
+		t.Fatalf("expected name and notes changed fields, got %#v", changedFields)
+	}
+	beforeMap := parseAuditMetadata(t, auditLog.Get("beforeJson"))
+	afterMap := parseAuditMetadata(t, auditLog.Get("afterJson"))
+	if beforeMap["name"] != "Original Group Name" ||
+		beforeMap["notes"] != "Original notes" ||
+		afterMap["name"] != "Updated Group Name" ||
+		afterMap["notes"] != "Updated notes" {
+		t.Fatalf("unexpected restaurant group metadata snapshots: before=%#v after=%#v", beforeMap, afterMap)
 	}
 
 	blankResponse := performJSONRequest(
@@ -773,6 +969,84 @@ func TestAdminMenuInventoryRestaurantGroupWritesRejectNonAdmin(t *testing.T) {
 	)
 	if assignResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected group assignment 403, got %d: %s", assignResponse.Code, assignResponse.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		lib.AuditLogsCollectionName,
+		"targetCollection != ''",
+		map[string]any{},
+	); count != 0 {
+		t.Fatalf("expected forbidden restaurant group writes to create no audit logs, got %d", count)
+	}
+}
+
+func TestAdminMenuCatalogTrustWritesRejectNonAdminWithoutAudit(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, _ := createAuthUser(t, server.app, true, false)
+	user, userToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Forbidden Trust Cafe",
+		"location":   "San Jose, CA",
+		"createdBy":  user.Id,
+		"visibility": "public",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Forbidden Toast",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+
+	approvalResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/approval",
+		userToken,
+		`{"status":"rejected"}`,
+	)
+	if approvalResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected approval 403, got %d: %s", approvalResponse.Code, approvalResponse.Body.String())
+	}
+
+	groupSuitableResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/admin/menu-items/"+menuItem.Id+"/group-suitable",
+		userToken,
+		`{"groupSuitable":true}`,
+	)
+	if groupSuitableResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected group-suitable 403, got %d: %s", groupSuitableResponse.Code, groupSuitableResponse.Body.String())
+	}
+
+	promotionResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-items/"+menuItem.Id+"/promote",
+		userToken,
+		"",
+	)
+	if promotionResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected promotion 403, got %d: %s", promotionResponse.Code, promotionResponse.Body.String())
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		lib.AuditLogsCollectionName,
+		"targetCollection != ''",
+		map[string]any{},
+	); count != 0 {
+		t.Fatalf("expected forbidden menu trust writes to create no audit logs, got %d", count)
 	}
 }
 
@@ -1088,11 +1362,16 @@ func TestAdminMenuItemApprovalTransitions(t *testing.T) {
 
 	admin, adminToken := createAuthUser(t, server.app, true, false)
 	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Approval Cafe Group",
+		"createdBy": admin.Id,
+	})
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
-		"name":       "Approval Cafe",
-		"location":   "San Francisco, CA",
-		"createdBy":  creator.Id,
-		"visibility": "public",
+		"name":            "Approval Cafe",
+		"location":        "San Francisco, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
 	})
 	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
 		"name":           "Approval Toast",
@@ -1170,10 +1449,25 @@ func TestAdminMenuItemApprovalTransitions(t *testing.T) {
 		t.Fatalf("expected 3 approval audit logs, got %d", len(auditLogs))
 	}
 	auditedStatuses := map[string]bool{}
+	auditedSummaries := map[string]bool{}
 	for _, auditLog := range auditLogs {
+		auditedSummaries[auditLog.GetString("summary")] = true
 		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
 		if metadataMap["source"] != "admin_menu_item_approval" {
 			t.Fatalf("unexpected approval audit metadata: %#v", metadataMap)
+		}
+		if metadataMap["menuItemId"] != menuItem.Id ||
+			metadataMap["restaurantId"] != restaurant.Id ||
+			metadataMap["restaurantGroupId"] != group.Id {
+			t.Fatalf("expected approval audit item, restaurant, and group metadata, got %#v", metadataMap)
+		}
+		if auditLog.GetString("actor") != admin.Id ||
+			auditLog.GetString("requestMethod") != http.MethodPatch ||
+			auditLog.GetString("requestPath") != "/api/admin/menu-items/"+menuItem.Id+"/approval" {
+			t.Fatalf("unexpected approval audit envelope: %#v", auditLog)
+		}
+		if !auditStringSliceContains(parseAuditStringSlice(t, auditLog.Get("changedFields")), "approvalStatus") {
+			t.Fatalf("expected approvalStatus changed field, got %#v", auditLog.Get("changedFields"))
 		}
 		if status, ok := metadataMap["approvalStatus"].(string); ok {
 			auditedStatuses[status] = true
@@ -1182,6 +1476,15 @@ func TestAdminMenuItemApprovalTransitions(t *testing.T) {
 	for _, expectedStatus := range []string{"approved", "rejected", "unreviewed"} {
 		if !auditedStatuses[expectedStatus] {
 			t.Fatalf("expected audit status %q in %#v", expectedStatus, auditedStatuses)
+		}
+	}
+	for _, expectedSummary := range []string{
+		"Approved menu item Approval Toast",
+		"Rejected menu item Approval Toast",
+		"Restored menu item Approval Toast to unreviewed",
+	} {
+		if !auditedSummaries[expectedSummary] {
+			t.Fatalf("expected approval audit summary %q in %#v", expectedSummary, auditedSummaries)
 		}
 	}
 }
@@ -1194,11 +1497,16 @@ func TestAdminMenuItemGroupSuitableTransitions(t *testing.T) {
 
 	admin, adminToken := createAuthUser(t, server.app, true, false)
 	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Group Suitable Cafe Group",
+		"createdBy": admin.Id,
+	})
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
-		"name":       "Group Suitable Cafe",
-		"location":   "Berkeley, CA",
-		"createdBy":  creator.Id,
-		"visibility": "public",
+		"name":            "Group Suitable Cafe",
+		"location":        "Berkeley, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
 	})
 	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
 		"name":           "Shared Pancakes",
@@ -1361,6 +1669,22 @@ func TestAdminMenuItemGroupSuitableTransitions(t *testing.T) {
 	for _, auditLog := range auditLogs {
 		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
 		if metadataMap["source"] == "admin_menu_item_group_suitable" {
+			if metadataMap["menuItemId"] != menuItem.Id ||
+				metadataMap["restaurantId"] != restaurant.Id ||
+				metadataMap["restaurantGroupId"] != group.Id {
+				t.Fatalf("expected group-suitable audit item, restaurant, and group metadata, got %#v", metadataMap)
+			}
+			if auditLog.GetString("actor") != admin.Id ||
+				auditLog.GetString("requestMethod") != http.MethodPatch ||
+				auditLog.GetString("requestPath") != "/api/admin/menu-items/"+menuItem.Id+"/group-suitable" {
+				t.Fatalf("unexpected group-suitable audit envelope: %#v", auditLog)
+			}
+			if !auditStringSliceContains(parseAuditStringSlice(t, auditLog.Get("changedFields")), "groupSuitable") {
+				t.Fatalf("expected groupSuitable changed field, got %#v", auditLog.Get("changedFields"))
+			}
+			if !strings.Contains(auditLog.GetString("summary"), "Enabled group suggestions for menu item Shared Pancakes") {
+				t.Fatalf("unexpected group-suitable audit summary: %q", auditLog.GetString("summary"))
+			}
 			foundGroupSuitableAudit = true
 			break
 		}
@@ -1378,11 +1702,16 @@ func TestAdminMenuItemPromotionCreatesApprovedPublicItemAndPreservesVisitText(t 
 
 	admin, adminToken := createAuthUser(t, server.app, true, false)
 	contributor, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Promotion Ramen Group",
+		"createdBy": admin.Id,
+	})
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
-		"name":       "Promotion Ramen",
-		"location":   "Oakland, CA",
-		"createdBy":  contributor.Id,
-		"visibility": "public",
+		"name":            "Promotion Ramen",
+		"location":        "Oakland, CA",
+		"createdBy":       contributor.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
 	})
 	contribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
 		"name":           "Spicy Miso Ramen",
@@ -1503,8 +1832,21 @@ func TestAdminMenuItemPromotionCreatesApprovedPublicItemAndPreservesVisitText(t 
 		t.Fatalf("expected promoted item create audit log, got %d", len(promotedAuditLogs))
 	}
 	metadataMap := parseAuditMetadata(t, promotedAuditLogs[0].Get("metadataJson"))
-	if metadataMap["source"] != "admin_menu_item_promotion" || metadataMap["contributionId"] != contribution.Id {
+	if metadataMap["source"] != "admin_menu_item_promotion" ||
+		metadataMap["contributionId"] != contribution.Id ||
+		metadataMap["catalogContributionId"] != contribution.Id ||
+		metadataMap["menuItemId"] != promoted.Id ||
+		metadataMap["restaurantId"] != restaurant.Id ||
+		metadataMap["restaurantGroupId"] != group.Id {
 		t.Fatalf("unexpected promoted item audit metadata: %#v", metadataMap)
+	}
+	if promotedAuditLogs[0].GetString("actor") != admin.Id ||
+		promotedAuditLogs[0].GetString("requestMethod") != http.MethodPost ||
+		promotedAuditLogs[0].GetString("requestPath") != "/api/admin/menu-items/"+contribution.Id+"/promote" {
+		t.Fatalf("unexpected promoted item audit envelope: %#v", promotedAuditLogs[0])
+	}
+	if promotedAuditLogs[0].GetString("summary") != "Promoted menu contribution into approved item Spicy Miso Ramen" {
+		t.Fatalf("unexpected promoted item audit summary: %q", promotedAuditLogs[0].GetString("summary"))
 	}
 
 	contributionAuditLogs, err := server.app.FindRecordsByFilter(
@@ -1526,8 +1868,16 @@ func TestAdminMenuItemPromotionCreatesApprovedPublicItemAndPreservesVisitText(t 
 		t.Fatalf("expected contribution update audit log, got %d", len(contributionAuditLogs))
 	}
 	metadataMap = parseAuditMetadata(t, contributionAuditLogs[0].Get("metadataJson"))
-	if metadataMap["source"] != "admin_menu_item_promotion" || metadataMap["promotedTo"] != promoted.Id {
+	if metadataMap["source"] != "admin_menu_item_promotion" ||
+		metadataMap["catalogContributionId"] != contribution.Id ||
+		metadataMap["menuItemId"] != promoted.Id ||
+		metadataMap["promotedTo"] != promoted.Id ||
+		metadataMap["restaurantId"] != restaurant.Id ||
+		metadataMap["restaurantGroupId"] != group.Id {
 		t.Fatalf("unexpected contribution audit metadata: %#v", metadataMap)
+	}
+	if !auditStringSliceContains(parseAuditStringSlice(t, contributionAuditLogs[0].Get("changedFields")), "promotedTo") {
+		t.Fatalf("expected promotedTo changed field, got %#v", contributionAuditLogs[0].Get("changedFields"))
 	}
 }
 
@@ -1602,6 +1952,26 @@ func TestAdminMenuItemPromotionReusesApprovedExactLocationItemByNormalizedName(t
 	}
 	if reloadedContribution.GetString("approvalStatus") != "unreviewed" {
 		t.Fatalf("expected contribution approval state to remain unreviewed, got %q", reloadedContribution.GetString("approvalStatus"))
+	}
+
+	contributionAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"menu_items",
+		contribution.Id,
+		5,
+	)
+	if len(contributionAuditLogs) != 1 {
+		t.Fatalf("expected one reused promotion contribution audit log, got %d", len(contributionAuditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, contributionAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_menu_item_promotion" ||
+		metadataMap["catalogContributionId"] != contribution.Id ||
+		metadataMap["menuItemId"] != existingApproved.Id ||
+		metadataMap["promotedTo"] != existingApproved.Id ||
+		metadataMap["reusedExisting"] != true {
+		t.Fatalf("unexpected reused promotion audit metadata: %#v", metadataMap)
 	}
 }
 

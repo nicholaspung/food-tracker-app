@@ -1,4 +1,5 @@
 import React from 'react';
+import { FlatList } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -43,6 +44,53 @@ const theme = {
     secondaryButtonHeight: 44,
   },
 } as const;
+
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('react-native');
+  const react = jest.requireActual<typeof import('react')>('react');
+  const renderListSlot = (slot: unknown) => {
+    if (!slot) {
+      return null;
+    }
+
+    return react.isValidElement(slot) ? slot : react.createElement(slot as any);
+  };
+  const MockFlatList = ({
+    data,
+    ItemSeparatorComponent,
+    ListEmptyComponent,
+    ListFooterComponent,
+    ListHeaderComponent,
+    renderItem,
+    ...props
+  }: Record<string, unknown>) =>
+    react.createElement(
+      'FlatList',
+      { ...props, data, renderItem },
+      renderListSlot(ListHeaderComponent),
+      Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
+        ? data.map((item, index) =>
+            react.createElement(
+              react.Fragment,
+              { key: item && typeof item === 'object' && 'id' in item ? String(item.id) : index },
+              index > 0 ? renderListSlot(ItemSeparatorComponent) : null,
+              (renderItem as any)({ item, index }),
+            ),
+          )
+        : renderListSlot(ListEmptyComponent),
+      renderListSlot(ListFooterComponent),
+    );
+
+  return Object.defineProperties({}, {
+    ...Object.getOwnPropertyDescriptors(actual),
+    FlatList: {
+      configurable: true,
+      enumerable: true,
+      value: MockFlatList,
+      writable: true,
+    },
+  });
+});
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
@@ -302,7 +350,7 @@ describe('NotesScreen', () => {
     jest.useRealTimers();
   });
 
-  it('keeps fixed-header scaffold content unconstrained so long note lists can scroll fully', async () => {
+  it('lets the notes list own scrolling with an unconstrained fixed header body', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -319,8 +367,8 @@ describe('NotesScreen', () => {
     const scaffold = renderer?.root.findByType('FeatureDetailScreenScaffold');
     const bodyStyle = scaffold.props.bodyStyle;
 
-    expect(scaffold.props.headerScrollMode).toBe('fixed');
-    expect(styleIncludes(bodyStyle, { flex: 1 })).toBe(false);
+    expect(scaffold.props.scroll).toBe(false);
+    expect(styleIncludes(bodyStyle, { flex: 1 })).toBe(true);
     expect(styleIncludes(bodyStyle, {
       gap: 0,
       paddingBottom: 0,
@@ -1197,16 +1245,17 @@ describe('NotesScreen', () => {
     });
 
     const findRefreshableScaffold = () => renderer.root.findByType('FeatureDetailScreenScaffold');
+    const findRefreshableList = () => renderer.root.findByType(FlatList);
 
-    expect(findRefreshableScaffold().props.refreshing).toBe(false);
-    expect(renderer.root.findAllByType('FlatList')).toHaveLength(0);
+    expect(findRefreshableScaffold().props.scroll).toBe(false);
+    expect(findRefreshableList().props.refreshing).toBe(false);
 
     let refreshPromise: Promise<unknown> | null = null;
     act(() => {
-      refreshPromise = findRefreshableScaffold().props.onRefresh();
+      refreshPromise = findRefreshableList().props.onRefresh();
     });
 
-    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+    expect(findRefreshableList().props.refreshing).toBe(true);
 
     await act(async () => {
       baseQueryResult.isRefetching = true;
@@ -1214,7 +1263,7 @@ describe('NotesScreen', () => {
       await Promise.resolve();
     });
 
-    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+    expect(findRefreshableList().props.refreshing).toBe(true);
 
     await act(async () => {
       refetchDeferred.resolve({
@@ -1225,7 +1274,7 @@ describe('NotesScreen', () => {
       await refreshPromise;
     });
 
-    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+    expect(findRefreshableList().props.refreshing).toBe(true);
 
     await act(async () => {
       baseQueryResult.isRefetching = false;
@@ -1233,6 +1282,6 @@ describe('NotesScreen', () => {
       await Promise.resolve();
     });
 
-    expect(findRefreshableScaffold().props.refreshing).toBe(false);
+    expect(findRefreshableList().props.refreshing).toBe(false);
   });
 });

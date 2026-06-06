@@ -49,6 +49,7 @@ export * from './RatingPill';
 export * from './RatingSelector';
 export * from './RecordPhotoThumbnailButton';
 export * from './ReportContentModal';
+export * from './RestaurantListEditorFormFields';
 export * from './RestaurantMenuItemPicker';
 export * from './ScreenHeader';
 export * from './ScreenContentSection';

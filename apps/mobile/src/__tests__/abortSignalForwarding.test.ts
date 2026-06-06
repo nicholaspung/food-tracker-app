@@ -1,7 +1,7 @@
 import { listHomeFeedPage } from '../features/store/homeFeedPagination';
 import { listFriendsPage } from '../features/store/friendsStore';
 import { getNoteDetail, listNotesOverviewPage } from '../features/store/notesStore';
-import { listRestaurantListsPage } from '../features/store/restaurantListsStore';
+import { getDefaultRestaurantList, listRestaurantListsPage } from '../features/store/restaurantListsStore';
 import {
   getAuthenticatedUserIdOrNull,
   sendApiRequest,
@@ -111,6 +111,15 @@ describe('abort signal forwarding', () => {
         pageSize: 20,
         totalItems: 0,
         totalPages: 0,
+      })
+      .mockResolvedValueOnce({
+        id: 'default-list-1',
+        name: 'Want to Try',
+        visibility: 'private',
+        userId: 'user_1',
+        isDefault: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
       });
 
     await listFriendsPage({
@@ -135,6 +144,9 @@ describe('abort signal forwarding', () => {
       pageSize: 20,
       scope: 'friends',
       search: 'ramen',
+      signal: abortController.signal,
+    });
+    await getDefaultRestaurantList({
       signal: abortController.signal,
     });
 
@@ -165,6 +177,14 @@ describe('abort signal forwarding', () => {
     expect(mockedSendApiRequest).toHaveBeenNthCalledWith(
       4,
       '/api/restaurant-lists?scope=friends&page=1&pageSize=20&search=ramen',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
+    expect(mockedSendApiRequest).toHaveBeenNthCalledWith(
+      5,
+      '/api/restaurant-lists/default',
       {
         method: 'GET',
         signal: abortController.signal,

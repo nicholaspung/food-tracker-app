@@ -1,7 +1,7 @@
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { Platform, RefreshControl, VirtualizedList, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 
@@ -14,6 +14,7 @@ import {
 } from '../components/shared';
 import {
   type FeedbackMessageListQueryData,
+  type FeedbackMessageRecord,
   type FeedbackListQueryData,
   type FeedbackRecord,
   type FeedbackThreadDetailResult,
@@ -44,6 +45,23 @@ import {
 } from '../components/shared/queuedWriteDisplay';
 
 type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'FeedbackDetail'>;
+type QueuedFeedbackReplyWrite = QueuedFeatureWrite<'feedback.message.send'>;
+
+type FeedbackThreadListItem =
+  | {
+      kind: 'message';
+      message: FeedbackMessageRecord;
+    }
+  | {
+      kind: 'queued';
+      write: QueuedFeedbackReplyWrite;
+    };
+
+interface FeedbackThreadListData {
+  pages: FeedbackMessageListQueryData['pages'];
+  queuedReplies: QueuedFeedbackReplyWrite[];
+  itemCount: number;
+}
 
 const ACTIVE_MESSAGE_POLL_INTERVAL_MS = 3000;
 const IDLE_MESSAGE_POLL_INTERVAL_MS = 30000;
@@ -266,15 +284,42 @@ function formatRelativeReplyTime(value: string, isMine: boolean): string {
   return `${prefix} ${elapsedYears} ${elapsedYears === 1 ? 'year' : 'years'} ago`;
 }
 
-function buildQueuedReplyId(write: QueuedFeatureWrite<'feedback.message.send'>): string {
+function buildQueuedReplyId(write: QueuedFeedbackReplyWrite): string {
   return `queued-feedback-reply:${write.id}`;
 }
 
 function isQueuedReplyForFeedback(
-  write: QueuedFeatureWrite<'feedback.message.send'>,
+  write: QueuedFeedbackReplyWrite,
   feedbackId: string,
 ): boolean {
   return write.payload.feedbackId === feedbackId && write.payload.message.trim().length > 0;
+}
+
+function getFeedbackThreadItemCount(data: FeedbackThreadListData): number {
+  return data.itemCount;
+}
+
+function getFeedbackThreadItem(data: FeedbackThreadListData, index: number): FeedbackThreadListItem {
+  if (index < data.queuedReplies.length) {
+    return {
+      kind: 'queued',
+      write: data.queuedReplies[index],
+    };
+  }
+
+  let messageIndex = index - data.queuedReplies.length;
+  for (const page of data.pages) {
+    if (messageIndex < page.items.length) {
+      return {
+        kind: 'message',
+        message: page.items[messageIndex],
+      };
+    }
+
+    messageIndex -= page.items.length;
+  }
+
+  throw new Error(`Feedback thread item index ${index} is out of range.`);
 }
 
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
@@ -287,7 +332,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   );
   const { isOnline } = useConnectivity();
   const isFocused = useIsFocused();
-  const messagesScrollRef = useRef<ScrollView>(null);
+  const messagesListRef = useRef<VirtualizedList<FeedbackThreadListItem>>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackId = route.params.feedbackId;
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
@@ -345,6 +390,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       });
     },
   });
+  const fetchOlderMessages = messagesQuery.fetchNextPage;
+  const hasNextMessagesPage = messagesQuery.hasNextPage;
+  const isFetchingNextMessagesPage = messagesQuery.isFetchingNextPage;
+  const isMessagesLoading = messagesQuery.isLoading;
   const messagesState = usePaginatedQueryState({
     data: messagesQuery.data,
     isError: messagesQuery.isError,
@@ -355,26 +404,29 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(
     threadQuery.isRefetching || messagesQuery.isRefetching,
   );
-  const displayedMessages = useMemo(() => {
-    const pages = messagesQuery.data?.pages ?? [];
-    return pages
-      .slice()
-      .reverse()
-      .flatMap((page) => [...page.items].reverse());
-  }, [messagesQuery.data]);
   const displayedQueuedReplies = useMemo(
     () =>
       queuedReplyWrites
         .filter((write) => isQueuedReplyForFeedback(write, feedbackId))
         .slice()
-        .sort((firstWrite, secondWrite) => firstWrite.createdAt - secondWrite.createdAt),
+        .sort((firstWrite, secondWrite) => secondWrite.createdAt - firstWrite.createdAt),
     [feedbackId, queuedReplyWrites],
   );
+  const messagesListData = useMemo<FeedbackThreadListData>(() => {
+    const pages = messagesQuery.data?.pages ?? [];
+    const messageCount = pages.reduce((count, page) => count + page.items.length, 0);
+
+    return {
+      pages,
+      queuedReplies: displayedQueuedReplies,
+      itemCount: displayedQueuedReplies.length + messageCount,
+    };
+  }, [displayedQueuedReplies, messagesQuery.data?.pages]);
   const hasBlockingMessagesError = messagesState.hasBlockingError;
   const hasMessagesRefreshError = messagesState.hasRefreshError;
+  const hasVisibleThreadItems = !hasBlockingMessagesError && messagesListData.itemCount > 0;
   const latestMessageId =
-    displayedQueuedReplies[displayedQueuedReplies.length - 1]?.id ??
-    displayedMessages[displayedMessages.length - 1]?.id;
+    displayedQueuedReplies[0]?.id ?? messagesQuery.data?.pages[0]?.items[0]?.id;
 
   const applyFeedbackThreadUpdate = useCallback(
     (nextFeedback: FeedbackRecord, options?: { moveToFront?: boolean }) => {
@@ -404,7 +456,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
     scrollTimeoutRef.current = setTimeout(() => {
       scrollTimeoutRef.current = null;
-      messagesScrollRef.current?.scrollToEnd({ animated });
+      messagesListRef.current?.scrollToOffset({ animated, offset: 0 });
     }, delay);
   }, []);
 
@@ -522,6 +574,138 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       await Promise.all([threadQuery.refetch(), messagesQuery.refetch()]);
     });
   }, [messagesQuery, runPullRefresh, threadQuery]);
+  const renderMessageItem = useCallback(
+    (messageItem: FeedbackMessageRecord) => {
+      const isMine = !messageItem.isAdminMessage;
+
+      return (
+        <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
+          <View style={[styles.messageBubble, isMine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
+            {messageItem.isAdminMessage && !isMine ? (
+              <StatusPill
+                label={resolveAdminReplyLabel(messageItem.userName, messageItem.userEmail)}
+                labelStyle={{ textTransform: 'none' }}
+                style={styles.messageSenderBadge}
+                tone="info"
+                variant="soft"
+              />
+            ) : null}
+            <Text style={[styles.messageText, isMine && styles.messageTextMine]} variant="bodyMd">
+              {messageItem.message}
+            </Text>
+            <Text style={[styles.messageTime, isMine && styles.messageTimeMine]} variant="captionRegular">
+              {formatRelativeReplyTime(messageItem.createdAt, isMine)}
+            </Text>
+          </View>
+        </View>
+      );
+    },
+    [
+      styles.messageBubble,
+      styles.messageBubbleMine,
+      styles.messageBubbleOther,
+      styles.messageRow,
+      styles.messageRowMine,
+      styles.messageRowOther,
+      styles.messageSenderBadge,
+      styles.messageText,
+      styles.messageTextMine,
+      styles.messageTime,
+      styles.messageTimeMine,
+    ],
+  );
+  const renderQueuedReplyItem = useCallback(
+    (write: QueuedFeedbackReplyWrite) => {
+      const formattedError = formatQueuedWriteError(write.lastError);
+
+      return (
+        <View style={[styles.messageRow, styles.messageRowMine]} testID="feedback-detail-queued-reply">
+          <View
+            style={[
+              styles.messageBubble,
+              styles.messageBubbleQueued,
+              write.status === 'failed' && styles.messageBubbleQueuedFailed,
+            ]}
+          >
+            <StatusPill
+              label={formatQueuedWriteStatus(write.status)}
+              style={styles.messageStatusBadge}
+              tone={resolveQueuedWriteStatusTone(write.status)}
+              variant="soft"
+            />
+            <Text style={styles.messageText} variant="bodyMd">
+              {write.payload.message}
+            </Text>
+            <Text style={styles.queuedMessageMeta} variant="captionRegular">
+              {getQueuedWriteHelperText(write.status)}
+            </Text>
+            {formattedError ? (
+              <Text style={styles.queuedMessageError} variant="captionRegular">
+                {formattedError}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [
+      styles.messageBubble,
+      styles.messageBubbleQueued,
+      styles.messageBubbleQueuedFailed,
+      styles.messageRow,
+      styles.messageRowMine,
+      styles.messageStatusBadge,
+      styles.messageText,
+      styles.queuedMessageError,
+      styles.queuedMessageMeta,
+    ],
+  );
+  const renderThreadItem = useCallback(
+    ({ item }: { item: FeedbackThreadListItem }) =>
+      item.kind === 'queued' ? renderQueuedReplyItem(item.write) : renderMessageItem(item.message),
+    [renderMessageItem, renderQueuedReplyItem],
+  );
+  const keyThreadItem = useCallback((item: FeedbackThreadListItem) => {
+    return item.kind === 'queued' ? buildQueuedReplyId(item.write) : item.message.id;
+  }, []);
+  const messagesListEmptyComponent = useMemo(() => {
+    if (threadQuery.isLoading || messagesQuery.isLoading) {
+      return (
+        <>
+          <Skeleton height={60} />
+          <Skeleton height={60} />
+        </>
+      );
+    }
+
+    if (!hasBlockingMessagesError && messagesListData.itemCount === 0) {
+      return <EmptyState description="Start the conversation with support." title="No messages yet" />;
+    }
+
+    return null;
+  }, [hasBlockingMessagesError, messagesListData.itemCount, messagesQuery.isLoading, threadQuery.isLoading]);
+  const messagesListFooterComponent = useMemo(() => {
+    if (isMessagesLoading || hasBlockingMessagesError || !hasNextMessagesPage) {
+      return null;
+    }
+
+    return (
+      <Button
+        label={isFetchingNextMessagesPage ? 'Loading older messages...' : 'Load older messages'}
+        loading={isFetchingNextMessagesPage}
+        onPress={() => {
+          void fetchOlderMessages();
+        }}
+        variant="secondary"
+      />
+    );
+  }, [
+    fetchOlderMessages,
+    hasBlockingMessagesError,
+    hasNextMessagesPage,
+    isFetchingNextMessagesPage,
+    isMessagesLoading,
+  ]);
 
   return (
     <FeatureDetailScreenScaffold
@@ -566,10 +750,38 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
               tone="default"
             />
 
-            <ScrollView
+            <PageErrorToast
+              actionLabel="Retry"
+              errorMessage={
+                hasBlockingMessagesError
+                  ? 'Could not load messages for this feedback.'
+                  : hasMessagesRefreshError
+                    ? 'Could not refresh messages. Showing saved history.'
+                    : null
+              }
+              onAction={() => {
+                void messagesQuery.refetch();
+              }}
+              title="Messages unavailable"
+            />
+
+            <VirtualizedList
+              contentContainerStyle={styles.messagesContent}
+              data={hasVisibleThreadItems ? messagesListData : { ...messagesListData, itemCount: 0 }}
+              getItem={getFeedbackThreadItem}
+              getItemCount={getFeedbackThreadItemCount}
+              initialNumToRender={12}
+              inverted={hasVisibleThreadItems}
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.messagesContent}
+              keyExtractor={keyThreadItem}
+              ListEmptyComponent={messagesListEmptyComponent}
+              ListFooterComponent={messagesListFooterComponent}
+              maintainVisibleContentPosition={{
+                autoscrollToTopThreshold: 80,
+                minIndexForVisible: 0,
+              }}
+              maxToRenderPerBatch={12}
               refreshControl={
                 <RefreshControl
                   colors={[theme.colors.text.brand]}
@@ -579,125 +791,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                   tintColor={theme.colors.text.brand}
                 />
               }
-              ref={messagesScrollRef}
+              ref={messagesListRef}
+              removeClippedSubviews
+              renderItem={renderThreadItem}
               style={styles.messagesContainer}
-            >
-              {threadQuery.isLoading || messagesQuery.isLoading ? (
-                <>
-                  <Skeleton height={60} />
-                  <Skeleton height={60} />
-                </>
-              ) : null}
-
-              <PageErrorToast
-                actionLabel="Retry"
-                errorMessage={
-                  hasBlockingMessagesError
-                    ? 'Could not load messages for this feedback.'
-                    : hasMessagesRefreshError
-                      ? 'Could not refresh messages. Showing saved history.'
-                      : null
-                }
-                onAction={() => {
-                  void messagesQuery.refetch();
-                }}
-                title="Messages unavailable"
-              />
-
-              {!messagesQuery.isLoading && !hasBlockingMessagesError && messagesQuery.hasNextPage ? (
-                <Button
-                  label={messagesQuery.isFetchingNextPage ? 'Loading older messages...' : 'Load older messages'}
-                  loading={messagesQuery.isFetchingNextPage}
-                  onPress={() => {
-                    void messagesQuery.fetchNextPage();
-                  }}
-                  variant="secondary"
-                />
-              ) : null}
-
-              {!messagesQuery.isLoading &&
-              !hasBlockingMessagesError &&
-              displayedMessages.length === 0 &&
-              displayedQueuedReplies.length === 0 ? (
-                <EmptyState description="Start the conversation with support." title="No messages yet" />
-              ) : null}
-
-              {!messagesQuery.isLoading && !hasBlockingMessagesError
-                ? displayedMessages.map((messageItem) => {
-                    const isMine = !messageItem.isAdminMessage;
-
-                    return (
-                      <View
-                        key={messageItem.id}
-                        style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}
-                      >
-                        <View
-                          style={[
-                            styles.messageBubble,
-                            isMine ? styles.messageBubbleMine : styles.messageBubbleOther,
-                          ]}
-                        >
-                          {messageItem.isAdminMessage && !isMine ? (
-                            <StatusPill
-                              label={resolveAdminReplyLabel(messageItem.userName, messageItem.userEmail)}
-                              labelStyle={{ textTransform: 'none' }}
-                              style={styles.messageSenderBadge}
-                              tone="info"
-                              variant="soft"
-                            />
-                          ) : null}
-                          <Text style={[styles.messageText, isMine && styles.messageTextMine]} variant="bodyMd">
-                            {messageItem.message}
-                          </Text>
-                          <Text style={[styles.messageTime, isMine && styles.messageTimeMine]} variant="captionRegular">
-                            {formatRelativeReplyTime(messageItem.createdAt, isMine)}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })
-                : null}
-
-              {!messagesQuery.isLoading && !hasBlockingMessagesError
-                ? displayedQueuedReplies.map((write) => {
-                    const formattedError = formatQueuedWriteError(write.lastError);
-
-                    return (
-                      <View
-                        key={buildQueuedReplyId(write)}
-                        style={[styles.messageRow, styles.messageRowMine]}
-                        testID="feedback-detail-queued-reply"
-                      >
-                        <View
-                          style={[
-                            styles.messageBubble,
-                            styles.messageBubbleQueued,
-                            write.status === 'failed' && styles.messageBubbleQueuedFailed,
-                          ]}
-                        >
-                          <StatusPill
-                            label={formatQueuedWriteStatus(write.status)}
-                            style={styles.messageStatusBadge}
-                            tone={resolveQueuedWriteStatusTone(write.status)}
-                            variant="soft"
-                          />
-                          <Text style={styles.messageText} variant="bodyMd">
-                            {write.payload.message}
-                          </Text>
-                          <Text style={styles.queuedMessageMeta} variant="captionRegular">
-                            {getQueuedWriteHelperText(write.status)}
-                          </Text>
-                          {formattedError ? (
-                            <Text style={styles.queuedMessageError} variant="captionRegular">
-                              {formattedError}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })
-                : null}
-            </ScrollView>
+              windowSize={7}
+            />
 
             <View style={styles.composer}>
               {sendError ? <Text style={styles.inlineErrorText} variant="bodySmTight">{sendError}</Text> : null}

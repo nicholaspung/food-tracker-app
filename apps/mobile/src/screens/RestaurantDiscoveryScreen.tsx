@@ -38,8 +38,8 @@ import {
 } from '../features';
 import { useFoodDiscoveryMapReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import {
+  getDefaultRestaurantList,
   getRestaurantListDetail,
-  listRestaurantListsPage,
   type RestaurantListDetailRecord,
 } from '../features/store/restaurantListsStore';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
@@ -478,15 +478,7 @@ export function RestaurantDiscoveryScreen({
   const isMapSheetOpen = selectedMapGroupId !== null;
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: async ({ signal }) => {
-      const page = await listRestaurantListsPage({
-        scope: 'my',
-        page: 1,
-        pageSize: 100,
-        signal,
-      });
-      return page.items.find((list) => list.isDefault) ?? null;
-    },
+    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
   });
   const defaultListId = defaultListQuery.data?.id;
   const defaultListDetailQuery = useQuery({

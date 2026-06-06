@@ -173,6 +173,57 @@ func TestRestaurantListsPageEndpointReturnsMyScopePaginationAndCounts(t *testing
 	}
 }
 
+func TestRestaurantListsDefaultEndpointReturnsOnlyDefaultList(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
+
+	user, token := createAuthUser(t, server.app, false, false)
+
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":        "Want to Try",
+		"description": "Restaurants and recommendations you want to try later",
+		"user":        user.Id,
+		"visibility":  "private",
+		"isDefault":   true,
+	})
+	createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Brunch Ideas",
+		"user":       user.Id,
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/default",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		UserID    string `json:"userId"`
+		IsDefault bool   `json:"isDefault"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode default-list payload: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.ID != defaultList.Id || payload.UserID != user.Id || !payload.IsDefault {
+		t.Fatalf("expected default list payload, got %#v", payload)
+	}
+	if payload.Name != "Want to Try" {
+		t.Fatalf("expected Want to Try default list, got %#v", payload)
+	}
+}
+
 func TestRestaurantListsPageEndpointSearchesFriendsScopeServerSide(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 

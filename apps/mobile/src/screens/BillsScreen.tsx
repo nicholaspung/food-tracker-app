@@ -1,12 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { FlatList, View, type ListRenderItem } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
   HeaderAccessoryButton,
-  OptionList,
   OptionListRow,
   PendingQueuedWriteRow,
   QueryListStateView,
@@ -44,8 +43,25 @@ function formatBillListCreatedDate(createdAt: string): string {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  body: {
+  screenBody: {
+    flex: 1,
+    gap: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  listHeader: {
     gap: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
   },
   filterCard: {
     padding: theme.spacing.xs,
@@ -53,14 +69,27 @@ const useStyles = createThemedStyles((theme) => ({
   totalCard: {
     gap: theme.spacing.xxs,
   },
-  listCard: {
-    borderColor: theme.colors.border.subtle,
+  billRow: {
+    borderBottomColor: theme.colors.border.default,
+    borderLeftColor: theme.colors.border.default,
+    borderLeftWidth: 1,
+    borderRightColor: theme.colors.border.default,
+    borderRightWidth: 1,
+  },
+  billRowFirst: {
+    borderTopColor: theme.colors.border.default,
+    borderTopLeftRadius: theme.radii.lg,
+    borderTopRightRadius: theme.radii.lg,
+    borderTopWidth: 1,
+  },
+  billRowLast: {
+    borderBottomColor: theme.colors.border.default,
+    borderBottomLeftRadius: theme.radii.lg,
+    borderBottomRightRadius: theme.radii.lg,
+    borderBottomWidth: 1,
   },
   pendingStack: {
     gap: theme.spacing.sm,
-  },
-  list: {
-    borderColor: theme.colors.border.subtle,
   },
 }));
 
@@ -177,11 +206,124 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
       };
     }, []),
   });
+  const renderBillItem = useCallback<ListRenderItem<BillListSummary>>(
+    ({ item: bill, index }) => {
+      const statusTone = bill.status === 'settled' ? 'success' : 'info';
+      const statusLabel = bill.status === 'settled' ? 'Settled' : 'Active';
+      const participantLabel =
+        `${bill.participantCount} participant${bill.participantCount === 1 ? '' : 's'}`;
+      const createdLabel = formatBillListCreatedDate(bill.createdAt);
+      const summaryLabel =
+        bill.youOwe > 0
+          ? `${createdLabel} • ${participantLabel} • Owe ${formatCurrency(bill.youOwe)}`
+          : bill.youAreOwed > 0
+            ? `${createdLabel} • ${participantLabel} • Owed ${formatCurrency(bill.youAreOwed)}`
+            : bill.status === 'settled'
+              ? `${createdLabel} • ${participantLabel} • All settled`
+              : `${createdLabel} • ${participantLabel} • ${bill.pendingOtherParticipantCount} pending`;
+
+      return (
+        <OptionListRow
+          isLast={index === filteredBills.length - 1}
+          onPress={() => {
+            trackObservabilityEvent('BILL_OPENED', {
+              source: 'BillsScreen',
+              filter: activeFilter,
+              status: bill.status,
+              isCreator: bill.isCreator,
+            });
+            navigation.navigate('BillDetail', { billId: bill.id });
+          }}
+          rightAccessory={<StatusPill label={statusLabel} tone={statusTone} />}
+          style={[
+            styles.billRow,
+            index === 0 ? styles.billRowFirst : null,
+            index === filteredBills.length - 1 ? styles.billRowLast : null,
+          ]}
+          subtitle={summaryLabel}
+          testID={`bills-row-${activeFilter}-${index}`}
+          title={bill.title}
+        />
+      );
+    },
+    [activeFilter, filteredBills.length, navigation, styles],
+  );
+
+  const billsListHeader = (
+    <View style={styles.listHeader}>
+      <Card style={styles.filterCard}>
+        <SegmentedControl
+          getOptionTestID={(value) => `bills-filter-${value}`}
+          onChange={(nextFilter) => {
+            trackObservabilityEvent('BILLS_FILTER_CHANGED', {
+              source: 'BillsScreen',
+              filter: nextFilter,
+            });
+            setActiveFilter(nextFilter);
+          }}
+          options={[
+            { label: 'You Owe', value: 'you_owe' },
+            { label: "You're Owed", value: 'you_are_owed' },
+            { label: 'Settled', value: 'settled' },
+          ]}
+          value={activeFilter}
+        />
+      </Card>
+
+      {showActiveBillTotal ? (
+        <Card style={styles.totalCard} testID={`bills-total-${activeFilter}`}>
+          <Text tone="muted" variant="bodySmSemiBold">
+            {activeBillTotalTitle}
+          </Text>
+          <Text variant="displaySm">{formatCurrency(activeBillTotal)}</Text>
+          <Text tone="muted" variant="bodySm">
+            {activeBillTotalDescription}
+          </Text>
+        </Card>
+      ) : null}
+
+      {browseState.pendingRows.length > 0 ? (
+        <View style={styles.pendingStack}>
+          {browseState.pendingRows.map((row) => {
+            return (
+              <PendingQueuedWriteRow
+                key={row.id}
+                createdAt={row.createdAt}
+                description={row.description}
+                idempotencyKey={row.idempotencyKey}
+                lastError={row.lastError}
+                status={row.status}
+                title={row.title}
+              />
+            );
+          })}
+        </View>
+      ) : null}
+
+      <QueryListStateView
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="BillsScreen"
+        blockingErrorMessage="Could not load bills."
+        emptyDescription={
+          activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
+        }
+        emptyTitle="No matching bills"
+        hasBlockingError={browseState.hasBlockingError}
+        hasRefreshError={browseState.hasRefreshError}
+        isLoading={browseState.isLoading}
+        onRetry={() => {
+          void billsQuery.refetch();
+        }}
+        refreshErrorMessage="Could not refresh bills. Showing saved data."
+        showEmpty={filteredBills.length === 0}
+        title="Bills unavailable"
+      />
+    </View>
+  );
 
   return (
     <BackHeaderScreenScaffold
-      headerScrollMode="fixed"
-      onRefresh={browseState.onRefresh}
+      bodyStyle={styles.screenBody}
       onBackPress={() => {
         if (navigation.canGoBack()) {
           navigation.goBack();
@@ -203,119 +345,26 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
           testID="bills-create-button"
         />
       }
+      scroll={false}
+      screenBackgroundTone="surface"
       subtitle="Split bills with your group and track payment status."
       testID="bills-screen"
       title="Bills"
     >
-      <View style={styles.body}>
-        <Card style={styles.filterCard}>
-          <SegmentedControl
-            getOptionTestID={(value) => `bills-filter-${value}`}
-            onChange={(nextFilter) => {
-              trackObservabilityEvent('BILLS_FILTER_CHANGED', {
-                source: 'BillsScreen',
-                filter: nextFilter,
-              });
-              setActiveFilter(nextFilter);
-            }}
-            options={[
-              { label: 'You Owe', value: 'you_owe' },
-              { label: "You're Owed", value: 'you_are_owed' },
-              { label: 'Settled', value: 'settled' },
-            ]}
-            value={activeFilter}
-          />
-        </Card>
-
-        {showActiveBillTotal ? (
-          <Card style={styles.totalCard} testID={`bills-total-${activeFilter}`}>
-            <Text tone="muted" variant="bodySmSemiBold">
-              {activeBillTotalTitle}
-            </Text>
-            <Text variant="displaySm">{formatCurrency(activeBillTotal)}</Text>
-            <Text tone="muted" variant="bodySm">
-              {activeBillTotalDescription}
-            </Text>
-          </Card>
-        ) : null}
-
-        {browseState.pendingRows.length > 0 ? (
-          <View style={styles.pendingStack}>
-            {browseState.pendingRows.map((row) => {
-              return (
-                <PendingQueuedWriteRow
-                  key={row.id}
-                  createdAt={row.createdAt}
-                  description={row.description}
-                  idempotencyKey={row.idempotencyKey}
-                  lastError={row.lastError}
-                  status={row.status}
-                  title={row.title}
-                />
-              );
-            })}
-          </View>
-        ) : null}
-
-        <QueryListStateView
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="BillsScreen"
-          blockingErrorMessage="Could not load bills."
-          emptyDescription={
-            activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
-          }
-          emptyTitle="No matching bills"
-          hasBlockingError={browseState.hasBlockingError}
-          hasRefreshError={browseState.hasRefreshError}
-          isLoading={browseState.isLoading}
-          onRetry={() => {
-            void billsQuery.refetch();
-          }}
-          refreshErrorMessage="Could not refresh bills. Showing saved data."
-          showEmpty={filteredBills.length === 0}
-          title="Bills unavailable"
-        >
-          <Card style={styles.listCard}>
-            <OptionList style={styles.list}>
-              {filteredBills.map((bill, index) => {
-                const statusTone = bill.status === 'settled' ? 'success' : 'info';
-                const statusLabel = bill.status === 'settled' ? 'Settled' : 'Active';
-                const participantLabel =
-                  `${bill.participantCount} participant${bill.participantCount === 1 ? '' : 's'}`;
-                const createdLabel = formatBillListCreatedDate(bill.createdAt);
-                const summaryLabel =
-                  bill.youOwe > 0
-                    ? `${createdLabel} • ${participantLabel} • Owe ${formatCurrency(bill.youOwe)}`
-                    : bill.youAreOwed > 0
-                      ? `${createdLabel} • ${participantLabel} • Owed ${formatCurrency(bill.youAreOwed)}`
-                      : bill.status === 'settled'
-                        ? `${createdLabel} • ${participantLabel} • All settled`
-                        : `${createdLabel} • ${participantLabel} • ${bill.pendingOtherParticipantCount} pending`;
-
-                return (
-                  <OptionListRow
-                    key={bill.id}
-                    isLast={index === filteredBills.length - 1}
-                    onPress={() => {
-                      trackObservabilityEvent('BILL_OPENED', {
-                        source: 'BillsScreen',
-                        filter: activeFilter,
-                        status: bill.status,
-                        isCreator: bill.isCreator,
-                      });
-                      navigation.navigate('BillDetail', { billId: bill.id });
-                    }}
-                    rightAccessory={<StatusPill label={statusLabel} tone={statusTone} />}
-                    subtitle={summaryLabel}
-                    testID={`bills-row-${activeFilter}-${index}`}
-                    title={bill.title}
-                  />
-                );
-              })}
-            </OptionList>
-          </Card>
-        </QueryListStateView>
-      </View>
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={browseState.isLoading || browseState.hasBlockingError ? [] : filteredBills}
+        initialNumToRender={10}
+        keyExtractor={(bill) => bill.id}
+        ListHeaderComponent={billsListHeader}
+        maxToRenderPerBatch={10}
+        onRefresh={browseState.onRefresh}
+        refreshing={browseState.isRefreshing}
+        removeClippedSubviews
+        renderItem={renderBillItem}
+        style={styles.list}
+        windowSize={7}
+      />
     </BackHeaderScreenScaffold>
   );
 }

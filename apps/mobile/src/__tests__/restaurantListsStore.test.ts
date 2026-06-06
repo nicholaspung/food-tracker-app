@@ -1,4 +1,5 @@
 import {
+  getDefaultRestaurantList,
   getRestaurantListCandidateRestaurants,
   removeRestaurantFoodItemBookmarkFromList,
   saveRestaurantToDefaultList,
@@ -220,6 +221,46 @@ describe('restaurantListsStore.saveRestaurantToDefaultList', () => {
         },
       },
     );
+  });
+});
+
+describe('restaurantListsStore.getDefaultRestaurantList', () => {
+  beforeEach(() => {
+    mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
+    mockedPocketBase.collection.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('loads the default list through the targeted endpoint', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValueOnce({
+      id: 'default-list-1',
+      name: 'Want to Try',
+      visibility: 'private',
+      userId: 'user-1',
+      isDefault: true,
+      restaurantCount: 2,
+      menuItemCount: 3,
+      createdAt: '2026-05-01T18:00:00.000Z',
+      updatedAt: '2026-05-02T18:00:00.000Z',
+    });
+
+    await expect(getDefaultRestaurantList({ signal: abortController.signal })).resolves.toMatchObject({
+      id: 'default-list-1',
+      isDefault: true,
+      menuItemCount: 3,
+      restaurantCount: 2,
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/restaurant-lists/default', {
+      method: 'GET',
+      signal: abortController.signal,
+    });
   });
 });
 

@@ -212,7 +212,11 @@ export function getRestaurantListContentInvalidationKeys(
 }
 
 function getRestaurantListSaveTargetInvalidationKeys(listId: string): QueryKey[] {
-  return [restaurantListQueryKeys.detail(listId), restaurantListQueryKeys.scope('my')];
+  return [
+    restaurantListQueryKeys.detail(listId),
+    restaurantListQueryKeys.defaultList,
+    restaurantListQueryKeys.scope('my'),
+  ];
 }
 
 export function getRestaurantListRemovalKeys(listId: string): QueryKey[] {
