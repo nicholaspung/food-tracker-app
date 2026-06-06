@@ -25,7 +25,9 @@ import {
   replaceFeedbackMessageFirstPage,
   upsertFeedbackListItem,
   useFeedbackWrites,
+  useQueuedFeatureWrites,
 } from '../features';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -34,12 +36,19 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import {
+  formatQueuedWriteError,
+  formatQueuedWriteStatus,
+  getQueuedWriteHelperText,
+  resolveQueuedWriteStatusTone,
+} from '../components/shared/queuedWriteDisplay';
 
 type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'FeedbackDetail'>;
 
 const ACTIVE_MESSAGE_POLL_INTERVAL_MS = 3000;
 const IDLE_MESSAGE_POLL_INTERVAL_MS = 30000;
 const RECENT_THREAD_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+const QUEUED_REPLY_OPERATION_NAMES = ['feedback.message.send'] as const;
 
 const useStyles = createThemedStyles((theme) => ({
   bodyRoot: {
@@ -88,7 +97,18 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.colors.background.surface,
     borderColor: theme.colors.border.subtle,
   },
+  messageBubbleQueued: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.info,
+  },
+  messageBubbleQueuedFailed: {
+    borderColor: theme.colors.border.danger,
+  },
   messageSenderBadge: {
+    alignSelf: 'flex-start',
+    marginBottom: theme.spacing.xxs,
+  },
+  messageStatusBadge: {
     alignSelf: 'flex-start',
     marginBottom: theme.spacing.xxs,
   },
@@ -105,6 +125,14 @@ const useStyles = createThemedStyles((theme) => ({
   messageTimeMine: {
     color: theme.colors.text.inverse,
     opacity: 0.8,
+  },
+  queuedMessageMeta: {
+    color: theme.colors.text.secondary,
+    marginTop: 3,
+  },
+  queuedMessageError: {
+    color: theme.colors.text.danger,
+    marginTop: 3,
   },
   composer: {
     backgroundColor: theme.colors.background.surface,
@@ -238,11 +266,25 @@ function formatRelativeReplyTime(value: string, isMine: boolean): string {
   return `${prefix} ${elapsedYears} ${elapsedYears === 1 ? 'year' : 'years'} ago`;
 }
 
+function buildQueuedReplyId(write: QueuedFeatureWrite<'feedback.message.send'>): string {
+  return `queued-feedback-reply:${write.id}`;
+}
+
+function isQueuedReplyForFeedback(
+  write: QueuedFeatureWrite<'feedback.message.send'>,
+  feedbackId: string,
+): boolean {
+  return write.payload.feedbackId === feedbackId && write.payload.message.trim().length > 0;
+}
+
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
   const feedbackWrites = useFeedbackWrites();
+  const { queuedWrites: queuedReplyWrites, refreshQueuedWrites } = useQueuedFeatureWrites(
+    QUEUED_REPLY_OPERATION_NAMES,
+  );
   const { isOnline } = useConnectivity();
   const isFocused = useIsFocused();
   const messagesScrollRef = useRef<ScrollView>(null);
@@ -320,9 +362,19 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       .reverse()
       .flatMap((page) => [...page.items].reverse());
   }, [messagesQuery.data]);
+  const displayedQueuedReplies = useMemo(
+    () =>
+      queuedReplyWrites
+        .filter((write) => isQueuedReplyForFeedback(write, feedbackId))
+        .slice()
+        .sort((firstWrite, secondWrite) => firstWrite.createdAt - secondWrite.createdAt),
+    [feedbackId, queuedReplyWrites],
+  );
   const hasBlockingMessagesError = messagesState.hasBlockingError;
   const hasMessagesRefreshError = messagesState.hasRefreshError;
-  const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
+  const latestMessageId =
+    displayedQueuedReplies[displayedQueuedReplies.length - 1]?.id ??
+    displayedMessages[displayedMessages.length - 1]?.id;
 
   const applyFeedbackThreadUpdate = useCallback(
     (nextFeedback: FeedbackRecord, options?: { moveToFront?: boolean }) => {
@@ -431,6 +483,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       });
 
       if (sendResult.status === 'queued') {
+        await refreshQueuedWrites();
         setDraftMessage('');
         trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
           source: 'FeedbackDetailScreen',
@@ -562,7 +615,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                 />
               ) : null}
 
-              {!messagesQuery.isLoading && !hasBlockingMessagesError && displayedMessages.length === 0 ? (
+              {!messagesQuery.isLoading &&
+              !hasBlockingMessagesError &&
+              displayedMessages.length === 0 &&
+              displayedQueuedReplies.length === 0 ? (
                 <EmptyState description="Start the conversation with support." title="No messages yet" />
               ) : null}
 
@@ -596,6 +652,46 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                           <Text style={[styles.messageTime, isMine && styles.messageTimeMine]} variant="captionRegular">
                             {formatRelativeReplyTime(messageItem.createdAt, isMine)}
                           </Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                : null}
+
+              {!messagesQuery.isLoading && !hasBlockingMessagesError
+                ? displayedQueuedReplies.map((write) => {
+                    const formattedError = formatQueuedWriteError(write.lastError);
+
+                    return (
+                      <View
+                        key={buildQueuedReplyId(write)}
+                        style={[styles.messageRow, styles.messageRowMine]}
+                        testID="feedback-detail-queued-reply"
+                      >
+                        <View
+                          style={[
+                            styles.messageBubble,
+                            styles.messageBubbleQueued,
+                            write.status === 'failed' && styles.messageBubbleQueuedFailed,
+                          ]}
+                        >
+                          <StatusPill
+                            label={formatQueuedWriteStatus(write.status)}
+                            style={styles.messageStatusBadge}
+                            tone={resolveQueuedWriteStatusTone(write.status)}
+                            variant="soft"
+                          />
+                          <Text style={styles.messageText} variant="bodyMd">
+                            {write.payload.message}
+                          </Text>
+                          <Text style={styles.queuedMessageMeta} variant="captionRegular">
+                            {getQueuedWriteHelperText(write.status)}
+                          </Text>
+                          {formattedError ? (
+                            <Text style={styles.queuedMessageError} variant="captionRegular">
+                              {formattedError}
+                            </Text>
+                          ) : null}
                         </View>
                       </View>
                     );

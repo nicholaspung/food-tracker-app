@@ -136,7 +136,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       testID="feedback-screen"
       title="Feedback"
     >
-      {feedbackQuery.isSuccess ? (
+      {!browseState.isLoading && !browseState.hasBlockingError && !browseState.showEmpty ? (
         <Text style={styles.countSummaryText} variant="bodySmTightSemiBold">
           {browseState.totalItems} {browseState.totalItems === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
@@ -178,7 +178,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           showEmpty={browseState.showEmpty}
           title="Feedback unavailable"
         >
-          {feedbackQuery.isSuccess && visibleFeedbackCount > 0
+          {visibleFeedbackCount > 0
             ? displayedFeedback.map((feedback, index) => {
               const unreadCount = feedback.userUnreadCount;
               const timestampLabel = formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
