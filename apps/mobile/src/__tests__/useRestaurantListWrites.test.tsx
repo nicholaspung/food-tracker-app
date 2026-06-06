@@ -303,7 +303,7 @@ describe('useRestaurantListWrites', () => {
     });
   });
 
-  it('updates list metadata through the feature outbox payload', async () => {
+  it('updates list metadata online through the shared submit lifecycle', async () => {
     const updatedList = { id: 'list_1', name: 'Updated' };
     mockedUpdateRestaurantList.mockResolvedValue(updatedList as never);
     const writeFeature = jest.fn(async ({ execute }) => ({
@@ -343,7 +343,51 @@ describe('useRestaurantListWrites', () => {
     );
     expect(mockedUpdateRestaurantList).toHaveBeenCalledWith('list_1', updates, { isDefault: false });
     expect(mockedInvalidateRestaurantListMetadataQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
     expect(result).toEqual({ status: 'completed', result: updatedList });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues list metadata updates through the shared submit lifecycle', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+    const updates = {
+      name: 'Updated',
+      description: 'New description',
+      visibility: 'private' as const,
+    };
+
+    let result: Awaited<ReturnType<typeof hook.updateRestaurantList>> | undefined;
+    await act(async () => {
+      result = await hook.updateRestaurantList({
+        currentList: { isDefault: false },
+        listId: 'list_1',
+        updates,
+      });
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.update',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId: 'list_1',
+            updates,
+          },
+        },
+      }),
+    );
+    expect(mockedUpdateRestaurantList).not.toHaveBeenCalled();
+    expect(mockedInvalidateRestaurantListMetadataQueries).toHaveBeenCalledWith(queryClient, 'list_1');
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('List update');
+    expect(result).toEqual({ status: 'queued' });
 
     await act(async () => {
       renderer.unmount();

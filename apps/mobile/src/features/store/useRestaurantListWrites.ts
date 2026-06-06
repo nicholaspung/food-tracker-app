@@ -158,14 +158,14 @@ export function useRestaurantListWrites() {
   );
 
   // TODO: Migrate the remaining Restaurant List write paths to useFeatureWriteSubmit
-  // after create proves the shared lifecycle preserves their existing cache and queue behavior.
+  // as each path's cache and queue behavior is covered by hook tests.
   const updateListWrite = useCallback(
     async ({
       currentList,
       listId,
       updates,
-    }: UpdateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> => {
-      const result = await writeFeature({
+    }: UpdateRestaurantListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListRecord>> =>
+      submitFeatureWrite({
         operationName: 'list.update',
         offline: {
           strategy: 'outbox',
@@ -175,17 +175,11 @@ export function useRestaurantListWrites() {
           },
         },
         execute: () => updateRestaurantList(listId, updates, currentList),
-      });
-
-      await syncUpdatedRestaurantListCaches(queryClient, listId);
-
-      if (result.status === 'queued') {
-        showQueuedOfflineAlert('List update');
-      }
-
-      return result;
-    },
-    [queryClient, writeFeature],
+        fallbackErrorMessage: 'Could not update list.',
+        onSettledInvalidate: () => syncUpdatedRestaurantListCaches(queryClient, listId),
+        queuedToast: 'List update',
+      }),
+    [queryClient, submitFeatureWrite],
   );
 
   const createDefaultListWrite = useCallback(

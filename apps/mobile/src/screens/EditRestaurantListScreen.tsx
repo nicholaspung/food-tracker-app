@@ -81,7 +81,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_VALIDATION_FAILED', {
         source: 'EditRestaurantListScreen',
         reason: 'missing_name',
-        listId,
         visibility,
       });
       setErrorMessage('List name is required.');
@@ -91,7 +90,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
     setErrorMessage(null);
     trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_STARTED', {
       source: 'EditRestaurantListScreen',
-      listId,
       visibility,
       isOnline,
       hasDescription: description.trim().length > 0,
@@ -114,7 +112,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       if (updateResult.status === 'queued') {
         trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'EditRestaurantListScreen',
-          listId,
           queued: true,
           visibility,
         });
@@ -124,7 +121,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
 
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'EditRestaurantListScreen',
-        listId,
         queued: false,
         visibility,
       });
@@ -134,7 +130,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       setErrorMessage(message);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_FAILED', {
         source: 'EditRestaurantListScreen',
-        listId,
         visibility,
         isOnline,
         error: message,
@@ -275,7 +270,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           onVisibilityChange={(nextVisibility) => {
             trackObservabilityEvent('EDIT_RESTAURANT_LIST_VISIBILITY_CHANGED', {
               source: 'EditRestaurantListScreen',
-              listId,
               previousVisibility: visibility,
               nextVisibility,
             });
