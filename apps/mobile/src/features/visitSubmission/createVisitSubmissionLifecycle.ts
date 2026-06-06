@@ -65,6 +65,7 @@ export interface CreateVisitSubmissionDraftItem {
   notes: string;
   photos: CreateVisitSubmissionDraftPhoto[];
   sourceMenuItemId?: string;
+  suggestionSource?: CreateVisitInput['items'][number]['suggestionSource'];
 }
 
 export interface EditVisitSubmissionDraftItem extends CreateVisitSubmissionDraftItem {
@@ -136,6 +137,7 @@ interface ParsedCreateVisitItem {
   notes?: string;
   photos: VisitPhotoUploadInput[];
   rating: number;
+  suggestionSource?: CreateVisitInput['items'][number]['suggestionSource'];
 }
 
 interface ParsedEditVisitItem {
@@ -186,6 +188,17 @@ function parseDraftItems(
     rating: item.rating,
     ...(item.sourceMenuItemId?.trim() && !item.sourceMenuItemId.trim().startsWith('bookmark-')
       ? { menuItemId: item.sourceMenuItemId.trim() }
+      : {}),
+    ...(item.suggestionSource?.sourceMenuItemId.trim()
+      ? {
+          suggestionSource: {
+            type: item.suggestionSource.type,
+            sourceMenuItemId: item.suggestionSource.sourceMenuItemId.trim(),
+            sourceRestaurantId: item.suggestionSource.sourceRestaurantId?.trim() || undefined,
+            restaurantGroupId: item.suggestionSource.restaurantGroupId?.trim() || undefined,
+            normalizedItemName: item.suggestionSource.normalizedItemName?.trim() || undefined,
+          },
+        }
       : {}),
     description: item.description.trim() || undefined,
     notes: item.notes.trim() || undefined,

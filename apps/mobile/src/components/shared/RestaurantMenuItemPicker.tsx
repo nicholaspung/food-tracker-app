@@ -27,10 +27,20 @@ export interface RestaurantMenuItemPickerItem {
 export interface RestaurantMenuItemPickerCrossLocationItem {
   id: string;
   name: string;
-  latestRating: number;
-  latestRestaurantName: string;
+  source?: 'relatedLocationSuggestion' | 'allLocationsHistory';
+  suggestionSource?: {
+    type: 'groupMenuSuggestion';
+    sourceMenuItemId: string;
+    sourceRestaurantId?: string;
+    restaurantGroupId?: string;
+    normalizedItemName?: string;
+  };
+  latestRating?: number;
+  latestRestaurantName?: string;
   latestRestaurantLocation?: string;
-  orderCount: number;
+  orderCount?: number;
+  sourceItemCount?: number;
+  sourceRestaurantCount?: number;
 }
 
 export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuItemPickerItem> {
@@ -304,11 +314,29 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
   }, [isItemSelected, items, normalizedQuery]);
   const firstUnselectedIndex = displayedItems.findIndex((item) => !isItemSelected(item));
   const hasCrossLocationItems = crossLocationItems.length > 0;
+  const relatedLocationItems = crossLocationItems.filter(
+    (item) => item.source === 'relatedLocationSuggestion',
+  );
+  const allLocationsHistoryItems = crossLocationItems.filter(
+    (item) => item.source !== 'relatedLocationSuggestion',
+  );
   const reviewText = hasPendingMenuReview
     ? 'Review pending'
     : isReviewSubmitted
       ? 'Review requested'
       : 'Menu incorrect?';
+  const crossLocationSections = [
+    {
+      key: 'relatedLocationSuggestion',
+      label: 'Related location shortcuts',
+      items: relatedLocationItems,
+    },
+    {
+      key: 'allLocationsHistory',
+      label: crossLocationLabel,
+      items: allLocationsHistoryItems,
+    },
+  ].filter((section) => section.items.length > 0);
 
   return (
     <View style={styles.stepContainer}>
@@ -486,55 +514,86 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
 
         {hasCrossLocationItems ? (
           <View style={styles.crossLocationSection}>
-            <View style={styles.crossLocationHeader}>
-              <Text tone="secondary">{crossLocationLabel}</Text>
-            </View>
-            {crossLocationItems.map((item, index) => {
-              const selected = isCrossLocationItemSelected(item);
-              const rowDisabled =
-                crossLocationDisabled ||
-                (crossLocationLoadingItemId !== null && crossLocationLoadingItemId !== item.id);
-              const latestLocation = [item.latestRestaurantName, item.latestRestaurantLocation]
-                .filter(Boolean)
-                .join(' • ');
+            {crossLocationSections.map((section, sectionIndex) => (
+              <View key={section.key} style={styles.crossLocationSection}>
+                <View style={styles.crossLocationHeader}>
+                  <Text tone="secondary">{section.label}</Text>
+                </View>
+                {section.items.map((item, itemIndex) => {
+                  const selected = isCrossLocationItemSelected(item);
+                  const isAllLocationsHistoryItem = item.source !== 'relatedLocationSuggestion';
+                  const rowDisabled =
+                    (isAllLocationsHistoryItem && crossLocationDisabled) ||
+                    (crossLocationLoadingItemId !== null && crossLocationLoadingItemId !== item.id);
+                  const latestLocation = [item.latestRestaurantName, item.latestRestaurantLocation]
+                    .filter(Boolean)
+                    .join(' • ');
+                  const optionIndex =
+                    sectionIndex === 0 ? itemIndex : relatedLocationItems.length + itemIndex;
+                  const sourceRestaurantCount = item.sourceRestaurantCount ?? 0;
+                  const sourceItemCount = item.sourceItemCount ?? 0;
+                  const orderCount = item.orderCount ?? 0;
 
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={rowDisabled}
-                  key={item.id}
-                  onPress={() => onToggleCrossLocationItem?.(item)}
-                  style={[
-                    styles.crossLocationRow,
-                    selected ? styles.crossLocationRowSelected : null,
-                    rowDisabled ? { opacity: 0.55 } : null,
-                  ]}
-                  testID={`${testIDPrefix}-cross-location-item-option-${index}`}
-                >
-                  <View style={styles.crossLocationTitleRow}>
-                    <Text numberOfLines={1} style={styles.crossLocationTitle} variant="label">
-                      {item.name}
-                    </Text>
-                    {item.latestRating > 0 ? <RatingPill rating={item.latestRating} /> : null}
-                  </View>
-                  <View style={styles.crossLocationMetaRow}>
-                    <Text tone="secondary" variant="bodySm">
-                      {item.orderCount} {item.orderCount === 1 ? 'order' : 'orders'}
-                    </Text>
-                    {latestLocation ? (
-                      <Text numberOfLines={1} tone="secondary" variant="bodySm">
-                        Latest at {latestLocation}
-                      </Text>
-                    ) : null}
-                  </View>
-                  {crossLocationLoadingItemId === item.id ? (
-                    <Text tone="secondary" variant="bodySm">
-                      Adding to this restaurant...
-                    </Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={rowDisabled}
+                      key={item.id}
+                      onPress={() => onToggleCrossLocationItem?.(item)}
+                      style={[
+                        styles.crossLocationRow,
+                        selected ? styles.crossLocationRowSelected : null,
+                        rowDisabled ? { opacity: 0.55 } : null,
+                      ]}
+                      testID={`${testIDPrefix}-cross-location-item-option-${optionIndex}`}
+                    >
+                      <View style={styles.crossLocationTitleRow}>
+                        <Text numberOfLines={1} style={styles.crossLocationTitle} variant="label">
+                          {item.name}
+                        </Text>
+                        {(item.latestRating ?? 0) > 0 ? <RatingPill rating={item.latestRating ?? 0} /> : null}
+                      </View>
+                      <View style={styles.crossLocationMetaRow}>
+                        {item.source === 'relatedLocationSuggestion' ? (
+                          <>
+                            <Text tone="secondary" variant="bodySm">
+                              Suggested from {sourceRestaurantCount}{' '}
+                              {sourceRestaurantCount === 1 ? 'related location' : 'related locations'}
+                            </Text>
+                            {sourceItemCount > 0 ? (
+                              <Text tone="secondary" variant="bodySm">
+                                {sourceItemCount} {sourceItemCount === 1 ? 'trusted item' : 'trusted items'}
+                              </Text>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <Text tone="secondary" variant="bodySm">
+                              {orderCount} {orderCount === 1 ? 'order' : 'orders'}
+                            </Text>
+                            {latestLocation ? (
+                              <Text numberOfLines={1} tone="secondary" variant="bodySm">
+                                Latest at {latestLocation}
+                              </Text>
+                            ) : null}
+                          </>
+                        )}
+                      </View>
+                      {item.source === 'relatedLocationSuggestion' ? (
+                        <Text tone="secondary" variant="bodySm">
+                          Adds this name to your visit without changing this location's menu.
+                        </Text>
+                      ) : null}
+                      {crossLocationLoadingItemId === item.id ? (
+                        <Text tone="secondary" variant="bodySm">
+                          Adding to this restaurant...
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
         ) : null}
       </Card>

@@ -346,8 +346,17 @@ function buildAllLocationsHistory(items: Record<string, unknown>[]) {
   };
 }
 
+function buildGroupMenuSuggestions(suggestions: Record<string, unknown>[]) {
+  return {
+    restaurantGroupId: 'group-1',
+    restaurantId: 'restaurant-1',
+    suggestions,
+  };
+}
+
 describe('CreateVisitScreen', () => {
   let createMenuItem: jest.Mock;
+  let setDraftItems: jest.Mock;
   let toggleMenuItemSelection: jest.Mock;
   let navigation: {
     canGoBack: jest.Mock;
@@ -358,6 +367,7 @@ describe('CreateVisitScreen', () => {
 
   beforeEach(() => {
     createMenuItem = jest.fn();
+    setDraftItems = jest.fn();
     toggleMenuItemSelection = jest.fn();
     navigation = {
       canGoBack: jest.fn(() => true),
@@ -503,7 +513,7 @@ describe('CreateVisitScreen', () => {
       removeDraftItem: jest.fn(),
       removeDraftItemPhoto: jest.fn(),
       selectedMenuItemCount: 0,
-      setDraftItems: jest.fn(),
+      setDraftItems,
       toggleMenuItemSelection,
       updateDraftItem: jest.fn(),
     } as ReturnType<typeof useCreateVisitDraftItems>);
@@ -608,7 +618,97 @@ describe('CreateVisitScreen', () => {
         latestRestaurantName: 'Fire',
         name: 'Coconut Yogurt',
         orderCount: 1,
+        source: 'allLocationsHistory',
       },
+    ]);
+  });
+
+  it('passes related-location suggestions before all locations history into the menu item picker', async () => {
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      if (options.queryKey?.includes('groupMenuSuggestions')) {
+        return buildQueryResult(
+          buildGroupMenuSuggestions([
+            {
+              displayName: 'Coconut Yogurt',
+              normalizedItemName: 'coconut yogurt',
+              sourceItemCount: 3,
+              sourceRestaurantCount: 2,
+              sources: [
+                {
+                  menuItemCount: 3,
+                  menuItemIds: ['menu-item-3', 'menu-item-4', 'menu-item-5'],
+                  restaurantId: 'restaurant-2',
+                  restaurantLocation: 'Venice, CA',
+                  restaurantName: 'Fire',
+                },
+              ],
+            },
+          ]),
+        );
+      }
+
+      if (options.queryKey?.includes('allLocationsHistory')) {
+        return buildQueryResult(
+          buildAllLocationsHistory([
+            {
+              averageRating: 5,
+              displayName: 'Coconut Yogurt',
+              latestRating: 5,
+              latestRestaurantId: 'restaurant-2',
+              latestRestaurantLocation: 'Venice, CA',
+              latestRestaurantName: 'Fire',
+              latestVisitedAt: '2026-04-05T18:30:00.000Z',
+              normalizedItemName: 'coconut yogurt',
+              orderCount: 1,
+              restaurants: [],
+            },
+            {
+              averageRating: 4,
+              displayName: 'Noodle Soup',
+              latestRating: 4,
+              latestRestaurantId: 'restaurant-3',
+              latestRestaurantName: 'Fire',
+              latestVisitedAt: '2026-04-06T18:30:00.000Z',
+              normalizedItemName: 'noodle soup',
+              orderCount: 2,
+              restaurants: [],
+            },
+          ]),
+        );
+      }
+
+      return buildQueryResult(null);
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const picker = renderer.root.findByType('RestaurantMenuItemPicker');
+    expect(picker.props.crossLocationLabel).toBe('All Locations History');
+    expect(picker.props.crossLocationItems).toEqual([
+      expect.objectContaining({
+        name: 'Coconut Yogurt',
+        source: 'relatedLocationSuggestion',
+        sourceItemCount: 3,
+        sourceRestaurantCount: 2,
+      }),
+      expect.objectContaining({
+        name: 'Noodle Soup',
+        source: 'allLocationsHistory',
+      }),
     ]);
   });
 
@@ -733,6 +833,94 @@ describe('CreateVisitScreen', () => {
       visibility: 'friends',
     });
     expect(toggleMenuItemSelection).toHaveBeenCalledWith(createdMenuItem);
+  });
+
+  it('adds a related-location suggestion directly to the visit draft without creating a menu item', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('RestaurantMenuItemPicker').props.onToggleCrossLocationItem({
+        id: 'related-location:coconut yogurt',
+        name: 'Coconut Yogurt',
+        source: 'relatedLocationSuggestion',
+        sourceItemCount: 3,
+        sourceRestaurantCount: 2,
+      });
+    });
+
+    expect(createMenuItem).not.toHaveBeenCalled();
+    expect(toggleMenuItemSelection).not.toHaveBeenCalled();
+    expect(setDraftItems).toHaveBeenCalledWith(expect.any(Function));
+
+    const updater = setDraftItems.mock.calls[0][0];
+    expect(updater([])).toEqual([
+      {
+        deletedPhotoIds: [],
+        description: '',
+        id: 'related-location:coconut yogurt',
+        name: 'Coconut Yogurt',
+        notes: '',
+        photos: [],
+        rating: 3,
+      },
+    ]);
+  });
+
+  it('keeps cached related-location suggestions selectable offline', async () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('RestaurantMenuItemPicker').props.onToggleCrossLocationItem({
+        id: 'related-location:coconut yogurt',
+        name: 'Coconut Yogurt',
+        source: 'relatedLocationSuggestion',
+        sourceItemCount: 3,
+        sourceRestaurantCount: 2,
+      });
+    });
+
+    expect(createMenuItem).not.toHaveBeenCalled();
+    expect(setDraftItems).toHaveBeenCalledWith(expect.any(Function));
+    expect(
+      renderer.root.findAllByType('PageErrorToast').some(
+        (node: any) =>
+          node.props.errorMessage ===
+          'Adding menu items from matching locations requires internet connection.',
+      ),
+    ).toBe(false);
   });
 
   it('shows an online-only error when selecting a missing cross-location item offline', async () => {

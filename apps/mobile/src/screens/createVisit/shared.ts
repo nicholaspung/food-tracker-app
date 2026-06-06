@@ -7,6 +7,7 @@ import {
   resolveDefaultVisitVisibilityFromAuth,
   type MenuItemRecord,
   type VisitPhotoUploadInput,
+  type VisitItemSuggestionSourceInput,
 } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -52,6 +53,7 @@ export interface DraftVisitItem {
   photos: DraftVisitItemPhoto[];
   deletedPhotoIds: string[];
   sourceMenuItemId?: string;
+  suggestionSource?: VisitItemSuggestionSourceInput;
 }
 
 export interface RestaurantStats {

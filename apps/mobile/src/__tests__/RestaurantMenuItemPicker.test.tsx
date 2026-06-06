@@ -99,11 +99,37 @@ const currentMenuItem = {
 const crossLocationItem = {
   id: 'coconut yogurt',
   name: 'Coconut Yogurt',
+  source: 'allLocationsHistory' as const,
   latestRating: 5,
   latestRestaurantName: 'Fire',
   latestRestaurantLocation: 'Venice, CA',
   orderCount: 1,
 };
+
+const relatedLocationItem = {
+  id: 'related-location:ramen',
+  name: 'Ramen',
+  source: 'relatedLocationSuggestion' as const,
+  latestRestaurantName: 'Noodle House',
+  sourceItemCount: 3,
+  sourceRestaurantCount: 2,
+};
+
+function collectText(node: any): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (!node) {
+    return '';
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(collectText).join('');
+  }
+
+  return collectText(node.props?.children);
+}
 
 function renderPicker(overrides: Partial<React.ComponentProps<typeof RestaurantMenuItemPicker>> = {}) {
   let renderer: any = null;
@@ -139,11 +165,26 @@ describe('RestaurantMenuItemPicker', () => {
   it('renders current restaurant menu items and cross-location suggestions together', () => {
     const renderer = renderPicker({
       crossLocationItems: [crossLocationItem],
+      crossLocationLabel: 'All Locations History',
     });
 
     expect(renderer.root.findByType('VisitMenuItemOptionRow').props.name).toBe('Burger');
     expect(renderer.root.findByProps({ testID: 'create-visit-cross-location-item-option-0' })).toBeTruthy();
     expect(renderer.root.findByType('RatingPill').props.rating).toBe(5);
+  });
+
+  it('labels related-location shortcuts without exposing restaurant group terminology', () => {
+    const renderer = renderPicker({
+      crossLocationItems: [relatedLocationItem, crossLocationItem],
+      crossLocationLabel: 'All Locations History',
+    });
+    const text = renderer.root.findAllByType('Text').map(collectText).join(' ');
+
+    expect(text).toContain('Related location shortcuts');
+    expect(text).toContain('Suggested from 2 related locations');
+    expect(text).toContain("Adds this name to your visit without changing this location's menu.");
+    expect(text).toContain('All Locations History');
+    expect(text).not.toContain('Restaurant Group');
   });
 
   it('does not show the empty state when only cross-location suggestions exist', () => {
@@ -193,5 +234,15 @@ describe('RestaurantMenuItemPicker', () => {
     });
 
     expect(renderer.root.findByProps({ testID: 'create-visit-cross-location-item-option-0' }).props.disabled).toBe(true);
+  });
+
+  it('keeps related-location shortcuts selectable when history copying is disabled', () => {
+    const renderer = renderPicker({
+      crossLocationDisabled: true,
+      crossLocationItems: [relatedLocationItem, crossLocationItem],
+    });
+
+    expect(renderer.root.findByProps({ testID: 'create-visit-cross-location-item-option-0' }).props.disabled).toBe(false);
+    expect(renderer.root.findByProps({ testID: 'create-visit-cross-location-item-option-1' }).props.disabled).toBe(true);
   });
 });

@@ -248,6 +248,15 @@ export async function createVisit(
             name: item.name.trim(),
             rating: item.rating,
             menuItemId: item.menuItemId?.trim() || undefined,
+            suggestionSource: item.suggestionSource
+              ? {
+                  type: item.suggestionSource.type,
+                  sourceMenuItemId: item.suggestionSource.sourceMenuItemId.trim(),
+                  sourceRestaurantId: item.suggestionSource.sourceRestaurantId?.trim() || undefined,
+                  restaurantGroupId: item.suggestionSource.restaurantGroupId?.trim() || undefined,
+                  normalizedItemName: item.suggestionSource.normalizedItemName?.trim() || undefined,
+                }
+              : undefined,
             description: item.description?.trim() || undefined,
             notes: item.notes?.trim() || undefined,
           })),

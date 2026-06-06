@@ -40,12 +40,21 @@ type visitUpdateRequest struct {
 }
 
 type visitItemWriteRequest struct {
-	ID          string  `json:"id"`
-	MenuItemID  string  `json:"menuItemId"`
-	Name        string  `json:"name"`
-	Rating      float64 `json:"rating"`
-	Description string  `json:"description"`
-	Notes       string  `json:"notes"`
+	ID               string                            `json:"id"`
+	MenuItemID       string                            `json:"menuItemId"`
+	Name             string                            `json:"name"`
+	Rating           float64                           `json:"rating"`
+	Description      string                            `json:"description"`
+	Notes            string                            `json:"notes"`
+	SuggestionSource *visitItemSuggestionSourceRequest `json:"suggestionSource"`
+}
+
+type visitItemSuggestionSourceRequest struct {
+	Type               string `json:"type"`
+	SourceMenuItemID   string `json:"sourceMenuItemId"`
+	SourceRestaurantID string `json:"sourceRestaurantId"`
+	RestaurantGroupID  string `json:"restaurantGroupId"`
+	NormalizedItemName string `json:"normalizedItemName"`
 }
 
 type moveVisitItemRequest struct {
@@ -640,6 +649,15 @@ func createVisitTransaction(
 		return result, err
 	}
 
+	recordSuggestionProvenanceForVisitItems(
+		app,
+		authRecord.Id,
+		restaurantRecord,
+		visitRecord.Id,
+		requestBody.Items,
+		createdItemIDs,
+	)
+
 	if err := syncRestaurantListBookmarksAfterVisitCreate(
 		app,
 		authRecord,
@@ -1027,6 +1045,144 @@ func appendVisitItems(
 	}
 
 	return createdItemIDs, nil
+}
+
+type qualifiedSuggestionProvenanceSource struct {
+	NormalizedItemName string
+	RestaurantGroupID  string
+	SourceMenuItemID   string
+	SourceRestaurantID string
+}
+
+func recordSuggestionProvenanceForVisitItems(
+	app core.App,
+	userID string,
+	targetRestaurantRecord *core.Record,
+	visitID string,
+	requestItems []visitItemWriteRequest,
+	createdItemIDs []string,
+) {
+	if targetRestaurantRecord == nil || len(requestItems) == 0 || len(createdItemIDs) == 0 {
+		return
+	}
+
+	collection, err := app.FindCollectionByNameOrId("suggestion_provenance")
+	if err != nil {
+		return
+	}
+
+	for index, item := range requestItems {
+		if index >= len(createdItemIDs) {
+			return
+		}
+
+		source := resolveQualifiedSuggestionProvenanceSource(app, targetRestaurantRecord, item)
+		if source == nil {
+			continue
+		}
+
+		record := core.NewRecord(collection)
+		record.Set("sourceType", "group_menu_suggestion")
+		record.Set("normalizedItemName", source.NormalizedItemName)
+		record.Set("user", userID)
+		record.Set("visit", visitID)
+		record.Set("visitItem", createdItemIDs[index])
+		record.Set("targetRestaurant", targetRestaurantRecord.Id)
+		record.Set("sourceRestaurant", source.SourceRestaurantID)
+		record.Set("sourceMenuItem", source.SourceMenuItemID)
+		record.Set("restaurantGroup", source.RestaurantGroupID)
+		_ = app.Save(record)
+	}
+}
+
+func resolveQualifiedSuggestionProvenanceSource(
+	app core.App,
+	targetRestaurantRecord *core.Record,
+	item visitItemWriteRequest,
+) *qualifiedSuggestionProvenanceSource {
+	if item.SuggestionSource == nil {
+		return nil
+	}
+
+	sourceType := strings.TrimSpace(item.SuggestionSource.Type)
+	if sourceType != "groupMenuSuggestion" && sourceType != "group_menu_suggestion" {
+		return nil
+	}
+
+	sourceMenuItemID := strings.TrimSpace(item.SuggestionSource.SourceMenuItemID)
+	if sourceMenuItemID == "" {
+		return nil
+	}
+
+	normalizedItemName := normalizeMenuItemName(firstNonEmpty(
+		item.SuggestionSource.NormalizedItemName,
+		item.Name,
+	))
+	if normalizedItemName == "" {
+		return nil
+	}
+
+	targetRestaurantID := strings.TrimSpace(targetRestaurantRecord.Id)
+	targetRestaurantGroupID := strings.TrimSpace(targetRestaurantRecord.GetString("restaurantGroup"))
+	if targetRestaurantID == "" || targetRestaurantGroupID == "" {
+		return nil
+	}
+
+	sourceMenuItemRecord, err := app.FindRecordById("menu_items", sourceMenuItemID)
+	if err != nil {
+		return nil
+	}
+	sourceRestaurantID := strings.TrimSpace(sourceMenuItemRecord.GetString("restaurant"))
+	if sourceRestaurantID == "" || sourceRestaurantID == targetRestaurantID {
+		return nil
+	}
+	if strings.TrimSpace(item.SuggestionSource.SourceRestaurantID) != "" &&
+		strings.TrimSpace(item.SuggestionSource.SourceRestaurantID) != sourceRestaurantID {
+		return nil
+	}
+	if strings.TrimSpace(item.SuggestionSource.RestaurantGroupID) != "" &&
+		strings.TrimSpace(item.SuggestionSource.RestaurantGroupID) != targetRestaurantGroupID {
+		return nil
+	}
+	if normalizeMenuItemName(sourceMenuItemRecord.GetString("name")) != normalizedItemName {
+		return nil
+	}
+	if sourceMenuItemRecord.GetString("approvalStatus") != "approved" ||
+		sourceMenuItemRecord.GetString("visibility") != "public" ||
+		!sourceMenuItemRecord.GetBool("groupSuitable") {
+		return nil
+	}
+
+	sourceRestaurantRecord, err := app.FindRecordById("restaurants", sourceRestaurantID)
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(sourceRestaurantRecord.GetString("restaurantGroup")) != targetRestaurantGroupID {
+		return nil
+	}
+
+	exactMatchCount := struct {
+		Count int `db:"count"`
+	}{}
+	if err := app.DB().NewQuery(`
+		SELECT COUNT(*) AS [[count]]
+		FROM menu_items
+		WHERE restaurant = {:restaurantId}
+			AND LOWER(TRIM(COALESCE(name, ''))) = {:normalizedItemName}
+			AND TRIM(COALESCE(name, '')) != ''
+	`).Bind(dbx.Params{
+		"normalizedItemName": normalizedItemName,
+		"restaurantId":       targetRestaurantID,
+	}).One(&exactMatchCount); err != nil || exactMatchCount.Count > 0 {
+		return nil
+	}
+
+	return &qualifiedSuggestionProvenanceSource{
+		NormalizedItemName: normalizedItemName,
+		RestaurantGroupID:  targetRestaurantGroupID,
+		SourceMenuItemID:   sourceMenuItemRecord.Id,
+		SourceRestaurantID: sourceRestaurantID,
+	}
 }
 
 func syncVisitItems(

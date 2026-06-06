@@ -1,4 +1,5 @@
 import {
+  createVisitApiMutationInput,
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
 import { replayRegisteredFeatureOutboxOperation } from '../features/store/featureOutboxReplayAdapters';
@@ -196,6 +197,65 @@ describe('featureOutboxOperations', () => {
           'X-Idempotency-Key': 'idem_123',
         },
       },
+    );
+  });
+
+  it('preserves visit suggestion provenance in queued replay payloads', async () => {
+    const input = {
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      items: [
+        {
+          name: 'Coconut Yogurt',
+          rating: 4,
+          suggestionSource: {
+            normalizedItemName: 'coconut yogurt',
+            restaurantGroupId: 'group-1',
+            sourceMenuItemId: 'menu-item-2',
+            sourceRestaurantId: 'restaurant-2',
+            type: 'groupMenuSuggestion' as const,
+          },
+        },
+      ],
+      visitedAt: '2026-04-23T18:00:00.000Z',
+      visitedOn: '2026-04-23',
+      visibility: 'friends' as const,
+    };
+
+    expect(createVisitApiMutationInput(input).body).toEqual(
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            suggestionSource: input.items[0].suggestionSource,
+          }),
+        ],
+      }),
+    );
+
+    mockedCreateVisit.mockResolvedValue({
+      id: 'visit-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-23T18:00:00.000Z',
+      items: [],
+      source: 'visit',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      updatedAt: '2026-04-23T18:00:00.000Z',
+    } as Awaited<ReturnType<typeof createVisit>>);
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        body: JSON.stringify(input),
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedCreateVisit).toHaveBeenCalledWith(
+      input,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idem_123',
+        }),
+      }),
     );
   });
 

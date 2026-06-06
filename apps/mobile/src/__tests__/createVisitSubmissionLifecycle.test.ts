@@ -315,6 +315,49 @@ describe('submitCreateVisit', () => {
     );
   });
 
+  it('passes related-location suggestion provenance through the visit write', async () => {
+    await submitCreateVisit(
+      buildInput({
+        draftItems: [
+          {
+            description: '',
+            id: 'related-location:coconut yogurt',
+            name: 'Coconut Yogurt',
+            notes: '',
+            photos: [],
+            rating: 4,
+            suggestionSource: {
+              normalizedItemName: ' coconut yogurt ',
+              restaurantGroupId: ' group-1 ',
+              sourceMenuItemId: ' menu-item-2 ',
+              sourceRestaurantId: ' restaurant-2 ',
+              type: 'groupMenuSuggestion',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(createVisit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          items: [
+            expect.objectContaining({
+              name: 'Coconut Yogurt',
+              suggestionSource: {
+                normalizedItemName: 'coconut yogurt',
+                restaurantGroupId: 'group-1',
+                sourceMenuItemId: 'menu-item-2',
+                sourceRestaurantId: 'restaurant-2',
+                type: 'groupMenuSuggestion',
+              },
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it('links the first created visit item back to a source restaurant list item', async () => {
     await submitCreateVisit(
       buildInput({

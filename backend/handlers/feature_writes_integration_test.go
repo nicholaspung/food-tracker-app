@@ -314,6 +314,179 @@ func TestVisitCreateEndpointCreatesNestedRecords(t *testing.T) {
 	}
 }
 
+func TestVisitCreateEndpointRecordsSuggestionProvenanceForQualifiedGroupSuggestion(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	admin, adminToken := createAuthUser(t, server.app, true, true)
+	user, token := createAuthUser(t, server.app, false, true)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Noodle Group",
+		"createdBy": admin.Id,
+	})
+	targetRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Noodle House Downtown")
+	targetRestaurant.Set("restaurantGroup", group.Id)
+	if err := server.app.Save(targetRestaurant); err != nil {
+		t.Fatalf("failed to assign target restaurant group: %v", err)
+	}
+	sourceRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Noodle House Uptown")
+	sourceRestaurant.Set("restaurantGroup", group.Id)
+	if err := server.app.Save(sourceRestaurant); err != nil {
+		t.Fatalf("failed to assign source restaurant group: %v", err)
+	}
+	sourceMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     sourceRestaurant.Id,
+		"createdBy":      admin.Id,
+		"name":           "Coconut Yogurt",
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+targetRestaurant.Id+`",
+			"restaurantName":"Noodle House Downtown",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{
+					"name":"Coconut Yogurt",
+					"rating":5,
+					"suggestionSource":{
+						"type":"groupMenuSuggestion",
+						"sourceMenuItemId":"`+sourceMenuItem.Id+`",
+						"sourceRestaurantId":"`+sourceRestaurant.Id+`",
+						"restaurantGroupId":"`+group.Id+`",
+						"normalizedItemName":"coconut yogurt"
+					}
+				}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "suggestion_provenance") ||
+		strings.Contains(response.Body.String(), "sourceMenuItem") {
+		t.Fatalf("expected normal visit response to omit provenance fields, got %s", response.Body.String())
+	}
+
+	records, err := server.app.FindRecordsByFilter(
+		"suggestion_provenance",
+		"sourceMenuItem = {:sourceMenuItemId}",
+		"",
+		10,
+		0,
+		map[string]any{"sourceMenuItemId": sourceMenuItem.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load suggestion provenance: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected one provenance record, got %d", len(records))
+	}
+	provenance := records[0]
+	if provenance.GetString("user") != user.Id ||
+		provenance.GetString("targetRestaurant") != targetRestaurant.Id ||
+		provenance.GetString("sourceRestaurant") != sourceRestaurant.Id ||
+		provenance.GetString("restaurantGroup") != group.Id ||
+		provenance.GetString("normalizedItemName") != "coconut yogurt" {
+		t.Fatalf("unexpected provenance record: %#v", provenance.PublicExport())
+	}
+
+	userListResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/suggestion_provenance/records?perPage=50",
+		token,
+		"",
+	)
+	if strings.Contains(userListResponse.Body.String(), provenance.Id) {
+		t.Fatalf("expected normal user provenance list to hide record, got %d: %s", userListResponse.Code, userListResponse.Body.String())
+	}
+
+	adminListResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/suggestion_provenance/records?perPage=50",
+		adminToken,
+		"",
+	)
+	if adminListResponse.Code != http.StatusOK || !strings.Contains(adminListResponse.Body.String(), provenance.Id) {
+		t.Fatalf("expected admin to see provenance record, got %d: %s", adminListResponse.Code, adminListResponse.Body.String())
+	}
+}
+
+func TestVisitCreateEndpointSkipsStaleSuggestionProvenanceWithoutFailingVisit(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	admin, _ := createAuthUser(t, server.app, true, true)
+	user, token := createAuthUser(t, server.app, false, true)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Stale Group",
+		"createdBy": admin.Id,
+	})
+	targetRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Stale Target")
+	targetRestaurant.Set("restaurantGroup", group.Id)
+	if err := server.app.Save(targetRestaurant); err != nil {
+		t.Fatalf("failed to assign target restaurant group: %v", err)
+	}
+	sourceRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Stale Source")
+	sourceRestaurant.Set("restaurantGroup", group.Id)
+	if err := server.app.Save(sourceRestaurant); err != nil {
+		t.Fatalf("failed to assign source restaurant group: %v", err)
+	}
+	sourceMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     sourceRestaurant.Id,
+		"createdBy":      admin.Id,
+		"name":           "Coconut Yogurt",
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  false,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+targetRestaurant.Id+`",
+			"restaurantName":"Stale Target",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{
+					"name":"Coconut Yogurt",
+					"rating":5,
+					"suggestionSource":{
+						"type":"groupMenuSuggestion",
+						"sourceMenuItemId":"`+sourceMenuItem.Id+`",
+						"sourceRestaurantId":"`+sourceRestaurant.Id+`",
+						"restaurantGroupId":"`+group.Id+`",
+						"normalizedItemName":"coconut yogurt"
+					}
+				}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected stale provenance to keep visit create successful, got %d: %s", response.Code, response.Body.String())
+	}
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": user.Id}); count != 1 {
+		t.Fatalf("expected visit to be created despite stale provenance, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "suggestion_provenance", "sourceMenuItem = {:sourceMenuItemId}", map[string]any{"sourceMenuItemId": sourceMenuItem.Id}); count != 0 {
+		t.Fatalf("expected stale source provenance to be skipped, got %d", count)
+	}
+}
+
 func TestVisitCreateEndpointRejectsInaccessibleRestaurantID(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	owner, _ := createAuthUser(t, server.app, false, true)

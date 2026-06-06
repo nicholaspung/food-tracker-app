@@ -9,4 +9,4 @@ allowBuilds:
   msgpackr-extract: false
   unrs-resolver: true
 patchedDependencies:
-  expo-notifications@56.0.15: patches/expo-notifications@56.0.15.patch
+  expo-notifications@56.0.16: patches/expo-notifications@56.0.16.patch

@@ -36,14 +36,19 @@ import {
   listVisitItemPhotos,
   useMenuItemCatalogWrites,
   useMonthlyUsage,
+  type GroupMenuSuggestionsRecord,
   type RestaurantRecord,
   type VisitItem,
   type VisitPhotoRecord,
 } from '../features';
+import { buildMenuSelectionSuggestions } from '../features/restaurants/menuSelectionSuggestions';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
-import { getAllLocationsHistory } from '../features/store/restaurantsStore';
+import {
+  getAllLocationsHistory,
+  getGroupMenuSuggestionsForRestaurant,
+} from '../features/store/restaurantsStore';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -118,6 +123,15 @@ function buildEmptyAllLocationsHistory(
     itemCount: 0,
     restaurants: [],
     items: [],
+  };
+}
+
+function buildEmptyGroupMenuSuggestions(
+  restaurantId: string | null,
+): GroupMenuSuggestionsRecord {
+  return {
+    restaurantId: restaurantId?.trim() ?? '',
+    suggestions: [],
   };
 }
 
@@ -623,6 +637,26 @@ export function CreateVisitScreen({
     },
     enabled: step === 1 && Boolean(selectedRestaurantId),
   });
+  const groupMenuSuggestionsQuery = useQuery({
+    queryKey: restaurantsQueryKeys.groupMenuSuggestions(selectedRestaurantId ?? ''),
+    queryFn: ({ signal }): Promise<GroupMenuSuggestionsRecord> => {
+      const emptySuggestions = buildEmptyGroupMenuSuggestions(selectedRestaurantId);
+      if (!selectedRestaurantId) {
+        return Promise.resolve(emptySuggestions);
+      }
+
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<GroupMenuSuggestionsRecord>(
+            restaurantsQueryKeys.groupMenuSuggestions(selectedRestaurantId),
+          ) ?? emptySuggestions,
+        );
+      }
+
+      return getGroupMenuSuggestionsForRestaurant(selectedRestaurantId, { signal });
+    },
+    enabled: step === 1 && Boolean(selectedRestaurantId),
+  });
   const savedEmptyDescription = savedSuggestions.emptyDescription;
   const savedEmptyTitle = savedSuggestions.emptyTitle;
   const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
@@ -672,38 +706,21 @@ export function CreateVisitScreen({
     ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining)
     : null;
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
-  const crossLocationMenuItems = useMemo<RestaurantMenuItemPickerCrossLocationItem[]>(() => {
-    const normalizedExistingMenuItemNames = new Set(
-      (menuItemsQuery.data ?? [])
-        .map((item) => normalizeSelectionLabel(item.name))
-        .filter(Boolean),
-    );
-    const normalizedSearchQuery = normalizeSelectionLabel(menuItemSearchQuery);
-
-    return (allLocationsHistoryQuery.data?.items ?? [])
-      .flatMap((item): RestaurantMenuItemPickerCrossLocationItem[] => {
-        const normalizedName = normalizeSelectionLabel(item.displayName);
-        if (!normalizedName || normalizedExistingMenuItemNames.has(normalizedName)) {
-          return [];
-        }
-        if (normalizedSearchQuery && !normalizedName.includes(normalizedSearchQuery)) {
-          return [];
-        }
-
-        const crossLocationItem: RestaurantMenuItemPickerCrossLocationItem = {
-          id: item.normalizedItemName || normalizedName,
-          name: item.displayName,
-          latestRating: item.latestRating,
-          latestRestaurantName: item.latestRestaurantName,
-          orderCount: item.orderCount,
-        };
-        if (item.latestRestaurantLocation) {
-          crossLocationItem.latestRestaurantLocation = item.latestRestaurantLocation;
-        }
-
-        return [crossLocationItem];
-      });
-  }, [allLocationsHistoryQuery.data?.items, menuItemSearchQuery, menuItemsQuery.data]);
+  const crossLocationMenuItems = useMemo<RestaurantMenuItemPickerCrossLocationItem[]>(
+    () =>
+      buildMenuSelectionSuggestions({
+        allLocationsHistory: allLocationsHistoryQuery.data,
+        exactLocationMenuItems: menuItemsQuery.data,
+        groupMenuSuggestions: groupMenuSuggestionsQuery.data,
+        searchQuery: menuItemSearchQuery,
+      }),
+    [
+      allLocationsHistoryQuery.data,
+      groupMenuSuggestionsQuery.data,
+      menuItemSearchQuery,
+      menuItemsQuery.data,
+    ],
+  );
   const isCrossLocationItemSelected = useCallback(
     (item: RestaurantMenuItemPickerCrossLocationItem) => {
       const normalizedName = normalizeSelectionLabel(item.name);
@@ -718,6 +735,33 @@ export function CreateVisitScreen({
       }
 
       const normalizedName = normalizeSelectionLabel(historyItem.name);
+      if (historyItem.source === 'relatedLocationSuggestion') {
+        setCrossLocationItemErrorMessage(null);
+        setDraftItems((currentItems) => {
+          const existingDraftItem = currentItems.find(
+            (item) => normalizeSelectionLabel(item.name) === normalizedName,
+          );
+          if (existingDraftItem) {
+            return currentItems.filter((item) => item.id !== existingDraftItem.id);
+          }
+
+          return [
+            ...currentItems,
+            {
+              id: historyItem.id,
+              name: historyItem.name,
+              rating: 3,
+              description: '',
+              notes: '',
+              photos: [],
+              deletedPhotoIds: [],
+              suggestionSource: historyItem.suggestionSource,
+            },
+          ];
+        });
+        return;
+      }
+
       const existingCurrentMenuItem = (menuItemsQuery.data ?? []).find(
         (item) => normalizeSelectionLabel(item.name) === normalizedName,
       );
@@ -766,7 +810,15 @@ export function CreateVisitScreen({
         setCopyingCrossLocationItemId(null);
       }
     },
-    [isOnline, menuItemCatalogWrites, menuItemsQuery.data, restaurantName, selectedRestaurantId, toggleMenuItemSelection],
+    [
+      isOnline,
+      menuItemCatalogWrites,
+      menuItemsQuery.data,
+      restaurantName,
+      selectedRestaurantId,
+      setDraftItems,
+      toggleMenuItemSelection,
+    ],
   );
   const restaurantMetadataById = useMemo(() => {
     const metadata = new Map<
@@ -2330,6 +2382,7 @@ export function CreateVisitScreen({
           addManualDisabled={!selectedRestaurantId}
           crossLocationDisabled={!isOnline}
           crossLocationItems={crossLocationMenuItems}
+          crossLocationLabel="All Locations History"
           crossLocationLoadingItemId={copyingCrossLocationItemId}
           currentUserId={currentUserId}
           hasError={menuItemsQuery.isError}

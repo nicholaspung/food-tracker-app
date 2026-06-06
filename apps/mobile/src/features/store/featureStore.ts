@@ -18,6 +18,7 @@ export interface CreateVisitInput {
     name: string;
     rating: number;
     menuItemId?: string;
+    suggestionSource?: VisitItemSuggestionSourceInput;
     description?: string;
     notes?: string;
     photos?: VisitPhotoUploadInput[];
@@ -27,6 +28,14 @@ export interface CreateVisitInput {
   visibility?: 'friends' | 'private';
   source?: VisitRecord['source'];
   sourceNoteId?: string;
+}
+
+export interface VisitItemSuggestionSourceInput {
+  type: 'groupMenuSuggestion';
+  sourceMenuItemId: string;
+  sourceRestaurantId?: string;
+  restaurantGroupId?: string;
+  normalizedItemName?: string;
 }
 
 export interface UpdateVisitInput {
