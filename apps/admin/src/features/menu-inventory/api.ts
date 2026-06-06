@@ -32,6 +32,8 @@ export interface RestaurantInventoryRow {
   restaurantGroup: RestaurantGroupInventorySummary | null;
   menuItemCount: number;
   menuImageCount: number;
+  catalogContributionCount: number;
+  suggestionProvenanceCount: number;
 }
 
 export interface RestaurantGroupInventorySummary {
@@ -60,6 +62,8 @@ export interface MenuItemInventoryRow {
   promotedTo?: string;
   promotedFromItem?: LinkedMenuItemInventorySummary | null;
   promotedToItem?: LinkedMenuItemInventorySummary | null;
+  catalogContributionCount: number;
+  suggestionProvenanceCount: number;
   isFromOcr: boolean;
   created: string;
   updated: string;

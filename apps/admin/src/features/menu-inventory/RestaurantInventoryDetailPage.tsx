@@ -23,6 +23,7 @@ import {
   formatOptional,
   getLinkedMenuItemDisplaySummary,
   renderLinkedMenuItemSummary,
+  renderMenuCatalogTrustEvidence,
   renderMenuItemApprovalStatus,
   renderMenuItemGroupSuitableStatus,
   renderInventoryUser,
@@ -140,6 +141,7 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                   <th>Visibility</th>
                   <th>Approval</th>
                   <th>Group suitable</th>
+                  <th>Evidence</th>
                   <th>Actions</th>
                   <th>Updated</th>
                 </tr>
@@ -179,6 +181,7 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                             ) : null}
                           </div>
                         </td>
+                        <td>{renderMenuCatalogTrustEvidence(row)}</td>
                         <td>
                           <div className="compact-action-row">
                             {row.approvalStatus !== 'approved' ? (
@@ -266,7 +269,7 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                       </tr>
                       {linkedSummary ? (
                         <tr className="inventory-linked-row">
-                          <td colSpan={8}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                          <td colSpan={9}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
                         </tr>
                       ) : null}
                     </Fragment>
@@ -580,6 +583,10 @@ export function RestaurantInventoryDetailPage() {
               </div>
 
               <div className="split-list">
+                <div className="list-item">
+                  <strong>Trust evidence</strong>
+                  {renderMenuCatalogTrustEvidence(restaurant)}
+                </div>
                 <div className="list-item">
                   <strong>Place ID</strong>
                   <span className="text-muted">{formatOptional(restaurant.placeId, 'Not set')}</span>

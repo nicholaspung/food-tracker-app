@@ -21,6 +21,65 @@ const (
 	menuItemApprovalStatusUnreviewed = "unreviewed"
 )
 
+const adminMenuCatalogTrustEvidenceSelect = `
+			COALESCE((
+				SELECT COUNT(*)
+				FROM menu_items contribution
+				LEFT JOIN users contribution_creator ON contribution_creator.id = contribution.createdBy
+				WHERE contribution.restaurant = menu_items.restaurant
+					AND contribution.id != menu_items.id
+					AND TRIM(COALESCE(contribution.name, '')) != ''
+					AND LOWER(TRIM(COALESCE(contribution.name, ''))) = LOWER(TRIM(COALESCE(menu_items.name, '')))
+					AND COALESCE(contribution.approvalStatus, 'unreviewed') != 'rejected'
+					AND (
+						contribution.promotedTo = menu_items.id
+						OR menu_items.promotedFrom = contribution.id
+						OR (
+							COALESCE(menu_items.approvalStatus, 'unreviewed') = 'approved'
+							AND TRIM(COALESCE(contribution.createdBy, '')) != ''
+							AND COALESCE(contribution_creator.isAdmin, 0) = 0
+						)
+					)
+			), 0) AS [[catalogContributionCount]],
+			COALESCE((
+				SELECT COUNT(*)
+				FROM suggestion_provenance provenance
+				WHERE provenance.targetRestaurant = menu_items.restaurant
+					AND provenance.normalizedItemName = LOWER(TRIM(COALESCE(menu_items.name, '')))
+					AND TRIM(COALESCE(menu_items.name, '')) != ''
+			), 0) AS [[suggestionProvenanceCount]],
+`
+
+const adminRestaurantMenuCatalogTrustEvidenceSelect = `
+			COALESCE((
+				SELECT COUNT(DISTINCT contribution.id)
+				FROM menu_items approved_items
+				INNER JOIN menu_items contribution
+					ON contribution.restaurant = approved_items.restaurant
+					AND contribution.id != approved_items.id
+					AND TRIM(COALESCE(contribution.name, '')) != ''
+					AND LOWER(TRIM(COALESCE(contribution.name, ''))) = LOWER(TRIM(COALESCE(approved_items.name, '')))
+				LEFT JOIN users contribution_creator ON contribution_creator.id = contribution.createdBy
+				WHERE approved_items.restaurant = restaurants.id
+					AND TRIM(COALESCE(approved_items.name, '')) != ''
+					AND COALESCE(approved_items.approvalStatus, 'unreviewed') = 'approved'
+					AND COALESCE(contribution.approvalStatus, 'unreviewed') != 'rejected'
+					AND (
+						contribution.promotedTo = approved_items.id
+						OR approved_items.promotedFrom = contribution.id
+						OR (
+							TRIM(COALESCE(contribution.createdBy, '')) != ''
+							AND COALESCE(contribution_creator.isAdmin, 0) = 0
+						)
+					)
+			), 0) AS [[catalogContributionCount]],
+			COALESCE((
+				SELECT COUNT(*)
+				FROM suggestion_provenance provenance
+				WHERE provenance.targetRestaurant = restaurants.id
+			), 0) AS [[suggestionProvenanceCount]]
+`
+
 type adminMenuItemApprovalRequest struct {
 	Status string `json:"status"`
 }

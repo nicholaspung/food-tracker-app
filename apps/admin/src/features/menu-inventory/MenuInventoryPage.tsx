@@ -18,6 +18,7 @@ import {
   formatOptional,
   getLinkedMenuItemDisplaySummary,
   renderLinkedMenuItemSummary,
+  renderMenuCatalogTrustEvidence,
   renderMenuItemApprovalStatus,
   renderMenuItemGroupSuitableStatus,
   renderInventoryUser,
@@ -112,6 +113,7 @@ function RestaurantInventoryTable({ rows }: { rows: RestaurantInventoryRow[] }) 
             <th>Visibility</th>
             <th>Menu items</th>
             <th>Menu photos</th>
+            <th>Evidence</th>
             <th>Updated</th>
           </tr>
         </thead>
@@ -149,6 +151,7 @@ function RestaurantInventoryTable({ rows }: { rows: RestaurantInventoryRow[] }) 
               <td>{renderInventoryVisibility(row.visibility)}</td>
               <td>{row.menuItemCount}</td>
               <td>{row.menuImageCount}</td>
+              <td>{renderMenuCatalogTrustEvidence(row)}</td>
               <td>{formatDateTime(row.updated || row.created)}</td>
             </tr>
           ))}
@@ -218,6 +221,7 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
               <th>Visibility</th>
               <th>Approval</th>
               <th>Group suitable</th>
+              <th>Evidence</th>
               <th>Actions</th>
               <th>Updated</th>
             </tr>
@@ -274,6 +278,7 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                         ) : null}
                       </div>
                     </td>
+                    <td>{renderMenuCatalogTrustEvidence(row)}</td>
                     <td>
                       <div className="compact-action-row">
                         {row.approvalStatus !== 'approved' ? (
@@ -337,7 +342,7 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                   </tr>
                   {linkedSummary ? (
                     <tr className="inventory-linked-row">
-                      <td colSpan={9}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
+                      <td colSpan={10}>{renderLinkedMenuItemSummary(linkedSummary)}</td>
                     </tr>
                   ) : null}
                 </Fragment>

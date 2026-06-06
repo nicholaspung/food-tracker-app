@@ -34,42 +34,45 @@ const adminMenuInventoryLinkedMenuItemSelect = `
 `
 
 type adminMenuInventoryRestaurantRow struct {
-	Created             string  `db:"created"`
-	CreatedBy           string  `db:"createdBy"`
-	CreatorCreated      string  `db:"creatorCreated"`
-	CreatorEmail        string  `db:"creatorEmail"`
-	CreatorID           string  `db:"creatorId"`
-	CreatorIsAdmin      int     `db:"creatorIsAdmin"`
-	CreatorIsBetaUser   int     `db:"creatorIsBetaUser"`
-	CreatorIsSubscriber int     `db:"creatorIsSubscriber"`
-	CreatorName         string  `db:"creatorName"`
-	CreatorUpdated      string  `db:"creatorUpdated"`
-	CuisineType         string  `db:"cuisineType"`
-	GooglePlaceCachedAt string  `db:"googlePlaceCachedAt"`
-	ID                  string  `db:"id"`
-	IsGooglePlace       int     `db:"isGooglePlace"`
-	Latitude            float64 `db:"latitude"`
-	Location            string  `db:"location"`
-	Longitude           float64 `db:"longitude"`
-	MenuImageCount      int     `db:"menuImageCount"`
-	MenuItemCount       int     `db:"menuItemCount"`
-	Name                string  `db:"name"`
-	PlaceID             string  `db:"placeId"`
-	RestaurantGroup     string  `db:"restaurantGroup"`
-	GroupCreated        string  `db:"groupCreated"`
-	GroupCreatedBy      string  `db:"groupCreatedBy"`
-	GroupID             string  `db:"groupId"`
-	GroupName           string  `db:"groupName"`
-	GroupNotes          string  `db:"groupNotes"`
-	GroupUpdated        string  `db:"groupUpdated"`
-	Updated             string  `db:"updated"`
-	Visibility          string  `db:"visibility"`
+	Created                   string  `db:"created"`
+	CreatedBy                 string  `db:"createdBy"`
+	CreatorCreated            string  `db:"creatorCreated"`
+	CreatorEmail              string  `db:"creatorEmail"`
+	CreatorID                 string  `db:"creatorId"`
+	CreatorIsAdmin            int     `db:"creatorIsAdmin"`
+	CreatorIsBetaUser         int     `db:"creatorIsBetaUser"`
+	CreatorIsSubscriber       int     `db:"creatorIsSubscriber"`
+	CreatorName               string  `db:"creatorName"`
+	CreatorUpdated            string  `db:"creatorUpdated"`
+	CuisineType               string  `db:"cuisineType"`
+	GooglePlaceCachedAt       string  `db:"googlePlaceCachedAt"`
+	ID                        string  `db:"id"`
+	IsGooglePlace             int     `db:"isGooglePlace"`
+	CatalogContributionCount  int     `db:"catalogContributionCount"`
+	Latitude                  float64 `db:"latitude"`
+	Location                  string  `db:"location"`
+	Longitude                 float64 `db:"longitude"`
+	MenuImageCount            int     `db:"menuImageCount"`
+	MenuItemCount             int     `db:"menuItemCount"`
+	Name                      string  `db:"name"`
+	PlaceID                   string  `db:"placeId"`
+	RestaurantGroup           string  `db:"restaurantGroup"`
+	GroupCreated              string  `db:"groupCreated"`
+	GroupCreatedBy            string  `db:"groupCreatedBy"`
+	GroupID                   string  `db:"groupId"`
+	GroupName                 string  `db:"groupName"`
+	GroupNotes                string  `db:"groupNotes"`
+	GroupUpdated              string  `db:"groupUpdated"`
+	SuggestionProvenanceCount int     `db:"suggestionProvenanceCount"`
+	Updated                   string  `db:"updated"`
+	Visibility                string  `db:"visibility"`
 }
 
 type adminMenuInventoryMenuItemRow struct {
 	ApprovalReviewedAt         string `db:"approvalReviewedAt"`
 	ApprovalReviewedBy         string `db:"approvalReviewedBy"`
 	ApprovalStatus             string `db:"approvalStatus"`
+	CatalogContributionCount   int    `db:"catalogContributionCount"`
 	Created                    string `db:"created"`
 	CreatedBy                  string `db:"createdBy"`
 	CreatorCreated             string `db:"creatorCreated"`
@@ -101,6 +104,7 @@ type adminMenuInventoryMenuItemRow struct {
 	RestaurantName             string `db:"restaurantName"`
 	SourceImage                string `db:"sourceImage"`
 	SourceImageFile            string `db:"sourceImageFile"`
+	SuggestionProvenanceCount  int    `db:"suggestionProvenanceCount"`
 	Updated                    string `db:"updated"`
 	Visibility                 string `db:"visibility"`
 }
@@ -381,7 +385,8 @@ func loadAdminRestaurantInventory(app core.App, query adminMenuInventoryQuery) (
 				SELECT COUNT(*)
 				FROM menu_images
 				WHERE menu_images.restaurant = restaurants.id
-			) AS [[menuImageCount]]
+			) AS [[menuImageCount]],
+` + adminRestaurantMenuCatalogTrustEvidenceSelect + `
 		FROM restaurants
 		LEFT JOIN users creator ON creator.id = restaurants.createdBy
 		LEFT JOIN restaurant_groups ON restaurant_groups.id = restaurants.restaurantGroup
@@ -521,6 +526,7 @@ func loadAdminMenuImageAttachedMenuItemRows(app core.App, imageID string) ([]adm
 			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuCatalogTrustEvidenceSelect + `
 ` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
@@ -567,6 +573,7 @@ func loadAdminMenuImageUnattachedRestaurantMenuItemRows(app core.App, restaurant
 			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuCatalogTrustEvidenceSelect + `
 ` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
@@ -638,7 +645,8 @@ func loadAdminRestaurantInventoryRowByID(app core.App, restaurantID string) (adm
 				SELECT COUNT(*)
 				FROM menu_images
 				WHERE menu_images.restaurant = restaurants.id
-			) AS [[menuImageCount]]
+			) AS [[menuImageCount]],
+` + adminRestaurantMenuCatalogTrustEvidenceSelect + `
 		FROM restaurants
 		LEFT JOIN users creator ON creator.id = restaurants.createdBy
 		LEFT JOIN restaurant_groups ON restaurant_groups.id = restaurants.restaurantGroup
@@ -670,6 +678,7 @@ func loadAdminRestaurantMenuItemRows(app core.App, restaurantID string, orderBy 
 			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuCatalogTrustEvidenceSelect + `
 ` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
@@ -785,6 +794,7 @@ func loadAdminMenuItemInventory(app core.App, query adminMenuInventoryQuery) (ma
 			COALESCE(menu_items.groupSuitable, 0) AS [[groupSuitable]],
 			COALESCE(menu_items.promotedFrom, '') AS [[promotedFrom]],
 			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+` + adminMenuCatalogTrustEvidenceSelect + `
 ` + adminMenuInventoryLinkedMenuItemSelect + `
 			COALESCE(menu_items.isFromOcr, 0) AS [[isFromOcr]],
 			COALESCE(menu_items.created, '') AS [[created]],
@@ -930,24 +940,26 @@ func serializeAdminMenuInventoryResponse(query adminMenuInventoryQuery, total in
 
 func serializeAdminRestaurantInventoryRow(row adminMenuInventoryRestaurantRow) map[string]any {
 	return map[string]any{
-		"id":                  row.ID,
-		"name":                row.Name,
-		"location":            row.Location,
-		"cuisineType":         row.CuisineType,
-		"placeId":             row.PlaceID,
-		"isGooglePlace":       row.IsGooglePlace != 0,
-		"googlePlaceCachedAt": row.GooglePlaceCachedAt,
-		"latitude":            row.Latitude,
-		"longitude":           row.Longitude,
-		"visibility":          row.Visibility,
-		"created":             row.Created,
-		"updated":             row.Updated,
-		"createdBy":           row.CreatedBy,
-		"creator":             serializeAdminMenuInventoryUser(row.CreatorID, row.CreatorEmail, row.CreatorName, row.CreatorIsAdmin, row.CreatorIsSubscriber, row.CreatorIsBetaUser, row.CreatorCreated, row.CreatorUpdated),
-		"restaurantGroupId":   row.RestaurantGroup,
-		"restaurantGroup":     serializeAdminRestaurantGroupFromRestaurantRow(row),
-		"menuItemCount":       row.MenuItemCount,
-		"menuImageCount":      row.MenuImageCount,
+		"id":                        row.ID,
+		"name":                      row.Name,
+		"location":                  row.Location,
+		"cuisineType":               row.CuisineType,
+		"placeId":                   row.PlaceID,
+		"isGooglePlace":             row.IsGooglePlace != 0,
+		"googlePlaceCachedAt":       row.GooglePlaceCachedAt,
+		"latitude":                  row.Latitude,
+		"longitude":                 row.Longitude,
+		"visibility":                row.Visibility,
+		"created":                   row.Created,
+		"updated":                   row.Updated,
+		"createdBy":                 row.CreatedBy,
+		"creator":                   serializeAdminMenuInventoryUser(row.CreatorID, row.CreatorEmail, row.CreatorName, row.CreatorIsAdmin, row.CreatorIsSubscriber, row.CreatorIsBetaUser, row.CreatorCreated, row.CreatorUpdated),
+		"restaurantGroupId":         row.RestaurantGroup,
+		"restaurantGroup":           serializeAdminRestaurantGroupFromRestaurantRow(row),
+		"menuItemCount":             row.MenuItemCount,
+		"menuImageCount":            row.MenuImageCount,
+		"catalogContributionCount":  row.CatalogContributionCount,
+		"suggestionProvenanceCount": row.SuggestionProvenanceCount,
 	}
 }
 
@@ -984,27 +996,29 @@ func serializeAdminLinkedMenuItemInventorySummary(id string, name string, visibi
 
 func serializeAdminMenuItemInventoryRow(row adminMenuInventoryMenuItemRow) map[string]any {
 	return map[string]any{
-		"id":                 row.ID,
-		"name":               row.Name,
-		"restaurant":         row.Restaurant,
-		"restaurantName":     row.RestaurantName,
-		"restaurantLocation": row.RestaurantLocation,
-		"sourceImage":        row.SourceImage,
-		"sourceImageFile":    row.SourceImageFile,
-		"visibility":         row.Visibility,
-		"approvalStatus":     resolveMenuItemApprovalStatus(row.ApprovalStatus),
-		"approvalReviewedBy": row.ApprovalReviewedBy,
-		"approvalReviewedAt": row.ApprovalReviewedAt,
-		"groupSuitable":      row.GroupSuitable != 0,
-		"promotedFrom":       row.PromotedFrom,
-		"promotedTo":         row.PromotedTo,
-		"promotedFromItem":   serializeAdminLinkedMenuItemInventorySummary(row.PromotedFrom, row.PromotedFromName, row.PromotedFromVisibility, row.PromotedFromApprovalStatus, row.PromotedFromCreatedBy, row.PromotedFromCreatorEmail),
-		"promotedToItem":     serializeAdminLinkedMenuItemInventorySummary(row.PromotedTo, row.PromotedToName, row.PromotedToVisibility, row.PromotedToApprovalStatus, row.PromotedToCreatedBy, row.PromotedToCreatorEmail),
-		"isFromOcr":          row.IsFromOCR != 0,
-		"created":            row.Created,
-		"updated":            row.Updated,
-		"createdBy":          row.CreatedBy,
-		"creator":            serializeAdminMenuInventoryUser(row.CreatorID, row.CreatorEmail, row.CreatorName, row.CreatorIsAdmin, row.CreatorIsSubscriber, row.CreatorIsBetaUser, row.CreatorCreated, row.CreatorUpdated),
+		"id":                        row.ID,
+		"name":                      row.Name,
+		"restaurant":                row.Restaurant,
+		"restaurantName":            row.RestaurantName,
+		"restaurantLocation":        row.RestaurantLocation,
+		"sourceImage":               row.SourceImage,
+		"sourceImageFile":           row.SourceImageFile,
+		"visibility":                row.Visibility,
+		"approvalStatus":            resolveMenuItemApprovalStatus(row.ApprovalStatus),
+		"approvalReviewedBy":        row.ApprovalReviewedBy,
+		"approvalReviewedAt":        row.ApprovalReviewedAt,
+		"groupSuitable":             row.GroupSuitable != 0,
+		"catalogContributionCount":  row.CatalogContributionCount,
+		"suggestionProvenanceCount": row.SuggestionProvenanceCount,
+		"promotedFrom":              row.PromotedFrom,
+		"promotedTo":                row.PromotedTo,
+		"promotedFromItem":          serializeAdminLinkedMenuItemInventorySummary(row.PromotedFrom, row.PromotedFromName, row.PromotedFromVisibility, row.PromotedFromApprovalStatus, row.PromotedFromCreatedBy, row.PromotedFromCreatorEmail),
+		"promotedToItem":            serializeAdminLinkedMenuItemInventorySummary(row.PromotedTo, row.PromotedToName, row.PromotedToVisibility, row.PromotedToApprovalStatus, row.PromotedToCreatedBy, row.PromotedToCreatorEmail),
+		"isFromOcr":                 row.IsFromOCR != 0,
+		"created":                   row.Created,
+		"updated":                   row.Updated,
+		"createdBy":                 row.CreatedBy,
+		"creator":                   serializeAdminMenuInventoryUser(row.CreatorID, row.CreatorEmail, row.CreatorName, row.CreatorIsAdmin, row.CreatorIsSubscriber, row.CreatorIsBetaUser, row.CreatorCreated, row.CreatorUpdated),
 	}
 }
 

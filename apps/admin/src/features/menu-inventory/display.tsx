@@ -31,6 +31,29 @@ export function renderMenuItemGroupSuitableStatus(value: boolean) {
   );
 }
 
+export function renderMenuCatalogTrustEvidence(row: {
+  catalogContributionCount?: number;
+  suggestionProvenanceCount?: number;
+}) {
+  const catalogContributionCount = Math.max(0, row.catalogContributionCount ?? 0);
+  const suggestionProvenanceCount = Math.max(0, row.suggestionProvenanceCount ?? 0);
+
+  if (catalogContributionCount === 0 && suggestionProvenanceCount === 0) {
+    return <span className="text-muted">No evidence</span>;
+  }
+
+  return (
+    <div className="tag-row tag-row-start">
+      {catalogContributionCount > 0 ? (
+        <span className="tag">{catalogContributionCount} catalog contribution(s)</span>
+      ) : null}
+      {suggestionProvenanceCount > 0 ? (
+        <span className="tag">{suggestionProvenanceCount} suggestion use(s)</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function renderInventoryUser(user: MenuInventoryUserSummary | null, fallbackId?: string) {
   if (!user) {
     return (

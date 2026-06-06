@@ -28,18 +28,20 @@ type adminMenuInventoryUser struct {
 }
 
 type adminMenuInventoryRestaurant struct {
-	CreatedBy           string                  `json:"createdBy"`
-	Creator             *adminMenuInventoryUser `json:"creator"`
-	ID                  string                  `json:"id"`
-	IsGooglePlace       bool                    `json:"isGooglePlace"`
-	MenuImageCount      int                     `json:"menuImageCount"`
-	MenuItemCount       int                     `json:"menuItemCount"`
-	Name                string                  `json:"name"`
-	PlaceID             string                  `json:"placeId"`
-	GooglePlaceCachedAt string                  `json:"googlePlaceCachedAt"`
-	RestaurantGroupID   string                  `json:"restaurantGroupId"`
-	RestaurantGroup     *adminRestaurantGroup   `json:"restaurantGroup"`
-	Visibility          string                  `json:"visibility"`
+	CatalogContributionCount  int                     `json:"catalogContributionCount"`
+	CreatedBy                 string                  `json:"createdBy"`
+	Creator                   *adminMenuInventoryUser `json:"creator"`
+	ID                        string                  `json:"id"`
+	IsGooglePlace             bool                    `json:"isGooglePlace"`
+	MenuImageCount            int                     `json:"menuImageCount"`
+	MenuItemCount             int                     `json:"menuItemCount"`
+	Name                      string                  `json:"name"`
+	PlaceID                   string                  `json:"placeId"`
+	GooglePlaceCachedAt       string                  `json:"googlePlaceCachedAt"`
+	RestaurantGroupID         string                  `json:"restaurantGroupId"`
+	RestaurantGroup           *adminRestaurantGroup   `json:"restaurantGroup"`
+	SuggestionProvenanceCount int                     `json:"suggestionProvenanceCount"`
+	Visibility                string                  `json:"visibility"`
 }
 
 type adminRestaurantGroup struct {
@@ -50,25 +52,27 @@ type adminRestaurantGroup struct {
 }
 
 type adminMenuInventoryMenuItem struct {
-	ApprovalReviewedAt string                  `json:"approvalReviewedAt"`
-	ApprovalReviewedBy string                  `json:"approvalReviewedBy"`
-	ApprovalStatus     string                  `json:"approvalStatus"`
-	CreatedBy          string                  `json:"createdBy"`
-	Creator            *adminMenuInventoryUser `json:"creator"`
-	GroupSuitable      bool                    `json:"groupSuitable"`
-	ID                 string                  `json:"id"`
-	IsFromOCR          bool                    `json:"isFromOcr"`
-	Name               string                  `json:"name"`
-	PromotedFrom       string                  `json:"promotedFrom"`
-	PromotedFromItem   *adminLinkedMenuItem    `json:"promotedFromItem"`
-	PromotedTo         string                  `json:"promotedTo"`
-	PromotedToItem     *adminLinkedMenuItem    `json:"promotedToItem"`
-	Restaurant         string                  `json:"restaurant"`
-	RestaurantName     string                  `json:"restaurantName"`
-	RestaurantLocation string                  `json:"restaurantLocation"`
-	SourceImage        string                  `json:"sourceImage"`
-	SourceImageFile    string                  `json:"sourceImageFile"`
-	Visibility         string                  `json:"visibility"`
+	ApprovalReviewedAt        string                  `json:"approvalReviewedAt"`
+	ApprovalReviewedBy        string                  `json:"approvalReviewedBy"`
+	ApprovalStatus            string                  `json:"approvalStatus"`
+	CatalogContributionCount  int                     `json:"catalogContributionCount"`
+	CreatedBy                 string                  `json:"createdBy"`
+	Creator                   *adminMenuInventoryUser `json:"creator"`
+	GroupSuitable             bool                    `json:"groupSuitable"`
+	ID                        string                  `json:"id"`
+	IsFromOCR                 bool                    `json:"isFromOcr"`
+	Name                      string                  `json:"name"`
+	PromotedFrom              string                  `json:"promotedFrom"`
+	PromotedFromItem          *adminLinkedMenuItem    `json:"promotedFromItem"`
+	PromotedTo                string                  `json:"promotedTo"`
+	PromotedToItem            *adminLinkedMenuItem    `json:"promotedToItem"`
+	Restaurant                string                  `json:"restaurant"`
+	RestaurantName            string                  `json:"restaurantName"`
+	RestaurantLocation        string                  `json:"restaurantLocation"`
+	SourceImage               string                  `json:"sourceImage"`
+	SourceImageFile           string                  `json:"sourceImageFile"`
+	SuggestionProvenanceCount int                     `json:"suggestionProvenanceCount"`
+	Visibility                string                  `json:"visibility"`
 }
 
 type adminLinkedMenuItem struct {
@@ -1598,5 +1602,248 @@ func TestAdminMenuItemPromotionReusesApprovedExactLocationItemByNormalizedName(t
 	}
 	if reloadedContribution.GetString("approvalStatus") != "unreviewed" {
 		t.Fatalf("expected contribution approval state to remain unreviewed, got %q", reloadedContribution.GetString("approvalStatus"))
+	}
+}
+
+func TestAdminMenuInventorySurfacesCatalogContributionEvidence(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	contributor, contributorToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Evidence Tacos",
+		"location":   "Oakland, CA",
+		"createdBy":  contributor.Id,
+		"visibility": "public",
+	})
+	approvedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Birria Taco",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	linkedContribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Birria Taco",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+		"promotedTo":     approvedItem.Id,
+	})
+	approvedItem.Set("promotedFrom", linkedContribution.Id)
+	if err := server.app.Save(approvedItem); err != nil {
+		t.Fatalf("failed to link approved item to contribution: %v", err)
+	}
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "  birria taco  ",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Birria Taco",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "rejected",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Birria Taco",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+
+	restaurantPayload := loadAdminMenuInventoryResponse[adminMenuInventoryRestaurant](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=restaurants&search=Evidence%20Tacos",
+	)
+	if len(restaurantPayload.Items) != 1 {
+		t.Fatalf("expected one restaurant row, got %#v", restaurantPayload.Items)
+	}
+	if restaurantPayload.Items[0].CatalogContributionCount != 2 {
+		t.Fatalf("expected restaurant contribution count 2, got %#v", restaurantPayload.Items[0])
+	}
+
+	menuPayload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=menu-items&search=Birria%20Taco",
+	)
+	row, ok := findAdminMenuInventoryMenuItem(menuPayload.Items, approvedItem.Id)
+	if !ok {
+		t.Fatalf("expected approved menu item row in inventory, got %#v", menuPayload.Items)
+	}
+	if row.CatalogContributionCount != 2 {
+		t.Fatalf("expected approved menu item contribution count 2, got %#v", row)
+	}
+	if row.SuggestionProvenanceCount != 0 {
+		t.Fatalf("expected no suggestion provenance for approved item, got %#v", row)
+	}
+
+	detailPayload := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, restaurant.Id)
+	detailRow, ok := findAdminMenuInventoryMenuItem(detailPayload.MenuItems, approvedItem.Id)
+	if !ok || detailRow.CatalogContributionCount != 2 {
+		t.Fatalf("expected restaurant detail contribution evidence on approved item, got ok=%v row=%#v", ok, detailRow)
+	}
+
+	nonAdminResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory?type=menu-items&search=Birria%20Taco",
+		contributorToken,
+		"",
+	)
+	if nonAdminResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected non-admin inventory access to be rejected, got %d: %s", nonAdminResponse.Code, nonAdminResponse.Body.String())
+	}
+}
+
+func TestAdminMenuInventorySurfacesSuggestionProvenanceEvidencePassively(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	user, userToken := createAuthUser(t, server.app, false, true)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Evidence Noodles",
+		"createdBy": admin.Id,
+	})
+	targetRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Evidence Noodles Downtown",
+		"location":        "Oakland, CA",
+		"createdBy":       user.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	otherTargetRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Evidence Noodles Airport",
+		"location":        "Oakland, CA",
+		"createdBy":       user.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	sourceRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Evidence Noodles Uptown",
+		"location":        "Berkeley, CA",
+		"createdBy":       user.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	sourceMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Coconut Yogurt",
+		"restaurant":     sourceRestaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	targetMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Coconut Yogurt",
+		"restaurant":     targetRestaurant.Id,
+		"createdBy":      user.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+
+	for index, itemName := range []string{"Coconut Yogurt", " coconut yogurt ", "Other Dish"} {
+		visit := seedVisitRecord(t, server.app, targetRestaurant.Id, user.Id, "friends")
+		visitItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, itemName, 5)
+		normalizedName := "coconut yogurt"
+		if index == 2 {
+			normalizedName = "other dish"
+		}
+		createCollectionRecord(t, server.app, "suggestion_provenance", map[string]any{
+			"sourceType":         "group_menu_suggestion",
+			"normalizedItemName": normalizedName,
+			"user":               user.Id,
+			"visit":              visit.Id,
+			"visitItem":          visitItem.Id,
+			"targetRestaurant":   targetRestaurant.Id,
+			"sourceRestaurant":   sourceRestaurant.Id,
+			"sourceMenuItem":     sourceMenuItem.Id,
+			"restaurantGroup":    group.Id,
+		})
+	}
+	otherVisit := seedVisitRecord(t, server.app, otherTargetRestaurant.Id, user.Id, "friends")
+	otherVisitItem := seedFoodItemRecord(t, server.app, otherVisit.Id, user.Id, "Coconut Yogurt", 4)
+	createCollectionRecord(t, server.app, "suggestion_provenance", map[string]any{
+		"sourceType":         "group_menu_suggestion",
+		"normalizedItemName": "coconut yogurt",
+		"user":               user.Id,
+		"visit":              otherVisit.Id,
+		"visitItem":          otherVisitItem.Id,
+		"targetRestaurant":   otherTargetRestaurant.Id,
+		"sourceRestaurant":   sourceRestaurant.Id,
+		"sourceMenuItem":     sourceMenuItem.Id,
+		"restaurantGroup":    group.Id,
+	})
+
+	if count := countRecordsByFilter(t, server.app, "menu_review_requests", "restaurant = {:restaurantId}", map[string]any{"restaurantId": targetRestaurant.Id}); count != 0 {
+		t.Fatalf("expected no review requests before inventory reads, got %d", count)
+	}
+
+	restaurantPayload := loadAdminMenuInventoryResponse[adminMenuInventoryRestaurant](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=restaurants&search=Evidence%20Noodles%20Downtown",
+	)
+	if len(restaurantPayload.Items) != 1 {
+		t.Fatalf("expected one restaurant row, got %#v", restaurantPayload.Items)
+	}
+	if restaurantPayload.Items[0].SuggestionProvenanceCount != 3 {
+		t.Fatalf("expected restaurant provenance count 3, got %#v", restaurantPayload.Items[0])
+	}
+
+	menuPayload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=menu-items&search=Coconut%20Yogurt",
+	)
+	row, ok := findAdminMenuInventoryMenuItem(menuPayload.Items, targetMenuItem.Id)
+	if !ok {
+		t.Fatalf("expected target menu item row in inventory, got %#v", menuPayload.Items)
+	}
+	if row.SuggestionProvenanceCount != 2 {
+		t.Fatalf("expected target menu item provenance count 2, got %#v", row)
+	}
+
+	detailPayload := loadAdminRestaurantInventoryDetailResponse(t, server, adminToken, targetRestaurant.Id)
+	if detailPayload.Restaurant.SuggestionProvenanceCount != 3 {
+		t.Fatalf("expected restaurant detail provenance count 3, got %#v", detailPayload.Restaurant)
+	}
+	detailRow, ok := findAdminMenuInventoryMenuItem(detailPayload.MenuItems, targetMenuItem.Id)
+	if !ok || detailRow.SuggestionProvenanceCount != 2 {
+		t.Fatalf("expected restaurant detail provenance evidence on target item, got ok=%v row=%#v", ok, detailRow)
+	}
+
+	if count := countRecordsByFilter(t, server.app, "menu_review_requests", "restaurant = {:restaurantId}", map[string]any{"restaurantId": targetRestaurant.Id}); count != 0 {
+		t.Fatalf("expected inventory evidence reads to stay passive, got %d review requests", count)
+	}
+
+	nonAdminResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory?type=restaurants&search=Evidence%20Noodles%20Downtown",
+		userToken,
+		"",
+	)
+	if nonAdminResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected non-admin 403, got %d: %s", nonAdminResponse.Code, nonAdminResponse.Body.String())
 	}
 }
