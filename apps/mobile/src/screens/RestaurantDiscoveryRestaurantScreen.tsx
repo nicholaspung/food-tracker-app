@@ -16,7 +16,6 @@ import {
   WantToTryBookmarkButton,
 } from '../components/shared';
 import { type AllLocationsHistoryRecord, type GroupMenuSuggestionsRecord } from '../features';
-import { buildMenuSelectionSuggestions } from '../features/restaurants/menuSelectionSuggestions';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import {
   getRestaurantListDetail,
@@ -230,10 +229,6 @@ export function RestaurantDiscoveryRestaurantScreen({
     return parts.filter(Boolean).join(' • ');
   }, [restaurant]);
 
-  const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
-    isOnline,
-    restaurant,
-  });
   const groupMenuSuggestionsQuery = useQuery({
     enabled: Boolean(restaurant.id),
     queryKey: restaurantsQueryKeys.groupMenuSuggestions(restaurant.id),
@@ -253,6 +248,11 @@ export function RestaurantDiscoveryRestaurantScreen({
 
       return getGroupMenuSuggestionsForRestaurant(restaurant.id, { signal });
     },
+  });
+  const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
+    groupMenuSuggestions: groupMenuSuggestionsQuery.data,
+    isOnline,
+    restaurant,
   });
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
@@ -296,13 +296,10 @@ export function RestaurantDiscoveryRestaurantScreen({
   }, [defaultListDetailQuery.data?.items, locallyRemovedMenuItemIds, locallySavedMenuItemIds, restaurant.id]);
 
   const allLocationsHistory = restaurantDetail.allLocationsHistory;
-  const relatedMenuSuggestions = useMemo(
-    () =>
-      buildMenuSelectionSuggestions({
-        exactLocationMenuItems: restaurantDetail.menuItems,
-        groupMenuSuggestions: groupMenuSuggestionsQuery.data,
-      }).filter((suggestion) => suggestion.source === 'relatedLocationSuggestion'),
-    [groupMenuSuggestionsQuery.data, restaurantDetail.menuItems],
+  const relatedMenuSuggestions = restaurantDetail.relatedMenuSuggestions;
+  const menuItemById = useMemo(
+    () => new Map(restaurantDetail.menuItems.map((item) => [item.id, item])),
+    [restaurantDetail.menuItems],
   );
   const showRelatedMenuSuggestions =
     detailScope === 'location' &&
@@ -512,20 +509,30 @@ export function RestaurantDiscoveryRestaurantScreen({
             />
           ) : restaurantDetail.menuItems.length > 0 ? (
             <View style={styles.menuItemList}>
-              {restaurantDetail.menuItems.map((item, index) => {
+              {restaurantDetail.menuCatalogRows.map((row, index) => {
+                const item = menuItemById.get(row.id);
+                if (!item) {
+                  return null;
+                }
                 const isSaved = savedMenuItemIds.has(item.id);
+                const orderedHistoryLabel = row.meta.find((meta) => meta.label)?.label;
 
                 return (
                   <Fragment key={item.id}>
                     <ListItem
+                      description={
+                        orderedHistoryLabel ? (
+                          <Text tone="secondary" variant="bodySm">
+                            {orderedHistoryLabel}
+                          </Text>
+                        ) : undefined
+                      }
                       style={styles.menuItemListItem}
-                      title={item.name}
+                      title={row.name}
                       trailing={
                         <WantToTryBookmarkButton
                           accessibilityLabel={
-                            isSaved
-                              ? `${item.name} is saved to Want to Try`
-                              : `Save ${item.name} to Want to Try`
+                            isSaved ? `${row.name} is saved to Want to Try` : `Save ${row.name} to Want to Try`
                           }
                           loading={restaurantListWrites.isSubmitting}
                           onPress={() => {
@@ -582,6 +589,11 @@ export function RestaurantDiscoveryRestaurantScreen({
                     <ListItem
                       description={
                         <View style={styles.menuSuggestionDescription}>
+                          {suggestion.orderedHistory ? (
+                            <Text tone="secondary" variant="bodySm">
+                              {suggestion.orderedHistory.label}
+                            </Text>
+                          ) : null}
                           <View style={styles.itemMetaRow}>
                             <Text tone="secondary" variant="bodySm">
                               Suggested from {sourceRestaurantCount}{' '}

@@ -9,9 +9,14 @@ import type {
 } from '../../components/maps';
 import { formatDistance } from '../../lib/googlePlaces';
 import type { VisitRestaurantWithDistance } from '../../lib/visitRestaurantSearch';
+import {
+  buildMenuSelectionSuggestions,
+  type MenuSelectionSuggestion,
+} from '../restaurants/menuSelectionSuggestions';
 import type { RestaurantRecord } from '../models';
 import type {
   AllLocationsHistoryRecord,
+  GroupMenuSuggestionsRecord,
   MenuItemRecord,
 } from './featureStore';
 import { menuItemsQueryKeys } from './menuItemsQuery';
@@ -46,8 +51,21 @@ interface FoodDiscoveryMapReadModel {
 
 interface FoodDiscoveryRestaurantDetailReadModelInput {
   enabled?: boolean;
+  groupMenuSuggestions?: GroupMenuSuggestionsRecord;
   isOnline: boolean;
   restaurant: RestaurantRecord | null;
+}
+
+export type FoodDiscoveryOrderedHistoryKind = 'exactLocation' | 'relatedLocation';
+
+export interface FoodDiscoveryOrderedHistory {
+  kind: FoodDiscoveryOrderedHistoryKind;
+  label: string;
+  orderCount: number;
+}
+
+export interface FoodDiscoveryMenuSelectionSuggestion extends MenuSelectionSuggestion {
+  orderedHistory?: FoodDiscoveryOrderedHistory;
 }
 
 interface FoodDiscoveryRestaurantDetailReadModel {
@@ -61,6 +79,7 @@ interface FoodDiscoveryRestaurantDetailReadModel {
   menuItems: MenuItemRecord[];
   refetchAllLocationsHistory: () => Promise<unknown>;
   refetchMenuCatalog: () => Promise<unknown>;
+  relatedMenuSuggestions: FoodDiscoveryMenuSelectionSuggestion[];
   yourOrderedItemsRows: RestaurantMapItem[];
 }
 
@@ -85,6 +104,24 @@ function hasUsableCoordinates(restaurant: RestaurantRecord): restaurant is Resta
 
 function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function normalizeFoodDiscoveryHistoryName(value: string): string {
+  return value
+    .replace(/[’‘＇`]/g, "'")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function toPositiveInteger(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor(value));
 }
 
 function buildDiscoveryRestaurantSummary({ distance, restaurant }: VisitRestaurantWithDistance): string {
@@ -141,16 +178,132 @@ function buildFoodDiscoveryMapGroups(
   });
 }
 
+function getAllLocationsHistoryItemByName(
+  history: AllLocationsHistoryRecord | undefined,
+  itemName: string,
+): AllLocationsHistoryRecord['items'][number] | undefined {
+  const normalizedName = normalizeFoodDiscoveryHistoryName(itemName);
+  if (!normalizedName) {
+    return undefined;
+  }
+
+  return (history?.items ?? []).find((historyItem) => {
+    const normalizedHistoryName =
+      normalizeFoodDiscoveryHistoryName(historyItem.normalizedItemName) ||
+      normalizeFoodDiscoveryHistoryName(historyItem.displayName);
+    return normalizedHistoryName === normalizedName;
+  });
+}
+
+function resolveFoodDiscoveryOrderedHistory({
+  allLocationsHistory,
+  currentRestaurantId,
+  exactOrderCountHint,
+  itemName,
+  relatedRestaurantIds,
+}: {
+  allLocationsHistory: AllLocationsHistoryRecord | undefined;
+  currentRestaurantId: string;
+  exactOrderCountHint?: number;
+  itemName: string;
+  relatedRestaurantIds?: ReadonlySet<string>;
+}): FoodDiscoveryOrderedHistory | undefined {
+  const exactOrderCount = toPositiveInteger(exactOrderCountHint);
+  if (exactOrderCount > 0) {
+    return {
+      kind: 'exactLocation',
+      label: 'Had here',
+      orderCount: exactOrderCount,
+    };
+  }
+
+  const historyItem = getAllLocationsHistoryItemByName(allLocationsHistory, itemName);
+  if (!historyItem) {
+    return undefined;
+  }
+
+  const historyRestaurants = Array.isArray(historyItem.restaurants) ? historyItem.restaurants : [];
+  const exactHistoryCount = historyRestaurants.reduce((sum, restaurantHistory) => {
+    if (restaurantHistory.restaurantId !== currentRestaurantId) {
+      return sum;
+    }
+
+    return sum + toPositiveInteger(restaurantHistory.orderCount);
+  }, 0);
+  const latestRestaurantId = historyItem.latestRestaurantId?.trim();
+  if (
+    exactHistoryCount > 0 ||
+    (historyRestaurants.length === 0 && latestRestaurantId === currentRestaurantId && historyItem.orderCount > 0)
+  ) {
+    return {
+      kind: 'exactLocation',
+      label: 'Had here',
+      orderCount: Math.max(exactHistoryCount, toPositiveInteger(historyItem.orderCount)),
+    };
+  }
+
+  const relatedHistoryCount = historyRestaurants.reduce((sum, restaurantHistory) => {
+    if (restaurantHistory.restaurantId === currentRestaurantId) {
+      return sum;
+    }
+    if (relatedRestaurantIds && !relatedRestaurantIds.has(restaurantHistory.restaurantId)) {
+      return sum;
+    }
+
+    return sum + toPositiveInteger(restaurantHistory.orderCount);
+  }, 0);
+  const latestRelatedOnlyHistoryCount =
+    historyRestaurants.length === 0 &&
+    latestRestaurantId &&
+    latestRestaurantId !== currentRestaurantId &&
+    (!relatedRestaurantIds || relatedRestaurantIds.has(latestRestaurantId))
+      ? toPositiveInteger(historyItem.orderCount)
+      : 0;
+  const resolvedRelatedHistoryCount = Math.max(relatedHistoryCount, latestRelatedOnlyHistoryCount);
+  if (resolvedRelatedHistoryCount <= 0) {
+    return undefined;
+  }
+
+  return {
+    kind: 'relatedLocation',
+    label: 'Had at related locations',
+    orderCount: resolvedRelatedHistoryCount,
+  };
+}
+
+function buildOrderedHistoryMeta(
+  orderedHistory: FoodDiscoveryOrderedHistory | undefined,
+): RestaurantMapItem['meta'] {
+  return orderedHistory
+    ? [
+        {
+          label: orderedHistory.label,
+        },
+      ]
+    : [];
+}
+
 function buildFoodDiscoveryMenuCatalogRows(
   items: readonly MenuItemRecord[],
+  allLocationsHistory: AllLocationsHistoryRecord | undefined,
+  currentRestaurantId: string,
 ): RestaurantMapItem[] {
   return [...items]
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
-    .map((item) => ({
-      id: item.id,
-      meta: [],
-      name: item.name,
-    }));
+    .map((item) => {
+      const orderedHistory = resolveFoodDiscoveryOrderedHistory({
+        allLocationsHistory,
+        currentRestaurantId,
+        exactOrderCountHint: item.userEatenCount,
+        itemName: item.name,
+      });
+
+      return {
+        id: item.id,
+        meta: buildOrderedHistoryMeta(orderedHistory),
+        name: item.name,
+      };
+    });
 }
 
 function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): AllLocationsHistoryRecord {
@@ -191,6 +344,61 @@ function buildFoodDiscoveryYourOrderedItemsRows(
       name: item.displayName,
     };
   });
+}
+
+function getRelatedRestaurantIdsForGroupSuggestion(
+  groupMenuSuggestions: GroupMenuSuggestionsRecord | undefined,
+  itemName: string,
+): ReadonlySet<string> | undefined {
+  const normalizedItemName = normalizeFoodDiscoveryHistoryName(itemName);
+  const groupSuggestion = (groupMenuSuggestions?.suggestions ?? []).find((suggestion) => {
+    const normalizedSuggestionName =
+      normalizeFoodDiscoveryHistoryName(suggestion.normalizedItemName) ||
+      normalizeFoodDiscoveryHistoryName(suggestion.displayName);
+    return normalizedSuggestionName === normalizedItemName;
+  });
+
+  if (!groupSuggestion) {
+    return undefined;
+  }
+
+  return new Set(
+    groupSuggestion.sources
+      .map((source) => source.restaurantId.trim())
+      .filter(Boolean),
+  );
+}
+
+function buildFoodDiscoveryRelatedMenuSuggestions({
+  allLocationsHistory,
+  currentRestaurantId,
+  exactLocationMenuItems,
+  groupMenuSuggestions,
+}: {
+  allLocationsHistory: AllLocationsHistoryRecord | undefined;
+  currentRestaurantId: string;
+  exactLocationMenuItems: readonly MenuItemRecord[];
+  groupMenuSuggestions: GroupMenuSuggestionsRecord | undefined;
+}): FoodDiscoveryMenuSelectionSuggestion[] {
+  return buildMenuSelectionSuggestions({
+    exactLocationMenuItems: [...exactLocationMenuItems],
+    groupMenuSuggestions,
+  })
+    .filter((suggestion) => suggestion.source === 'relatedLocationSuggestion')
+    .map((suggestion) => {
+      const orderedHistory = resolveFoodDiscoveryOrderedHistory({
+        allLocationsHistory,
+        currentRestaurantId,
+        exactOrderCountHint: suggestion.orderCount,
+        itemName: suggestion.name,
+        relatedRestaurantIds: getRelatedRestaurantIdsForGroupSuggestion(groupMenuSuggestions, suggestion.name),
+      });
+
+      return {
+        ...suggestion,
+        ...(orderedHistory ? { orderedHistory } : {}),
+      };
+    });
 }
 
 export function canShowFoodDiscoveryAllLocationsHistory(
@@ -262,6 +470,7 @@ function isQueryLoading(query: { isLoading?: boolean; isPending?: boolean }): bo
 
 export function useFoodDiscoveryRestaurantDetailReadModel({
   enabled = true,
+  groupMenuSuggestions,
   isOnline,
   restaurant,
 }: FoodDiscoveryRestaurantDetailReadModelInput): FoodDiscoveryRestaurantDetailReadModel {
@@ -320,12 +529,22 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
   const menuItems = menuItemsQuery.data ?? EMPTY_MENU_ITEMS;
   const allLocationsHistory = allLocationsHistoryQuery.data;
   const menuCatalogRows = useMemo(
-    () => buildFoodDiscoveryMenuCatalogRows(menuItems),
-    [menuItems],
+    () => buildFoodDiscoveryMenuCatalogRows(menuItems, allLocationsHistory, restaurantId),
+    [allLocationsHistory, menuItems, restaurantId],
   );
   const yourOrderedItemsRows = useMemo(
     () => buildFoodDiscoveryYourOrderedItemsRows(allLocationsHistory),
     [allLocationsHistory],
+  );
+  const relatedMenuSuggestions = useMemo(
+    () =>
+      buildFoodDiscoveryRelatedMenuSuggestions({
+        allLocationsHistory,
+        currentRestaurantId: restaurantId,
+        exactLocationMenuItems: menuItems,
+        groupMenuSuggestions,
+      }),
+    [allLocationsHistory, groupMenuSuggestions, menuItems, restaurantId],
   );
 
   return {
@@ -345,6 +564,7 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
     menuItems,
     refetchAllLocationsHistory: allLocationsHistoryQuery.refetch,
     refetchMenuCatalog: menuItemsQuery.refetch,
+    relatedMenuSuggestions,
     yourOrderedItemsRows,
   };
 }

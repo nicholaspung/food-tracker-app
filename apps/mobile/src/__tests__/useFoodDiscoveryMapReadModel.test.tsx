@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { RestaurantMapSheetTabId } from '../components/maps';
-import type { AllLocationsHistoryRecord, MenuItemRecord } from '../features';
+import type { AllLocationsHistoryRecord, GroupMenuSuggestionsRecord, MenuItemRecord } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import {
@@ -388,14 +388,17 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   async function renderDetailHook({
+    groupMenuSuggestions,
     isOnline = true,
     restaurant = restaurantOne,
   }: {
+    groupMenuSuggestions?: GroupMenuSuggestionsRecord;
     isOnline?: boolean;
     restaurant?: RestaurantRecord | null;
   } = {}) {
     function TestComponent() {
       detailHook = useFoodDiscoveryRestaurantDetailReadModel({
+        groupMenuSuggestions,
         isOnline,
         restaurant,
       });
@@ -430,6 +433,247 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
       }),
     ]);
     expect(model.canShowAllLocations).toBe(true);
+  });
+
+  it('labels exact-location menu rows when the item has been ordered at this restaurant', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly string[];
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [
+            { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
+            { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
+          ],
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: {
+          ...historyByRestaurant['restaurant-1'],
+          items: [
+            {
+              averageRating: 5,
+              displayName: 'Aguachile',
+              latestRating: 5,
+              latestRestaurantId: 'restaurant-1',
+              latestRestaurantName: 'Erewhon West Hollywood',
+              latestVisitedAt: '2026-04-03T18:30:00.000Z',
+              normalizedItemName: 'aguachile',
+              orderCount: 1,
+              restaurants: [
+                {
+                  orderCount: 1,
+                  restaurantId: 'restaurant-1',
+                  restaurantName: 'Erewhon West Hollywood',
+                },
+              ],
+            },
+          ],
+        },
+        error: null,
+        isPending: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    const model = await renderDetailHook();
+
+    expect(model.menuCatalogRows).toEqual([
+      expect.objectContaining({
+        name: 'Aguachile',
+        meta: [{ label: 'Had here' }],
+      }),
+      expect.objectContaining({
+        name: 'Ziti',
+        meta: [],
+      }),
+    ]);
+  });
+
+  it('labels related-location menu rows without implying exact-location history', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly string[];
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [{ id: 'menu-a', name: 'Coconut Yogurt', restaurant: 'restaurant-1' }],
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: {
+          ...historyByRestaurant['restaurant-1'],
+          items: [
+            {
+              averageRating: 4,
+              displayName: 'Coconut Yogurt',
+              latestRating: 4,
+              latestRestaurantId: 'restaurant-2',
+              latestRestaurantName: 'Erewhon Venice',
+              latestVisitedAt: '2026-04-03T18:30:00.000Z',
+              normalizedItemName: 'coconut yogurt',
+              orderCount: 2,
+              restaurants: [
+                {
+                  orderCount: 2,
+                  restaurantId: 'restaurant-2',
+                  restaurantName: 'Erewhon Venice',
+                },
+              ],
+            },
+          ],
+        },
+        error: null,
+        isPending: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    const model = await renderDetailHook();
+
+    expect(model.menuCatalogRows[0]).toMatchObject({
+      name: 'Coconut Yogurt',
+      meta: [{ label: 'Had at related locations' }],
+    });
+    expect(model.menuCatalogRows[0]?.meta).not.toEqual([{ label: 'Had here' }]);
+  });
+
+  it('uses linked catalog contribution counts for approved menu item history labels', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly string[];
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [
+            {
+              id: 'approved-menu-item',
+              name: 'Spicy Miso Ramen',
+              restaurant: 'restaurant-1',
+              userEatenCount: 1,
+            },
+          ],
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: {
+          ...historyByRestaurant['restaurant-1'],
+          items: [
+            {
+              averageRating: 4,
+              displayName: 'User typed ramen text',
+              latestRating: 4,
+              latestRestaurantId: 'restaurant-1',
+              latestRestaurantName: 'Erewhon West Hollywood',
+              latestVisitedAt: '2026-04-03T18:30:00.000Z',
+              normalizedItemName: 'user typed ramen text',
+              orderCount: 1,
+              restaurants: [
+                {
+                  orderCount: 1,
+                  restaurantId: 'restaurant-1',
+                  restaurantName: 'Erewhon West Hollywood',
+                },
+              ],
+            },
+          ],
+        },
+        error: null,
+        isPending: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    const model = await renderDetailHook();
+
+    expect(model.menuCatalogRows[0]).toMatchObject({
+      name: 'Spicy Miso Ramen',
+      meta: [{ label: 'Had here' }],
+    });
+    expect(model.menuCatalogRows[0]?.name).not.toBe('User typed ramen text');
+  });
+
+  it('labels related-location suggestions when matching user history is from grouped restaurants', async () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly string[];
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [],
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: {
+          ...historyByRestaurant['restaurant-1'],
+          items: [
+            {
+              averageRating: 5,
+              displayName: 'Granola Bowl',
+              latestRating: 5,
+              latestRestaurantId: 'restaurant-2',
+              latestRestaurantName: 'Erewhon Venice',
+              latestVisitedAt: '2026-04-03T18:30:00.000Z',
+              normalizedItemName: 'granola bowl',
+              orderCount: 1,
+              restaurants: [
+                {
+                  orderCount: 1,
+                  restaurantId: 'restaurant-2',
+                  restaurantName: 'Erewhon Venice',
+                },
+              ],
+            },
+          ],
+        },
+        error: null,
+        isPending: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+
+    const model = await renderDetailHook({
+      groupMenuSuggestions: {
+        restaurantId: 'restaurant-1',
+        restaurantGroupId: 'group-1',
+        suggestions: [
+          {
+            displayName: 'Granola Bowl',
+            normalizedItemName: 'granola bowl',
+            sourceItemCount: 1,
+            sourceRestaurantCount: 1,
+            sources: [
+              {
+                menuItemCount: 1,
+                menuItemIds: ['menu-2'],
+                restaurantId: 'restaurant-2',
+                restaurantName: 'Erewhon Venice',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(model.relatedMenuSuggestions).toEqual([
+      expect.objectContaining({
+        name: 'Granola Bowl',
+        orderedHistory: {
+          kind: 'relatedLocation',
+          label: 'Had at related locations',
+          orderCount: 1,
+        },
+      }),
+    ]);
   });
 
   it('uses cached offline restaurant detail data when available', async () => {

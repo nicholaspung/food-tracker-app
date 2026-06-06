@@ -531,6 +531,137 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     expect(text).not.toContain('Restaurant Group');
   });
 
+  it('renders ordered-history labels on exact menu rows and related-location suggestions', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 2,
+            items: [
+              {
+                averageRating: 5,
+                displayName: 'Tonic Bar Smoothie',
+                latestRating: 5,
+                latestRestaurantId: 'restaurant-1',
+                latestRestaurantName: 'Erewhon West Hollywood',
+                latestVisitedAt: '2026-04-05T18:30:00.000Z',
+                normalizedItemName: 'tonic bar smoothie',
+                orderCount: 1,
+                restaurants: [
+                  {
+                    orderCount: 1,
+                    restaurantId: 'restaurant-1',
+                    restaurantName: 'Erewhon West Hollywood',
+                  },
+                ],
+              },
+              {
+                averageRating: 4,
+                displayName: 'Coconut Yogurt',
+                latestRating: 4,
+                latestRestaurantId: 'restaurant-2',
+                latestRestaurantLocation: 'Venice, CA',
+                latestRestaurantName: 'Erewhon Venice',
+                latestVisitedAt: '2026-04-04T18:30:00.000Z',
+                normalizedItemName: 'coconut yogurt',
+                orderCount: 2,
+                restaurants: [
+                  {
+                    orderCount: 2,
+                    restaurantId: 'restaurant-2',
+                    restaurantLocation: 'Venice, CA',
+                    restaurantName: 'Erewhon Venice',
+                  },
+                ],
+              },
+            ],
+            latestVisitedAt: '2026-04-05T18:30:00.000Z',
+            locationCount: 2,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 3,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [
+            {
+              id: 'menu-item-1',
+              name: 'Tonic Bar Smoothie',
+              restaurant: 'restaurant-1',
+            },
+            {
+              id: 'menu-item-2',
+              name: 'Spicy Miso Ramen',
+              restaurant: 'restaurant-1',
+              userEatenCount: 1,
+            },
+            {
+              id: 'menu-item-3',
+              name: 'No History Item',
+              restaurant: 'restaurant-1',
+            },
+          ],
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('groupMenuSuggestions')) {
+        return {
+          data: {
+            restaurantId: 'restaurant-1',
+            restaurantGroupId: 'group-1',
+            suggestions: [
+              {
+                displayName: 'Coconut Yogurt',
+                normalizedItemName: 'coconut yogurt',
+                sourceItemCount: 1,
+                sourceRestaurantCount: 1,
+                sources: [
+                  {
+                    menuItemCount: 1,
+                    menuItemIds: ['related-menu-item-1'],
+                    restaurantId: 'restaurant-2',
+                    restaurantLocation: 'Venice, CA',
+                    restaurantName: 'Erewhon Venice',
+                  },
+                ],
+              },
+            ],
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    const text = renderer.root.findAllByType('Text').map(collectText).join(' ');
+    const listItemTitles = renderer.root.findAllByType('ListItem').map((node: any) => node.props.title);
+    expect(text).toContain('Had here');
+    expect(text).toContain('Had at related locations');
+    expect(listItemTitles).toContain('No History Item');
+    expect(text).not.toContain('User typed ramen text');
+  });
+
   it('starts a visit with the exact restaurant and suggested item selected', () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
