@@ -10,7 +10,6 @@ const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 const mockSaveBookmarkToDefaultList = jest.fn();
 const mockRemoveBookmarkFromDefaultList = jest.fn();
-const mockSetRestaurantListWriteErrorMessage = jest.fn();
 let mockIsOnline = true;
 
 jest.mock('react-native', () => ({
@@ -48,11 +47,8 @@ jest.mock('../features/store/restaurantsStore', () => ({
 
 jest.mock('../features/store/useRestaurantListWrites', () => ({
   useRestaurantListWrites: jest.fn(() => ({
-    errorMessage: null,
-    isSubmitting: false,
     removeBookmarkFromDefaultList: mockRemoveBookmarkFromDefaultList,
     saveBookmarkToDefaultList: mockSaveBookmarkToDefaultList,
-    setErrorMessage: mockSetRestaurantListWriteErrorMessage,
   })),
 }));
 
@@ -186,7 +182,6 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
     mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveBookmarkToDefaultList.mockReset();
     mockSaveBookmarkToDefaultList.mockResolvedValue({ status: 'completed', result: [[]] });
-    mockSetRestaurantListWriteErrorMessage.mockReset();
     mockedUseQueryClient.mockReturnValue({
       getQueryData: jest.fn(),
       invalidateQueries: jest.fn(),
@@ -308,7 +303,6 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       await bookmarkButton.props.onPress();
     });
 
-    expect(mockSetRestaurantListWriteErrorMessage).toHaveBeenCalledWith(null);
     expect(mockSaveBookmarkToDefaultList).toHaveBeenCalledWith({
       bookmark: {
         menuItemId: 'menu-item-1',

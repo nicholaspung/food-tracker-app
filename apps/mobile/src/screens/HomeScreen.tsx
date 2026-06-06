@@ -381,6 +381,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     Map<string, FriendFeedBookmarkTarget>
   >(new Map());
   const [locallyRemovedFriendFeedItemIds, setLocallyRemovedFriendFeedItemIds] = useState<Set<string>>(new Set());
+  const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
+  const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
@@ -1047,7 +1049,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         return;
       }
 
-      restaurantListWrites.setErrorMessage(null);
+      setBookmarkErrorMessage(null);
+      setIsBookmarkSubmitting(true);
       setLocallySavedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
       setLocallySavedFriendFeedBookmarkTargets((current) => {
         const next = new Map(current);
@@ -1087,7 +1090,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           source: 'HomeScreen',
           targetListCount: 1,
         });
-      } catch {
+      } catch (error) {
         setLocallySavedFriendFeedItemIds((current) => {
           const next = new Set(current);
           next.delete(bookmarkKey);
@@ -1098,6 +1101,9 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           next.delete(bookmarkKey);
           return next;
         });
+        setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not save bookmark.');
+      } finally {
+        setIsBookmarkSubmitting(false);
       }
     },
     [
@@ -1129,7 +1135,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         menuItemId ? { menuItemId, restaurantId } : { foodItemId, restaurantId }
       );
 
-      restaurantListWrites.setErrorMessage(null);
+      setBookmarkErrorMessage(null);
+      setIsBookmarkSubmitting(true);
       setLocallyRemovedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
       setLocallySavedFriendFeedItemIds((current) => {
         const next = new Set(current);
@@ -1157,12 +1164,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           source: 'HomeScreen',
           status: result.status,
         });
-      } catch {
+      } catch (error) {
         setLocallyRemovedFriendFeedItemIds((current) => {
           const next = new Set(current);
           next.delete(bookmarkKey);
           return next;
         });
+        setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not remove bookmark.');
+      } finally {
+        setIsBookmarkSubmitting(false);
       }
     },
     [
@@ -1378,7 +1388,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                             ? `Remove ${item.name} from Want to Try`
                             : `Save ${item.name} to Want to Try`
                         }
-                        loading={restaurantListWrites.isSubmitting && !isSaved}
+                        loading={isBookmarkSubmitting && !isSaved}
                         onPress={() => {
                           if (isSaved) {
                             void handleRemoveFriendFeedItemFromWantToTry({
@@ -1479,7 +1489,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       feedMode,
       navigation,
       photosByFoodItem,
-      restaurantListWrites.isSubmitting,
+      isBookmarkSubmitting,
       savedFriendFeedItemIds,
     ],
   );
@@ -1533,7 +1543,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       ? 'Could not refresh map. Showing saved locations.'
       : null;
   const deleteErrorMessage = homeFeedActions.deleteErrorMessage;
-  const bookmarkErrorMessage = restaurantListWrites.errorMessage;
   const showHomeListBody =
     (viewMode === 'list' && homeFeedErrorMessage !== null) ||
     homeFeedMapRefreshErrorMessage !== null ||

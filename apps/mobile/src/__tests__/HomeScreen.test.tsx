@@ -514,11 +514,8 @@ describe('HomeScreen', () => {
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
     mockedUseRestaurantListWrites.mockReset();
     mockedUseRestaurantListWrites.mockReturnValue({
-      errorMessage: null,
-      isSubmitting: false,
       removeBookmarkFromDefaultList: jest.fn(),
       saveBookmarkToDefaultList: jest.fn(),
-      setErrorMessage: jest.fn(),
     } as never);
     mockedUseWriteTelemetry.mockReset();
     mockedUseWriteTelemetry.mockReturnValue(jest.fn());
@@ -1177,7 +1174,6 @@ describe('HomeScreen', () => {
 
   it('saves a friend feed recommendation to the default Want to Try list', async () => {
     const saveBookmarkToDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
-    const setErrorMessage = jest.fn();
     const defaultListRefetch = jest.fn();
     const defaultListDetailRefetch = jest.fn();
     let renderer: any = null;
@@ -1191,11 +1187,8 @@ describe('HomeScreen', () => {
       },
     } as never);
     mockedUseRestaurantListWrites.mockReturnValue({
-      errorMessage: null,
-      isSubmitting: false,
       removeBookmarkFromDefaultList: jest.fn(),
       saveBookmarkToDefaultList,
-      setErrorMessage,
     } as never);
     mockHomeAuxiliaryQueries({
       defaultList: {
@@ -1268,7 +1261,6 @@ describe('HomeScreen', () => {
       await bookmarkElement.props.onPress();
     });
 
-    expect(setErrorMessage).toHaveBeenCalledWith(null);
     expect(saveBookmarkToDefaultList).toHaveBeenCalledWith({
       bookmark: {
         restaurantId: 'restaurant-1',
@@ -1505,7 +1497,6 @@ describe('HomeScreen', () => {
 
   it('reflects same restaurant item-name bookmarks across friend feed records without menu item ids', async () => {
     const removeBookmarkFromDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
-    const setErrorMessage = jest.fn();
     let renderer: any = null;
 
     mockedUseAuth.mockReturnValue({
@@ -1517,11 +1508,8 @@ describe('HomeScreen', () => {
       },
     } as never);
     mockedUseRestaurantListWrites.mockReturnValue({
-      errorMessage: null,
-      isSubmitting: false,
       removeBookmarkFromDefaultList,
       saveBookmarkToDefaultList: jest.fn(),
-      setErrorMessage,
     } as never);
     mockHomeAuxiliaryQueries({
       defaultList: {
@@ -1619,13 +1607,11 @@ describe('HomeScreen', () => {
       defaultListId: 'default-list',
       sourceListId: 'default-list',
     });
-    expect(setErrorMessage).toHaveBeenCalledWith(null);
   });
 
   it('saves and removes friend feed menu item recommendations by menu item id', async () => {
     const saveBookmarkToDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
     const removeBookmarkFromDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
-    const setErrorMessage = jest.fn();
     let renderer: any = null;
 
     mockedUseAuth.mockReturnValue({
@@ -1637,11 +1623,8 @@ describe('HomeScreen', () => {
       },
     } as never);
     mockedUseRestaurantListWrites.mockReturnValue({
-      errorMessage: null,
-      isSubmitting: false,
       removeBookmarkFromDefaultList,
       saveBookmarkToDefaultList,
-      setErrorMessage,
     } as never);
     mockHomeAuxiliaryQueries({
       defaultList: {
@@ -1742,12 +1725,10 @@ describe('HomeScreen', () => {
       defaultListId: 'default-list',
       sourceListId: 'default-list',
     });
-    expect(setErrorMessage).toHaveBeenCalledWith(null);
   });
 
   it('removes a saved friend feed recommendation from Want to Try', async () => {
     const removeBookmarkFromDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
-    const setErrorMessage = jest.fn();
     const defaultListDetailRefetch = jest.fn();
     let renderer: any = null;
 
@@ -1760,11 +1741,8 @@ describe('HomeScreen', () => {
       },
     } as never);
     mockedUseRestaurantListWrites.mockReturnValue({
-      errorMessage: null,
-      isSubmitting: false,
       removeBookmarkFromDefaultList,
       saveBookmarkToDefaultList: jest.fn(),
-      setErrorMessage,
     } as never);
     mockHomeAuxiliaryQueries({
       defaultList: {
@@ -1845,7 +1823,6 @@ describe('HomeScreen', () => {
       await bookmarkElement.props.onPress();
     });
 
-    expect(setErrorMessage).toHaveBeenCalledWith(null);
     expect(removeBookmarkFromDefaultList).toHaveBeenCalledWith({
       bookmark: {
         restaurantId: 'restaurant-1',

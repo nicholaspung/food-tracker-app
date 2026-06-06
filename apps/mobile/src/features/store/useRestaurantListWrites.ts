@@ -130,12 +130,7 @@ async function syncRestaurantListSaveTargetCaches(
 export function useRestaurantListWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
-  const {
-    errorMessage,
-    isSubmitting,
-    setErrorMessage,
-    submitFeatureWrite,
-  } = useFeatureWriteSubmit();
+  const { submitFeatureWrite } = useFeatureWriteSubmit();
 
   const createListWrite = useCallback(
     async ({
@@ -468,8 +463,6 @@ export function useRestaurantListWrites() {
     createDefaultRestaurantList: createDefaultListWrite,
     createRestaurantList: createListWrite,
     deleteRestaurantList: deleteListWrite,
-    errorMessage,
-    isSubmitting,
     reorderRestaurant: reorderRestaurantWrite,
     removeRestaurantListSourceRating: removeSourceRatingWrite,
     removeRestaurantListUserRating: removeUserRatingWrite,
@@ -477,7 +470,6 @@ export function useRestaurantListWrites() {
     saveBookmarkToDefaultList: saveBookmarkToDefaultListWrite,
     saveBookmarkToLists: saveBookmarkToListsWrite,
     saveRestaurantToDefaultList: saveRestaurantToDefaultListWrite,
-    setErrorMessage,
     updateRestaurantList: updateListWrite,
   };
 }

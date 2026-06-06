@@ -22,7 +22,6 @@ const mockPickImageAssets = jest.fn();
 const mockInvalidateQueries = jest.fn();
 const mockSaveRestaurantToDefaultList = jest.fn();
 const mockRemoveBookmarkFromDefaultList = jest.fn();
-const mockSetRestaurantListWriteErrorMessage = jest.fn();
 
 jest.mock('expo-clipboard', () => ({
   setStringAsync: jest.fn(),
@@ -116,11 +115,8 @@ jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
 
 jest.mock('../features/store/useRestaurantListWrites', () => ({
   useRestaurantListWrites: jest.fn(() => ({
-    errorMessage: null,
-    isSubmitting: false,
     removeBookmarkFromDefaultList: mockRemoveBookmarkFromDefaultList,
     saveRestaurantToDefaultList: mockSaveRestaurantToDefaultList,
-    setErrorMessage: mockSetRestaurantListWriteErrorMessage,
   })),
 }));
 
@@ -248,7 +244,6 @@ describe('RestaurantDiscoveryScreen', () => {
     mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveRestaurantToDefaultList.mockReset();
     mockSaveRestaurantToDefaultList.mockResolvedValue({ status: 'completed', result: [] });
-    mockSetRestaurantListWriteErrorMessage.mockReset();
     mockedUseQuery.mockReset();
     mockedUseQuery.mockReturnValue({
       data: [],
@@ -503,7 +498,6 @@ describe('RestaurantDiscoveryScreen', () => {
       await bookmarkButton.props.onPress();
     });
 
-    expect(mockSetRestaurantListWriteErrorMessage).toHaveBeenCalledWith(null);
     expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledWith({
       restaurant: {
         restaurantId: 'restaurant-1',

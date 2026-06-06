@@ -71,12 +71,7 @@ async function syncSavedNoteCaches(
 export function useNoteWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
-  const {
-    errorMessage,
-    isSubmitting,
-    setErrorMessage,
-    submitFeatureWrite,
-  } = useFeatureWriteSubmit();
+  const { submitFeatureWrite } = useFeatureWriteSubmit();
 
   const createNoteWrite = useCallback(
     async (input: CreateNoteInput): Promise<OfflineAwareFeatureWriteResult<NoteRecord>> => {
@@ -178,10 +173,7 @@ export function useNoteWrites() {
   return {
     createNote: createNoteWrite,
     deleteNote: deleteNoteWrite,
-    errorMessage,
-    isSubmitting,
     markNoteUsed: markNoteUsedWrite,
-    setErrorMessage,
     updateNote: updateNoteWrite,
   };
 }

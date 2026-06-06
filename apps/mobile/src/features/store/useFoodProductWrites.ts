@@ -99,12 +99,7 @@ export async function createFoodProductWithOfflineSupport({
 export function useFoodProductWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
-  const {
-    errorMessage,
-    isSubmitting,
-    setErrorMessage,
-    submitFeatureWrite,
-  } = useFeatureWriteSubmit();
+  const { submitFeatureWrite } = useFeatureWriteSubmit();
 
   const createFoodProductWrite = useCallback(
     async ({
@@ -237,9 +232,6 @@ export function useFoodProductWrites() {
   return {
     createFoodProduct: createFoodProductWrite,
     deleteFoodProduct: deleteFoodProductWrite,
-    errorMessage,
-    isSubmitting,
-    setErrorMessage,
     updateFoodProduct: updateFoodProductWrite,
   };
 }

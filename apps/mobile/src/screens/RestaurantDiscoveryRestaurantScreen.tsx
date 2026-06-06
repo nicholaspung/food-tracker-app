@@ -213,6 +213,8 @@ export function RestaurantDiscoveryRestaurantScreen({
   const [detailScope, setDetailScope] = useState<RestaurantDetailScope>('location');
   const [locallySavedMenuItemIds, setLocallySavedMenuItemIds] = useState<Set<string>>(() => new Set());
   const [locallyRemovedMenuItemIds, setLocallyRemovedMenuItemIds] = useState<Set<string>>(() => new Set());
+  const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
+  const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const restaurantDescription = useMemo(() => {
     const parts = [buildVisitRestaurantDescription(restaurant, null)];
     if (restaurant.userVisitCount && restaurant.userVisitCount > 0) {
@@ -305,7 +307,8 @@ export function RestaurantDiscoveryRestaurantScreen({
         return;
       }
 
-      restaurantListWrites.setErrorMessage(null);
+      setBookmarkErrorMessage(null);
+      setIsBookmarkSubmitting(true);
       setLocallyRemovedMenuItemIds((current) => new Set(current).add(menuItem.id));
       setLocallySavedMenuItemIds((current) => {
         const next = new Set(current);
@@ -327,17 +330,21 @@ export function RestaurantDiscoveryRestaurantScreen({
           void defaultListQuery.refetch();
           void defaultListDetailQuery.refetch();
         }
-      } catch {
+      } catch (error) {
         setLocallyRemovedMenuItemIds((current) => {
           const next = new Set(current);
           next.delete(menuItem.id);
           return next;
         });
+        setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not remove bookmark.');
+      } finally {
+        setIsBookmarkSubmitting(false);
       }
       return;
     }
 
-    restaurantListWrites.setErrorMessage(null);
+    setBookmarkErrorMessage(null);
+    setIsBookmarkSubmitting(true);
     setLocallySavedMenuItemIds((current) => new Set(current).add(menuItem.id));
     setLocallyRemovedMenuItemIds((current) => {
       const next = new Set(current);
@@ -370,12 +377,15 @@ export function RestaurantDiscoveryRestaurantScreen({
           }),
         );
       }
-    } catch {
+    } catch (error) {
       setLocallySavedMenuItemIds((current) => {
         const next = new Set(current);
         next.delete(menuItem.id);
         return next;
       });
+      setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not save bookmark.');
+    } finally {
+      setIsBookmarkSubmitting(false);
     }
   }
 
@@ -526,7 +536,7 @@ export function RestaurantDiscoveryRestaurantScreen({
                           accessibilityLabel={
                             isSaved ? `${row.name} is saved to Want to Try` : `Save ${row.name} to Want to Try`
                           }
-                          loading={restaurantListWrites.isSubmitting}
+                          loading={isBookmarkSubmitting}
                           onPress={() => {
                             void handleToggleMenuItemWantToTry(item);
                           }}
@@ -550,7 +560,7 @@ export function RestaurantDiscoveryRestaurantScreen({
             />
           )}
           <PageErrorToast
-            errorMessage={restaurantListWrites.errorMessage}
+            errorMessage={bookmarkErrorMessage}
             title="Could not save bookmark"
           />
         </Card>

@@ -72,7 +72,6 @@ describe('useFoodProductWrites', () => {
   });
 
   async function renderHook(): Promise<{
-    getHook: () => ReturnType<typeof useFoodProductWrites>;
     hook: ReturnType<typeof useFoodProductWrites>;
     renderer: ReactTestRenderer;
   }> {
@@ -93,12 +92,6 @@ describe('useFoodProductWrites', () => {
     }
 
     return {
-      getHook: () => {
-        if (!hook) {
-          throw new Error('Expected hook to render.');
-        }
-        return hook;
-      },
       hook,
       renderer,
     };
@@ -349,7 +342,7 @@ describe('useFoodProductWrites', () => {
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(
       writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
     );
-    const { getHook, hook, renderer } = await renderHook();
+    const { hook, renderer } = await renderHook();
 
     await act(async () => {
       await expect(
@@ -360,8 +353,6 @@ describe('useFoodProductWrites', () => {
       ).rejects.toThrow('Network write failed');
     });
 
-    expect(getHook().errorMessage).toBe('Network write failed');
-    expect(getHook().isSubmitting).toBe(false);
     expect(mockedSyncFoodProductMutationCaches).not.toHaveBeenCalled();
     expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
 

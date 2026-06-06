@@ -71,7 +71,6 @@ describe('useNoteWrites', () => {
   });
 
   async function renderHook(): Promise<{
-    getHook: () => ReturnType<typeof useNoteWrites>;
     hook: ReturnType<typeof useNoteWrites>;
     renderer: ReactTestRenderer;
   }> {
@@ -92,12 +91,6 @@ describe('useNoteWrites', () => {
     }
 
     return {
-      getHook: () => {
-        if (!hook) {
-          throw new Error('Expected hook to render.');
-        }
-        return hook;
-      },
       hook,
       renderer,
     };
@@ -333,7 +326,7 @@ describe('useNoteWrites', () => {
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(
       writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
     );
-    const { getHook, hook, renderer } = await renderHook();
+    const { hook, renderer } = await renderHook();
 
     let caughtError: unknown;
     await act(async () => {
@@ -348,8 +341,6 @@ describe('useNoteWrites', () => {
     });
 
     expect(caughtError).toEqual(new Error('Network unavailable'));
-    expect(getHook().errorMessage).toBe('Network unavailable');
-    expect(getHook().isSubmitting).toBe(false);
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
     expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
 
