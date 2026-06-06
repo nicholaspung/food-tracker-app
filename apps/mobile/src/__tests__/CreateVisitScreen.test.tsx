@@ -1064,6 +1064,62 @@ describe('CreateVisitScreen', () => {
     expect(findScaffold().props.primaryAction.label).toBe('Select Items');
   });
 
+  it('hydrates related-location preselected items without treating the suggestion id as a menu item id', async () => {
+    await act(async () => {
+      create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              preselectedMenuItemId: 'related-location:coconut yogurt',
+              preselectedMenuItemName: 'Coconut Yogurt',
+              preselectedMenuItemSuggestionSource: {
+                normalizedItemName: 'coconut yogurt',
+                restaurantGroupId: 'group-1',
+                sourceMenuItemId: 'menu-item-3',
+                sourceRestaurantId: 'restaurant-2',
+                type: 'groupMenuSuggestion',
+              },
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const draftItemsUpdater = setDraftItems.mock.calls.find(
+      ([updater]) => typeof updater === 'function',
+    )?.[0];
+
+    expect(draftItemsUpdater).toBeTruthy();
+    expect(draftItemsUpdater([])).toEqual([
+      {
+        id: 'related-location:coconut yogurt',
+        name: 'Coconut Yogurt',
+        rating: 3,
+        description: '',
+        notes: '',
+        photos: [],
+        deletedPhotoIds: [],
+        suggestionSource: {
+          normalizedItemName: 'coconut yogurt',
+          restaurantGroupId: 'group-1',
+          sourceMenuItemId: 'menu-item-3',
+          sourceRestaurantId: 'restaurant-2',
+          type: 'groupMenuSuggestion',
+        },
+      },
+    ]);
+    expect(draftItemsUpdater([])[0]).not.toHaveProperty('sourceMenuItemId');
+    expect(navigation.setParams).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preselectedMenuItemSuggestionSource: undefined,
+      }),
+    );
+  });
+
   it('exits directly to the source list when footer back is pressed from an I went review flow', async () => {
     let renderer: any = null;
 

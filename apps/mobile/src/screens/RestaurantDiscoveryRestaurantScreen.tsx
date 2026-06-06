@@ -15,13 +15,16 @@ import {
   VisitRestaurantOptionTrailing,
   WantToTryBookmarkButton,
 } from '../components/shared';
-import { type AllLocationsHistoryRecord } from '../features';
+import { type AllLocationsHistoryRecord, type GroupMenuSuggestionsRecord } from '../features';
+import { buildMenuSelectionSuggestions } from '../features/restaurants/menuSelectionSuggestions';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import {
   getRestaurantListDetail,
   listRestaurantListsPage,
   type RestaurantListDetailRecord,
 } from '../features/store/restaurantListsStore';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
+import { getGroupMenuSuggestionsForRestaurant } from '../features/store/restaurantsStore';
 import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import type { MenuItemRecord } from '../features/store/featureStore';
@@ -68,6 +71,13 @@ const useStyles = createThemedStyles((theme) => ({
   },
   menuItemList: {
     gap: 0,
+  },
+  menuSuggestionDescription: {
+    gap: theme.spacing.xxs,
+  },
+  menuSuggestionRow: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
   },
   menuItemSeparator: {
     backgroundColor: theme.colors.border.subtle,
@@ -184,6 +194,13 @@ function buildLatestLocationLabel(item: AllLocationsHistoryRecord['items'][numbe
   return `Latest at ${parts.join(' • ')}`;
 }
 
+function buildEmptyGroupMenuSuggestions(restaurantId: string): GroupMenuSuggestionsRecord {
+  return {
+    restaurantId,
+    suggestions: [],
+  };
+}
+
 export function RestaurantDiscoveryRestaurantScreen({
   navigation,
   route,
@@ -216,6 +233,26 @@ export function RestaurantDiscoveryRestaurantScreen({
   const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
     isOnline,
     restaurant,
+  });
+  const groupMenuSuggestionsQuery = useQuery({
+    enabled: Boolean(restaurant.id),
+    queryKey: restaurantsQueryKeys.groupMenuSuggestions(restaurant.id),
+    queryFn: ({ signal }): Promise<GroupMenuSuggestionsRecord> => {
+      const emptySuggestions = buildEmptyGroupMenuSuggestions(restaurant.id);
+      if (!restaurant.id) {
+        return Promise.resolve(emptySuggestions);
+      }
+
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<GroupMenuSuggestionsRecord>(
+            restaurantsQueryKeys.groupMenuSuggestions(restaurant.id),
+          ) ?? emptySuggestions,
+        );
+      }
+
+      return getGroupMenuSuggestionsForRestaurant(restaurant.id, { signal });
+    },
   });
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
@@ -259,6 +296,19 @@ export function RestaurantDiscoveryRestaurantScreen({
   }, [defaultListDetailQuery.data?.items, locallyRemovedMenuItemIds, locallySavedMenuItemIds, restaurant.id]);
 
   const allLocationsHistory = restaurantDetail.allLocationsHistory;
+  const relatedMenuSuggestions = useMemo(
+    () =>
+      buildMenuSelectionSuggestions({
+        exactLocationMenuItems: restaurantDetail.menuItems,
+        groupMenuSuggestions: groupMenuSuggestionsQuery.data,
+      }).filter((suggestion) => suggestion.source === 'relatedLocationSuggestion'),
+    [groupMenuSuggestionsQuery.data, restaurantDetail.menuItems],
+  );
+  const showRelatedMenuSuggestions =
+    detailScope === 'location' &&
+    !restaurantDetail.menuCatalogLoading &&
+    !restaurantDetail.menuCatalogErrorMessage &&
+    (groupMenuSuggestionsQuery.isLoading || groupMenuSuggestionsQuery.isError || relatedMenuSuggestions.length > 0);
 
   async function handleToggleMenuItemWantToTry(menuItem: MenuItemRecord) {
     if (savedMenuItemIds.has(menuItem.id)) {
@@ -506,6 +556,72 @@ export function RestaurantDiscoveryRestaurantScreen({
           />
         </Card>
       )}
+
+      {showRelatedMenuSuggestions ? (
+        <Card style={styles.card}>
+          <Text variant="label">Suggested From Related Locations</Text>
+          {groupMenuSuggestionsQuery.isLoading ? (
+            <LoadingState label="Loading suggestions..." />
+          ) : groupMenuSuggestionsQuery.isError ? (
+            <PageErrorToast
+              actionLabel="Retry"
+              errorMessage="Could not load suggestions from related locations."
+              onAction={() => {
+                void groupMenuSuggestionsQuery.refetch();
+              }}
+              title="Suggestions unavailable"
+            />
+          ) : (
+            <View style={styles.menuItemList}>
+              {relatedMenuSuggestions.map((suggestion, index) => {
+                const sourceRestaurantCount = suggestion.sourceRestaurantCount ?? 0;
+                const sourceItemCount = suggestion.sourceItemCount ?? 0;
+
+                return (
+                  <Fragment key={suggestion.id}>
+                    <ListItem
+                      description={
+                        <View style={styles.menuSuggestionDescription}>
+                          <View style={styles.itemMetaRow}>
+                            <Text tone="secondary" variant="bodySm">
+                              Suggested from {sourceRestaurantCount}{' '}
+                              {sourceRestaurantCount === 1 ? 'related location' : 'related locations'}
+                            </Text>
+                            {sourceItemCount > 0 ? (
+                              <Text tone="secondary" variant="bodySm">
+                                {sourceItemCount} {sourceItemCount === 1 ? 'trusted item' : 'trusted items'}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text tone="secondary" variant="bodySm">
+                            Starts a visit here with this item preselected.
+                          </Text>
+                        </View>
+                      }
+                      onPress={() => {
+                        navigation.navigate('CreateVisit', {
+                          preselectedRestaurantId: restaurant.id,
+                          preselectedRestaurantName: restaurant.name,
+                          preselectedMenuItemId: suggestion.id,
+                          preselectedMenuItemName: suggestion.name,
+                          preselectedMenuItemSuggestionSource: suggestion.suggestionSource,
+                        });
+                      }}
+                      style={styles.menuSuggestionRow}
+                      testID={`restaurant-discovery-related-menu-suggestion-${index}`}
+                      title={suggestion.name}
+                      trailing={<Ionicons color={theme.colors.text.brand} name="chevron-forward" size={18} />}
+                    />
+                    {index < relatedMenuSuggestions.length - 1 ? (
+                      <View style={styles.menuItemSeparator} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+      ) : null}
     </FeatureDetailScreenScaffold>
   );
 }

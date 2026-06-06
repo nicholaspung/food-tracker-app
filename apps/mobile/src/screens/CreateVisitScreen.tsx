@@ -875,6 +875,7 @@ export function CreateVisitScreen({
     const preselectedRestaurantName = route.params?.preselectedRestaurantName;
     const preselectedMenuItemId = route.params?.preselectedMenuItemId;
     const preselectedMenuItemName = route.params?.preselectedMenuItemName;
+    const preselectedMenuItemSuggestionSource = route.params?.preselectedMenuItemSuggestionSource;
     const sourceListIdParam = route.params?.sourceListId;
     const sourceListItemIdParam = route.params?.sourceListItemId;
     const returnToStep = route.params?.returnToStep;
@@ -905,6 +906,22 @@ export function CreateVisitScreen({
       setDraftItems((currentItems) => {
         if (currentItems.some((item) => item.id === preselectedMenuItemId)) {
           return currentItems;
+        }
+
+        if (preselectedMenuItemId.startsWith('related-location:')) {
+          return [
+            ...currentItems,
+            {
+              id: preselectedMenuItemId,
+              name: preselectedMenuItemName,
+              rating: 3,
+              description: '',
+              notes: '',
+              photos: [],
+              deletedPhotoIds: [],
+              suggestionSource: preselectedMenuItemSuggestionSource,
+            },
+          ];
         }
 
         return [
@@ -942,6 +959,7 @@ export function CreateVisitScreen({
       preselectedRestaurantName: undefined,
       preselectedMenuItemId: undefined,
       preselectedMenuItemName: undefined,
+      preselectedMenuItemSuggestionSource: undefined,
       sourceListId: undefined,
       sourceListItemId: undefined,
       returnToStep: undefined,
@@ -953,6 +971,7 @@ export function CreateVisitScreen({
     route.params?.preselectedRestaurantName,
     route.params?.preselectedMenuItemId,
     route.params?.preselectedMenuItemName,
+    route.params?.preselectedMenuItemSuggestionSource,
     route.params?.sourceListId,
     route.params?.sourceListItemId,
     route.params?.returnToStep,

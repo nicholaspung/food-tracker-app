@@ -41,6 +41,7 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features/store/restaurantsStore', () => ({
+  getGroupMenuSuggestionsForRestaurant: jest.fn(),
   getAllLocationsHistory: jest.fn(),
   listMenuItemsForRestaurant: jest.fn(),
 }));
@@ -88,6 +89,9 @@ jest.mock('../theme', () => ({
       factory(
         {
           colors: {
+            background: {
+              surface: 'surface',
+            },
             border: {
               subtle: 'border-subtle',
             },
@@ -131,6 +135,22 @@ jest.mock('../ui', () => ({
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+
+function collectText(node: any): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (!node) {
+    return '';
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(collectText).join('');
+  }
+
+  return collectText(node.props?.children);
+}
 
 function renderScreen() {
   let renderer: any;
@@ -411,6 +431,252 @@ describe('RestaurantDiscoveryRestaurantScreen', () => {
       preselectedRestaurantId: 'restaurant-1',
       preselectedRestaurantName: 'Erewhon West Hollywood',
     });
+  });
+
+  it('renders related-location menu suggestions separately from exact-location menu items', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [
+            {
+              id: 'menu-item-1',
+              name: 'Tonic Bar Smoothie',
+              restaurant: 'restaurant-1',
+            },
+          ],
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('groupMenuSuggestions')) {
+        return {
+          data: {
+            restaurantId: 'restaurant-1',
+            restaurantGroupId: 'group-1',
+            suggestions: [
+              {
+                displayName: 'Tonic Bar Smoothie',
+                normalizedItemName: 'tonic bar smoothie',
+                sourceItemCount: 2,
+                sourceRestaurantCount: 2,
+                sources: [],
+              },
+              {
+                displayName: 'Coconut Yogurt',
+                normalizedItemName: 'coconut yogurt',
+                sourceItemCount: 3,
+                sourceRestaurantCount: 2,
+                sources: [
+                  {
+                    menuItemCount: 3,
+                    menuItemIds: ['menu-item-2'],
+                    restaurantId: 'restaurant-2',
+                    restaurantLocation: 'Venice, CA',
+                    restaurantName: 'Erewhon Venice',
+                  },
+                ],
+              },
+            ],
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Saved Menu Items')).toBe(true);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.props.children === 'Suggested From Related Locations'),
+    ).toBe(true);
+
+    const listItemTitles = renderer.root.findAllByType('ListItem').map((node: any) => node.props.title);
+    expect(listItemTitles.filter((title: string) => title === 'Tonic Bar Smoothie')).toHaveLength(1);
+    expect(listItemTitles).toContain('Coconut Yogurt');
+
+    const text = renderer.root.findAllByType('Text').map(collectText).join(' ');
+    expect(text).toContain('Suggested from 2 related locations');
+    expect(text).toContain('3 trusted items');
+    expect(text).not.toContain('Restaurant Group');
+  });
+
+  it('starts a visit with the exact restaurant and suggested item selected', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('groupMenuSuggestions')) {
+        return {
+          data: {
+            restaurantId: 'restaurant-1',
+            suggestions: [
+              {
+                displayName: 'Coconut Yogurt',
+                normalizedItemName: 'coconut yogurt',
+                sourceItemCount: 1,
+                sourceRestaurantCount: 1,
+                sources: [
+                  {
+                    menuItemCount: 1,
+                    menuItemIds: ['menu-item-2'],
+                    restaurantId: 'restaurant-2',
+                    restaurantName: 'Erewhon Venice',
+                  },
+                ],
+              },
+            ],
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'restaurant-discovery-related-menu-suggestion-0' }).props.onPress();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('CreateVisit', {
+      preselectedRestaurantId: 'restaurant-1',
+      preselectedRestaurantName: 'Erewhon West Hollywood',
+      preselectedMenuItemId: 'related-location:coconut yogurt',
+      preselectedMenuItemName: 'Coconut Yogurt',
+      preselectedMenuItemSuggestionSource: {
+        normalizedItemName: 'coconut yogurt',
+        sourceMenuItemId: 'menu-item-2',
+        sourceRestaurantId: 'restaurant-2',
+        type: 'groupMenuSuggestion',
+      },
+    });
+  });
+
+  it('hides related-location suggestions when none qualify', () => {
+    mockedUseQuery.mockImplementation((options: any) => {
+      const queryKey = options.queryKey as readonly unknown[];
+      if (queryKey.includes('allLocationsHistory')) {
+        return {
+          data: {
+            anchorRestaurant: {
+              id: 'restaurant-1',
+              name: 'Erewhon West Hollywood',
+            },
+            itemCount: 0,
+            items: [],
+            locationCount: 1,
+            normalizedName: 'erewhon west hollywood',
+            restaurants: [],
+            visitCount: 0,
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('menuItems')) {
+        return {
+          data: [
+            {
+              id: 'menu-item-1',
+              name: 'Tonic Bar Smoothie',
+              restaurant: 'restaurant-1',
+            },
+          ],
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+      if (queryKey.includes('groupMenuSuggestions')) {
+        return {
+          data: {
+            restaurantId: 'restaurant-1',
+            suggestions: [
+              {
+                displayName: 'Tonic Bar Smoothie',
+                normalizedItemName: 'tonic bar smoothie',
+                sourceItemCount: 2,
+                sourceRestaurantCount: 2,
+                sources: [],
+              },
+            ],
+          },
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
+      return {
+        data: [],
+        isError: false,
+        isLoading: false,
+        refetch: jest.fn(),
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.props.children === 'Suggested From Related Locations'),
+    ).toBe(false);
   });
 
   it('opens the shared menu scan screen for food discovery restaurants', () => {

@@ -92,6 +92,7 @@ import {
   WaitlistConfirmationScreen,
 } from '../screens';
 import { useTheme } from '../theme';
+import type { VisitItemSuggestionSourceInput } from '../features/store/featureStore';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
 
 export type RestaurantDiscoveryRestaurantRouteParams = {
@@ -190,6 +191,7 @@ export type RootStackParamList = {
         preselectedRestaurantName?: string;
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
+        preselectedMenuItemSuggestionSource?: VisitItemSuggestionSourceInput;
         sourceListId?: string;
         sourceListItemId?: string;
         sourceNoteId?: string;
