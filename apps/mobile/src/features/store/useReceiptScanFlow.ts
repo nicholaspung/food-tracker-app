@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPermissions';
 import { useImageSourcePicker } from '../../hooks/useImageSourcePicker';
-import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../../lib/photoStaging';
+import { buildLocalPhotoFile } from '../../lib/photoFiles';
 import { captureObservabilityError, trackObservabilityEvent, type EventProperties } from '../../observability';
 import { trackProductEvent } from '../../observability/productAnalytics';
 import { createAIRequestCorrelation, resolveAIImageErrorProperties } from './aiImageObservability';
@@ -47,6 +47,10 @@ function isNotReceiptImageError(input: {
   return normalizedMessage.includes('not a receipt') || normalizedMessage.includes('image is not a receipt');
 }
 
+function isGenericTransportFailure(input: EventProperties): boolean {
+  return input.statusCode === null && input.errorMessage === 'Something went wrong.';
+}
+
 export function useReceiptScanFlow(): ReceiptScanFlowController {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ReceiptScanFlowStatus>('idle');
@@ -82,9 +86,9 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
 
       trackObservabilityEvent('RECEIPT_SCAN_STARTED', eventProperties);
 
-      let imageInput: Awaited<ReturnType<typeof stageLocalPhotoFile>> | null = null;
+      let hasPickedImage = false;
       try {
-        const pickResult = await pickImageAssets({ source });
+        const pickResult = await pickImageAssets({ source, quality: 1 });
         if (pickResult.status === 'permission_denied') {
           trackObservabilityEvent('RECEIPT_SCAN_IMAGE_PERMISSION_DENIED', {
             ...eventProperties,
@@ -101,9 +105,11 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
           return null;
         }
 
-        imageInput = await stageLocalPhotoFile(pickResult.assets[0], {
-          fallbackPrefix: source === 'camera' ? 'receipt-camera' : 'receipt-image',
-          maxLongEdge: 2048,
+        hasPickedImage = true;
+        const pickedAsset = pickResult.assets[0];
+        const fallbackPrefix = source === 'camera' ? 'receipt-camera' : 'receipt-image';
+        const imageInput = buildLocalPhotoFile(pickedAsset, {
+          fallbackPrefix,
         });
         if (!imageInput) {
           throw new Error('Could not prepare the selected receipt image.');
@@ -127,6 +133,15 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
         });
         return scanResult;
       } catch (error) {
+        if (!hasPickedImage) {
+          trackObservabilityEvent('RECEIPT_SCAN_IMAGE_PICK_CANCELED', {
+            ...eventProperties,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          });
+          setStatus('idle');
+          return null;
+        }
+
         const limitPayload = parseLimitExceededError(error);
         if (limitPayload) {
           trackObservabilityEvent('USAGE_LIMIT_REACHED', {
@@ -154,6 +169,8 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
         const resolvedErrorProperties = resolveAIImageErrorProperties(error);
         const message = limitPayload
           ? formatLimitExceededMessage(limitPayload)
+          : isGenericTransportFailure(resolvedErrorProperties)
+            ? 'Could not upload the receipt image before scanning started. Try again or choose a different image source.'
           : typeof resolvedErrorProperties.errorMessage === 'string'
             ? resolvedErrorProperties.errorMessage
             : 'Could not scan this receipt.';
@@ -183,9 +200,6 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
         );
         return null;
       } finally {
-        if (imageInput) {
-          await cleanupStagedPhotoFiles([imageInput]);
-        }
         void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
       }
     },

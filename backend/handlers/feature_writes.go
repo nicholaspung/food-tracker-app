@@ -646,7 +646,7 @@ func createVisitTransaction(
 		}
 	}
 
-	createdItemIDs, err := appendVisitItems(app, authRecord.Id, visitRecord.Id, requestBody.Items)
+	createdItemIDs, err := appendVisitItems(app, authRecord, restaurantRecord.Id, visitRecord.Id, requestBody.Items)
 	if err != nil {
 		return result, err
 	}
@@ -1002,7 +1002,7 @@ func updateVisitTransaction(
 		if listErr != nil {
 			return nil, apis.NewApiError(500, "failed to load visit items", listErr)
 		}
-		if err := syncVisitItems(app, authRecord.Id, visitID, existingItems, *requestBody.Items); err != nil {
+		if err := syncVisitItems(app, authRecord, visitRecord.GetString("restaurant"), visitID, existingItems, *requestBody.Items); err != nil {
 			return nil, err
 		}
 	}
@@ -1012,7 +1012,8 @@ func updateVisitTransaction(
 
 func appendVisitItems(
 	app core.App,
-	userID string,
+	authRecord *core.Record,
+	restaurantID string,
 	visitID string,
 	requestItems []visitItemWriteRequest,
 ) ([]string, error) {
@@ -1030,6 +1031,10 @@ func appendVisitItems(
 
 		description := strings.TrimSpace(item.Description)
 		notes := strings.TrimSpace(item.Notes)
+		menuItemID, err := resolveVisitItemMenuItemID(app, authRecord, restaurantID, item.MenuItemID)
+		if err != nil {
+			return nil, err
+		}
 
 		createdItem := core.NewRecord(foodItemsCollection)
 		createdItem.Set("name", trimmedName)
@@ -1037,7 +1042,8 @@ func appendVisitItems(
 		createdItem.Set("description", emptyStringToNil(description))
 		createdItem.Set("notes", emptyStringToNil(notes))
 		createdItem.Set("visit", visitID)
-		createdItem.Set("user", userID)
+		createdItem.Set("user", authRecord.Id)
+		createdItem.Set("menuItem", emptyStringToNil(menuItemID))
 		createdItem.Set("itemType", foodItemTypeVisitItem)
 		if err := app.Save(createdItem); err != nil {
 			return nil, apis.NewApiError(500, "failed to create visit item", err)
@@ -1189,7 +1195,8 @@ func resolveQualifiedSuggestionProvenanceSource(
 
 func syncVisitItems(
 	app core.App,
-	userID string,
+	authRecord *core.Record,
+	restaurantID string,
 	visitID string,
 	existingItems []*core.Record,
 	requestItems []visitItemWriteRequest,
@@ -1213,12 +1220,17 @@ func syncVisitItems(
 
 		description := strings.TrimSpace(item.Description)
 		notes := strings.TrimSpace(item.Notes)
+		menuItemID, err := resolveVisitItemMenuItemID(app, authRecord, restaurantID, item.MenuItemID)
+		if err != nil {
+			return err
+		}
 
 		if existingItem, ok := existingItemsByID[item.ID]; ok {
 			existingItem.Set("name", trimmedName)
 			existingItem.Set("rating", item.Rating)
 			existingItem.Set("description", description)
 			existingItem.Set("notes", notes)
+			existingItem.Set("menuItem", emptyStringToNil(menuItemID))
 			if err := app.Save(existingItem); err != nil {
 				return apis.NewApiError(500, "failed to update visit item", err)
 			}
@@ -1232,7 +1244,8 @@ func syncVisitItems(
 		createdItem.Set("description", emptyStringToNil(description))
 		createdItem.Set("notes", emptyStringToNil(notes))
 		createdItem.Set("visit", visitID)
-		createdItem.Set("user", userID)
+		createdItem.Set("user", authRecord.Id)
+		createdItem.Set("menuItem", emptyStringToNil(menuItemID))
 		createdItem.Set("itemType", foodItemTypeVisitItem)
 		if err := app.Save(createdItem); err != nil {
 			return apis.NewApiError(500, "failed to create visit item", err)
@@ -1250,6 +1263,25 @@ func syncVisitItems(
 	}
 
 	return nil
+}
+
+func resolveVisitItemMenuItemID(
+	app core.App,
+	authRecord *core.Record,
+	restaurantID string,
+	menuItemID string,
+) (string, error) {
+	trimmedMenuItemID := strings.TrimSpace(menuItemID)
+	if trimmedMenuItemID == "" {
+		return "", nil
+	}
+
+	record, err := findVisibleMenuItemForRestaurant(app, authRecord, trimmedMenuItemID, strings.TrimSpace(restaurantID))
+	if err != nil {
+		return "", err
+	}
+
+	return record.Id, nil
 }
 
 func moveVisitItemTransaction(
@@ -1936,6 +1968,27 @@ func buildVisitResponse(
 	visitsByID := map[string]*core.Record{
 		visitRecord.Id: visitRecord,
 	}
+	restaurantID := strings.TrimSpace(visitRecord.GetString("restaurant"))
+	menuItemsByID, err := buildAccessibleMenuItemsByID(
+		app,
+		collectVisitItemMenuItemIDs(items),
+		viewerUserID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return visitResponse{}, err
+	}
+	menuItemIDsByRestaurantAndName, err := buildMenuItemIDsByRestaurantAndName(
+		app,
+		[]string{restaurantID},
+		viewerUserID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return visitResponse{}, err
+	}
 	responseItems := make([]visitItemResponse, 0, len(items))
 	for _, item := range items {
 		if !canAccessFoodItemRecord(item, visitsByID, viewerUserID, isAdmin, acceptedFriendIDs) {
@@ -1944,6 +1997,7 @@ func buildVisitResponse(
 
 		responseItems = append(responseItems, visitItemResponse{
 			ID:          item.Id,
+			MenuItemID:  resolveHomeFeedVisitItemMenuItemID(item, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
 			Name:        item.GetString("name"),
 			Rating:      item.GetFloat("rating"),
 			Description: strings.TrimSpace(item.GetString("description")),

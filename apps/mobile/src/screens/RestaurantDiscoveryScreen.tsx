@@ -402,6 +402,23 @@ export function RestaurantDiscoveryScreen({
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
+  const storefrontReadsLimit = monthlyUsage.snapshot?.limits?.storefrontReadsMonthly;
+  const storefrontReadsUsed = monthlyUsage.snapshot?.usage?.storefrontReads ?? 0;
+  const storefrontReadsRemaining = isDisplayFreeUser
+    ? monthlyUsage.snapshot?.remaining?.storefrontReadsMonthly ?? null
+    : null;
+  const isStorefrontQuotaReached =
+    shouldEnforceUsageLimitsClientSide &&
+    isDisplayFreeUser &&
+    typeof storefrontReadsRemaining === 'number' &&
+    storefrontReadsRemaining <= 0;
+  const storefrontUsageText = monthlyUsage.snapshot
+    ? typeof storefrontReadsLimit === 'number'
+      ? `${Math.max(storefrontReadsLimit - storefrontReadsUsed, 0)} of ${storefrontReadsLimit} monthly storefront reads left.`
+      : 'Monthly storefront reads are unlimited for this account.'
+    : monthlyUsage.isLoading
+      ? 'Checking monthly storefront read usage...'
+      : 'Free accounts include 25 storefront reads per month. Subscribers include 100.';
 
   const [storefrontResult, setStorefrontResult] =
     useState<RestaurantNameExtractionResponse | null>(null);
@@ -502,6 +519,7 @@ export function RestaurantDiscoveryScreen({
   }, [defaultListDetailQuery.data?.items, locallyRemovedRestaurantIds, locallySavedRestaurantIds]);
 
   const isBusyWithImage = isExtractingStorefront;
+  const isStorefrontReadDisabled = !isOnline || isBusyWithImage || isStorefrontQuotaReached;
   const extractedNames = useMemo(() => getRestaurantNameOptions(storefrontResult), [storefrontResult]);
   const isSearchMapMode = activeTab === 'search' && searchViewMode === 'map';
   const currentMapRestaurants = showNearbyPlaces ? displayedNearbyRestaurants : displayedSavedRestaurants;
@@ -784,6 +802,22 @@ export function RestaurantDiscoveryScreen({
         return;
       }
 
+      if (isStorefrontQuotaReached && typeof storefrontReadsLimit === 'number') {
+        const message = `Storefront read limit reached for this month (${storefrontReadsLimit}).`;
+        setStorefrontErrorMessage(message);
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client',
+          limit: storefrontReadsLimit,
+          metric: 'storefront_reads',
+          monthKey: monthlyUsage.snapshot?.monthKey ?? null,
+          remaining: storefrontReadsRemaining ?? 0,
+          source: 'RestaurantDiscoveryStorefront',
+          used: storefrontReadsUsed,
+          userTier: monthlyUsage.snapshot?.userTier ?? null,
+        });
+        return;
+      }
+
       setIsExtractingStorefront(true);
       setStorefrontErrorMessage(null);
       setStorefrontResult(null);
@@ -869,7 +903,17 @@ export function RestaurantDiscoveryScreen({
         void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
       }
     },
-    [isOnline, pickImageAssets, queryClient],
+    [
+      isOnline,
+      isStorefrontQuotaReached,
+      monthlyUsage.snapshot?.monthKey,
+      monthlyUsage.snapshot?.userTier,
+      pickImageAssets,
+      queryClient,
+      storefrontReadsLimit,
+      storefrontReadsRemaining,
+      storefrontReadsUsed,
+    ],
   );
 
   const handleManualAdd = useCallback((name?: string) => {
@@ -1324,8 +1368,11 @@ export function RestaurantDiscoveryScreen({
             <Text tone="secondary">
               Extract possible restaurant names from a sign, then search or copy the text.
             </Text>
+            <Text tone={isStorefrontQuotaReached ? 'warning' : 'secondary'}>
+              {storefrontUsageText}
+            </Text>
             <Button
-              disabled={!isOnline || isBusyWithImage}
+              disabled={isStorefrontReadDisabled}
               label="Read a Storefront"
               loading={isExtractingStorefront}
               onPress={() => {
@@ -1336,7 +1383,7 @@ export function RestaurantDiscoveryScreen({
               <PhotoSourcePicker
                 cameraSubtitle="Storefront"
                 cameraTitle="Take Photo"
-                disabled={!isOnline || isBusyWithImage}
+                disabled={isStorefrontReadDisabled}
                 gallerySubtitle="Photo Library"
                 galleryTitle="Upload"
                 title=""

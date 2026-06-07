@@ -1,37 +1,59 @@
-import * as pocketbaseModule from '../lib/pocketbase';
+import { File, UploadType } from 'expo-file-system';
+import { ClientResponseError } from 'pocketbase';
+
 import { parseReceiptImage } from '../features/store/receiptParsingGateway';
+import { pb } from '../lib/pocketbase';
+
+const mockUpload = jest.fn();
+
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation(() => ({
+    upload: mockUpload,
+  })),
+  UploadType: {
+    MULTIPART: 1,
+  },
+}));
+
+jest.mock('../config/env', () => ({
+  env: {
+    pocketbaseUrl: 'https://api.example.test/',
+  },
+}));
 
 jest.mock('../lib/pocketbase', () => ({
   pb: {
     authStore: {
       token: 'test-token',
     },
-    send: jest.fn(),
   },
 }));
 
-jest.mock('../observability', () => ({
-  trackObservabilityEvent: jest.fn(),
-}));
+const mockedFile = File as jest.MockedClass<typeof File>;
+const mockedPocketBase = pb as typeof pb & {
+  authStore: {
+    token: string;
+  };
+};
 
 describe('receiptParsingGateway', () => {
-  const mockedPocketbaseModule = pocketbaseModule as typeof pocketbaseModule & {
-    pb: {
-      send: jest.Mock;
-    };
-  };
-
   beforeEach(() => {
-    mockedPocketbaseModule.pb.send.mockReset();
-    jest.restoreAllMocks();
+    mockUpload.mockReset();
+    mockedFile.mockClear();
+    mockedPocketBase.authStore.token = 'test-token';
+    jest.useRealTimers();
   });
 
-  it('posts receipt images with request correlation headers', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      confidence: 'high',
-      items: [{ confidence: 'high', name: 'Ramen', price: 12 }],
-      requestCorrelation: 'mobile-receipt-scan-test',
-      warnings: [],
+  it('uploads receipt images with the native multipart uploader', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        confidence: 'high',
+        items: [{ confidence: 'high', name: 'Ramen', price: 12 }],
+        requestCorrelation: 'mobile-receipt-scan-test',
+        warnings: [],
+      }),
+      headers: {},
+      status: 200,
     });
 
     await parseReceiptImage({
@@ -41,25 +63,30 @@ describe('receiptParsingGateway', () => {
       uri: 'file:///receipt.jpg',
     });
 
-    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
-      '/api/parse-receipt',
-      expect.objectContaining({
-        body: expect.any(FormData),
-        headers: expect.objectContaining({
-          'X-Request-ID': 'mobile-receipt-scan-test',
-        }),
-        method: 'POST',
-        signal: expect.any(AbortSignal),
-      }),
-    );
+    expect(mockedFile).toHaveBeenCalledWith('file:///receipt.jpg');
+    expect(mockUpload).toHaveBeenCalledWith('https://api.example.test/api/parse-receipt', {
+      fieldName: 'image',
+      headers: {
+        Authorization: 'Bearer test-token',
+        'X-Request-ID': 'mobile-receipt-scan-test',
+      },
+      httpMethod: 'POST',
+      mimeType: 'image/jpeg',
+      sessionType: 'foreground',
+      uploadType: UploadType.MULTIPART,
+    });
   });
 
   it('omits blank request correlation headers', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      confidence: 'high',
-      items: [],
-      requestCorrelation: 'server-generated',
-      warnings: [],
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        confidence: 'high',
+        items: [],
+        requestCorrelation: 'server-generated',
+        warnings: [],
+      }),
+      headers: {},
+      status: 200,
     });
 
     await parseReceiptImage({
@@ -69,19 +96,43 @@ describe('receiptParsingGateway', () => {
       uri: 'file:///receipt.jpg',
     });
 
-    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
-    expect(options.headers).not.toHaveProperty('X-Request-ID');
-  });
-
-  it('aborts receipt image parsing if the API does not resolve', async () => {
-    jest.useFakeTimers();
-    mockedPocketbaseModule.pb.send.mockImplementation((_path: string, options: { signal: AbortSignal }) =>
-      new Promise((_resolve, reject) => {
-        options.signal.addEventListener('abort', () => {
-          reject(new Error('aborted'));
-        });
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer test-token',
+        },
       }),
     );
+  });
+
+  it('throws PocketBase response errors from native upload failures', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        data: {},
+        message: 'image file is required',
+      }),
+      headers: {},
+      status: 400,
+    });
+
+    await expect(
+      parseReceiptImage({
+        mimeType: 'image/jpeg',
+        name: 'receipt.jpg',
+        uri: 'file:///receipt.jpg',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        message: 'image file is required',
+      },
+      status: 400,
+    } satisfies Partial<ClientResponseError>);
+  });
+
+  it('aborts receipt image parsing if the native upload does not resolve', async () => {
+    jest.useFakeTimers();
+    mockUpload.mockImplementation(() => new Promise(() => undefined));
 
     const request = parseReceiptImage({
       mimeType: 'image/jpeg',
@@ -95,8 +146,6 @@ describe('receiptParsingGateway', () => {
     await jest.advanceTimersByTimeAsync(120_000);
 
     await expectation;
-    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
-    expect(options.signal.aborted).toBe(true);
     jest.useRealTimers();
   });
 });

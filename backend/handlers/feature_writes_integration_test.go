@@ -693,6 +693,92 @@ func TestVisitCreateEndpointRemovesSourceWantToTryMenuItemBookmark(t *testing.T)
 	}
 }
 
+func TestVisitCreateEndpointReturnsSelectedMenuItemIDForVisitItem(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Tea Room")
+	privateMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Matcha Latte", "private", false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Tea Room",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Matcha Latte","rating":5,"menuItemId":"`+privateMenuItem.Id+`"}
+			]
+		}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	var createdPayload struct {
+		Items []struct {
+			MenuItemID string `json:"menuItemId"`
+			Name       string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(createResponse.Body.Bytes(), &createdPayload); err != nil {
+		t.Fatalf("failed to parse create response JSON: %v; body=%s", err, createResponse.Body.String())
+	}
+	if len(createdPayload.Items) != 1 {
+		t.Fatalf("expected one created visit item, got %#v", createdPayload.Items)
+	}
+	if createdPayload.Items[0].MenuItemID != privateMenuItem.Id {
+		t.Fatalf("expected created visit item to retain selected menuItemId %q, got %#v", privateMenuItem.Id, createdPayload.Items[0])
+	}
+
+	privateMenuItem.Set("visibility", "friends")
+	if err := server.app.Save(privateMenuItem); err != nil {
+		t.Fatalf("failed to update menu item visibility: %v", err)
+	}
+
+	friendFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if friendFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200, got %d: %s", friendFeedResponse.Code, friendFeedResponse.Body.String())
+	}
+
+	var friendFeedPayload struct {
+		Items []struct {
+			Visit *struct {
+				Items []struct {
+					MenuItemID string `json:"menuItemId"`
+					Name       string `json:"name"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendFeedResponse.Body.Bytes(), &friendFeedPayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON: %v; body=%s", err, friendFeedResponse.Body.String())
+	}
+	if len(friendFeedPayload.Items) != 1 || friendFeedPayload.Items[0].Visit == nil || len(friendFeedPayload.Items[0].Visit.Items) != 1 {
+		t.Fatalf("expected friend feed visit with one item, got %#v", friendFeedPayload.Items)
+	}
+	if friendFeedPayload.Items[0].Visit.Items[0].MenuItemID != privateMenuItem.Id {
+		t.Fatalf("expected friend feed item to retain selected menuItemId %q after visibility change, got %#v", privateMenuItem.Id, friendFeedPayload.Items[0].Visit.Items[0])
+	}
+}
+
 func TestVisitCreateEndpointRemovesMatchingWantToTryBookmarks(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

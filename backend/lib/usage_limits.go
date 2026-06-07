@@ -27,6 +27,7 @@ const (
 	UsageMetricPlacesQueries   UsageMetric = "places_queries"
 	UsageMetricMenuScans       UsageMetric = "menu_scans"
 	UsageMetricReceiptScans    UsageMetric = "receipt_scans"
+	UsageMetricStorefrontReads UsageMetric = "storefront_reads"
 	UsageMetricHEICConversions UsageMetric = "heic_conversions"
 )
 
@@ -36,6 +37,7 @@ type UsageLimits struct {
 	PlacesQueriesMonthly   *int `json:"placesQueriesMonthly"`
 	MenuScansMonthly       *int `json:"menuScansMonthly"`
 	ReceiptScansMonthly    *int `json:"receiptScansMonthly"`
+	StorefrontReadsMonthly *int `json:"storefrontReadsMonthly"`
 	HEICConversionsMonthly *int `json:"heicConversionsMonthly"`
 }
 
@@ -44,6 +46,7 @@ type UsageCounters struct {
 	PlacesQueries   int `json:"placesQueries"`
 	MenuScans       int `json:"menuScans"`
 	ReceiptScans    int `json:"receiptScans"`
+	StorefrontReads int `json:"storefrontReads"`
 	HEICConversions int `json:"heicConversions"`
 }
 
@@ -52,6 +55,7 @@ type UsageRemaining struct {
 	PlacesQueriesMonthly   *int `json:"placesQueriesMonthly"`
 	MenuScansMonthly       *int `json:"menuScansMonthly"`
 	ReceiptScansMonthly    *int `json:"receiptScansMonthly"`
+	StorefrontReadsMonthly *int `json:"storefrontReadsMonthly"`
 	HEICConversionsMonthly *int `json:"heicConversionsMonthly"`
 }
 
@@ -134,6 +138,7 @@ func ResolveEffectiveLimits(userTier UserTier) UsageLimits {
 			PlacesQueriesMonthly:   nil,
 			MenuScansMonthly:       nil,
 			ReceiptScansMonthly:    nil,
+			StorefrontReadsMonthly: nil,
 			HEICConversionsMonthly: nil,
 		}
 	case UserTierSubscriber:
@@ -143,6 +148,7 @@ func ResolveEffectiveLimits(userTier UserTier) UsageLimits {
 			PlacesQueriesMonthly:   nil,
 			MenuScansMonthly:       intPointer(100),
 			ReceiptScansMonthly:    intPointer(100),
+			StorefrontReadsMonthly: intPointer(100),
 			HEICConversionsMonthly: intPointer(1000),
 		}
 	default:
@@ -152,6 +158,7 @@ func ResolveEffectiveLimits(userTier UserTier) UsageLimits {
 			PlacesQueriesMonthly:   intPointer(100),
 			MenuScansMonthly:       intPointer(25),
 			ReceiptScansMonthly:    intPointer(25),
+			StorefrontReadsMonthly: intPointer(25),
 			HEICConversionsMonthly: intPointer(100),
 		}
 	}
@@ -219,6 +226,7 @@ func GetMonthlyUsageSnapshotForTier(
 			PlacesQueriesMonthly:   remainingFromLimit(limits.PlacesQueriesMonthly, usage.PlacesQueries),
 			MenuScansMonthly:       remainingFromLimit(limits.MenuScansMonthly, usage.MenuScans),
 			ReceiptScansMonthly:    remainingFromLimit(limits.ReceiptScansMonthly, usage.ReceiptScans),
+			StorefrontReadsMonthly: remainingFromLimit(limits.StorefrontReadsMonthly, usage.StorefrontReads),
 			HEICConversionsMonthly: remainingFromLimit(limits.HEICConversionsMonthly, usage.HEICConversions),
 		},
 	}
@@ -393,6 +401,8 @@ func buildLimitExceededMessage(metric UsageMetric) string {
 		return "Monthly menu scan limit reached."
 	case UsageMetricReceiptScans:
 		return "Monthly receipt scan limit reached."
+	case UsageMetricStorefrontReads:
+		return "Monthly storefront read limit reached."
 	case UsageMetricPlacesQueries:
 		return "Monthly food place search limit reached."
 	case UsageMetricPhotoUploads:
@@ -414,6 +424,8 @@ func metricFieldName(metric UsageMetric) (string, error) {
 		return "menu_scans", nil
 	case UsageMetricReceiptScans:
 		return "receipt_scans", nil
+	case UsageMetricStorefrontReads:
+		return "storefront_reads", nil
 	case UsageMetricHEICConversions:
 		return "heic_conversions", nil
 	default:
@@ -431,6 +443,8 @@ func monthlyLimitForMetric(limits UsageLimits, metric UsageMetric) *int {
 		return limits.MenuScansMonthly
 	case UsageMetricReceiptScans:
 		return limits.ReceiptScansMonthly
+	case UsageMetricStorefrontReads:
+		return limits.StorefrontReadsMonthly
 	case UsageMetricHEICConversions:
 		return limits.HEICConversionsMonthly
 	default:
@@ -448,6 +462,7 @@ func usageFromRecord(record *core.Record) UsageCounters {
 		PlacesQueries:   record.GetInt("places_queries"),
 		MenuScans:       record.GetInt("menu_scans"),
 		ReceiptScans:    record.GetInt("receipt_scans"),
+		StorefrontReads: record.GetInt("storefront_reads"),
 		HEICConversions: record.GetInt("heic_conversions"),
 	}
 }
@@ -485,6 +500,7 @@ func getOrCreateUsageRecord(app core.App, userID string, monthKey string) (*core
 	record.Set("places_queries", 0)
 	record.Set("menu_scans", 0)
 	record.Set("receipt_scans", 0)
+	record.Set("storefront_reads", 0)
 	record.Set("heic_conversions", 0)
 
 	if err := app.Save(record); err != nil {

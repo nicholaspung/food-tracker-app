@@ -18,18 +18,21 @@ describe('usageSnapshotCache', () => {
         placesQueriesMonthly: 100,
         menuScansMonthly: 5,
         receiptScansMonthly: 5,
+        storefrontReadsMonthly: 5,
       },
       usage: {
         photoUploads: 2,
         placesQueries: 10,
         menuScans: 1,
         receiptScans: 1,
+        storefrontReads: 1,
       },
       remaining: {
         photoUploadsMonthly: 3,
         placesQueriesMonthly: 90,
         menuScansMonthly: 4,
         receiptScansMonthly: 4,
+        storefrontReadsMonthly: 4,
       },
     });
 

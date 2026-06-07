@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
-import { extractRestaurantNamesFromImage, parseLimitExceededError } from '../features';
+import { extractRestaurantNamesFromImage, parseLimitExceededError, useMonthlyUsage } from '../features';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
@@ -212,6 +212,7 @@ const mockedExtractRestaurantNamesFromImage = extractRestaurantNamesFromImage as
   typeof extractRestaurantNamesFromImage
 >;
 const mockedParseLimitExceededError = parseLimitExceededError as jest.MockedFunction<typeof parseLimitExceededError>;
+const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
 const mockedStageLocalPhotoFile = stageLocalPhotoFile as jest.MockedFunction<typeof stageLocalPhotoFile>;
 const mockedCleanupStagedPhotoFiles = cleanupStagedPhotoFiles as jest.MockedFunction<typeof cleanupStagedPhotoFiles>;
 const mockedCaptureObservabilityError = captureObservabilityError as jest.MockedFunction<
@@ -260,6 +261,23 @@ describe('RestaurantDiscoveryScreen', () => {
     mockedExtractRestaurantNamesFromImage.mockReset();
     mockedParseLimitExceededError.mockReset();
     mockedParseLimitExceededError.mockReturnValue(null);
+    mockedUseMonthlyUsage.mockReset();
+    mockedUseMonthlyUsage.mockReturnValue({
+      isLoading: false,
+      snapshot: {
+        limits: {
+          placesQueriesMonthly: 100,
+          storefrontReadsMonthly: 25,
+        },
+        remaining: {
+          placesQueriesMonthly: 10,
+          storefrontReadsMonthly: 20,
+        },
+        usage: {
+          storefrontReads: 5,
+        },
+      },
+    } as never);
     mockedStageLocalPhotoFile.mockReset();
     mockedStageLocalPhotoFile.mockResolvedValue({
       mimeType: 'image/jpeg',
@@ -1186,10 +1204,16 @@ describe('RestaurantDiscoveryScreen', () => {
     switchDiscoveryTab(renderer, 'scan');
 
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(0);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.props.children === '20 of 25 monthly storefront reads left.'),
+    ).toBe(true);
     const storefrontButton = renderer.root
       .findAllByType('Button')
       .find((node: any) => node.props.label === 'Read a Storefront');
     expect(storefrontButton).toBeTruthy();
+    expect(storefrontButton?.props.disabled).toBe(false);
     expect(renderer.root.findAllByType('PhotoSourceActionCards')).toHaveLength(0);
 
     act(() => {
@@ -1198,6 +1222,60 @@ describe('RestaurantDiscoveryScreen', () => {
 
     expect(renderer.root.findAllByType('PhotoSourceActionCards')).toHaveLength(1);
     expect(mockSearchNearby).not.toHaveBeenCalled();
+  });
+
+  it('disables storefront reading when the monthly storefront quota is reached', async () => {
+    mockedUseMonthlyUsage.mockReturnValue({
+      isLoading: false,
+      snapshot: {
+        limits: {
+          placesQueriesMonthly: 100,
+          storefrontReadsMonthly: 25,
+        },
+        monthKey: '2026-06',
+        remaining: {
+          placesQueriesMonthly: 10,
+          storefrontReadsMonthly: 0,
+        },
+        usage: {
+          storefrontReads: 25,
+        },
+        userTier: 'free',
+      },
+    } as never);
+    const renderer = renderScreen();
+
+    switchDiscoveryTab(renderer, 'scan');
+
+    const storefrontButton = renderer.root
+      .findAllByType('Button')
+      .find((node: any) => node.props.label === 'Read a Storefront');
+    expect(storefrontButton?.props.disabled).toBe(true);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => node.props.children === '0 of 25 monthly storefront reads left.'),
+    ).toBe(true);
+
+    act(() => {
+      storefrontButton?.props.onPress();
+    });
+    await act(async () => {
+      await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
+    });
+
+    expect(mockPickImageAssets).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Storefront read limit reached for this month (25).',
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'USAGE_LIMIT_REACHED',
+      expect.objectContaining({
+        enforcement: 'client',
+        metric: 'storefront_reads',
+        source: 'RestaurantDiscoveryStorefront',
+      }),
+    );
   });
 
   it('searches extracted restaurant names and returns to the Search tab', async () => {

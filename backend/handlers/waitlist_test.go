@@ -6,15 +6,15 @@ import (
 )
 
 func TestBuildSignupURLIncludesWaitlistApprovedMode(t *testing.T) {
-	signupURL := buildSignupURL(" https://app.yummyrecs.com/ ", " USER@example.COM ")
+	signupURL := buildSignupURL(" https://app.yummyrecs.com/ ", " USER@example.COM ", "signed.token")
 
-	if signupURL != "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved" {
+	if signupURL != "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token" {
 		t.Fatalf("unexpected signup URL: %s", signupURL)
 	}
 }
 
 func TestBuildSignupURLFallsBackToAppURL(t *testing.T) {
-	signupURL := buildSignupURL("", "user@example.com")
+	signupURL := buildSignupURL("", "user@example.com", "signed.token")
 
 	if !strings.HasPrefix(signupURL, "https://app.yummyrecs.com/signup?") {
 		t.Fatalf("expected fallback app signup URL, got %s", signupURL)
@@ -22,20 +22,23 @@ func TestBuildSignupURLFallsBackToAppURL(t *testing.T) {
 	if !strings.Contains(signupURL, "mode=waitlist_approved") {
 		t.Fatalf("expected waitlist approved mode in signup URL, got %s", signupURL)
 	}
+	if !strings.Contains(signupURL, "waitlistApprovalToken=signed.token") {
+		t.Fatalf("expected waitlist approval token in signup URL, got %s", signupURL)
+	}
 }
 
 func TestBuildSignupAppURLUsesMobileScheme(t *testing.T) {
-	signupAppURL := buildSignupAppURL("yummyrecs-preview", " USER@example.COM ")
+	signupAppURL := buildSignupAppURL("yummyrecs-preview", " USER@example.COM ", "signed.token")
 
-	if signupAppURL != "yummyrecs-preview://signup?email=user%40example.com&mode=waitlist_approved" {
+	if signupAppURL != "yummyrecs-preview://signup?email=user%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token" {
 		t.Fatalf("unexpected signup app URL: %s", signupAppURL)
 	}
 }
 
 func TestBuildSignupAppURLFallsBackToProductionScheme(t *testing.T) {
-	signupAppURL := buildSignupAppURL("", "user@example.com")
+	signupAppURL := buildSignupAppURL("", "user@example.com", "signed.token")
 
-	if signupAppURL != "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved" {
+	if signupAppURL != "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token" {
 		t.Fatalf("unexpected fallback signup app URL: %s", signupAppURL)
 	}
 }
@@ -57,16 +60,16 @@ func TestBuildAppOpenURLFallsBackToProductionScheme(t *testing.T) {
 }
 
 func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
-	signupURL := "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved"
-	signupAppURL := "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved"
+	signupURL := "https://app.yummyrecs.com/signup?email=user%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token"
+	signupAppURL := "yummyrecs://signup?email=user%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token"
 	html := buildWaitlistApprovalEmailHTML("user@example.com", signupURL, signupAppURL, "https://yummyrecs.com")
 
 	for _, expected := range []string{
 		"Yummy Recs",
 		"You&#39;re approved!",
 		"Create your account",
-		"https://app.yummyrecs.com/signup?email=user%40example.com&amp;mode=waitlist_approved",
-		"yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved",
+		"https://app.yummyrecs.com/signup?email=user%40example.com&amp;mode=waitlist_approved&amp;waitlistApprovalToken=signed.token",
+		"yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved&amp;waitlistApprovalToken=signed.token",
 		"user@example.com",
 		"Already have the app?",
 		"Open Yummy Recs",
@@ -75,7 +78,7 @@ func TestBuildWaitlistApprovalEmailHTMLUsesBrandedTemplate(t *testing.T) {
 			t.Fatalf("expected waitlist approval email HTML to contain %q, got %s", expected, html)
 		}
 	}
-	if strings.Contains(html, ">yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved</a>") {
+	if strings.Contains(html, ">yummyrecs://signup?email=user%40example.com&amp;mode=waitlist_approved&amp;waitlistApprovalToken=signed.token</a>") {
 		t.Fatalf("expected waitlist approval app URL not to render as visible link text, got %s", html)
 	}
 }

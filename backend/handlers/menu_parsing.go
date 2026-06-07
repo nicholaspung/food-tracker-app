@@ -1226,7 +1226,7 @@ Rules:
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		usageReservation, err := newUsageReservation(e.App, authRecord, lib.UsageMetricMenuScans, 1)
+		usageReservation, err := newUsageReservation(e.App, authRecord, lib.UsageMetricStorefrontReads, 1)
 		if err != nil {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())

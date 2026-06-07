@@ -114,6 +114,70 @@ function findTextNode(renderer: any, content: string, numberOfLines?: number) {
 }
 
 describe('HomeFoodProductEntryCard', () => {
+  it('marks private food products with a lock icon next to the product label', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeFoodProductEntryCard
+          entryMeta="FRI APR 18"
+          foodProduct={{
+            id: 'food-product-private',
+            restaurantName: 'Food Product',
+            itemName: 'Iced Coffee',
+            rating: 4,
+            visibility: 'private',
+            createdAt: '2026-04-18T07:00:00.000Z',
+            updatedAt: '2026-04-18T07:00:00.000Z',
+          }}
+          photos={[]}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-food-product-private-lock',
+      ),
+    ).toHaveLength(1);
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { name?: string } }) =>
+          node.type === 'Ionicons' && node.props.name === 'lock-closed-outline',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not mark non-private food products with a lock icon', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeFoodProductEntryCard
+          entryMeta="FRI APR 18"
+          foodProduct={{
+            id: 'food-product-friends',
+            restaurantName: 'Food Product',
+            itemName: 'Iced Coffee',
+            rating: 4,
+            visibility: 'friends',
+            createdAt: '2026-04-18T07:00:00.000Z',
+            updatedAt: '2026-04-18T07:00:00.000Z',
+          }}
+          photos={[]}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-food-product-private-lock',
+      ),
+    ).toHaveLength(0);
+  });
+
   it('renders location, notes, and rating metadata when location text exists', async () => {
     let renderer: any = null;
 

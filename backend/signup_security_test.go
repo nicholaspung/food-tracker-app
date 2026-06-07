@@ -4,12 +4,16 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 
+	"myapp/handlers"
+	"myapp/lib"
 	_ "myapp/migrations"
 	"myapp/testutil"
 )
@@ -61,6 +65,99 @@ func createInviteCodeRecord(t *testing.T, app core.App, code string, createdBy s
 	}
 
 	return record
+}
+
+type signupSecurityPreparedServer struct {
+	app *pbtests.TestApp
+	mux http.Handler
+}
+
+func newSignupSecurityPreparedServer(t *testing.T) *signupSecurityPreparedServer {
+	t.Helper()
+
+	app := newSignupSecurityTestApp(t)
+	ensureSignupSecurityWaitlistTokenFields(t, app)
+	registerSignupHooks(app, lib.LoadRuntimeResourcesFromEnv())
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatalf("failed to create signup security router: %v", err)
+	}
+
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatalf("failed to build signup security router mux: %v", err)
+	}
+
+	return &signupSecurityPreparedServer{
+		app: app,
+		mux: mux,
+	}
+}
+
+func ensureSignupSecurityWaitlistTokenFields(t *testing.T, app core.App) {
+	t.Helper()
+
+	collection, err := app.FindCollectionByNameOrId("waitlist_entries")
+	if err != nil {
+		t.Fatalf("failed to resolve waitlist_entries collection: %v", err)
+	}
+
+	changed := false
+	for _, field := range []core.Field{
+		&core.TextField{Name: "approvalTokenNonceHash", Max: 128},
+		&core.DateField{Name: "approvalTokenIssuedAt"},
+		&core.DateField{Name: "approvalTokenExpiresAt"},
+		&core.DateField{Name: "approvalTokenUsedAt"},
+	} {
+		if collection.Fields.GetByName(field.GetName()) == nil {
+			collection.Fields.Add(field)
+			changed = true
+		}
+	}
+
+	if changed {
+		if err := app.Save(collection); err != nil {
+			t.Fatalf("failed to add waitlist approval token fields: %v", err)
+		}
+	}
+}
+
+func createSignupSecurityWaitlistEntry(t *testing.T, app core.App, email string) *core.Record {
+	t.Helper()
+
+	collection, err := app.FindCollectionByNameOrId("waitlist_entries")
+	if err != nil {
+		t.Fatalf("failed to resolve waitlist_entries collection: %v", err)
+	}
+
+	record := core.NewRecord(collection)
+	record.Set("email", email)
+	record.Set("status", handlers.WaitlistStatusApproved)
+	record.Set("source", "mobile_signup")
+	record.Set("approvedAt", time.Now().UTC())
+
+	if err := app.Save(record); err != nil {
+		t.Fatalf("failed to create waitlist entry: %v", err)
+	}
+
+	return record
+}
+
+func performSignupSecurityJSONRequest(
+	t *testing.T,
+	mux http.Handler,
+	method string,
+	path string,
+	body string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, req)
+	return recorder
 }
 
 func TestResolveSignupClientIPDefaultsToRemoteAddr(t *testing.T) {
@@ -193,6 +290,116 @@ func TestInviteCodesRejectCaseInsensitiveDuplicateCodes(t *testing.T) {
 
 	if err := app.Save(duplicate); err == nil {
 		t.Fatalf("expected case-insensitive duplicate invite code to be rejected")
+	}
+}
+
+func TestWaitlistApprovedEmailAloneCannotCreateAccount(t *testing.T) {
+	server := newSignupSecurityPreparedServer(t)
+	createSignupSecurityWaitlistEntry(t, server.app, "victim@example.com")
+
+	response := performSignupSecurityJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/users/records",
+		`{
+			"email":"victim@example.com",
+			"name":"Attacker",
+			"password":"password123",
+			"passwordConfirm":"password123"
+		}`,
+	)
+	if response.Code == http.StatusOK {
+		t.Fatalf("expected email-only waitlist signup to fail, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(strings.ToLower(response.Body.String()), "waitlist approval link is invalid or expired") {
+		t.Fatalf("expected invalid approval link message, got %s", response.Body.String())
+	}
+
+	if _, err := server.app.FindAuthRecordByEmail("users", "victim@example.com"); err == nil {
+		t.Fatal("expected email-only waitlist signup not to create a user")
+	}
+
+	authResponse := performSignupSecurityJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/users/auth-with-password",
+		`{"identity":"victim@example.com","password":"password123"}`,
+	)
+	if authResponse.Code == http.StatusOK {
+		t.Fatalf("expected attacker auth to fail because no account was created, got %d: %s", authResponse.Code, authResponse.Body.String())
+	}
+}
+
+func TestWaitlistApprovalTokenCreatesAccountAndCannotBeReplayed(t *testing.T) {
+	server := newSignupSecurityPreparedServer(t)
+	entry := createSignupSecurityWaitlistEntry(t, server.app, "approved@example.com")
+	token, err := handlers.GenerateWaitlistApprovalToken(server.app, entry)
+	if err != nil {
+		t.Fatalf("expected waitlist approval token generation to succeed: %v", err)
+	}
+
+	response := performSignupSecurityJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/users/records",
+		`{
+			"email":"approved@example.com",
+			"name":"Approved User",
+			"password":"password123",
+			"passwordConfirm":"password123",
+			"waitlistApprovalToken":"`+token+`"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected token-backed waitlist signup to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedEntry, err := server.app.FindRecordById("waitlist_entries", entry.Id)
+	if err != nil {
+		t.Fatalf("failed to reload waitlist entry: %v", err)
+	}
+	if got := reloadedEntry.GetString("status"); got != handlers.WaitlistStatusSignedUp {
+		t.Fatalf("expected waitlist entry to be signed_up, got %q", got)
+	}
+	if got := reloadedEntry.GetString("signedUpUser"); got == "" {
+		t.Fatal("expected waitlist entry to reference signed-up user")
+	}
+	if got := reloadedEntry.GetString("approvalTokenUsedAt"); got == "" {
+		t.Fatal("expected approval token to remain marked used")
+	}
+
+	authResponse := performSignupSecurityJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/users/auth-with-password",
+		`{"identity":"approved@example.com","password":"password123"}`,
+	)
+	if authResponse.Code != http.StatusOK {
+		t.Fatalf("expected token-backed signup user to authenticate, got %d: %s", authResponse.Code, authResponse.Body.String())
+	}
+
+	replayResponse := performSignupSecurityJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/users/records",
+		`{
+			"email":"approved@example.com",
+			"name":"Second Requester",
+			"password":"password456",
+			"passwordConfirm":"password456",
+			"waitlistApprovalToken":"`+token+`"
+		}`,
+	)
+	if replayResponse.Code == http.StatusOK {
+		t.Fatalf("expected replayed waitlist approval token to fail, got %d: %s", replayResponse.Code, replayResponse.Body.String())
+	}
+	if !strings.Contains(strings.ToLower(replayResponse.Body.String()), "waitlist approval link is invalid or expired") {
+		t.Fatalf("expected invalid approval link replay message, got %s", replayResponse.Body.String())
 	}
 }
 

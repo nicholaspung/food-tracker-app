@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/mail"
@@ -15,6 +17,7 @@ import (
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/mailer"
+	"github.com/pocketbase/pocketbase/tools/security"
 
 	"myapp/lib"
 )
@@ -29,6 +32,9 @@ const (
 	WaitlistApprovedEventName = "waitlist_approved"
 	WaitlistRejectedEventName = "waitlist_rejected"
 	AccountCreatedEventName   = "account_created"
+
+	waitlistApprovalTokenType     = "waitlist_approval"
+	waitlistApprovalTokenDuration = 14 * 24 * time.Hour
 )
 
 type waitlistRequest struct {
@@ -200,21 +206,146 @@ func RegisterWaitlistHandlers(se *core.ServeEvent, app core.App, runtimeResource
 	})
 }
 
-func FindApprovedWaitlistEntryByEmail(app core.App, email string) (*core.Record, error) {
+func GenerateWaitlistApprovalToken(app core.App, record *core.Record) (string, error) {
+	return generateWaitlistApprovalToken(app, record, waitlistApprovalTokenDuration)
+}
+
+func generateWaitlistApprovalToken(app core.App, record *core.Record, duration time.Duration) (string, error) {
+	if record == nil {
+		return "", fmt.Errorf("waitlist entry is required")
+	}
+	if duration <= 0 {
+		return "", fmt.Errorf("waitlist approval token duration must be positive")
+	}
+
+	email, err := normalizeEmail(record.GetString("email"))
+	if err != nil {
+		return "", err
+	}
+	if record.GetString("status") != WaitlistStatusApproved {
+		return "", fmt.Errorf("waitlist entry is not approved")
+	}
+
+	nonce := security.RandomString(32)
+	token, err := security.NewJWT(map[string]any{
+		"type":    waitlistApprovalTokenType,
+		"entryId": record.Id,
+		"email":   email,
+		"nonce":   nonce,
+	}, waitlistApprovalSigningKey(app), duration)
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now().UTC()
+	record.Set("approvalTokenNonceHash", hashWaitlistApprovalNonce(nonce))
+	record.Set("approvalTokenIssuedAt", now)
+	record.Set("approvalTokenExpiresAt", now.Add(duration))
+	record.Set("approvalTokenUsedAt", "")
+	if err := app.Save(record); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func ValidateAndReserveWaitlistApprovalToken(app core.App, email string, rawToken string) (*core.Record, error) {
 	normalizedEmail, err := normalizeEmail(email)
 	if err != nil {
 		return nil, err
 	}
 
-	record, err := findWaitlistRecordByEmail(app, normalizedEmail)
+	token := strings.TrimSpace(rawToken)
+	if token == "" {
+		return nil, fmt.Errorf("waitlist approval token is required")
+	}
+
+	claims, err := security.ParseJWT(token, waitlistApprovalSigningKey(app))
+	if err != nil {
+		return nil, fmt.Errorf("waitlist approval token is invalid or expired")
+	}
+
+	if claimString(claims["type"]) != waitlistApprovalTokenType {
+		return nil, fmt.Errorf("waitlist approval token is invalid")
+	}
+	if claimString(claims["email"]) != normalizedEmail {
+		return nil, fmt.Errorf("waitlist approval token email mismatch")
+	}
+
+	entryID := claimString(claims["entryId"])
+	nonce := claimString(claims["nonce"])
+	if entryID == "" || nonce == "" {
+		return nil, fmt.Errorf("waitlist approval token is invalid")
+	}
+
+	nonceHash := hashWaitlistApprovalNonce(nonce)
+	record, err := app.FindRecordById("waitlist_entries", entryID)
+	if err != nil {
+		return nil, fmt.Errorf("waitlist approval token is invalid")
+	}
+	recordEmail, err := normalizeEmail(record.GetString("email"))
 	if err != nil {
 		return nil, err
 	}
-	if record == nil || record.GetString("status") != WaitlistStatusApproved {
-		return nil, fmt.Errorf("email is not approved for signup")
+	if recordEmail != normalizedEmail ||
+		record.GetString("status") != WaitlistStatusApproved ||
+		record.GetString("approvalTokenNonceHash") != nonceHash ||
+		strings.TrimSpace(record.GetString("approvalTokenUsedAt")) != "" {
+		return nil, fmt.Errorf("waitlist approval token is invalid or already used")
 	}
 
-	return record, nil
+	result, err := app.DB().NewQuery(`
+		UPDATE waitlist_entries
+		SET approvalTokenUsedAt = {:usedAt}
+		WHERE id = {:id}
+			AND status = {:status}
+			AND approvalTokenNonceHash = {:nonceHash}
+			AND TRIM(COALESCE(approvalTokenUsedAt, '')) = ''
+	`).
+		Bind(dbx.Params{
+			"id":        entryID,
+			"status":    WaitlistStatusApproved,
+			"nonceHash": nonceHash,
+			"usedAt":    time.Now().UTC().Format("2006-01-02 15:04:05.000Z"),
+		}).
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reserve waitlist approval token: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to confirm waitlist approval token reservation: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("waitlist approval token is invalid or already used")
+	}
+
+	return app.FindRecordById("waitlist_entries", entryID)
+}
+
+func ReleaseWaitlistApprovalTokenReservation(app core.App, entry *core.Record) error {
+	if entry == nil || entry.Id == "" {
+		return nil
+	}
+
+	_, err := app.DB().NewQuery(`
+		UPDATE waitlist_entries
+		SET approvalTokenUsedAt = ''
+		WHERE id = {:id}
+			AND status = {:status}
+			AND TRIM(COALESCE(signedUpUser, '')) = ''
+	`).
+		Bind(dbx.Params{
+			"id":     entry.Id,
+			"status": WaitlistStatusApproved,
+		}).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to release waitlist approval token reservation: %w", err)
+	}
+
+	return nil
 }
 
 func MarkWaitlistEntrySignedUp(app core.App, runtimeResources lib.RuntimeResources, entry *core.Record, user *core.Record) error {
@@ -486,8 +617,12 @@ func syncWaitlistJoinedToLoops(app core.App, runtimeResources lib.RuntimeResourc
 
 func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
 	email := strings.ToLower(strings.TrimSpace(record.GetString("email")))
-	signupURL := buildSignupURL(runtimeResources.AppURL, email)
-	signupAppURL := buildSignupAppURL(runtimeResources.MobileAppScheme, email)
+	approvalToken, err := GenerateWaitlistApprovalToken(app, record)
+	if err != nil {
+		return err
+	}
+	signupURL := buildSignupURL(runtimeResources.AppURL, email, approvalToken)
+	signupAppURL := buildSignupAppURL(runtimeResources.MobileAppScheme, email, approvalToken)
 	senderName := strings.TrimSpace(app.Settings().Meta.SenderName)
 	if senderName == "" {
 		senderName = "Yummy Recs"
@@ -617,16 +752,21 @@ func waitlistMailingLists(record *core.Record) map[string]bool {
 	return lists
 }
 
-func buildSignupURL(appURL string, email string) string {
+func buildSignupURL(appURL string, email string, approvalToken string) string {
 	base := strings.TrimRight(strings.TrimSpace(appURL), "/")
 	if base == "" {
 		base = "https://app.yummyrecs.com"
 	}
 
-	return base + "/signup?email=" + url.QueryEscape(strings.ToLower(strings.TrimSpace(email))) + "&mode=waitlist_approved"
+	values := url.Values{}
+	values.Set("email", strings.ToLower(strings.TrimSpace(email)))
+	values.Set("mode", "waitlist_approved")
+	values.Set("waitlistApprovalToken", strings.TrimSpace(approvalToken))
+
+	return base + "/signup?" + values.Encode()
 }
 
-func buildSignupAppURL(appScheme string, email string) string {
+func buildSignupAppURL(appScheme string, email string, approvalToken string) string {
 	scheme := strings.TrimSpace(appScheme)
 	if scheme == "" {
 		scheme = "yummyrecs"
@@ -635,6 +775,7 @@ func buildSignupAppURL(appScheme string, email string) string {
 	values := url.Values{}
 	values.Set("email", strings.ToLower(strings.TrimSpace(email)))
 	values.Set("mode", "waitlist_approved")
+	values.Set("waitlistApprovalToken", strings.TrimSpace(approvalToken))
 
 	return scheme + "://signup?" + values.Encode()
 }
@@ -687,4 +828,26 @@ func waitlistDefaultString(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func waitlistApprovalSigningKey(app core.App) string {
+	usersCollection, err := app.FindCollectionByNameOrId("users")
+	if err != nil || usersCollection == nil {
+		return "waitlist_approval_missing_users_collection"
+	}
+
+	return "waitlist_approval:" + usersCollection.VerificationToken.Secret
+}
+
+func hashWaitlistApprovalNonce(nonce string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(nonce)))
+	return hex.EncodeToString(sum[:])
+}
+
+func claimString(value any) string {
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+
+	return ""
 }

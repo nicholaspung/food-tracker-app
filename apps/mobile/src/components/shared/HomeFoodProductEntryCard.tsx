@@ -81,8 +81,11 @@ const useStyles = createThemedStyles((theme) => ({
     ...theme.typography.bodySmTightBold,
   },
   sourceBadge: {
+    alignItems: 'center',
     backgroundColor: theme.colors.status.infoBg,
     borderRadius: 999,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: 4,
   },
@@ -227,6 +230,7 @@ export function HomeFoodProductEntryCard({
     : null;
   const locationText = resolvedFoodProduct.locationText?.trim() || null;
   const showActions = Boolean(onEdit || onDelete || onMoreActions);
+  const isPrivateFoodProduct = resolvedFoodProduct.visibility === 'private';
 
   return (
     <View style={styles.entryCard}>
@@ -246,6 +250,15 @@ export function HomeFoodProductEntryCard({
             {showUnderReviewBadge ? <StatusPill label="Under review" tone="warning" /> : null}
             <View style={styles.sourceBadge}>
               <Text style={styles.sourceBadgeLabel}>Product</Text>
+              {isPrivateFoodProduct ? (
+                <Ionicons
+                  accessibilityLabel="Private food product"
+                  color={theme.colors.text.info}
+                  name="lock-closed-outline"
+                  size={12}
+                  testID="home-food-product-private-lock"
+                />
+              ) : null}
             </View>
           </View>
         </View>

@@ -13,18 +13,21 @@ export interface MonthlyUsageSnapshot {
     placesQueriesMonthly: LimitValue;
     menuScansMonthly: LimitValue;
     receiptScansMonthly: LimitValue;
+    storefrontReadsMonthly: LimitValue;
   };
   usage: {
     photoUploads: number;
     placesQueries: number;
     menuScans: number;
     receiptScans: number;
+    storefrontReads: number;
   };
   remaining: {
     photoUploadsMonthly: LimitValue;
     placesQueriesMonthly: LimitValue;
     menuScansMonthly: LimitValue;
     receiptScansMonthly: LimitValue;
+    storefrontReadsMonthly: LimitValue;
   };
 }
 
@@ -133,6 +136,10 @@ export function formatLimitExceededMessage(payload: LimitExceededPayload): strin
 
   if (payload.metric === 'receipt_scans') {
     return `Receipt scan limit reached for this month (${payload.limit}).`;
+  }
+
+  if (payload.metric === 'storefront_reads') {
+    return `Storefront read limit reached for this month (${payload.limit}).`;
   }
 
   if (payload.metric === 'photo_uploads') {

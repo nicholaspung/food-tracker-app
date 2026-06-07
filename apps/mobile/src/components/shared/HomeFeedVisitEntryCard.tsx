@@ -98,8 +98,11 @@ const useStyles = createThemedStyles((theme) => ({
     ...theme.typography.bodySmTightBold,
   },
   sourceBadge: {
+    alignItems: 'center',
     backgroundColor: theme.colors.background.muted,
     borderRadius: theme.radii.pill,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: 4,
   },
@@ -194,6 +197,11 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     minHeight: 56,
   },
+  foodItemSecondaryActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
   entryMeta: {
     color: theme.colors.text.muted,
   },
@@ -224,6 +232,7 @@ export function HomeFeedVisitEntryCard({
 
   const hasActions = Boolean(onShareVisit || onEdit || onDelete || onMoreActions);
   const showUnderReviewBadge = !friendName?.trim() && visit.moderationStatus === 'under_review';
+  const isPrivateVisit = visit.visibility === 'private';
 
   return (
     <View style={[styles.entryCard, highlighted ? styles.entryCardHighlighted : null]}>
@@ -243,6 +252,15 @@ export function HomeFeedVisitEntryCard({
             {showUnderReviewBadge ? <StatusPill label="Under review" tone="warning" /> : null}
             <View style={styles.sourceBadge}>
               <Text style={styles.sourceBadgeLabel}>Visit</Text>
+              {isPrivateVisit ? (
+                <Ionicons
+                  accessibilityLabel="Private visit"
+                  color={theme.colors.text.secondary}
+                  name="lock-closed-outline"
+                  size={12}
+                  testID="home-feed-visit-private-lock"
+                />
+              ) : null}
             </View>
           </View>
         </View>
@@ -361,24 +379,37 @@ export function HomeFeedVisitEntryCard({
                     rating={item.rating}
                     testID={`home-feed-visit-item-rating-${item.id}`}
                   />
-                  {primaryPhoto && onSharePhoto ? (
-                    <Pressable
-                      accessibilityLabel={`Share ${item.name}`}
-                      onPress={() => {
-                        onSharePhoto({
-                          itemName: item.name,
-                          photo: primaryPhoto,
-                          rating: item.rating,
-                          restaurantName: visit.restaurantName,
-                          visitDate: visit.visitedAt || visit.createdAt,
-                        });
-                      }}
-                      style={styles.compactActionButton}
-                    >
-                      <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
-                    </Pressable>
+                  {isPrivateVisit || (primaryPhoto && onSharePhoto) || renderItemBookmark ? (
+                    <View style={styles.foodItemSecondaryActions}>
+                      {isPrivateVisit ? (
+                        <Ionicons
+                          accessibilityLabel={`Private rating for ${item.name}`}
+                          color={theme.colors.text.muted}
+                          name="lock-closed-outline"
+                          size={14}
+                          testID={`home-feed-visit-item-private-lock-${item.id}`}
+                        />
+                      ) : null}
+                      {primaryPhoto && onSharePhoto ? (
+                        <Pressable
+                          accessibilityLabel={`Share ${item.name}`}
+                          onPress={() => {
+                            onSharePhoto({
+                              itemName: item.name,
+                              photo: primaryPhoto,
+                              rating: item.rating,
+                              restaurantName: visit.restaurantName,
+                              visitDate: visit.visitedAt || visit.createdAt,
+                            });
+                          }}
+                          style={styles.compactActionButton}
+                        >
+                          <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
+                        </Pressable>
+                      ) : null}
+                      {renderItemBookmark?.(item)}
+                    </View>
                   ) : null}
-                  {renderItemBookmark?.(item)}
                 </View>
               </View>
             );

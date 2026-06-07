@@ -54,4 +54,21 @@ describe('usageLimitsGateway helpers', () => {
     expect(payload).not.toBeNull();
     expect(formatLimitExceededMessage(payload!)).toBe('Photo upload limit reached for this note (1).');
   });
+
+  it('formats storefront read limit payloads', () => {
+    const payload = parseLimitExceededError({
+      data: {
+        code: 'LIMIT_EXCEEDED',
+        message: 'Monthly storefront read limit reached.',
+        metric: 'storefront_reads',
+        limit: 25,
+        used: 25,
+        remaining: 0,
+        monthKey: '2026-02',
+      },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(formatLimitExceededMessage(payload!)).toBe('Storefront read limit reached for this month (25).');
+  });
 });

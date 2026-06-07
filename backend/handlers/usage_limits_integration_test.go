@@ -39,8 +39,11 @@ func TestUsageMonthlyReflectsSeededUsageData(t *testing.T) {
 	if initialUsage["menuScans"].(float64) != 0 {
 		t.Fatalf("expected initial menuScans usage to be 0")
 	}
+	if initialUsage["storefrontReads"].(float64) != 0 {
+		t.Fatalf("expected initial storefrontReads usage to be 0")
+	}
 
-	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 1)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, user.Id, 0, 0, 1, 2, 0)
 
 	latestSnapshot := performJSONRequest(t, server.mux, http.MethodGet, "/api/usage/monthly", token, "")
 	if latestSnapshot.Code != http.StatusOK {
@@ -52,17 +55,23 @@ func TestUsageMonthlyReflectsSeededUsageData(t *testing.T) {
 	if latestUsage["menuScans"].(float64) != 1 {
 		t.Fatalf("expected menuScans usage=1 after consume, got %v", latestUsage["menuScans"])
 	}
+	if latestUsage["storefrontReads"].(float64) != 2 {
+		t.Fatalf("expected storefrontReads usage=2 after consume, got %v", latestUsage["storefrontReads"])
+	}
 
 	remaining := latestData["remaining"].(map[string]any)
 	if remaining["menuScansMonthly"].(float64) != 24 {
 		t.Fatalf("expected remaining menu scans=24, got %v", remaining["menuScansMonthly"])
+	}
+	if remaining["storefrontReadsMonthly"].(float64) != 23 {
+		t.Fatalf("expected remaining storefront reads=23, got %v", remaining["storefrontReadsMonthly"])
 	}
 
 	if latestData["userTier"] != "free" {
 		t.Fatalf("expected user tier free, got %v", latestData["userTier"])
 	}
 
-	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 25)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, user.Id, 0, 0, 25, 25, 0)
 	atLimitSnapshot := performJSONRequest(t, server.mux, http.MethodGet, "/api/usage/monthly", token, "")
 	if atLimitSnapshot.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d, body=%s", atLimitSnapshot.Code, atLimitSnapshot.Body.String())
@@ -72,6 +81,9 @@ func TestUsageMonthlyReflectsSeededUsageData(t *testing.T) {
 	atLimitRemaining := atLimitData["remaining"].(map[string]any)
 	if atLimitRemaining["menuScansMonthly"].(float64) != 0 {
 		t.Fatalf("expected remaining menu scans=0 at limit, got %v", atLimitRemaining["menuScansMonthly"])
+	}
+	if atLimitRemaining["storefrontReadsMonthly"].(float64) != 0 {
+		t.Fatalf("expected remaining storefront reads=0 at limit, got %v", atLimitRemaining["storefrontReadsMonthly"])
 	}
 }
 
@@ -118,7 +130,7 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 		handlers.RegisterUsageLimitHandlers(se, app)
 	})
 	adminUser, adminToken := createAuthUser(t, server.app, true, true)
-	seedMonthlyUsage(t, server.app, adminUser.Id, 4, 95, 4)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, adminUser.Id, 4, 95, 4, 3, 0)
 
 	initialPreview := performJSONRequest(
 		t,
@@ -147,6 +159,9 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 	if initialUsage["menuScans"].(float64) != 4 {
 		t.Fatalf("expected preview usage menuScans=4, got %v", initialUsage["menuScans"])
 	}
+	if initialUsage["storefrontReads"].(float64) != 3 {
+		t.Fatalf("expected preview usage storefrontReads=3, got %v", initialUsage["storefrontReads"])
+	}
 
 	initialRemaining := initialData["remaining"].(map[string]any)
 	if initialRemaining["photoUploadsMonthly"].(float64) != 96 {
@@ -158,8 +173,11 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 	if initialRemaining["menuScansMonthly"].(float64) != 21 {
 		t.Fatalf("expected preview remaining menuScansMonthly=21, got %v", initialRemaining["menuScansMonthly"])
 	}
+	if initialRemaining["storefrontReadsMonthly"].(float64) != 22 {
+		t.Fatalf("expected preview remaining storefrontReadsMonthly=22, got %v", initialRemaining["storefrontReadsMonthly"])
+	}
 
-	seedMonthlyUsage(t, server.app, adminUser.Id, 4, 95, 6)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, adminUser.Id, 4, 95, 6, 7, 0)
 
 	afterPreview := performJSONRequest(
 		t,
@@ -178,9 +196,15 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 	if afterUsage["menuScans"].(float64) != 6 {
 		t.Fatalf("expected menuScans usage=6 after two consumes, got %v", afterUsage["menuScans"])
 	}
+	if afterUsage["storefrontReads"].(float64) != 7 {
+		t.Fatalf("expected storefrontReads usage=7 after two consumes, got %v", afterUsage["storefrontReads"])
+	}
 
 	afterRemaining := afterData["remaining"].(map[string]any)
 	if afterRemaining["menuScansMonthly"].(float64) != 19 {
 		t.Fatalf("expected preview remaining menuScansMonthly=19, got %v", afterRemaining["menuScansMonthly"])
+	}
+	if afterRemaining["storefrontReadsMonthly"].(float64) != 18 {
+		t.Fatalf("expected preview remaining storefrontReadsMonthly=18, got %v", afterRemaining["storefrontReadsMonthly"])
 	}
 }

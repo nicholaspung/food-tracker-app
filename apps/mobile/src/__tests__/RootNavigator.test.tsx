@@ -736,7 +736,7 @@ describe('RootNavigator', () => {
   it('parses waitlist approval signup links', () => {
     const { getStateFromPath } = jest.requireActual('@react-navigation/native') as typeof import('@react-navigation/native');
     const state = getStateFromPath(
-      '/signup?email=approved%40example.com&mode=waitlist_approved',
+      '/signup?email=approved%40example.com&mode=waitlist_approved&waitlistApprovalToken=signed.token',
       AUTH_LINKING.config,
     );
 
@@ -745,6 +745,7 @@ describe('RootNavigator', () => {
       params: {
         email: 'approved@example.com',
         mode: 'waitlist_approved',
+        waitlistApprovalToken: 'signed.token',
       },
     });
   });

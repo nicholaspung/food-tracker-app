@@ -343,6 +343,21 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
         title="Receipt scan failed"
       />
 
+      {phase === 'error' && !receiptScanFlow.permissionNeedsSettings ? (
+        <PhotoSourcePickerCard
+          cardStyle={styles.card}
+          description="Choose a clearer receipt image or try a different source."
+          isSelecting={receiptScanFlow.status === 'selecting'}
+          onCameraPress={() => {
+            void receiptScanFlow.scanReceipt('camera');
+          }}
+          onGalleryPress={() => {
+            void receiptScanFlow.scanReceipt('gallery');
+          }}
+          title="Try Another Receipt Image"
+        />
+      ) : null}
+
       {phase === 'error' && receiptScanFlow.permissionNeedsSettings ? (
         <Card style={styles.card}>
           <Text tone="danger">

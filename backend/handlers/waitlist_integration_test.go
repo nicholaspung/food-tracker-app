@@ -13,7 +13,8 @@ import (
 func ensureWaitlistCollection(t *testing.T, app core.App) {
 	t.Helper()
 
-	if _, err := app.FindCollectionByNameOrId("waitlist_entries"); err == nil {
+	if collection, err := app.FindCollectionByNameOrId("waitlist_entries"); err == nil {
+		ensureWaitlistApprovalTokenFields(t, app, collection)
 		return
 	}
 
@@ -46,11 +47,38 @@ func ensureWaitlistCollection(t *testing.T, app core.App) {
 	collection.Fields.Add(&core.TextField{Name: "lastLoopsSyncError", Max: 2000})
 	collection.Fields.Add(&core.DateField{Name: "joinedEmailSentAt"})
 	collection.Fields.Add(&core.TextField{Name: "lastJoinedEmailError", Max: 2000})
+	collection.Fields.Add(&core.TextField{Name: "approvalTokenNonceHash", Max: 128})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenIssuedAt"})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenExpiresAt"})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenUsedAt"})
 	collection.Fields.Add(&core.DateField{Name: "created"})
 	collection.Fields.Add(&core.DateField{Name: "updated"})
 
 	if err := app.Save(collection); err != nil {
 		t.Fatalf("failed to create waitlist_entries collection: %v", err)
+	}
+}
+
+func ensureWaitlistApprovalTokenFields(t *testing.T, app core.App, collection *core.Collection) {
+	t.Helper()
+
+	changed := false
+	for _, field := range []core.Field{
+		&core.TextField{Name: "approvalTokenNonceHash", Max: 128},
+		&core.DateField{Name: "approvalTokenIssuedAt"},
+		&core.DateField{Name: "approvalTokenExpiresAt"},
+		&core.DateField{Name: "approvalTokenUsedAt"},
+	} {
+		if collection.Fields.GetByName(field.GetName()) == nil {
+			collection.Fields.Add(field)
+			changed = true
+		}
+	}
+
+	if changed {
+		if err := app.Save(collection); err != nil {
+			t.Fatalf("failed to add waitlist approval token fields: %v", err)
+		}
 	}
 }
 

@@ -179,7 +179,7 @@ func seedMonthlyUsage(
 	placesQueries int,
 	menuScans int,
 ) {
-	seedMonthlyUsageWithHEIC(t, app, userID, photoUploads, placesQueries, menuScans, 0)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, app, userID, photoUploads, placesQueries, menuScans, 0, 0)
 }
 
 func seedMonthlyUsageWithHEIC(
@@ -189,6 +189,19 @@ func seedMonthlyUsageWithHEIC(
 	photoUploads int,
 	placesQueries int,
 	menuScans int,
+	heicConversions int,
+) {
+	seedMonthlyUsageWithStorefrontAndHEIC(t, app, userID, photoUploads, placesQueries, menuScans, 0, heicConversions)
+}
+
+func seedMonthlyUsageWithStorefrontAndHEIC(
+	t *testing.T,
+	app core.App,
+	userID string,
+	photoUploads int,
+	placesQueries int,
+	menuScans int,
+	storefrontReads int,
 	heicConversions int,
 ) {
 	t.Helper()
@@ -220,6 +233,7 @@ func seedMonthlyUsageWithHEIC(
 	record.Set("photo_uploads", photoUploads)
 	record.Set("places_queries", placesQueries)
 	record.Set("menu_scans", menuScans)
+	record.Set("storefront_reads", storefrontReads)
 	record.Set("heic_conversions", heicConversions)
 
 	if saveErr := app.Save(record); saveErr != nil {

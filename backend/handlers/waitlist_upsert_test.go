@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/security"
 
 	"myapp/testutil"
 )
@@ -11,7 +14,8 @@ import (
 func ensureWaitlistCollectionForUnitTest(t *testing.T, app core.App) {
 	t.Helper()
 
-	if _, err := app.FindCollectionByNameOrId("waitlist_entries"); err == nil {
+	if collection, err := app.FindCollectionByNameOrId("waitlist_entries"); err == nil {
+		ensureWaitlistApprovalTokenFieldsForUnitTest(t, app, collection)
 		return
 	}
 
@@ -44,11 +48,38 @@ func ensureWaitlistCollectionForUnitTest(t *testing.T, app core.App) {
 	collection.Fields.Add(&core.TextField{Name: "lastLoopsSyncError", Max: 2000})
 	collection.Fields.Add(&core.DateField{Name: "joinedEmailSentAt"})
 	collection.Fields.Add(&core.TextField{Name: "lastJoinedEmailError", Max: 2000})
+	collection.Fields.Add(&core.TextField{Name: "approvalTokenNonceHash", Max: 128})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenIssuedAt"})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenExpiresAt"})
+	collection.Fields.Add(&core.DateField{Name: "approvalTokenUsedAt"})
 	collection.Fields.Add(&core.DateField{Name: "created"})
 	collection.Fields.Add(&core.DateField{Name: "updated"})
 
 	if err := app.Save(collection); err != nil {
 		t.Fatalf("failed to create waitlist_entries collection: %v", err)
+	}
+}
+
+func ensureWaitlistApprovalTokenFieldsForUnitTest(t *testing.T, app core.App, collection *core.Collection) {
+	t.Helper()
+
+	changed := false
+	for _, field := range []core.Field{
+		&core.TextField{Name: "approvalTokenNonceHash", Max: 128},
+		&core.DateField{Name: "approvalTokenIssuedAt"},
+		&core.DateField{Name: "approvalTokenExpiresAt"},
+		&core.DateField{Name: "approvalTokenUsedAt"},
+	} {
+		if collection.Fields.GetByName(field.GetName()) == nil {
+			collection.Fields.Add(field)
+			changed = true
+		}
+	}
+
+	if changed {
+		if err := app.Save(collection); err != nil {
+			t.Fatalf("failed to add waitlist approval token fields: %v", err)
+		}
 	}
 }
 
@@ -133,5 +164,102 @@ func TestUpsertWaitlistEntryJoinedEmailTransitions(t *testing.T) {
 	}
 	if got := reloaded.GetString("rejectedAt"); got != "" {
 		t.Fatalf("expected rejectedAt to be cleared, got %q", got)
+	}
+}
+
+func TestWaitlistApprovalTokenCanBeReservedOnce(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	ensureWaitlistCollectionForUnitTest(t, app)
+	entry := createWaitlistRecordForUnitTest(t, app, map[string]any{
+		"email":  "approved@example.com",
+		"status": WaitlistStatusApproved,
+		"source": "mobile_signup",
+	})
+
+	token, err := GenerateWaitlistApprovalToken(app, entry)
+	if err != nil {
+		t.Fatalf("expected waitlist approval token generation to succeed: %v", err)
+	}
+	if strings.TrimSpace(token) == "" {
+		t.Fatal("expected generated waitlist approval token")
+	}
+
+	reloaded, err := app.FindRecordById("waitlist_entries", entry.Id)
+	if err != nil {
+		t.Fatalf("failed to reload waitlist entry: %v", err)
+	}
+	if got := reloaded.GetString("approvalTokenNonceHash"); got == "" {
+		t.Fatal("expected approval token nonce hash to be stored")
+	}
+	if got := reloaded.GetString("approvalTokenExpiresAt"); got == "" {
+		t.Fatal("expected approval token expiry to be stored")
+	}
+
+	reserved, err := ValidateAndReserveWaitlistApprovalToken(app, " APPROVED@example.com ", token)
+	if err != nil {
+		t.Fatalf("expected waitlist approval token reservation to succeed: %v", err)
+	}
+	if reserved.Id != entry.Id {
+		t.Fatalf("expected reserved entry %s, got %s", entry.Id, reserved.Id)
+	}
+	if got := reserved.GetString("approvalTokenUsedAt"); got == "" {
+		t.Fatal("expected approval token used timestamp after reservation")
+	}
+
+	if _, err := ValidateAndReserveWaitlistApprovalToken(app, "approved@example.com", token); err == nil {
+		t.Fatal("expected reused waitlist approval token to fail")
+	}
+}
+
+func TestWaitlistApprovalTokenRejectsEmailMismatchAndForgery(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	ensureWaitlistCollectionForUnitTest(t, app)
+	entry := createWaitlistRecordForUnitTest(t, app, map[string]any{
+		"email":  "approved@example.com",
+		"status": WaitlistStatusApproved,
+		"source": "mobile_signup",
+	})
+
+	token, err := GenerateWaitlistApprovalToken(app, entry)
+	if err != nil {
+		t.Fatalf("expected waitlist approval token generation to succeed: %v", err)
+	}
+
+	if _, err := ValidateAndReserveWaitlistApprovalToken(app, "attacker@example.com", token); err == nil {
+		t.Fatal("expected waitlist approval token with mismatched email to fail")
+	}
+
+	forgedToken := token + "x"
+	if _, err := ValidateAndReserveWaitlistApprovalToken(app, "approved@example.com", forgedToken); err == nil {
+		t.Fatal("expected forged waitlist approval token to fail")
+	}
+}
+
+func TestWaitlistApprovalTokenRejectsExpiredToken(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	ensureWaitlistCollectionForUnitTest(t, app)
+	entry := createWaitlistRecordForUnitTest(t, app, map[string]any{
+		"email":  "approved@example.com",
+		"status": WaitlistStatusApproved,
+		"source": "mobile_signup",
+	})
+	nonce := security.RandomString(32)
+	entry.Set("approvalTokenNonceHash", hashWaitlistApprovalNonce(nonce))
+	if err := app.Save(entry); err != nil {
+		t.Fatalf("failed to save waitlist token nonce hash: %v", err)
+	}
+
+	token, err := security.NewJWT(map[string]any{
+		"type":    waitlistApprovalTokenType,
+		"entryId": entry.Id,
+		"email":   "approved@example.com",
+		"nonce":   nonce,
+	}, waitlistApprovalSigningKey(app), -time.Minute)
+	if err != nil {
+		t.Fatalf("failed to build expired waitlist approval token: %v", err)
+	}
+
+	if _, err := ValidateAndReserveWaitlistApprovalToken(app, "approved@example.com", token); err == nil {
+		t.Fatal("expected expired waitlist approval token to fail")
 	}
 }

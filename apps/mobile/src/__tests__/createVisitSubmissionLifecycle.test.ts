@@ -161,6 +161,7 @@ describe('submitCreateVisit', () => {
             photoUploadsPerRecord: null,
             placesQueriesMonthly: null,
             receiptScansMonthly: null,
+            storefrontReadsMonthly: null,
           },
           monthKey: '2026-04',
           remaining: {
@@ -168,12 +169,14 @@ describe('submitCreateVisit', () => {
             photoUploadsMonthly: 0,
             placesQueriesMonthly: null,
             receiptScansMonthly: null,
+            storefrontReadsMonthly: null,
           },
           usage: {
             menuScans: 0,
             photoUploads: 100,
             placesQueries: 0,
             receiptScans: 0,
+            storefrontReads: 0,
           },
           userTier: 'free',
         },

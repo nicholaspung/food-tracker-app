@@ -1,9 +1,28 @@
+import { File, UploadType } from 'expo-file-system';
+
 import * as pocketbaseModule from '../lib/pocketbase';
 import {
   createMenuItemsFromScan,
   extractRestaurantNamesFromImage,
   parseMenuImage,
 } from '../features/store/menuParsingGateway';
+
+const mockUpload = jest.fn();
+
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation(() => ({
+    upload: mockUpload,
+  })),
+  UploadType: {
+    MULTIPART: 1,
+  },
+}));
+
+jest.mock('../config/env', () => ({
+  env: {
+    pocketbaseUrl: 'https://api.example.test/',
+  },
+}));
 
 jest.mock('../lib/pocketbase', () => ({
   pb: {
@@ -21,12 +40,19 @@ jest.mock('../observability', () => ({
 describe('menuParsingGateway', () => {
   const mockedPocketbaseModule = pocketbaseModule as typeof pocketbaseModule & {
     pb: {
+      authStore: {
+        token: string;
+      };
       send: jest.Mock;
     };
   };
+  const mockedFile = File as jest.MockedClass<typeof File>;
 
   beforeEach(() => {
+    mockUpload.mockReset();
+    mockedFile.mockClear();
     mockedPocketbaseModule.pb.send.mockReset();
+    mockedPocketbaseModule.pb.authStore.token = 'test-token';
     jest.restoreAllMocks();
   });
 
@@ -83,9 +109,13 @@ describe('menuParsingGateway', () => {
   });
 
   it('posts storefront images to restaurant-name extraction', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      found: true,
-      options: [{ confidence: 'high', name: '明洞餃子' }],
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        found: true,
+        options: [{ confidence: 'high', name: '明洞餃子' }],
+      }),
+      headers: {},
+      status: 200,
     });
 
     await extractRestaurantNamesFromImage({
@@ -94,19 +124,27 @@ describe('menuParsingGateway', () => {
       uri: 'file:///storefront.jpg',
     });
 
-    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
-      '/api/find-restaurant-name',
-      expect.objectContaining({
-        body: expect.any(FormData),
-        method: 'POST',
-      }),
-    );
+    expect(mockedFile).toHaveBeenCalledWith('file:///storefront.jpg');
+    expect(mockUpload).toHaveBeenCalledWith('https://api.example.test/api/find-restaurant-name', {
+      fieldName: 'image',
+      headers: {
+        Authorization: 'Bearer test-token',
+      },
+      httpMethod: 'POST',
+      mimeType: 'image/jpeg',
+      sessionType: 'foreground',
+      uploadType: UploadType.MULTIPART,
+    });
   });
 
   it('passes storefront request correlation headers', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      found: true,
-      options: [{ confidence: 'high', name: '明洞餃子' }],
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        found: true,
+        options: [{ confidence: 'high', name: '明洞餃子' }],
+      }),
+      headers: {},
+      status: 200,
     });
 
     await extractRestaurantNamesFromImage({
@@ -116,21 +154,25 @@ describe('menuParsingGateway', () => {
       uri: 'file:///storefront.jpg',
     });
 
-    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
-      '/api/find-restaurant-name',
+    expect(mockUpload).toHaveBeenCalledWith(
+      'https://api.example.test/api/find-restaurant-name',
       expect.objectContaining({
-        headers: expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer test-token',
           'X-Request-ID': 'mobile-storefront-test',
-        }),
-        method: 'POST',
+        },
       }),
     );
   });
 
   it('omits blank storefront request correlation headers', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      found: true,
-      options: [{ confidence: 'high', name: '明洞餃子' }],
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        found: true,
+        options: [{ confidence: 'high', name: '明洞餃子' }],
+      }),
+      headers: {},
+      status: 200,
     });
 
     await extractRestaurantNamesFromImage({
@@ -140,8 +182,14 @@ describe('menuParsingGateway', () => {
       uri: 'file:///storefront.jpg',
     });
 
-    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
-    expect(options.headers).not.toHaveProperty('X-Request-ID');
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer test-token',
+        },
+      }),
+    );
   });
 
   it('aborts menu image parsing if the API does not resolve', async () => {

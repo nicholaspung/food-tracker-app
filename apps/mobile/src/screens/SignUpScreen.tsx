@@ -92,6 +92,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
   const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
+  const waitlistApprovalToken = route.params?.waitlistApprovalToken?.trim() ?? '';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -125,6 +126,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     ? `Try Again in ${Math.max(1, Math.ceil(waitlistRateLimitDecision.remainingMs / 1000))}s`
     : isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet';
   const isInviteCodeMode = accessMode === 'invite_code';
+  const isWaitlistApprovedMode = accessMode === 'waitlist_approved';
   const isWaitlistJoinMode = accessMode === 'join_waitlist';
   const isAccountCreationMode = !isWaitlistJoinMode;
 
@@ -166,6 +168,15 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         reason: 'missing_invite_code',
       });
       setErrorMessage('Invite code is required to create an account.');
+      return;
+    }
+
+    if (isWaitlistApprovedMode && !waitlistApprovalToken) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'missing_waitlist_approval_token',
+      });
+      setErrorMessage('Use the signup link from your waitlist approval email.');
       return;
     }
 
@@ -256,6 +267,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         name: trimmedName,
         email: trimmedEmail,
         ...(trimmedInviteCode ? { inviteCode: trimmedInviteCode } : {}),
+        ...(isWaitlistApprovedMode && waitlistApprovalToken ? { waitlistApprovalToken } : {}),
         defaultListVisibility: 'friends',
         defaultVisitVisibility: 'friends',
         defaultRestaurantVisibility: 'friends',
@@ -410,6 +422,10 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return 'This email is not approved yet. Join the waitlist and we will email you when your account is ready.';
     }
 
+    if (normalizedMessage.includes('waitlist approval link is invalid or expired')) {
+      return 'Use the signup link from your waitlist approval email.';
+    }
+
     if (normalizedMessage.includes('too many failed attempts')) {
       return 'Too many invalid invite code attempts. Please try again later.';
     }
@@ -518,6 +534,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                 !name.trim() ||
                 !email.trim() ||
                 (isInviteCodeMode && !inviteCode.trim()) ||
+                (isWaitlistApprovedMode && !waitlistApprovalToken) ||
                 !password ||
                 !passwordConfirm ||
                 password.length < 8 ||

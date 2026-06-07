@@ -80,15 +80,17 @@ func TestMenuScanEndpointsDoNotConsumeUsageForInvalidUploads(t *testing.T) {
 	})
 
 	for _, tc := range []struct {
-		name string
-		path string
+		name                  string
+		path                  string
+		initialMenuScans      int
+		initialStorefrontRead int
 	}{
-		{name: "parse menu", path: "/api/parse-menu"},
-		{name: "find restaurant name", path: "/api/find-restaurant-name"},
+		{name: "parse menu", path: "/api/parse-menu", initialMenuScans: 4},
+		{name: "find restaurant name", path: "/api/find-restaurant-name", initialStorefrontRead: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			user, token := createAuthUser(t, server.app, false, false)
-			seedMonthlyUsage(t, server.app, user.Id, 0, 0, 4)
+			seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, user.Id, 0, 0, tc.initialMenuScans, tc.initialStorefrontRead, 0)
 
 			response := performMultipartRequest(
 				t,
@@ -108,8 +110,11 @@ func TestMenuScanEndpointsDoNotConsumeUsageForInvalidUploads(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to load usage snapshot: %v", err)
 			}
-			if snapshot.Usage.MenuScans != 4 {
-				t.Fatalf("expected menu_scans usage to stay at 4 after invalid upload, got %d", snapshot.Usage.MenuScans)
+			if snapshot.Usage.MenuScans != tc.initialMenuScans {
+				t.Fatalf("expected menu_scans usage to stay at %d after invalid upload, got %d", tc.initialMenuScans, snapshot.Usage.MenuScans)
+			}
+			if snapshot.Usage.StorefrontReads != tc.initialStorefrontRead {
+				t.Fatalf("expected storefront_reads usage to stay at %d after invalid upload, got %d", tc.initialStorefrontRead, snapshot.Usage.StorefrontReads)
 			}
 		})
 	}
@@ -194,7 +199,7 @@ func TestFindRestaurantNameBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
 
 	jpegData := decodeUsageFixture(t, onePixelJPEGBase64)
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
-	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 25)
+	seedMonthlyUsageWithStorefrontAndHEIC(t, server.app, freeUser.Id, 0, 0, 0, 25, 0)
 
 	response := performMultipartRequest(
 		t,
@@ -211,8 +216,8 @@ func TestFindRestaurantNameBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
 	}
 
 	data := parseJSONMap(t, response.Body.Bytes())
-	if data["metric"] != "menu_scans" {
-		t.Fatalf("expected menu_scans metric, got %v", data["metric"])
+	if data["metric"] != "storefront_reads" {
+		t.Fatalf("expected storefront_reads metric, got %v", data["metric"])
 	}
 }
 

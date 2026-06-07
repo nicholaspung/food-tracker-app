@@ -193,6 +193,68 @@ describe('HomeFeedVisitEntryCard', () => {
     ).toHaveLength(0);
   });
 
+  it('marks private visits and their menu item ratings with lock icons', async () => {
+    let renderer: any = null;
+    const visit = {
+      ...createVisitRecord(),
+      visibility: 'private' as const,
+    };
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={visit}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-private-lock',
+      ),
+    ).toHaveLength(1);
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-item-private-lock-item-1',
+      ),
+    ).toHaveLength(1);
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { name?: string } }) =>
+          node.type === 'Ionicons' && node.props.name === 'lock-closed-outline',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('does not mark non-private visits with lock icons', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={createVisitRecord()}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-private-lock',
+      ),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-item-private-lock-item-1',
+      ),
+    ).toHaveLength(0);
+  });
+
   it('renders item ratings through the shared feed rating display', async () => {
     let renderer: any = null;
 

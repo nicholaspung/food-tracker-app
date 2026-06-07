@@ -136,6 +136,7 @@ describe('SignUpScreen', () => {
     ...route,
     params: {
       mode: 'waitlist_approved' as const,
+      waitlistApprovalToken: 'signed.token',
     },
   };
   const inviteCodeRoute = {
@@ -394,7 +395,7 @@ describe('SignUpScreen', () => {
     expect(renderer.root.findByProps({ testID: 'signup-invite-code-input' }).props.value).toBe('INVITE456');
   });
 
-  it('uses email-only links for got-off-waitlist mode and hides invite code', async () => {
+  it('uses waitlist approval links for got-off-waitlist mode and hides invite code', async () => {
     mockedUseAuth.mockReturnValue({
       signInWithPassword: jest.fn(),
     } as unknown as ReturnType<typeof useAuth>);
@@ -404,7 +405,7 @@ describe('SignUpScreen', () => {
       renderer = create(
         <SignUpScreen
           navigation={navigation as never}
-          route={{ ...route, params: { email: 'APPROVED@example.com' } }}
+          route={{ ...route, params: { email: 'APPROVED@example.com', waitlistApprovalToken: 'signed.token' } }}
         />,
       );
     });
@@ -414,7 +415,7 @@ describe('SignUpScreen', () => {
     expect(renderer.root.findAllByProps({ testID: 'signup-invite-code-input' })).toHaveLength(0);
   });
 
-  it('creates a got-off-waitlist account without an invite code', async () => {
+  it('creates a got-off-waitlist account with the approval token and without an invite code', async () => {
     const signInWithPassword = jest.fn().mockResolvedValue(undefined);
     mockedUseAuth.mockReturnValue({
       signInWithPassword,
@@ -448,7 +449,40 @@ describe('SignUpScreen', () => {
       marketingConsent: false,
       onboardingEmailsAcknowledged: true,
       productUpdatesConsent: false,
+      waitlistApprovalToken: 'signed.token',
     }));
+  });
+
+  it('keeps waitlist-approved account creation disabled without the approval token', async () => {
+    mockedUseAuth.mockReturnValue({
+      signInWithPassword: jest.fn(),
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <SignUpScreen
+          navigation={navigation as never}
+          route={{ ...route, params: { email: 'APPROVED@example.com', mode: 'waitlist_approved' } }}
+        />,
+      );
+    });
+
+    setInputValue(renderer, 'signup-name-input', 'Test User');
+    setInputValue(renderer, 'signup-password-input', 'password123');
+    setInputValue(renderer, 'signup-confirm-password-input', 'password123');
+
+    const submitButton = renderer.root.findByProps({ testID: 'signup-submit-button' });
+    expect(submitButton.props.disabled).toBe(true);
+
+    await act(async () => {
+      await submitButton.props.onPress();
+    });
+
+    expect(mockedCreateCollectionRecord).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType('PageErrorToast')[0].props.errorMessage).toBe(
+      'Use the signup link from your waitlist approval email.',
+    );
   });
 
   it('submits the lightweight waitlist form without consent fields', async () => {
