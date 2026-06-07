@@ -11,12 +11,16 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/hooks"
 	"myapp/lib"
 )
 
-func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) {
+func TestUserContentReportCreatesReviewCaseWithoutQuarantiningVisit(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterContentReportHandlers(se, app)
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterContentReportVisibilityHooks(app)
 	})
 
 	owner, ownerToken := createAuthUser(t, server.app, false, false)
@@ -54,6 +58,15 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		"visit":    visit.Id,
 		"itemType": "visit-item",
 	})
+	linkedQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":          "Bottled Yuzu Soda",
+		"rating":        4.2,
+		"user":          owner.Id,
+		"visit":         visit.Id,
+		"visibility":    "friends",
+		"location_text": restaurant.GetString("name"),
+		"itemType":      "food-product",
+	})
 	visitPhotoID := insertVisitPhotoRowRaw(t, server.app, owner.Id, visit.Id, visitItem.Id)
 
 	preReportFeed := performJSONRequest(
@@ -87,16 +100,16 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 	if reportResponse.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", reportResponse.Code, reportResponse.Body.String())
 	}
-	if !strings.Contains(reportResponse.Body.String(), `"status":"under_review"`) {
-		t.Fatalf("expected report response to include under_review status, got %s", reportResponse.Body.String())
+	if !strings.Contains(reportResponse.Body.String(), `"status":"open"`) {
+		t.Fatalf("expected report response to include open status, got %s", reportResponse.Body.String())
 	}
 
 	refreshedVisit, err := server.app.FindRecordById("visits", visit.Id)
 	if err != nil {
 		t.Fatalf("failed to reload visit: %v", err)
 	}
-	if refreshedVisit.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
-		t.Fatalf("expected visit moderationStatus under_review, got %s", refreshedVisit.GetString("moderationStatus"))
+	if !lib.IsVisibleContentModerationStatus(refreshedVisit.GetString("moderationStatus")) {
+		t.Fatalf("expected visit moderationStatus to remain visible, got %s", refreshedVisit.GetString("moderationStatus"))
 	}
 
 	caseRecord, err := server.app.FindFirstRecordByFilter(
@@ -110,8 +123,11 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 	if err != nil {
 		t.Fatalf("failed to load moderation case: %v", err)
 	}
-	if caseRecord.GetString("status") != lib.ModerationCaseStatusUnderReview {
-		t.Fatalf("expected moderation case under_review, got %s", caseRecord.GetString("status"))
+	if caseRecord.GetString("status") != lib.ModerationCaseStatusOpen {
+		t.Fatalf("expected moderation case open, got %s", caseRecord.GetString("status"))
+	}
+	if strings.TrimSpace(caseRecord.GetString("action")) != "" {
+		t.Fatalf("expected user report case to have no automatic action, got %s", caseRecord.GetString("action"))
 	}
 
 	reportRecord, err := server.app.FindFirstRecordByFilter(
@@ -148,7 +164,49 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		t.Fatalf("expected reporter visit list after report to succeed, got %d: %s", reporterPostReportFeed.Code, reporterPostReportFeed.Body.String())
 	}
 	if strings.Contains(reporterPostReportFeed.Body.String(), visit.Id) {
-		t.Fatalf("expected reported visit to disappear for reporter, got %s", reporterPostReportFeed.Body.String())
+		t.Fatalf("expected reported visit to disappear only for reporter, got %s", reporterPostReportFeed.Body.String())
+	}
+
+	reporterVisitDetail := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/visits/records/"+visit.Id,
+		reporterToken,
+		"",
+	)
+	if reporterVisitDetail.Code != http.StatusNotFound {
+		t.Fatalf("expected reported visit detail to be hidden from reporter, got %d: %s", reporterVisitDetail.Code, reporterVisitDetail.Body.String())
+	}
+
+	reporterHomeFeed := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?scope=friends&pageSize=50",
+		reporterToken,
+		"",
+	)
+	if reporterHomeFeed.Code != http.StatusOK {
+		t.Fatalf("expected reporter home feed to succeed, got %d: %s", reporterHomeFeed.Code, reporterHomeFeed.Body.String())
+	}
+	if strings.Contains(reporterHomeFeed.Body.String(), visit.Id) {
+		t.Fatalf("expected reported visit to disappear from reporter home feed, got %s", reporterHomeFeed.Body.String())
+	}
+	if strings.Contains(reporterHomeFeed.Body.String(), linkedQuickTrack.Id) {
+		t.Fatalf("expected food product linked to reported visit to disappear from reporter home feed, got %s", reporterHomeFeed.Body.String())
+	}
+
+	reporterTypedVisitDetail := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits/"+visit.Id,
+		reporterToken,
+		"",
+	)
+	if reporterTypedVisitDetail.Code != http.StatusNotFound {
+		t.Fatalf("expected typed visit detail to be hidden from reporter, got %d: %s", reporterTypedVisitDetail.Code, reporterTypedVisitDetail.Body.String())
 	}
 
 	otherFriendFeed := performJSONRequest(
@@ -162,8 +220,26 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 	if otherFriendFeed.Code != http.StatusOK {
 		t.Fatalf("expected other friend visit list to succeed, got %d: %s", otherFriendFeed.Code, otherFriendFeed.Body.String())
 	}
-	if strings.Contains(otherFriendFeed.Body.String(), visit.Id) {
-		t.Fatalf("expected reported visit to disappear for other friends, got %s", otherFriendFeed.Body.String())
+	if !strings.Contains(otherFriendFeed.Body.String(), visit.Id) {
+		t.Fatalf("expected single report to leave visit visible for other friends, got %s", otherFriendFeed.Body.String())
+	}
+
+	otherFriendHomeFeed := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?scope=friends&pageSize=50",
+		otherFriendToken,
+		"",
+	)
+	if otherFriendHomeFeed.Code != http.StatusOK {
+		t.Fatalf("expected other friend home feed to succeed, got %d: %s", otherFriendHomeFeed.Code, otherFriendHomeFeed.Body.String())
+	}
+	if !strings.Contains(otherFriendHomeFeed.Body.String(), visit.Id) {
+		t.Fatalf("expected reported visit to remain visible in other friend home feed, got %s", otherFriendHomeFeed.Body.String())
+	}
+	if !strings.Contains(otherFriendHomeFeed.Body.String(), linkedQuickTrack.Id) {
+		t.Fatalf("expected food product linked to reported visit to remain visible in other friend home feed, got %s", otherFriendHomeFeed.Body.String())
 	}
 
 	ownerFeed := performJSONRequest(
@@ -178,7 +254,7 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		t.Fatalf("expected owner visit list to succeed, got %d: %s", ownerFeed.Code, ownerFeed.Body.String())
 	}
 	if !strings.Contains(ownerFeed.Body.String(), visit.Id) {
-		t.Fatalf("expected owner to keep seeing under-review visit, got %s", ownerFeed.Body.String())
+		t.Fatalf("expected owner to keep seeing reported visit, got %s", ownerFeed.Body.String())
 	}
 
 	ownerItems := performJSONRequest(
@@ -196,6 +272,24 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		t.Fatalf("expected owner to keep seeing visit item, got %s", ownerItems.Body.String())
 	}
 
+	reporterItems := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/food_items/records?perPage=50",
+		reporterToken,
+		"",
+	)
+	if reporterItems.Code != http.StatusOK {
+		t.Fatalf("expected reporter food item list to succeed, got %d: %s", reporterItems.Code, reporterItems.Body.String())
+	}
+	if strings.Contains(reporterItems.Body.String(), visitItem.Id) {
+		t.Fatalf("expected visit item for reported visit to disappear for reporter, got %s", reporterItems.Body.String())
+	}
+	if strings.Contains(reporterItems.Body.String(), linkedQuickTrack.Id) {
+		t.Fatalf("expected food product linked to reported visit to disappear for reporter, got %s", reporterItems.Body.String())
+	}
+
 	ownerPhotos := performJSONRequest(
 		t,
 		server.mux,
@@ -211,23 +305,38 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		t.Fatalf("expected owner to keep seeing visit photo, got %s", ownerPhotos.Body.String())
 	}
 
+	reporterPhotos := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/visit_photos/records?perPage=50",
+		reporterToken,
+		"",
+	)
+	if reporterPhotos.Code != http.StatusOK {
+		t.Fatalf("expected reporter photo list to succeed, got %d: %s", reporterPhotos.Code, reporterPhotos.Body.String())
+	}
+	if strings.Contains(reporterPhotos.Body.String(), visitPhotoID) {
+		t.Fatalf("expected photo for reported visit to disappear for reporter, got %s", reporterPhotos.Body.String())
+	}
+
 	updateVisitResponse := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodPatch,
 		"/api/collections/visits/records/"+visit.Id,
 		ownerToken,
-		`{"notes":"Edited while under review"}`,
+		`{"notes":"Edited after report"}`,
 	)
 	if updateVisitResponse.Code != http.StatusOK {
-		t.Fatalf("expected owner to edit under-review visit, got %d: %s", updateVisitResponse.Code, updateVisitResponse.Body.String())
+		t.Fatalf("expected owner to edit reported visit, got %d: %s", updateVisitResponse.Code, updateVisitResponse.Body.String())
 	}
 
 	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
 	if err != nil {
 		t.Fatalf("failed to reload visit after owner edit: %v", err)
 	}
-	if reloadedVisit.GetString("notes") != "Edited while under review" {
+	if reloadedVisit.GetString("notes") != "Edited after report" {
 		t.Fatalf("expected owner edit to persist, got %s", reloadedVisit.GetString("notes"))
 	}
 }
@@ -235,14 +344,22 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterContentReportHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterContentReportVisibilityHooks(app)
 	})
 
 	owner, ownerToken := createAuthUser(t, server.app, false, false)
 	reporter, reporterToken := createAuthUser(t, server.app, false, false)
+	otherFriend, otherFriendToken := createAuthUser(t, server.app, false, false)
 
 	createCollectionRecord(t, server.app, "friendships", map[string]any{
 		"user":   owner.Id,
 		"friend": reporter.Id,
+		"status": "accepted",
+	})
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": otherFriend.Id,
 		"status": "accepted",
 	})
 
@@ -330,6 +447,92 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 	if len(caseRows) != 1 {
 		t.Fatalf("expected exactly 1 moderation case row, got %d", len(caseRows))
 	}
+	if caseRows[0].GetString("status") != lib.ModerationCaseStatusOpen {
+		t.Fatalf("expected moderation case open, got %s", caseRows[0].GetString("status"))
+	}
+	if strings.TrimSpace(caseRows[0].GetString("action")) != "" {
+		t.Fatalf("expected user report case to have no automatic action, got %s", caseRows[0].GetString("action"))
+	}
+
+	refreshedQuickTrack, err := server.app.FindRecordById("food_items", quickTrack.Id)
+	if err != nil {
+		t.Fatalf("failed to reload food product: %v", err)
+	}
+	if !lib.IsVisibleContentModerationStatus(refreshedQuickTrack.GetString("moderationStatus")) {
+		t.Fatalf("expected food product moderationStatus to remain visible, got %s", refreshedQuickTrack.GetString("moderationStatus"))
+	}
+
+	reporterQuickTracks := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/food_items/records?perPage=50",
+		reporterToken,
+		"",
+	)
+	if reporterQuickTracks.Code != http.StatusOK {
+		t.Fatalf("expected reporter food product list to succeed, got %d: %s", reporterQuickTracks.Code, reporterQuickTracks.Body.String())
+	}
+	if strings.Contains(reporterQuickTracks.Body.String(), quickTrack.Id) {
+		t.Fatalf("expected reported food product to disappear only for reporter, got %s", reporterQuickTracks.Body.String())
+	}
+
+	reporterQuickTrackDetail := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/food_items/records/"+quickTrack.Id,
+		reporterToken,
+		"",
+	)
+	if reporterQuickTrackDetail.Code != http.StatusNotFound {
+		t.Fatalf("expected reported food product detail to be hidden from reporter, got %d: %s", reporterQuickTrackDetail.Code, reporterQuickTrackDetail.Body.String())
+	}
+
+	reporterHomeFeed := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?scope=friends&pageSize=50",
+		reporterToken,
+		"",
+	)
+	if reporterHomeFeed.Code != http.StatusOK {
+		t.Fatalf("expected reporter home feed to succeed, got %d: %s", reporterHomeFeed.Code, reporterHomeFeed.Body.String())
+	}
+	if strings.Contains(reporterHomeFeed.Body.String(), quickTrack.Id) {
+		t.Fatalf("expected reported food product to disappear from reporter home feed, got %s", reporterHomeFeed.Body.String())
+	}
+
+	otherFriendQuickTracks := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/food_items/records?perPage=50",
+		otherFriendToken,
+		"",
+	)
+	if otherFriendQuickTracks.Code != http.StatusOK {
+		t.Fatalf("expected other friend food product list to succeed, got %d: %s", otherFriendQuickTracks.Code, otherFriendQuickTracks.Body.String())
+	}
+	if !strings.Contains(otherFriendQuickTracks.Body.String(), quickTrack.Id) {
+		t.Fatalf("expected single report to leave food product visible for other friends, got %s", otherFriendQuickTracks.Body.String())
+	}
+
+	otherFriendHomeFeed := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?scope=friends&pageSize=50",
+		otherFriendToken,
+		"",
+	)
+	if otherFriendHomeFeed.Code != http.StatusOK {
+		t.Fatalf("expected other friend home feed to succeed, got %d: %s", otherFriendHomeFeed.Code, otherFriendHomeFeed.Body.String())
+	}
+	if !strings.Contains(otherFriendHomeFeed.Body.String(), quickTrack.Id) {
+		t.Fatalf("expected reported food product to remain visible in other friend home feed, got %s", otherFriendHomeFeed.Body.String())
+	}
 
 	ownerQuickTracks := performJSONRequest(
 		t,
@@ -343,7 +546,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		t.Fatalf("expected owner food product list to succeed, got %d: %s", ownerQuickTracks.Code, ownerQuickTracks.Body.String())
 	}
 	if !strings.Contains(ownerQuickTracks.Body.String(), quickTrack.Id) {
-		t.Fatalf("expected owner to keep seeing under-review food product, got %s", ownerQuickTracks.Body.String())
+		t.Fatalf("expected owner to keep seeing reported food product, got %s", ownerQuickTracks.Body.String())
 	}
 
 	deleteQuickTrackResponse := performJSONRequest(
@@ -355,7 +558,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"",
 	)
 	if deleteQuickTrackResponse.Code != http.StatusOK && deleteQuickTrackResponse.Code != http.StatusNoContent {
-		t.Fatalf("expected owner to delete under-review food product, got %d: %s", deleteQuickTrackResponse.Code, deleteQuickTrackResponse.Body.String())
+		t.Fatalf("expected owner to delete reported food product, got %d: %s", deleteQuickTrackResponse.Code, deleteQuickTrackResponse.Body.String())
 	}
 
 	if _, err := server.app.FindRecordById("food_items", quickTrack.Id); err == nil {
@@ -436,6 +639,12 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 	}
 	if casePayload == nil {
 		t.Fatalf("expected moderation case for food product %s, got %#v", quickTrack.Id, items)
+	}
+	if casePayload["status"] != lib.ModerationCaseStatusOpen {
+		t.Fatalf("expected reported content case to be open, got %#v", casePayload["status"])
+	}
+	if casePayload["action"] != "" {
+		t.Fatalf("expected reported content case to have no automatic action, got %#v", casePayload["action"])
 	}
 	if casePayload["reportCount"] != float64(1) {
 		t.Fatalf("expected reportCount=1, got %#v", casePayload["reportCount"])

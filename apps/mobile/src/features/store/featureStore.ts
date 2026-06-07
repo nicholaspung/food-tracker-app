@@ -169,7 +169,7 @@ export interface ReportContentInput {
 export interface ReportContentResult {
   caseId: string;
   reportId: string;
-  status: 'under_review';
+  status: 'open' | 'under_review' | 'escalated';
 }
 
 export interface RestaurantListItemLinkRecord {

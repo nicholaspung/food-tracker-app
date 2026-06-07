@@ -274,6 +274,7 @@ func main() {
 	hooks.RegisterFeedbackSecurityHooks(app)
 	hooks.RegisterFeedbackMessageSecurityHooks(app)
 	hooks.RegisterModerationHooks(app)
+	hooks.RegisterContentReportVisibilityHooks(app)
 	hooks.RegisterAuditHooks(app)
 
 	// Hook to delete unused invite codes before user deletion

@@ -13,6 +13,8 @@ import (
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
+
+	"myapp/lib"
 )
 
 const (
@@ -1902,6 +1904,15 @@ func buildVisitResponse(
 
 	if !canAccessVisitRecord(visitRecord, viewerUserID, isAdmin, acceptedFriendIDs) {
 		return visitResponse{}, apis.NewNotFoundError("visit not found", nil)
+	}
+	if !isAdmin {
+		hidden, err := lib.ReportedContentHiddenForViewer(app, viewerUserID, "visits", visitRecord)
+		if err != nil {
+			return visitResponse{}, err
+		}
+		if hidden {
+			return visitResponse{}, apis.NewNotFoundError("visit not found", nil)
+		}
 	}
 
 	restaurantRecord, err := app.FindRecordById("restaurants", visitRecord.GetString("restaurant"))

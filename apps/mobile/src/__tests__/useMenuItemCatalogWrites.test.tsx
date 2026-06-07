@@ -101,6 +101,7 @@ describe('useMenuItemCatalogWrites', () => {
       status: 'completed',
     });
     expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('menu_items', {
+      approvalStatus: 'unreviewed',
       createdBy: 'user_1',
       isFromOCR: false,
       name: 'Shoyu Ramen',
@@ -197,6 +198,7 @@ describe('useMenuItemCatalogWrites', () => {
       status: 'completed',
     });
     expect(mockedCreateCollectionRecord).toHaveBeenCalledWith('menu_items', {
+      approvalStatus: 'unreviewed',
       createdBy: 'user_1',
       isFromOCR: false,
       name: 'Shoyu Ramen',

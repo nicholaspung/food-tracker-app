@@ -85,10 +85,15 @@ func RegisterContentReportHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to resolve reported content label", err)
 			}
 
+			caseAction, caseStatus, err := resolveUserReportModerationCaseState(txApp, targetType, targetRecord.Id)
+			if err != nil {
+				return apis.NewApiError(500, "failed to resolve moderation case state", err)
+			}
+
 			caseRecord, err := lib.UpsertModerationCase(txApp, lib.ModerationCaseInput{
-				Action:           lib.ModerationActionQuarantine,
+				Action:           caseAction,
 				ReasonCode:       reasonCode,
-				Status:           lib.ModerationCaseStatusUnderReview,
+				Status:           caseStatus,
 				TargetCollection: target.targetCollection,
 				TargetLabel:      targetLabel,
 				TargetRecordID:   targetRecord.Id,
@@ -113,17 +118,10 @@ func RegisterContentReportHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to save content report", err)
 			}
 
-			if lib.IsVisibleContentModerationStatus(moderationStatus) {
-				lib.ApplyContentModerationState(targetRecord, lib.ContentModerationStatusUnderReview, "")
-				if err := txApp.Save(targetRecord); err != nil {
-					return apis.NewApiError(500, "failed to quarantine reported content", err)
-				}
-			}
-
 			responseBody = map[string]any{
 				"caseId":   caseRecord.Id,
 				"reportId": reportRecord.Id,
-				"status":   lib.ContentModerationStatusUnderReview,
+				"status":   caseRecord.GetString("status"),
 			}
 			return nil
 		})
@@ -133,6 +131,42 @@ func RegisterContentReportHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, responseBody)
 	})
+}
+
+func resolveUserReportModerationCaseState(app core.App, targetType string, targetRecordID string) (string, string, error) {
+	existing, err := findExistingModerationCase(app, targetType, targetRecordID)
+	if err != nil {
+		return "", "", err
+	}
+	if existing == nil {
+		return "", lib.ModerationCaseStatusOpen, nil
+	}
+
+	switch strings.TrimSpace(existing.GetString("status")) {
+	case lib.ModerationCaseStatusOpen, lib.ModerationCaseStatusUnderReview, lib.ModerationCaseStatusEscalated:
+		return strings.TrimSpace(existing.GetString("action")), existing.GetString("status"), nil
+	default:
+		return "", lib.ModerationCaseStatusOpen, nil
+	}
+}
+
+func findExistingModerationCase(app core.App, targetType string, targetRecordID string) (*core.Record, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"moderation_cases",
+		"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+		dbx.Params{
+			"targetType":     targetType,
+			"targetRecordId": targetRecordID,
+		},
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return record, nil
 }
 
 func normalizeReportedContentType(value string) (string, error) {

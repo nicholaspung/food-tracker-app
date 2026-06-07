@@ -20,6 +20,26 @@ const visibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits
 const ownerAccessibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed' OR visits.moderationStatus = 'under_review')`
 const visibleQuickTrackModerationCondition = `(food_items.moderationStatus = '' OR food_items.moderationStatus = 'active' OR food_items.moderationStatus = 'reviewed')`
 const ownerAccessibleQuickTrackModerationCondition = `(food_items.moderationStatus = '' OR food_items.moderationStatus = 'active' OR food_items.moderationStatus = 'reviewed' OR food_items.moderationStatus = 'under_review')`
+const unreportedVisitForViewerCondition = `NOT EXISTS (
+	SELECT 1
+	FROM content_reports report_suppression
+	WHERE report_suppression.reporter = {:userId}
+		AND report_suppression.targetType = 'visit'
+		AND report_suppression.targetRecordId = visits.id
+)`
+const unreportedQuickTrackForViewerCondition = `NOT EXISTS (
+	SELECT 1
+	FROM content_reports report_suppression
+	WHERE report_suppression.reporter = {:userId}
+		AND report_suppression.targetType = 'food-product'
+		AND report_suppression.targetRecordId = food_items.id
+) AND NOT EXISTS (
+	SELECT 1
+	FROM content_reports visit_report_suppression
+	WHERE visit_report_suppression.reporter = {:userId}
+		AND visit_report_suppression.targetType = 'visit'
+		AND visit_report_suppression.targetRecordId = food_items.visit
+)`
 
 const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
@@ -2529,8 +2549,8 @@ func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
 		}
 	}
 
-	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition
-	friendCondition := `visits.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleVisitModerationCondition + ` AND (visits.visibility = 'public' OR visits.visibility = 'friends')`
+	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition
+	friendCondition := `visits.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition + ` AND (visits.visibility = 'public' OR visits.visibility = 'friends')`
 
 	switch scope {
 	case "mine":
@@ -2554,8 +2574,8 @@ func buildVisitsPageAccessCondition(scope string, isAdmin bool) string {
 		}
 	}
 
-	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition
-	visibleSharedCondition := `visits.user != {:userId} AND ` + visibleVisitModerationCondition + ` AND (
+	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition
+	visibleSharedCondition := `visits.user != {:userId} AND ` + visibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition + ` AND (
 		visits.visibility = 'public'
 		OR (
 			visits.visibility = 'friends'
@@ -2585,8 +2605,8 @@ func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
 		}
 	}
 
-	ownerCondition := foodProductSQL("food_items") + ` AND food_items.user = {:userId} AND ` + ownerAccessibleQuickTrackModerationCondition
-	friendCondition := foodProductSQL("food_items") + ` AND food_items.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleQuickTrackModerationCondition + ` AND (food_items.visibility = 'public' OR food_items.visibility = 'friends')`
+	ownerCondition := foodProductSQL("food_items") + ` AND food_items.user = {:userId} AND ` + ownerAccessibleQuickTrackModerationCondition + ` AND ` + unreportedQuickTrackForViewerCondition
+	friendCondition := foodProductSQL("food_items") + ` AND food_items.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleQuickTrackModerationCondition + ` AND ` + unreportedQuickTrackForViewerCondition + ` AND (food_items.visibility = 'public' OR food_items.visibility = 'friends')`
 
 	switch scope {
 	case "mine":
@@ -3250,8 +3270,8 @@ func buildRestaurantSelectionSummaries(
 	ownerCondition := "visits.user = {:userId}"
 	friendCondition := "visits.user != {:userId} AND visits.user IN (SELECT friendId FROM accepted_friends)"
 	if !isAdmin {
-		ownerCondition += " AND " + ownerAccessibleVisitModerationCondition
-		friendCondition += " AND " + visibleVisitModerationCondition + " AND (visits.visibility = 'public' OR visits.visibility = 'friends')"
+		ownerCondition += " AND " + ownerAccessibleVisitModerationCondition + " AND " + unreportedVisitForViewerCondition
+		friendCondition += " AND " + visibleVisitModerationCondition + " AND " + unreportedVisitForViewerCondition + " AND (visits.visibility = 'public' OR visits.visibility = 'friends')"
 	}
 
 	query := fmt.Sprintf(`
@@ -3430,6 +3450,7 @@ func listRestaurantMenuItemSummaries(
 			WHERE food_items.user = {:userId}
 				AND COALESCE(food_items.itemType, '') = {:visitItemType}
 				AND visits.restaurant = {:restaurantId}
+				AND ` + unreportedVisitForViewerCondition + `
 			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
 		) user_history ON user_history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
 		LEFT JOIN (
@@ -3443,6 +3464,7 @@ func listRestaurantMenuItemSummaries(
 				AND COALESCE(food_items.itemType, '') = {:visitItemType}
 				AND visits.restaurant = {:restaurantId}
 				AND ` + visibleVisitModerationCondition + `
+				AND ` + unreportedVisitForViewerCondition + `
 				AND (visits.visibility = 'public' OR visits.visibility = 'friends')
 			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
 		) friend_history ON friend_history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
@@ -4026,8 +4048,8 @@ func getRestaurantVisitStats(
 	ownerCondition := "visits.user = {:userId}"
 	friendCondition := "visits.user != {:userId} AND visits.user IN (SELECT friendId FROM accepted_friends)"
 	if !isAdmin {
-		ownerCondition += " AND " + ownerAccessibleVisitModerationCondition
-		friendCondition += " AND " + visibleVisitModerationCondition + " AND (visits.visibility = 'public' OR visits.visibility = 'friends')"
+		ownerCondition += " AND " + ownerAccessibleVisitModerationCondition + " AND " + unreportedVisitForViewerCondition
+		friendCondition += " AND " + visibleVisitModerationCondition + " AND " + unreportedVisitForViewerCondition + " AND (visits.visibility = 'public' OR visits.visibility = 'friends')"
 	}
 
 	query := fmt.Sprintf(`

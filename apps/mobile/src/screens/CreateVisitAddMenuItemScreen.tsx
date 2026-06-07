@@ -1,11 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
-  PageErrorToast,
-  VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
 import {
@@ -15,32 +12,17 @@ import {
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles } from '../theme';
-import { Card, Input, Text } from '../ui';
+import { CreateVisitMenuItemEditorForm } from './createVisit/CreateVisitMenuItemEditorForm';
 
 type CreateVisitAddMenuItemScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'CreateVisitAddMenuItem'
 >;
-const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
-
-const useStyles = createThemedStyles((theme) => ({
-  body: {
-    gap: theme.spacing.md,
-  },
-  formCard: {
-    gap: theme.spacing.sm,
-  },
-  visibilitySection: {
-    gap: theme.spacing.xs,
-  },
-}));
 
 export function CreateVisitAddMenuItemScreen({
   navigation,
   route,
 }: CreateVisitAddMenuItemScreenProps) {
-  const styles = useStyles();
   const menuItemCatalogWrites = useMenuItemCatalogWrites();
   const { isOnline } = useConnectivity();
 
@@ -183,43 +165,23 @@ export function CreateVisitAddMenuItemScreen({
       title="Add Menu Item"
       subtitle={`Add an item for ${restaurantName}.`}
     >
-      <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Could not add menu item" />
-
-        {!isOnline ? (
-          <Card tone="muted">
-            <Text tone="warning">You are offline. Connect to add a new menu item.</Text>
-          </Card>
-        ) : null}
-
-        <Card style={styles.formCard}>
-          <Input
-            autoCapitalize="words"
-            label="Item Name"
-            onChangeText={setMenuItemName}
-            placeholder="Menu item name"
-            value={menuItemName}
-          />
-
-          <View style={styles.visibilitySection}>
-            <Text variant="label">Visibility</Text>
-            <VisibilityOptionSelector
-              onChange={(nextVisibility) => {
-                const resolvedVisibility: VisibilityOptionValue =
-                  nextVisibility === 'private' ? 'private' : 'friends';
-                trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_VISIBILITY_CHANGED', {
-                  source: 'CreateVisitAddMenuItemScreen',
-                  previousVisibility: visibility,
-                  nextVisibility: resolvedVisibility,
-                });
-                setVisibility(resolvedVisibility);
-              }}
-              options={MENU_ITEM_VISIBILITY_OPTIONS}
-              value={visibility}
-            />
-          </View>
-        </Card>
-      </View>
+      <CreateVisitMenuItemEditorForm
+        errorMessage={errorMessage}
+        errorTitle="Could not add menu item"
+        isOnline={isOnline}
+        menuItemName={menuItemName}
+        offlineMessage="You are offline. Connect to add a new menu item."
+        onMenuItemNameChange={setMenuItemName}
+        onVisibilityChange={(nextVisibility) => {
+          trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_VISIBILITY_CHANGED', {
+            source: 'CreateVisitAddMenuItemScreen',
+            previousVisibility: visibility,
+            nextVisibility,
+          });
+          setVisibility(nextVisibility);
+        }}
+        visibility={visibility}
+      />
     </FeatureFormScreenScaffold>
   );
 }
