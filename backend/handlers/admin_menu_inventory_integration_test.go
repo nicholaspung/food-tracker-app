@@ -137,6 +137,12 @@ type adminMenuItemPromotionResponse struct {
 	ReusedExisting bool                       `json:"reusedExisting"`
 }
 
+type adminMenuItemDepromotionResponse struct {
+	Contribution    *adminMenuInventoryMenuItem `json:"contribution"`
+	DeletedMenuItem *adminMenuInventoryMenuItem `json:"deletedMenuItem"`
+	UnlinkedOnly    bool                        `json:"unlinkedOnly"`
+}
+
 func loadAdminMenuInventoryResponse[T any](
 	t *testing.T,
 	server *preparedServer,
@@ -2505,6 +2511,227 @@ func TestAdminMenuItemPromotionReusesApprovedExactLocationItemByNormalizedName(t
 		metadataMap["promotedTo"] != existingApproved.Id ||
 		metadataMap["reusedExisting"] != true {
 		t.Fatalf("unexpected reused promotion audit metadata: %#v", metadataMap)
+	}
+}
+
+func TestAdminMenuItemDepromotionDeletesCreatedPromotedItemAndClearsContributionLink(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	contributor, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Depromotion Ramen",
+		"location":   "Oakland, CA",
+		"createdBy":  contributor.Id,
+		"visibility": "public",
+	})
+	contribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Shoyu Ramen",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "approved",
+	})
+
+	promoteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-items/"+contribution.Id+"/promote",
+		adminToken,
+		"",
+	)
+	if promoteResponse.Code != http.StatusOK {
+		t.Fatalf("expected promote 200, got %d: %s", promoteResponse.Code, promoteResponse.Body.String())
+	}
+	promotionPayload := adminMenuItemPromotionResponse{}
+	if err := json.Unmarshal(promoteResponse.Body.Bytes(), &promotionPayload); err != nil {
+		t.Fatalf("failed to decode promotion response: %v", err)
+	}
+	promotedID := promotionPayload.MenuItem.ID
+	if promotedID == "" {
+		t.Fatalf("expected promoted menu item id in %#v", promotionPayload)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/admin/menu-items/"+contribution.Id+"/promotion",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected depromote 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminMenuItemDepromotionResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode depromotion response: %v", err)
+	}
+	if payload.UnlinkedOnly {
+		t.Fatalf("expected created promoted item to be deleted, got unlinked-only payload %#v", payload)
+	}
+	if payload.DeletedMenuItem == nil || payload.DeletedMenuItem.ID != promotedID {
+		t.Fatalf("expected deleted promoted item %s, got %#v", promotedID, payload.DeletedMenuItem)
+	}
+	if payload.Contribution == nil || payload.Contribution.ID != contribution.Id || payload.Contribution.PromotedTo != "" {
+		t.Fatalf("expected contribution link to be cleared, got %#v", payload.Contribution)
+	}
+
+	if _, err := server.app.FindRecordById("menu_items", promotedID); err == nil {
+		t.Fatalf("expected promoted menu item to be deleted")
+	}
+	reloadedContribution, err := server.app.FindRecordById("menu_items", contribution.Id)
+	if err != nil {
+		t.Fatalf("failed to reload contribution: %v", err)
+	}
+	if reloadedContribution.GetString("promotedTo") != "" {
+		t.Fatalf("expected contribution promotedTo to be cleared, got %q", reloadedContribution.GetString("promotedTo"))
+	}
+
+	deleteAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeDelete,
+		"menu_items",
+		promotedID,
+		5,
+	)
+	if len(deleteAuditLogs) != 1 {
+		t.Fatalf("expected one promoted item delete audit log, got %d", len(deleteAuditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, deleteAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_menu_item_depromotion" ||
+		metadataMap["catalogContributionId"] != contribution.Id ||
+		metadataMap["deletedMenuItemId"] != promotedID {
+		t.Fatalf("unexpected depromotion delete audit metadata: %#v", metadataMap)
+	}
+	if deleteAuditLogs[0].GetString("requestMethod") != http.MethodDelete ||
+		deleteAuditLogs[0].GetString("requestPath") != "/api/admin/menu-items/"+contribution.Id+"/promotion" {
+		t.Fatalf("unexpected depromotion delete audit envelope: %#v", deleteAuditLogs[0])
+	}
+
+	updateAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"menu_items",
+		contribution.Id,
+		5,
+	)
+	foundDepromotionUpdateAudit := false
+	for _, auditLog := range updateAuditLogs {
+		metadataMap = parseAuditMetadata(t, auditLog.Get("metadataJson"))
+		if metadataMap["source"] != "admin_menu_item_depromotion" {
+			continue
+		}
+		if metadataMap["previousPromotedTo"] != promotedID || metadataMap["promotedTo"] != "" {
+			t.Fatalf("unexpected depromotion unlink metadata: %#v", metadataMap)
+		}
+		if !auditStringSliceContains(parseAuditStringSlice(t, auditLog.Get("changedFields")), "promotedTo") {
+			t.Fatalf("expected promotedTo changed field, got %#v", auditLog.Get("changedFields"))
+		}
+		foundDepromotionUpdateAudit = true
+		break
+	}
+	if !foundDepromotionUpdateAudit {
+		t.Fatalf("expected depromotion contribution update audit log in %#v", updateAuditLogs)
+	}
+}
+
+func TestAdminMenuItemDepromotionUnlinksReusedApprovedItemWithoutDeletingIt(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+		handlers.RegisterAdminMenuCatalogTrustHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	contributor, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Depromotion Pho",
+		"location":   "San Jose, CA",
+		"createdBy":  contributor.Id,
+		"visibility": "public",
+	})
+	existingApproved := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Pho Tai",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	contribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "pho tai",
+		"restaurant":     restaurant.Id,
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "approved",
+	})
+
+	promoteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/menu-items/"+contribution.Id+"/promote",
+		adminToken,
+		"",
+	)
+	if promoteResponse.Code != http.StatusOK {
+		t.Fatalf("expected promote 200, got %d: %s", promoteResponse.Code, promoteResponse.Body.String())
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/admin/menu-items/"+contribution.Id+"/promotion",
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected depromote 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminMenuItemDepromotionResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode depromotion response: %v", err)
+	}
+	if !payload.UnlinkedOnly {
+		t.Fatalf("expected reused approved item to be unlinked only, got %#v", payload)
+	}
+	if payload.DeletedMenuItem != nil {
+		t.Fatalf("did not expect reused approved item to be deleted, got %#v", payload.DeletedMenuItem)
+	}
+
+	reloadedExisting, err := server.app.FindRecordById("menu_items", existingApproved.Id)
+	if err != nil {
+		t.Fatalf("expected reused approved menu item to remain: %v", err)
+	}
+	if reloadedExisting.GetString("name") != "Pho Tai" {
+		t.Fatalf("unexpected reused approved item after depromotion: %#v", reloadedExisting)
+	}
+	reloadedContribution, err := server.app.FindRecordById("menu_items", contribution.Id)
+	if err != nil {
+		t.Fatalf("failed to reload contribution: %v", err)
+	}
+	if reloadedContribution.GetString("promotedTo") != "" {
+		t.Fatalf("expected contribution promotedTo to be cleared, got %q", reloadedContribution.GetString("promotedTo"))
+	}
+
+	deleteAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeDelete,
+		"menu_items",
+		existingApproved.Id,
+		5,
+	)
+	if len(deleteAuditLogs) != 0 {
+		t.Fatalf("expected no delete audit log for reused approved item, got %d", len(deleteAuditLogs))
 	}
 }
 

@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { PaginationControls } from '@/components/shared/PaginationControls';
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
+import { updateAdminMenuItem } from '@/features/menu-inventory/api';
 import type { ReassignVisitRestaurantResult, UserModerationProfile } from '@/features/users/api';
 import {
   getUserModerationProfile,
@@ -16,7 +17,7 @@ import {
 } from '@/features/users/api';
 import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
-import type { FoodProductSummary, UserRestaurantRecord, VisitSummary } from '@/lib/types';
+import type { FoodProductSummary, MenuItemRecord, UserRestaurantRecord, VisitSummary } from '@/lib/types';
 
 type UserDetailTab =
   | 'feedback'
@@ -30,6 +31,10 @@ type UserDetailTab =
   | 'photos'
   | 'lists'
   | 'bills';
+
+type MenuItemVisibility = NonNullable<MenuItemRecord['visibility']>;
+
+const menuItemVisibilityOptions: MenuItemVisibility[] = ['private', 'friends', 'public'];
 
 function formatCurrency(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -823,6 +828,7 @@ function UserDetailTabPanel({
   const [visitPage, setVisitPage] = useState(1);
   const [selectedMapVisitId, setSelectedMapVisitId] = useState<string | undefined>();
   const [expandedListIds, setExpandedListIds] = useState<Set<string>>(() => new Set());
+  const [menuItemVisibilityError, setMenuItemVisibilityError] = useState<string | null>(null);
   const visitMapRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const trimmedVisitSearchTerm = visitSearchTerm.trim();
   const visitPageSize = visitViewMode === 'map' ? VISITS_MAP_PER_PAGE : VISITS_PER_PAGE;
@@ -844,6 +850,30 @@ function UserDetailTabPanel({
         userId,
       }),
   });
+  const menuItemVisibilityMutation = useMutation({
+    mutationFn: (input: { item: MenuItemRecord; visibility: MenuItemVisibility }) =>
+      updateAdminMenuItem(input.item.id, {
+        name: input.item.name,
+        visibility: input.visibility,
+      }),
+    onMutate: () => {
+      setMenuItemVisibilityError(null);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin', 'user-profile', userId] }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      ]);
+    },
+    onError: (error) => {
+      setMenuItemVisibilityError(
+        error instanceof Error ? error.message : 'Could not update menu item visibility.',
+      );
+    },
+  });
+  const updatingMenuItemId = menuItemVisibilityMutation.isPending
+    ? menuItemVisibilityMutation.variables?.item.id
+    : undefined;
 
   useEffect(() => {
     if (activeTab !== 'visits' || visitViewMode !== 'map' || !selectedMapVisitId) {
@@ -1174,27 +1204,67 @@ function UserDetailTabPanel({
         {profile.recentMenuItems.length === 0 ? (
           <span className="text-muted">No menu items created by this user.</span>
         ) : (
-          <PaginatedCollection items={profile.recentMenuItems} itemsPerPage={12}>
-            {(pageItems) => (
-              <div className="inline-list">
-                {pageItems.map((item) => (
-                  <div
-                    className={`list-item ${isHighlightedRecord('menu-items', item.id) ? 'record-highlight' : ''}`}
-                    key={item.id}
-                    {...getHighlightAttributes('menu-items', item.id)}
-                  >
-                    <div className="summary-row">
-                      <strong>{item.name}</strong>
-                      {item.visibility ? <span className="tag">{item.visibility}</span> : null}
-                    </div>
-                    <span className="text-muted">
-                      {item.restaurantName ?? 'Unknown restaurant'} • {formatDateTime(item.created)}
-                    </span>
-                  </div>
-                ))}
+          <>
+            {menuItemVisibilityError ? (
+              <div className="state-panel error">
+                <strong>Could not update menu item visibility</strong>
+                <span className="text-muted">{menuItemVisibilityError}</span>
               </div>
-            )}
-          </PaginatedCollection>
+            ) : null}
+
+            <PaginatedCollection items={profile.recentMenuItems} itemsPerPage={12}>
+              {(pageItems) => (
+                <div className="inline-list">
+                  {pageItems.map((item) => {
+                    const currentVisibility = (item.visibility || 'friends') as MenuItemVisibility;
+                    const isUpdating = updatingMenuItemId === item.id;
+
+                    return (
+                      <div
+                        className={`list-item ${isHighlightedRecord('menu-items', item.id) ? 'record-highlight' : ''}`}
+                        key={item.id}
+                        {...getHighlightAttributes('menu-items', item.id)}
+                      >
+                        <div className="summary-row">
+                          <strong>{item.name}</strong>
+                          <div className="menu-item-visibility-control">
+                            <label htmlFor={`user-menu-item-visibility-${item.id}`}>Visibility</label>
+                            <select
+                              className="input"
+                              disabled={menuItemVisibilityMutation.isPending}
+                              id={`user-menu-item-visibility-${item.id}`}
+                              onChange={(event) => {
+                                const nextVisibility = event.target.value as MenuItemVisibility;
+                                if (nextVisibility !== currentVisibility) {
+                                  menuItemVisibilityMutation.mutate({
+                                    item,
+                                    visibility: nextVisibility,
+                                  });
+                                }
+                              }}
+                              value={currentVisibility}
+                            >
+                              {menuItemVisibilityOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <span className="text-muted">
+                          {item.restaurantName ?? 'Unknown restaurant'} • {formatDateTime(item.created)}
+                        </span>
+                        {isUpdating ? (
+                          <span className="text-muted">Updating visibility...</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </PaginatedCollection>
+          </>
         )}
       </div>
     );

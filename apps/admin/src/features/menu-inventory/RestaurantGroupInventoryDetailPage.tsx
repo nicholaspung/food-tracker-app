@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   deleteAdminRestaurantGroup,
+  depromoteAdminMenuItem,
   getAdminRestaurantGroupInventoryDetail,
-  updateAdminMenuItem,
+  promoteAdminMenuItemContribution,
   updateAdminMenuItemApproval,
   updateAdminMenuItemGroupSuitable,
   updateAdminRestaurantGroupMetadata,
@@ -183,19 +184,23 @@ function GroupMenuItemsTable({
 
 function AllGroupMenuItemsTable({
   approvalItemId,
+  depromotionItemId,
   groupSuitableItemId,
-  publicItemId,
+  promotionItemId,
   onApprovalStatusChange,
+  onDepromote,
   onEnableGroupSuitable,
-  onMakePublic,
+  onPromote,
   rows,
 }: {
   approvalItemId?: string;
+  depromotionItemId?: string;
   groupSuitableItemId?: string;
-  publicItemId?: string;
+  promotionItemId?: string;
   onApprovalStatusChange: (item: MenuItemInventoryRow, status: MenuItemApprovalStatus) => void;
+  onDepromote: (item: MenuItemInventoryRow) => void;
   onEnableGroupSuitable: (item: MenuItemInventoryRow) => void;
-  onMakePublic: (item: MenuItemInventoryRow) => void;
+  onPromote: (item: MenuItemInventoryRow) => void;
   rows: MenuItemInventoryRow[];
 }) {
   return (
@@ -221,8 +226,10 @@ function AllGroupMenuItemsTable({
             const isApproved = row.approvalStatus === 'approved';
             const canEnableGroupSuitable = isPublic && isApproved;
             const isApprovalPending = approvalItemId === row.id;
-            const isPublicPending = publicItemId === row.id;
+            const isPromotionPending = promotionItemId === row.id;
+            const isDepromotionPending = depromotionItemId === row.id;
             const isGroupSuitablePending = groupSuitableItemId === row.id;
+            const isPromoted = Boolean(row.promotedTo?.trim() || row.promotedFrom?.trim());
 
             return (
               <Fragment key={row.id}>
@@ -294,14 +301,24 @@ function AllGroupMenuItemsTable({
                           Restore
                         </button>
                       ) : null}
-                      {!isPublic ? (
+                      {isApproved && !isPromoted ? (
                         <button
-                          className="button ghost"
-                          disabled={isPublicPending}
-                          onClick={() => onMakePublic(row)}
+                          className="button primary"
+                          disabled={isPromotionPending}
+                          onClick={() => onPromote(row)}
                           type="button"
                         >
-                          {isPublicPending ? 'Updating...' : 'Make public'}
+                          {isPromotionPending ? 'Promoting...' : 'Promote'}
+                        </button>
+                      ) : null}
+                      {isPromoted ? (
+                        <button
+                          className="button danger"
+                          disabled={isDepromotionPending}
+                          onClick={() => onDepromote(row)}
+                          type="button"
+                        >
+                          {isDepromotionPending ? 'De-promoting...' : 'De-promote'}
                         </button>
                       ) : null}
                       {!row.groupSuitable ? (
@@ -410,17 +427,21 @@ export function RestaurantGroupInventoryDetailPage() {
     },
   });
 
-  const publicVisibilityMutation = useMutation({
-    mutationFn: (item: MenuItemInventoryRow) =>
-      updateAdminMenuItem(item.id, {
-        name: item.name,
-        sourceImage: item.sourceImage?.trim() ? item.sourceImage : null,
-        visibility: 'public',
-      }),
+  const promotionMutation = useMutation({
+    mutationFn: (item: MenuItemInventoryRow) => promoteAdminMenuItemContribution(item.id),
     onMutate: () => setActionError(''),
     onSuccess: invalidateGroupInventory,
     onError: (error) => {
-      setActionError(error instanceof Error ? error.message : 'Could not make menu item public.');
+      setActionError(error instanceof Error ? error.message : 'Could not promote menu item.');
+    },
+  });
+
+  const depromotionMutation = useMutation({
+    mutationFn: (item: MenuItemInventoryRow) => depromoteAdminMenuItem(item.id),
+    onMutate: () => setActionError(''),
+    onSuccess: invalidateGroupInventory,
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not de-promote menu item.');
     },
   });
 
@@ -428,13 +449,15 @@ export function RestaurantGroupInventoryDetailPage() {
     ? groupSuitableMutation.variables?.itemId
     : undefined;
   const approvalItemId = approvalMutation.isPending ? approvalMutation.variables?.itemId : undefined;
-  const publicItemId = publicVisibilityMutation.isPending ? publicVisibilityMutation.variables?.id : undefined;
+  const promotionItemId = promotionMutation.isPending ? promotionMutation.variables?.id : undefined;
+  const depromotionItemId = depromotionMutation.isPending ? depromotionMutation.variables?.id : undefined;
   const isActionPending =
     updateGroupMutation.isPending ||
     deleteGroupMutation.isPending ||
     groupSuitableMutation.isPending ||
     approvalMutation.isPending ||
-    publicVisibilityMutation.isPending;
+    promotionMutation.isPending ||
+    depromotionMutation.isPending;
   const allGroupMenuItems = detailQuery.data?.allMenuItems ?? [];
   const allGroupMenuItemsAfterAssociationFilter = useMemo(
     () =>
@@ -712,13 +735,15 @@ export function RestaurantGroupInventoryDetailPage() {
             ) : (
               <AllGroupMenuItemsTable
                 approvalItemId={approvalItemId}
+                depromotionItemId={depromotionItemId}
                 groupSuitableItemId={disabledGroupSuitableItemId}
                 onApprovalStatusChange={(item, status) => approvalMutation.mutate({ itemId: item.id, status })}
+                onDepromote={(item) => depromotionMutation.mutate(item)}
                 onEnableGroupSuitable={(item) =>
                   groupSuitableMutation.mutate({ groupSuitable: true, itemId: item.id })
                 }
-                onMakePublic={(item) => publicVisibilityMutation.mutate(item)}
-                publicItemId={publicItemId}
+                onPromote={(item) => promotionMutation.mutate(item)}
+                promotionItemId={promotionItemId}
                 rows={visibleAllGroupMenuItems}
               />
             )}

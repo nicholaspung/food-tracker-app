@@ -100,6 +100,12 @@ type adminMenuItemPromotionResponse struct {
 	ReusedExisting bool           `json:"reusedExisting"`
 }
 
+type adminMenuItemDepromotionResponse struct {
+	Contribution    map[string]any `json:"contribution"`
+	DeletedMenuItem map[string]any `json:"deletedMenuItem"`
+	UnlinkedOnly    bool           `json:"unlinkedOnly"`
+}
+
 func RegisterAdminMenuCatalogTrustHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.PATCH("/api/admin/menu-items/{itemId}/approval", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {
@@ -196,6 +202,28 @@ func RegisterAdminMenuCatalogTrustHandlers(se *core.ServeEvent, app core.App) {
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			var err error
 			result, err = promoteAdminMenuItemContribution(txApp, e, itemID, e.Auth.Id)
+			return err
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, result)
+	})
+
+	se.Router.DELETE("/api/admin/menu-items/{itemId}/promotion", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		itemID := strings.TrimSpace(e.Request.PathValue("itemId"))
+		if itemID == "" {
+			return apis.NewBadRequestError("itemId is required", nil)
+		}
+
+		var result adminMenuItemDepromotionResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			var err error
+			result, err = depromoteAdminMenuItem(txApp, e, itemID)
 			return err
 		}); err != nil {
 			return err
@@ -498,6 +526,186 @@ func promoteAdminMenuItemContribution(
 		Contribution:   serializeAdminMenuItemRecord(contribution),
 		ReusedExisting: reusedExisting,
 	}, nil
+}
+
+func depromoteAdminMenuItem(
+	app core.App,
+	e *core.RequestEvent,
+	itemID string,
+) (adminMenuItemDepromotionResponse, error) {
+	item, err := app.FindRecordById("menu_items", itemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return adminMenuItemDepromotionResponse{}, apis.NewNotFoundError("menu item was not found", err)
+		}
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to load menu item", err)
+	}
+
+	promotedFromID := strings.TrimSpace(item.GetString("promotedFrom"))
+	promotedToID := strings.TrimSpace(item.GetString("promotedTo"))
+	if promotedFromID == "" && promotedToID == "" {
+		return adminMenuItemDepromotionResponse{}, apis.NewBadRequestError("menu item is not promoted", nil)
+	}
+
+	if promotedFromID != "" {
+		return depromotePromotedMenuItem(app, e, item, promotedFromID)
+	}
+
+	return unlinkMenuItemPromotionContribution(app, e, item, promotedToID)
+}
+
+func depromotePromotedMenuItem(
+	app core.App,
+	e *core.RequestEvent,
+	promotedItem *core.Record,
+	contributionID string,
+) (adminMenuItemDepromotionResponse, error) {
+	deletedSnapshot := serializeAdminMenuItemRecord(promotedItem)
+	deletedBeforeSnapshot := lib.RecordAuditSnapshot(promotedItem)
+
+	var contribution *core.Record
+	if source, err := app.FindRecordById("menu_items", contributionID); err == nil {
+		contribution = source
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to load promotion contribution", err)
+	}
+
+	var contributionSnapshot map[string]any
+	if contribution != nil && strings.TrimSpace(contribution.GetString("promotedTo")) == promotedItem.Id {
+		beforeSnapshot := lib.RecordAuditSnapshot(contribution)
+		contribution.Set("promotedTo", "")
+		if err := app.Save(contribution); err != nil {
+			log.Printf("Admin menu item depromotion unlink failed for contribution=%q target=%q: %v", contribution.Id, promotedItem.Id, err)
+			return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to unlink menu item promotion", err)
+		}
+		contributionSnapshot = serializeAdminMenuItemRecord(contribution)
+
+		if err := auditAdminMenuItemPromotionUnlink(app, e, contribution, beforeSnapshot, promotedItem.Id, false); err != nil {
+			return adminMenuItemDepromotionResponse{}, err
+		}
+	}
+
+	if err := createAdminRecordAuditLog(
+		app,
+		e,
+		promotedItem,
+		core.ModelEventTypeDelete,
+		deletedBeforeSnapshot,
+		nil,
+		adminMenuItemTrustAuditMetadata(app, "admin_menu_item_depromotion", promotedItem, map[string]any{
+			"catalogContributionId": contributionID,
+			"contributionId":        contributionID,
+			"deletedMenuItemId":     promotedItem.Id,
+			"menuItemId":            promotedItem.Id,
+		}),
+		"De-promoted menu item "+strings.TrimSpace(promotedItem.GetString("name")),
+	); err != nil {
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to audit menu item depromotion", err)
+	}
+
+	if err := app.Delete(promotedItem); err != nil {
+		log.Printf("Admin menu item depromotion delete failed for item=%q contribution=%q: %v", promotedItem.Id, contributionID, err)
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to delete promoted menu item", err)
+	}
+
+	return adminMenuItemDepromotionResponse{
+		Contribution:    contributionSnapshot,
+		DeletedMenuItem: deletedSnapshot,
+		UnlinkedOnly:    false,
+	}, nil
+}
+
+func unlinkMenuItemPromotionContribution(
+	app core.App,
+	e *core.RequestEvent,
+	contribution *core.Record,
+	promotedToID string,
+) (adminMenuItemDepromotionResponse, error) {
+	unlinkedOnly := true
+	var deletedSnapshot map[string]any
+
+	target, err := app.FindRecordById("menu_items", promotedToID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to load promoted menu item", err)
+	}
+
+	if target != nil && strings.TrimSpace(target.GetString("promotedFrom")) == contribution.Id {
+		deletedSnapshot = serializeAdminMenuItemRecord(target)
+		unlinkedOnly = false
+	}
+
+	beforeSnapshot := lib.RecordAuditSnapshot(contribution)
+	contribution.Set("promotedTo", "")
+	if err := app.Save(contribution); err != nil {
+		log.Printf("Admin menu item promotion unlink failed for contribution=%q target=%q: %v", contribution.Id, promotedToID, err)
+		return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to unlink menu item promotion", err)
+	}
+
+	if err := auditAdminMenuItemPromotionUnlink(app, e, contribution, beforeSnapshot, promotedToID, unlinkedOnly); err != nil {
+		return adminMenuItemDepromotionResponse{}, err
+	}
+
+	if target != nil && !unlinkedOnly {
+		targetBeforeSnapshot := lib.RecordAuditSnapshot(target)
+		if err := createAdminRecordAuditLog(
+			app,
+			e,
+			target,
+			core.ModelEventTypeDelete,
+			targetBeforeSnapshot,
+			nil,
+			adminMenuItemTrustAuditMetadata(app, "admin_menu_item_depromotion", target, map[string]any{
+				"catalogContributionId": contribution.Id,
+				"contributionId":        contribution.Id,
+				"deletedMenuItemId":     target.Id,
+				"menuItemId":            target.Id,
+			}),
+			"De-promoted menu item "+strings.TrimSpace(target.GetString("name")),
+		); err != nil {
+			return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to audit menu item depromotion", err)
+		}
+
+		if err := app.Delete(target); err != nil {
+			log.Printf("Admin menu item depromotion delete failed for item=%q contribution=%q: %v", target.Id, contribution.Id, err)
+			return adminMenuItemDepromotionResponse{}, apis.NewApiError(500, "failed to delete promoted menu item", err)
+		}
+	}
+
+	return adminMenuItemDepromotionResponse{
+		Contribution:    serializeAdminMenuItemRecord(contribution),
+		DeletedMenuItem: deletedSnapshot,
+		UnlinkedOnly:    unlinkedOnly,
+	}, nil
+}
+
+func auditAdminMenuItemPromotionUnlink(
+	app core.App,
+	e *core.RequestEvent,
+	contribution *core.Record,
+	beforeSnapshot map[string]any,
+	promotedToID string,
+	unlinkedOnly bool,
+) error {
+	if err := createAdminRecordAuditLog(
+		app,
+		e,
+		contribution,
+		core.ModelEventTypeUpdate,
+		beforeSnapshot,
+		lib.RecordAuditSnapshot(contribution),
+		adminMenuItemTrustAuditMetadata(app, "admin_menu_item_depromotion", contribution, map[string]any{
+			"catalogContributionId": contribution.Id,
+			"menuItemId":            promotedToID,
+			"promotedTo":            "",
+			"previousPromotedTo":    promotedToID,
+			"reusedExisting":        unlinkedOnly,
+		}),
+		"Unlinked menu contribution from promoted item "+strings.TrimSpace(contribution.GetString("name")),
+	); err != nil {
+		return apis.NewApiError(500, "failed to audit menu item promotion unlink", err)
+	}
+
+	return nil
 }
 
 func adminMenuItemTrustAuditMetadata(

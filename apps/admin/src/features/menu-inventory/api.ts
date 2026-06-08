@@ -162,6 +162,12 @@ export interface MenuItemPromotionResponse {
   reusedExisting: boolean;
 }
 
+export interface MenuItemDepromotionResponse {
+  contribution: MenuItemInventoryRow | null;
+  deletedMenuItem: MenuItemInventoryRow | null;
+  unlinkedOnly: boolean;
+}
+
 type MenuInventoryResponseForType<T extends MenuInventoryType> =
   T extends 'restaurants'
     ? AdminMenuInventoryResponse<RestaurantInventoryRow>
@@ -389,5 +395,18 @@ export async function promoteAdminMenuItemContribution(
     );
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not promote menu item.'));
+  }
+}
+
+export async function depromoteAdminMenuItem(itemId: string): Promise<MenuItemDepromotionResponse> {
+  try {
+    return await pb.send<MenuItemDepromotionResponse>(
+      `/api/admin/menu-items/${encodeURIComponent(itemId)}/promotion`,
+      {
+        method: 'DELETE',
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not de-promote menu item.'));
   }
 }

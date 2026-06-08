@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  depromoteAdminMenuItem,
   getAdminMenuInventory,
   promoteAdminMenuItemContribution,
   updateAdminMenuItemApproval,
@@ -348,6 +349,15 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
     },
   });
 
+  const depromotionMutation = useMutation({
+    mutationFn: (itemId: string) => depromoteAdminMenuItem(itemId),
+    onMutate: () => setActionError(''),
+    onSuccess: invalidateMenuInventory,
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not de-promote menu item.');
+    },
+  });
+
   const groupSuitableMutation = useMutation({
     mutationFn: (input: { groupSuitable: boolean; itemId: string }) =>
       updateAdminMenuItemGroupSuitable(input),
@@ -359,7 +369,10 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
   });
 
   const isActionPending =
-    approvalMutation.isPending || promotionMutation.isPending || groupSuitableMutation.isPending;
+    approvalMutation.isPending ||
+    promotionMutation.isPending ||
+    depromotionMutation.isPending ||
+    groupSuitableMutation.isPending;
 
   return (
     <>
@@ -502,6 +515,16 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                                 type="button"
                               >
                                 Promote
+                              </button>
+                            ) : null}
+                            {row.promotedTo?.trim() || row.promotedFrom?.trim() ? (
+                              <button
+                                className="button danger"
+                                disabled={isActionPending}
+                                onClick={() => depromotionMutation.mutate(row.id)}
+                                type="button"
+                              >
+                                De-promote
                               </button>
                             ) : null}
                             <button

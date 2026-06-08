@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
   createAdminRestaurantGroup,
+  depromoteAdminMenuItem,
   getAdminRestaurantInventoryDetail,
   promoteAdminMenuItemContribution,
   updateAdminMenuItemApproval,
@@ -197,6 +198,18 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
     },
   });
 
+  const depromotionMutation = useMutation({
+    mutationFn: (input: { itemId: string; restaurantId?: string }) =>
+      depromoteAdminMenuItem(input.itemId),
+    onMutate: () => setActionError(''),
+    onSuccess: async (_data, input) => {
+      await invalidateMenuItemContext(input.restaurantId);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Could not de-promote menu item.');
+    },
+  });
+
   const groupSuitableMutation = useMutation({
     mutationFn: (input: { groupSuitable: boolean; itemId: string; restaurantId?: string }) =>
       updateAdminMenuItemGroupSuitable({ itemId: input.itemId, groupSuitable: input.groupSuitable }),
@@ -210,7 +223,10 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
   });
 
   const isActionPending =
-    approvalMutation.isPending || promotionMutation.isPending || groupSuitableMutation.isPending;
+    approvalMutation.isPending ||
+    promotionMutation.isPending ||
+    depromotionMutation.isPending ||
+    groupSuitableMutation.isPending;
 
   return (
     <>
@@ -339,6 +355,21 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
                                 type="button"
                               >
                                 Promote
+                              </button>
+                            ) : null}
+                            {row.promotedTo?.trim() || row.promotedFrom?.trim() ? (
+                              <button
+                                className="button danger"
+                                disabled={isActionPending}
+                                onClick={() =>
+                                  depromotionMutation.mutate({
+                                    itemId: row.id,
+                                    restaurantId: row.restaurant,
+                                  })
+                                }
+                                type="button"
+                              >
+                                De-promote
                               </button>
                             ) : null}
                             <button

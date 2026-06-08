@@ -1202,6 +1202,24 @@ select.input {
   font-weight: 600;
 }
 
+.menu-item-visibility-control {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.menu-item-visibility-control label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.menu-item-visibility-control .input {
+  min-width: 132px;
+  width: auto;
+}
+
 .moderation-lookup-form {
   align-items: end;
   display: grid;
