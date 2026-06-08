@@ -1,8 +1,8 @@
-import { Ionicons } from '../ui/AppIcon';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Fragment, useMemo, useState } from 'react';
-import { View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ionicons } from "../ui/AppIcon";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Fragment, useMemo, useState } from "react";
+import { View } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   EmptyState,
@@ -14,57 +14,61 @@ import {
   type SegmentedControlOption,
   VisitRestaurantOptionTrailing,
   WantToTryBookmarkButton,
-} from '../components/shared';
-import { type AllLocationsHistoryRecord, type GroupMenuSuggestionsRecord } from '../features';
-import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
+} from "../components/shared";
+import {
+  type AllLocationsHistoryRecord,
+  type GroupMenuSuggestionsRecord,
+} from "../features";
+import { restaurantListQueryKeys } from "../features/store/restaurantListQuery";
 import {
   getDefaultRestaurantList,
   getRestaurantListDetail,
   type RestaurantListDetailRecord,
-} from '../features/store/restaurantListsStore';
-import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
-import { getGroupMenuSuggestionsForRestaurant } from '../features/store/restaurantsStore';
-import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
-import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
-import type { MenuItemRecord } from '../features/store/featureStore';
-import { buildVisitRestaurantDescription } from '../lib/visitRestaurantSearch';
-import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, ListItem, Text } from '../ui';
+} from "../features/store/restaurantListsStore";
+import { restaurantsQueryKeys } from "../features/store/restaurantsQuery";
+import { getGroupMenuSuggestionsForRestaurant } from "../features/store/restaurantsStore";
+import { useFoodDiscoveryRestaurantDetailReadModel } from "../features/store/useFoodDiscoveryMapReadModel";
+import { useRestaurantListWrites } from "../features/store/useRestaurantListWrites";
+import type { MenuItemRecord } from "../features/store/featureStore";
+import { buildVisitRestaurantDescription } from "../lib/visitRestaurantSearch";
+import type { RootStackParamList } from "../navigation/RootNavigator";
+import { useConnectivity } from "../providers/ConnectivityProvider";
+import { createThemedStyles, useTheme } from "../theme";
+import { Button, Card, ListItem, Text } from "../ui";
 
 type RestaurantDiscoveryRestaurantScreenProps = NativeStackScreenProps<
   RootStackParamList,
-  'RestaurantDiscoveryRestaurant'
+  "RestaurantDiscoveryRestaurant"
 >;
-type RestaurantDetailScope = 'location' | 'allLocations';
+type RestaurantDetailScope = "location" | "allLocations";
 
-const RESTAURANT_DETAIL_SCOPE_OPTIONS: readonly SegmentedControlOption<RestaurantDetailScope>[] = [
-  { label: 'This Location', value: 'location' },
-  { label: 'All Locations', value: 'allLocations' },
-];
+const RESTAURANT_DETAIL_SCOPE_OPTIONS: readonly SegmentedControlOption<RestaurantDetailScope>[] =
+  [
+    { label: "This Location", value: "location" },
+    { label: "All Locations", value: "allLocations" },
+  ];
 
 const useStyles = createThemedStyles((theme) => ({
   card: {
     gap: theme.spacing.sm,
   },
   iconTitle: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: theme.spacing.xs,
   },
   itemDescription: {
     gap: theme.spacing.xxs,
   },
   itemMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.xs,
   },
   menuItemListItem: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
+    backgroundColor: "transparent",
+    borderColor: "transparent",
     borderRadius: 0,
     paddingHorizontal: 0,
   },
@@ -83,8 +87,8 @@ const useStyles = createThemedStyles((theme) => ({
     height: 1,
   },
   summaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm,
   },
 }));
@@ -98,23 +102,29 @@ function addQueuedMenuItemBookmarkToDefaultListDetail(
   },
 ): RestaurantListDetailRecord {
   const currentItems = currentDetail?.items ?? [];
-  const existingRestaurantItem = currentItems.find((item) => item.restaurantId === input.restaurant.id);
+  const existingRestaurantItem = currentItems.find(
+    (item) => item.restaurantId === input.restaurant.id,
+  );
   if (
     existingRestaurantItem?.bookmarkedItems.some(
       (bookmarkedItem) => bookmarkedItem.userFoodItemId === input.menuItem.id,
     )
   ) {
-    return currentDetail ?? {
-      list: null,
-      items: currentItems,
-      bookmarkState: { savedListIdsByBookmarkLookupId: {} },
-      photoPreviews: [],
-      viewerLists: [],
-    };
+    return (
+      currentDetail ?? {
+        list: null,
+        items: currentItems,
+        bookmarkState: { savedListIdsByBookmarkLookupId: {} },
+        photoPreviews: [],
+        viewerLists: [],
+      }
+    );
   }
 
   const createdAt = new Date().toISOString();
-  const listItemId = existingRestaurantItem?.id ?? `queued:want-to-try-restaurant:${input.restaurant.id}`;
+  const listItemId =
+    existingRestaurantItem?.id ??
+    `queued:want-to-try-restaurant:${input.restaurant.id}`;
   const queuedBookmarkedItem = {
     id: `queued:want-to-try-menu-item:${input.menuItem.id}`,
     listItemId,
@@ -154,14 +164,16 @@ function addQueuedMenuItemBookmarkToDefaultListDetail(
   return {
     list: currentDetail?.list ?? null,
     items: nextItems,
-    bookmarkState: currentDetail?.bookmarkState ?? { savedListIdsByBookmarkLookupId: {} },
+    bookmarkState: currentDetail?.bookmarkState ?? {
+      savedListIdsByBookmarkLookupId: {},
+    },
     photoPreviews: currentDetail?.photoPreviews ?? [],
     viewerLists: currentDetail?.viewerLists ?? [],
   };
 }
 
 function buildRestaurantFromRoute(
-  params: RootStackParamList['RestaurantDiscoveryRestaurant'],
+  params: RootStackParamList["RestaurantDiscoveryRestaurant"],
 ) {
   return {
     city: params.city,
@@ -184,16 +196,23 @@ function formatCount(value: number, singular: string, plural = `${singular}s`) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
-function buildLatestLocationLabel(item: AllLocationsHistoryRecord['items'][number]) {
-  const parts = [item.latestRestaurantName, item.latestRestaurantLocation].filter(Boolean);
+function buildLatestLocationLabel(
+  item: AllLocationsHistoryRecord["items"][number],
+) {
+  const parts = [
+    item.latestRestaurantName,
+    item.latestRestaurantLocation,
+  ].filter(Boolean);
   if (parts.length === 0) {
     return undefined;
   }
 
-  return `Latest at ${parts.join(' • ')}`;
+  return `Latest at ${parts.join(" • ")}`;
 }
 
-function buildEmptyGroupMenuSuggestions(restaurantId: string): GroupMenuSuggestionsRecord {
+function buildEmptyGroupMenuSuggestions(
+  restaurantId: string,
+): GroupMenuSuggestionsRecord {
   return {
     restaurantId,
     suggestions: [],
@@ -209,26 +228,40 @@ export function RestaurantDiscoveryRestaurantScreen({
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
   const restaurantListWrites = useRestaurantListWrites();
-  const restaurant = useMemo(() => buildRestaurantFromRoute(route.params), [route.params]);
-  const [detailScope, setDetailScope] = useState<RestaurantDetailScope>('location');
-  const [locallySavedMenuItemIds, setLocallySavedMenuItemIds] = useState<Set<string>>(() => new Set());
-  const [locallyRemovedMenuItemIds, setLocallyRemovedMenuItemIds] = useState<Set<string>>(() => new Set());
-  const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
+  const restaurant = useMemo(
+    () => buildRestaurantFromRoute(route.params),
+    [route.params],
+  );
+  const [detailScope, setDetailScope] =
+    useState<RestaurantDetailScope>("location");
+  const [locallySavedMenuItemIds, setLocallySavedMenuItemIds] = useState<
+    Set<string>
+  >(() => new Set());
+  const [locallyRemovedMenuItemIds, setLocallyRemovedMenuItemIds] = useState<
+    Set<string>
+  >(() => new Set());
+  const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<
+    string | null
+  >(null);
   const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const restaurantDescription = useMemo(() => {
     const parts = [buildVisitRestaurantDescription(restaurant, null)];
     if (restaurant.userVisitCount && restaurant.userVisitCount > 0) {
-      parts.push(`You: ${restaurant.userVisitCount} ${restaurant.userVisitCount === 1 ? 'visit' : 'visits'}`);
+      parts.push(
+        `You: ${restaurant.userVisitCount} ${restaurant.userVisitCount === 1 ? "visit" : "visits"}`,
+      );
     }
     if (restaurant.friendCount && restaurant.friendCount > 0) {
-      parts.push(`Friends: ${restaurant.friendCount} ${restaurant.friendCount === 1 ? 'friend' : 'friends'}`);
+      parts.push(
+        `Friends: ${restaurant.friendCount} ${restaurant.friendCount === 1 ? "friend" : "friends"}`,
+      );
     }
     if (restaurant.isGooglePlace) {
-      parts.push('Google place');
+      parts.push("Google place");
     } else if (restaurant.visibility) {
       parts.push(restaurant.visibility);
     }
-    return parts.filter(Boolean).join(' • ');
+    return parts.filter(Boolean).join(" • ");
   }, [restaurant]);
 
   const groupMenuSuggestionsQuery = useQuery({
@@ -265,8 +298,9 @@ export function RestaurantDiscoveryRestaurantScreen({
     enabled: Boolean(defaultListId),
     queryKey: defaultListId
       ? restaurantListQueryKeys.detail(defaultListId)
-      : restaurantListQueryKeys.detail('__default_list_pending__'),
-    queryFn: ({ signal }) => defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
+      : restaurantListQueryKeys.detail("__default_list_pending__"),
+    queryFn: ({ signal }) =>
+      defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
   });
   const savedMenuItemIds = useMemo(() => {
     const ids = new Set(locallySavedMenuItemIds);
@@ -287,7 +321,12 @@ export function RestaurantDiscoveryRestaurantScreen({
       ids.delete(menuItemId);
     }
     return ids;
-  }, [defaultListDetailQuery.data?.items, locallyRemovedMenuItemIds, locallySavedMenuItemIds, restaurant.id]);
+  }, [
+    defaultListDetailQuery.data?.items,
+    locallyRemovedMenuItemIds,
+    locallySavedMenuItemIds,
+    restaurant.id,
+  ]);
 
   const allLocationsHistory = restaurantDetail.allLocationsHistory;
   const relatedMenuSuggestions = restaurantDetail.relatedMenuSuggestions;
@@ -296,10 +335,12 @@ export function RestaurantDiscoveryRestaurantScreen({
     [restaurantDetail.menuItems],
   );
   const showRelatedMenuSuggestions =
-    detailScope === 'location' &&
+    detailScope === "location" &&
     !restaurantDetail.menuCatalogLoading &&
     !restaurantDetail.menuCatalogErrorMessage &&
-    (groupMenuSuggestionsQuery.isLoading || groupMenuSuggestionsQuery.isError || relatedMenuSuggestions.length > 0);
+    (groupMenuSuggestionsQuery.isLoading ||
+      groupMenuSuggestionsQuery.isError ||
+      relatedMenuSuggestions.length > 0);
 
   async function handleToggleMenuItemWantToTry(menuItem: MenuItemRecord) {
     if (savedMenuItemIds.has(menuItem.id)) {
@@ -309,7 +350,9 @@ export function RestaurantDiscoveryRestaurantScreen({
 
       setBookmarkErrorMessage(null);
       setIsBookmarkSubmitting(true);
-      setLocallyRemovedMenuItemIds((current) => new Set(current).add(menuItem.id));
+      setLocallyRemovedMenuItemIds((current) =>
+        new Set(current).add(menuItem.id),
+      );
       setLocallySavedMenuItemIds((current) => {
         const next = new Set(current);
         next.delete(menuItem.id);
@@ -317,16 +360,18 @@ export function RestaurantDiscoveryRestaurantScreen({
       });
 
       try {
-        const result = await restaurantListWrites.removeBookmarkFromDefaultList({
-          bookmark: {
-            restaurantId: restaurant.id,
-            menuItemId: menuItem.id,
+        const result = await restaurantListWrites.removeBookmarkFromDefaultList(
+          {
+            bookmark: {
+              restaurantId: restaurant.id,
+              menuItemId: menuItem.id,
+            },
+            defaultListId,
+            sourceListId: defaultListId,
           },
-          defaultListId,
-          sourceListId: defaultListId,
-        });
+        );
 
-        if (result.status === 'completed') {
+        if (result.status === "completed") {
           void defaultListQuery.refetch();
           void defaultListDetailQuery.refetch();
         }
@@ -336,7 +381,9 @@ export function RestaurantDiscoveryRestaurantScreen({
           next.delete(menuItem.id);
           return next;
         });
-        setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not remove bookmark.');
+        setBookmarkErrorMessage(
+          error instanceof Error ? error.message : "Could not remove bookmark.",
+        );
       } finally {
         setIsBookmarkSubmitting(false);
       }
@@ -359,10 +406,10 @@ export function RestaurantDiscoveryRestaurantScreen({
           menuItemId: menuItem.id,
         },
         defaultListId,
-        sourceListId: defaultListId ?? 'default',
+        sourceListId: defaultListId ?? "default",
       });
 
-      if (result.status === 'completed') {
+      if (result.status === "completed") {
         void defaultListQuery.refetch();
         if (defaultListId) {
           void defaultListDetailQuery.refetch();
@@ -370,11 +417,12 @@ export function RestaurantDiscoveryRestaurantScreen({
       } else if (defaultListId) {
         queryClient.setQueryData<RestaurantListDetailRecord | null | undefined>(
           restaurantListQueryKeys.detail(defaultListId),
-          (currentDetail) => addQueuedMenuItemBookmarkToDefaultListDetail(currentDetail, {
-            listId: defaultListId,
-            menuItem,
-            restaurant,
-          }),
+          (currentDetail) =>
+            addQueuedMenuItemBookmarkToDefaultListDetail(currentDetail, {
+              listId: defaultListId,
+              menuItem,
+              restaurant,
+            }),
         );
       }
     } catch (error) {
@@ -383,7 +431,9 @@ export function RestaurantDiscoveryRestaurantScreen({
         next.delete(menuItem.id);
         return next;
       });
-      setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not save bookmark.');
+      setBookmarkErrorMessage(
+        error instanceof Error ? error.message : "Could not save bookmark.",
+      );
     } finally {
       setIsBookmarkSubmitting(false);
     }
@@ -396,33 +446,46 @@ export function RestaurantDiscoveryRestaurantScreen({
       }}
       subtitle={restaurantDescription}
       title={restaurant.name}
-      rightAccessory={<VisitRestaurantOptionTrailing restaurant={restaurant} selected={false} />}
+      rightAccessory={
+        <VisitRestaurantOptionTrailing
+          restaurant={restaurant}
+          selected={false}
+        />
+      }
       testID="restaurant-discovery-restaurant-screen"
     >
       <Card style={styles.card}>
         <View style={styles.iconTitle}>
-          <Ionicons color={theme.colors.text.brand} name="flash-outline" size={18} />
+          <Ionicons
+            color={theme.colors.text.brand}
+            name="flash-outline"
+            size={18}
+          />
           <Text variant="label">Actions</Text>
         </View>
         <Button
           disabled={!isOnline}
           label="Scan Menu Items"
           onPress={() => {
-            navigation.navigate('ProcessPhotos', {
+            navigation.navigate("ProcessPhotos", {
               autoStartSourcePicker: false,
-              mode: 'menu_scan',
+              mode: "menu_scan",
               restaurantId: restaurant.id,
               restaurantName: restaurant.name,
-              returnTo: 'RestaurantDiscoveryRestaurant',
+              returnTo: "RestaurantDiscoveryRestaurant",
               returnToRestaurantDiscoveryRestaurantParams: route.params,
             });
           }}
         />
-        {!isOnline ? <Text tone="warning">Menu scanning requires internet connection.</Text> : null}
+        {!isOnline ? (
+          <Text tone="warning">
+            Menu scanning requires internet connection.
+          </Text>
+        ) : null}
         <Button
           label="Track Visit With This Restaurant"
           onPress={() => {
-            navigation.navigate('CreateVisit', {
+            navigation.navigate("CreateVisit", {
               preselectedRestaurantId: restaurant.id,
               preselectedRestaurantName: restaurant.name,
             });
@@ -439,14 +502,21 @@ export function RestaurantDiscoveryRestaurantScreen({
         />
       ) : null}
 
-      {detailScope === 'allLocations' && restaurantDetail.canShowAllLocations ? (
+      {detailScope === "allLocations" &&
+      restaurantDetail.canShowAllLocations ? (
         <Card style={styles.card}>
           <Text variant="label">Ordered Across Locations</Text>
           {allLocationsHistory ? (
             <View style={styles.summaryRow}>
-              <Text tone="secondary">{formatCount(allLocationsHistory.visitCount, 'ordered visit')}</Text>
-              <Text tone="secondary">{formatCount(allLocationsHistory.locationCount, 'location')}</Text>
-              <Text tone="secondary">{formatCount(allLocationsHistory.itemCount, 'item')}</Text>
+              <Text tone="secondary">
+                {formatCount(allLocationsHistory.visitCount, "ordered visit")}
+              </Text>
+              <Text tone="secondary">
+                {formatCount(allLocationsHistory.locationCount, "location")}
+              </Text>
+              <Text tone="secondary">
+                {formatCount(allLocationsHistory.itemCount, "item")}
+              </Text>
             </View>
           ) : null}
           {restaurantDetail.allLocationsHistoryLoading ? (
@@ -469,7 +539,9 @@ export function RestaurantDiscoveryRestaurantScreen({
                   description={
                     <View style={styles.itemDescription}>
                       <View style={styles.itemMetaRow}>
-                        <Text tone="secondary">{formatCount(item.orderCount, 'order')}</Text>
+                        <Text tone="secondary">
+                          {formatCount(item.orderCount, "order")}
+                        </Text>
                         {item.latestRating > 0 ? (
                           <RatingPill rating={item.latestRating} />
                         ) : (
@@ -477,7 +549,11 @@ export function RestaurantDiscoveryRestaurantScreen({
                         )}
                       </View>
                       {latestLocationLabel ? (
-                        <Text numberOfLines={1} tone="secondary" variant="bodySm">
+                        <Text
+                          numberOfLines={1}
+                          tone="secondary"
+                          variant="bodySm"
+                        >
                           {latestLocationLabel}
                         </Text>
                       ) : null}
@@ -517,7 +593,9 @@ export function RestaurantDiscoveryRestaurantScreen({
                   return null;
                 }
                 const isSaved = savedMenuItemIds.has(item.id);
-                const orderedHistoryLabel = row.meta.find((meta) => meta.label)?.label;
+                const orderedHistoryLabel = row.meta.find(
+                  (meta) => meta.label,
+                )?.label;
 
                 return (
                   <Fragment key={item.id}>
@@ -534,7 +612,9 @@ export function RestaurantDiscoveryRestaurantScreen({
                       trailing={
                         <WantToTryBookmarkButton
                           accessibilityLabel={
-                            isSaved ? `${row.name} is saved to Want to Try` : `Save ${row.name} to Want to Try`
+                            isSaved
+                              ? `${row.name} is saved to Want to Try`
+                              : `Save ${row.name} to Want to Try`
                           }
                           loading={isBookmarkSubmitting}
                           onPress={() => {
@@ -583,7 +663,8 @@ export function RestaurantDiscoveryRestaurantScreen({
           ) : (
             <View style={styles.menuItemList}>
               {relatedMenuSuggestions.map((suggestion, index) => {
-                const sourceRestaurantCount = suggestion.sourceRestaurantCount ?? 0;
+                const sourceRestaurantCount =
+                  suggestion.sourceRestaurantCount ?? 0;
                 const sourceItemCount = suggestion.sourceItemCount ?? 0;
 
                 return (
@@ -598,14 +679,11 @@ export function RestaurantDiscoveryRestaurantScreen({
                           ) : null}
                           <View style={styles.itemMetaRow}>
                             <Text tone="secondary" variant="bodySm">
-                              Suggested from {sourceRestaurantCount}{' '}
-                              {sourceRestaurantCount === 1 ? 'related location' : 'related locations'}
+                              Suggested from {sourceRestaurantCount}{" "}
+                              {sourceRestaurantCount === 1
+                                ? "related location"
+                                : "related locations"}
                             </Text>
-                            {sourceItemCount > 0 ? (
-                              <Text tone="secondary" variant="bodySm">
-                                {sourceItemCount} {sourceItemCount === 1 ? 'trusted item' : 'trusted items'}
-                              </Text>
-                            ) : null}
                           </View>
                           <Text tone="secondary" variant="bodySm">
                             Starts a visit here with this item preselected.
@@ -613,18 +691,25 @@ export function RestaurantDiscoveryRestaurantScreen({
                         </View>
                       }
                       onPress={() => {
-                        navigation.navigate('CreateVisit', {
+                        navigation.navigate("CreateVisit", {
                           preselectedRestaurantId: restaurant.id,
                           preselectedRestaurantName: restaurant.name,
                           preselectedMenuItemId: suggestion.id,
                           preselectedMenuItemName: suggestion.name,
-                          preselectedMenuItemSuggestionSource: suggestion.suggestionSource,
+                          preselectedMenuItemSuggestionSource:
+                            suggestion.suggestionSource,
                         });
                       }}
                       style={styles.menuSuggestionRow}
                       testID={`restaurant-discovery-related-menu-suggestion-${index}`}
                       title={suggestion.name}
-                      trailing={<Ionicons color={theme.colors.text.brand} name="chevron-forward" size={18} />}
+                      trailing={
+                        <Ionicons
+                          color={theme.colors.text.brand}
+                          name="chevron-forward"
+                          size={18}
+                        />
+                      }
                     />
                     {index < relatedMenuSuggestions.length - 1 ? (
                       <View style={styles.menuItemSeparator} />

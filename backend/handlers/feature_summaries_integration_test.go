@@ -2419,6 +2419,114 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 }
 
+func TestRestaurantMenuItemsEndpointSuppressesApprovedCatalogContributions(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	admin, _ := createAuthUser(t, server.app, true, false)
+	contributor, contributorToken := createAuthUser(t, server.app, false, false)
+	friend, friendToken := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, contributor.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Promotion Ramen",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+		"createdBy":  contributor.Id,
+	})
+	approvedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     restaurant.Id,
+		"name":           "Spicy Miso Ramen",
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	linkedContribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     restaurant.Id,
+		"name":           "Spicy Miso Ramen",
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+		"promotedTo":     approvedItem.Id,
+	})
+	sameNameContribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     restaurant.Id,
+		"name":           " spicy miso ramen ",
+		"createdBy":      contributor.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+	privateSameNameContribution := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant":     restaurant.Id,
+		"name":           "SPICY MISO RAMEN",
+		"createdBy":      contributor.Id,
+		"visibility":     "private",
+		"approvalStatus": "unreviewed",
+	})
+	visibleDifferentItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "House Salad",
+		"createdBy":  contributor.Id,
+		"visibility": "friends",
+	})
+
+	for _, testCase := range []struct {
+		name        string
+		token       string
+		hiddenIDs   []string
+		expectedIDs []string
+	}{
+		{
+			name:        "contributor",
+			token:       contributorToken,
+			hiddenIDs:   []string{linkedContribution.Id, sameNameContribution.Id, privateSameNameContribution.Id},
+			expectedIDs: []string{approvedItem.Id, visibleDifferentItem.Id},
+		},
+		{
+			name:        "friend",
+			token:       friendToken,
+			hiddenIDs:   []string{linkedContribution.Id, sameNameContribution.Id, privateSameNameContribution.Id},
+			expectedIDs: []string{approvedItem.Id, visibleDifferentItem.Id},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodGet,
+				fmt.Sprintf("/api/restaurants/%s/menu-items", restaurant.Id),
+				testCase.token,
+				"",
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+			}
+
+			var payload []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("failed to parse menu item response JSON: %v; body=%s", err, response.Body.String())
+			}
+
+			itemsByID := map[string]string{}
+			for _, item := range payload {
+				itemsByID[item.ID] = item.Name
+			}
+			for _, expectedID := range testCase.expectedIDs {
+				if _, exists := itemsByID[expectedID]; !exists {
+					t.Fatalf("expected menu item %s in payload, got %#v", expectedID, payload)
+				}
+			}
+			for _, hiddenID := range testCase.hiddenIDs {
+				if _, exists := itemsByID[hiddenID]; exists {
+					t.Fatalf("expected contribution %s to be suppressed, got %#v", hiddenID, payload)
+				}
+			}
+		})
+	}
+}
+
 func TestGroupMenuSuggestionsEndpointRequiresAccessibleRestaurant(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	owner, _ := createAuthUser(t, server.app, false, false)

@@ -1,17 +1,17 @@
-import { Ionicons } from '../../ui/AppIcon';
-import { useMemo } from 'react';
-import { Pressable, View } from 'react-native';
+import { Ionicons } from "../../ui/AppIcon";
+import { useMemo } from "react";
+import { Pressable, View } from "react-native";
 
-import { createThemedStyles, useTheme } from '../../theme';
-import { createPlatformShadow } from '../../theme/shadows';
-import { Card, Input, Text } from '../../ui';
-import { EmptyState } from './EmptyState';
-import { LoadingState } from './LoadingState';
-import { PageErrorToast } from './PageErrorToast';
-import { RatingPill } from './RatingPill';
-import { VisitMenuItemOptionRow } from './VisitMenuItemOptionRow';
+import { createThemedStyles, useTheme } from "../../theme";
+import { createPlatformShadow } from "../../theme/shadows";
+import { Card, Input, Text } from "../../ui";
+import { EmptyState } from "./EmptyState";
+import { LoadingState } from "./LoadingState";
+import { PageErrorToast } from "./PageErrorToast";
+import { RatingPill } from "./RatingPill";
+import { VisitMenuItemOptionRow } from "./VisitMenuItemOptionRow";
 
-type MenuItemVisibility = 'private' | 'friends' | 'public';
+type MenuItemVisibility = "private" | "friends" | "public";
 
 export interface RestaurantMenuItemPickerItem {
   id: string;
@@ -27,9 +27,9 @@ export interface RestaurantMenuItemPickerItem {
 export interface RestaurantMenuItemPickerCrossLocationItem {
   id: string;
   name: string;
-  source?: 'relatedLocationSuggestion' | 'allLocationsHistory';
+  source?: "relatedLocationSuggestion" | "allLocationsHistory";
   suggestionSource?: {
-    type: 'groupMenuSuggestion';
+    type: "groupMenuSuggestion";
     sourceMenuItemId: string;
     sourceRestaurantId?: string;
     restaurantGroupId?: string;
@@ -43,7 +43,9 @@ export interface RestaurantMenuItemPickerCrossLocationItem {
   sourceRestaurantCount?: number;
 }
 
-export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuItemPickerItem> {
+export interface RestaurantMenuItemPickerProps<
+  TMenuItem extends RestaurantMenuItemPickerItem,
+> {
   addManualDisabled?: boolean;
   addManualLabel?: string;
   currentUserId?: string;
@@ -53,7 +55,9 @@ export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuI
   crossLocationItems?: RestaurantMenuItemPickerCrossLocationItem[];
   crossLocationLabel?: string;
   crossLocationLoadingItemId?: string | null;
-  isCrossLocationItemSelected?: (item: RestaurantMenuItemPickerCrossLocationItem) => boolean;
+  isCrossLocationItemSelected?: (
+    item: RestaurantMenuItemPickerCrossLocationItem,
+  ) => boolean;
   isItemSelected: (item: TMenuItem) => boolean;
   isLoading: boolean;
   isOnline: boolean;
@@ -65,7 +69,9 @@ export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuI
   onAddManual: () => void;
   onEditItem?: (item: TMenuItem) => void;
   onRequestMenuReview: () => void;
-  onToggleCrossLocationItem?: (item: RestaurantMenuItemPickerCrossLocationItem) => void;
+  onToggleCrossLocationItem?: (
+    item: RestaurantMenuItemPickerCrossLocationItem,
+  ) => void;
   onRetry: () => void;
   onScanMenuPhoto: () => void;
   onSearchQueryChange: (value: string) => void;
@@ -81,23 +87,23 @@ export interface RestaurantMenuItemPickerProps<TMenuItem extends RestaurantMenuI
 const useStyles = createThemedStyles((theme) => ({
   stepContainer: {
     gap: theme.spacing.md,
-    position: 'relative',
+    position: "relative",
   },
   tipDismissOverlay: {
     bottom: 0,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
     zIndex: 20,
   },
   tipIconButton: {
-    alignItems: 'center',
+    alignItems: "center",
     borderColor: theme.colors.status.warningBorder,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     height: 28,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 28,
   },
   tipPopover: {
@@ -109,7 +115,7 @@ const useStyles = createThemedStyles((theme) => ({
     maxWidth: 320,
     minWidth: 230,
     padding: theme.spacing.md,
-    position: 'absolute',
+    position: "absolute",
     right: theme.spacing.md,
     ...createPlatformShadow({
       color: theme.colors.background.inverse,
@@ -127,29 +133,29 @@ const useStyles = createThemedStyles((theme) => ({
     borderLeftWidth: 2,
     borderTopWidth: 2,
     height: 14,
-    position: 'absolute',
+    position: "absolute",
     right: 12,
     top: -9,
-    transform: [{ rotate: '45deg' }],
+    transform: [{ rotate: "45deg" }],
     width: 14,
   },
   tipPopoverHeaderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   tipPopoverTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: theme.spacing.xxs,
   },
   tipPopoverClose: {
-    alignItems: 'center',
+    alignItems: "center",
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     height: 22,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 22,
   },
   quickActionsCard: {
@@ -157,30 +163,30 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.strong,
     borderWidth: 1,
     gap: theme.spacing.xs,
-    overflow: 'visible',
-    position: 'relative',
+    overflow: "visible",
+    position: "relative",
   },
   quickActionsCardRaised: {
     elevation: 12,
     zIndex: 30,
   },
   quickActionsPrimaryRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: theme.spacing.xs,
   },
   quickActionsPrimaryButton: {
     flex: 1,
   },
   menuActionButton: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: theme.colors.button.secondaryBg,
     borderColor: theme.colors.button.secondaryBorder,
     borderRadius: theme.radii.md,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.xs,
-    justifyContent: 'center',
+    justifyContent: "center",
     minHeight: theme.sizes.secondaryButtonHeight,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
@@ -192,24 +198,24 @@ const useStyles = createThemedStyles((theme) => ({
     marginBottom: theme.spacing.xs,
   },
   menuItemsHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: theme.spacing.xs,
   },
   menuItemsHeaderLeft: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     flexShrink: 1,
     gap: theme.spacing.xs,
   },
   reviewBadge: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: theme.colors.background.surface,
     borderColor: theme.colors.border.default,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.xxs,
     minHeight: 24,
     paddingHorizontal: theme.spacing.xs,
@@ -219,8 +225,8 @@ const useStyles = createThemedStyles((theme) => ({
     opacity: 0.75,
   },
   menuItemDividerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: theme.spacing.xs,
     marginVertical: theme.spacing.xs,
   },
@@ -234,9 +240,9 @@ const useStyles = createThemedStyles((theme) => ({
     marginTop: theme.spacing.sm,
   },
   crossLocationHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   crossLocationRow: {
     backgroundColor: theme.colors.background.surface,
@@ -251,31 +257,33 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.status.successBorder,
   },
   crossLocationTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: theme.spacing.xs,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   crossLocationTitle: {
     flex: 1,
   },
   crossLocationMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.xs,
   },
 }));
 
-export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPickerItem>({
+export function RestaurantMenuItemPicker<
+  TMenuItem extends RestaurantMenuItemPickerItem,
+>({
   addManualDisabled = false,
   addManualLabel = "Can't find it? Add manually",
-  currentUserId = '',
+  currentUserId = "",
   crossLocationDisabled = false,
   crossLocationItems = [],
-  crossLocationLabel = 'Ordered at matching locations',
+  crossLocationLabel = "Ordered at matching locations",
   crossLocationLoadingItemId = null,
-  emptyDescription = 'No menu items yet. Scan a menu or add one manually.',
+  emptyDescription = "No menu items yet. Scan a menu or add one manually.",
   hasError,
   hasPendingMenuReview = false,
   isCrossLocationItemSelected = () => false,
@@ -306,33 +314,39 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const displayedItems = useMemo(() => {
     const filteredItems = normalizedQuery
-      ? items.filter((item) => item.name.toLowerCase().includes(normalizedQuery))
+      ? items.filter((item) =>
+          item.name.toLowerCase().includes(normalizedQuery),
+        )
       : items;
     const selectedItems = filteredItems.filter((item) => isItemSelected(item));
-    const unselectedItems = filteredItems.filter((item) => !isItemSelected(item));
+    const unselectedItems = filteredItems.filter(
+      (item) => !isItemSelected(item),
+    );
     return [...selectedItems, ...unselectedItems];
   }, [isItemSelected, items, normalizedQuery]);
-  const firstUnselectedIndex = displayedItems.findIndex((item) => !isItemSelected(item));
+  const firstUnselectedIndex = displayedItems.findIndex(
+    (item) => !isItemSelected(item),
+  );
   const hasCrossLocationItems = crossLocationItems.length > 0;
   const relatedLocationItems = crossLocationItems.filter(
-    (item) => item.source === 'relatedLocationSuggestion',
+    (item) => item.source === "relatedLocationSuggestion",
   );
   const allLocationsHistoryItems = crossLocationItems.filter(
-    (item) => item.source !== 'relatedLocationSuggestion',
+    (item) => item.source !== "relatedLocationSuggestion",
   );
   const reviewText = hasPendingMenuReview
-    ? 'Review pending'
+    ? "Review pending"
     : isReviewSubmitted
-      ? 'Review requested'
-      : 'Menu incorrect?';
+      ? "Review requested"
+      : "Menu incorrect?";
   const crossLocationSections = [
     {
-      key: 'relatedLocationSuggestion',
-      label: 'Related location shortcuts',
+      key: "relatedLocationSuggestion",
+      label: "Related location shortcuts",
       items: relatedLocationItems,
     },
     {
-      key: 'allLocationsHistory',
+      key: "allLocationsHistory",
       label: crossLocationLabel,
       items: allLocationsHistoryItems,
     },
@@ -349,21 +363,30 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
         />
       ) : null}
 
-      <Card style={[styles.quickActionsCard, isTipVisible ? styles.quickActionsCardRaised : null]}>
+      <Card
+        style={[
+          styles.quickActionsCard,
+          isTipVisible ? styles.quickActionsCardRaised : null,
+        ]}
+      >
         <View style={styles.quickActionsPrimaryRow}>
           <Pressable
             accessibilityRole="button"
             disabled={scanDisabled}
             onPress={onScanMenuPhoto}
-            style={[styles.menuActionButton, styles.quickActionsPrimaryButton, scanDisabled ? { opacity: 0.55 } : null]}
+            style={[
+              styles.menuActionButton,
+              styles.quickActionsPrimaryButton,
+              scanDisabled ? { opacity: 0.55 } : null,
+            ]}
             testID={`${testIDPrefix}-scan-menu-photo-button`}
           >
             <Ionicons
               color={theme.colors.text.primary}
-              name={isOnline ? 'camera-outline' : 'cloud-offline-outline'}
+              name={isOnline ? "camera-outline" : "cloud-offline-outline"}
               size={16}
             />
-            <Text>{isOnline ? 'Scan Menu Photo' : 'Scan Menu (Offline)'}</Text>
+            <Text>{isOnline ? "Scan Menu Photo" : "Scan Menu (Offline)"}</Text>
           </Pressable>
           <Pressable
             accessibilityLabel="Show item entry tip"
@@ -373,7 +396,11 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
             style={styles.tipIconButton}
             testID={`${testIDPrefix}-tip-button`}
           >
-            <Ionicons color={theme.colors.text.warning} name="bulb-outline" size={14} />
+            <Ionicons
+              color={theme.colors.text.warning}
+              name="bulb-outline"
+              size={14}
+            />
           </Pressable>
         </View>
 
@@ -388,7 +415,11 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
             <View style={styles.tipPopoverArrow} />
             <View style={styles.tipPopoverHeaderRow}>
               <View style={styles.tipPopoverTitleRow}>
-                <Ionicons color={theme.colors.text.warning} name="bulb-outline" size={14} />
+                <Ionicons
+                  color={theme.colors.text.warning}
+                  name="bulb-outline"
+                  size={14}
+                />
                 <Text variant="label">Tip</Text>
               </View>
               <Pressable
@@ -399,11 +430,16 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
                 style={styles.tipPopoverClose}
                 testID={`${testIDPrefix}-tip-close-button`}
               >
-                <Ionicons color={theme.colors.text.secondary} name="close" size={12} />
+                <Ionicons
+                  color={theme.colors.text.secondary}
+                  name="close"
+                  size={12}
+                />
               </Pressable>
             </View>
             <Text tone="secondary" variant="bodySm">
-              Use "Scan Menu Photo" for faster item entry, or add an item manually if it is missing.
+              Use "Scan Menu Photo" for faster item entry, or add an item
+              manually if it is missing.
             </Text>
           </Pressable>
         ) : null}
@@ -412,10 +448,17 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
           accessibilityRole="button"
           disabled={addManualDisabled}
           onPress={onAddManual}
-          style={[styles.menuActionButton, addManualDisabled ? { opacity: 0.55 } : null]}
+          style={[
+            styles.menuActionButton,
+            addManualDisabled ? { opacity: 0.55 } : null,
+          ]}
           testID={`${testIDPrefix}-add-menu-item-button`}
         >
-          <Ionicons color={theme.colors.text.primary} name="add-outline" size={16} />
+          <Ionicons
+            color={theme.colors.text.primary}
+            name="add-outline"
+            size={16}
+          />
           <Text>{addManualLabel}</Text>
         </Pressable>
       </Card>
@@ -428,7 +471,10 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
               accessibilityRole="button"
               disabled={isReviewDisabled}
               onPress={onRequestMenuReview}
-              style={[styles.reviewBadge, isReviewDisabled ? styles.reviewBadgeDisabled : null]}
+              style={[
+                styles.reviewBadge,
+                isReviewDisabled ? styles.reviewBadgeDisabled : null,
+              ]}
             >
               <Ionicons
                 color={
@@ -438,13 +484,23 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
                       ? theme.colors.text.success
                       : theme.colors.text.secondary
                 }
-                name={isReviewSubmitted ? 'checkmark-circle-outline' : 'flag-outline'}
+                name={
+                  isReviewSubmitted
+                    ? "checkmark-circle-outline"
+                    : "flag-outline"
+                }
                 size={12}
               />
               <Text
                 ellipsizeMode="tail"
                 numberOfLines={1}
-                tone={hasPendingMenuReview ? 'warning' : isReviewSubmitted ? 'success' : 'secondary'}
+                tone={
+                  hasPendingMenuReview
+                    ? "warning"
+                    : isReviewSubmitted
+                      ? "success"
+                      : "secondary"
+                }
                 variant="bodySm"
               >
                 {reviewText}
@@ -475,7 +531,11 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
           />
         ) : displayedItems.length === 0 && !hasCrossLocationItems ? (
           <EmptyState
-            description={searchQuery.trim() ? 'No items found. Try another search or add manually.' : emptyDescription}
+            description={
+              searchQuery.trim()
+                ? "No items found. Try another search or add manually."
+                : emptyDescription
+            }
             title="No items available"
           />
         ) : displayedItems.length > 0 ? (
@@ -496,10 +556,18 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
                 <VisitMenuItemOptionRow
                   compactActions={isUserCreated}
                   description={item.description}
-                  editButtonTestID={isUserCreated ? `${testIDPrefix}-menu-item-edit-button-${index}` : undefined}
+                  editButtonTestID={
+                    isUserCreated
+                      ? `${testIDPrefix}-menu-item-edit-button-${index}`
+                      : undefined
+                  }
                   friendEatenCount={item.friendEatenCount}
                   name={item.name}
-                  onEditPress={isUserCreated && onEditItem ? () => onEditItem(item) : undefined}
+                  onEditPress={
+                    isUserCreated && onEditItem
+                      ? () => onEditItem(item)
+                      : undefined
+                  }
                   onPress={() => onToggleItem(item)}
                   optionTestID={`${testIDPrefix}-menu-item-option-${index}`}
                   selectButtonTestID={`${testIDPrefix}-menu-item-select-button-${index}`}
@@ -521,15 +589,22 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
                 </View>
                 {section.items.map((item, itemIndex) => {
                   const selected = isCrossLocationItemSelected(item);
-                  const isAllLocationsHistoryItem = item.source !== 'relatedLocationSuggestion';
+                  const isAllLocationsHistoryItem =
+                    item.source !== "relatedLocationSuggestion";
                   const rowDisabled =
                     (isAllLocationsHistoryItem && crossLocationDisabled) ||
-                    (crossLocationLoadingItemId !== null && crossLocationLoadingItemId !== item.id);
-                  const latestLocation = [item.latestRestaurantName, item.latestRestaurantLocation]
+                    (crossLocationLoadingItemId !== null &&
+                      crossLocationLoadingItemId !== item.id);
+                  const latestLocation = [
+                    item.latestRestaurantName,
+                    item.latestRestaurantLocation,
+                  ]
                     .filter(Boolean)
-                    .join(' • ');
+                    .join(" • ");
                   const optionIndex =
-                    sectionIndex === 0 ? itemIndex : relatedLocationItems.length + itemIndex;
+                    sectionIndex === 0
+                      ? itemIndex
+                      : relatedLocationItems.length + itemIndex;
                   const sourceRestaurantCount = item.sourceRestaurantCount ?? 0;
                   const sourceItemCount = item.sourceItemCount ?? 0;
                   const orderCount = item.orderCount ?? 0;
@@ -548,42 +623,45 @@ export function RestaurantMenuItemPicker<TMenuItem extends RestaurantMenuItemPic
                       testID={`${testIDPrefix}-cross-location-item-option-${optionIndex}`}
                     >
                       <View style={styles.crossLocationTitleRow}>
-                        <Text numberOfLines={1} style={styles.crossLocationTitle} variant="label">
+                        <Text
+                          numberOfLines={1}
+                          style={styles.crossLocationTitle}
+                          variant="label"
+                        >
                           {item.name}
                         </Text>
-                        {(item.latestRating ?? 0) > 0 ? <RatingPill rating={item.latestRating ?? 0} /> : null}
+                        {(item.latestRating ?? 0) > 0 ? (
+                          <RatingPill rating={item.latestRating ?? 0} />
+                        ) : null}
                       </View>
                       <View style={styles.crossLocationMetaRow}>
-                        {item.source === 'relatedLocationSuggestion' ? (
+                        {item.source === "relatedLocationSuggestion" ? (
                           <>
                             <Text tone="secondary" variant="bodySm">
-                              Suggested from {sourceRestaurantCount}{' '}
-                              {sourceRestaurantCount === 1 ? 'related location' : 'related locations'}
+                              Suggested from {sourceRestaurantCount}{" "}
+                              {sourceRestaurantCount === 1
+                                ? "related location"
+                                : "related locations"}
                             </Text>
-                            {sourceItemCount > 0 ? (
-                              <Text tone="secondary" variant="bodySm">
-                                {sourceItemCount} {sourceItemCount === 1 ? 'trusted item' : 'trusted items'}
-                              </Text>
-                            ) : null}
                           </>
                         ) : (
                           <>
                             <Text tone="secondary" variant="bodySm">
-                              {orderCount} {orderCount === 1 ? 'order' : 'orders'}
+                              {orderCount}{" "}
+                              {orderCount === 1 ? "order" : "orders"}
                             </Text>
                             {latestLocation ? (
-                              <Text numberOfLines={1} tone="secondary" variant="bodySm">
+                              <Text
+                                numberOfLines={1}
+                                tone="secondary"
+                                variant="bodySm"
+                              >
                                 Latest at {latestLocation}
                               </Text>
                             ) : null}
                           </>
                         )}
                       </View>
-                      {item.source === 'relatedLocationSuggestion' ? (
-                        <Text tone="secondary" variant="bodySm">
-                          Adds this name to your visit without changing this location's menu.
-                        </Text>
-                      ) : null}
                       {crossLocationLoadingItemId === item.id ? (
                         <Text tone="secondary" variant="bodySm">
                           Adding to this restaurant...

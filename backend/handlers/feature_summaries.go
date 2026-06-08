@@ -229,6 +229,9 @@ type menuItemSelectionSummary struct {
 	Updated          string `db:"updated" json:"updated,omitempty"`
 	UserEatenCount   int    `db:"userEatenCount" json:"userEatenCount,omitempty"`
 	FriendEatenCount int    `db:"friendEatenCount" json:"friendEatenCount,omitempty"`
+	ApprovalStatus   string `db:"approvalStatus" json:"-"`
+	CreatorIsAdmin   int    `db:"creatorIsAdmin" json:"-"`
+	PromotedTo       string `db:"promotedTo" json:"-"`
 }
 
 type restaurantOrderedItemSummary struct {
@@ -3622,9 +3625,13 @@ func listRestaurantMenuItemSummaries(
 			COALESCE(menu_items.isFromOCR, 0) AS [[isFromOCR]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
+			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
+			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
+			COALESCE(creator.isAdmin, 0) AS [[creatorIsAdmin]],
 			COALESCE(user_history.userEatenCount, 0) AS [[userEatenCount]],
 			COALESCE(friend_history.friendEatenCount, 0) AS [[friendEatenCount]]
 		FROM menu_items
+		LEFT JOIN users creator ON creator.id = menu_items.createdBy
 		LEFT JOIN (
 			SELECT
 				LOWER(TRIM(COALESCE(food_items.name, ''))) AS normalizedName,
@@ -3665,7 +3672,9 @@ func listRestaurantMenuItemSummaries(
 		return nil, apis.NewApiError(500, "failed to load menu items", err)
 	}
 
-	result := make([]menuItemSelectionSummary, 0, len(rows))
+	accessibleRows := make([]menuItemSelectionSummary, 0, len(rows))
+	accessibleIDs := map[string]struct{}{}
+	approvedNames := map[string]struct{}{}
 	for _, row := range rows {
 		record, err := app.FindRecordById("menu_items", row.ID)
 		if err != nil {
@@ -3682,10 +3691,64 @@ func listRestaurantMenuItemSummaries(
 		row.Description = strings.TrimSpace(row.Description)
 		row.CreatedBy = strings.TrimSpace(row.CreatedBy)
 		row.Visibility = strings.TrimSpace(row.Visibility)
-		result = append(result, row)
+		row.ApprovalStatus = strings.TrimSpace(row.ApprovalStatus)
+		row.PromotedTo = strings.TrimSpace(row.PromotedTo)
+
+		accessibleRows = append(accessibleRows, row)
+		accessibleIDs[row.ID] = struct{}{}
+
+		if row.ApprovalStatus == menuItemApprovalStatusApproved {
+			normalizedName := normalizeMenuItemName(row.Name)
+			if normalizedName != "" {
+				approvedNames[normalizedName] = struct{}{}
+			}
+		}
 	}
 
-	return result, nil
+	return suppressPromotedMenuItemContributionSummaries(accessibleRows, accessibleIDs, approvedNames), nil
+}
+
+func suppressPromotedMenuItemContributionSummaries(
+	rows []menuItemSelectionSummary,
+	accessibleIDs map[string]struct{},
+	approvedNames map[string]struct{},
+) []menuItemSelectionSummary {
+	result := make([]menuItemSelectionSummary, 0, len(rows))
+	for _, row := range rows {
+		if shouldSuppressMenuItemContributionSummary(row, accessibleIDs, approvedNames) {
+			continue
+		}
+		result = append(result, row)
+	}
+	return result
+}
+
+func shouldSuppressMenuItemContributionSummary(
+	row menuItemSelectionSummary,
+	accessibleIDs map[string]struct{},
+	approvedNames map[string]struct{},
+) bool {
+	if promotedTo := strings.TrimSpace(row.PromotedTo); promotedTo != "" {
+		if _, targetIsAccessible := accessibleIDs[promotedTo]; targetIsAccessible {
+			return true
+		}
+	}
+
+	normalizedName := normalizeMenuItemName(row.Name)
+	if normalizedName == "" {
+		return false
+	}
+	if _, hasApprovedName := approvedNames[normalizedName]; !hasApprovedName {
+		return false
+	}
+	if strings.TrimSpace(row.ApprovalStatus) == menuItemApprovalStatusApproved {
+		return false
+	}
+	if row.CreatorIsAdmin != 0 {
+		return false
+	}
+
+	return true
 }
 
 func listRestaurantOrderedItemSummaries(
