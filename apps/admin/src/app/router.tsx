@@ -47,6 +47,13 @@ const MenuImageInventoryDetailPage = lazy(() =>
     }),
   ),
 );
+const RestaurantGroupInventoryDetailPage = lazy(() =>
+  import('@/features/menu-inventory/RestaurantGroupInventoryDetailPage').then(
+    ({ RestaurantGroupInventoryDetailPage }) => ({
+      default: RestaurantGroupInventoryDetailPage,
+    }),
+  ),
+);
 const MenuReviewDetailPage = lazy(() =>
   import('@/features/menu-reviews/MenuReviewDetailPage').then(({ MenuReviewDetailPage }) => ({
     default: MenuReviewDetailPage,
@@ -135,6 +142,10 @@ const shellRoutes = {
         {
           path: '/menu-inventory/restaurants/:restaurantId',
           element: withRouteSuspense(<RestaurantInventoryDetailPage />),
+        },
+        {
+          path: '/menu-inventory/restaurant-groups/:groupId',
+          element: withRouteSuspense(<RestaurantGroupInventoryDetailPage />),
         },
         {
           path: '/menu-inventory/menu-images/:imageId',

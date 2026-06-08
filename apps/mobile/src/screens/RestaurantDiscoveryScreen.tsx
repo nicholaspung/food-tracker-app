@@ -2,7 +2,7 @@ import { Ionicons } from '../ui/AppIcon';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Alert, Linking, Pressable, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,7 +14,10 @@ import {
 } from '../components/maps';
 import {
   BackHeaderScreenScaffold,
+  ConfirmDestructiveModal,
   CurrentLocationButton,
+  ExpandableText,
+  FeatureListFooter,
   LoadingState,
   PageErrorToast,
   PhotoSourcePicker,
@@ -48,6 +51,7 @@ import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { calculateDistance } from '../lib/googlePlaces';
+import { formatDateToLocalDateString, formatLocalDateLabel } from '../lib/dateFormatting';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -56,11 +60,20 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { createPlatformShadow } from '../theme/shadows';
-import { Button, Card, Input, ListItem, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 import {
   createAIRequestCorrelation,
   resolveAIImageErrorProperties,
 } from '../features/store/aiImageObservability';
+import {
+  deleteStorefrontScanHistoryOption,
+  getStorefrontScanHistory,
+  removeStorefrontScanHistoryOption,
+  saveStorefrontScanHistoryEntry,
+  STOREFRONT_SCAN_HISTORY_PAGE_SIZE,
+  storefrontScanHistoryQueryKey,
+  type StorefrontScanHistoryEntry,
+} from '../features/store/storefrontScanHistory';
 
 type RestaurantDiscoveryScreenProps = NativeStackScreenProps<RootStackParamList, 'RestaurantDiscovery'>;
 type ImageSource = PhotoPickerPermissionSource;
@@ -240,6 +253,86 @@ const useStyles = createThemedStyles((theme) => ({
   extractedText: {
     lineHeight: 20,
   },
+  storefrontHistoryGroup: {
+    gap: theme.spacing.sm,
+  },
+  storefrontHistoryHeader: {
+    borderBottomColor: theme.colors.border.default,
+    borderBottomWidth: 1,
+    gap: theme.spacing.xxs,
+    paddingBottom: theme.spacing.xs,
+  },
+  storefrontScanResultGroup: {
+    gap: theme.spacing.sm,
+  },
+  storefrontScanHeader: {
+    paddingTop: theme.spacing.xs,
+  },
+  storefrontResultPanel: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  storefrontResultHeader: {
+    gap: theme.spacing.xxs,
+  },
+  storefrontOption: {
+    gap: theme.spacing.sm,
+  },
+  storefrontOptionCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  storefrontOptionHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  storefrontOptionTitleWrap: {
+    flex: 1,
+    gap: 0,
+  },
+  storefrontPrimaryActionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  storefrontSearchAction: {
+    flex: 3,
+  },
+  storefrontCopyAction: {
+    flex: 1,
+  },
+  storefrontCopyIconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: theme.sizes.inputMinHeight,
+  },
+  storefrontCopyIconButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  storefrontDeleteIconButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  storefrontDeleteIconButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
   warningPanel: {
     backgroundColor: theme.colors.status.warningBg,
     borderColor: theme.colors.status.warningBorder,
@@ -251,6 +344,18 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 const MIN_SEARCH_HERE_MOVE_MILES = 0.15;
+
+interface StorefrontScanHistoryDayGroup {
+  dateKey: string;
+  label: string;
+  entries: StorefrontScanHistoryEntry[];
+}
+
+interface PendingStorefrontNameDelete {
+  entryId: string;
+  name: string;
+  optionIndex: number;
+}
 
 function addQueuedRestaurantBookmarkToDefaultListDetail(
   currentDetail: RestaurantListDetailRecord | null | undefined,
@@ -352,6 +457,79 @@ function getRestaurantNameOptions(response: RestaurantNameExtractionResponse | n
   return [];
 }
 
+function getStorefrontScanDayKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown';
+  }
+
+  return formatDateToLocalDateString(date);
+}
+
+function formatStorefrontScanDayLabel(dateKey: string): string {
+  if (dateKey === 'unknown') {
+    return 'Unknown date';
+  }
+
+  const todayKey = formatDateToLocalDateString(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = formatDateToLocalDateString(yesterday);
+  if (dateKey === todayKey) {
+    return 'Today';
+  }
+  if (dateKey === yesterdayKey) {
+    return 'Yesterday';
+  }
+
+  return formatLocalDateLabel(dateKey, {
+    options: {
+      day: 'numeric',
+      month: 'short',
+      weekday: 'long',
+      year: 'numeric',
+    },
+  });
+}
+
+function formatStorefrontScanTimeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function groupStorefrontScanHistoryEntries(
+  entries: StorefrontScanHistoryEntry[],
+): StorefrontScanHistoryDayGroup[] {
+  const groups: StorefrontScanHistoryDayGroup[] = [];
+  const groupByDateKey = new Map<string, StorefrontScanHistoryDayGroup>();
+
+  for (const entry of entries) {
+    const dateKey = getStorefrontScanDayKey(entry.scannedAt);
+    const existingGroup = groupByDateKey.get(dateKey);
+    if (existingGroup) {
+      existingGroup.entries.push(entry);
+      continue;
+    }
+
+    const nextGroup = {
+      dateKey,
+      entries: [entry],
+      label: formatStorefrontScanDayLabel(dateKey),
+    };
+    groupByDateKey.set(dateKey, nextGroup);
+    groups.push(nextGroup);
+  }
+
+  return groups;
+}
+
 function getStorefrontExtractionSuccessProperties(result: RestaurantNameExtractionResponse) {
   if ('error' in result) {
     return {
@@ -420,8 +598,6 @@ export function RestaurantDiscoveryScreen({
       ? 'Checking monthly storefront read usage...'
       : 'Free accounts include 25 storefront reads per month. Subscribers include 100.';
 
-  const [storefrontResult, setStorefrontResult] =
-    useState<RestaurantNameExtractionResponse | null>(null);
   const [storefrontErrorMessage, setStorefrontErrorMessage] = useState<string | null>(null);
   const [isExtractingStorefront, setIsExtractingStorefront] = useState(false);
   const [activeTab, setActiveTab] = useState<DiscoveryTab>('search');
@@ -440,7 +616,15 @@ export function RestaurantDiscoveryScreen({
   const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
   const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const [showStorefrontPhotoSources, setShowStorefrontPhotoSources] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [visibleStorefrontScanCount, setVisibleStorefrontScanCount] = useState(
+    STOREFRONT_SCAN_HISTORY_PAGE_SIZE,
+  );
+  const [latestStorefrontScanEntry, setLatestStorefrontScanEntry] =
+    useState<StorefrontScanHistoryEntry | null>(null);
+  const [pendingStorefrontNameDelete, setPendingStorefrontNameDelete] =
+    useState<PendingStorefrontNameDelete | null>(null);
+  const [isDeletingStorefrontName, setIsDeletingStorefrontName] = useState(false);
+  const [storefrontHistoryErrorMessage, setStorefrontHistoryErrorMessage] = useState<string | null>(null);
   const hasAutoSearchedMapNearbyRef = useRef(false);
 
   const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
@@ -507,6 +691,23 @@ export function RestaurantDiscoveryScreen({
       : restaurantListQueryKeys.detail('__default_list_pending__'),
     queryFn: ({ signal }) => defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
   });
+  const storefrontScanIdentityKey = useMemo(() => {
+    const userId = user?.id ?? actualUser?.id;
+    const trimmedUserId = typeof userId === 'string' ? userId.trim() : '';
+    return trimmedUserId || 'current-user';
+  }, [actualUser?.id, user?.id]);
+  const storefrontHistoryQueryKey = useMemo(
+    () => storefrontScanHistoryQueryKey(storefrontScanIdentityKey),
+    [storefrontScanIdentityKey],
+  );
+  const storefrontHistoryQuery = useQuery<StorefrontScanHistoryEntry[]>({
+    queryKey: storefrontHistoryQueryKey,
+    queryFn: () => getStorefrontScanHistory(storefrontScanIdentityKey),
+  });
+  useEffect(() => {
+    setLatestStorefrontScanEntry(null);
+    setVisibleStorefrontScanCount(STOREFRONT_SCAN_HISTORY_PAGE_SIZE);
+  }, [storefrontScanIdentityKey]);
   const savedRestaurantIds = useMemo(() => {
     const ids = new Set(locallySavedRestaurantIds);
     for (const item of defaultListDetailQuery.data?.items ?? []) {
@@ -520,7 +721,30 @@ export function RestaurantDiscoveryScreen({
 
   const isBusyWithImage = isExtractingStorefront;
   const isStorefrontReadDisabled = !isOnline || isBusyWithImage || isStorefrontQuotaReached;
-  const extractedNames = useMemo(() => getRestaurantNameOptions(storefrontResult), [storefrontResult]);
+  const storefrontScanEntries = useMemo(() => {
+    const savedEntries = storefrontHistoryQuery.data ?? [];
+    if (!latestStorefrontScanEntry) {
+      return savedEntries;
+    }
+    if (savedEntries.some((entry) => entry.id === latestStorefrontScanEntry.id)) {
+      return savedEntries;
+    }
+    return [latestStorefrontScanEntry, ...savedEntries];
+  }, [latestStorefrontScanEntry, storefrontHistoryQuery.data]);
+  const visibleStorefrontScanEntries = useMemo(
+    () => storefrontScanEntries.slice(0, visibleStorefrontScanCount),
+    [storefrontScanEntries, visibleStorefrontScanCount],
+  );
+  const storefrontScanHistoryGroups = useMemo(
+    () => groupStorefrontScanHistoryEntries(visibleStorefrontScanEntries),
+    [visibleStorefrontScanEntries],
+  );
+  const hasMoreStorefrontScanResults = visibleStorefrontScanCount < storefrontScanEntries.length;
+  const shouldShowStorefrontResultsCard =
+    storefrontHistoryQuery.isLoading ||
+    Boolean(storefrontHistoryQuery.error) ||
+    Boolean(storefrontHistoryErrorMessage) ||
+    storefrontScanEntries.length > 0;
   const isSearchMapMode = activeTab === 'search' && searchViewMode === 'map';
   const currentMapRestaurants = showNearbyPlaces ? displayedNearbyRestaurants : displayedSavedRestaurants;
   const foodDiscoveryMap = useFoodDiscoveryMapReadModel({
@@ -768,11 +992,71 @@ export function RestaurantDiscoveryScreen({
   const copyText = useCallback(async (value: string) => {
     try {
       await Clipboard.setStringAsync(value);
-      setCopyStatus('Copied.');
+      Alert.alert('Copied', 'Copied to clipboard.');
     } catch (error) {
-      setCopyStatus(error instanceof Error ? error.message : 'Could not copy text.');
+      captureObservabilityError(error, {
+        source: 'RestaurantDiscoveryStorefrontCopy',
+      });
     }
   }, []);
+
+  const requestStorefrontNameDelete = useCallback(
+    (entry: StorefrontScanHistoryEntry, name: string, optionIndex: number) => {
+      setStorefrontHistoryErrorMessage(null);
+      setPendingStorefrontNameDelete({
+        entryId: entry.id,
+        name,
+        optionIndex,
+      });
+    },
+    [],
+  );
+
+  const cancelStorefrontNameDelete = useCallback(() => {
+    if (isDeletingStorefrontName) {
+      return;
+    }
+
+    setPendingStorefrontNameDelete(null);
+  }, [isDeletingStorefrontName]);
+
+  const confirmStorefrontNameDelete = useCallback(async () => {
+    if (!pendingStorefrontNameDelete) {
+      return;
+    }
+
+    setIsDeletingStorefrontName(true);
+    setStorefrontHistoryErrorMessage(null);
+
+    try {
+      const nextEntries = await deleteStorefrontScanHistoryOption(
+        storefrontScanIdentityKey,
+        pendingStorefrontNameDelete,
+      );
+      queryClient.setQueryData(storefrontHistoryQueryKey, nextEntries);
+      setLatestStorefrontScanEntry((currentEntry) => {
+        if (!currentEntry) {
+          return currentEntry;
+        }
+
+        return removeStorefrontScanHistoryOption([currentEntry], pendingStorefrontNameDelete)[0] ?? null;
+      });
+      setPendingStorefrontNameDelete(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not delete saved scan result.';
+      setStorefrontHistoryErrorMessage(message);
+      captureObservabilityError(error, {
+        source: 'RestaurantDiscoveryStorefrontHistoryDelete',
+      });
+    } finally {
+      setIsDeletingStorefrontName(false);
+    }
+  }, [
+    pendingStorefrontNameDelete,
+    queryClient,
+    storefrontHistoryQueryKey,
+    storefrontScanIdentityKey,
+  ]);
 
   const runCandidateSearch = useCallback(
     async (name: string) => {
@@ -820,8 +1104,6 @@ export function RestaurantDiscoveryScreen({
 
       setIsExtractingStorefront(true);
       setStorefrontErrorMessage(null);
-      setStorefrontResult(null);
-      setCopyStatus(null);
       trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_EXTRACTION_STARTED', eventProperties);
 
       let imageInput: Awaited<ReturnType<typeof stageLocalPhotoFile>> | null = null;
@@ -853,7 +1135,36 @@ export function RestaurantDiscoveryScreen({
           ...imageInput,
           requestCorrelation,
         });
-        setStorefrontResult(result);
+        const scannedAt = new Date().toISOString();
+        try {
+          const savedEntries = await saveStorefrontScanHistoryEntry(storefrontScanIdentityKey, {
+            result,
+            scannedAt,
+            source,
+          });
+          setLatestStorefrontScanEntry(savedEntries[0] ?? null);
+          queryClient.setQueryData(storefrontHistoryQueryKey, savedEntries);
+        } catch (historyError) {
+          const optimisticEntry: StorefrontScanHistoryEntry = {
+            id: `storefront-scan-${requestCorrelation}`,
+            result,
+            scannedAt,
+            source,
+          };
+          setLatestStorefrontScanEntry(optimisticEntry);
+          queryClient.setQueryData<StorefrontScanHistoryEntry[]>(
+            storefrontHistoryQueryKey,
+            (currentEntries = []) => [
+              optimisticEntry,
+              ...currentEntries,
+            ].slice(0, STOREFRONT_SCAN_HISTORY_PAGE_SIZE),
+          );
+          captureObservabilityError(historyError, {
+            requestCorrelation,
+            source: 'RestaurantDiscoveryStorefrontHistory',
+          });
+        }
+        setVisibleStorefrontScanCount(STOREFRONT_SCAN_HISTORY_PAGE_SIZE);
         trackObservabilityEvent('FOOD_DISCOVERY_STOREFRONT_EXTRACTION_SUCCEEDED', {
           ...eventProperties,
           ...getStorefrontExtractionSuccessProperties(result),
@@ -913,16 +1224,18 @@ export function RestaurantDiscoveryScreen({
       storefrontReadsLimit,
       storefrontReadsRemaining,
       storefrontReadsUsed,
+      storefrontHistoryQueryKey,
+      storefrontScanIdentityKey,
     ],
   );
 
   const handleManualAdd = useCallback((name?: string) => {
     navigation.navigate('CreateVisitAddRestaurant', {
       initialLocation: manualLocation.trim() || undefined,
-      initialRestaurantName: name?.trim() || searchQuery.trim() || extractedNames[0],
+      initialRestaurantName: name?.trim() || searchQuery.trim(),
       returnTo: 'RestaurantDiscoveryRestaurant',
     });
-  }, [extractedNames, manualLocation, navigation, searchQuery]);
+  }, [manualLocation, navigation, searchQuery]);
 
   const handleClearPlacesSearchState = useCallback(() => {
     clearPlacesSearchState();
@@ -1059,6 +1372,173 @@ export function RestaurantDiscoveryScreen({
     searchNearby,
     searchViewMode,
     showNearbyPlaces,
+  ]);
+
+  const renderCopyIconButton = useCallback((value: string, accessibilityLabel: string) => (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      onPress={() => {
+        void copyText(value);
+      }}
+      style={({ pressed }) => [
+        styles.storefrontCopyAction,
+        styles.storefrontCopyIconButton,
+        pressed && styles.storefrontCopyIconButtonPressed,
+      ]}
+    >
+      <Ionicons color={theme.colors.text.primary} name="copy-outline" size={20} />
+    </Pressable>
+  ), [
+    copyText,
+    styles.storefrontCopyAction,
+    styles.storefrontCopyIconButton,
+    styles.storefrontCopyIconButtonPressed,
+    theme.colors.text.primary,
+  ]);
+
+  const renderStorefrontNameDeleteButton = useCallback(
+    (entry: StorefrontScanHistoryEntry, name: string, optionIndex: number) => (
+      <Pressable
+        accessibilityLabel={`Delete ${name}`}
+        accessibilityRole="button"
+        onPress={() => {
+          requestStorefrontNameDelete(entry, name, optionIndex);
+        }}
+        style={({ pressed }) => [
+          styles.storefrontDeleteIconButton,
+          pressed && styles.storefrontDeleteIconButtonPressed,
+        ]}
+      >
+        <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+      </Pressable>
+    ),
+    [
+      requestStorefrontNameDelete,
+      styles.storefrontDeleteIconButton,
+      styles.storefrontDeleteIconButtonPressed,
+      theme.colors.text.danger,
+    ],
+  );
+
+  const renderStorefrontScanResult = useCallback((entry: StorefrontScanHistoryEntry) => {
+    const scannedAtLabel = formatStorefrontScanTimeLabel(entry.scannedAt);
+
+    if ('error' in entry.result) {
+      return (
+        <View key={entry.id} style={styles.storefrontScanResultGroup}>
+          {scannedAtLabel ? (
+            <Text style={styles.storefrontScanHeader} tone="secondary">Scanned {scannedAtLabel}</Text>
+          ) : null}
+          <View style={styles.warningPanel}>
+            <Text tone="warning" variant="label">No restaurant detected</Text>
+            <Text tone="secondary">{entry.result.reason ?? 'Try a clearer photo of the sign or storefront.'}</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (entry.result.found) {
+      return (
+        <View key={entry.id} style={styles.storefrontScanResultGroup}>
+          {scannedAtLabel ? (
+            <Text style={styles.storefrontScanHeader} tone="secondary">Scanned {scannedAtLabel}</Text>
+          ) : null}
+          {entry.result.options.map((option, index) => (
+            <View
+              key={`${entry.id}-${option.name}-${index}`}
+              style={styles.storefrontOptionCard}
+              testID={`restaurant-discovery-storefront-option-${entry.id}-${index}`}
+            >
+              <View style={styles.storefrontOptionHeader}>
+                <View style={styles.storefrontOptionTitleWrap}>
+                  <Text variant="label">{option.name}</Text>
+                  <Text tone={resolveConfidenceTone(option.confidence)}>
+                    {option.confidence} confidence
+                  </Text>
+                </View>
+                {renderStorefrontNameDeleteButton(entry, option.name, index)}
+              </View>
+              <View style={styles.storefrontOption}>
+                {option.reason ? (
+                  <ExpandableText
+                    collapsedNumberOfLines={1}
+                    interactionMode="tap-text"
+                    tone="secondary"
+                  >
+                    {option.reason}
+                  </ExpandableText>
+                ) : null}
+                <View style={styles.storefrontPrimaryActionRow}>
+                  <Button
+                    label="Search"
+                    onPress={() => {
+                      void runCandidateSearch(option.name);
+                    }}
+                    style={styles.storefrontSearchAction}
+                  />
+                  {renderCopyIconButton(option.name, `Copy ${option.name}`)}
+                </View>
+                <Button
+                  label="Add Manually"
+                  onPress={() => {
+                    handleManualAdd(option.name);
+                  }}
+                  variant="secondary"
+                />
+              </View>
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    const visibleText = entry.result.allText?.trim();
+    return (
+      <View key={entry.id} style={styles.storefrontScanResultGroup}>
+        {scannedAtLabel ? (
+          <Text style={styles.storefrontScanHeader} tone="secondary">Scanned {scannedAtLabel}</Text>
+        ) : null}
+        <View style={styles.storefrontResultPanel}>
+          <View style={styles.storefrontResultHeader}>
+            <Text variant="label">Visible Text</Text>
+          </View>
+          <Text style={styles.extractedText}>{visibleText || 'No clear text found.'}</Text>
+          {visibleText ? (
+            <View style={styles.wrapRow}>
+              {renderCopyIconButton(visibleText, 'Copy visible storefront text')}
+              <Button
+                label="Add Manually"
+                onPress={() => {
+                  handleManualAdd(getRestaurantNameOptions(entry.result)[0]);
+                }}
+                style={styles.action}
+                variant="secondary"
+              />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  }, [
+    handleManualAdd,
+    renderCopyIconButton,
+    renderStorefrontNameDeleteButton,
+    runCandidateSearch,
+    styles.action,
+    styles.extractedText,
+    styles.storefrontOption,
+    styles.storefrontOptionCard,
+    styles.storefrontOptionHeader,
+    styles.storefrontOptionTitleWrap,
+    styles.storefrontPrimaryActionRow,
+    styles.storefrontResultHeader,
+    styles.storefrontResultPanel,
+    styles.storefrontScanHeader,
+    styles.storefrontScanResultGroup,
+    styles.storefrontSearchAction,
+    styles.warningPanel,
+    styles.wrapRow,
   ]);
 
   const discoveryTabControl = (
@@ -1360,140 +1840,114 @@ export function RestaurantDiscoveryScreen({
               />
             </>
           ) : (
-          <Card style={styles.card}>
-            <View style={styles.iconTitle}>
-              <Ionicons color={theme.colors.text.info} name="scan-outline" size={18} />
-              <Text variant="label">Read a Storefront</Text>
-            </View>
-            <Text tone="secondary">
-              Extract possible restaurant names from a sign, then search or copy the text.
-            </Text>
-            <Text tone={isStorefrontQuotaReached ? 'warning' : 'secondary'}>
-              {storefrontUsageText}
-            </Text>
-            <Button
-              disabled={isStorefrontReadDisabled}
-              label="Read a Storefront"
-              loading={isExtractingStorefront}
-              onPress={() => {
-                setShowStorefrontPhotoSources((visible) => !visible);
-              }}
-            />
-            {showStorefrontPhotoSources ? (
-              <PhotoSourcePicker
-                cameraSubtitle="Storefront"
-                cameraTitle="Take Photo"
-                disabled={isStorefrontReadDisabled}
-                gallerySubtitle="Photo Library"
-                galleryTitle="Upload"
-                title=""
-                onCameraPress={() => {
-                  void extractStorefrontName('camera');
-                }}
-                onGalleryPress={() => {
-                  void extractStorefrontName('gallery');
-                }}
-              />
-            ) : null}
-            {!isOnline ? <Text tone="warning">Storefront extraction requires internet connection.</Text> : null}
-            {isExtractingStorefront ? <LoadingState label="Reading restaurant text..." /> : null}
-            <PageErrorToast
-              errorMessage={storefrontErrorMessage}
-              title="Could not read storefront"
-            />
-            {permissionNeedsSettings ? (
-              <Button
-                label="Open Settings"
-                onPress={() => {
-                  void Linking.openSettings();
-                }}
-                variant="secondary"
-              />
-            ) : null}
-
-            {storefrontResult && 'error' in storefrontResult ? (
-              <View style={styles.warningPanel}>
-                <Text tone="warning" variant="label">No restaurant detected</Text>
-                <Text tone="secondary">{storefrontResult.reason ?? 'Try a clearer photo of the sign or storefront.'}</Text>
-              </View>
-            ) : null}
-
-            {storefrontResult && 'found' in storefrontResult && storefrontResult.found ? (
-              <View style={styles.card}>
-                <Text variant="label">Possible Names</Text>
-                {storefrontResult.options.map((option) => (
-                  <ListItem
-                    description={
-                      <View style={styles.card}>
-                        <Text tone={resolveConfidenceTone(option.confidence)}>
-                          {option.confidence} confidence
-                        </Text>
-                        {option.reason ? <Text tone="secondary">{option.reason}</Text> : null}
-                        <View style={styles.wrapRow}>
-                          <Button
-                            label="Search"
-                            onPress={() => {
-                              void runCandidateSearch(option.name);
-                            }}
-                            style={styles.action}
-                          />
-                          <Button
-                            label="Copy"
-                            onPress={() => {
-                              void copyText(option.name);
-                            }}
-                            style={styles.action}
-                            variant="secondary"
-                          />
-                          <Button
-                            label="Add Manually"
-                            onPress={() => {
-                              handleManualAdd(option.name);
-                            }}
-                            style={styles.action}
-                            variant="secondary"
-                          />
-                        </View>
-                      </View>
-                    }
-                    key={option.name}
-                    title={option.name}
+            <>
+              <Card style={styles.card}>
+                <View style={styles.iconTitle}>
+                  <Ionicons color={theme.colors.text.info} name="scan-outline" size={18} />
+                  <Text variant="label">Read a Storefront</Text>
+                </View>
+                <Text tone="secondary">
+                  Extract possible restaurant names from a sign, then search or copy the text.
+                </Text>
+                <Text tone={isStorefrontQuotaReached ? 'warning' : 'secondary'}>
+                  {storefrontUsageText}
+                </Text>
+                <Button
+                  disabled={isStorefrontReadDisabled}
+                  label="Read a Storefront"
+                  loading={isExtractingStorefront}
+                  onPress={() => {
+                    setShowStorefrontPhotoSources((visible) => !visible);
+                  }}
+                />
+                {showStorefrontPhotoSources ? (
+                  <PhotoSourcePicker
+                    cameraSubtitle="Storefront"
+                    cameraTitle="Take Photo"
+                    disabled={isStorefrontReadDisabled}
+                    gallerySubtitle="Photo Library"
+                    galleryTitle="Upload"
+                    title=""
+                    onCameraPress={() => {
+                      void extractStorefrontName('camera');
+                    }}
+                    onGalleryPress={() => {
+                      void extractStorefrontName('gallery');
+                    }}
                   />
-                ))}
-              </View>
-            ) : null}
-
-            {storefrontResult && 'found' in storefrontResult && !storefrontResult.found ? (
-              <View style={styles.card}>
-                <Text variant="label">Visible Text</Text>
-                <Text style={styles.extractedText}>{storefrontResult.allText?.trim() || 'No clear text found.'}</Text>
-                {storefrontResult.allText?.trim() ? (
-                  <View style={styles.wrapRow}>
-                    <Button
-                      label="Copy Text"
-                      onPress={() => {
-                        void copyText(storefrontResult.allText ?? '');
-                      }}
-                      style={styles.action}
-                      variant="secondary"
-                    />
-                    <Button
-                      label="Add Manually"
-                      onPress={() => {
-                        handleManualAdd(extractedNames[0]);
-                      }}
-                      style={styles.action}
-                      variant="secondary"
-                    />
-                  </View>
                 ) : null}
-              </View>
-            ) : null}
-            {copyStatus ? <Text tone="secondary">{copyStatus}</Text> : null}
-          </Card>
+                {!isOnline ? <Text tone="warning">Storefront extraction requires internet connection.</Text> : null}
+                {isExtractingStorefront ? <LoadingState label="Reading restaurant text..." /> : null}
+                <PageErrorToast
+                  errorMessage={storefrontErrorMessage}
+                  title="Could not read storefront"
+                />
+                {permissionNeedsSettings ? (
+                  <Button
+                    label="Open Settings"
+                    onPress={() => {
+                      void Linking.openSettings();
+                    }}
+                    variant="secondary"
+                  />
+                ) : null}
+              </Card>
+
+              {shouldShowStorefrontResultsCard ? (
+                <Card style={styles.card}>
+                  <Text variant="label">Possible Names</Text>
+                  <PageErrorToast
+                    errorMessage={
+                      storefrontHistoryQuery.error instanceof Error ? storefrontHistoryQuery.error.message : null
+                    }
+                    title="Could not load saved scans"
+                  />
+                  <PageErrorToast
+                    errorMessage={storefrontHistoryErrorMessage}
+                    title="Could not update saved scans"
+                  />
+                  {storefrontHistoryQuery.isLoading ? <LoadingState label="Loading saved scans..." /> : null}
+                  {storefrontScanHistoryGroups.map((group) => (
+                    <View key={group.dateKey} style={styles.storefrontHistoryGroup}>
+                      <View style={styles.storefrontHistoryHeader}>
+                        <Text variant="label">{group.label}</Text>
+                      </View>
+                      {group.entries.map(renderStorefrontScanResult)}
+                    </View>
+                  ))}
+                  {hasMoreStorefrontScanResults ? (
+                    <FeatureListFooter
+                      isFetchingNextPage={false}
+                      label="Load more results"
+                      onLoadMore={() => {
+                        setVisibleStorefrontScanCount((currentCount) =>
+                          currentCount + STOREFRONT_SCAN_HISTORY_PAGE_SIZE,
+                        );
+                      }}
+                      testID="restaurant-discovery-storefront-load-more"
+                    />
+                  ) : null}
+                </Card>
+              ) : null}
+            </>
         )}
         </View>
       )}
+      <ConfirmDestructiveModal
+        confirmLabel="Delete Result"
+        confirmLoadingLabel="Deleting..."
+        description={
+          pendingStorefrontNameDelete
+            ? `Delete "${pendingStorefrontNameDelete.name}" from saved storefront scan results?`
+            : 'Delete this saved storefront scan result?'
+        }
+        loading={isDeletingStorefrontName}
+        onCancel={cancelStorefrontNameDelete}
+        onConfirm={confirmStorefrontNameDelete}
+        testID="restaurant-discovery-delete-storefront-name-modal"
+        title="Delete Result?"
+        visible={pendingStorefrontNameDelete !== null}
+      />
     </BackHeaderScreenScaffold>
   );
 }

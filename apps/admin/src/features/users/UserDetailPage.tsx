@@ -19,7 +19,6 @@ import { pb } from '@/lib/pocketbase';
 import type { FoodProductSummary, UserRestaurantRecord, VisitSummary } from '@/lib/types';
 
 type UserDetailTab =
-  | 'records'
   | 'feedback'
   | 'activity'
   | 'ratings'
@@ -53,13 +52,43 @@ function getActivityTitle(entry: UserModerationProfile['feedEntries'][number]) {
 
 function getActivitySummary(entry: UserModerationProfile['feedEntries'][number]) {
   if (entry.contentType === 'food-product') {
-    const ratingText = typeof entry.rating === 'number' ? `Rating ${entry.rating}` : 'Food Product';
+    const ratingText = typeof entry.rating === 'number' ? getRatingLabel(entry.rating) : 'Food Product';
     return `${ratingText} • ${formatDateTime(entry.eventAt)}`;
   }
 
   const itemCount = entry.items?.length ?? 0;
   const itemLabel = itemCount === 1 ? '1 rated item' : `${itemCount} rated items`;
   return `${itemLabel} • ${formatDateTime(entry.eventAt)}`;
+}
+
+function getRatingLabel(rating: number) {
+  switch (rating) {
+    case 1:
+      return "Don't eat";
+    case 2:
+      return 'Not good not bad';
+    case 3:
+      return 'Worth trying';
+    case 4:
+      return 'Would get again';
+    case 5:
+      return 'Eat often';
+    default:
+      return 'Unknown';
+  }
+}
+
+function getRatingClassName(rating: number) {
+  return `rating-pill rating-${Math.round(rating)}`;
+}
+
+function RatingChip({ rating }: { rating: number }) {
+  return (
+    <span className={getRatingClassName(rating)}>
+      <span aria-hidden="true" className="rating-dot" />
+      {getRatingLabel(rating)}
+    </span>
+  );
 }
 
 function getVisitRestaurantName(visit: VisitSummary) {
@@ -773,12 +802,14 @@ function ReassignVisitRestaurantModal({
 
 function UserDetailTabPanel({
   activeTab,
-  onSelectTab,
+  highlightedRecord,
+  onNavigateToRecord,
   profile,
   userId,
 }: {
   activeTab: UserDetailTab;
-  onSelectTab: (tab: UserDetailTab) => void;
+  highlightedRecord: { id: string; tab: UserDetailTab } | null;
+  onNavigateToRecord: (tab: UserDetailTab, id: string) => void;
   profile: UserModerationProfile;
   userId: string;
 }) {
@@ -791,6 +822,7 @@ function UserDetailTabPanel({
   const [visitViewMode, setVisitViewMode] = useState<'list' | 'map'>('list');
   const [visitPage, setVisitPage] = useState(1);
   const [selectedMapVisitId, setSelectedMapVisitId] = useState<string | undefined>();
+  const [expandedListIds, setExpandedListIds] = useState<Set<string>>(() => new Set());
   const visitMapRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const trimmedVisitSearchTerm = visitSearchTerm.trim();
   const visitPageSize = visitViewMode === 'map' ? VISITS_MAP_PER_PAGE : VISITS_PER_PAGE;
@@ -824,127 +856,40 @@ function UserDetailTabPanel({
     });
   }, [activeTab, selectedMapVisitId, visitViewMode]);
 
-  const totalRecordCount =
-    profile.recentFoodItems.length +
-    profile.recentFoodProducts.length +
-    profile.recentRestaurants.length +
-    profile.recentMenuItems.length +
-    profile.recentVisits.length +
-    profile.recentNotes.length +
-    profile.recentPhotos.length +
-    profile.restaurantLists.length +
-    profile.recentBills.length;
+  useEffect(() => {
+    if (!highlightedRecord || highlightedRecord.tab !== activeTab) {
+      return;
+    }
 
-  const overviewCards: Array<{
-    tab: Exclude<UserDetailTab, 'records' | 'feedback' | 'activity'>;
-    label: string;
-    count: number;
-    hint: string;
-  }> = [
-    {
-      tab: 'ratings',
-      label: 'Ratings',
-      count: profile.recentFoodItems.length,
-      hint: profile.recentFoodItems[0]
-        ? `Latest: ${profile.recentFoodItems[0].name} on ${formatDateTime(profile.recentFoodItems[0].created)}`
-        : 'No ratings recorded yet.',
-    },
-    {
-      tab: 'food-products',
-      label: 'Food products',
-      count: profile.recentFoodProducts.length,
-      hint: profile.recentFoodProducts[0]
-        ? `Latest: ${profile.recentFoodProducts[0].name} on ${formatDateTime(getFoodProductDisplayDate(profile.recentFoodProducts[0]))}`
-        : 'No food products logged yet.',
-    },
-    {
-      tab: 'restaurants',
-      label: 'Restaurants',
-      count: profile.recentRestaurants.length,
-      hint: profile.recentRestaurants[0]
-        ? `Latest: ${profile.recentRestaurants[0].name}`
-        : 'No restaurants created yet.',
-    },
-    {
-      tab: 'menu-items',
-      label: 'Menu items',
-      count: profile.recentMenuItems.length,
-      hint: profile.recentMenuItems[0]
-        ? `Latest: ${profile.recentMenuItems[0].name}`
-        : 'No menu items created yet.',
-    },
-    {
-      tab: 'visits',
-      label: 'Visits',
-      count: profile.recentVisits.length,
-      hint: profile.recentVisits[0]
-        ? `Latest: ${formatDateTime(profile.recentVisits[0].visitDate ?? profile.recentVisits[0].created)}`
-        : 'No visits recorded yet.',
-    },
-    {
-      tab: 'notes',
-      label: 'Notes',
-      count: profile.recentNotes.length,
-      hint: profile.recentNotes[0]
-        ? `Latest: ${formatDateTime(profile.recentNotes[0].created)}`
-        : 'No notes recorded yet.',
-    },
-    {
-      tab: 'photos',
-      label: 'Photos',
-      count: profile.recentPhotos.length,
-      hint: profile.recentPhotos[0]
-        ? `Latest: ${formatDateTime(profile.recentPhotos[0].created)}`
-        : 'No photos uploaded yet.',
-    },
-    {
-      tab: 'lists',
-      label: 'Lists',
-      count: profile.restaurantLists.length,
-      hint: profile.restaurantLists[0]
-        ? `Latest: ${profile.restaurantLists[0].name}`
-        : 'No restaurant lists yet.',
-    },
-    {
-      tab: 'bills',
-      label: 'Bills',
-      count: profile.recentBills.length,
-      hint: profile.recentBills[0]
-        ? `Latest: ${profile.recentBills[0].billName}`
-        : 'No bills found for this user.',
-    },
-  ];
+    window.setTimeout(() => {
+      document.querySelector('[data-highlighted-user-record="true"]')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 0);
+  }, [activeTab, highlightedRecord]);
 
-  if (activeTab === 'records') {
-    return (
-      <div className="tab-panel">
-        <div className="tab-panel-heading">
-          <h3>User-created records</h3>
-          <span className="text-muted">
-            {totalRecordCount} recent records across ratings, food products, restaurants, menu
-            items, visits, notes, photos, lists, and bills.
-          </span>
-        </div>
+  const isHighlightedRecord = (tab: UserDetailTab, id: string) =>
+    highlightedRecord?.tab === tab && highlightedRecord.id === id;
 
-        <div className="record-overview-grid">
-          {overviewCards.map((card) => (
-            <button
-              className="record-overview-card"
-              key={card.tab}
-              onClick={() => onSelectTab(card.tab)}
-              type="button"
-            >
-              <div className="summary-row">
-                <strong>{card.label}</strong>
-                <span className="tag">{card.count}</span>
-              </div>
-              <span className="text-muted">{card.hint}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const getHighlightAttributes = (tab: UserDetailTab, id: string) =>
+    isHighlightedRecord(tab, id)
+      ? {
+          'data-highlighted-user-record': 'true',
+        }
+      : {};
+
+  const toggleExpandedList = (listId: string) => {
+    setExpandedListIds((current) => {
+      const next = new Set(current);
+      if (next.has(listId)) {
+        next.delete(listId);
+      } else {
+        next.add(listId);
+      }
+      return next;
+    });
+  };
 
   if (activeTab === 'feedback') {
     return (
@@ -995,21 +940,59 @@ function UserDetailTabPanel({
         ) : (
           <PaginatedCollection items={profile.feedEntries} itemsPerPage={10}>
             {(pageEntries) => (
-              <div className="inline-list">
-                {pageEntries.map((entry) => (
-                  <div className="list-item" key={`${entry.contentType}-${entry.id}`}>
-                    <div className="summary-row">
-                      <strong>{getActivityTitle(entry)}</strong>
-                      <div className="tag-row">
-                        <span className="tag">{entry.contentType}</span>
-                        {entry.visibility ? <span className="tag">{entry.visibility}</span> : null}
+              <div className="inline-list activity-feed-list">
+                {pageEntries.map((entry) => {
+                  const title = getActivityTitle(entry);
+
+                  return (
+                    <div className="list-item activity-card" key={`${entry.contentType}-${entry.id}`}>
+                      <div className="summary-row activity-card-header">
+                        <div className="activity-title-block">
+                          <strong>{title}</strong>
+                          <span className="text-muted">{getActivitySummary(entry)}</span>
+                        </div>
+                        <div className="tag-row">
+                          <span className="tag">{entry.contentType === 'food-product' ? 'Food product' : 'Visit'}</span>
+                          {entry.visibility ? <span className="tag">{entry.visibility}</span> : null}
+                        </div>
                       </div>
+
+                      {entry.contentType === 'visit' ? (
+                        <>
+                          {entry.restaurantLocation ? (
+                            <span className="text-muted">{entry.restaurantLocation}</span>
+                          ) : null}
+                          {entry.items && entry.items.length > 0 ? (
+                            <div className="activity-item-list">
+                              {entry.items.map((item) => (
+                                <div className="activity-item-row" key={item.id}>
+                                  <div className="activity-item-main">
+                                    <strong>{item.name}</strong>
+                                    {item.notes ? <span className="text-muted">{item.notes}</span> : null}
+                                  </div>
+                                  <RatingChip rating={item.rating} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted">No rated menu items attached to this visit.</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="activity-item-row">
+                            <div className="activity-item-main">
+                              <strong>{entry.itemName || 'Food product'}</strong>
+                              {entry.locationText ? <span className="text-muted">{entry.locationText}</span> : null}
+                              {entry.notes ? <span className="text-muted">{entry.notes}</span> : null}
+                            </div>
+                            {typeof entry.rating === 'number' ? <RatingChip rating={entry.rating} /> : null}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <span className="text-muted">{getActivitySummary(entry)}</span>
-                    {entry.locationText ? <span className="text-muted">{entry.locationText}</span> : null}
-                    {entry.notes ? <span className="text-muted">{entry.notes}</span> : null}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </PaginatedCollection>
@@ -1034,14 +1017,62 @@ function UserDetailTabPanel({
           <PaginatedCollection items={profile.recentFoodItems} itemsPerPage={12}>
             {(pageItems) => (
               <div className="inline-list">
-                {pageItems.map((item) => (
-                  <div className="list-item" key={item.id}>
-                    <strong>{item.name}</strong>
-                    <span className="text-muted">
-                      Rating {item.rating} • {formatDateTime(item.created)}
-                    </span>
-                  </div>
-                ))}
+                {pageItems.map((item) => {
+                  const isOwnRestaurant =
+                    Boolean(item.restaurantId?.trim()) && item.restaurantCreatedBy === userId;
+                  const isOwnMenuItem =
+                    Boolean(item.menuItemId?.trim()) && item.menuItemCreatedBy === userId;
+                  const linkedMenuItemId = isOwnMenuItem ? item.menuItemId?.trim() : '';
+                  const linkedRestaurantId = isOwnRestaurant ? item.restaurantId?.trim() : '';
+                  const itemTitle = item.menuItemName?.trim() || item.name;
+
+                  return (
+                    <div className="list-item rating-card" key={item.id}>
+                      <div className="summary-row">
+                        <div className="rating-card-title">
+                          {linkedMenuItemId ? (
+                            <button
+                              className="route-link inline-link"
+                              onClick={() => onNavigateToRecord('menu-items', linkedMenuItemId)}
+                              type="button"
+                            >
+                              {itemTitle}
+                            </button>
+                          ) : (
+                            <strong>{itemTitle}</strong>
+                          )}
+                          {item.menuItemName && item.menuItemName !== item.name ? (
+                            <span className="text-muted">Rated as {item.name}</span>
+                          ) : null}
+                        </div>
+                        <RatingChip rating={item.rating} />
+                      </div>
+                      <div className="rating-card-meta">
+                        {item.restaurantName ? (
+                          <span className="text-muted">
+                            Restaurant:{' '}
+                            {linkedRestaurantId ? (
+                              <button
+                                className="route-link inline-link"
+                                onClick={() => onNavigateToRecord('restaurants', linkedRestaurantId)}
+                                type="button"
+                              >
+                                {item.restaurantName}
+                              </button>
+                            ) : (
+                              item.restaurantName
+                            )}
+                          </span>
+                        ) : null}
+                        {item.restaurantLocation ? (
+                          <span className="text-muted">{item.restaurantLocation}</span>
+                        ) : null}
+                        <span className="text-muted">Created {formatDateTime(item.created)}</span>
+                        <span className="text-muted">Rating id: {item.id}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </PaginatedCollection>
@@ -1109,7 +1140,11 @@ function UserDetailTabPanel({
             {(pageRestaurants) => (
               <div className="inline-list">
                 {pageRestaurants.map((restaurant) => (
-                  <div className="list-item" key={restaurant.id}>
+                  <div
+                    className={`list-item ${isHighlightedRecord('restaurants', restaurant.id) ? 'record-highlight' : ''}`}
+                    key={restaurant.id}
+                    {...getHighlightAttributes('restaurants', restaurant.id)}
+                  >
                     <div className="summary-row">
                       <strong>{restaurant.name}</strong>
                       {restaurant.visibility ? <span className="tag">{restaurant.visibility}</span> : null}
@@ -1143,7 +1178,11 @@ function UserDetailTabPanel({
             {(pageItems) => (
               <div className="inline-list">
                 {pageItems.map((item) => (
-                  <div className="list-item" key={item.id}>
+                  <div
+                    className={`list-item ${isHighlightedRecord('menu-items', item.id) ? 'record-highlight' : ''}`}
+                    key={item.id}
+                    {...getHighlightAttributes('menu-items', item.id)}
+                  >
                     <div className="summary-row">
                       <strong>{item.name}</strong>
                       {item.visibility ? <span className="tag">{item.visibility}</span> : null}
@@ -1220,7 +1259,7 @@ function UserDetailTabPanel({
               setVisitPage(1);
               setSelectedMapVisitId(undefined);
             }}
-            placeholder="Search by restaurant, location, or place id"
+            placeholder="Search by restaurant, location, place id, or menu item"
             type="search"
             value={visitSearchTerm}
           />
@@ -1317,6 +1356,17 @@ function UserDetailTabPanel({
                           <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
                         ) : null}
                         <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+                        {visit.items && visit.items.length > 0 ? (
+                          <div className="visit-menu-items">
+                            {visit.items.map((item) => (
+                              <span className="visit-menu-item-pill" key={item.id}>
+                                {item.name} · {getRatingLabel(item.rating)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted">No menu items attached.</span>
+                        )}
                         <button
                           className="button reverse visit-repair-map-row-action"
                           onClick={(event) => {
@@ -1355,6 +1405,22 @@ function UserDetailTabPanel({
                       <span className="text-muted">{getVisitRestaurantLocation(visit)}</span>
                     ) : null}
                     <span className="text-muted">{formatDateTime(visit.visitDate ?? visit.created)}</span>
+                    {visit.items && visit.items.length > 0 ? (
+                      <div className="activity-item-list visit-items-list">
+                        {visit.items.map((item) => (
+                          <div className="activity-item-row" key={item.id}>
+                            <div className="activity-item-main">
+                              <strong>{item.name}</strong>
+                              {item.notes ? <span className="text-muted">{item.notes}</span> : null}
+                              {item.menuItem ? <span className="text-muted">Menu item id: {item.menuItem}</span> : null}
+                            </div>
+                            <RatingChip rating={item.rating} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted">No menu items attached to this visit.</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1510,21 +1576,64 @@ function UserDetailTabPanel({
                   const activityDisplay = getCreatedUpdatedDisplay(list.created, list.updated, {
                     createdLabel: 'Created',
                   });
+                  const isExpanded = expandedListIds.has(list.id);
+                  const hasItems = list.items.length > 0;
 
                   return (
-                    <div className="list-item" key={list.id}>
-                      <div className="summary-row">
-                        <strong>{list.name}</strong>
-                        <div className="tag-row">
-                          <span className="tag">{list.visibility}</span>
-                          {list.isDefault ? <span className="tag">default</span> : null}
-                          {list.isCollaborative ? <span className="tag">collaborative</span> : null}
+                    <div className="list-inspection-card" key={list.id}>
+                      <button
+                        aria-expanded={isExpanded}
+                        className={`list-item list-item-button ${hasItems ? '' : 'disabled'}`}
+                        disabled={!hasItems}
+                        onClick={() => toggleExpandedList(list.id)}
+                        type="button"
+                      >
+                        <div className="summary-row">
+                          <strong>{list.name}</strong>
+                          <div className="tag-row">
+                            <span className="tag">{list.visibility}</span>
+                            {list.isDefault ? <span className="tag">default</span> : null}
+                            {list.isCollaborative ? <span className="tag">collaborative</span> : null}
+                            {hasItems ? (
+                              <span className="tag">{isExpanded ? 'hide items' : 'view items'}</span>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-muted">{list.description || 'No description provided.'}</span>
-                      <span className="text-muted">
-                        {list.items.length} items • {activityDisplay.label} {activityDisplay.value}
-                      </span>
+                        <span className="text-muted">{list.description || 'No description provided.'}</span>
+                        <span className="text-muted">
+                          {list.items.length} items • {activityDisplay.label} {activityDisplay.value}
+                        </span>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="list-items-detail">
+                          {list.items.map((item) => {
+                            const primaryName =
+                              item.userFoodItemName?.trim() ||
+                              item.foodItemName?.trim() ||
+                              item.restaurantName?.trim() ||
+                              'Unnamed list item';
+                            const rating = item.userFoodItemRating || item.foodItemRating;
+
+                            return (
+                              <div className="list-item-detail-row" key={item.id}>
+                                <div className="activity-item-main">
+                                  <strong>{primaryName}</strong>
+                                  {item.restaurantName ? (
+                                    <span className="text-muted">{item.restaurantName}</span>
+                                  ) : null}
+                                  {item.restaurantLocation ? (
+                                    <span className="text-muted">{item.restaurantLocation}</span>
+                                  ) : null}
+                                  {item.note ? <span className="text-muted">{item.note}</span> : null}
+                                  <span className="text-muted">List item id: {item.id}</span>
+                                </div>
+                                {rating ? <RatingChip rating={rating} /> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -1583,13 +1692,34 @@ function UserDetailTabPanel({
 
 export function UserDetailPage() {
   const { userId = '' } = useParams();
-  const [activeTab, setActiveTab] = useState<UserDetailTab>('records');
+  const [activeTab, setActiveTab] = useState<UserDetailTab>('activity');
+  const [isAccountSnapshotExpanded, setIsAccountSnapshotExpanded] = useState(true);
+  const [highlightedRecord, setHighlightedRecord] = useState<{ id: string; tab: UserDetailTab } | null>(null);
 
   const profileQuery = useQuery({
     enabled: Boolean(userId),
     queryKey: ['admin', 'user-profile', userId],
     queryFn: () => getUserModerationProfile(userId),
   });
+
+  useEffect(() => {
+    if (!highlightedRecord) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setHighlightedRecord((current) =>
+        current?.id === highlightedRecord.id && current.tab === highlightedRecord.tab ? null : current,
+      );
+    }, 3500);
+
+    return () => window.clearTimeout(timeout);
+  }, [highlightedRecord]);
+
+  const handleNavigateToRecord = (tab: UserDetailTab, id: string) => {
+    setActiveTab(tab);
+    setHighlightedRecord({ id, tab });
+  };
 
   return (
     <>
@@ -1622,46 +1752,11 @@ export function UserDetailPage() {
 
       {profileQuery.data ? (
         <>
-          <section className="metric-grid">
-            <div className="metric-card">
-              <span className="text-muted">Recent visits</span>
-              <div className="metric-value">{profileQuery.data.recentVisits.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Ratings</span>
-              <div className="metric-value">{profileQuery.data.recentFoodItems.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Food products</span>
-              <div className="metric-value">{profileQuery.data.recentFoodProducts.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Recent notes</span>
-              <div className="metric-value">{profileQuery.data.recentNotes.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Recent photos</span>
-              <div className="metric-value">{profileQuery.data.recentPhotos.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Restaurants created</span>
-              <div className="metric-value">{profileQuery.data.recentRestaurants.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Menu items created</span>
-              <div className="metric-value">{profileQuery.data.recentMenuItems.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Lists</span>
-              <div className="metric-value">{profileQuery.data.restaurantLists.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Bills</span>
-              <div className="metric-value">{profileQuery.data.recentBills.length}</div>
-            </div>
-          </section>
-
-          <section className="detail-grid user-detail-grid">
+          <section
+            className={`detail-grid user-detail-grid ${
+              isAccountSnapshotExpanded ? '' : 'account-snapshot-collapsed'
+            }`}
+          >
             <article className="detail-card">
               <div>
                 <p className="eyebrow">Activity explorer</p>
@@ -1670,20 +1765,6 @@ export function UserDetailPage() {
 
               <div aria-label="User detail tabs" className="tab-bar" role="tablist">
                 {[
-                  {
-                    id: 'records',
-                    label: 'User-created records',
-                    count:
-                      profileQuery.data.recentFoodItems.length +
-                      profileQuery.data.recentFoodProducts.length +
-                      profileQuery.data.recentRestaurants.length +
-                      profileQuery.data.recentMenuItems.length +
-                      profileQuery.data.recentVisits.length +
-                      profileQuery.data.recentNotes.length +
-                      profileQuery.data.recentPhotos.length +
-                      profileQuery.data.restaurantLists.length +
-                      profileQuery.data.recentBills.length,
-                  },
                   {
                     id: 'feedback',
                     label: 'Recent feedback',
@@ -1757,94 +1838,124 @@ export function UserDetailPage() {
 
               <UserDetailTabPanel
                 activeTab={activeTab}
-                onSelectTab={setActiveTab}
+                highlightedRecord={highlightedRecord}
+                onNavigateToRecord={handleNavigateToRecord}
                 profile={profileQuery.data}
                 userId={userId}
               />
             </article>
 
-            <aside className="detail-card user-detail-sidebar">
-              <div>
-                <p className="eyebrow">Account snapshot</p>
-                <h3>Identity and support history</h3>
+            <aside
+              className={`detail-card user-detail-sidebar ${
+                isAccountSnapshotExpanded ? '' : 'collapsed'
+              }`}
+            >
+              <div className="account-snapshot-header">
+                <div className="account-snapshot-title">
+                  <p className="eyebrow">Account snapshot</p>
+                  <h3>
+                    {isAccountSnapshotExpanded
+                      ? 'Identity and support history'
+                      : 'Account snapshot'}
+                  </h3>
+                </div>
+                <button
+                  aria-expanded={isAccountSnapshotExpanded}
+                  aria-label={
+                    isAccountSnapshotExpanded
+                      ? 'Collapse account snapshot'
+                      : 'Expand account snapshot'
+                  }
+                  className="button ghost account-snapshot-toggle"
+                  onClick={() => setIsAccountSnapshotExpanded((isExpanded) => !isExpanded)}
+                  type="button"
+                >
+                  {isAccountSnapshotExpanded ? 'Collapse' : 'Expand'}
+                </button>
               </div>
 
-              <div className="summary-list">
-                <div className="summary-row">
-                  <span className="text-muted">Email</span>
-                  <strong>{profileQuery.data.user.email}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Name</span>
-                  <strong>{profileQuery.data.user.name?.trim() || 'No display name'}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Joined</span>
-                  <strong>{formatDateTime(profileQuery.data.user.created)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Access</span>
-                  <div className="tag-row">
-                    <span className="tag">
-                      {profileQuery.data.user.isAdmin ? 'admin' : 'user'}
-                    </span>
-                    {profileQuery.data.user.isSubscriber ? (
-                      <span className="tag">subscriber</span>
-                    ) : null}
-                    {profileQuery.data.user.isBetaUser ? <span className="tag">beta</span> : null}
+              {isAccountSnapshotExpanded ? (
+                <>
+                  <div className="summary-list">
+                    <div className="summary-row">
+                      <span className="text-muted">Email</span>
+                      <strong>{profileQuery.data.user.email}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Name</span>
+                      <strong>{profileQuery.data.user.name?.trim() || 'No display name'}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Joined</span>
+                      <strong>{formatDateTime(profileQuery.data.user.created)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Access</span>
+                      <div className="tag-row">
+                        <span className="tag">
+                          {profileQuery.data.user.isAdmin ? 'admin' : 'user'}
+                        </span>
+                        {profileQuery.data.user.isSubscriber ? (
+                          <span className="tag">subscriber</span>
+                        ) : null}
+                        {profileQuery.data.user.isBetaUser ? (
+                          <span className="tag">beta</span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="divider" />
+                  <div className="divider" />
 
-              <div className="summary-list">
-                <h3 style={{ marginBottom: 0 }}>Activity summary</h3>
-                <div className="summary-row">
-                  <span className="text-muted">Feedback threads</span>
-                  <strong>{profileQuery.data.recentFeedback.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Feed entries</span>
-                  <strong>{profileQuery.data.feedEntries.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Ratings</span>
-                  <strong>{profileQuery.data.recentFoodItems.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Food products</span>
-                  <strong>{profileQuery.data.recentFoodProducts.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Restaurants created</span>
-                  <strong>{profileQuery.data.recentRestaurants.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Menu items created</span>
-                  <strong>{profileQuery.data.recentMenuItems.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Visits</span>
-                  <strong>{profileQuery.data.recentVisits.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Notes</span>
-                  <strong>{profileQuery.data.recentNotes.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Photos</span>
-                  <strong>{profileQuery.data.recentPhotos.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Lists</span>
-                  <strong>{profileQuery.data.restaurantLists.length}</strong>
-                </div>
-                <div className="summary-row">
-                  <span className="text-muted">Bills</span>
-                  <strong>{profileQuery.data.recentBills.length}</strong>
-                </div>
-              </div>
+                  <div className="summary-list">
+                    <h3 style={{ marginBottom: 0 }}>Activity summary</h3>
+                    <div className="summary-row">
+                      <span className="text-muted">Feedback threads</span>
+                      <strong>{profileQuery.data.recentFeedback.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Feed entries</span>
+                      <strong>{profileQuery.data.feedEntries.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Ratings</span>
+                      <strong>{profileQuery.data.recentFoodItems.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Food products</span>
+                      <strong>{profileQuery.data.recentFoodProducts.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Restaurants created</span>
+                      <strong>{profileQuery.data.recentRestaurants.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Menu items created</span>
+                      <strong>{profileQuery.data.recentMenuItems.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Visits</span>
+                      <strong>{profileQuery.data.recentVisits.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Notes</span>
+                      <strong>{profileQuery.data.recentNotes.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Photos</span>
+                      <strong>{profileQuery.data.recentPhotos.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Lists</span>
+                      <strong>{profileQuery.data.restaurantLists.length}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span className="text-muted">Bills</span>
+                      <strong>{profileQuery.data.recentBills.length}</strong>
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </aside>
           </section>
         </>

@@ -317,7 +317,11 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 			if detailErr != nil {
 				return apis.NewApiError(500, "failed to load repaired visit", detailErr)
 			}
-			serializedVisits := serializeVisits(append([]*core.Record{}, repairResult.Visit), restaurantDetails)
+			visitItemsByVisitID, itemErr := loadVisitItemsByVisitID(txApp, []string{repairResult.Visit.Id})
+			if itemErr != nil {
+				return apis.NewApiError(500, "failed to load repaired visit items", itemErr)
+			}
+			serializedVisits := serializeVisits(append([]*core.Record{}, repairResult.Visit), restaurantDetails, visitItemsByVisitID)
 			serializedVisit := map[string]any{}
 			if len(serializedVisits) > 0 {
 				serializedVisit = serializedVisits[0]
@@ -1218,10 +1222,20 @@ func loadUserModerationProfile(app core.App, userID string) (*core.Record, map[s
 		return nil, nil, err
 	}
 
+	visitItemsByVisitID, err := loadVisitItemsByVisitID(app, extractRecordIDs(visits))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	foodItemContexts, err := resolveFoodItemRatingContexts(app, foodItems)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return user, map[string]any{
 		"user":               serializeAdminUser(user),
-		"recentVisits":       serializeVisits(visits, restaurantDetails),
-		"recentFoodItems":    serializeFoodItems(foodItems),
+		"recentVisits":       serializeVisits(visits, restaurantDetails, visitItemsByVisitID),
+		"recentFoodItems":    serializeFoodItems(foodItems, foodItemContexts),
 		"recentFoodProducts": serializeFoodProducts(foodProducts),
 		"recentNotes":        serializeNotes(notes),
 		"recentFeedback":     serializeFeedback(feedback),
@@ -1324,6 +1338,111 @@ func resolveRestaurantNames(
 	return restaurantNames, nil
 }
 
+func loadVisitItemsByVisitID(app core.App, visitIDs []string) (map[string][]*core.Record, error) {
+	visitItems, err := findRecordsByRelationValues(app, "food_items", "visit", visitIDs, "-created")
+	if err != nil {
+		return nil, err
+	}
+
+	filteredVisitItems := make([]*core.Record, 0, len(visitItems))
+	for _, record := range visitItems {
+		if !isVisitItemRecord(record) {
+			continue
+		}
+		filteredVisitItems = append(filteredVisitItems, record)
+	}
+
+	return groupRecordsByField(filteredVisitItems, "visit"), nil
+}
+
+type adminFoodItemRatingContext struct {
+	MenuItemCreatedBy   string
+	MenuItemID          string
+	MenuItemName        string
+	RestaurantCreatedBy string
+	RestaurantID        string
+	RestaurantLocation  string
+	RestaurantName      string
+}
+
+func resolveFoodItemRatingContexts(app core.App, foodItems []*core.Record) (map[string]adminFoodItemRatingContext, error) {
+	contexts := map[string]adminFoodItemRatingContext{}
+	if len(foodItems) == 0 {
+		return contexts, nil
+	}
+
+	visitIDs := extractRelationFieldValues(foodItems, "visit")
+	menuItemIDs := extractRelationFieldValues(foodItems, "menuItem")
+
+	visits, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return nil, err
+	}
+	visitsByID := mapRecordsByID(visits)
+
+	menuItems, err := findRecordsByIDs(app, "menu_items", menuItemIDs)
+	if err != nil {
+		return nil, err
+	}
+	menuItemsByID := mapRecordsByID(menuItems)
+
+	restaurantIDSet := map[string]struct{}{}
+	restaurantIDs := []string{}
+	appendRestaurantID := func(raw string) {
+		restaurantID := strings.TrimSpace(raw)
+		if restaurantID == "" {
+			return
+		}
+		if _, exists := restaurantIDSet[restaurantID]; exists {
+			return
+		}
+		restaurantIDSet[restaurantID] = struct{}{}
+		restaurantIDs = append(restaurantIDs, restaurantID)
+	}
+
+	for _, visit := range visits {
+		appendRestaurantID(visit.GetString("restaurant"))
+	}
+	for _, menuItem := range menuItems {
+		appendRestaurantID(menuItem.GetString("restaurant"))
+	}
+
+	restaurants, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return nil, err
+	}
+	restaurantsByID := mapRecordsByID(restaurants)
+
+	for _, foodItem := range foodItems {
+		context := adminFoodItemRatingContext{}
+
+		if menuItemID := strings.TrimSpace(foodItem.GetString("menuItem")); menuItemID != "" {
+			context.MenuItemID = menuItemID
+			if menuItem := menuItemsByID[menuItemID]; menuItem != nil {
+				context.MenuItemCreatedBy = strings.TrimSpace(menuItem.GetString("createdBy"))
+				context.MenuItemName = strings.TrimSpace(menuItem.GetString("name"))
+				if context.RestaurantID == "" {
+					context.RestaurantID = strings.TrimSpace(menuItem.GetString("restaurant"))
+				}
+			}
+		}
+
+		if visit := visitsByID[foodItem.GetString("visit")]; visit != nil {
+			context.RestaurantID = strings.TrimSpace(visit.GetString("restaurant"))
+		}
+
+		if restaurant := restaurantsByID[context.RestaurantID]; restaurant != nil {
+			context.RestaurantCreatedBy = strings.TrimSpace(restaurant.GetString("createdBy"))
+			context.RestaurantLocation = resolveRestaurantLocation(restaurant)
+			context.RestaurantName = resolveRestaurantName(restaurant)
+		}
+
+		contexts[foodItem.Id] = context
+	}
+
+	return contexts, nil
+}
+
 func parseAdminVisitSearchQuery(search string, pageValue string, perPageValue string, mappedOnlyValue string) adminVisitSearchQuery {
 	page := 1
 	if parsedPage, err := strconv.Atoi(strings.TrimSpace(pageValue)); err == nil && parsedPage > 0 {
@@ -1401,16 +1520,20 @@ func loadAdminUserVisitsPage(app core.App, userID string, query adminVisitSearch
 		whereClauses = append(whereClauses, `(
 			LOWER(TRIM(COALESCE(restaurants.name, ''))) LIKE {:search} ESCAPE '\' OR
 			LOWER(TRIM(COALESCE(restaurants.location, ''))) LIKE {:search} ESCAPE '\' OR
-			LOWER(TRIM(COALESCE(restaurants.placeId, ''))) LIKE {:search} ESCAPE '\'
+			LOWER(TRIM(COALESCE(restaurants.placeId, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(food_items.name, ''))) LIKE {:search} ESCAPE '\' OR
+			LOWER(TRIM(COALESCE(menu_items.name, ''))) LIKE {:search} ESCAPE '\'
 		)`)
 	}
 	whereClause := strings.Join(whereClauses, " AND ")
 
 	countRow := visitCountRow{}
 	if err := app.DB().NewQuery(`
-		SELECT COUNT(*) AS [[total]]
+		SELECT COUNT(DISTINCT visits.id) AS [[total]]
 		FROM visits
 		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		LEFT JOIN food_items ON food_items.visit = visits.id AND ` + visitItemSQL("food_items") + `
+		LEFT JOIN menu_items ON menu_items.id = food_items.menuItem
 		WHERE ` + whereClause + `
 	`).Bind(params).One(&countRow); err != nil {
 		return nil, err
@@ -1418,9 +1541,11 @@ func loadAdminUserVisitsPage(app core.App, userID string, query adminVisitSearch
 
 	rows := []visitIDRow{}
 	if err := app.DB().NewQuery(`
-		SELECT visits.id AS [[id]]
+		SELECT DISTINCT visits.id AS [[id]]
 		FROM visits
 		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		LEFT JOIN food_items ON food_items.visit = visits.id AND ` + visitItemSQL("food_items") + `
+		LEFT JOIN menu_items ON menu_items.id = food_items.menuItem
 		WHERE ` + whereClause + `
 		ORDER BY visits.visitDate DESC, visits.created DESC
 		LIMIT {:limit}
@@ -1451,13 +1576,18 @@ func loadAdminUserVisitsPage(app core.App, userID string, query adminVisitSearch
 		return nil, err
 	}
 
+	visitItemsByVisitID, err := loadVisitItemsByVisitID(app, visitIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	totalPages := 0
 	if countRow.Total > 0 {
 		totalPages = (countRow.Total + perPage - 1) / perPage
 	}
 
 	return map[string]any{
-		"items":      serializeVisits(orderedVisits, restaurantDetails),
+		"items":      serializeVisits(orderedVisits, restaurantDetails, visitItemsByVisitID),
 		"page":       page,
 		"perPage":    perPage,
 		"totalItems": countRow.Total,
@@ -2403,7 +2533,11 @@ func resolveRecordRating(record *core.Record) float64 {
 	return record.GetFloat("rating")
 }
 
-func serializeVisits(records []*core.Record, restaurantDetails map[string]adminRestaurantDetail) []map[string]any {
+func serializeVisits(
+	records []*core.Record,
+	restaurantDetails map[string]adminRestaurantDetail,
+	itemsByVisitID map[string][]*core.Record,
+) []map[string]any {
 	result := make([]map[string]any, 0, len(records))
 	for _, record := range records {
 		entry := map[string]any{
@@ -2412,6 +2546,7 @@ func serializeVisits(records []*core.Record, restaurantDetails map[string]adminR
 			"restaurant": record.GetString("restaurant"),
 			"visitDate":  record.GetString("visitDate"),
 			"created":    record.GetString("created"),
+			"items":      serializeVisitSummaryItems(itemsByVisitID[record.Id]),
 		}
 
 		if restaurantDetail := restaurantDetails[record.GetString("restaurant")]; restaurantDetail.Name != "" {
@@ -2438,14 +2573,40 @@ func serializeVisits(records []*core.Record, restaurantDetails map[string]adminR
 	return result
 }
 
-func serializeFoodItems(records []*core.Record) []map[string]any {
+func serializeVisitSummaryItems(records []*core.Record) []map[string]any {
 	result := make([]map[string]any, 0, len(records))
 	for _, record := range records {
 		result = append(result, map[string]any{
-			"id":      record.Id,
-			"name":    record.GetString("name"),
-			"rating":  record.GetFloat("rating"),
-			"created": record.GetString("created"),
+			"id":       record.Id,
+			"menuItem": record.GetString("menuItem"),
+			"name":     record.GetString("name"),
+			"notes":    record.GetString("notes"),
+			"rating":   record.GetFloat("rating"),
+			"created":  record.GetString("created"),
+		})
+	}
+
+	return result
+}
+
+func serializeFoodItems(records []*core.Record, contexts map[string]adminFoodItemRatingContext) []map[string]any {
+	result := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		context := contexts[record.Id]
+		result = append(result, map[string]any{
+			"id":                  record.Id,
+			"name":                record.GetString("name"),
+			"rating":              record.GetFloat("rating"),
+			"created":             record.GetString("created"),
+			"itemType":            record.GetString("itemType"),
+			"visit":               record.GetString("visit"),
+			"menuItemId":          context.MenuItemID,
+			"menuItemName":        context.MenuItemName,
+			"menuItemCreatedBy":   context.MenuItemCreatedBy,
+			"restaurantId":        context.RestaurantID,
+			"restaurantName":      context.RestaurantName,
+			"restaurantLocation":  context.RestaurantLocation,
+			"restaurantCreatedBy": context.RestaurantCreatedBy,
 		})
 	}
 

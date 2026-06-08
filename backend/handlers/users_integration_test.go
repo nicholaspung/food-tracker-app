@@ -896,6 +896,19 @@ func TestAdminUserVisitsSearchFiltersByRestaurant(t *testing.T) {
 		"visitDate":  "2026-03-01T18:00:00Z",
 		"visibility": "friends",
 	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy":  targetUser.Id,
+		"name":       "Birria taco",
+		"restaurant": matchingRestaurant.Id,
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"menuItem": menuItem.Id,
+		"name":     "Birria taco",
+		"rating":   5,
+		"user":     targetUser.Id,
+		"visit":    matchingVisit.Id,
+	})
 	createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": otherRestaurant.Id,
 		"user":       targetUser.Id,
@@ -923,6 +936,32 @@ func TestAdminUserVisitsSearchFiltersByRestaurant(t *testing.T) {
 	item := items[0].(map[string]any)
 	if item["id"] != matchingVisit.Id {
 		t.Fatalf("expected matching visit %s, got %#v", matchingVisit.Id, item)
+	}
+
+	menuItemSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/"+targetUser.Id+"/visits?search=birria",
+		adminToken,
+		"",
+	)
+	if menuItemSearchResponse.Code != http.StatusOK {
+		t.Fatalf("expected menu item search 200, got %d: %s", menuItemSearchResponse.Code, menuItemSearchResponse.Body.String())
+	}
+
+	menuItemSearchBody := parseJSONMap(t, menuItemSearchResponse.Body.Bytes())
+	menuItemSearchItems, ok := menuItemSearchBody["items"].([]any)
+	if !ok || len(menuItemSearchItems) != 1 {
+		t.Fatalf("expected one menu item matching visit, got %#v", menuItemSearchBody["items"])
+	}
+	menuItemSearchItem := menuItemSearchItems[0].(map[string]any)
+	if menuItemSearchItem["id"] != matchingVisit.Id {
+		t.Fatalf("expected menu item search to match visit %s, got %#v", matchingVisit.Id, menuItemSearchItem)
+	}
+	serializedVisitItems, ok := menuItemSearchItem["items"].([]any)
+	if !ok || len(serializedVisitItems) != 1 {
+		t.Fatalf("expected menu item search response to include visit items, got %#v", menuItemSearchItem["items"])
 	}
 }
 
@@ -1191,8 +1230,15 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 		"name":        "Pasta Place",
 		"location":    "San Francisco, CA",
 		"cuisineType": "Italian",
+		"createdBy":   targetUser.Id,
 		"user":        targetUser.Id,
 		"visibility":  "public",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy":  targetUser.Id,
+		"name":       "Truffle pasta",
+		"restaurant": restaurant.Id,
+		"visibility": "friends",
 	})
 	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurant.Id,
@@ -1201,10 +1247,11 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 		"visibility": "friends",
 	})
 	visitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":   "Truffle pasta",
-		"rating": 5,
-		"user":   targetUser.Id,
-		"visit":  visit.Id,
+		"menuItem": menuItem.Id,
+		"name":     "Truffle pasta",
+		"rating":   5,
+		"user":     targetUser.Id,
+		"visit":    visit.Id,
 	})
 	foodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"name":          "Airport snack",
@@ -1315,6 +1362,41 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 	}
 	if foodProductData["id"] == visitItem.Id {
 		t.Fatalf("expected visit item to be excluded from recentFoodProducts, got %#v", foodProductData)
+	}
+
+	recentFoodItems, ok := payload["recentFoodItems"].([]any)
+	if !ok {
+		t.Fatalf("expected recentFoodItems in response, got %#v", payload["recentFoodItems"])
+	}
+	var visitRatingData map[string]any
+	for _, rawItem := range recentFoodItems {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		if item["id"] == visitItem.Id {
+			visitRatingData = item
+			break
+		}
+	}
+	if visitRatingData == nil {
+		t.Fatalf("expected visit rating in recentFoodItems, got %#v", recentFoodItems)
+	}
+	if visitRatingData["restaurantName"] != "Pasta Place" || visitRatingData["restaurantCreatedBy"] != targetUser.Id {
+		t.Fatalf("expected restaurant context for visit rating, got %#v", visitRatingData)
+	}
+	if visitRatingData["menuItemId"] != menuItem.Id || visitRatingData["menuItemCreatedBy"] != targetUser.Id {
+		t.Fatalf("expected menu item context for visit rating, got %#v", visitRatingData)
+	}
+
+	visitData := recentVisits[0].(map[string]any)
+	visitItems, ok := visitData["items"].([]any)
+	if !ok || len(visitItems) != 1 {
+		t.Fatalf("expected serialized visit items, got %#v", visitData["items"])
+	}
+	serializedVisitItem := visitItems[0].(map[string]any)
+	if serializedVisitItem["name"] != "Truffle pasta" || serializedVisitItem["menuItem"] != menuItem.Id {
+		t.Fatalf("expected visit item details, got %#v", serializedVisitItem)
 	}
 }
 

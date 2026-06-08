@@ -1,6 +1,13 @@
 import { pb } from '@/lib/pocketbase';
 
-export type MenuInventoryType = 'restaurants' | 'menu-items' | 'menu-images';
+export type MenuInventoryType = 'restaurants' | 'restaurant-groups' | 'menu-items' | 'menu-images';
+export type MenuItemInventoryFilter =
+  | 'all'
+  | 'not-approved'
+  | 'approved-not-promoted'
+  | 'rejected'
+  | 'group-suitable';
+export type MenuItemVisibilityFilter = 'all' | 'friends' | 'private' | 'public';
 
 export interface MenuInventoryUserSummary {
   id: string;
@@ -43,6 +50,13 @@ export interface RestaurantGroupInventorySummary {
   createdBy?: string;
   created: string;
   updated: string;
+}
+
+export interface RestaurantGroupInventoryRow extends RestaurantGroupInventorySummary {
+  creator: MenuInventoryUserSummary | null;
+  restaurantCount: number;
+  menuItemCount: number;
+  groupSuitableMenuItemCount: number;
 }
 
 export interface MenuItemInventoryRow {
@@ -96,6 +110,7 @@ export interface MenuImageInventoryRow {
 
 export type MenuInventoryRow =
   | RestaurantInventoryRow
+  | RestaurantGroupInventoryRow
   | MenuItemInventoryRow
   | MenuImageInventoryRow;
 
@@ -116,9 +131,22 @@ export interface RestaurantInventoryDetailResponse {
   menuImages: MenuImageInventoryRow[];
 }
 
+export interface RestaurantGroupInventoryDetailResponse {
+  restaurantGroup: RestaurantGroupInventoryRow;
+  restaurants: RestaurantInventoryRow[];
+  menuItems: MenuItemInventoryRow[];
+  allMenuItems: MenuItemInventoryRow[];
+}
+
 export interface RestaurantGroupCreateResponse {
   restaurantGroup: RestaurantGroupInventorySummary;
   restaurantDetail?: RestaurantInventoryDetailResponse;
+}
+
+export interface RestaurantGroupDeleteResponse {
+  restaurantGroup: RestaurantGroupInventorySummary;
+  unassignedRestaurantIds: string[];
+  unassignedRestaurantCount: number;
 }
 
 export interface MenuImageInventoryDetailResponse {
@@ -137,9 +165,11 @@ export interface MenuItemPromotionResponse {
 type MenuInventoryResponseForType<T extends MenuInventoryType> =
   T extends 'restaurants'
     ? AdminMenuInventoryResponse<RestaurantInventoryRow>
-    : T extends 'menu-items'
-      ? AdminMenuInventoryResponse<MenuItemInventoryRow>
-      : AdminMenuInventoryResponse<MenuImageInventoryRow>;
+    : T extends 'restaurant-groups'
+      ? AdminMenuInventoryResponse<RestaurantGroupInventoryRow>
+      : T extends 'menu-items'
+        ? AdminMenuInventoryResponse<MenuItemInventoryRow>
+        : AdminMenuInventoryResponse<MenuImageInventoryRow>;
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {
   if (typeof error === 'object' && error !== null) {
@@ -161,6 +191,8 @@ export async function getAdminMenuInventory<T extends MenuInventoryType>(input: 
   page: number;
   perPage: number;
   search: string;
+  menuItemFilter?: MenuItemInventoryFilter;
+  menuItemVisibility?: MenuItemVisibilityFilter;
 }): Promise<MenuInventoryResponseForType<T>> {
   try {
     return await pb.send<MenuInventoryResponseForType<T>>('/api/admin/menu-inventory', {
@@ -169,6 +201,8 @@ export async function getAdminMenuInventory<T extends MenuInventoryType>(input: 
         page: input.page,
         perPage: input.perPage,
         search: input.search.trim(),
+        menuItemFilter: input.menuItemFilter ?? 'all',
+        menuItemVisibility: input.menuItemVisibility ?? 'all',
       },
     });
   } catch (error) {
@@ -189,6 +223,19 @@ export async function getAdminRestaurantInventoryDetail(
   }
 }
 
+export async function getAdminRestaurantGroupInventoryDetail(
+  groupId: string,
+): Promise<RestaurantGroupInventoryDetailResponse> {
+  try {
+    return await pb.send<RestaurantGroupInventoryDetailResponse>(
+      `/api/admin/menu-inventory/restaurant-groups/${encodeURIComponent(groupId)}`,
+      {},
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load restaurant group inventory detail.'));
+  }
+}
+
 export async function createAdminRestaurantGroup(input: {
   name: string;
   notes?: string;
@@ -205,6 +252,19 @@ export async function createAdminRestaurantGroup(input: {
     });
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not create restaurant group.'));
+  }
+}
+
+export async function deleteAdminRestaurantGroup(groupId: string): Promise<RestaurantGroupDeleteResponse> {
+  try {
+    return await pb.send<RestaurantGroupDeleteResponse>(
+      `/api/admin/menu-inventory/restaurant-groups/${encodeURIComponent(groupId)}`,
+      {
+        method: 'DELETE',
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not delete restaurant group.'));
   }
 }
 

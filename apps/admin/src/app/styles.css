@@ -700,6 +700,15 @@ button {
   text-decoration: underline;
 }
 
+.inline-link {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline;
+  padding: 0;
+  text-align: left;
+}
+
 /* ─── Mini stat (auth hero) ──────────────────────────────────────────────── */
 
 .mini-stat {
@@ -941,6 +950,23 @@ button {
   overflow-x: auto;
 }
 
+.restaurant-group-restaurants-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.restaurant-group-menu-items-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.restaurant-group-menu-items-scroll th {
+  background: var(--bg-card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;
@@ -976,6 +1002,25 @@ tbody tr:hover {
   background: rgba(0, 113, 227, 0.03);
 }
 
+.inventory-group-row td {
+  background: var(--bg-soft);
+  border-bottom-color: var(--border);
+  border-top: 1px solid var(--border);
+  padding: 12px 10px;
+}
+
+.inventory-group-row:hover {
+  background: transparent;
+}
+
+.inventory-group-heading {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
 .inventory-linked-row td {
   background: var(--bg-soft);
   border-bottom-color: var(--border);
@@ -984,6 +1029,77 @@ tbody tr:hover {
 
 .inventory-linked-row:hover {
   background: transparent;
+}
+
+.menu-item-filter-groups {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.menu-item-filter-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.menu-item-filter-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.menu-item-help-panel {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.menu-item-help-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.menu-item-help-header .button {
+  flex-shrink: 0;
+}
+
+.menu-item-help-list {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+}
+
+.menu-item-help-entry {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.menu-item-help-entry dt {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.menu-item-help-entry dd {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .linked-menu-item-summary {
@@ -1159,6 +1275,165 @@ select.input {
   gap: 6px;
   min-width: 0;
   padding: 12px 14px;
+}
+
+.list-item-button {
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.list-item-button:hover {
+  background: rgba(0, 113, 227, 0.07);
+}
+
+.list-item-button.disabled {
+  cursor: default;
+}
+
+.record-highlight {
+  animation: user-record-highlight 3500ms ease-out;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18), var(--shadow-md);
+}
+
+@keyframes user-record-highlight {
+  0%,
+  72% {
+    background: rgba(0, 113, 227, 0.12);
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), var(--shadow-md);
+  }
+  100% {
+    background: var(--bg-soft);
+    box-shadow: none;
+  }
+}
+
+.activity-feed-list,
+.activity-card,
+.rating-card,
+.rating-card-title,
+.rating-card-meta,
+.activity-title-block,
+.activity-item-main,
+.visit-items-list,
+.list-inspection-card,
+.list-items-detail {
+  min-width: 0;
+}
+
+.activity-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  gap: 10px;
+}
+
+.activity-card-header {
+  align-items: flex-start;
+}
+
+.activity-title-block,
+.rating-card-title,
+.rating-card-meta,
+.activity-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.activity-item-list,
+.visit-items-list,
+.list-items-detail {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-item-row,
+.list-item-detail-row {
+  align-items: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.rating-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.rating-pill {
+  align-items: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.rating-dot {
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+.rating-1 .rating-dot {
+  background: #ef4444;
+}
+
+.rating-2 .rating-dot {
+  background: #f97316;
+}
+
+.rating-3 .rating-dot {
+  background: #eab308;
+}
+
+.rating-4 .rating-dot {
+  background: #22c55e;
+}
+
+.rating-5 .rating-dot {
+  background: #0ea5e9;
+}
+
+.visit-menu-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visit-menu-item-pill {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.list-inspection-card {
+  display: grid;
+  gap: 8px;
+}
+
+.list-items-detail {
+  border-left: 2px solid var(--border);
+  margin-left: 12px;
+  padding-left: 12px;
 }
 
 .restaurant-repair-result {
@@ -1393,8 +1668,7 @@ select.input {
 }
 
 .tab-panel,
-.tab-panel-heading,
-.user-detail-sidebar {
+.tab-panel-heading {
   display: grid;
   gap: 12px;
 }
@@ -1468,6 +1742,201 @@ select.input {
 .user-detail-grid {
   align-items: start;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+}
+
+.user-detail-grid.account-snapshot-collapsed {
+  grid-template-columns: minmax(0, 1fr) 56px;
+}
+
+.user-detail-sidebar {
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.user-detail-sidebar.collapsed {
+  align-items: center;
+  min-height: 320px;
+  padding: 14px 8px;
+}
+
+.account-snapshot-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.account-snapshot-title {
+  min-width: 0;
+}
+
+.account-snapshot-toggle {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.user-detail-sidebar.collapsed .account-snapshot-header {
+  align-items: center;
+  flex-direction: column;
+  height: 100%;
+  justify-content: space-between;
+}
+
+.user-detail-sidebar.collapsed .account-snapshot-title {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+}
+
+.user-detail-sidebar.collapsed .account-snapshot-title .eyebrow {
+  display: none;
+}
+
+.user-detail-sidebar.collapsed .account-snapshot-title h3 {
+  margin: 0;
+  text-align: center;
+  writing-mode: vertical-rl;
+}
+
+.user-detail-sidebar.collapsed .account-snapshot-toggle {
+  padding-inline: 8px;
+  writing-mode: vertical-rl;
+}
+
+.detail-grid.restaurant-overview-grid {
+  align-items: start;
+  grid-template-columns: minmax(360px, 2fr) minmax(320px, 1fr);
+  transition: grid-template-columns 160ms ease;
+}
+
+.restaurant-overview-grid.restaurant-card-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.restaurant-detail-card {
+  overflow: hidden;
+  transition: padding 160ms ease;
+}
+
+.restaurant-detail-card.collapsed {
+  align-items: center;
+  min-height: 360px;
+  padding: 14px 8px;
+}
+
+.restaurant-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.restaurant-card-title {
+  min-width: 0;
+}
+
+.restaurant-card-toggle {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.restaurant-detail-card.collapsed .restaurant-card-header {
+  align-items: center;
+  flex-direction: column;
+  height: 100%;
+  justify-content: space-between;
+}
+
+.restaurant-detail-card.collapsed .restaurant-card-title {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+}
+
+.restaurant-detail-card.collapsed .restaurant-card-title .eyebrow {
+  display: none;
+}
+
+.restaurant-detail-card.collapsed .restaurant-card-title h3 {
+  margin: 0;
+  text-align: center;
+  writing-mode: vertical-rl;
+}
+
+.restaurant-detail-card.collapsed .restaurant-card-toggle {
+  padding-inline: 8px;
+  writing-mode: vertical-rl;
+}
+
+.restaurant-cache-context {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.restaurant-cache-toggle {
+  justify-self: start;
+}
+
+.same-name-candidates-card {
+  height: 460px;
+  min-height: 0;
+}
+
+.same-name-candidates-columns {
+  display: grid;
+  flex: 1;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.same-name-candidates-columns.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.same-name-candidates-column {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+  padding: 12px;
+}
+
+.same-name-candidates-column-header {
+  align-items: baseline;
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.same-name-candidates-scroll {
+  align-content: start;
+  display: grid;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.same-name-candidate-row {
+  background: var(--bg-card);
+  flex-shrink: 0;
 }
 
 .moderation-detail-grid {
@@ -2494,6 +2963,7 @@ select.input {
   .dashboard-status-grid,
   .audit-grid,
   .detail-grid,
+  .menu-item-help-list,
   .photo-review-layout,
   .feedback-detail-grid,
   .record-overview-grid,
@@ -2503,6 +2973,37 @@ select.input {
   .audit-meta-grid,
   .audit-diff-columns {
     grid-template-columns: 1fr;
+  }
+
+  .detail-grid.restaurant-overview-grid,
+  .restaurant-overview-grid.restaurant-card-collapsed,
+  .same-name-candidates-columns.two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .restaurant-detail-card.collapsed {
+    align-items: stretch;
+    min-height: auto;
+    padding: 14px 16px;
+  }
+
+  .restaurant-detail-card.collapsed .restaurant-card-header {
+    align-items: center;
+    flex-direction: row;
+    height: auto;
+  }
+
+  .restaurant-detail-card.collapsed .restaurant-card-title {
+    display: block;
+  }
+
+  .restaurant-detail-card.collapsed .restaurant-card-title .eyebrow {
+    display: block;
+  }
+
+  .restaurant-detail-card.collapsed .restaurant-card-title h3,
+  .restaurant-detail-card.collapsed .restaurant-card-toggle {
+    writing-mode: horizontal-tb;
   }
 
   .topbar {

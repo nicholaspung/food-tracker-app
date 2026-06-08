@@ -183,6 +183,103 @@ func updateAdminRestaurantGroupMetadata(
 	return serializeAdminRestaurantGroupRecord(group), nil
 }
 
+func deleteAdminRestaurantGroup(
+	app core.App,
+	e *core.RequestEvent,
+	groupID string,
+) (map[string]any, error) {
+	trimmedGroupID := strings.TrimSpace(groupID)
+	if trimmedGroupID == "" {
+		return nil, apis.NewBadRequestError("groupId is required", nil)
+	}
+
+	var deletedGroup map[string]any
+	unassignedRestaurantIDs := []string{}
+
+	if err := app.RunInTransaction(func(txApp core.App) error {
+		group, err := txApp.FindRecordById("restaurant_groups", trimmedGroupID)
+		if err != nil {
+			return apis.NewNotFoundError("restaurant group was not found", err)
+		}
+
+		groupName := strings.TrimSpace(group.GetString("name"))
+		groupBeforeSnapshot := lib.RecordAuditSnapshot(group)
+		deletedGroup = serializeAdminRestaurantGroupRecord(group)
+
+		restaurants, err := txApp.FindRecordsByFilter(
+			"restaurants",
+			"restaurantGroup = {:groupId}",
+			"name",
+			2000,
+			0,
+			dbx.Params{"groupId": trimmedGroupID},
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load restaurant group restaurants", err)
+		}
+
+		for _, restaurant := range restaurants {
+			beforeSnapshot := lib.RecordAuditSnapshot(restaurant)
+			restaurant.Set("restaurantGroup", "")
+			if err := txApp.Save(restaurant); err != nil {
+				log.Printf("Admin restaurant group delete unassignment failed for restaurant=%q group=%q: %v", restaurant.Id, trimmedGroupID, err)
+				return apis.NewApiError(500, "failed to unassign grouped restaurant", err)
+			}
+
+			unassignedRestaurantIDs = append(unassignedRestaurantIDs, restaurant.Id)
+			if err := createAdminRecordAuditLog(
+				txApp,
+				e,
+				restaurant,
+				core.ModelEventTypeUpdate,
+				beforeSnapshot,
+				lib.RecordAuditSnapshot(restaurant),
+				map[string]any{
+					"source":                    "admin_restaurant_group_delete",
+					"restaurantId":              restaurant.Id,
+					"restaurantGroupId":         "",
+					"previousRestaurantGroupId": trimmedGroupID,
+				},
+				"Unassigned restaurant "+strings.TrimSpace(restaurant.GetString("name"))+" before deleting Restaurant Group "+groupName,
+			); err != nil {
+				return apis.NewApiError(500, "failed to audit restaurant group unassignment", err)
+			}
+		}
+
+		if err := createAdminRecordAuditLog(
+			txApp,
+			e,
+			group,
+			core.ModelEventTypeDelete,
+			groupBeforeSnapshot,
+			nil,
+			map[string]any{
+				"source":                  "admin_restaurant_group_inventory",
+				"restaurantGroupId":       trimmedGroupID,
+				"unassignedRestaurantIds": unassignedRestaurantIDs,
+			},
+			"Deleted Restaurant Group "+groupName,
+		); err != nil {
+			return apis.NewApiError(500, "failed to audit restaurant group deletion", err)
+		}
+
+		if err := txApp.Delete(group); err != nil {
+			log.Printf("Admin restaurant group delete failed for group=%q: %v", trimmedGroupID, err)
+			return apis.NewApiError(500, "failed to delete restaurant group", err)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"restaurantGroup":           deletedGroup,
+		"unassignedRestaurantIds":   unassignedRestaurantIDs,
+		"unassignedRestaurantCount": len(unassignedRestaurantIDs),
+	}, nil
+}
+
 func updateAdminRestaurantGroupMembership(
 	app core.App,
 	e *core.RequestEvent,

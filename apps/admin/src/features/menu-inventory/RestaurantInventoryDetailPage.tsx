@@ -66,6 +66,98 @@ function RestaurantGroupSummary({
   );
 }
 
+function RestaurantCacheContext({ restaurant }: { restaurant: RestaurantInventoryRow }) {
+  return (
+    <div className="restaurant-cache-context">
+      <div>
+        <p className="eyebrow">Cache context</p>
+        <h3>Source metadata</h3>
+      </div>
+
+      <div className="tag-row tag-row-start">
+        <span className="tag">{restaurant.isGooglePlace ? 'Google place' : 'Saved'}</span>
+        <span className="tag">{restaurant.menuItemCount} menu item(s)</span>
+        <span className="tag">{restaurant.menuImageCount} menu photo(s)</span>
+      </div>
+
+      <div className="split-list">
+        <div className="list-item">
+          <strong>Trust evidence</strong>
+          {renderMenuCatalogTrustEvidence(restaurant)}
+        </div>
+        <div className="list-item">
+          <strong>Place ID</strong>
+          <span className="text-muted">{formatOptional(restaurant.placeId, 'Not set')}</span>
+        </div>
+        <div className="list-item">
+          <strong>Cached</strong>
+          <span className="text-muted">
+            {restaurant.googlePlaceCachedAt?.trim()
+              ? formatDateTime(restaurant.googlePlaceCachedAt)
+              : 'Not cached'}
+          </span>
+        </div>
+        <div className="list-item">
+          <strong>Coordinates</strong>
+          <span className="text-muted">
+            {formatCoordinates(restaurant.latitude, restaurant.longitude)}
+          </span>
+        </div>
+        <div className="list-item">
+          <strong>Record ID</strong>
+          <span className="text-muted">{restaurant.id}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SameNameCandidateRow({
+  actionLabel,
+  candidate,
+  disabled,
+  onAction,
+}: {
+  actionLabel: string;
+  candidate: RestaurantInventoryRow;
+  disabled: boolean;
+  onAction: (candidate: RestaurantInventoryRow) => void;
+}) {
+  const candidateGroup = candidate.restaurantGroup;
+
+  return (
+    <article className="inline-edit-row same-name-candidate-row">
+      <div className="inline-edit-main">
+        <div className="inventory-primary-cell">
+          <Link className="route-link" to={`/menu-inventory/restaurants/${candidate.id}`}>
+            {formatOptional(candidate.name, 'Unnamed restaurant')}
+          </Link>
+          <span className="inventory-secondary-text">{formatOptional(candidate.location)}</span>
+        </div>
+        <div className="tag-row tag-row-start">
+          {candidateGroup ? (
+            <span className="tag">{formatOptional(candidateGroup.name, candidateGroup.id)}</span>
+          ) : (
+            <span className="tag">No group</span>
+          )}
+          <span className="tag">{candidate.menuItemCount} item(s)</span>
+          <span className="tag">{candidate.menuImageCount} photo(s)</span>
+        </div>
+      </div>
+      <div className="compact-action-row">
+        <button
+          className="button ghost"
+          disabled={disabled}
+          onClick={() => onAction(candidate)}
+          type="button"
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState('');
@@ -347,6 +439,8 @@ export function RestaurantInventoryDetailPage() {
   const [editGroupName, setEditGroupName] = useState('');
   const [editGroupNotes, setEditGroupNotes] = useState('');
   const [actionError, setActionError] = useState('');
+  const [isRestaurantExpanded, setIsRestaurantExpanded] = useState(true);
+  const [isCacheContextExpanded, setIsCacheContextExpanded] = useState(false);
 
   const detailQuery = useQuery({
     enabled: Boolean(restaurantId),
@@ -356,6 +450,13 @@ export function RestaurantInventoryDetailPage() {
 
   const restaurant = detailQuery.data?.restaurant;
   const restaurantGroup = detailQuery.data?.restaurantGroup ?? restaurant?.restaurantGroup ?? null;
+  const sameNameCandidates = detailQuery.data?.sameNameCandidates ?? [];
+  const candidatesInCurrentGroup = restaurantGroup
+    ? sameNameCandidates.filter((candidate) => candidate.restaurantGroupId === restaurantGroup.id)
+    : [];
+  const candidatesOutsideCurrentGroup = restaurantGroup
+    ? sameNameCandidates.filter((candidate) => candidate.restaurantGroupId !== restaurantGroup.id)
+    : sameNameCandidates;
 
   useEffect(() => {
     setEditGroupName(restaurantGroup?.name ?? '');
@@ -500,6 +601,26 @@ export function RestaurantInventoryDetailPage() {
     }
   };
 
+  const getCandidateAction = (candidate: RestaurantInventoryRow) => {
+    const candidateGroup = candidate.restaurantGroup;
+    const isAlreadyInCurrentGroup =
+      Boolean(restaurantGroup) && candidate.restaurantGroupId === restaurantGroup?.id;
+    const canAssignToCurrentGroup = Boolean(restaurantGroup) && !isAlreadyInCurrentGroup;
+    const canUseCandidateGroup = !restaurantGroup && Boolean(candidateGroup);
+    const actionLabel = restaurantGroup
+      ? isAlreadyInCurrentGroup
+        ? 'Already in group'
+        : 'Add to current group'
+      : candidateGroup
+        ? 'Use candidate group'
+        : 'Create group first';
+
+    return {
+      disabled: isMembershipBusy || (!canAssignToCurrentGroup && !canUseCandidateGroup),
+      label: actionLabel,
+    };
+  };
+
   return (
     <>
       <section className="panel">
@@ -535,85 +656,91 @@ export function RestaurantInventoryDetailPage() {
 
       {detailQuery.data && restaurant ? (
         <>
-          <section className="detail-grid">
-            <article className="detail-card">
-              <div className="summary-row">
-                <div>
+          <section
+            className={[
+              'detail-grid',
+              'restaurant-overview-grid',
+              isRestaurantExpanded ? '' : 'restaurant-card-collapsed',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <article
+              className={
+                isRestaurantExpanded
+                  ? 'detail-card restaurant-detail-card'
+                  : 'detail-card restaurant-detail-card collapsed'
+              }
+            >
+              <div className="restaurant-card-header">
+                <div className="restaurant-card-title">
                   <p className="eyebrow">Restaurant</p>
                   <h3>{formatOptional(restaurant.name, 'Unnamed restaurant')}</h3>
                 </div>
-                {renderInventoryVisibility(restaurant.visibility)}
+                {isRestaurantExpanded ? (
+                  <div className="summary-actions">
+                    {renderInventoryVisibility(restaurant.visibility)}
+                    <button
+                      aria-expanded={isRestaurantExpanded}
+                      className="button ghost restaurant-card-toggle"
+                      onClick={() => setIsRestaurantExpanded(false)}
+                      type="button"
+                    >
+                      Collapse
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    aria-expanded={isRestaurantExpanded}
+                    className="button ghost restaurant-card-toggle"
+                    onClick={() => setIsRestaurantExpanded(true)}
+                    type="button"
+                  >
+                    Expand
+                  </button>
+                )}
               </div>
 
-              <div className="split-list">
-                <div className="list-item">
-                  <strong>Location</strong>
-                  <span className="text-muted">{formatOptional(restaurant.location)}</span>
-                </div>
-                <div className="list-item">
-                  <strong>Cuisine</strong>
-                  <span className="text-muted">{formatOptional(restaurant.cuisineType, 'Not set')}</span>
-                </div>
-                <div className="list-item">
-                  <strong>Created</strong>
-                  <span className="text-muted">{formatDateTime(restaurant.created)}</span>
-                </div>
-                <div className="list-item">
-                  <strong>Updated</strong>
-                  <span className="text-muted">{formatDateTime(restaurant.updated || restaurant.created)}</span>
-                </div>
-              </div>
+              {isRestaurantExpanded ? (
+                <>
+                  <div className="split-list">
+                    <div className="list-item">
+                      <strong>Location</strong>
+                      <span className="text-muted">{formatOptional(restaurant.location)}</span>
+                    </div>
+                    <div className="list-item">
+                      <strong>Cuisine</strong>
+                      <span className="text-muted">{formatOptional(restaurant.cuisineType, 'Not set')}</span>
+                    </div>
+                    <div className="list-item">
+                      <strong>Created</strong>
+                      <span className="text-muted">{formatDateTime(restaurant.created)}</span>
+                    </div>
+                    <div className="list-item">
+                      <strong>Updated</strong>
+                      <span className="text-muted">{formatDateTime(restaurant.updated || restaurant.created)}</span>
+                    </div>
+                  </div>
 
-              <div className="list-item">
-                <strong>Creator</strong>
-                {renderInventoryUser(restaurant.creator, restaurant.createdBy)}
-              </div>
+                  <div className="list-item">
+                    <strong>Creator</strong>
+                    {renderInventoryUser(restaurant.creator, restaurant.createdBy)}
+                  </div>
+
+                  {isCacheContextExpanded ? <RestaurantCacheContext restaurant={restaurant} /> : null}
+
+                  <button
+                    aria-expanded={isCacheContextExpanded}
+                    className="inline-link route-link restaurant-cache-toggle"
+                    onClick={() => setIsCacheContextExpanded((isExpanded) => !isExpanded)}
+                    type="button"
+                  >
+                    {isCacheContextExpanded ? 'Hide cache context information' : 'Show cache context information'}
+                  </button>
+                </>
+              ) : null}
             </article>
 
-            <article className="detail-card">
-              <div>
-                <p className="eyebrow">Cache context</p>
-                <h3>Source metadata</h3>
-              </div>
-
-              <div className="tag-row tag-row-start">
-                <span className="tag">{restaurant.isGooglePlace ? 'Google place' : 'Saved'}</span>
-                <span className="tag">{restaurant.menuItemCount} menu item(s)</span>
-                <span className="tag">{restaurant.menuImageCount} menu photo(s)</span>
-              </div>
-
-              <div className="split-list">
-                <div className="list-item">
-                  <strong>Trust evidence</strong>
-                  {renderMenuCatalogTrustEvidence(restaurant)}
-                </div>
-                <div className="list-item">
-                  <strong>Place ID</strong>
-                  <span className="text-muted">{formatOptional(restaurant.placeId, 'Not set')}</span>
-                </div>
-                <div className="list-item">
-                  <strong>Cached</strong>
-                  <span className="text-muted">
-                    {restaurant.googlePlaceCachedAt?.trim()
-                      ? formatDateTime(restaurant.googlePlaceCachedAt)
-                      : 'Not cached'}
-                  </span>
-                </div>
-                <div className="list-item">
-                  <strong>Coordinates</strong>
-                  <span className="text-muted">
-                    {formatCoordinates(restaurant.latitude, restaurant.longitude)}
-                  </span>
-                </div>
-                <div className="list-item">
-                  <strong>Record ID</strong>
-                  <span className="text-muted">{restaurant.id}</span>
-                </div>
-              </div>
-            </article>
-          </section>
-
-          <section className="detail-grid">
             <article className="detail-card">
               <div className="summary-row">
                 <div>
@@ -654,7 +781,11 @@ export function RestaurantInventoryDetailPage() {
                     />
                   </div>
                   <div className="button-row">
-                    <button className="button primary" disabled={isMembershipBusy || !editGroupName.trim()} type="submit">
+                    <button
+                      className="button primary"
+                      disabled={isMembershipBusy || !editGroupName.trim()}
+                      type="submit"
+                    >
                       {updateGroupMetadataMutation.isPending ? 'Saving...' : 'Save group details'}
                     </button>
                     <button
@@ -697,68 +828,99 @@ export function RestaurantInventoryDetailPage() {
                 </form>
               )}
             </article>
+          </section>
 
-            <article className="detail-card">
+          <section className="detail-card same-name-candidates-card">
+            <div className="summary-row">
               <div>
                 <p className="eyebrow">Same-name candidates</p>
-                <h3>{detailQuery.data.sameNameCandidates.length} candidate(s)</h3>
+                <h3>{sameNameCandidates.length} candidate(s)</h3>
               </div>
+              {restaurantGroup ? <span className="tag">Grouped view</span> : <span className="tag">Single column</span>}
+            </div>
 
-              {detailQuery.data.sameNameCandidates.length === 0 ? (
-                <div className="state-panel">
-                  <span className="text-muted">No exact same-name restaurant candidates found.</span>
-                </div>
-              ) : (
-                <div className="menu-item-editor">
-                  {detailQuery.data.sameNameCandidates.map((candidate) => {
-                    const candidateGroup = candidate.restaurantGroup;
-                    const isAlreadyInCurrentGroup =
-                      Boolean(restaurantGroup) && candidate.restaurantGroupId === restaurantGroup?.id;
-                    const canAssignToCurrentGroup = Boolean(restaurantGroup) && !isAlreadyInCurrentGroup;
-                    const canUseCandidateGroup = !restaurantGroup && Boolean(candidateGroup);
-                    const actionLabel = restaurantGroup
-                      ? isAlreadyInCurrentGroup
-                        ? 'Already in group'
-                        : 'Add to current group'
-                      : candidateGroup
-                        ? 'Use candidate group'
-                        : 'Create group first';
+            {sameNameCandidates.length === 0 ? (
+              <div className="state-panel">
+                <span className="text-muted">No exact same-name restaurant candidates found.</span>
+              </div>
+            ) : restaurantGroup ? (
+              <div className="same-name-candidates-columns two-column">
+                <div className="same-name-candidates-column">
+                  <div className="same-name-candidates-column-header">
+                    <strong>Not in restaurant group</strong>
+                    <span className="text-muted">{candidatesOutsideCurrentGroup.length} candidate(s)</span>
+                  </div>
+                  <div className="same-name-candidates-scroll">
+                    {candidatesOutsideCurrentGroup.length === 0 ? (
+                      <div className="state-panel">
+                        <span className="text-muted">No candidates outside this group.</span>
+                      </div>
+                    ) : (
+                      candidatesOutsideCurrentGroup.map((candidate) => {
+                        const action = getCandidateAction(candidate);
 
-                    return (
-                      <article className="inline-edit-row" key={candidate.id}>
-                        <div className="inline-edit-main">
-                          <div className="inventory-primary-cell">
-                            <Link className="route-link" to={`/menu-inventory/restaurants/${candidate.id}`}>
-                              {formatOptional(candidate.name, 'Unnamed restaurant')}
-                            </Link>
-                            <span className="inventory-secondary-text">{formatOptional(candidate.location)}</span>
-                          </div>
-                          <div className="tag-row tag-row-start">
-                            {candidateGroup ? (
-                              <span className="tag">{formatOptional(candidateGroup.name, candidateGroup.id)}</span>
-                            ) : (
-                              <span className="tag">No group</span>
-                            )}
-                            <span className="tag">{candidate.menuItemCount} item(s)</span>
-                            <span className="tag">{candidate.menuImageCount} photo(s)</span>
-                          </div>
-                        </div>
-                        <div className="compact-action-row">
-                          <button
-                            className="button ghost"
-                            disabled={isMembershipBusy || (!canAssignToCurrentGroup && !canUseCandidateGroup)}
-                            onClick={() => handleCandidateAction(candidate)}
-                            type="button"
-                          >
-                            {actionLabel}
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
+                        return (
+                          <SameNameCandidateRow
+                            actionLabel={action.label}
+                            candidate={candidate}
+                            disabled={action.disabled}
+                            key={candidate.id}
+                            onAction={handleCandidateAction}
+                          />
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              )}
-            </article>
+                <div className="same-name-candidates-column">
+                  <div className="same-name-candidates-column-header">
+                    <strong>In restaurant group</strong>
+                    <span className="text-muted">{candidatesInCurrentGroup.length} candidate(s)</span>
+                  </div>
+                  <div className="same-name-candidates-scroll">
+                    {candidatesInCurrentGroup.length === 0 ? (
+                      <div className="state-panel">
+                        <span className="text-muted">No same-name candidates are in this group yet.</span>
+                      </div>
+                    ) : (
+                      candidatesInCurrentGroup.map((candidate) => {
+                        const action = getCandidateAction(candidate);
+
+                        return (
+                          <SameNameCandidateRow
+                            actionLabel={action.label}
+                            candidate={candidate}
+                            disabled={action.disabled}
+                            key={candidate.id}
+                            onAction={handleCandidateAction}
+                          />
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="same-name-candidates-columns">
+                <div className="same-name-candidates-column">
+                  <div className="same-name-candidates-scroll">
+                    {candidatesOutsideCurrentGroup.map((candidate) => {
+                      const action = getCandidateAction(candidate);
+
+                      return (
+                        <SameNameCandidateRow
+                          actionLabel={action.label}
+                          candidate={candidate}
+                          disabled={action.disabled}
+                          key={candidate.id}
+                          onAction={handleCandidateAction}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="table-panel">

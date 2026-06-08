@@ -113,9 +113,19 @@ export interface VisitSummary {
   restaurant?: string;
   visitDate?: string;
   created: string;
+  items?: VisitItemSummary[];
   expand?: {
     restaurant?: RestaurantSummary;
   };
+}
+
+export interface VisitItemSummary {
+  id: string;
+  menuItem?: string;
+  name: string;
+  notes?: string;
+  rating: number;
+  created: string;
 }
 
 export interface FoodItemSummary {
@@ -123,6 +133,15 @@ export interface FoodItemSummary {
   name: string;
   rating: number;
   created: string;
+  itemType?: 'visit-item' | 'food-product';
+  visit?: string;
+  menuItemId?: string;
+  menuItemName?: string;
+  menuItemCreatedBy?: string;
+  restaurantId?: string;
+  restaurantName?: string;
+  restaurantLocation?: string;
+  restaurantCreatedBy?: string;
 }
 
 export interface FoodProductSummary {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Clipboard from 'expo-clipboard';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
 import { extractRestaurantNamesFromImage, parseLimitExceededError, useMonthlyUsage } from '../features';
@@ -20,14 +21,23 @@ const mockSetIsSearchExpanded = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockPickImageAssets = jest.fn();
 const mockInvalidateQueries = jest.fn();
+const mockSetQueryData = jest.fn();
+const mockAlert = jest.fn();
 const mockSaveRestaurantToDefaultList = jest.fn();
 const mockRemoveBookmarkFromDefaultList = jest.fn();
+const mockGetStorefrontScanHistory = jest.fn();
+const mockSaveStorefrontScanHistoryEntry = jest.fn();
+const mockDeleteStorefrontScanHistoryOption = jest.fn();
+const mockRemoveStorefrontScanHistoryOption = jest.fn();
 
 jest.mock('expo-clipboard', () => ({
   setStringAsync: jest.fn(),
 }));
 
 jest.mock('react-native', () => ({
+  Alert: {
+    alert: (...args: unknown[]) => mockAlert(...args),
+  },
   Linking: {
     openSettings: jest.fn(),
   },
@@ -45,13 +55,19 @@ jest.mock('@tanstack/react-query', () => ({
   })),
   useQueryClient: jest.fn(() => ({
     invalidateQueries: mockInvalidateQueries,
+    setQueryData: mockSetQueryData,
   })),
 }));
 
 jest.mock('../components/shared', () => ({
   BackHeaderScreenScaffold: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('BackHeaderScreenScaffold', props, children),
+  ConfirmDestructiveModal: (props: Record<string, unknown>) =>
+    mockReact.createElement('ConfirmDestructiveModal', props),
   CurrentLocationButton: (props: Record<string, unknown>) => mockReact.createElement('CurrentLocationButton', props),
+  ExpandableText: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('ExpandableText', props, children),
+  FeatureListFooter: (props: Record<string, unknown>) => mockReact.createElement('FeatureListFooter', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
@@ -120,6 +136,15 @@ jest.mock('../features/store/useRestaurantListWrites', () => ({
   })),
 }));
 
+jest.mock('../features/store/storefrontScanHistory', () => ({
+  deleteStorefrontScanHistoryOption: mockDeleteStorefrontScanHistoryOption,
+  getStorefrontScanHistory: mockGetStorefrontScanHistory,
+  removeStorefrontScanHistoryOption: mockRemoveStorefrontScanHistoryOption,
+  saveStorefrontScanHistoryEntry: mockSaveStorefrontScanHistoryEntry,
+  STOREFRONT_SCAN_HISTORY_PAGE_SIZE: 20,
+  storefrontScanHistoryQueryKey: (identityKey: string) => ['feature', 'storefrontScanHistory', identityKey],
+}));
+
 jest.mock('../lib/photoStaging', () => ({
   cleanupStagedPhotoFiles: jest.fn(),
   stageLocalPhotoFile: jest.fn(),
@@ -171,6 +196,7 @@ jest.mock('../theme', () => ({
               warningBorder: 'warning-border',
             },
             text: {
+              danger: 'danger',
               info: 'info',
               muted: 'muted',
               primary: 'primary',
@@ -187,7 +213,9 @@ jest.mock('../theme', () => ({
     colors: {
       text: {
         info: 'info',
+        primary: 'primary',
         secondary: 'secondary',
+        danger: 'danger',
       },
     },
     spacing: { lg: 24, sm: 8 },
@@ -222,6 +250,7 @@ const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunc
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedClipboard = Clipboard as jest.Mocked<typeof Clipboard>;
 
 describe('RestaurantDiscoveryScreen', () => {
   beforeEach(() => {
@@ -241,6 +270,31 @@ describe('RestaurantDiscoveryScreen', () => {
       status: 'success',
     });
     mockInvalidateQueries.mockReset();
+    mockSetQueryData.mockReset();
+    mockAlert.mockReset();
+    mockGetStorefrontScanHistory.mockReset();
+    mockGetStorefrontScanHistory.mockResolvedValue([]);
+    mockSaveStorefrontScanHistoryEntry.mockReset();
+    mockSaveStorefrontScanHistoryEntry.mockImplementation(async (_identityKey, input) => [
+      {
+        id: 'saved-storefront-scan',
+        result: input.result,
+        scannedAt: input.scannedAt ?? '2026-06-07T12:00:00.000Z',
+        source: input.source,
+      },
+    ]);
+    mockDeleteStorefrontScanHistoryOption.mockReset();
+    mockDeleteStorefrontScanHistoryOption.mockResolvedValue([]);
+    mockRemoveStorefrontScanHistoryOption.mockReset();
+    mockRemoveStorefrontScanHistoryOption.mockImplementation((entries, input) =>
+      entries.flatMap((entry: any) => {
+        if (entry.id !== input.entryId || !entry.result?.found) {
+          return [entry];
+        }
+        const options = entry.result.options.filter((_option: any, index: number) => index !== input.optionIndex);
+        return options.length > 0 ? [{ ...entry, result: { ...entry.result, options } }] : [];
+      }),
+    );
     mockRemoveBookmarkFromDefaultList.mockReset();
     mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveRestaurantToDefaultList.mockReset();
@@ -253,6 +307,7 @@ describe('RestaurantDiscoveryScreen', () => {
     } as never);
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries: mockInvalidateQueries,
+      setQueryData: mockSetQueryData,
     } as never);
     mockedUseImageSourcePicker.mockReturnValue({
       permissionNeedsSettings: false,
@@ -471,6 +526,35 @@ describe('RestaurantDiscoveryScreen', () => {
       .find((node: any) => node.props.testID === 'restaurant-discovery-map-search-here');
   }
 
+  async function flushAsyncWork() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  async function flushMacrotask() {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    await flushAsyncWork();
+  }
+
+  function findStorefrontErrorToast(renderer: any) {
+    return renderer.root
+      .findAllByType('PageErrorToast')
+      .find((node: any) => node.props.title === 'Could not read storefront');
+  }
+
+  function findStorefrontOptionCards(renderer: any) {
+    return renderer.root.findAll(
+      (node: any) =>
+        node.type === 'View' &&
+        typeof node.props.testID === 'string' &&
+        node.props.testID.startsWith('restaurant-discovery-storefront-option-'),
+    );
+  }
+
   async function runGalleryStorefrontScan(renderer: any) {
     switchDiscoveryTab(renderer, 'scan');
     act(() => {
@@ -480,7 +564,8 @@ describe('RestaurantDiscoveryScreen', () => {
         ?.props.onPress();
     });
     await act(async () => {
-      await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
+      renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
+      await flushAsyncWork();
     });
   }
 
@@ -1265,7 +1350,7 @@ describe('RestaurantDiscoveryScreen', () => {
     });
 
     expect(mockPickImageAssets).not.toHaveBeenCalled();
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBe(
       'Storefront read limit reached for this month (25).',
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
@@ -1299,13 +1384,9 @@ describe('RestaurantDiscoveryScreen', () => {
       await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
     });
 
-    const possibleName = renderer.root.findByType('ListItem');
-    let descriptionRenderer: any;
-    act(() => {
-      descriptionRenderer = create(possibleName.props.description);
-    });
+    const possibleName = findStorefrontOptionCards(renderer)[0];
     await act(async () => {
-      await descriptionRenderer.root
+      await possibleName
         .findAllByType('Button')
         .find((node: any) => node.props.label === 'Search')
         ?.props.onPress();
@@ -1316,6 +1397,193 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(mockSearchByText).toHaveBeenCalledWith({ queryOverride: 'Sushi Ginza' });
     expect(getDiscoveryTabControl(renderer)?.props.value).toBe('search');
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(1);
+  });
+
+  it('updates storefront scan history after successful scans', async () => {
+    const result = {
+      found: true,
+      options: [
+        {
+          confidence: 'high',
+          name: 'Sushi Ginza',
+          reason: 'The storefront sign is visible.',
+        },
+      ],
+    } as const;
+    mockedExtractRestaurantNamesFromImage.mockResolvedValueOnce(result as never);
+    const renderer = renderScreen();
+
+    await runGalleryStorefrontScan(renderer);
+
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      ['feature', 'storefrontScanHistory', 'current-user'],
+      expect.anything(),
+    );
+    expect(findStorefrontOptionCards(renderer)).toHaveLength(1);
+  });
+
+  it('groups saved storefront scans by day and loads more results', () => {
+    const now = new Date();
+    const savedScans = Array.from({ length: 21 }, (_, index) => ({
+      id: `saved-scan-${index}`,
+      result: {
+        found: true,
+        options: [
+          {
+            confidence: 'high',
+            name: `Restaurant ${index}`,
+          },
+        ],
+      },
+      scannedAt: new Date(now.getTime() - index * 60_000).toISOString(),
+      source: 'gallery',
+    }));
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => {
+      if (queryKey?.[1] === 'storefrontScanHistory') {
+        return {
+          data: savedScans,
+          error: null,
+          isLoading: false,
+          isPending: false,
+        } as never;
+      }
+
+      return {
+        data: [],
+        error: null,
+        isLoading: false,
+        isPending: false,
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    switchDiscoveryTab(renderer, 'scan');
+
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Today')).toBe(true);
+    expect(renderer.root.findAllByType('Text').filter((node: any) => node.props.children === 'Possible Names')).toHaveLength(1);
+    expect(
+      renderer.root
+        .findAllByType('Text')
+        .some((node: any) => {
+          const children = node.props.children;
+          return Array.isArray(children) ? children[0] === 'Scanned ' : false;
+        }),
+    ).toBe(true);
+    expect(findStorefrontOptionCards(renderer)).toHaveLength(20);
+    const loadMore = renderer.root.findByType('FeatureListFooter');
+    expect(loadMore.props.label).toBe('Load more results');
+
+    act(() => {
+      loadMore.props.onLoadMore();
+    });
+
+    expect(findStorefrontOptionCards(renderer)).toHaveLength(21);
+  });
+
+  it('opens a destructive confirmation before deleting an individual saved storefront name', () => {
+    const savedScans = [
+      {
+        id: 'saved-scan-1',
+        result: {
+          found: true,
+          options: [
+            {
+              confidence: 'high',
+              name: 'Sushi Ginza',
+              reason: 'The storefront sign is visible.',
+            },
+          ],
+        },
+        scannedAt: new Date().toISOString(),
+        source: 'gallery',
+      },
+    ];
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => {
+      if (queryKey?.[1] === 'storefrontScanHistory') {
+        return {
+          data: savedScans,
+          error: null,
+          isLoading: false,
+          isPending: false,
+        } as never;
+      }
+
+      return {
+        data: [],
+        error: null,
+        isLoading: false,
+        isPending: false,
+      } as never;
+    });
+    const renderer = renderScreen();
+
+    switchDiscoveryTab(renderer, 'scan');
+
+    const possibleName = findStorefrontOptionCards(renderer)[0];
+    act(() => {
+      possibleName
+        .findAllByType('Pressable')
+        .find((node: any) => node.props.accessibilityLabel === 'Delete Sushi Ginza')
+        ?.props.onPress();
+    });
+
+    const modal = renderer.root.findByType('ConfirmDestructiveModal');
+    expect(modal.props.visible).toBe(true);
+    expect(modal.props.confirmLabel).toBe('Delete Result');
+  });
+
+  it('shows a copied alert after copying a storefront possible name', async () => {
+    const savedScans = [
+      {
+        id: 'saved-scan-1',
+        result: {
+          found: true,
+          options: [
+            {
+              confidence: 'high',
+              name: 'Sushi Ginza',
+              reason: 'The storefront sign is visible.',
+            },
+          ],
+        },
+        scannedAt: new Date().toISOString(),
+        source: 'gallery',
+      },
+    ];
+    mockedUseQuery.mockImplementation(({ queryKey }: any) => {
+      if (queryKey?.[1] === 'storefrontScanHistory') {
+        return {
+          data: savedScans,
+          error: null,
+          isLoading: false,
+          isPending: false,
+        } as never;
+      }
+
+      return {
+        data: [],
+        error: null,
+        isLoading: false,
+        isPending: false,
+      } as never;
+    });
+    mockedClipboard.setStringAsync.mockResolvedValueOnce(true);
+    const renderer = renderScreen();
+
+    switchDiscoveryTab(renderer, 'scan');
+
+    const possibleName = findStorefrontOptionCards(renderer)[0];
+    await act(async () => {
+      await possibleName
+        .findAllByType('Pressable')
+        .find((node: any) => node.props.accessibilityLabel === 'Copy Sushi Ginza')
+        ?.props.onPress();
+      await flushAsyncWork();
+      await flushMacrotask();
+    });
+
+    expect(mockedClipboard.setStringAsync).toHaveBeenCalledWith('Sushi Ginza');
+    expect(mockAlert).toHaveBeenCalledWith('Copied', 'Copied to clipboard.');
   });
 
   it('tracks successful storefront extraction with request correlation', async () => {
@@ -1374,7 +1642,7 @@ describe('RestaurantDiscoveryScreen', () => {
 
     await runGalleryStorefrontScan(renderer);
 
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Gemini failed');
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBe('Gemini failed');
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
       'FOOD_DISCOVERY_STOREFRONT_EXTRACTION_FAILED',
       expect.objectContaining({
@@ -1423,7 +1691,7 @@ describe('RestaurantDiscoveryScreen', () => {
         requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
       }),
     );
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe('Photo library permission is blocked.');
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBe('Photo library permission is blocked.');
     expect(mockedExtractRestaurantNamesFromImage).not.toHaveBeenCalled();
     expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
   });
@@ -1444,7 +1712,7 @@ describe('RestaurantDiscoveryScreen', () => {
         requestCorrelation: expect.stringMatching(/^mobile-storefront-/),
       }),
     );
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBeNull();
     expect(mockedExtractRestaurantNamesFromImage).not.toHaveBeenCalled();
     expect(mockedCaptureObservabilityError).not.toHaveBeenCalled();
   });
@@ -1465,7 +1733,7 @@ describe('RestaurantDiscoveryScreen', () => {
 
     await runGalleryStorefrontScan(renderer);
 
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBe(
       'You have reached your monthly AI scan limit.',
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
@@ -1501,7 +1769,7 @@ describe('RestaurantDiscoveryScreen', () => {
 
     await runGalleryStorefrontScan(renderer);
 
-    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+    expect(findStorefrontErrorToast(renderer)?.props.errorMessage).toBe(
       'Restaurant name extraction requires internet connection.',
     );
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
@@ -1536,7 +1804,7 @@ describe('RestaurantDiscoveryScreen', () => {
     await act(async () => {
       await renderer.root.findByType('PhotoSourceActionCards').props.onGalleryPress();
     });
-    expect(renderer.root.findByProps({ title: 'Cafe Luna' })).toBeTruthy();
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Cafe Luna')).toBe(true);
 
     switchDiscoveryTab(renderer, 'search');
     const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
@@ -1546,6 +1814,6 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(mockClearPlacesSearchState).toHaveBeenCalledTimes(1);
 
     switchDiscoveryTab(renderer, 'scan');
-    expect(renderer.root.findByProps({ title: 'Cafe Luna' })).toBeTruthy();
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'Cafe Luna')).toBe(true);
   });
 });

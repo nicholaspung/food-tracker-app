@@ -46,10 +46,13 @@ type adminMenuInventoryRestaurant struct {
 }
 
 type adminRestaurantGroup struct {
-	CreatedBy string `json:"createdBy"`
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Notes     string `json:"notes"`
+	CreatedBy                  string `json:"createdBy"`
+	ID                         string `json:"id"`
+	MenuItemCount              int    `json:"menuItemCount"`
+	Name                       string `json:"name"`
+	Notes                      string `json:"notes"`
+	RestaurantCount            int    `json:"restaurantCount"`
+	GroupSuitableMenuItemCount int    `json:"groupSuitableMenuItemCount"`
 }
 
 type adminMenuInventoryMenuItem struct {
@@ -106,6 +109,19 @@ type adminRestaurantInventoryDetailResponse struct {
 type adminRestaurantGroupCreateResponse struct {
 	RestaurantDetail *adminRestaurantInventoryDetailResponse `json:"restaurantDetail"`
 	RestaurantGroup  adminRestaurantGroup                    `json:"restaurantGroup"`
+}
+
+type adminRestaurantGroupInventoryDetailResponse struct {
+	AllMenuItems    []adminMenuInventoryMenuItem   `json:"allMenuItems"`
+	MenuItems       []adminMenuInventoryMenuItem   `json:"menuItems"`
+	RestaurantGroup adminRestaurantGroup           `json:"restaurantGroup"`
+	Restaurants     []adminMenuInventoryRestaurant `json:"restaurants"`
+}
+
+type adminRestaurantGroupDeleteResponse struct {
+	RestaurantGroup           adminRestaurantGroup `json:"restaurantGroup"`
+	UnassignedRestaurantCount int                  `json:"unassignedRestaurantCount"`
+	UnassignedRestaurantIDs   []string             `json:"unassignedRestaurantIds"`
 }
 
 type adminMenuImageInventoryDetailResponse struct {
@@ -199,6 +215,34 @@ func loadAdminRestaurantInventoryDetailResponse(
 	payload := adminRestaurantInventoryDetailResponse{}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to decode restaurant detail response: %v", err)
+	}
+
+	return payload
+}
+
+func loadAdminRestaurantGroupInventoryDetailResponse(
+	t *testing.T,
+	server *preparedServer,
+	adminToken string,
+	groupID string,
+) adminRestaurantGroupInventoryDetailResponse {
+	t.Helper()
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/menu-inventory/restaurant-groups/"+groupID,
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminRestaurantGroupInventoryDetailResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode restaurant group detail response: %v", err)
 	}
 
 	return payload
@@ -420,6 +464,265 @@ func TestAdminMenuInventoryListsMenuItemsWithCreatorAndRestaurant(t *testing.T) 
 	}
 	if !row.IsFromOCR {
 		t.Fatalf("expected OCR flag")
+	}
+}
+
+func TestAdminMenuInventoryOrdersMenuItemsByRestaurant(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+
+	betaRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Beta Bistro",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	alphaRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Alpha Cafe",
+		"location":   "Berkeley, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":       "Grouped Order Beta Burger",
+		"restaurant": betaRestaurant.Id,
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":       "Grouped Order Alpha Toast",
+		"restaurant": alphaRestaurant.Id,
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+	createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":       "Grouped Order Alpha Salad",
+		"restaurant": alphaRestaurant.Id,
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	payload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=menu-items&search=grouped%20order&perPage=100",
+	)
+
+	if payload.TotalItems != 3 {
+		t.Fatalf("expected three matching menu items, got %d", payload.TotalItems)
+	}
+
+	restaurantNames := []string{}
+	itemNames := []string{}
+	for _, row := range payload.Items {
+		restaurantNames = append(restaurantNames, row.RestaurantName)
+		itemNames = append(itemNames, row.Name)
+	}
+
+	expectedRestaurantNames := []string{"Alpha Cafe", "Alpha Cafe", "Beta Bistro"}
+	for index, expected := range expectedRestaurantNames {
+		if restaurantNames[index] != expected {
+			t.Fatalf("expected restaurant ordering %v, got %v", expectedRestaurantNames, restaurantNames)
+		}
+	}
+
+	expectedItemNames := []string{
+		"Grouped Order Alpha Salad",
+		"Grouped Order Alpha Toast",
+		"Grouped Order Beta Burger",
+	}
+	for index, expected := range expectedItemNames {
+		if itemNames[index] != expected {
+			t.Fatalf("expected item ordering %v, got %v", expectedItemNames, itemNames)
+		}
+	}
+}
+
+func TestAdminMenuInventoryFiltersMenuItemsByReviewAndTrustState(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Filter Cafe",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	notApprovedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Unreviewed Toast",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+	approvedNotPromotedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Approved Soup",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	rejectedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Rejected Salad",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "friends",
+		"approvalStatus": "rejected",
+	})
+	groupSuitableItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Group Pasta",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	promotedCatalogItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Promoted Ramen",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"promotedFrom":   notApprovedItem.Id,
+	})
+	contributionItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Filter Contribution Ramen",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+		"promotedTo":     promotedCatalogItem.Id,
+	})
+
+	tests := []struct {
+		filter      string
+		expectedIDs []string
+	}{
+		{
+			filter:      "not-approved",
+			expectedIDs: []string{contributionItem.Id, notApprovedItem.Id},
+		},
+		{
+			filter:      "approved-not-promoted",
+			expectedIDs: []string{approvedNotPromotedItem.Id, groupSuitableItem.Id},
+		},
+		{
+			filter:      "rejected",
+			expectedIDs: []string{rejectedItem.Id},
+		},
+		{
+			filter:      "group-suitable",
+			expectedIDs: []string{groupSuitableItem.Id},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.filter, func(t *testing.T) {
+			payload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+				t,
+				server,
+				adminToken,
+				"/api/admin/menu-inventory?type=menu-items&search=Filter&perPage=100&menuItemFilter="+testCase.filter,
+			)
+
+			if payload.TotalItems != len(testCase.expectedIDs) {
+				t.Fatalf("expected %d matching menu items, got %d: %#v", len(testCase.expectedIDs), payload.TotalItems, payload.Items)
+			}
+
+			itemIDs := map[string]bool{}
+			for _, item := range payload.Items {
+				itemIDs[item.ID] = true
+			}
+			for _, expectedID := range testCase.expectedIDs {
+				if !itemIDs[expectedID] {
+					t.Fatalf("expected item %s in filtered response, got %#v", expectedID, payload.Items)
+				}
+			}
+		})
+	}
+}
+
+func TestAdminMenuInventoryFiltersMenuItemsByVisibility(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Visibility Filter Cafe",
+		"location":   "Oakland, CA",
+		"createdBy":  creator.Id,
+		"visibility": "public",
+	})
+
+	publicItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Visibility Filter Public Item",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	friendsItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Visibility Filter Friends Item",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+	privateItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Visibility Filter Private Item",
+		"restaurant":     restaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "private",
+		"approvalStatus": "rejected",
+	})
+
+	tests := []struct {
+		visibility string
+		expectedID string
+	}{
+		{visibility: "public", expectedID: publicItem.Id},
+		{visibility: "friends", expectedID: friendsItem.Id},
+		{visibility: "private", expectedID: privateItem.Id},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.visibility, func(t *testing.T) {
+			payload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+				t,
+				server,
+				adminToken,
+				"/api/admin/menu-inventory?type=menu-items&search=Visibility%20Filter&perPage=100&menuItemVisibility="+testCase.visibility,
+			)
+
+			if payload.TotalItems != 1 {
+				t.Fatalf("expected one matching menu item, got %d: %#v", payload.TotalItems, payload.Items)
+			}
+			if payload.Items[0].ID != testCase.expectedID || payload.Items[0].Visibility != testCase.visibility {
+				t.Fatalf("unexpected visibility-filtered item: %#v", payload.Items[0])
+			}
+		})
+	}
+
+	combinedPayload := loadAdminMenuInventoryResponse[adminMenuInventoryMenuItem](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=menu-items&search=Visibility%20Filter&perPage=100&menuItemFilter=not-approved&menuItemVisibility=friends",
+	)
+	if combinedPayload.TotalItems != 1 || combinedPayload.Items[0].ID != friendsItem.Id {
+		t.Fatalf("expected combined filter to return the friends unreviewed item, got %#v", combinedPayload.Items)
 	}
 }
 
@@ -874,6 +1177,224 @@ func TestAdminMenuInventoryUpdatesRestaurantGroupMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminMenuInventoryListsRestaurantGroupsAndLoadsGroupDetail(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Inventory Group Cafe",
+		"notes":     "Known group",
+		"createdBy": admin.Id,
+	})
+	otherGroup := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Other Group",
+		"createdBy": admin.Id,
+	})
+	firstRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Inventory Group Cafe Downtown",
+		"location":        "San Francisco, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	secondRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Inventory Group Cafe Oakland",
+		"location":        "Oakland, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Other Group Cafe",
+		"location":        "Berkeley, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": otherGroup.Id,
+	})
+	groupSuitableItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Shared Pancakes",
+		"restaurant":     firstRestaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	notGroupSuitableItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Local Only Pancakes",
+		"restaurant":     firstRestaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  false,
+	})
+	secondGroupSuitableItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Shared Waffles",
+		"restaurant":     secondRestaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+	otherGroupItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Other Group Toast",
+		"restaurant":     otherRestaurant.Id,
+		"createdBy":      creator.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+		"groupSuitable":  true,
+	})
+
+	listPayload := loadAdminMenuInventoryResponse[adminRestaurantGroup](
+		t,
+		server,
+		adminToken,
+		"/api/admin/menu-inventory?type=restaurant-groups&search=inventory%20group",
+	)
+	if listPayload.Type != "restaurant-groups" || listPayload.TotalItems != 1 {
+		t.Fatalf("expected one filtered restaurant group inventory row, got %#v", listPayload)
+	}
+	row := listPayload.Items[0]
+	if row.ID != group.Id ||
+		row.RestaurantCount != 2 ||
+		row.MenuItemCount != 3 ||
+		row.GroupSuitableMenuItemCount != 2 {
+		t.Fatalf("unexpected restaurant group row: %#v", row)
+	}
+
+	detail := loadAdminRestaurantGroupInventoryDetailResponse(t, server, adminToken, group.Id)
+	if detail.RestaurantGroup.ID != group.Id || detail.RestaurantGroup.Name != "Inventory Group Cafe" {
+		t.Fatalf("unexpected restaurant group detail summary: %#v", detail.RestaurantGroup)
+	}
+	if len(detail.Restaurants) != 2 {
+		t.Fatalf("expected two group restaurants, got %#v", detail.Restaurants)
+	}
+	restaurantIDs := map[string]bool{}
+	for _, restaurant := range detail.Restaurants {
+		restaurantIDs[restaurant.ID] = true
+	}
+	if !restaurantIDs[firstRestaurant.Id] || !restaurantIDs[secondRestaurant.Id] || restaurantIDs[otherRestaurant.Id] {
+		t.Fatalf("unexpected group restaurants: %#v", restaurantIDs)
+	}
+
+	menuItemIDs := adminMenuInventoryItemIDs(detail.MenuItems)
+	if !menuItemIDs[groupSuitableItem.Id] || !menuItemIDs[secondGroupSuitableItem.Id] {
+		t.Fatalf("expected group-suitable menu items in detail, got %#v", detail.MenuItems)
+	}
+	if menuItemIDs[notGroupSuitableItem.Id] || menuItemIDs[otherGroupItem.Id] {
+		t.Fatalf("group detail included non-associated menu items: %#v", detail.MenuItems)
+	}
+
+	allMenuItemIDs := adminMenuInventoryItemIDs(detail.AllMenuItems)
+	if !allMenuItemIDs[groupSuitableItem.Id] ||
+		!allMenuItemIDs[secondGroupSuitableItem.Id] ||
+		!allMenuItemIDs[notGroupSuitableItem.Id] {
+		t.Fatalf("expected all group restaurant menu items in detail, got %#v", detail.AllMenuItems)
+	}
+	if allMenuItemIDs[otherGroupItem.Id] {
+		t.Fatalf("all group menu item detail included another group's item: %#v", detail.AllMenuItems)
+	}
+}
+
+func TestAdminMenuInventoryDeletesRestaurantGroupAndUnassignsRestaurants(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterAdminMenuInventoryHandlers(se, app)
+	})
+
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	creator, _ := createAuthUser(t, server.app, false, false)
+	group := createCollectionRecord(t, server.app, "restaurant_groups", map[string]any{
+		"name":      "Delete Group Cafe",
+		"notes":     "Remove this group only",
+		"createdBy": admin.Id,
+	})
+	firstRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Delete Group Cafe SF",
+		"location":        "San Francisco, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+	secondRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":            "Delete Group Cafe Oakland",
+		"location":        "Oakland, CA",
+		"createdBy":       creator.Id,
+		"visibility":      "public",
+		"restaurantGroup": group.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/admin/menu-inventory/restaurant-groups/"+group.Id,
+		adminToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected delete 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := adminRestaurantGroupDeleteResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode delete response: %v", err)
+	}
+	if payload.RestaurantGroup.ID != group.Id || payload.UnassignedRestaurantCount != 2 {
+		t.Fatalf("unexpected delete payload: %#v", payload)
+	}
+
+	if _, err := server.app.FindRecordById("restaurant_groups", group.Id); err == nil {
+		t.Fatalf("expected restaurant group to be deleted")
+	}
+	for _, restaurantID := range []string{firstRestaurant.Id, secondRestaurant.Id} {
+		restaurant, err := server.app.FindRecordById("restaurants", restaurantID)
+		if err != nil {
+			t.Fatalf("expected restaurant %s to remain: %v", restaurantID, err)
+		}
+		if restaurant.GetString("restaurantGroup") != "" {
+			t.Fatalf("expected restaurant %s to be unassigned, got group %q", restaurantID, restaurant.GetString("restaurantGroup"))
+		}
+	}
+
+	deleteAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeDelete,
+		"restaurant_groups",
+		group.Id,
+		5,
+	)
+	if len(deleteAuditLogs) != 1 {
+		t.Fatalf("expected one restaurant group delete audit log, got %d", len(deleteAuditLogs))
+	}
+	deleteAudit := deleteAuditLogs[0]
+	if deleteAudit.GetString("requestMethod") != http.MethodDelete ||
+		deleteAudit.GetString("requestPath") != "/api/admin/menu-inventory/restaurant-groups/"+group.Id ||
+		deleteAudit.GetString("summary") != "Deleted Restaurant Group Delete Group Cafe" {
+		t.Fatalf("unexpected delete audit log: %#v", deleteAudit)
+	}
+
+	updateAuditLogs := loadAuditLogsForTarget(
+		t,
+		server,
+		core.ModelEventTypeUpdate,
+		"restaurants",
+		firstRestaurant.Id,
+		1,
+	)
+	if len(updateAuditLogs) != 1 {
+		t.Fatalf("expected one restaurant unassignment audit log, got %d", len(updateAuditLogs))
+	}
+	metadataMap := parseAuditMetadata(t, updateAuditLogs[0].Get("metadataJson"))
+	if metadataMap["source"] != "admin_restaurant_group_delete" ||
+		metadataMap["previousRestaurantGroupId"] != group.Id ||
+		metadataMap["restaurantGroupId"] != "" {
+		t.Fatalf("unexpected unassignment audit metadata: %#v", metadataMap)
+	}
+}
+
 func TestAdminMenuInventoryRestaurantDetailIncludesSameNameCandidates(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterAdminMenuInventoryHandlers(se, app)
@@ -969,6 +1490,18 @@ func TestAdminMenuInventoryRestaurantGroupWritesRejectNonAdmin(t *testing.T) {
 	)
 	if assignResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected group assignment 403, got %d: %s", assignResponse.Code, assignResponse.Body.String())
+	}
+
+	deleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/admin/menu-inventory/restaurant-groups/"+group.Id,
+		userToken,
+		"",
+	)
+	if deleteResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected group delete 403, got %d: %s", deleteResponse.Code, deleteResponse.Body.String())
 	}
 
 	if count := countRecordsByFilter(

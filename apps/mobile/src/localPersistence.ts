@@ -37,6 +37,10 @@ function buildFirstFoodLoggedKey(identityKey: string): string {
   return `analytics.product.firstFoodLogged.${identityKey}`;
 }
 
+function buildStorefrontScanHistoryKey(identityKey: string): string {
+  return getEnvironmentStorageKey(`food_tracker_storefront_scan_history_v1:${identityKey}`);
+}
+
 function getLocalStorageItem(key: string): string | null {
   try {
     return globalThis.localStorage?.getItem(key) ?? null;
@@ -69,6 +73,10 @@ export const localPersistence = {
   },
   usageSnapshots: {
     buildStorageKey: buildUsageSnapshotKey,
+    storage: localPersistenceAsyncStorage,
+  },
+  storefrontScanHistory: {
+    buildStorageKey: buildStorefrontScanHistoryKey,
     storage: localPersistenceAsyncStorage,
   },
   authHandoffs: {
