@@ -2205,6 +2205,7 @@ func TestAdminMenuItemGroupSuitableTransitions(t *testing.T) {
 		t.Fatalf("failed to load group suitable audit logs: %v", err)
 	}
 	foundGroupSuitableAudit := false
+	foundMenuItemUpdateAudit := false
 	for _, auditLog := range auditLogs {
 		metadataMap := parseAuditMetadata(t, auditLog.Get("metadataJson"))
 		if metadataMap["source"] == "admin_menu_item_group_suitable" {
@@ -2225,11 +2226,37 @@ func TestAdminMenuItemGroupSuitableTransitions(t *testing.T) {
 				t.Fatalf("unexpected group-suitable audit summary: %q", auditLog.GetString("summary"))
 			}
 			foundGroupSuitableAudit = true
-			break
+			continue
+		}
+		if metadataMap["source"] == "admin_menu_item_update" {
+			if metadataMap["menuItemId"] != menuItem.Id ||
+				metadataMap["restaurantId"] != restaurant.Id ||
+				metadataMap["restaurantGroupId"] != group.Id ||
+				metadataMap["visibility"] != "friends" ||
+				metadataMap["groupSuitable"] != false {
+				t.Fatalf("expected menu item update audit metadata, got %#v", metadataMap)
+			}
+			if auditLog.GetString("actor") != admin.Id ||
+				auditLog.GetString("requestMethod") != http.MethodPatch ||
+				auditLog.GetString("requestPath") != "/api/admin/menu-items/"+menuItem.Id {
+				t.Fatalf("unexpected menu item update audit envelope: %#v", auditLog)
+			}
+			changedFields := parseAuditStringSlice(t, auditLog.Get("changedFields"))
+			if !auditStringSliceContains(changedFields, "visibility") ||
+				!auditStringSliceContains(changedFields, "groupSuitable") {
+				t.Fatalf("expected visibility and groupSuitable changed fields, got %#v", changedFields)
+			}
+			if auditLog.GetString("summary") != "Updated menu item Shared Pancakes" {
+				t.Fatalf("unexpected menu item update audit summary: %q", auditLog.GetString("summary"))
+			}
+			foundMenuItemUpdateAudit = true
 		}
 	}
 	if !foundGroupSuitableAudit {
 		t.Fatalf("expected group suitable audit log in %#v", auditLogs)
+	}
+	if !foundMenuItemUpdateAudit {
+		t.Fatalf("expected menu item update audit log in %#v", auditLogs)
 	}
 }
 

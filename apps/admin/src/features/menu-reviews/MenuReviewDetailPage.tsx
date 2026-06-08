@@ -88,9 +88,12 @@ export function MenuReviewDetailPage() {
     onSuccess: async () => {
       setMenuItemError(null);
       setEditingItemId(null);
-      await queryClient.invalidateQueries({
-        queryKey: ['admin', 'menu-review-items', requestQuery.data?.restaurant],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['admin', 'menu-review-items', requestQuery.data?.restaurant],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'menu-inventory'] }),
+      ]);
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Could not update this menu item.';

@@ -3,11 +3,12 @@ import { toPocketBaseDateTime } from '@/lib/formatters';
 import {
   getAdminRestaurantInventoryDetail,
   promoteAdminMenuItemContribution,
+  updateAdminMenuItem,
   updateAdminMenuItemApproval,
   type MenuItemInventoryRow,
   type MenuItemApprovalStatus,
 } from '@/features/menu-inventory/api';
-import type { MenuItemRecord, MenuReviewRequest } from '@/lib/types';
+import type { MenuReviewRequest } from '@/lib/types';
 
 export type MenuReviewStatusFilter = 'pending' | 'reviewed' | 'dismissed' | 'all';
 export type MenuReviewTimeFilter = 'all_time' | 'last_7_days' | 'last_30_days' | 'last_90_days';
@@ -75,8 +76,8 @@ export async function updateMenuItem(
     name: string;
     visibility: 'private' | 'friends' | 'public';
   },
-) {
-  return pb.collection('menu_items').update<MenuItemRecord>(itemId, payload);
+): Promise<MenuItemInventoryRow> {
+  return updateAdminMenuItem(itemId, payload);
 }
 
 export async function updateMenuItemApproval(itemId: string, status: MenuItemApprovalStatus) {
