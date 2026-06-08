@@ -1348,7 +1348,6 @@ func getVisitsPageResponse(
 		}
 		filteredVisitItems = append(filteredVisitItems, record)
 	}
-	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	restaurantIDs := make([]string, 0, len(visitRecords))
 	restaurantIDSet := map[string]struct{}{}
@@ -1392,6 +1391,15 @@ func getVisitsPageResponse(
 	if err != nil {
 		return response, err
 	}
+	filteredVisitItems = filterHomeFeedVisitItemRecordsForViewer(
+		filteredVisitItems,
+		visitRecordsByID,
+		menuItemsByID,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -1410,6 +1418,11 @@ func getVisitsPageResponse(
 			userName = resolveHomeFeedUserName(usersByID[ownerID])
 		}
 
+		entryItems := visitItemsByVisitID[visit.Id]
+		if len(entryItems) == 0 && !isAdmin && ownerID != userID {
+			continue
+		}
+
 		response.Items = append(response.Items, visitResponse{
 			ID:                    visit.Id,
 			RestaurantID:          visit.GetString("restaurant"),
@@ -1417,7 +1430,7 @@ func getVisitsPageResponse(
 			RestaurantLocation:    resolveRestaurantLocation(restaurant),
 			RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 			VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-			Items:                 mapHomeFeedVisitItems(visitItemsByVisitID[visit.Id], visit.GetString("restaurant"), menuItemsByID, menuItemIDsByRestaurantAndName),
+			Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemsByID, menuItemIDsByRestaurantAndName),
 			Source:                "visit",
 			UserID:                ownerID,
 			UserName:              userName,
@@ -1734,7 +1747,6 @@ func getHomeFeedResponse(
 		}
 		filteredVisitItems = append(filteredVisitItems, record)
 	}
-	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	linkedVisitIDs := make([]string, 0, len(quickTrackRecords))
 	restaurantIDs := make([]string, 0, len(visitRecords)+len(quickTrackRecords))
@@ -1798,6 +1810,15 @@ func getHomeFeedResponse(
 	if err != nil {
 		return response, err
 	}
+	filteredVisitItems = filterHomeFeedVisitItemRecordsForViewer(
+		filteredVisitItems,
+		visitRecordsByID,
+		menuItemsByID,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -1837,6 +1858,9 @@ func getHomeFeedResponse(
 			restaurant := restaurantsByID[visit.GetString("restaurant")]
 			user := usersByID[visit.GetString("user")]
 			entryItems := visitItemsByVisitID[visit.Id]
+			if len(entryItems) == 0 && !isAdmin && strings.TrimSpace(visit.GetString("user")) != userID {
+				continue
+			}
 			items = append(items, homeFeedEntryResponse{
 				Source:  "visit",
 				EventAt: row.EventAt,
@@ -1984,7 +2008,6 @@ func getHomeFeedMapPointsResponse(
 		}
 		filteredVisitItems = append(filteredVisitItems, record)
 	}
-	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	photoFoodItemIDs := make([]string, 0, len(filteredVisitItems)+len(quickTrackRecords))
 	for _, item := range filteredVisitItems {
@@ -2044,6 +2067,15 @@ func getHomeFeedMapPointsResponse(
 	if err != nil {
 		return response, err
 	}
+	filteredVisitItems = filterHomeFeedVisitItemRecordsForViewer(
+		filteredVisitItems,
+		visitRecordsByID,
+		menuItemsByID,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -2091,6 +2123,9 @@ func getHomeFeedMapPointsResponse(
 			restaurant := restaurantsByID[visit.GetString("restaurant")]
 			user := usersByID[visit.GetString("user")]
 			entryItems := visitItemsByVisitID[visit.Id]
+			if len(entryItems) == 0 && !isAdmin && strings.TrimSpace(visit.GetString("user")) != userID {
+				continue
+			}
 			restaurantName := defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant")
 			restaurantLocation := resolveRestaurantLocation(restaurant)
 			points = append(points, homeFeedMapPointResponse{
@@ -2580,7 +2615,7 @@ func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
 	}
 
 	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition
-	friendCondition := `visits.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition + ` AND (visits.visibility = 'public' OR visits.visibility = 'friends')`
+	friendCondition := `visits.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleVisitModerationCondition + ` AND ` + unreportedVisitForViewerCondition + ` AND (visits.visibility = 'public' OR visits.visibility = 'friends') AND ` + buildVisibleVisitItemsExistCondition()
 
 	switch scope {
 	case "mine":
@@ -2611,7 +2646,7 @@ func buildVisitsPageAccessCondition(scope string, isAdmin bool) string {
 			visits.visibility = 'friends'
 			AND visits.user IN (SELECT friendId FROM accepted_friends)
 		)
-	)`
+	) AND ` + buildVisibleVisitItemsExistCondition()
 
 	switch scope {
 	case "mine":
@@ -2621,6 +2656,26 @@ func buildVisitsPageAccessCondition(scope string, isAdmin bool) string {
 	default:
 		return `( (` + ownerCondition + `) OR (` + visibleSharedCondition + `) )`
 	}
+}
+
+func buildVisibleVisitItemsExistCondition() string {
+	return `EXISTS (
+		SELECT 1
+		FROM food_items visible_visit_items
+		LEFT JOIN menu_items visible_menu_items ON visible_menu_items.id = visible_visit_items.menuItem
+		WHERE visible_visit_items.visit = visits.id
+			AND ` + visitItemSQL("visible_visit_items") + `
+			AND (visible_visit_items.moderationStatus = '' OR visible_visit_items.moderationStatus = 'active' OR visible_visit_items.moderationStatus = 'reviewed')
+			AND (
+				TRIM(COALESCE(visible_visit_items.menuItem, '')) = ''
+				OR visible_menu_items.visibility = 'public'
+				OR (
+					visible_menu_items.visibility = 'friends'
+					AND visible_menu_items.createdBy IN (SELECT friendId FROM accepted_friends)
+				)
+				OR visible_menu_items.createdBy = {:userId}
+			)
+	)`
 }
 
 func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
@@ -2773,6 +2828,31 @@ func buildAccessibleMenuItemsByID(
 	return result, nil
 }
 
+func filterHomeFeedVisitItemRecordsForViewer(
+	records []*core.Record,
+	visitsByID map[string]*core.Record,
+	menuItemsByID map[string]*core.Record,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+) []*core.Record {
+	filtered := make([]*core.Record, 0, len(records))
+	for _, record := range records {
+		if !canAccessFoodItemRecord(record, visitsByID, userID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
+
+		explicitMenuItemID := strings.TrimSpace(record.GetString("menuItem"))
+		if explicitMenuItemID != "" && menuItemsByID[explicitMenuItemID] == nil {
+			continue
+		}
+
+		filtered = append(filtered, record)
+	}
+
+	return filtered
+}
+
 func resolveHomeFeedVisitItemMenuItemID(
 	record *core.Record,
 	restaurantID string,
@@ -2791,6 +2871,23 @@ func resolveHomeFeedVisitItemMenuItemID(
 	return menuItemIDsByRestaurantAndName[lookupKey]
 }
 
+func resolveHomeFeedVisitItemMenuItemVisibility(
+	record *core.Record,
+	menuItemsByID map[string]*core.Record,
+) string {
+	explicitMenuItemID := strings.TrimSpace(record.GetString("menuItem"))
+	if explicitMenuItemID == "" {
+		return ""
+	}
+
+	menuItem := menuItemsByID[explicitMenuItemID]
+	if menuItem == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(menuItem.GetString("visibility"))
+}
+
 func mapHomeFeedVisitItems(
 	records []*core.Record,
 	restaurantID string,
@@ -2800,12 +2897,13 @@ func mapHomeFeedVisitItems(
 	items := make([]visitItemResponse, 0, len(records))
 	for _, record := range records {
 		items = append(items, visitItemResponse{
-			ID:          record.Id,
-			MenuItemID:  resolveHomeFeedVisitItemMenuItemID(record, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
-			Name:        record.GetString("name"),
-			Rating:      record.GetFloat("rating"),
-			Description: strings.TrimSpace(record.GetString("description")),
-			Notes:       strings.TrimSpace(record.GetString("notes")),
+			ID:                 record.Id,
+			MenuItemID:         resolveHomeFeedVisitItemMenuItemID(record, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
+			MenuItemVisibility: resolveHomeFeedVisitItemMenuItemVisibility(record, menuItemsByID),
+			Name:               record.GetString("name"),
+			Rating:             record.GetFloat("rating"),
+			Description:        strings.TrimSpace(record.GetString("description")),
+			Notes:              strings.TrimSpace(record.GetString("notes")),
 		})
 	}
 

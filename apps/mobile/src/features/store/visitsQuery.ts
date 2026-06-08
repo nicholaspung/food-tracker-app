@@ -20,6 +20,7 @@ function hasNonEmptyValue(value: string | null | undefined): value is string {
 
 export const visitsQueryKeys = {
   root: ['feature', 'visits'] as const,
+  detailRoot: ['feature', 'visit'] as const,
   detail: (visitId: string) => ['feature', 'visit', visitId.trim()] as const,
   paginated: (scope: VisitBrowseScope, searchQuery = ''): VisitsPaginatedQueryKey => {
     const trimmedSearchQuery = searchQuery.trim();
@@ -59,6 +60,7 @@ export async function syncVisitMutationCaches(
   const invalidations: Promise<unknown>[] = [
     invalidateHomeFeedQueries(queryClient),
     queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: visitsQueryKeys.detailRoot }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultList }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root }),

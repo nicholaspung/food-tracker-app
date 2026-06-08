@@ -18,6 +18,7 @@ export type ContentReportReasonCode =
 export interface VisitItem {
   id: string;
   menuItemId?: string;
+  menuItemVisibility?: 'private' | 'friends' | 'public';
   name: string;
   rating: number;
   description?: string;

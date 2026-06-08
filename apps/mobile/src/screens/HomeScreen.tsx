@@ -72,6 +72,7 @@ import {
   applyInitialViewParams,
   buildFoodProductFeedItem,
   buildVisitFeedItem,
+  filterFriendFeedVisibleVisit,
   formatCount,
   formatFriendEntryMonthLabel,
   formatMineEntryFooterLabel,
@@ -610,14 +611,23 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     refreshEventPrefix: 'HOME_FEED_REFRESH',
     resultCount: homeFeedResultCount,
   });
-  const loadedFeed = useMemo(
+  const loadedFeed = useMemo<FeedItem[]>(
     () =>
-      browseState.items.map((item) =>
-        item.source === 'visit'
-          ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
-          : buildFoodProductFeedItem(item.foodProduct, currentUserId, item.eventAt),
-      ),
-    [browseState.items, currentUserId],
+      browseState.items.reduce<FeedItem[]>((entries, item) => {
+        if (item.source === 'visit') {
+          const visit = feedMode === 'friends'
+            ? filterFriendFeedVisibleVisit(item.visit, currentUserId)
+            : item.visit;
+          if (visit) {
+            entries.push(buildVisitFeedItem(visit, currentUserId, item.eventAt));
+          }
+          return entries;
+        }
+
+        entries.push(buildFoodProductFeedItem(item.foodProduct, currentUserId, item.eventAt));
+        return entries;
+      }, []),
+    [browseState.items, currentUserId, feedMode],
   );
 
   const isLoading = browseState.isLoading;

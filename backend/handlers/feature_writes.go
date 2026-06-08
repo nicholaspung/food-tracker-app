@@ -70,12 +70,13 @@ type convertVisitItemToFoodProductResponse struct {
 }
 
 type visitItemResponse struct {
-	ID          string  `json:"id"`
-	MenuItemID  string  `json:"menuItemId,omitempty"`
-	Name        string  `json:"name"`
-	Rating      float64 `json:"rating"`
-	Description string  `json:"description,omitempty"`
-	Notes       string  `json:"notes,omitempty"`
+	ID                 string  `json:"id"`
+	MenuItemID         string  `json:"menuItemId,omitempty"`
+	MenuItemVisibility string  `json:"menuItemVisibility,omitempty"`
+	Name               string  `json:"name"`
+	Rating             float64 `json:"rating"`
+	Description        string  `json:"description,omitempty"`
+	Notes              string  `json:"notes,omitempty"`
 }
 
 type moveVisitItemResponse struct {
@@ -1995,16 +1996,25 @@ func buildVisitResponse(
 			continue
 		}
 
+		explicitMenuItemID := strings.TrimSpace(item.GetString("menuItem"))
+		if explicitMenuItemID != "" && menuItemsByID[explicitMenuItemID] == nil {
+			continue
+		}
+
 		responseItems = append(responseItems, visitItemResponse{
-			ID:          item.Id,
-			MenuItemID:  resolveHomeFeedVisitItemMenuItemID(item, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
-			Name:        item.GetString("name"),
-			Rating:      item.GetFloat("rating"),
-			Description: strings.TrimSpace(item.GetString("description")),
-			Notes:       strings.TrimSpace(item.GetString("notes")),
+			ID:                 item.Id,
+			MenuItemID:         resolveHomeFeedVisitItemMenuItemID(item, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
+			MenuItemVisibility: resolveHomeFeedVisitItemMenuItemVisibility(item, menuItemsByID),
+			Name:               item.GetString("name"),
+			Rating:             item.GetFloat("rating"),
+			Description:        strings.TrimSpace(item.GetString("description")),
+			Notes:              strings.TrimSpace(item.GetString("notes")),
 		})
 	}
 	responseItems = orderVisitResponseItems(responseItems, options.PrioritizedItemIDs)
+	if len(responseItems) == 0 && !isAdmin && visitOwnerID != viewerUserID {
+		return visitResponse{}, apis.NewNotFoundError("visit not found", nil)
+	}
 
 	response := visitResponse{
 		ID:           visitRecord.Id,

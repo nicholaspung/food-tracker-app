@@ -7,9 +7,11 @@ import {
   createCollectionRecord,
   updateCollectionRecord,
 } from './pocketbaseGateway';
+import { invalidateHomeFeedQueries } from './homeFeedQuery';
 import { menuItemsQueryKeys } from './menuItemsQuery';
 import { suggestTastingMenuItem } from './tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
+import { visitsQueryKeys } from './visitsQuery';
 
 interface CreateMenuItemInput {
   createdBy: string;
@@ -82,6 +84,16 @@ async function invalidateRestaurantMenuItems(
   await queryClient.invalidateQueries({
     queryKey: menuItemsQueryKeys.restaurant(restaurantId),
   });
+}
+
+async function invalidateMenuItemVisibilityDependents(
+  queryClient: QueryClient,
+): Promise<void> {
+  await Promise.all([
+    invalidateHomeFeedQueries(queryClient),
+    queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: visitsQueryKeys.detailRoot }),
+  ]);
 }
 
 function applyMenuItemsToCache(
@@ -161,7 +173,10 @@ export function useMenuItemCatalogWrites() {
       });
 
       patchMenuItemInCache(queryClient, input);
-      await invalidateRestaurantMenuItems(queryClient, input.restaurantId);
+      await Promise.all([
+        invalidateRestaurantMenuItems(queryClient, input.restaurantId),
+        input.visibility ? invalidateMenuItemVisibilityDependents(queryClient) : Promise.resolve(),
+      ]);
       return {
         result: undefined,
         status: 'completed',

@@ -727,8 +727,9 @@ func TestVisitCreateEndpointReturnsSelectedMenuItemIDForVisitItem(t *testing.T) 
 
 	var createdPayload struct {
 		Items []struct {
-			MenuItemID string `json:"menuItemId"`
-			Name       string `json:"name"`
+			MenuItemID         string `json:"menuItemId"`
+			MenuItemVisibility string `json:"menuItemVisibility"`
+			Name               string `json:"name"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(createResponse.Body.Bytes(), &createdPayload); err != nil {
@@ -739,6 +740,9 @@ func TestVisitCreateEndpointReturnsSelectedMenuItemIDForVisitItem(t *testing.T) 
 	}
 	if createdPayload.Items[0].MenuItemID != privateMenuItem.Id {
 		t.Fatalf("expected created visit item to retain selected menuItemId %q, got %#v", privateMenuItem.Id, createdPayload.Items[0])
+	}
+	if createdPayload.Items[0].MenuItemVisibility != "private" {
+		t.Fatalf("expected created visit item to expose private menu item visibility, got %#v", createdPayload.Items[0])
 	}
 
 	privateMenuItem.Set("visibility", "friends")
@@ -762,8 +766,9 @@ func TestVisitCreateEndpointReturnsSelectedMenuItemIDForVisitItem(t *testing.T) 
 		Items []struct {
 			Visit *struct {
 				Items []struct {
-					MenuItemID string `json:"menuItemId"`
-					Name       string `json:"name"`
+					MenuItemID         string `json:"menuItemId"`
+					MenuItemVisibility string `json:"menuItemVisibility"`
+					Name               string `json:"name"`
 				} `json:"items"`
 			} `json:"visit"`
 		} `json:"items"`
@@ -776,6 +781,354 @@ func TestVisitCreateEndpointReturnsSelectedMenuItemIDForVisitItem(t *testing.T) 
 	}
 	if friendFeedPayload.Items[0].Visit.Items[0].MenuItemID != privateMenuItem.Id {
 		t.Fatalf("expected friend feed item to retain selected menuItemId %q after visibility change, got %#v", privateMenuItem.Id, friendFeedPayload.Items[0].Visit.Items[0])
+	}
+	if friendFeedPayload.Items[0].Visit.Items[0].MenuItemVisibility != "friends" {
+		t.Fatalf("expected friend feed item to expose friends menu item visibility after visibility change, got %#v", friendFeedPayload.Items[0].Visit.Items[0])
+	}
+
+	privateMenuItem.Set("visibility", "private")
+	if err := server.app.Save(privateMenuItem); err != nil {
+		t.Fatalf("failed to update menu item visibility back to private: %v", err)
+	}
+
+	friendFeedAfterPrivateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if friendFeedAfterPrivateResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200 after menu item privacy update, got %d: %s", friendFeedAfterPrivateResponse.Code, friendFeedAfterPrivateResponse.Body.String())
+	}
+
+	var friendFeedAfterPrivatePayload struct {
+		Items []struct {
+			Visit *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendFeedAfterPrivateResponse.Body.Bytes(), &friendFeedAfterPrivatePayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON after menu item privacy update: %v; body=%s", err, friendFeedAfterPrivateResponse.Body.String())
+	}
+	if len(friendFeedAfterPrivatePayload.Items) != 0 {
+		t.Fatalf("expected friend feed to hide visit after selected menu item returns to private, got %#v", friendFeedAfterPrivatePayload.Items)
+	}
+}
+
+func TestHomeFeedShowsVisitAfterPrivateVisitUpdatedToFriendsWithPublicMenuItem(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Counter Cafe")
+	publicMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Pancakes", "public", false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Counter Cafe",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"private",
+			"items":[
+				{"name":"Pancakes","rating":4,"menuItemId":"`+publicMenuItem.Id+`"}
+			]
+		}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	var createdPayload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createResponse.Body.Bytes(), &createdPayload); err != nil {
+		t.Fatalf("failed to parse create response JSON: %v; body=%s", err, createResponse.Body.String())
+	}
+	if createdPayload.ID == "" {
+		t.Fatalf("expected created visit id, got %#v", createdPayload)
+	}
+
+	beforeUpdateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if beforeUpdateResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200 before update, got %d: %s", beforeUpdateResponse.Code, beforeUpdateResponse.Body.String())
+	}
+
+	var beforeUpdatePayload struct {
+		Items []struct {
+			Visit *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(beforeUpdateResponse.Body.Bytes(), &beforeUpdatePayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON before update: %v; body=%s", err, beforeUpdateResponse.Body.String())
+	}
+	if len(beforeUpdatePayload.Items) != 0 {
+		t.Fatalf("expected private visit to be hidden from friend before update, got %#v", beforeUpdatePayload.Items)
+	}
+
+	updateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/visits/"+createdPayload.ID,
+		token,
+		`{"visibility":"friends"}`,
+	)
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("expected update 200, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+
+	afterUpdateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if afterUpdateResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200 after update, got %d: %s", afterUpdateResponse.Code, afterUpdateResponse.Body.String())
+	}
+
+	var afterUpdatePayload struct {
+		Items []struct {
+			Visit *struct {
+				ID    string `json:"id"`
+				Items []struct {
+					MenuItemID string `json:"menuItemId"`
+					Name       string `json:"name"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(afterUpdateResponse.Body.Bytes(), &afterUpdatePayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON after update: %v; body=%s", err, afterUpdateResponse.Body.String())
+	}
+	if len(afterUpdatePayload.Items) != 1 || afterUpdatePayload.Items[0].Visit == nil {
+		t.Fatalf("expected updated friends visit in friend feed, got %#v", afterUpdatePayload.Items)
+	}
+	if afterUpdatePayload.Items[0].Visit.ID != createdPayload.ID {
+		t.Fatalf("expected friend feed visit id %q, got %#v", createdPayload.ID, afterUpdatePayload.Items[0].Visit)
+	}
+	if len(afterUpdatePayload.Items[0].Visit.Items) != 1 || afterUpdatePayload.Items[0].Visit.Items[0].MenuItemID != publicMenuItem.Id {
+		t.Fatalf("expected public selected menu item in friend feed, got %#v", afterUpdatePayload.Items[0].Visit.Items)
+	}
+}
+
+func TestHomeFeedOmitsFriendVisitWhenOnlySelectedMenuItemIsPrivate(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Hidden Menu Cafe")
+	privateMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Secret Toast", "private", false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Hidden Menu Cafe",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Secret Toast","rating":5,"menuItemId":"`+privateMenuItem.Id+`"}
+			]
+		}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	var createdPayload struct {
+		ID    string `json:"id"`
+		Items []struct {
+			MenuItemID         string `json:"menuItemId"`
+			MenuItemVisibility string `json:"menuItemVisibility"`
+			Name               string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(createResponse.Body.Bytes(), &createdPayload); err != nil {
+		t.Fatalf("failed to parse create response JSON: %v; body=%s", err, createResponse.Body.String())
+	}
+	if createdPayload.ID == "" || len(createdPayload.Items) != 1 || createdPayload.Items[0].MenuItemID != privateMenuItem.Id {
+		t.Fatalf("expected owner create response to retain private selected menu item, got %#v", createdPayload)
+	}
+	if createdPayload.Items[0].MenuItemVisibility != "private" {
+		t.Fatalf("expected owner create response to expose private selected menu item visibility, got %#v", createdPayload.Items[0])
+	}
+
+	ownerFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=visits",
+		token,
+		"",
+	)
+	if ownerFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected owner feed 200, got %d: %s", ownerFeedResponse.Code, ownerFeedResponse.Body.String())
+	}
+
+	var ownerFeedPayload struct {
+		Items []struct {
+			Visit *struct {
+				ID    string `json:"id"`
+				Items []struct {
+					MenuItemID         string `json:"menuItemId"`
+					MenuItemVisibility string `json:"menuItemVisibility"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(ownerFeedResponse.Body.Bytes(), &ownerFeedPayload); err != nil {
+		t.Fatalf("failed to parse owner feed JSON: %v; body=%s", err, ownerFeedResponse.Body.String())
+	}
+	if len(ownerFeedPayload.Items) != 1 || ownerFeedPayload.Items[0].Visit == nil || len(ownerFeedPayload.Items[0].Visit.Items) != 1 {
+		t.Fatalf("expected owner feed to include private selected menu item, got %#v", ownerFeedPayload.Items)
+	}
+	if ownerFeedPayload.Items[0].Visit.Items[0].MenuItemVisibility != "private" {
+		t.Fatalf("expected owner feed item to expose private selected menu item visibility, got %#v", ownerFeedPayload.Items[0].Visit.Items[0])
+	}
+
+	friendFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if friendFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200, got %d: %s", friendFeedResponse.Code, friendFeedResponse.Body.String())
+	}
+
+	var friendFeedPayload struct {
+		Items []struct {
+			Visit *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendFeedResponse.Body.Bytes(), &friendFeedPayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON: %v; body=%s", err, friendFeedResponse.Body.String())
+	}
+	if len(friendFeedPayload.Items) != 0 {
+		t.Fatalf("expected friend feed to hide visit with only a private selected menu item, got %#v", friendFeedPayload.Items)
+	}
+
+	friendVisitResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits/"+createdPayload.ID,
+		friendToken,
+		"",
+	)
+	if friendVisitResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected direct friend visit lookup to be hidden with 404, got %d: %s", friendVisitResponse.Code, friendVisitResponse.Body.String())
+	}
+}
+
+func TestHomeFeedOmitsOnlyPrivateSelectedMenuItemsFromFriendVisit(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Split Visibility Cafe")
+	privateMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Secret Toast", "private", false)
+	visibleMenuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Shared Toast", "friends", false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Split Visibility Cafe",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Secret Toast","rating":5,"menuItemId":"`+privateMenuItem.Id+`"},
+				{"name":"Shared Toast","rating":4,"menuItemId":"`+visibleMenuItem.Id+`"}
+			]
+		}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+
+	friendFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&typeFilter=visits",
+		friendToken,
+		"",
+	)
+	if friendFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected friend feed 200, got %d: %s", friendFeedResponse.Code, friendFeedResponse.Body.String())
+	}
+
+	var friendFeedPayload struct {
+		Items []struct {
+			Visit *struct {
+				Items []struct {
+					MenuItemID         string `json:"menuItemId"`
+					MenuItemVisibility string `json:"menuItemVisibility"`
+					Name               string `json:"name"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendFeedResponse.Body.Bytes(), &friendFeedPayload); err != nil {
+		t.Fatalf("failed to parse friend feed JSON: %v; body=%s", err, friendFeedResponse.Body.String())
+	}
+	if len(friendFeedPayload.Items) != 1 || friendFeedPayload.Items[0].Visit == nil {
+		t.Fatalf("expected friend feed to include visit with visible selected menu item, got %#v", friendFeedPayload.Items)
+	}
+	if len(friendFeedPayload.Items[0].Visit.Items) != 1 {
+		t.Fatalf("expected friend feed to include only one visible visit item, got %#v", friendFeedPayload.Items[0].Visit.Items)
+	}
+	visibleItem := friendFeedPayload.Items[0].Visit.Items[0]
+	if visibleItem.MenuItemID != visibleMenuItem.Id || visibleItem.MenuItemVisibility != "friends" || visibleItem.Name != "Shared Toast" {
+		t.Fatalf("expected friend feed to include only the friends-visible menu item, got %#v", visibleItem)
+	}
+	if strings.Contains(friendFeedResponse.Body.String(), privateMenuItem.Id) || strings.Contains(friendFeedResponse.Body.String(), "Secret Toast") {
+		t.Fatalf("expected friend feed response to omit private selected menu item, got %s", friendFeedResponse.Body.String())
 	}
 }
 

@@ -255,6 +255,43 @@ describe('HomeFeedVisitEntryCard', () => {
     ).toHaveLength(0);
   });
 
+  it('marks private selected menu items with lock icons on non-private visits', async () => {
+    let renderer: any = null;
+    const visit = {
+      ...createVisitRecord(),
+      visibility: 'friends' as const,
+      items: [
+        {
+          ...createVisitRecord().items[0],
+          menuItemId: 'menu-item-1',
+          menuItemVisibility: 'private' as const,
+        },
+      ],
+    };
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={visit}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-private-lock',
+      ),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { testID?: string } }) =>
+          node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-item-private-lock-item-1',
+      ),
+    ).toHaveLength(1);
+  });
+
   it('renders item ratings through the shared feed rating display', async () => {
     let renderer: any = null;
 

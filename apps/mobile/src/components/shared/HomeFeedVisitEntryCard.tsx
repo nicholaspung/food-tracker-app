@@ -327,6 +327,7 @@ export function HomeFeedVisitEntryCard({
             const itemPhotos = getPhotosForItem(item.id);
             const primaryPhoto = itemPhotos[0] ?? null;
             const thumbnailUrl = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
+            const isPrivateVisitItem = isPrivateVisit || item.menuItemVisibility === 'private';
 
             const renderItemRowContent = (pressed = false) => (
               <View style={[styles.foodItemRow, pressed ? styles.foodItemRowPressed : null]}>
@@ -379,9 +380,9 @@ export function HomeFeedVisitEntryCard({
                     rating={item.rating}
                     testID={`home-feed-visit-item-rating-${item.id}`}
                   />
-                  {isPrivateVisit || (primaryPhoto && onSharePhoto) || renderItemBookmark ? (
+                  {isPrivateVisitItem || (primaryPhoto && onSharePhoto) || renderItemBookmark ? (
                     <View style={styles.foodItemSecondaryActions}>
-                      {isPrivateVisit ? (
+                      {isPrivateVisitItem ? (
                         <Ionicons
                           accessibilityLabel={`Private rating for ${item.name}`}
                           color={theme.colors.text.muted}

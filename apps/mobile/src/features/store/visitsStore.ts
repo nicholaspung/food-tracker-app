@@ -40,6 +40,8 @@ export type {
 
 interface VisitApiItemRecord {
   id: string;
+  menuItemId?: string;
+  menuItemVisibility?: 'private' | 'friends' | 'public';
   name: string;
   rating: number;
   description?: string;
@@ -88,6 +90,8 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
     visitedAt: record.visitedAt,
     items: (record.items ?? []).map((item) => ({
       id: item.id,
+      menuItemId: item.menuItemId?.trim() || undefined,
+      menuItemVisibility: item.menuItemVisibility,
       name: item.name.trim(),
       rating: item.rating,
       description: item.description?.trim() || undefined,

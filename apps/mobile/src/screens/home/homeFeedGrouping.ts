@@ -85,6 +85,29 @@ export function buildVisitFeedItem(
   };
 }
 
+export function filterFriendFeedVisibleVisit(
+  visit: VisitRecord,
+  currentUserId: string | null,
+): VisitRecord | null {
+  const viewerId = currentUserId?.trim();
+  const ownerId = visit.userId?.trim();
+  if (!viewerId || !ownerId || ownerId === viewerId) {
+    return visit;
+  }
+
+  const visibleItems = visit.items.filter((item) => item.menuItemVisibility !== 'private');
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return visibleItems.length === visit.items.length
+    ? visit
+    : {
+        ...visit,
+        items: visibleItems,
+      };
+}
+
 export function buildFoodProductFeedItem(
   foodProduct: FoodProductRecord,
   currentUserId: string | null,

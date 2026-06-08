@@ -3,10 +3,13 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { createCollectionRecord, updateCollectionRecord } from '../features/store/pocketbaseGateway';
+import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
+import { homeFeedMapQueryKeys } from '../features/store/homeFeedMapQuery';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { suggestTastingMenuItem } from '../features/store/tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { useMenuItemCatalogWrites } from '../features/store/useMenuItemCatalogWrites';
+import { visitsQueryKeys } from '../features/store/visitsQuery';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 
 jest.mock('@tanstack/react-query', () => ({
@@ -115,6 +118,9 @@ describe('useMenuItemCatalogWrites', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: menuItemsQueryKeys.restaurant('restaurant_1'),
     });
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: homeFeedQueryKeys.root,
+    });
 
     await act(async () => {
       renderer.unmount();
@@ -148,6 +154,21 @@ describe('useMenuItemCatalogWrites', () => {
         visibility: 'private',
       },
     ]);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: menuItemsQueryKeys.restaurant('restaurant_1'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: homeFeedQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: homeFeedMapQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitsQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitsQueryKeys.detailRoot,
+    });
 
     await act(async () => {
       renderer.unmount();
