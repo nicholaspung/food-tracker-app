@@ -665,7 +665,6 @@ export function RestaurantDiscoveryRestaurantScreen({
               {relatedMenuSuggestions.map((suggestion, index) => {
                 const sourceRestaurantCount =
                   suggestion.sourceRestaurantCount ?? 0;
-                const sourceItemCount = suggestion.sourceItemCount ?? 0;
 
                 return (
                   <Fragment key={suggestion.id}>

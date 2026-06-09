@@ -606,7 +606,6 @@ export function RestaurantMenuItemPicker<
                       ? itemIndex
                       : relatedLocationItems.length + itemIndex;
                   const sourceRestaurantCount = item.sourceRestaurantCount ?? 0;
-                  const sourceItemCount = item.sourceItemCount ?? 0;
                   const orderCount = item.orderCount ?? 0;
 
                   return (
