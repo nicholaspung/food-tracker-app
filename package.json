@@ -4,7 +4,7 @@
   "private": true,
   "license": "UNLICENSED",
   "main": "apps/mobile/index.js",
-  "packageManager": "pnpm@11.1.2",
+  "packageManager": "pnpm@11.5.3",
   "description": "Mobile tracker application with React frontend and Go backend",
   "scripts": {
     "dev": "bash scripts/dev.sh",
@@ -58,33 +58,6 @@
     "browser-sync": "3.0.4",
     "chokidar": "^4.0.3",
     "concurrently": "^8.2.2",
-    "start-server-and-test": "3.0.2",
     "turbo": "^2.9.10"
-  },
-  "dependencies": {
-    "expo": "56.0.8",
-    "react": "19.2.3",
-    "react-native": "0.85.3"
-  },
-  "pnpm": {
-    "overrides": {
-      "@expo/plist": "0.5.2",
-      "@tootallnate/once": "3.0.1",
-      "@xmldom/xmldom": "0.8.13",
-      "axios": "1.15.2",
-      "diff": "8.0.3",
-      "eas-cli>ajv": "8.18.0",
-      "eas-cli>minimatch": "5.1.8",
-      "flatted": "3.4.2",
-      "follow-redirects": "1.16.0",
-      "expo-image-loader": "55.0.1",
-      "lodash": "4.18.0",
-      "node-forge": "1.4.0",
-      "picomatch": "4.0.4",
-      "postcss": "8.5.10",
-      "socket.io-parser": "4.2.6",
-      "tar": "7.5.11",
-      "yaml": "2.8.3"
-    }
   }
 }
