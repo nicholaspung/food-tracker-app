@@ -136,35 +136,15 @@ async function sendApiRequestWithTimeout<T>(
   }
 }
 
-function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
-  const formData = new FormData();
-  formData.append('image', {
-    uri: input.uri,
-    name: input.name,
-    type: input.mimeType,
-  } as unknown as Blob);
-  if (input.restaurantId?.trim()) {
-    formData.append('restaurantId', input.restaurantId.trim());
-  }
-  if (input.restaurantName?.trim()) {
-    formData.append('restaurantName', input.restaurantName.trim());
-  }
-  return formData;
-}
-
 export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseMenuImageResponse> {
-  const formData = buildParseMenuFormData(input);
-  const requestCorrelation = input.requestCorrelation?.trim();
-  return sendApiRequestWithTimeout<ParseMenuImageResponse>(
-    '/api/parse-menu',
-    {
-      method: 'POST',
-      body: formData,
-      headers: requestCorrelation ? { 'X-Request-ID': requestCorrelation } : undefined,
-    },
+  const uploadResult = await runNativeUploadWithTimeout(
+    (signal) => uploadMenuImage(input, signal),
     PARSE_MENU_IMAGE_TIMEOUT_MS,
     'Menu scanning took too long. Try again with a clearer or smaller photo.',
   );
+
+  assertNativeImageUploadSucceeded(uploadResult, buildParseMenuUrl(), 'Menu scan failed.');
+  return parseNativeImageUploadResponse<ParseMenuImageResponse>(uploadResult.body);
 }
 
 export async function extractRestaurantNamesFromImage(
@@ -203,6 +183,44 @@ export async function createMenuItemsFromScan(
   );
 }
 
+async function runNativeUploadWithTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await operation(controller.signal);
+  } catch (error) {
+    if (didTimeout) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function uploadMenuImage(input: ParseMenuImageInput, signal: AbortSignal): Promise<UploadResult> {
+  const file = new File(input.uri);
+  return file.upload(buildParseMenuUrl(), {
+    fieldName: 'image',
+    headers: resolveNativeImageUploadHeaders(input),
+    httpMethod: 'POST',
+    mimeType: input.mimeType,
+    parameters: buildParseMenuUploadParameters(input),
+    sessionType: 'foreground',
+    signal,
+    uploadType: UploadType.MULTIPART,
+  });
+}
+
 async function uploadRestaurantNameImage(input: ParseMenuImageInput): Promise<UploadResult> {
   const file = new File(input.uri);
   return file.upload(buildFindRestaurantNameUrl(), {
@@ -213,6 +231,23 @@ async function uploadRestaurantNameImage(input: ParseMenuImageInput): Promise<Up
     sessionType: 'foreground',
     uploadType: UploadType.MULTIPART,
   });
+}
+
+function buildParseMenuUploadParameters(
+  input: Pick<ParseMenuImageInput, 'restaurantId' | 'restaurantName'>,
+): Record<string, string> | undefined {
+  const parameters: Record<string, string> = {};
+  const restaurantId = input.restaurantId?.trim();
+  const restaurantName = input.restaurantName?.trim();
+
+  if (restaurantId) {
+    parameters.restaurantId = restaurantId;
+  }
+  if (restaurantName) {
+    parameters.restaurantName = restaurantName;
+  }
+
+  return Object.keys(parameters).length > 0 ? parameters : undefined;
 }
 
 function resolveNativeImageUploadHeaders(input: Pick<ParseMenuImageInput, 'requestCorrelation'>): Record<string, string> | undefined {
@@ -277,4 +312,8 @@ function parseJsonObject(body: string): Record<string, unknown> | null {
 
 function buildFindRestaurantNameUrl(): string {
   return `${env.pocketbaseUrl.replace(/\/+$/, '')}/api/find-restaurant-name`;
+}
+
+function buildParseMenuUrl(): string {
+  return `${env.pocketbaseUrl.replace(/\/+$/, '')}/api/parse-menu`;
 }

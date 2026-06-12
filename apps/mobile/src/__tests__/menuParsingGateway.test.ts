@@ -57,15 +57,18 @@ describe('menuParsingGateway', () => {
   });
 
   it('posts menu images with restaurant verification context', async () => {
-    const appendSpy = jest.spyOn(FormData.prototype, 'append');
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      csv: 'menu_item,price\nRamen,12',
-      verification: {
-        checked: true,
-        matched: true,
-        confidence: 'high',
-        observedRestaurantNames: ['Ichiran'],
-      },
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        csv: 'menu_item,price\nRamen,12',
+        verification: {
+          checked: true,
+          matched: true,
+          confidence: 'high',
+          observedRestaurantNames: ['Ichiran'],
+        },
+      }),
+      headers: {},
+      status: 200,
     });
 
     await parseMenuImage({
@@ -77,35 +80,100 @@ describe('menuParsingGateway', () => {
       uri: 'file:///menu.jpg',
     });
 
-    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
-      '/api/parse-menu',
-      expect.objectContaining({
-        body: expect.any(FormData),
-        headers: expect.objectContaining({
-          'X-Request-ID': 'mobile-menu-scan-test',
-        }),
-        method: 'POST',
-        signal: expect.any(AbortSignal),
-      }),
-    );
-    expect(appendSpy).toHaveBeenCalledWith('restaurantId', 'restaurant-1');
-    expect(appendSpy).toHaveBeenCalledWith('restaurantName', 'Ichiran');
+    expect(mockedFile).toHaveBeenCalledWith('file:///menu.jpg');
+    expect(mockUpload).toHaveBeenCalledWith('https://api.example.test/api/parse-menu', {
+      fieldName: 'image',
+      headers: {
+        Authorization: 'Bearer test-token',
+        'X-Request-ID': 'mobile-menu-scan-test',
+      },
+      httpMethod: 'POST',
+      mimeType: 'image/jpeg',
+      parameters: {
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Ichiran',
+      },
+      sessionType: 'foreground',
+      signal: expect.any(AbortSignal),
+      uploadType: UploadType.MULTIPART,
+    });
   });
 
-  it('omits blank request correlation headers', async () => {
-    mockedPocketbaseModule.pb.send.mockResolvedValue({
-      csv: 'menu_item,price\nRamen,12',
+  it('omits blank menu upload request correlation headers and restaurant context', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        csv: 'menu_item,price\nRamen,12',
+      }),
+      headers: {},
+      status: 200,
     });
 
     await parseMenuImage({
       mimeType: 'image/jpeg',
       name: 'menu.jpg',
       requestCorrelation: '   ',
+      restaurantId: '   ',
+      restaurantName: '   ',
       uri: 'file:///menu.jpg',
     });
 
-    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
-    expect(options.headers).not.toHaveProperty('X-Request-ID');
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer test-token',
+        },
+        parameters: undefined,
+      }),
+    );
+  });
+
+  it('throws PocketBase response errors from native menu upload failures', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        data: {},
+        message: 'image file is required',
+      }),
+      headers: {},
+      status: 400,
+    });
+
+    await expect(
+      parseMenuImage({
+        mimeType: 'image/jpeg',
+        name: 'menu.jpg',
+        uri: 'file:///menu.jpg',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        message: 'image file is required',
+      },
+      status: 400,
+    });
+  });
+
+  it('keeps scanned menu item creation on the PocketBase API gateway', async () => {
+    mockedPocketbaseModule.pb.send.mockResolvedValue({
+      createdItems: [],
+      existingItems: [],
+    });
+
+    await createMenuItemsFromScan({
+      itemNames: ['Ramen'],
+      restaurantId: 'restaurant-1',
+    });
+
+    expect(mockedPocketbaseModule.pb.send).toHaveBeenCalledWith(
+      '/api/menu-items/from-scan',
+      expect.objectContaining({
+        body: {
+          itemNames: ['Ramen'],
+          restaurantId: 'restaurant-1',
+        },
+        method: 'POST',
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it('posts storefront images to restaurant-name extraction', async () => {
@@ -194,7 +262,7 @@ describe('menuParsingGateway', () => {
 
   it('aborts menu image parsing if the API does not resolve', async () => {
     jest.useFakeTimers();
-    mockedPocketbaseModule.pb.send.mockImplementation((_path: string, options: { signal: AbortSignal }) =>
+    mockUpload.mockImplementation((_url: string, options: { signal: AbortSignal }) =>
       new Promise((_resolve, reject) => {
         options.signal.addEventListener('abort', () => {
           reject(new Error('aborted'));
@@ -214,7 +282,7 @@ describe('menuParsingGateway', () => {
     await jest.advanceTimersByTimeAsync(120_000);
 
     await expectation;
-    const [, options] = mockedPocketbaseModule.pb.send.mock.calls[0];
+    const [, options] = mockUpload.mock.calls[0];
     expect(options.signal.aborted).toBe(true);
     jest.useRealTimers();
   });
