@@ -354,6 +354,22 @@ function buildGroupMenuSuggestions(suggestions: Record<string, unknown>[]) {
   };
 }
 
+function buildDefaultCreateVisitQueryResult(options: { queryKey?: readonly unknown[] }) {
+  if (options.queryKey?.includes('menuItems')) {
+    return buildQueryResult([editableMenuItem, nonEditableMenuItem]);
+  }
+
+  if (options.queryKey?.includes('allLocationsHistory')) {
+    return buildQueryResult(buildAllLocationsHistory([]));
+  }
+
+  if (options.queryKey?.includes('groupMenuSuggestions')) {
+    return buildQueryResult(buildGroupMenuSuggestions([]));
+  }
+
+  return buildQueryResult(null);
+}
+
 describe('CreateVisitScreen', () => {
   let createMenuItem: jest.Mock;
   let setDraftItems: jest.Mock;
@@ -377,7 +393,7 @@ describe('CreateVisitScreen', () => {
     };
 
     mockedUseQuery.mockReset();
-    mockedUseQuery.mockReturnValue(buildQueryResult(null));
+    mockedUseQuery.mockImplementation(buildDefaultCreateVisitQueryResult);
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue({
       getQueryData: jest.fn(),
@@ -590,7 +606,7 @@ describe('CreateVisitScreen', () => {
         );
       }
 
-      return buildQueryResult(null);
+      return buildDefaultCreateVisitQueryResult(options);
     });
     let renderer: any = null;
 
@@ -677,7 +693,7 @@ describe('CreateVisitScreen', () => {
         );
       }
 
-      return buildQueryResult(null);
+      return buildDefaultCreateVisitQueryResult(options);
     });
     let renderer: any = null;
 
@@ -732,7 +748,7 @@ describe('CreateVisitScreen', () => {
         );
       }
 
-      return buildQueryResult(null);
+      return buildDefaultCreateVisitQueryResult(options);
     });
     let renderer: any = null;
 
@@ -1291,7 +1307,7 @@ describe('CreateVisitScreen', () => {
         });
       }
 
-      return buildQueryResult(null);
+      return buildDefaultCreateVisitQueryResult(options);
     });
     mockedUseCreateVisitDraftItems.mockReturnValue({
       draftItems: [],

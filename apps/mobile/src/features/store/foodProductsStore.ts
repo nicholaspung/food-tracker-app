@@ -20,7 +20,14 @@ import {
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import {
+  createCollectionRecord,
+  deleteCollectionRecord,
+  getCollectionRecord,
+  listCollectionRecords,
+  sendApiRequest,
+  updateCollectionRecord,
+} from './pocketbaseGateway';
 import type {
   FoodItemCollectionRecord,
 } from './pocketbaseRecordTypes';
@@ -102,7 +109,7 @@ export async function getFoodProductById(
   }
 
   try {
-    const record = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodProductId, {
+    const record = await getCollectionRecord<FoodItemCollectionRecord>('food_items', foodProductId, {
       expand: 'user,visit,visit.restaurant',
       signal: options?.signal,
     });
@@ -195,7 +202,7 @@ export async function createFoodProduct(
         payload.itemCategory = normalizedCategory;
       }
 
-      const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(payload, {
+      const record = await createCollectionRecord<FoodItemCollectionRecord>('food_items', payload, {
         expand: 'user,visit,visit.restaurant',
         headers: resolveFeatureWriteHeaders(requestOptions),
       });
@@ -277,7 +284,8 @@ export async function updateFoodProduct(
       payload.latitude = null;
       payload.longitude = null;
 
-      const updatedRecord = await pb.collection('food_items').update<FoodItemCollectionRecord>(
+      const updatedRecord = await updateCollectionRecord<FoodItemCollectionRecord>(
+        'food_items',
         foodProductId,
         payload,
         {
@@ -330,7 +338,7 @@ export async function deleteFoodProduct(
 ): Promise<void> {
   return trackFeatureMutation('food_product.delete', async () => {
     try {
-      await pb.collection('food_items').delete(foodProductId, {
+      await deleteCollectionRecord('food_items', foodProductId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
       });
     } catch (error) {

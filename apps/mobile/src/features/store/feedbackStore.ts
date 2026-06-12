@@ -21,7 +21,7 @@ import {
   trackFeatureMutation,
 } from './featureStoreShared';
 import type { CollectionUserExpand } from './pocketbaseRecordTypes';
-import { listCollectionPage, sendApiRequest } from './pocketbaseGateway';
+import { createCollectionRecord, listCollectionPage, sendApiRequest } from './pocketbaseGateway';
 
 export type {
   CreateFeedbackInput,
@@ -244,7 +244,8 @@ export async function createFeedback(
     async () => {
       const userId = getAuthenticatedUserId();
 
-      const createdRecord = await pb.collection('feedback').create<FeedbackCollectionRecord>(
+      const createdRecord = await createCollectionRecord<FeedbackCollectionRecord>(
+        'feedback',
         {
           user: userId,
           title: input.title.trim(),

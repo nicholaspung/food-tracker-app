@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { usePullToRefreshState } from '../../hooks/usePullToRefreshState';
 import type { QueuedMutation } from '../../offline/types';
 import { trackObservabilityEvent } from '../../observability';
+import { resolveFeatureBrowseState } from './featureBrowseState';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import type { QueuedFeatureWrite } from './queuedFeatureWrites';
 import { useQueuedFeatureWrites } from './useQueuedFeatureWrites';
@@ -87,10 +88,17 @@ export function useFeatureBrowse<
   const totalItems = getTotalItemsFromData?.(query.data, items) ?? items.length;
   const resolvedResultCount = resultCount ?? items.length;
   const hasCachedData = getHasCachedData(query.data);
-  const hasBlockingError = enabled && query.isError && !hasCachedData;
-  const hasRefreshError = enabled && !hasBlockingError && (query.isError || extraRefreshError);
-  const hasResolvedData = enabled && query.isSuccess && !query.isFetching;
-  const showEmpty = !query.isLoading && !hasBlockingError && (emptyWhen?.(items) ?? (hasResolvedData && items.length === 0));
+  const browseState = resolveFeatureBrowseState({
+    emptyWhen,
+    enabled,
+    extraRefreshError,
+    hasCachedData,
+    isError: query.isError,
+    isFetching: query.isFetching,
+    isLoading: query.isLoading,
+    isSuccess: query.isSuccess,
+    items,
+  });
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(query.isRefetching);
   const { queuedWrites, refreshQueuedWrites } = useQueuedFeatureWrites(
     pendingQueuedWriteOperationNames ?? (EMPTY_OPERATION_NAMES as readonly TOperationName[]),
@@ -188,19 +196,19 @@ export function useFeatureBrowse<
   return {
     analyticsProps: buildAnalyticsPayload(),
     analyticsSource,
-    hasBlockingError,
-    hasItems: items.length > 0,
+    hasBlockingError: browseState.hasBlockingError,
+    hasItems: browseState.hasItems,
     hasNextPage: Boolean(query.hasNextPage),
-    hasRefreshError,
-    hasResolvedData,
+    hasRefreshError: browseState.hasRefreshError,
+    hasResolvedData: browseState.hasResolvedData,
     isFetchingNextPage: Boolean(query.isFetchingNextPage),
-    isLoading: query.isLoading,
+    isLoading: browseState.isLoading,
     isRefreshing: isPullRefreshing,
     items,
     onEndReached,
     onRefresh,
     pendingRows,
-    showEmpty,
+    showEmpty: browseState.showEmpty,
     totalItems,
   };
 }

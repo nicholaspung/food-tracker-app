@@ -7,13 +7,24 @@ import {
   listFoodProductPhotos,
   updateFoodProduct,
 } from '../features/store/foodProductsStore';
-import { listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
+import {
+  createCollectionRecord,
+  deleteCollectionRecord,
+  getCollectionRecord,
+  listCollectionRecords,
+  sendApiRequest,
+  updateCollectionRecord,
+} from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
+  createCollectionRecord: jest.fn(),
+  deleteCollectionRecord: jest.fn(),
+  getCollectionRecord: jest.fn(),
   listCollectionRecords: jest.fn(),
   sendApiRequest: jest.fn(),
+  updateCollectionRecord: jest.fn(),
 }));
 
 jest.mock('../features/store/visitPhotoUploads', () => ({
@@ -37,8 +48,12 @@ jest.mock('../lib/pocketbase', () => ({
   },
 }));
 
+const mockedCreateCollectionRecord = createCollectionRecord as jest.MockedFunction<typeof createCollectionRecord>;
+const mockedDeleteCollectionRecord = deleteCollectionRecord as jest.MockedFunction<typeof deleteCollectionRecord>;
+const mockedGetCollectionRecord = getCollectionRecord as jest.MockedFunction<typeof getCollectionRecord>;
 const mockedListCollectionRecords = listCollectionRecords as jest.MockedFunction<typeof listCollectionRecords>;
 const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 const mockedUploadVisitPhotos = uploadVisitPhotos as jest.MockedFunction<typeof uploadVisitPhotos>;
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
@@ -63,8 +78,12 @@ function buildClientResponseError(status: number): ClientResponseError {
 
 describe('foodProductsStore', () => {
   beforeEach(() => {
+    mockedCreateCollectionRecord.mockReset();
+    mockedDeleteCollectionRecord.mockReset();
+    mockedGetCollectionRecord.mockReset();
     mockedListCollectionRecords.mockReset();
     mockedSendApiRequest.mockReset();
+    mockedUpdateCollectionRecord.mockReset();
     mockedUploadVisitPhotos.mockReset();
     (mockedPocketBase.collection as jest.Mock).mockReset();
     mockedPocketBase.authStore.record = {
@@ -144,8 +163,7 @@ describe('foodProductsStore', () => {
   });
 
   it('loads a food product when the record uses itemType without the legacy flag', async () => {
-    const foodItemsCollection = {
-      getOne: jest.fn().mockResolvedValue({
+    mockedGetCollectionRecord.mockResolvedValue({
         id: 'food-product-lookup-1',
         itemType: 'food-product',
         name: 'Sparkling Water',
@@ -164,14 +182,6 @@ describe('foodProductsStore', () => {
             name: 'Taylor',
           },
         },
-      }),
-    };
-
-    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
-      if (collectionName === 'food_items') {
-        return foodItemsCollection;
-      }
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
     await expect(getFoodProductById('food-product-lookup-1')).resolves.toMatchObject({
@@ -185,8 +195,7 @@ describe('foodProductsStore', () => {
 
   it('uploads a replacement photo before deleting old primary photo ids', async () => {
     const operationOrder: string[] = [];
-    const foodItemsCollection = {
-      update: jest.fn().mockResolvedValue({
+    mockedUpdateCollectionRecord.mockResolvedValue({
         id: 'food-product-1',
         itemType: 'food-product',
         name: 'Updated Latte',
@@ -205,29 +214,15 @@ describe('foodProductsStore', () => {
             name: 'Taylor',
           },
         },
-      }),
-    };
-    const visitPhotosCollection = {
-      delete: jest
-        .fn()
-        .mockImplementationOnce(async () => {
-          operationOrder.push('delete:photo-1');
-          throw buildClientResponseError(404);
-        })
-        .mockImplementationOnce(async () => {
-          operationOrder.push('delete:photo-2');
-        }),
-    };
-
-    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
-      if (collectionName === 'food_items') {
-        return foodItemsCollection;
-      }
-      if (collectionName === 'visit_photos') {
-        return visitPhotosCollection;
-      }
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
+    mockedDeleteCollectionRecord
+      .mockImplementationOnce(async () => {
+        operationOrder.push('delete:photo-1');
+        throw buildClientResponseError(404);
+      })
+      .mockImplementationOnce(async () => {
+        operationOrder.push('delete:photo-2');
+      });
     mockedUploadVisitPhotos.mockImplementation(async () => {
       operationOrder.push('upload');
     });
@@ -259,7 +254,8 @@ describe('foodProductsStore', () => {
       userName: 'Taylor',
     });
 
-    expect(foodItemsCollection.update).toHaveBeenCalledWith(
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'food_items',
       'food-product-1',
       {
         name: 'Updated Latte',
@@ -291,13 +287,12 @@ describe('foodProductsStore', () => {
       undefined,
       undefined,
     );
-    expect(visitPhotosCollection.delete).toHaveBeenCalledTimes(2);
+    expect(mockedDeleteCollectionRecord).toHaveBeenCalledTimes(2);
     expect(operationOrder).toEqual(['upload', 'delete:photo-1', 'delete:photo-2']);
   });
 
   it('creates a food product with freeform location text and clears legacy coordinates', async () => {
-    const foodItemsCollection = {
-      create: jest.fn().mockResolvedValue({
+    mockedCreateCollectionRecord.mockResolvedValue({
         id: 'food-product-2',
         name: 'Matcha Latte',
         location_text: 'Ferry Building',
@@ -315,14 +310,6 @@ describe('foodProductsStore', () => {
             name: 'Taylor',
           },
         },
-      }),
-    };
-
-    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
-      if (collectionName === 'food_items') {
-        return foodItemsCollection;
-      }
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
     await expect(
@@ -344,7 +331,8 @@ describe('foodProductsStore', () => {
       userName: 'Taylor',
     });
 
-    expect(foodItemsCollection.create).toHaveBeenCalledWith(
+    expect(mockedCreateCollectionRecord).toHaveBeenCalledWith(
+      'food_items',
       {
         name: 'Matcha Latte',
         rating: 4,
@@ -366,8 +354,7 @@ describe('foodProductsStore', () => {
   });
 
   it('clears food product location text when the user removes it during edit', async () => {
-    const foodItemsCollection = {
-      update: jest.fn().mockResolvedValue({
+    mockedUpdateCollectionRecord.mockResolvedValue({
         id: 'food-product-3',
         itemType: 'food-product',
         name: 'Cold Brew',
@@ -378,21 +365,14 @@ describe('foodProductsStore', () => {
         itemDate: '2026-04-18T07:00:00.000Z',
         created: '2026-04-12T18:30:00.000Z',
         updated: '2026-04-18T07:00:00.000Z',
-      }),
-    };
-
-    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
-      if (collectionName === 'food_items') {
-        return foodItemsCollection;
-      }
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
     await updateFoodProduct('food-product-3', {
       locationText: '   ',
     });
 
-    expect(foodItemsCollection.update).toHaveBeenCalledWith(
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'food_items',
       'food-product-3',
       {
         location_text: '',
@@ -407,18 +387,9 @@ describe('foodProductsStore', () => {
   });
 
   it('rejects updates when the returned record is not a food product', async () => {
-    const foodItemsCollection = {
-      update: jest.fn().mockResolvedValue({
+    mockedUpdateCollectionRecord.mockResolvedValue({
         id: 'visit-item-1',
         itemType: 'visit-item',
-      }),
-    };
-
-    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
-      if (collectionName === 'food_items') {
-        return foodItemsCollection;
-      }
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
     await expect(
@@ -427,7 +398,8 @@ describe('foodProductsStore', () => {
       }),
     ).rejects.toThrow('Food product record not found.');
 
-    expect(foodItemsCollection.update).toHaveBeenCalledWith(
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'food_items',
       'visit-item-1',
       {
         name: 'Updated Latte',

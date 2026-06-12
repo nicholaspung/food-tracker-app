@@ -38,9 +38,19 @@ interface CollectionGetOptions extends PocketBaseRequestOptions {
   fields?: string;
 }
 
+interface CollectionCreateOptions extends PocketBaseRequestOptions {
+  expand?: string;
+  fields?: string;
+  headers?: Record<string, string>;
+}
+
 interface CollectionUpdateOptions extends PocketBaseRequestOptions {
   expand?: string;
   fields?: string;
+  headers?: Record<string, string>;
+}
+
+interface CollectionDeleteOptions extends PocketBaseRequestOptions {
   headers?: Record<string, string>;
 }
 
@@ -134,9 +144,10 @@ export async function getCollectionRecord<T>(
 export async function createCollectionRecord<T>(
   collectionName: string,
   payload: Record<string, unknown>,
+  options?: CollectionCreateOptions,
 ): Promise<T> {
   try {
-    const record = await pb.collection(collectionName).create<T>(payload);
+    const record = await pb.collection(collectionName).create<T>(payload, options);
     trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
       collectionName,
       operation: 'createCollectionRecord',
@@ -169,6 +180,27 @@ export async function updateCollectionRecord<T>(
     trackObservabilityEvent('DIRECT_WRITE_FAILED', {
       collectionName,
       operation: 'updateCollectionRecord',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
+}
+
+export async function deleteCollectionRecord(
+  collectionName: string,
+  recordId: string,
+  options?: CollectionDeleteOptions,
+): Promise<void> {
+  try {
+    await pb.collection(collectionName).delete(recordId, options);
+    trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
+      collectionName,
+      operation: 'deleteCollectionRecord',
+    });
+  } catch (error) {
+    trackObservabilityEvent('DIRECT_WRITE_FAILED', {
+      collectionName,
+      operation: 'deleteCollectionRecord',
       ...resolveErrorProperties(error),
     });
     throw error;

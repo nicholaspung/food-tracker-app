@@ -347,6 +347,19 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
         restaurantId: "restaurant-1",
       },
       defaultListId: "default_list",
+      optimisticDefaultListBookmark: {
+        menuItem: {
+          id: "menu-item-1",
+          name: "Tonic Bar Smoothie",
+        },
+        restaurant: expect.objectContaining({
+          cuisineType: "Cafe",
+          id: "restaurant-1",
+          location: "West Hollywood, CA",
+          name: "Erewhon West Hollywood",
+        }),
+        type: "menuItem",
+      },
       sourceListId: "default_list",
     });
   });

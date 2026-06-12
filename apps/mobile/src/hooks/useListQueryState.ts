@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
 
+import { resolveFeatureBrowseState } from '../features/store/featureBrowseState';
+
 interface PageWithItems<TItem> {
   items: TItem[];
   totalItems?: number;
@@ -34,18 +36,25 @@ export function usePaginatedQueryState<TItem>({
 }: UsePaginatedQueryStateOptions<TItem>) {
   const items = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
   const hasCachedPages = (data?.pages.length ?? 0) > 0;
-  const hasBlockingError = enabled && isError && !hasCachedPages;
-  const hasRefreshError = enabled && !hasBlockingError && (isError || extraRefreshError);
-  const hasResolvedData = enabled && isSuccess && !isFetching;
+  const state = resolveFeatureBrowseState({
+    enabled,
+    extraRefreshError,
+    hasCachedData: hasCachedPages,
+    isError,
+    isFetching,
+    isLoading,
+    isSuccess,
+    items,
+  });
 
   return {
     items,
     totalItems: data?.pages[0]?.totalItems ?? items.length,
-    hasBlockingError,
-    hasRefreshError,
-    hasResolvedData,
-    hasItems: items.length > 0,
-    isLoading,
+    hasBlockingError: state.hasBlockingError,
+    hasRefreshError: state.hasRefreshError,
+    hasResolvedData: state.hasResolvedData,
+    hasItems: state.hasItems,
+    isLoading: state.isLoading,
   };
 }
 
@@ -58,17 +67,23 @@ export function useQueryListState<TItem>({
   isSuccess,
 }: UseQueryListStateOptions<TItem>) {
   const items = useMemo(() => data ?? [], [data]);
-  const hasBlockingError = enabled && isError && data === undefined;
-  const hasRefreshError = enabled && !hasBlockingError && isError;
-  const hasResolvedData = enabled && isSuccess && !isFetching;
+  const state = resolveFeatureBrowseState({
+    enabled,
+    hasCachedData: data !== undefined,
+    isError,
+    isFetching,
+    isLoading,
+    isSuccess,
+    items,
+  });
 
   return {
     items,
     totalItems: items.length,
-    hasBlockingError,
-    hasRefreshError,
-    hasResolvedData,
-    hasItems: items.length > 0,
-    isLoading,
+    hasBlockingError: state.hasBlockingError,
+    hasRefreshError: state.hasRefreshError,
+    hasResolvedData: state.hasResolvedData,
+    hasItems: state.hasItems,
+    isLoading: state.isLoading,
   };
 }

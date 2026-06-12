@@ -23,6 +23,7 @@ import { menuItemsQueryKeys } from './menuItemsQuery';
 import { restaurantsQueryKeys } from './restaurantsQuery';
 import {
   getAllLocationsHistory,
+  getGroupMenuSuggestionsForRestaurant,
   listMenuItemsForRestaurant,
 } from './restaurantsStore';
 
@@ -51,8 +52,8 @@ interface FoodDiscoveryMapReadModel {
 
 interface FoodDiscoveryRestaurantDetailReadModelInput {
   enabled?: boolean;
-  groupMenuSuggestions?: GroupMenuSuggestionsRecord;
   isOnline: boolean;
+  menuSelectionSearchQuery?: string;
   restaurant: RestaurantRecord | null;
 }
 
@@ -73,11 +74,16 @@ interface FoodDiscoveryRestaurantDetailReadModel {
   allLocationsHistoryErrorMessage: string | null;
   allLocationsHistoryLoading: boolean;
   canShowAllLocations: boolean;
+  groupMenuSuggestions: GroupMenuSuggestionsRecord | undefined;
+  groupMenuSuggestionsErrorMessage: string | null;
+  groupMenuSuggestionsLoading: boolean;
   menuCatalogErrorMessage: string | null;
   menuCatalogLoading: boolean;
   menuCatalogRows: RestaurantMapItem[];
   menuItems: MenuItemRecord[];
+  menuSelectionSuggestions: MenuSelectionSuggestion[];
   refetchAllLocationsHistory: () => Promise<unknown>;
+  refetchGroupMenuSuggestions: () => Promise<unknown>;
   refetchMenuCatalog: () => Promise<unknown>;
   relatedMenuSuggestions: FoodDiscoveryMenuSelectionSuggestion[];
   yourOrderedItemsRows: RestaurantMapItem[];
@@ -324,6 +330,13 @@ function buildEmptyAllLocationsHistory(restaurant: RestaurantRecord): AllLocatio
   };
 }
 
+function buildEmptyGroupMenuSuggestions(restaurantId: string): GroupMenuSuggestionsRecord {
+  return {
+    restaurantId,
+    suggestions: [],
+  };
+}
+
 function buildFoodDiscoveryYourOrderedItemsRows(
   history: AllLocationsHistoryRecord | undefined,
 ): RestaurantMapItem[] {
@@ -470,14 +483,15 @@ function isQueryLoading(query: { isLoading?: boolean; isPending?: boolean }): bo
 
 export function useFoodDiscoveryRestaurantDetailReadModel({
   enabled = true,
-  groupMenuSuggestions,
   isOnline,
+  menuSelectionSearchQuery = '',
   restaurant,
 }: FoodDiscoveryRestaurantDetailReadModelInput): FoodDiscoveryRestaurantDetailReadModel {
   const queryClient = useQueryClient();
   const restaurantId = restaurant?.id ?? '';
   const menuItemsQueryKey = menuItemsQueryKeys.restaurant(restaurantId);
   const allLocationsHistoryQueryKey = restaurantsQueryKeys.allLocationsHistory(restaurantId);
+  const groupMenuSuggestionsQueryKey = restaurantsQueryKeys.groupMenuSuggestions(restaurantId);
 
   const menuItemsQuery = useQuery({
     enabled: enabled && Boolean(restaurantId),
@@ -526,8 +540,29 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
     queryKey: allLocationsHistoryQueryKey,
   });
 
-  const menuItems = menuItemsQuery.data ?? EMPTY_MENU_ITEMS;
+  const groupMenuSuggestionsQuery = useQuery({
+    enabled: enabled && Boolean(restaurantId),
+    queryFn: ({ signal }): Promise<GroupMenuSuggestionsRecord> => {
+      const emptySuggestions = buildEmptyGroupMenuSuggestions(restaurantId);
+      if (!restaurantId) {
+        return Promise.resolve(emptySuggestions);
+      }
+
+      if (!isOnline) {
+        return Promise.resolve(
+          queryClient.getQueryData<GroupMenuSuggestionsRecord>(groupMenuSuggestionsQueryKey) ??
+            emptySuggestions,
+        );
+      }
+
+      return getGroupMenuSuggestionsForRestaurant(restaurantId, { signal });
+    },
+    queryKey: groupMenuSuggestionsQueryKey,
+  });
+
+  const menuItems = Array.isArray(menuItemsQuery.data) ? menuItemsQuery.data : EMPTY_MENU_ITEMS;
   const allLocationsHistory = allLocationsHistoryQuery.data;
+  const groupMenuSuggestions = groupMenuSuggestionsQuery.data;
   const menuCatalogRows = useMemo(
     () => buildFoodDiscoveryMenuCatalogRows(menuItems, allLocationsHistory, restaurantId),
     [allLocationsHistory, menuItems, restaurantId],
@@ -546,6 +581,16 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
       }),
     [allLocationsHistory, groupMenuSuggestions, menuItems, restaurantId],
   );
+  const menuSelectionSuggestions = useMemo(
+    () =>
+      buildMenuSelectionSuggestions({
+        allLocationsHistory,
+        exactLocationMenuItems: [...menuItems],
+        groupMenuSuggestions,
+        searchQuery: menuSelectionSearchQuery,
+      }),
+    [allLocationsHistory, groupMenuSuggestions, menuItems, menuSelectionSearchQuery],
+  );
 
   return {
     allLocationsHistory,
@@ -558,11 +603,19 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
       allLocationsHistory,
       restaurantId || null,
     ),
+    groupMenuSuggestions,
+    groupMenuSuggestionsErrorMessage: getBlockingErrorMessage(
+      groupMenuSuggestionsQuery.error,
+      relatedMenuSuggestions.length > 0,
+    ),
+    groupMenuSuggestionsLoading: isQueryLoading(groupMenuSuggestionsQuery),
     menuCatalogErrorMessage: getBlockingErrorMessage(menuItemsQuery.error, menuCatalogRows.length > 0),
     menuCatalogLoading: isQueryLoading(menuItemsQuery),
     menuCatalogRows,
     menuItems,
+    menuSelectionSuggestions,
     refetchAllLocationsHistory: allLocationsHistoryQuery.refetch,
+    refetchGroupMenuSuggestions: groupMenuSuggestionsQuery.refetch,
     refetchMenuCatalog: menuItemsQuery.refetch,
     relatedMenuSuggestions,
     yourOrderedItemsRows,

@@ -5,7 +5,7 @@ import { trackObservabilityEvent } from '../../observability';
 import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 import type { ModerationContentStatus } from '../models';
 import type { PaginatedResult } from './featureStore';
-import type { CollectionPageResult } from './pocketbaseGateway';
+import { deleteCollectionRecord, type CollectionPageResult } from './pocketbaseGateway';
 
 interface PageInputLike {
   page?: number;
@@ -145,7 +145,7 @@ export async function deleteCollectionRecordsIgnoringNotFound(
 
   const deleteResults = await Promise.allSettled(
     normalizedRecordIds.map((recordId) =>
-      pb.collection(collectionName).delete(recordId, {
+      deleteCollectionRecord(collectionName, recordId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
       }),
     ),

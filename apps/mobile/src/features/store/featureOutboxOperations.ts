@@ -1,6 +1,7 @@
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
 import { replayRegisteredFeatureOutboxOperation } from './featureOutboxReplayAdapters';
+import { FEATURE_OUTBOX_OPERATION_NAMES } from './featureOutboxRegistry';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import type { HomeFeedDefaultsRecord } from './homeFeedPreferences';
 import type {
@@ -33,12 +34,9 @@ import {
   type UpdateBillInput,
   type UpdateNoteInput,
 } from './featureStore';
-import {
-  createTastingSession,
-  joinTastingSession,
-  setTastingSessionStatus,
-  type CreateTastingSessionInput,
-  type JoinTastingSessionInput,
+import type {
+  CreateTastingSessionInput,
+  JoinTastingSessionInput,
 } from './tastingSessionsApiStore';
 
 const FEATURE_OUTBOX_URL_PREFIX = 'local://feature/';
@@ -207,51 +205,6 @@ export type FeatureOutboxOperationName = keyof FeatureOutboxOperationPayloadMap;
 export type FeatureOutboxOperationPayload<TName extends FeatureOutboxOperationName> =
   FeatureOutboxOperationPayloadMap[TName];
 
-const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
-  'settings.visibility.save',
-  'onboarding.main.complete',
-  'onboarding.more-card.dismiss',
-  'onboarding.add-card.dismiss',
-  'visit.create',
-  'visit.update',
-  'visit.delete',
-  'visit.item.convert-to-food-product',
-  'food-product.create',
-  'food-product.update',
-  'food-product.delete',
-  'note.create',
-  'note.update',
-  'note.delete',
-  'note.mark-used',
-  'list.create',
-  'list.update',
-  'list.delete',
-  'list.default.create',
-  'list.default.bookmark.save',
-  'list.default.restaurant.save',
-  'list.restaurant.add',
-  'list.restaurant.reorder',
-  'list.restaurant.remove.source',
-  'list.restaurant.remove.user',
-  'list.bookmark.save',
-  'list.bookmark.remove',
-  'bill.create',
-  'bill.update',
-  'bill.delete',
-  'bill.status.toggle',
-  'bill.participant.toggle-paid',
-  'feedback.create',
-  'feedback.message.send',
-  'friend.accept',
-  'friend.remove',
-  'friend.request.send',
-  'friend.request.reject',
-  'friend.request.cancel',
-  'tasting-session.create',
-  'tasting-session.join',
-  'tasting-session.status.update',
-]);
-
 function buildFeatureOutboxUrl(operationName: FeatureOutboxOperationName): string {
   return `${FEATURE_OUTBOX_URL_PREFIX}${operationName}`;
 }
@@ -380,30 +333,11 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
   const payload = parseMutationPayload(mutation.body);
   const requestOptions = createReplayFeatureWriteRequestOptions(mutation);
 
-  const adapterHandled = await replayRegisteredFeatureOutboxOperation(
+  return replayRegisteredFeatureOutboxOperation(
     operationName,
     payload,
     requestOptions,
   );
-  if (adapterHandled) {
-    return true;
-  }
-
-  switch (operationName) {
-    case 'tasting-session.create':
-      await createTastingSession(payload as TastingSessionCreateOperationPayload, requestOptions);
-      return true;
-    case 'tasting-session.join':
-      await joinTastingSession(payload as TastingSessionJoinOperationPayload, requestOptions);
-      return true;
-    case 'tasting-session.status.update': {
-      const statusPayload = payload as TastingSessionStatusUpdateOperationPayload;
-      await setTastingSessionStatus(statusPayload.sessionId, statusPayload.status, requestOptions);
-      return true;
-    }
-    default:
-      return false;
-  }
 }
 
 function parseMutationPayload(value: string | null): unknown {

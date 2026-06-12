@@ -28,7 +28,6 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  type AllLocationsHistoryRecord,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getNoteDetail,
@@ -36,19 +35,13 @@ import {
   listVisitItemPhotos,
   useMenuItemCatalogWrites,
   useMonthlyUsage,
-  type GroupMenuSuggestionsRecord,
   type RestaurantRecord,
   type VisitItem,
   type VisitPhotoRecord,
 } from '../features';
-import { buildMenuSelectionSuggestions } from '../features/restaurants/menuSelectionSuggestions';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
-import {
-  getAllLocationsHistory,
-  getGroupMenuSuggestionsForRestaurant,
-} from '../features/store/restaurantsStore';
+import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -106,33 +99,6 @@ type CreateVisitExitMethod =
 
 function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
   return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
-}
-
-function buildEmptyAllLocationsHistory(
-  restaurantId: string | null,
-  restaurantName: string,
-): AllLocationsHistoryRecord {
-  return {
-    anchorRestaurant: {
-      id: restaurantId?.trim() ?? '',
-      name: restaurantName.trim(),
-    },
-    normalizedName: '',
-    locationCount: 1,
-    visitCount: 0,
-    itemCount: 0,
-    restaurants: [],
-    items: [],
-  };
-}
-
-function buildEmptyGroupMenuSuggestions(
-  restaurantId: string | null,
-): GroupMenuSuggestionsRecord {
-  return {
-    restaurantId: restaurantId?.trim() ?? '',
-    suggestions: [],
-  };
 }
 
 function resolveCreateVisitEntrySource(options: {
@@ -616,47 +582,37 @@ export function CreateVisitScreen({
   const loadedRestaurantRecords = menuItems.loadedRestaurantRecords;
   const locationPermissionNeedsSettings = restaurantSearch.locationPermissionNeedsSettings;
   const manualLocation = restaurantSearch.manualLocation;
-  const menuItemsQuery = menuItems.query;
-  const allLocationsHistoryQuery = useQuery({
-    queryKey: restaurantsQueryKeys.allLocationsHistory(selectedRestaurantId ?? ''),
-    queryFn: ({ signal }): Promise<AllLocationsHistoryRecord> => {
-      const emptyHistory = buildEmptyAllLocationsHistory(selectedRestaurantId, restaurantName);
-      if (!selectedRestaurantId) {
-        return Promise.resolve(emptyHistory);
-      }
+  const selectedRestaurantForDetail = useMemo<RestaurantRecord | null>(() => {
+    const trimmedRestaurantName = restaurantName.trim();
+    if (!selectedRestaurantId || !trimmedRestaurantName) {
+      return null;
+    }
 
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<AllLocationsHistoryRecord>(
-            restaurantsQueryKeys.allLocationsHistory(selectedRestaurantId),
-          ) ?? emptyHistory,
-        );
-      }
-
-      return getAllLocationsHistory(selectedRestaurantId, { signal });
-    },
+    return {
+      id: selectedRestaurantId,
+      name: trimmedRestaurantName,
+    };
+  }, [restaurantName, selectedRestaurantId]);
+  const selectedRestaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
     enabled: step === 1 && Boolean(selectedRestaurantId),
+    isOnline,
+    menuSelectionSearchQuery: menuItemSearchQuery,
+    restaurant: selectedRestaurantForDetail,
   });
-  const groupMenuSuggestionsQuery = useQuery({
-    queryKey: restaurantsQueryKeys.groupMenuSuggestions(selectedRestaurantId ?? ''),
-    queryFn: ({ signal }): Promise<GroupMenuSuggestionsRecord> => {
-      const emptySuggestions = buildEmptyGroupMenuSuggestions(selectedRestaurantId);
-      if (!selectedRestaurantId) {
-        return Promise.resolve(emptySuggestions);
-      }
-
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<GroupMenuSuggestionsRecord>(
-            restaurantsQueryKeys.groupMenuSuggestions(selectedRestaurantId),
-          ) ?? emptySuggestions,
-        );
-      }
-
-      return getGroupMenuSuggestionsForRestaurant(selectedRestaurantId, { signal });
-    },
-    enabled: step === 1 && Boolean(selectedRestaurantId),
-  });
+  const menuItemsQuery = useMemo(
+    () => ({
+      data: selectedRestaurantDetail.menuItems,
+      isError: Boolean(selectedRestaurantDetail.menuCatalogErrorMessage),
+      isLoading: selectedRestaurantDetail.menuCatalogLoading,
+      refetch: selectedRestaurantDetail.refetchMenuCatalog,
+    }),
+    [
+      selectedRestaurantDetail.menuCatalogErrorMessage,
+      selectedRestaurantDetail.menuCatalogLoading,
+      selectedRestaurantDetail.menuItems,
+      selectedRestaurantDetail.refetchMenuCatalog,
+    ],
+  );
   const savedEmptyDescription = savedSuggestions.emptyDescription;
   const savedEmptyTitle = savedSuggestions.emptyTitle;
   const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
@@ -706,21 +662,8 @@ export function CreateVisitScreen({
     ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining)
     : null;
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
-  const crossLocationMenuItems = useMemo<RestaurantMenuItemPickerCrossLocationItem[]>(
-    () =>
-      buildMenuSelectionSuggestions({
-        allLocationsHistory: allLocationsHistoryQuery.data,
-        exactLocationMenuItems: menuItemsQuery.data,
-        groupMenuSuggestions: groupMenuSuggestionsQuery.data,
-        searchQuery: menuItemSearchQuery,
-      }),
-    [
-      allLocationsHistoryQuery.data,
-      groupMenuSuggestionsQuery.data,
-      menuItemSearchQuery,
-      menuItemsQuery.data,
-    ],
-  );
+  const crossLocationMenuItems: RestaurantMenuItemPickerCrossLocationItem[] =
+    selectedRestaurantDetail.menuSelectionSuggestions;
   const isCrossLocationItemSelected = useCallback(
     (item: RestaurantMenuItemPickerCrossLocationItem) => {
       const normalizedName = normalizeSelectionLabel(item.name);

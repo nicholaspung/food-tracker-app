@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { RestaurantMapSheetTabId } from '../components/maps';
-import type { AllLocationsHistoryRecord, GroupMenuSuggestionsRecord, MenuItemRecord } from '../features';
+import type { AllLocationsHistoryRecord, MenuItemRecord } from '../features';
 import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import {
@@ -388,17 +388,14 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   async function renderDetailHook({
-    groupMenuSuggestions,
     isOnline = true,
     restaurant = restaurantOne,
   }: {
-    groupMenuSuggestions?: GroupMenuSuggestionsRecord;
     isOnline?: boolean;
     restaurant?: RestaurantRecord | null;
   } = {}) {
     function TestComponent() {
       detailHook = useFoodDiscoveryRestaurantDetailReadModel({
-        groupMenuSuggestions,
         isOnline,
         restaurant,
       });
@@ -612,6 +609,34 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
         } as never;
       }
 
+      if (queryKey.includes('groupMenuSuggestions')) {
+        return {
+          data: {
+            restaurantId: 'restaurant-1',
+            restaurantGroupId: 'group-1',
+            suggestions: [
+              {
+                displayName: 'Granola Bowl',
+                normalizedItemName: 'granola bowl',
+                sourceItemCount: 1,
+                sourceRestaurantCount: 1,
+                sources: [
+                  {
+                    menuItemCount: 1,
+                    menuItemIds: ['menu-2'],
+                    restaurantId: 'restaurant-2',
+                    restaurantName: 'Erewhon Venice',
+                  },
+                ],
+              },
+            ],
+          },
+          error: null,
+          isPending: false,
+          refetch: jest.fn(),
+        } as never;
+      }
+
       return {
         data: {
           ...historyByRestaurant['restaurant-1'],
@@ -641,28 +666,7 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
       } as never;
     });
 
-    const model = await renderDetailHook({
-      groupMenuSuggestions: {
-        restaurantId: 'restaurant-1',
-        restaurantGroupId: 'group-1',
-        suggestions: [
-          {
-            displayName: 'Granola Bowl',
-            normalizedItemName: 'granola bowl',
-            sourceItemCount: 1,
-            sourceRestaurantCount: 1,
-            sources: [
-              {
-                menuItemCount: 1,
-                menuItemIds: ['menu-2'],
-                restaurantId: 'restaurant-2',
-                restaurantName: 'Erewhon Venice',
-              },
-            ],
-          },
-        ],
-      },
-    });
+    const model = await renderDetailHook();
 
     expect(model.relatedMenuSuggestions).toEqual([
       expect.objectContaining({

@@ -5,7 +5,11 @@ import {
   saveRestaurantToDefaultList,
   updateRestaurantList,
 } from '../features/store/restaurantListsStore';
-import { listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
+import {
+  listCollectionRecords,
+  sendApiRequest,
+  updateCollectionRecord,
+} from '../features/store/pocketbaseGateway';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../observability', () => ({
@@ -15,6 +19,7 @@ jest.mock('../observability', () => ({
 jest.mock('../features/store/pocketbaseGateway', () => ({
   listCollectionRecords: jest.fn(),
   sendApiRequest: jest.fn(),
+  updateCollectionRecord: jest.fn(),
 }));
 
 jest.mock('../lib/pocketbase', () => ({
@@ -32,6 +37,7 @@ jest.mock('../lib/pocketbase', () => ({
 
 const mockedListCollectionRecords = listCollectionRecords as jest.MockedFunction<typeof listCollectionRecords>;
 const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockedUpdateCollectionRecord = updateCollectionRecord as jest.MockedFunction<typeof updateCollectionRecord>;
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
     record: {
@@ -47,6 +53,7 @@ describe('restaurantListsStore.updateRestaurantList', () => {
   beforeEach(() => {
     mockedListCollectionRecords.mockReset();
     mockedSendApiRequest.mockReset();
+    mockedUpdateCollectionRecord.mockReset();
     mockedPocketBase.collection.mockReset();
     mockedPocketBase.authStore.record = {
       collectionId: 'users',
@@ -56,19 +63,6 @@ describe('restaurantListsStore.updateRestaurantList', () => {
   });
 
   it('uses cached list state to reject default-list edits without prefetching', async () => {
-    const restaurantListsCollection = {
-      getOne: jest.fn(),
-      update: jest.fn(),
-    };
-
-    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
-      if (collectionName === 'restaurant_lists') {
-        return restaurantListsCollection;
-      }
-
-      throw new Error(`Unexpected collection: ${collectionName}`);
-    });
-
     await expect(
       updateRestaurantList(
         'list-1',
@@ -81,14 +75,11 @@ describe('restaurantListsStore.updateRestaurantList', () => {
       ),
     ).rejects.toThrow('The Want to Try list cannot be edited.');
 
-    expect(restaurantListsCollection.getOne).not.toHaveBeenCalled();
-    expect(restaurantListsCollection.update).not.toHaveBeenCalled();
+    expect(mockedUpdateCollectionRecord).not.toHaveBeenCalled();
   });
 
   it('updates non-default lists without a read-before-write roundtrip', async () => {
-    const restaurantListsCollection = {
-      getOne: jest.fn(),
-      update: jest.fn().mockResolvedValue({
+    mockedUpdateCollectionRecord.mockResolvedValue({
         id: 'list-1',
         name: 'Favorites',
         description: 'Weeknight picks',
@@ -102,15 +93,6 @@ describe('restaurantListsStore.updateRestaurantList', () => {
             name: 'Taylor',
           },
         },
-      }),
-    };
-
-    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
-      if (collectionName === 'restaurant_lists') {
-        return restaurantListsCollection;
-      }
-
-      throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
     await expect(
@@ -134,8 +116,8 @@ describe('restaurantListsStore.updateRestaurantList', () => {
       ownerName: 'Taylor',
     });
 
-    expect(restaurantListsCollection.getOne).not.toHaveBeenCalled();
-    expect(restaurantListsCollection.update).toHaveBeenCalledWith(
+    expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
+      'restaurant_lists',
       'list-1',
       {
         name: 'Favorites',

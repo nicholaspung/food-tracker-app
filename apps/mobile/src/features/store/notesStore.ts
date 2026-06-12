@@ -28,7 +28,14 @@ import {
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import {
+  createCollectionRecord,
+  deleteCollectionRecord,
+  getCollectionRecord,
+  listCollectionRecords,
+  sendApiRequest,
+  updateCollectionRecord,
+} from './pocketbaseGateway';
 
 export type {
   CreateNoteInput,
@@ -407,13 +414,10 @@ export async function createNote(
         status: 'draft',
       };
 
-      const record = await pb.collection('notes').create<NoteCollectionRecord>(
-        payload,
-        {
-          expand: 'restaurant',
-          headers: resolveFeatureWriteHeaders(requestOptions),
-        },
-      );
+      const record = await createCollectionRecord<NoteCollectionRecord>('notes', payload, {
+        expand: 'restaurant',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
 
       await uploadNotePhotos(record.id, currentUserId, input.photos ?? [], requestOptions);
 
@@ -462,11 +466,11 @@ export async function updateNote(
 
       const record =
         Object.keys(payload).length > 0
-          ? await pb.collection('notes').update<NoteCollectionRecord>(noteId, payload, {
+          ? await updateCollectionRecord<NoteCollectionRecord>('notes', noteId, payload, {
               expand: 'restaurant',
               headers: resolveFeatureWriteHeaders(requestOptions),
             })
-          : await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
+          : await getCollectionRecord<NoteCollectionRecord>('notes', noteId, {
               expand: 'restaurant',
             });
 
@@ -490,7 +494,7 @@ export async function deleteNote(
 ): Promise<void> {
   return trackFeatureMutation('note.delete', async () => {
     try {
-      await pb.collection('notes').delete(noteId, {
+      await deleteCollectionRecord('notes', noteId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
       });
     } catch (error) {
@@ -531,7 +535,7 @@ export async function markNoteUsed(
       }
 
       try {
-        await pb.collection('notes').update(trimmedNoteId, payload, {
+        await updateCollectionRecord('notes', trimmedNoteId, payload, {
           headers: resolveFeatureWriteHeaders(requestOptions),
         });
       } catch (error) {

@@ -1,8 +1,8 @@
 import {
   createVisitApiMutationInput,
+  parseFeatureOutboxOperationName,
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
-import { replayRegisteredFeatureOutboxOperation } from '../features/store/featureOutboxReplayAdapters';
 import {
   getCollectionRecord,
   saveAuthRecord,
@@ -25,6 +25,10 @@ import {
   markNoteUsed,
   updateVisit,
 } from '../features/store/featureStore';
+import {
+  createTastingSession,
+  joinTastingSession,
+} from '../features/store/tastingSessionsApiStore';
 import type { CreateFeedbackInput } from '../features/store/featureStore';
 import type { QueuedMutation } from '../offline/types';
 
@@ -86,6 +90,10 @@ jest.mock('../features/store/tastingSessionsApiStore', () => ({
   setTastingSessionStatus: jest.fn(),
 }));
 
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
 const mockedCreateBill = createBill as jest.MockedFunction<typeof createBill>;
 const mockedDeleteBill = deleteBill as jest.MockedFunction<typeof deleteBill>;
 const mockedMarkBillParticipantPaid = markBillParticipantPaid as jest.MockedFunction<
@@ -97,6 +105,8 @@ const mockedCreateFoodProduct = createFoodProduct as jest.MockedFunction<typeof 
 const mockedCreateRestaurantList = createRestaurantList as jest.MockedFunction<typeof createRestaurantList>;
 const mockedCreateFeedback = createFeedback as jest.MockedFunction<typeof createFeedback>;
 const mockedInviteFriend = inviteFriend as jest.MockedFunction<typeof inviteFriend>;
+const mockedCreateTastingSession = createTastingSession as jest.MockedFunction<typeof createTastingSession>;
+const mockedJoinTastingSession = joinTastingSession as jest.MockedFunction<typeof joinTastingSession>;
 const mockedConvertVisitItemToFoodProduct = convertVisitItemToFoodProduct as jest.MockedFunction<
   typeof convertVisitItemToFoodProduct
 >;
@@ -148,6 +158,8 @@ describe('featureOutboxOperations', () => {
     mockedCreateRestaurantList.mockReset();
     mockedCreateFeedback.mockReset();
     mockedInviteFriend.mockReset();
+    mockedCreateTastingSession.mockReset();
+    mockedJoinTastingSession.mockReset();
     mockedConvertVisitItemToFoodProduct.mockReset();
     mockedMarkNoteUsed.mockReset();
     mockedUpdateVisit.mockReset();
@@ -491,19 +503,49 @@ describe('featureOutboxOperations', () => {
     );
   });
 
-  it('lets the replay adapter registry ignore operations it does not own', async () => {
-    const handled = await replayRegisteredFeatureOutboxOperation(
+  it('parses operation names from the composed domain registrations', () => {
+    expect(parseFeatureOutboxOperationName('local://feature/bill.create')).toBe('bill.create');
+    expect(parseFeatureOutboxOperationName('local://feature/tasting-session.create')).toBe(
       'tasting-session.create',
-      {},
+    );
+    expect(parseFeatureOutboxOperationName('local://feature/unknown.write')).toBeNull();
+  });
+
+  it('replays tasting session writes through the domain registration', async () => {
+    mockedCreateTastingSession.mockResolvedValue({
+      id: 'session_1',
+      hostUserId: 'user_1',
+      inviteCode: 'ABC123',
+      status: 'planning',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      updatedAt: '2026-04-23T18:00:00.000Z',
+    } as unknown as Awaited<ReturnType<typeof createTastingSession>>);
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/tasting-session.create',
+        body: JSON.stringify({
+          title: 'Team tasting',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'tasting-session.create',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedCreateTastingSession).toHaveBeenCalledWith(
+      {
+        title: 'Team tasting',
+      },
       {
         headers: {
+          'X-Mobile-Write-Operation': 'tasting-session.create',
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
         },
       },
     );
-
-    expect(handled).toBe(false);
   });
 
   it('replays bill creation through the bill writes adapter', async () => {

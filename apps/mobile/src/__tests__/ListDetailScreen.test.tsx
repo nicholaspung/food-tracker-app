@@ -1117,9 +1117,6 @@ describe('ListDetailScreen', () => {
       },
     });
     expect(restaurantListWrites.removeRestaurantListSourceRating).not.toHaveBeenCalled();
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'restaurantListDetail', 'list_2'],
-    });
   });
 
   it('loads destination lists from the owner list query when detail viewer lists are empty', async () => {
@@ -1586,7 +1583,6 @@ describe('ListDetailScreen', () => {
       defaultListId: 'list_1',
       sourceListId: 'list_1',
     });
-    expect(refetch).toHaveBeenCalled();
   });
 
   it('hides a queued restaurant bookmark removal from Want to Try', async () => {

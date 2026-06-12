@@ -762,7 +762,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             defaultListId: listId,
             sourceListId: listId,
           });
-          await detailQuery.refetch();
           didDelete = true;
         } catch (error) {
           setErrorMessage(error instanceof Error ? error.message : 'Could not remove restaurant from Want to Try.');
@@ -780,7 +779,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             defaultListId: listId,
             sourceListId: listId,
           });
-          await detailQuery.refetch();
           didDelete = true;
         } catch (error) {
           setErrorMessage(error instanceof Error ? error.message : 'Could not remove menu item from Want to Try.');
@@ -1076,10 +1074,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       queued = queued || result.status === 'queued';
     }
 
-    await queryClient.invalidateQueries({
-      queryKey: restaurantListQueryKeys.detail(destinationListId),
-    });
-
     return queued;
   };
 
@@ -1150,7 +1144,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         ? await removeTransferTargetFromCurrentList(transferTarget)
         : false;
 
-      await detailQuery.refetch();
       trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_SUCCEEDED', {
         source: 'ListDetailScreen',
         addListCount: selectedNewTransferListIds.length,

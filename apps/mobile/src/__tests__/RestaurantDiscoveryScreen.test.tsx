@@ -602,6 +602,12 @@ describe('RestaurantDiscoveryScreen', () => {
     });
 
     expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledWith({
+      optimisticRestaurant: expect.objectContaining({
+        cuisineType: 'Cafe',
+        id: 'restaurant-1',
+        location: 'West Hollywood, CA',
+        name: 'Erewhon West Hollywood',
+      }),
       restaurant: {
         restaurantId: 'restaurant-1',
       },

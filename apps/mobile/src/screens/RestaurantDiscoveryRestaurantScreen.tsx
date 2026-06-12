@@ -2,7 +2,7 @@ import { Ionicons } from "../ui/AppIcon";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Fragment, useMemo, useState } from "react";
 import { View } from "react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   EmptyState,
@@ -15,18 +15,12 @@ import {
   VisitRestaurantOptionTrailing,
   WantToTryBookmarkButton,
 } from "../components/shared";
-import {
-  type AllLocationsHistoryRecord,
-  type GroupMenuSuggestionsRecord,
-} from "../features";
+import { type AllLocationsHistoryRecord } from "../features";
 import { restaurantListQueryKeys } from "../features/store/restaurantListQuery";
 import {
   getDefaultRestaurantList,
   getRestaurantListDetail,
-  type RestaurantListDetailRecord,
 } from "../features/store/restaurantListsStore";
-import { restaurantsQueryKeys } from "../features/store/restaurantsQuery";
-import { getGroupMenuSuggestionsForRestaurant } from "../features/store/restaurantsStore";
 import { useFoodDiscoveryRestaurantDetailReadModel } from "../features/store/useFoodDiscoveryMapReadModel";
 import { useRestaurantListWrites } from "../features/store/useRestaurantListWrites";
 import type { MenuItemRecord } from "../features/store/featureStore";
@@ -93,85 +87,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function addQueuedMenuItemBookmarkToDefaultListDetail(
-  currentDetail: RestaurantListDetailRecord | null | undefined,
-  input: {
-    listId: string;
-    menuItem: MenuItemRecord;
-    restaurant: ReturnType<typeof buildRestaurantFromRoute>;
-  },
-): RestaurantListDetailRecord {
-  const currentItems = currentDetail?.items ?? [];
-  const existingRestaurantItem = currentItems.find(
-    (item) => item.restaurantId === input.restaurant.id,
-  );
-  if (
-    existingRestaurantItem?.bookmarkedItems.some(
-      (bookmarkedItem) => bookmarkedItem.userFoodItemId === input.menuItem.id,
-    )
-  ) {
-    return (
-      currentDetail ?? {
-        list: null,
-        items: currentItems,
-        bookmarkState: { savedListIdsByBookmarkLookupId: {} },
-        photoPreviews: [],
-        viewerLists: [],
-      }
-    );
-  }
-
-  const createdAt = new Date().toISOString();
-  const listItemId =
-    existingRestaurantItem?.id ??
-    `queued:want-to-try-restaurant:${input.restaurant.id}`;
-  const queuedBookmarkedItem = {
-    id: `queued:want-to-try-menu-item:${input.menuItem.id}`,
-    listItemId,
-    menuItemId: input.menuItem.id,
-    name: input.menuItem.name,
-    rating: 0,
-  };
-
-  const nextItems = existingRestaurantItem
-    ? currentItems.map((item) =>
-        item.id === existingRestaurantItem.id
-          ? {
-              ...item,
-              bookmarkedItems: [queuedBookmarkedItem, ...item.bookmarkedItems],
-            }
-          : item,
-      )
-    : [
-        {
-          id: listItemId,
-          listId: input.listId,
-          restaurantId: input.restaurant.id,
-          restaurantName: input.restaurant.name,
-          restaurantLocation: input.restaurant.location,
-          restaurantCity: input.restaurant.city,
-          restaurantCuisineType: input.restaurant.cuisineType,
-          restaurantVisibility: input.restaurant.visibility,
-          latitude: input.restaurant.latitude,
-          longitude: input.restaurant.longitude,
-          position: currentItems.length,
-          bookmarkedItems: [queuedBookmarkedItem],
-          createdAt,
-        },
-        ...currentItems,
-      ];
-
-  return {
-    list: currentDetail?.list ?? null,
-    items: nextItems,
-    bookmarkState: currentDetail?.bookmarkState ?? {
-      savedListIdsByBookmarkLookupId: {},
-    },
-    photoPreviews: currentDetail?.photoPreviews ?? [],
-    viewerLists: currentDetail?.viewerLists ?? [],
-  };
-}
-
 function buildRestaurantFromRoute(
   params: RootStackParamList["RestaurantDiscoveryRestaurant"],
 ) {
@@ -210,22 +125,12 @@ function buildLatestLocationLabel(
   return `Latest at ${parts.join(" • ")}`;
 }
 
-function buildEmptyGroupMenuSuggestions(
-  restaurantId: string,
-): GroupMenuSuggestionsRecord {
-  return {
-    restaurantId,
-    suggestions: [],
-  };
-}
-
 export function RestaurantDiscoveryRestaurantScreen({
   navigation,
   route,
 }: RestaurantDiscoveryRestaurantScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
   const restaurantListWrites = useRestaurantListWrites();
   const restaurant = useMemo(
@@ -264,28 +169,7 @@ export function RestaurantDiscoveryRestaurantScreen({
     return parts.filter(Boolean).join(" • ");
   }, [restaurant]);
 
-  const groupMenuSuggestionsQuery = useQuery({
-    enabled: Boolean(restaurant.id),
-    queryKey: restaurantsQueryKeys.groupMenuSuggestions(restaurant.id),
-    queryFn: ({ signal }): Promise<GroupMenuSuggestionsRecord> => {
-      const emptySuggestions = buildEmptyGroupMenuSuggestions(restaurant.id);
-      if (!restaurant.id) {
-        return Promise.resolve(emptySuggestions);
-      }
-
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<GroupMenuSuggestionsRecord>(
-            restaurantsQueryKeys.groupMenuSuggestions(restaurant.id),
-          ) ?? emptySuggestions,
-        );
-      }
-
-      return getGroupMenuSuggestionsForRestaurant(restaurant.id, { signal });
-    },
-  });
   const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
-    groupMenuSuggestions: groupMenuSuggestionsQuery.data,
     isOnline,
     restaurant,
   });
@@ -338,8 +222,8 @@ export function RestaurantDiscoveryRestaurantScreen({
     detailScope === "location" &&
     !restaurantDetail.menuCatalogLoading &&
     !restaurantDetail.menuCatalogErrorMessage &&
-    (groupMenuSuggestionsQuery.isLoading ||
-      groupMenuSuggestionsQuery.isError ||
+    (restaurantDetail.groupMenuSuggestionsLoading ||
+      restaurantDetail.groupMenuSuggestionsErrorMessage ||
       relatedMenuSuggestions.length > 0);
 
   async function handleToggleMenuItemWantToTry(menuItem: MenuItemRecord) {
@@ -406,6 +290,23 @@ export function RestaurantDiscoveryRestaurantScreen({
           menuItemId: menuItem.id,
         },
         defaultListId,
+        optimisticDefaultListBookmark: {
+          menuItem: {
+            id: menuItem.id,
+            name: menuItem.name,
+          },
+          restaurant: {
+            city: restaurant.city,
+            cuisineType: restaurant.cuisineType,
+            id: restaurant.id,
+            latitude: restaurant.latitude,
+            location: restaurant.location,
+            longitude: restaurant.longitude,
+            name: restaurant.name,
+            visibility: restaurant.visibility,
+          },
+          type: "menuItem",
+        },
         sourceListId: defaultListId ?? "default",
       });
 
@@ -414,16 +315,6 @@ export function RestaurantDiscoveryRestaurantScreen({
         if (defaultListId) {
           void defaultListDetailQuery.refetch();
         }
-      } else if (defaultListId) {
-        queryClient.setQueryData<RestaurantListDetailRecord | null | undefined>(
-          restaurantListQueryKeys.detail(defaultListId),
-          (currentDetail) =>
-            addQueuedMenuItemBookmarkToDefaultListDetail(currentDetail, {
-              listId: defaultListId,
-              menuItem,
-              restaurant,
-            }),
-        );
       }
     } catch (error) {
       setLocallySavedMenuItemIds((current) => {
@@ -649,14 +540,14 @@ export function RestaurantDiscoveryRestaurantScreen({
       {showRelatedMenuSuggestions ? (
         <Card style={styles.card}>
           <Text variant="label">Suggested From Related Locations</Text>
-          {groupMenuSuggestionsQuery.isLoading ? (
+          {restaurantDetail.groupMenuSuggestionsLoading ? (
             <LoadingState label="Loading suggestions..." />
-          ) : groupMenuSuggestionsQuery.isError ? (
+          ) : restaurantDetail.groupMenuSuggestionsErrorMessage ? (
             <PageErrorToast
               actionLabel="Retry"
               errorMessage="Could not load suggestions from related locations."
               onAction={() => {
-                void groupMenuSuggestionsQuery.refetch();
+                void restaurantDetail.refetchGroupMenuSuggestions();
               }}
               title="Suggestions unavailable"
             />

@@ -1,5 +1,5 @@
 import { pb } from '../../lib/pocketbase';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { deleteCollectionRecord, listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
   buildOrFilter,
   deleteCollectionRecordsIgnoringNotFound,
@@ -507,7 +507,7 @@ export async function deleteVisit(
 ): Promise<void> {
   return trackFeatureMutation('visit.delete', async () => {
     try {
-      await pb.collection('visits').delete(visitId, {
+      await deleteCollectionRecord('visits', visitId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
       });
     } catch (error) {

@@ -34,7 +34,14 @@ import {
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import {
+  createCollectionRecord,
+  deleteCollectionRecord,
+  getCollectionRecord,
+  listCollectionRecords,
+  sendApiRequest,
+  updateCollectionRecord,
+} from './pocketbaseGateway';
 import type {
   RestaurantListCollectionRecord,
 } from './pocketbaseRecordTypes';
@@ -623,7 +630,7 @@ export async function getRestaurantListById(
   }
 
   try {
-    const record = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+    const record = await getCollectionRecord<RestaurantListCollectionRecord>('restaurant_lists', listId, {
       expand: 'user',
       signal: options?.signal,
     });
@@ -865,7 +872,8 @@ export async function createRestaurantList(
         throw new Error('List name is required.');
       }
 
-      const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
+      const createdRecord = await createCollectionRecord<RestaurantListCollectionRecord>(
+        'restaurant_lists',
         {
           name: trimmedName,
           description: input.description?.trim() || '',
@@ -921,11 +929,11 @@ export async function updateRestaurantList(
 
       const updatedRecord =
         Object.keys(payload).length > 0
-          ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
+          ? await updateCollectionRecord<RestaurantListCollectionRecord>('restaurant_lists', listId, payload, {
               expand: 'user',
               headers: resolveFeatureWriteHeaders(requestOptions),
             })
-          : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+          : await getCollectionRecord<RestaurantListCollectionRecord>('restaurant_lists', listId, {
               expand: 'user',
             });
 
@@ -947,7 +955,7 @@ export async function deleteRestaurantList(
     getAuthenticatedUserId();
 
     try {
-      await pb.collection('restaurant_lists').delete(listId, {
+      await deleteCollectionRecord('restaurant_lists', listId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
       });
     } catch (error) {

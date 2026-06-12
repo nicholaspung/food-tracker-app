@@ -9,6 +9,7 @@ import {
   updateVisit,
 } from '../features/store/visitsStore';
 import {
+  deleteCollectionRecord,
   listCollectionRecords,
   sendApiRequest,
 } from '../features/store/pocketbaseGateway';
@@ -16,8 +17,13 @@ import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
+  deleteCollectionRecord: jest.fn(),
   listCollectionRecords: jest.fn(),
   sendApiRequest: jest.fn(),
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
 }));
 
 jest.mock('../features/store/visitPhotoUploads', () => ({
@@ -38,6 +44,7 @@ jest.mock('../lib/pocketbase', () => ({
 }));
 
 const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockedDeleteCollectionRecord = deleteCollectionRecord as jest.MockedFunction<typeof deleteCollectionRecord>;
 const mockedListCollectionRecords = listCollectionRecords as jest.MockedFunction<
   typeof listCollectionRecords
 >;
@@ -67,6 +74,7 @@ function buildClientResponseError(status: number): ClientResponseError {
 describe('visitsStore.getVisitById', () => {
   beforeEach(() => {
     mockedSendApiRequest.mockReset();
+    mockedDeleteCollectionRecord.mockReset();
     mockedListCollectionRecords.mockReset();
     mockedUploadVisitPhotos.mockReset();
     mockedPocketBase.collection.mockReset();
@@ -475,25 +483,14 @@ describe('visitsStore.getVisitById', () => {
 
   it('deletes removed photo ids before uploading new visit item photos during edit', async () => {
     const operationOrder: string[] = [];
-    const visitPhotosCollection = {
-      delete: jest
-        .fn()
-        .mockImplementationOnce(async () => {
-          operationOrder.push('delete:photo-1');
-        })
-        .mockImplementationOnce(async () => {
-          operationOrder.push('delete:photo-2');
-          throw buildClientResponseError(404);
-        }),
-    };
-
-    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
-      if (collectionName === 'visit_photos') {
-        return visitPhotosCollection;
-      }
-
-      throw new Error(`Unexpected collection: ${collectionName}`);
-    });
+    mockedDeleteCollectionRecord
+      .mockImplementationOnce(async () => {
+        operationOrder.push('delete:photo-1');
+      })
+      .mockImplementationOnce(async () => {
+        operationOrder.push('delete:photo-2');
+        throw buildClientResponseError(404);
+      });
     mockedSendApiRequest.mockResolvedValue({
       id: 'visit-123',
       restaurantId: 'restaurant-1',

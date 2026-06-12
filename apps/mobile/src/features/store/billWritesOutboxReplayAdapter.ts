@@ -3,6 +3,7 @@ import type {
   FeatureOutboxOperationPayloadMap,
 } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
+import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
 import {
   createBill,
   deleteBill,
@@ -22,7 +23,7 @@ type BillWriteOutboxReplayAdapter = (
   requestOptions: FeatureWriteRequestOptions,
 ) => Promise<void>;
 
-export const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
+const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
   'bill.create': replayBillCreate,
   'bill.update': replayBillUpdate,
   'bill.delete': replayBillDelete,
@@ -30,6 +31,17 @@ export const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
   'bill.participant.toggle-paid': replayBillParticipantTogglePaid,
 } satisfies Partial<Record<FeatureOutboxOperationName, BillWriteOutboxReplayAdapter>> &
   Record<BillWriteOutboxOperationName, BillWriteOutboxReplayAdapter>;
+
+export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
+  operationNames: [
+    'bill.create',
+    'bill.update',
+    'bill.delete',
+    'bill.status.toggle',
+    'bill.participant.toggle-paid',
+  ] as const,
+  replayAdapters: BILL_WRITE_OUTBOX_REPLAY_ADAPTERS,
+});
 
 async function replayBillCreate(
   payload: unknown,

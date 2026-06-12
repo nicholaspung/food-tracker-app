@@ -15,7 +15,7 @@ import {
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { sendApiRequest } from './pocketbaseGateway';
+import { deleteCollectionRecord, sendApiRequest, updateCollectionRecord } from './pocketbaseGateway';
 
 export type {
   FriendsCountSummary,
@@ -229,7 +229,8 @@ export async function markFriendInviteAccepted(
 ): Promise<FriendRecord> {
   return trackFeatureMutation('friend.accept', async () => {
     const currentUserId = getAuthenticatedUserId();
-    const updatedFriendship = await pb.collection('friendships').update<FriendshipRecord>(
+    const updatedFriendship = await updateCollectionRecord<FriendshipRecord>(
+      'friendships',
       friendId,
       {
         status: 'accepted',
@@ -255,7 +256,7 @@ export async function removeFriend(
 ): Promise<void> {
   return trackFeatureMutation('friend.remove', async () => {
     getAuthenticatedUserId();
-    await pb.collection('friendships').delete(friendId, {
+    await deleteCollectionRecord('friendships', friendId, {
       headers: resolveFeatureWriteHeaders(requestOptions),
     });
   });

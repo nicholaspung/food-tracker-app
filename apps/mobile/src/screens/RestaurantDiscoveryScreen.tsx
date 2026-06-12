@@ -43,7 +43,6 @@ import { useFoodDiscoveryMapReadModel } from '../features/store/useFoodDiscovery
 import {
   getDefaultRestaurantList,
   getRestaurantListDetail,
-  type RestaurantListDetailRecord,
 } from '../features/store/restaurantListsStore';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
@@ -355,49 +354,6 @@ interface PendingStorefrontNameDelete {
   entryId: string;
   name: string;
   optionIndex: number;
-}
-
-function addQueuedRestaurantBookmarkToDefaultListDetail(
-  currentDetail: RestaurantListDetailRecord | null | undefined,
-  restaurant: RestaurantRecord,
-  listId: string,
-): RestaurantListDetailRecord {
-  const currentItems = currentDetail?.items ?? [];
-  if (currentItems.some((item) => item.restaurantId === restaurant.id)) {
-    return currentDetail ?? {
-      list: null,
-      items: currentItems,
-      bookmarkState: { savedListIdsByBookmarkLookupId: {} },
-      photoPreviews: [],
-      viewerLists: [],
-    };
-  }
-
-  const createdAt = new Date().toISOString();
-  return {
-    list: currentDetail?.list ?? null,
-    items: [
-      {
-        id: `queued:want-to-try-restaurant:${restaurant.id}`,
-        listId,
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-        restaurantLocation: restaurant.location,
-        restaurantCity: restaurant.city,
-        restaurantCuisineType: restaurant.cuisineType,
-        restaurantVisibility: restaurant.visibility,
-        latitude: restaurant.latitude,
-        longitude: restaurant.longitude,
-        position: currentItems.length,
-        bookmarkedItems: [],
-        createdAt,
-      },
-      ...currentItems,
-    ],
-    bookmarkState: currentDetail?.bookmarkState ?? { savedListIdsByBookmarkLookupId: {} },
-    photoPreviews: currentDetail?.photoPreviews ?? [],
-    viewerLists: currentDetail?.viewerLists ?? [],
-  };
 }
 
 function hasUsableMapCenter(region: Region): boolean {
@@ -845,6 +801,16 @@ export function RestaurantDiscoveryScreen({
         restaurant: {
           restaurantId: restaurant.id,
         },
+        optimisticRestaurant: {
+          city: restaurant.city,
+          cuisineType: restaurant.cuisineType,
+          id: restaurant.id,
+          latitude: restaurant.latitude,
+          location: restaurant.location,
+          longitude: restaurant.longitude,
+          name: restaurant.name,
+          visibility: restaurant.visibility,
+        },
         sourceListId: defaultListId ?? 'default',
       });
 
@@ -853,15 +819,6 @@ export function RestaurantDiscoveryScreen({
         if (defaultListId) {
           void defaultListDetailQuery.refetch();
         }
-      } else if (defaultListId) {
-        queryClient.setQueryData<RestaurantListDetailRecord | null | undefined>(
-          restaurantListQueryKeys.detail(defaultListId),
-          (currentDetail) => addQueuedRestaurantBookmarkToDefaultListDetail(
-            currentDetail,
-            restaurant,
-            defaultListId,
-          ),
-        );
       }
 
       trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_BOOKMARK_SAVED', {
@@ -883,7 +840,6 @@ export function RestaurantDiscoveryScreen({
     defaultListDetailQuery,
     defaultListId,
     defaultListQuery,
-    queryClient,
     restaurantListWrites,
     savedRestaurantIds,
   ]);
