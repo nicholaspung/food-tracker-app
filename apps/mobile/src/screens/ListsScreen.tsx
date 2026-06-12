@@ -10,13 +10,12 @@ import {
   BackHeaderScreenScaffold,
   CachedRemoteImage,
   EmptyState,
-  ErrorState,
   FeatureListFooter,
   HeaderAccessoryButton,
   PageErrorToast,
   PendingQueuedWriteRow,
+  QueryListStateView,
   SegmentedControl,
-  Skeleton,
   type SegmentedControlOption,
 } from '../components/shared';
 import {
@@ -768,37 +767,30 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     </View>
   );
 
-  const listsListEmptyComponent = (() => {
-    if (isLoading) {
-      return (
-        <View style={styles.skeletonWrap}>
-          <Skeleton height={136} />
-          <Skeleton height={136} />
-          <Skeleton height={136} />
-        </View>
-      );
-    }
-
-    if (browseState.hasBlockingError) {
-      return (
-        <ErrorState
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="ListsScreen"
-          description="Could not load lists."
-          onRetry={() => {
-            void activeQuery.refetch();
-          }}
-          title="Lists unavailable"
-        />
-      );
-    }
-
-    if (visibleLists.length === 0) {
-      return hasSearch ? renderNoSearchResults() : renderEmptyState();
-    }
-
-    return null;
-  })();
+  const listsListEmptyComponent = (
+    <View style={styles.skeletonWrap}>
+      <QueryListStateView
+        actionLabel="Retry"
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="ListsScreen"
+        blockingErrorMessage="Could not load lists."
+        emptyContent={visibleLists.length === 0 ? (hasSearch ? renderNoSearchResults() : renderEmptyState()) : null}
+        emptyDescription=""
+        emptyTitle=""
+        hasBlockingError={browseState.hasBlockingError}
+        hasRefreshError={browseState.hasRefreshError}
+        isLoading={isLoading}
+        loadingSkeletonCount={3}
+        loadingSkeletonHeight={136}
+        onRetry={() => {
+          void activeQuery.refetch();
+        }}
+        refreshErrorMessage="Could not refresh lists. Showing saved data."
+        showEmpty={visibleLists.length === 0}
+        title="Lists unavailable"
+      />
+    </View>
+  );
 
   const listsFooter =
     !isLoading && !browseState.hasBlockingError && visibleLists.length > 0 && browseState.hasNextPage ? (

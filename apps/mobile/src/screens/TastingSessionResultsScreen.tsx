@@ -5,7 +5,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   EmptyState,
-  ErrorState,
   FeatureDetailScreenScaffold,
   FoodItemRatingRecordCard,
   type FoodItemRatingRecordRow,
@@ -19,6 +18,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
+import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionResults'>;
@@ -165,38 +165,30 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
     setPhotoViewerVisible(false);
   }, []);
 
-  if (sessionQuery.isError && !session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Results">
-        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
-  if (!session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Results">
-        <EmptyState title="Loading results" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
   return (
-    <FeatureDetailScreenScaffold
+    <TastingSessionLifecycleShell
+      isError={sessionQuery.isError}
+      loadingTitle="Loading results"
       onBackPress={() => navigation.navigate('TastingSessions')}
-      subtitle={
-        session.status === 'completed'
-          ? formatCompletedSessionSubtitle(session)
-          : 'Results appear after the leader completes the tasting.'
-      }
-      title={session.name}
+      session={session}
+      title="Results"
     >
-      {session.status !== 'completed' ? (
-        <EmptyState description="The leader has not completed this tasting yet." title="Results locked" />
-      ) : null}
+      {(availableSession) => (
+        <FeatureDetailScreenScaffold
+          onBackPress={() => navigation.navigate('TastingSessions')}
+          subtitle={
+            availableSession.status === 'completed'
+              ? formatCompletedSessionSubtitle(availableSession)
+              : 'Results appear after the leader completes the tasting.'
+          }
+          title={availableSession.name}
+        >
+          {availableSession.status !== 'completed' ? (
+            <EmptyState description="The leader has not completed this tasting yet." title="Results locked" />
+          ) : null}
 
-      {session.status === 'completed'
-        ? session.restaurants
+          {availableSession.status === 'completed'
+            ? availableSession.restaurants
             .filter((restaurant) => restaurant.status === 'approved')
             .map((restaurant) => {
               const approvedItems = (restaurant.items ?? []).filter((item) => item.status === 'approved');
@@ -246,24 +238,26 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
             })
         : null}
 
-      {canCreateBillFromSession ? (
-        <Button
-          label="Create Bill from Session"
-          onPress={() => {
-            navigation.navigate('CreateBill', { sourceTastingSessionId: session.id });
-          }}
-          style={styles.createBillButton}
-        />
-      ) : null}
+          {canCreateBillFromSession ? (
+            <Button
+              label="Create Bill from Session"
+              onPress={() => {
+                navigation.navigate('CreateBill', { sourceTastingSessionId: availableSession.id });
+              }}
+              style={styles.createBillButton}
+            />
+          ) : null}
 
-      <PhotoViewerModal
-        initialIndex={photoViewerInitialIndex}
-        onRequestClose={closePhotoViewer}
-        ownerLabels={photoViewerOwnerLabels}
-        previewUrls={photoViewerPreviewUrls}
-        urls={photoViewerUrls}
-        visible={photoViewerVisible}
-      />
-    </FeatureDetailScreenScaffold>
+          <PhotoViewerModal
+            initialIndex={photoViewerInitialIndex}
+            onRequestClose={closePhotoViewer}
+            ownerLabels={photoViewerOwnerLabels}
+            previewUrls={photoViewerPreviewUrls}
+            urls={photoViewerUrls}
+            visible={photoViewerVisible}
+          />
+        </FeatureDetailScreenScaffold>
+      )}
+    </TastingSessionLifecycleShell>
   );
 }

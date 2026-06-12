@@ -6,7 +6,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ConfirmDestructiveModal,
   EmptyState,
-  ErrorState,
   FeatureDetailScreenScaffold,
   PageErrorToast,
   RestaurantMenuItemPicker,
@@ -33,6 +32,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
+import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
@@ -430,22 +430,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     };
   };
 
-  if (sessionQuery.isError && !session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Planning">
-        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
-  if (!session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Planning">
-        <EmptyState title="Loading planning" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
   const headerDescription = isLeader ? (
     <View style={styles.headerDescription}>
       <Text tone="muted">
@@ -495,7 +479,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                       {restaurant.selectedItemCount} selected {restaurant.selectedItemCount === 1 ? 'item' : 'items'}
                     </Text>
                   </View>
-                  {isLeader && session.status === 'planning' ? (
+                  {isLeader && session?.status === 'planning' ? (
                     <Pressable
                       accessibilityLabel={`Remove ${restaurant.restaurantName} from tasting plan`}
                       accessibilityRole="button"
@@ -568,74 +552,82 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   );
 
   return (
-    <FeatureDetailScreenScaffold
-      headerBottomCompact
-      headerBottomContent={
-        <StepProgressBar
-          compact
-          currentStep={lifecycle.step.currentStep}
-          steps={TASTING_SESSION_LIFECYCLE_STEPS}
-        />
-      }
-      headerScrollMode="fixed"
-      stickyHeaderIndices={isLeader ? [0] : undefined}
+    <TastingSessionLifecycleShell
+      isError={sessionQuery.isError}
+      loadingTitle="Loading planning"
       onBackPress={() => navigation.navigate('TastingSessions')}
-      rightAccessory={
-        isLeader ? (
-          <Pressable
-            accessibilityLabel="Delete tasting session"
-            accessibilityRole="button"
-            disabled={!isOnline || isDeletingSession}
-            hitSlop={12}
-            onPress={() => setIsDeleteSessionModalVisible(true)}
-            style={({ pressed }) => [
-              styles.headerIconButton,
-              pressed ? styles.destructiveIconButtonPressed : null,
-              !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
-            ]}
-            testID="delete-tasting-session-header-button"
-          >
-            <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
-          </Pressable>
-        ) : undefined
-      }
-      primaryAction={
-        isLeader
-          ? phase === 'restaurants'
-            ? {
-                disabled: selectedRestaurants.length === 0,
-                label: 'Next',
-                onPress: () => {
-                  setPhase('items');
-                },
-              }
-            : {
-                disabled: !startReadiness.canStart,
-                label: 'Start Tasting',
-                onPress: handleStartTastingPress,
-              }
-          : undefined
-      }
-      secondaryAction={
-        isLeader && phase === 'items'
-          ? {
-              label: 'Back',
-              onPress: () => {
-                setPhase('restaurants');
-              },
-            }
-          : undefined
-      }
-      subtitle={headerDescription}
-      title={session.name}
+      session={session}
+      title="Planning"
     >
-      {summaryCard}
-      {lifecycle.onlineOnly.warningMessage ? (
-        <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
-      ) : onlineActions.message ? (
-        <Text tone="warning">{onlineActions.message}</Text>
-      ) : null}
-      <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
+      {(availableSession) => (
+        <FeatureDetailScreenScaffold
+          headerBottomCompact
+          headerBottomContent={
+            <StepProgressBar
+              compact
+              currentStep={lifecycle.step.currentStep}
+              steps={TASTING_SESSION_LIFECYCLE_STEPS}
+            />
+          }
+          headerScrollMode="fixed"
+          stickyHeaderIndices={isLeader ? [0] : undefined}
+          onBackPress={() => navigation.navigate('TastingSessions')}
+          rightAccessory={
+            isLeader ? (
+              <Pressable
+                accessibilityLabel="Delete tasting session"
+                accessibilityRole="button"
+                disabled={!isOnline || isDeletingSession}
+                hitSlop={12}
+                onPress={() => setIsDeleteSessionModalVisible(true)}
+                style={({ pressed }) => [
+                  styles.headerIconButton,
+                  pressed ? styles.destructiveIconButtonPressed : null,
+                  !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
+                ]}
+                testID="delete-tasting-session-header-button"
+              >
+                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+              </Pressable>
+            ) : undefined
+          }
+          primaryAction={
+            isLeader
+              ? phase === 'restaurants'
+                ? {
+                    disabled: selectedRestaurants.length === 0,
+                    label: 'Next',
+                    onPress: () => {
+                      setPhase('items');
+                    },
+                  }
+                : {
+                    disabled: !startReadiness.canStart,
+                    label: 'Start Tasting',
+                    onPress: handleStartTastingPress,
+                  }
+              : undefined
+          }
+          secondaryAction={
+            isLeader && phase === 'items'
+              ? {
+                  label: 'Back',
+                  onPress: () => {
+                    setPhase('restaurants');
+                  },
+                }
+              : undefined
+          }
+          subtitle={headerDescription}
+          title={availableSession.name}
+        >
+          {summaryCard}
+          {lifecycle.onlineOnly.warningMessage ? (
+            <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+          ) : onlineActions.message ? (
+            <Text tone="warning">{onlineActions.message}</Text>
+          ) : null}
+          <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
 
       {isLeader && phase === 'restaurants' ? (
         <>
@@ -807,7 +799,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         cancelLabel="Keep Session"
         confirmLabel="Delete Session"
         confirmLoadingLabel="Deleting..."
-        description={`Delete "${session.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
+        description={`Delete "${availableSession.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
         disabled={isDeletingSession}
         loading={isDeletingSession}
         onCancel={() => {
@@ -845,6 +837,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         title="Continue without menu items?"
         visible={isMissingItemsDialogVisible}
       />
-    </FeatureDetailScreenScaffold>
+        </FeatureDetailScreenScaffold>
+      )}
+    </TastingSessionLifecycleShell>
   );
 }

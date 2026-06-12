@@ -40,14 +40,10 @@ import {
   type RestaurantListBookmarkedItemRecord,
   type VisitRecord,
 } from '../features';
-import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
-import {
-  getDefaultRestaurantList,
-  getRestaurantListDetail,
-} from '../features/store/restaurantListsStore';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
@@ -448,18 +444,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         typeFilter,
       }),
   });
-  const defaultListQuery = useQuery({
-    queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
-  });
-  const defaultListId = defaultListQuery.data?.id;
-  const defaultListDetailQuery = useQuery({
-    enabled: Boolean(defaultListId),
-    queryKey: defaultListId
-      ? restaurantListQueryKeys.detail(defaultListId)
-      : restaurantListQueryKeys.detail('__default_list_pending__'),
-    queryFn: ({ signal }) => defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
-  });
+  const { defaultListDetailQuery, defaultListId, defaultListQuery } = useWantToTryListRead();
   const resetMapState = useCallback(() => {
     setSelectedMapGroupId(null);
     setMapResetSignal((value) => value + 1);

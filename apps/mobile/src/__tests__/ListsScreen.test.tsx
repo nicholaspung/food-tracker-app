@@ -73,6 +73,42 @@ jest.mock('../components/shared', () => ({
   HeaderAccessoryButton: (props: Record<string, unknown>) => mockReact.createElement('HeaderAccessoryButton', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PendingQueuedWriteRow: (props: Record<string, unknown>) => mockReact.createElement('PendingQueuedWriteRow', props),
+  QueryListStateView: ({
+    blockingErrorMessage,
+    children,
+    emptyContent,
+    hasBlockingError,
+    isLoading,
+    loadingSkeletonCount = 2,
+    loadingSkeletonHeight,
+    onRetry,
+    showEmpty,
+    title,
+  }: Record<string, unknown> & { children?: React.ReactNode }) => {
+    if (isLoading) {
+      return mockReact.createElement(
+        mockReact.Fragment,
+        null,
+        ...Array.from({ length: loadingSkeletonCount as number }).map((_, index) =>
+          mockReact.createElement('Skeleton', { height: loadingSkeletonHeight, key: index }),
+        ),
+      );
+    }
+
+    if (hasBlockingError) {
+      return mockReact.createElement('ErrorState', {
+        description: blockingErrorMessage,
+        onRetry,
+        title,
+      });
+    }
+
+    if (showEmpty) {
+      return emptyContent as React.ReactElement;
+    }
+
+    return mockReact.createElement(mockReact.Fragment, null, children);
+  },
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
 }));

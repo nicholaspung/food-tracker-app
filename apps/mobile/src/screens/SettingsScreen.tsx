@@ -1,29 +1,22 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
   EmptyState,
   SectionCard,
   SegmentedControl,
-  Skeleton,
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
-  getCollectionRecord,
-  getNotificationPreferences,
-  mapUserSettings,
-  settingsQueryKeys,
+  useSettingsDetailRead,
   useSettingsPreferencesWrites,
   type HomeFeedDefaultMode,
   type HomeFeedDefaultSort,
   type HomeFeedDefaultTypeFilter,
   type ListVisibility,
   type RestaurantVisibility,
-  type UserSettings,
-  type UserSettingsRecord,
   type VisitVisibility,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -33,6 +26,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme, type ThemePreference } from '../theme';
 import { Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { SettingsDetailReadStateView } from './settings/SettingsDetailReadStateView';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -84,24 +78,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const settingsQuery = useQuery({
-    enabled: Boolean(user?.id),
-    queryKey: settingsQueryKeys.detail(user?.id),
-    queryFn: async ({ signal }): Promise<UserSettings> => {
-      if (!user?.id) {
-        throw new Error('Authentication required.');
-      }
-
-      const [record, notificationPreferences] = await Promise.all([
-        getCollectionRecord<UserSettingsRecord>('users', user.id, { signal }),
-        getNotificationPreferences(user.id, { signal }),
-      ]);
-      return {
-        ...mapUserSettings(record),
-        notificationPreferences,
-      };
-    },
-  });
+  const settingsQuery = useSettingsDetailRead(user?.id);
 
   useEffect(() => {
     if (!settingsQuery.data) {
@@ -385,35 +362,15 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       <View style={styles.body}>
         {appearanceSection}
 
-        {settingsQuery.isLoading ? (
-          <>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </>
-        ) : null}
-
-        <PageErrorToast
-          errorMessage={settingsQuery.isError ? 'Could not load settings.' : null}
-          title="Settings unavailable"
-          actionLabel="Retry"
-          onAction={() => {
+        <SettingsDetailReadStateView
+          errorDescription="Could not load settings."
+          errorTitle="Settings unavailable"
+          isError={settingsQuery.isError}
+          isLoading={settingsQuery.isLoading}
+          onRetry={() => {
             void settingsQuery.refetch();
           }}
-        />
-
-        {settingsQuery.isError ? (
-          <EmptyState
-            description="Could not load settings."
-            actionLabel="Retry"
-            onAction={() => {
-              void settingsQuery.refetch();
-            }}
-            title="Settings unavailable"
-          />
-        ) : null}
-
-        {!settingsQuery.isLoading && !settingsQuery.isError ? (
+        >
           <>
             <SectionCard
               description="Choose how your Home tab opens when you start a new app session."
@@ -516,7 +473,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               </Card>
             ) : null}
           </>
-        ) : null}
+        </SettingsDetailReadStateView>
       </View>
     </BackHeaderScreenScaffold>
   );

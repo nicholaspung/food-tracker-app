@@ -2,23 +2,15 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Linking, Switch, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
-  EmptyState,
   SectionCard,
-  Skeleton,
 } from '../components/shared';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
-  getCollectionRecord,
-  getNotificationPreferences,
-  mapUserSettings,
-  settingsQueryKeys,
+  useSettingsDetailRead,
   useSettingsPreferencesWrites,
-  type UserSettings,
-  type UserSettingsRecord,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import {
@@ -32,6 +24,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Text, type CardTone } from '../ui';
+import { SettingsDetailReadStateView } from './settings/SettingsDetailReadStateView';
 
 type NotificationPreferencesScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -203,24 +196,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const settingsQuery = useQuery({
-    enabled: Boolean(user?.id),
-    queryKey: settingsQueryKeys.detail(user?.id),
-    queryFn: async ({ signal }): Promise<UserSettings> => {
-      if (!user?.id) {
-        throw new Error('Authentication required.');
-      }
-
-      const [record, notificationPreferences] = await Promise.all([
-        getCollectionRecord<UserSettingsRecord>('users', user.id, { signal }),
-        getNotificationPreferences(user.id, { signal }),
-      ]);
-      return {
-        ...mapUserSettings(record),
-        notificationPreferences,
-      };
-    },
-  });
+  const settingsQuery = useSettingsDetailRead(user?.id);
 
   const refreshNotificationPermissionStatus = useCallback(async () => {
     setIsCheckingNotificationPermission(true);
@@ -423,35 +399,15 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
       title="Notifications"
     >
       <View style={styles.body}>
-        {settingsQuery.isLoading ? (
-          <>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </>
-        ) : null}
-
-        <PageErrorToast
-          errorMessage={settingsQuery.isError ? 'Could not load notification preferences.' : null}
-          title="Notifications unavailable"
-          actionLabel="Retry"
-          onAction={() => {
+        <SettingsDetailReadStateView
+          errorDescription="Could not load notification preferences."
+          errorTitle="Notifications unavailable"
+          isError={settingsQuery.isError}
+          isLoading={settingsQuery.isLoading}
+          onRetry={() => {
             void settingsQuery.refetch();
           }}
-        />
-
-        {settingsQuery.isError ? (
-          <EmptyState
-            description="Could not load notification preferences."
-            actionLabel="Retry"
-            onAction={() => {
-              void settingsQuery.refetch();
-            }}
-            title="Notifications unavailable"
-          />
-        ) : null}
-
-        {!settingsQuery.isLoading && !settingsQuery.isError ? (
+        >
           <>
             <SectionCard
               description="Controls whether this device can receive push notifications from Yummy Recs."
@@ -562,7 +518,7 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
               </Card>
             ) : null}
           </>
-        ) : null}
+        </SettingsDetailReadStateView>
       </View>
     </BackHeaderScreenScaffold>
   );

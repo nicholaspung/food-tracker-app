@@ -2,7 +2,6 @@ import { Ionicons } from "../ui/AppIcon";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Fragment, useMemo, useState } from "react";
 import { View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 
 import {
   EmptyState,
@@ -16,13 +15,9 @@ import {
   WantToTryBookmarkButton,
 } from "../components/shared";
 import { type AllLocationsHistoryRecord } from "../features";
-import { restaurantListQueryKeys } from "../features/store/restaurantListQuery";
-import {
-  getDefaultRestaurantList,
-  getRestaurantListDetail,
-} from "../features/store/restaurantListsStore";
 import { useFoodDiscoveryRestaurantDetailReadModel } from "../features/store/useFoodDiscoveryMapReadModel";
 import { useRestaurantListWrites } from "../features/store/useRestaurantListWrites";
+import { useWantToTryListRead } from "../features/store/useWantToTryListRead";
 import type { MenuItemRecord } from "../features/store/featureStore";
 import { buildVisitRestaurantDescription } from "../lib/visitRestaurantSearch";
 import type { RootStackParamList } from "../navigation/RootNavigator";
@@ -173,19 +168,8 @@ export function RestaurantDiscoveryRestaurantScreen({
     isOnline,
     restaurant,
   });
-  const defaultListQuery = useQuery({
-    queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
-  });
-  const defaultListId = defaultListQuery.data?.id;
-  const defaultListDetailQuery = useQuery({
-    enabled: Boolean(defaultListId),
-    queryKey: defaultListId
-      ? restaurantListQueryKeys.detail(defaultListId)
-      : restaurantListQueryKeys.detail("__default_list_pending__"),
-    queryFn: ({ signal }) =>
-      defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
-  });
+  const { defaultListDetailQuery, defaultListId, defaultListQuery } =
+    useWantToTryListRead();
   const savedMenuItemIds = useMemo(() => {
     const ids = new Set(locallySavedMenuItemIds);
     for (const item of defaultListDetailQuery.data?.items ?? []) {

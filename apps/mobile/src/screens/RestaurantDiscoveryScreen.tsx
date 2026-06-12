@@ -40,12 +40,8 @@ import {
   useMonthlyUsage,
 } from '../features';
 import { useFoodDiscoveryMapReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
-import {
-  getDefaultRestaurantList,
-  getRestaurantListDetail,
-} from '../features/store/restaurantListsStore';
-import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
+import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -635,18 +631,7 @@ export function RestaurantDiscoveryScreen({
   const showNearbyPlaces = search.showNearbyPlaces;
   const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
   const isMapSheetOpen = selectedMapGroupId !== null;
-  const defaultListQuery = useQuery({
-    queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
-  });
-  const defaultListId = defaultListQuery.data?.id;
-  const defaultListDetailQuery = useQuery({
-    enabled: Boolean(defaultListId),
-    queryKey: defaultListId
-      ? restaurantListQueryKeys.detail(defaultListId)
-      : restaurantListQueryKeys.detail('__default_list_pending__'),
-    queryFn: ({ signal }) => defaultListId ? getRestaurantListDetail(defaultListId, { signal }) : null,
-  });
+  const { defaultListDetailQuery, defaultListId, defaultListQuery } = useWantToTryListRead();
   const storefrontScanIdentityKey = useMemo(() => {
     const userId = user?.id ?? actualUser?.id;
     const trimmedUserId = typeof userId === 'string' ? userId.trim() : '';

@@ -115,10 +115,13 @@ jest.mock('../features', () => ({
         : 'visits',
   }),
   saveAuthRecord: jest.fn(),
-  settingsQueryKeys: {
-    detail: (userId: string) => ['settings', userId],
-  },
   updateCollectionRecord: jest.fn(),
+  useSettingsDetailRead: () => ({
+    data: mockSettingsData,
+    isError: false,
+    isLoading: false,
+    refetch: jest.fn(),
+  }),
   useSettingsPreferencesWrites: () => ({
     saveSettingsPreferences: mockSaveSettings,
   }),

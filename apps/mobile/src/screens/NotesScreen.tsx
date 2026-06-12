@@ -12,8 +12,8 @@ import {
   HeaderAccessoryButton,
   PendingQueuedWriteRow,
   PhotoViewerModal,
+  QueryListStateView,
   SegmentedControl,
-  Skeleton,
   type SegmentedControlOption,
 } from '../components/shared';
 import {
@@ -692,33 +692,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     </View>
   );
 
-  const notesListEmptyComponent = (() => {
-    if (browseState.isLoading) {
-      return (
-        <View style={styles.body}>
-          <Skeleton height={20} />
-          <Skeleton height={20} />
-          <Skeleton height={20} />
-        </View>
-      );
-    }
-
-    if (browseState.hasBlockingError) {
-      return (
-        <ErrorState
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="NotesScreen"
-          description="Could not load notes."
-          onRetry={() => {
-            void baseNotesQuery.refetch();
-          }}
-          title="Notes unavailable"
-        />
-      );
-    }
-
-    if (notes.length === 0) {
-      return hasSearch ? (
+  const notesEmptyContent =
+    notes.length === 0
+      ? hasSearch ? (
         <EmptyState
           actionLabel="Clear Search"
           analyticsProps={buildBrowseAnalyticsPayload()}
@@ -752,11 +728,42 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           tone="muted"
           title="Nothing to show"
         />
-      );
-    }
+      )
+      : null;
 
-    return null;
-  })();
+  const notesListEmptyComponent = (
+    <View style={styles.body}>
+      <QueryListStateView
+        actionLabel="Retry"
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="NotesScreen"
+        blockingErrorMessage="Could not load notes."
+        emptyContent={notesEmptyContent}
+        emptyDescription=""
+        emptyTitle=""
+        hasBlockingError={browseState.hasBlockingError}
+        hasRefreshError={Boolean(hasSearchFallbackError || browseState.hasRefreshError)}
+        isLoading={browseState.isLoading}
+        loadingSkeletonCount={3}
+        loadingSkeletonHeight={20}
+        onRetry={() => {
+          if (hasSearchFallbackError) {
+            void searchedNotesQuery.refetch();
+            return;
+          }
+
+          void baseNotesQuery.refetch();
+        }}
+        refreshErrorMessage={
+          hasSearchFallbackError
+            ? 'Could not refresh search results. Showing local matches.'
+            : 'Could not refresh notes. Showing saved data.'
+        }
+        showEmpty={notes.length === 0}
+        title="Notes unavailable"
+      />
+    </View>
+  );
 
   const notesListFooter =
     !browseState.isLoading &&

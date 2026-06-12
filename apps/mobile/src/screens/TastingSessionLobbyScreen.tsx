@@ -5,8 +5,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   ConfirmDestructiveModal,
-  EmptyState,
-  ErrorState,
   FeatureDetailScreenScaffold,
   PageErrorToast,
   StatusPill,
@@ -29,6 +27,7 @@ import {
   TASTING_SESSION_LIFECYCLE_STEPS,
 } from './tastingSessions/shared';
 import { TastingJoinWindowDurationSelector } from './tastingSessions/TastingJoinWindowDurationSelector';
+import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionLobbyScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionLobby'>;
@@ -282,133 +281,125 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     }
   };
 
-  if (sessionQuery.isError && !session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Tasting Lobby">
-        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
-  if (!session) {
-    return (
-      <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Tasting Lobby">
-        <EmptyState title="Loading lobby" />
-      </FeatureDetailScreenScaffold>
-    );
-  }
-
   return (
-    <FeatureDetailScreenScaffold
-      headerBottomCompact
-      headerBottomContent={
-        <StepProgressBar
-          compact
-          currentStep={lifecycle.step.currentStep}
-          steps={TASTING_SESSION_LIFECYCLE_STEPS}
-        />
-      }
+    <TastingSessionLifecycleShell
+      isError={sessionQuery.isError}
+      loadingTitle="Loading lobby"
       onBackPress={() => navigation.navigate('TastingSessions')}
-      rightAccessory={
-        isLeader ? (
-          <Pressable
-            accessibilityLabel="Delete tasting session"
-            accessibilityRole="button"
-            disabled={!isOnline || isDeletingSession}
-            hitSlop={12}
-            onPress={() => setIsDeleteSessionModalVisible(true)}
-            style={({ pressed }) => [
-              styles.headerIconButton,
-              pressed ? styles.destructiveIconButtonPressed : null,
-              !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
-            ]}
-            testID="delete-tasting-session-header-button"
-          >
-            <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
-          </Pressable>
-        ) : undefined
-      }
-      subtitle={
-        <View>
-          <Text tone="muted">{formatCountdown(session.joinExpiresAt)}</Text>
-          <Text tone="muted">{lobbyInstruction}</Text>
-        </View>
-      }
-      title={session.name}
+      session={session}
+      title="Tasting Lobby"
     >
-      {lifecycle.onlineOnly.warningMessage ? (
-        <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
-      ) : null}
-      <PageErrorToast errorMessage={errorMessage} title="Lobby action failed" />
-      <Card>
-        <View style={styles.row}>
-          <Text variant="label">Lobby</Text>
-          <StatusPill label={`${session.joinedCount}/${session.maxParticipants} joined`} tone="info" />
-        </View>
-        {isLeader && session.inviteCode && inviteWindowOpen ? <Text variant="titleMd">Code: {session.inviteCode}</Text> : null}
-        {isLeader && inviteWindowExpired ? <Text tone="secondary">Invite window closed.</Text> : null}
-        {isLeader ? (
-          inviteWindowExpired ? (
-            <View style={styles.actionStack}>
-              <View style={styles.row}>
-                <Button
-                  disabled
-                  label="Share"
-                  onPress={() => void handleShare()}
-                  style={styles.action}
-                  variant="secondary"
-                />
-                <Button
-                  disabled={!isOnline}
-                  label="Reopen Window"
-                  onPress={() => {
-                    setReopenDuration(60);
-                    setIsReopenModalVisible(true);
-                  }}
-                  style={styles.action}
-                  variant="secondary"
-                />
-              </View>
-              <Button disabled={!isOnline} label="Start Planning" onPress={() => void handleLock()} />
-            </View>
-          ) : (
-            <View style={styles.actionStack}>
-              <View style={styles.row}>
-                <Button
-                  disabled={!session.inviteCode || !inviteWindowOpen}
-                  label="Share"
-                  onPress={() => void handleShare()}
-                  style={styles.action}
-                  variant="secondary"
-                />
-                <Button
-                  disabled={!isOnline}
-                  label="Start Planning"
-                  onPress={() => void handleLock()}
-                  style={styles.action}
-                />
-              </View>
-            </View>
-          )
-        ) : isParticipant ? (
-          <View style={styles.actionStack}>
-            <Text tone="secondary">Waiting for the leader to lock the group.</Text>
-            <Button
-              disabled={!isOnline || isLeavingSession}
-              label="Exit Session"
-              onPress={() => setIsLeaveSessionModalVisible(true)}
-              variant="secondary"
+      {(availableSession) => (
+        <FeatureDetailScreenScaffold
+          headerBottomCompact
+          headerBottomContent={
+            <StepProgressBar
+              compact
+              currentStep={lifecycle.step.currentStep}
+              steps={TASTING_SESSION_LIFECYCLE_STEPS}
             />
-          </View>
-        ) : (
-          <Text tone="secondary">Join this tasting session to wait in the lobby.</Text>
-        )}
-      </Card>
+          }
+          onBackPress={() => navigation.navigate('TastingSessions')}
+          rightAccessory={
+            isLeader ? (
+              <Pressable
+                accessibilityLabel="Delete tasting session"
+                accessibilityRole="button"
+                disabled={!isOnline || isDeletingSession}
+                hitSlop={12}
+                onPress={() => setIsDeleteSessionModalVisible(true)}
+                style={({ pressed }) => [
+                  styles.headerIconButton,
+                  pressed ? styles.destructiveIconButtonPressed : null,
+                  !isOnline || isDeletingSession ? styles.iconButtonDisabled : null,
+                ]}
+                testID="delete-tasting-session-header-button"
+              >
+                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+              </Pressable>
+            ) : undefined
+          }
+          subtitle={
+            <View>
+              <Text tone="muted">{formatCountdown(availableSession.joinExpiresAt)}</Text>
+              <Text tone="muted">{lobbyInstruction}</Text>
+            </View>
+          }
+          title={availableSession.name}
+        >
+          {lifecycle.onlineOnly.warningMessage ? (
+            <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+          ) : null}
+          <PageErrorToast errorMessage={errorMessage} title="Lobby action failed" />
+          <Card>
+            <View style={styles.row}>
+              <Text variant="label">Lobby</Text>
+              <StatusPill label={`${availableSession.joinedCount}/${availableSession.maxParticipants} joined`} tone="info" />
+            </View>
+            {isLeader && availableSession.inviteCode && inviteWindowOpen ? <Text variant="titleMd">Code: {availableSession.inviteCode}</Text> : null}
+            {isLeader && inviteWindowExpired ? <Text tone="secondary">Invite window closed.</Text> : null}
+            {isLeader ? (
+              inviteWindowExpired ? (
+                <View style={styles.actionStack}>
+                  <View style={styles.row}>
+                    <Button
+                      disabled
+                      label="Share"
+                      onPress={() => void handleShare()}
+                      style={styles.action}
+                      variant="secondary"
+                    />
+                    <Button
+                      disabled={!isOnline}
+                      label="Reopen Window"
+                      onPress={() => {
+                        setReopenDuration(60);
+                        setIsReopenModalVisible(true);
+                      }}
+                      style={styles.action}
+                      variant="secondary"
+                    />
+                  </View>
+                  <Button disabled={!isOnline} label="Start Planning" onPress={() => void handleLock()} />
+                </View>
+              ) : (
+                <View style={styles.actionStack}>
+                  <View style={styles.row}>
+                    <Button
+                      disabled={!availableSession.inviteCode || !inviteWindowOpen}
+                      label="Share"
+                      onPress={() => void handleShare()}
+                      style={styles.action}
+                      variant="secondary"
+                    />
+                    <Button
+                      disabled={!isOnline}
+                      label="Start Planning"
+                      onPress={() => void handleLock()}
+                      style={styles.action}
+                    />
+                  </View>
+                </View>
+              )
+            ) : isParticipant ? (
+              <View style={styles.actionStack}>
+                <Text tone="secondary">Waiting for the leader to lock the group.</Text>
+                <Button
+                  disabled={!isOnline || isLeavingSession}
+                  label="Exit Session"
+                  onPress={() => setIsLeaveSessionModalVisible(true)}
+                  variant="secondary"
+                />
+              </View>
+            ) : (
+              <Text tone="secondary">Join this tasting session to wait in the lobby.</Text>
+            )}
+          </Card>
 
-      <Card style={styles.sectionCard}>
-        <Text variant="label">Participants</Text>
-        <View style={styles.lobbyList}>
-          {session.participants.map((participant, index) => {
+          <Card style={styles.sectionCard}>
+            <Text variant="label">Participants</Text>
+            <View style={styles.lobbyList}>
+              {availableSession.participants.map((participant, index) => {
             const roleBadge = getParticipantRoleBadge(participant);
 
             return (
@@ -437,19 +428,19 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                     ) : null
                   }
                 />
-                {index < session.participants.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+                    {index < availableSession.participants.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
               </Fragment>
             );
           })}
-        </View>
-      </Card>
+            </View>
+          </Card>
 
-      {isLeader && session.invites.length > 0 ? (
-        <Card style={styles.sectionCard}>
-          <Text variant="label">Invites</Text>
-          <View style={styles.lobbyList}>
-            {session.invites.map((invite, index) => {
-              const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, session));
+          {isLeader && availableSession.invites.length > 0 ? (
+            <Card style={styles.sectionCard}>
+              <Text variant="label">Invites</Text>
+              <View style={styles.lobbyList}>
+                {availableSession.invites.map((invite, index) => {
+                  const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, availableSession));
 
               return (
                 <Fragment key={invite.id}>
@@ -468,94 +459,96 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                       ) : null
                     }
                   />
-                  {index < session.invites.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+                      {index < availableSession.invites.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
                 </Fragment>
               );
             })}
-          </View>
-        </Card>
-      ) : null}
+              </View>
+            </Card>
+          ) : null}
 
-      <ConfirmDestructiveModal
-        cancelLabel="Keep"
-        confirmLabel="Remove"
-        description={
-          pendingKick
-            ? `Remove ${pendingKick.name} from this tasting session? They will not be able to rejoin with the current code.`
-            : 'Remove this participant from the tasting session?'
-        }
-        onCancel={() => setPendingKick(null)}
-        onConfirm={() => {
-          void handleConfirmKick();
-        }}
-        title="Remove Participant?"
-        visible={Boolean(pendingKick)}
-      />
-      <ConfirmDestructiveModal
-        cancelLabel="Keep Session"
-        confirmLabel="Delete Session"
-        confirmLoadingLabel="Deleting..."
-        description={`Delete "${session.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
-        disabled={isDeletingSession}
-        loading={isDeletingSession}
-        onCancel={() => {
-          if (!isDeletingSession) {
-            setIsDeleteSessionModalVisible(false);
-          }
-        }}
-        onConfirm={() => {
-          void handleConfirmDeleteSession();
-        }}
-        title="Delete Tasting Session?"
-        visible={isDeleteSessionModalVisible}
-      />
-      <ConfirmDestructiveModal
-        cancelLabel="Stay"
-        confirmLabel="Exit Session"
-        confirmLoadingLabel="Exiting..."
-        description={`Exit "${session.name}"? You will leave the lobby and return to group tastings.`}
-        disabled={isLeavingSession}
-        loading={isLeavingSession}
-        onCancel={() => {
-          if (!isLeavingSession) {
-            setIsLeaveSessionModalVisible(false);
-          }
-        }}
-        onConfirm={() => {
-          void handleConfirmLeaveSession();
-        }}
-        title="Exit Tasting Session?"
-        visible={isLeaveSessionModalVisible}
-      />
-      <Modal
-        description="Choose how long people can join. A new invite code will be generated."
-        onRequestClose={() => {
-          if (!isReopeningInviteWindow) {
-            setIsReopenModalVisible(false);
-          }
-        }}
-        secondaryAction={{
-          disabled: isReopeningInviteWindow,
-          label: 'Cancel',
-          onPress: () => setIsReopenModalVisible(false),
-        }}
-        primaryAction={{
-          disabled: isReopeningInviteWindow || !isOnline,
-          label: 'Reopen Window',
-          loading: isReopeningInviteWindow,
-          onPress: () => {
-            void handleReopenInviteWindow();
-          },
-        }}
-        title="Reopen Invite Window"
-        visible={isReopenModalVisible}
-      >
-        <TastingJoinWindowDurationSelector
-          disabled={isReopeningInviteWindow}
-          onChange={setReopenDuration}
-          value={reopenDuration}
-        />
-      </Modal>
-    </FeatureDetailScreenScaffold>
+          <ConfirmDestructiveModal
+            cancelLabel="Keep"
+            confirmLabel="Remove"
+            description={
+              pendingKick
+                ? `Remove ${pendingKick.name} from this tasting session? They will not be able to rejoin with the current code.`
+                : 'Remove this participant from the tasting session?'
+            }
+            onCancel={() => setPendingKick(null)}
+            onConfirm={() => {
+              void handleConfirmKick();
+            }}
+            title="Remove Participant?"
+            visible={Boolean(pendingKick)}
+          />
+          <ConfirmDestructiveModal
+            cancelLabel="Keep Session"
+            confirmLabel="Delete Session"
+            confirmLoadingLabel="Deleting..."
+            description={`Delete "${availableSession.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
+            disabled={isDeletingSession}
+            loading={isDeletingSession}
+            onCancel={() => {
+              if (!isDeletingSession) {
+                setIsDeleteSessionModalVisible(false);
+              }
+            }}
+            onConfirm={() => {
+              void handleConfirmDeleteSession();
+            }}
+            title="Delete Tasting Session?"
+            visible={isDeleteSessionModalVisible}
+          />
+          <ConfirmDestructiveModal
+            cancelLabel="Stay"
+            confirmLabel="Exit Session"
+            confirmLoadingLabel="Exiting..."
+            description={`Exit "${availableSession.name}"? You will leave the lobby and return to group tastings.`}
+            disabled={isLeavingSession}
+            loading={isLeavingSession}
+            onCancel={() => {
+              if (!isLeavingSession) {
+                setIsLeaveSessionModalVisible(false);
+              }
+            }}
+            onConfirm={() => {
+              void handleConfirmLeaveSession();
+            }}
+            title="Exit Tasting Session?"
+            visible={isLeaveSessionModalVisible}
+          />
+          <Modal
+            description="Choose how long people can join. A new invite code will be generated."
+            onRequestClose={() => {
+              if (!isReopeningInviteWindow) {
+                setIsReopenModalVisible(false);
+              }
+            }}
+            secondaryAction={{
+              disabled: isReopeningInviteWindow,
+              label: 'Cancel',
+              onPress: () => setIsReopenModalVisible(false),
+            }}
+            primaryAction={{
+              disabled: isReopeningInviteWindow || !isOnline,
+              label: 'Reopen Window',
+              loading: isReopeningInviteWindow,
+              onPress: () => {
+                void handleReopenInviteWindow();
+              },
+            }}
+            title="Reopen Invite Window"
+            visible={isReopenModalVisible}
+          >
+            <TastingJoinWindowDurationSelector
+              disabled={isReopeningInviteWindow}
+              onChange={setReopenDuration}
+              value={reopenDuration}
+            />
+          </Modal>
+        </FeatureDetailScreenScaffold>
+      )}
+    </TastingSessionLifecycleShell>
   );
 }

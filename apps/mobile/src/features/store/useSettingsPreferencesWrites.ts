@@ -7,9 +7,6 @@ import {
 } from './featureOutboxOperations';
 import {
   buildHomeFeedDefaultsUpdate,
-  type HomeFeedDefaultMode,
-  type HomeFeedDefaultSort,
-  type HomeFeedDefaultTypeFilter,
 } from './homeFeedPreferences';
 import {
   getAuthRecord,
@@ -17,73 +14,23 @@ import {
   updateCollectionRecord,
 } from './pocketbaseGateway';
 import {
-  mapNotificationPreferences,
   saveNotificationPreferences,
   type NotificationPreferences,
-  type NotificationPreferencesRecord,
 } from './notificationPreferencesStore';
-import { invalidateSettingsQueries, settingsQueryKeys } from './settingsQuery';
+import {
+  invalidateSettingsQueries,
+  mapUserSettings,
+  settingsQueryKeys,
+  type UserSettings,
+  type UserSettingsRecord,
+} from './settingsQuery';
 import {
   type OfflineAwareFeatureWriteResult,
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
 
-export type VisitVisibility = 'friends' | 'private';
-export type RestaurantVisibility = 'private' | 'friends';
-export type ListVisibility = 'private' | 'friends';
-
-export interface UserSettingsRecord {
-  defaultVisitVisibility?: unknown;
-  defaultRestaurantVisibility?: unknown;
-  defaultListVisibility?: unknown;
-  defaultHomeFeedMode?: unknown;
-  defaultHomeFeedTypeFilter?: unknown;
-  defaultHomeFeedSort?: unknown;
-}
-
-export interface UserSettings {
-  visitVisibility: VisitVisibility;
-  restaurantVisibility: RestaurantVisibility;
-  listVisibility: ListVisibility;
-  homeFeedMode: HomeFeedDefaultMode;
-  homeFeedTypeFilter: HomeFeedDefaultTypeFilter;
-  homeFeedSort: HomeFeedDefaultSort;
-  notificationPreferences: NotificationPreferences;
-}
-
 interface SaveSettingsPreferencesInput extends UserSettings {
   userId: string;
-}
-
-function normalizeVisitVisibility(value: unknown): VisitVisibility {
-  return value === 'private' ? 'private' : 'friends';
-}
-
-function normalizeRestaurantVisibility(value: unknown): RestaurantVisibility {
-  return value === 'private' ? 'private' : 'friends';
-}
-
-function normalizeListVisibility(value: unknown): ListVisibility {
-  return value === 'private' ? 'private' : 'friends';
-}
-
-export function mapUserSettings(record: UserSettingsRecord): UserSettings {
-  const homeFeedDefaults = {
-    homeFeedMode: record.defaultHomeFeedMode === 'friends' ? 'friends' : 'mine',
-    homeFeedTypeFilter:
-      record.defaultHomeFeedTypeFilter === 'all' || record.defaultHomeFeedTypeFilter === 'food-products'
-        ? record.defaultHomeFeedTypeFilter
-        : 'visits',
-    homeFeedSort: record.defaultHomeFeedSort === 'tracked' ? 'tracked' : 'created',
-  } as const;
-
-  return {
-    visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
-    restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
-    listVisibility: normalizeListVisibility(record.defaultListVisibility),
-    notificationPreferences: mapNotificationPreferences(record as NotificationPreferencesRecord),
-    ...homeFeedDefaults,
-  };
 }
 
 function buildNotificationPreferencesUpdate(

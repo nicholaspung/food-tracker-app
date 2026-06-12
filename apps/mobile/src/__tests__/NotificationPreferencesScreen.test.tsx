@@ -99,12 +99,12 @@ jest.mock('../providers/ConnectivityProvider', () => ({
 }));
 
 jest.mock('../features', () => ({
-  getCollectionRecord: jest.fn(),
-  getNotificationPreferences: jest.fn(),
-  mapUserSettings: jest.fn(),
-  settingsQueryKeys: {
-    detail: (userId: string) => ['settings', userId],
-  },
+  useSettingsDetailRead: () => ({
+    data: mockSettingsData,
+    isError: false,
+    isLoading: false,
+    refetch: jest.fn(),
+  }),
   useSettingsPreferencesWrites: () => ({
     saveSettingsPreferences: mockSaveSettings,
   }),

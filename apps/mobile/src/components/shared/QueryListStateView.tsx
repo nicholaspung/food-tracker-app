@@ -10,6 +10,7 @@ interface QueryListStateViewProps {
   analyticsSource?: string;
   blockingErrorMessage: string;
   children?: ReactNode;
+  emptyContent?: ReactNode;
   emptyActionLabel?: string;
   emptyDescription: string;
   emptyTitle: string;
@@ -31,6 +32,7 @@ export function QueryListStateView({
   analyticsSource,
   blockingErrorMessage,
   children,
+  emptyContent,
   emptyActionLabel,
   emptyDescription,
   emptyTitle,
@@ -71,15 +73,17 @@ export function QueryListStateView({
       />
 
       {!isLoading && !hasBlockingError && showEmpty ? (
-        <EmptyState
-          actionLabel={emptyActionLabel}
-          analyticsProps={analyticsProps}
-          analyticsSource={analyticsSource}
-          description={emptyDescription}
-          onAction={onEmptyAction}
-          tone="default"
-          title={emptyTitle}
-        />
+        emptyContent ?? (
+          <EmptyState
+            actionLabel={emptyActionLabel}
+            analyticsProps={analyticsProps}
+            analyticsSource={analyticsSource}
+            description={emptyDescription}
+            onAction={onEmptyAction}
+            tone="default"
+            title={emptyTitle}
+          />
+        )
       ) : null}
 
       {!isLoading && !hasBlockingError && !showEmpty ? <Fragment>{children}</Fragment> : null}
