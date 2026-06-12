@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "UNLICENSED",
-  "packageManager": "pnpm@11.1.2",
+  "packageManager": "pnpm@11.5.3",
   "expo": {
     "doctor": {
       "appConfigFieldsNotSyncedCheck": {
