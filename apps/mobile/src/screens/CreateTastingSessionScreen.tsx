@@ -106,7 +106,6 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
         selectedCountLabel={(count) => `${count} friend${count === 1 ? '' : 's'} invited`}
         selectedFriendIds={selectedFriendIds}
         selectedFriends={selectedFriends}
-        shouldShowFriendSearch={friendPicker.shouldShowFriendSearch}
         title="Invite friends"
         totalAcceptedFriends={friendPicker.totalAcceptedFriends}
         visibleFriends={friendPicker.visibleFriends}

@@ -103,6 +103,7 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
+  Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   ListItem: ({ trailing, titleAccessory, ...props }: Record<string, unknown>) =>
     mockReact.createElement('ListItem', props, titleAccessory as React.ReactNode, trailing as React.ReactNode),
   Modal: ({
@@ -359,6 +360,47 @@ describe('TastingSessionLobbyScreen', () => {
     expect(findButton(renderer, 'Share').props.disabled).toBe(false);
     expect(renderer.root.findAllByType('StatusPill').some((node: any) => node.props.label === 'Pending')).toBe(true);
     expect(renderer.root.findAllByType('Text').map(getTextContent)).toContain('Code: ABC123');
+  });
+
+  it('filters lobby participants and invites from the search input', () => {
+    const { renderer } = renderScreen({
+      ...buildSession('2099-01-01T00:00:00.000Z'),
+      invites: [
+        {
+          createdAt: '2026-05-20T11:00:00.000Z',
+          id: 'invite_2',
+          invitedUserId: 'user_3',
+          invitedUserName: 'Rory',
+          status: 'pending',
+        },
+      ],
+      joinedCount: 2,
+      participants: [
+        ...buildSession('2099-01-01T00:00:00.000Z').participants,
+        {
+          id: 'participant_2',
+          joinedAt: '2026-05-20T11:00:00.000Z',
+          name: 'Madi',
+          role: 'participant',
+          userId: 'user_2',
+        },
+      ],
+    });
+
+    const searchInput = renderer.root.findByProps({
+      testID: 'tasting-lobby-participant-search-input',
+    });
+
+    act(() => {
+      searchInput.props.onChangeText('madi');
+    });
+
+    const visibleListTitles = renderer.root.findAllByType('ListItem').map((node: any) => node.props.title);
+
+    expect(visibleListTitles).toContain('Madi');
+    expect(visibleListTitles).not.toContain('Pat');
+    expect(visibleListTitles).not.toContain('Rory');
+    expect(renderer.root.findAllByType('Text').map(getTextContent)).toContain('No invites match your search.');
   });
 
   it('deletes a lobby after destructive confirmation', async () => {

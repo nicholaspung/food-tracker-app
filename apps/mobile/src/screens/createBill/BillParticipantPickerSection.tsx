@@ -43,7 +43,6 @@ interface BillParticipantPickerSectionProps {
   selectedCountLabel?: (count: number) => string;
   selectedFriendIds: string[];
   selectedFriends: FriendRecord[];
-  shouldShowFriendSearch: boolean;
   title?: string;
   totalAcceptedFriends: number;
   visibleFriends: FriendRecord[];
@@ -189,7 +188,6 @@ export function BillParticipantPickerSection({
   selectedCountLabel,
   selectedFriendIds,
   selectedFriends,
-  shouldShowFriendSearch,
   title = "Participants",
   totalAcceptedFriends,
   visibleFriends,
@@ -304,6 +302,10 @@ export function BillParticipantPickerSection({
     );
   };
   const isAddCustomParticipantDisabled = !draftCustomParticipantName.trim();
+  const shouldShowFriendsPickerGroup =
+    !isLoading &&
+    !hasBlockingFriendsError &&
+    (normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 0);
 
   return (
     <Card style={styles.sectionCard}>
@@ -442,16 +444,6 @@ export function BillParticipantPickerSection({
             </View>
           ) : null}
 
-          {shouldShowFriendSearch ? (
-            <Input
-              containerStyle={styles.friendSearchInput}
-              onChangeText={onChangeFriendSearchQuery}
-              placeholder="Search friends"
-              testID="bill-friends-search-input"
-              value={friendSearchQuery}
-            />
-          ) : null}
-
           {isLoading ? (
             <View style={styles.loadingRow}>
               <Skeleton height={20} />
@@ -483,139 +475,147 @@ export function BillParticipantPickerSection({
             </Text>
           ) : null}
 
-          {!isLoading &&
-          !hasBlockingFriendsError &&
-          normalizedFriendSearchQuery.length > 0 &&
-          visibleFriends.length === 0 ? (
-            <Text style={styles.sectionHint} variant="bodySmCompact">
-              No friends match your search.
-            </Text>
-          ) : null}
-
           {effectiveDraftCustomParticipants.length > 0 ||
-          visibleFriends.length > 0 ? (
-            <ScrollView
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-              style={styles.modalListScroll}
-            >
-              <View style={styles.modalListContent}>
-                {allowCustomParticipants &&
-                effectiveDraftCustomParticipants.length > 0 ? (
-                  <>
-                    <Text
-                      style={styles.participantGroupLabel}
-                      variant="bodySmCompact"
-                    >
-                      Typed People
-                    </Text>
-                    <OptionList>
-                      {effectiveDraftCustomParticipants.map(
-                        (participant, index) => (
-                          <OptionListRow
-                            isLast={
-                              index ===
-                              effectiveDraftCustomParticipants.length - 1
-                            }
-                            key={participant.id}
-                            rightAccessory={
-                              <Pressable
-                                accessibilityLabel={`Remove ${formatCustomParticipantName(
-                                  participant,
-                                  index,
-                                )}`}
-                                accessibilityRole="button"
-                                hitSlop={12}
-                                onPress={() => {
-                                  handleRemoveDraftCustomParticipant(
-                                    participant.id,
-                                  );
-                                }}
-                                style={({ pressed }) => [
-                                  styles.removeCustomParticipantButton,
-                                  pressed
-                                    ? styles.removeCustomParticipantButtonPressed
-                                    : null,
-                                ]}
-                                testID={`bill-custom-participant-remove-${index}`}
-                              >
-                                <Ionicons
-                                  color={theme.colors.text.danger}
-                                  name="trash-outline"
-                                  size={18}
-                                />
-                              </Pressable>
-                            }
-                            subtitle={
-                              participant.userId
-                                ? "Existing participant outside your friend list"
-                                : "Added by name"
-                            }
-                            title={formatCustomParticipantName(
-                              participant,
-                              index,
-                            )}
-                          />
-                        ),
-                      )}
-                    </OptionList>
-                  </>
-                ) : null}
-
-                {visibleFriends.length > 0 ? (
-                  <>
-                    <Text
-                      style={styles.participantGroupLabel}
-                      variant="bodySmCompact"
-                    >
-                      Friends
-                    </Text>
-                    <OptionList>
-                      {visibleFriends.map((friend, index) => {
-                        const isSelected = draftSelectedFriendIds.includes(
-                          friend.id,
-                        );
-                        const friendSubtitle = isSyntheticFriendEmail(
-                          friend.email,
-                        )
-                          ? undefined
-                          : friend.email;
-
-                        return (
-                          <OptionListRow
-                            chevron={false}
-                            isLast={index === visibleFriends.length - 1}
-                            key={friend.id}
-                            leading={
+          shouldShowFriendsPickerGroup ? (
+            <>
+              {allowCustomParticipants &&
+              effectiveDraftCustomParticipants.length > 0 ? (
+                <>
+                  <Text
+                    style={styles.participantGroupLabel}
+                    variant="bodySmCompact"
+                  >
+                    Typed People
+                  </Text>
+                  <OptionList>
+                    {effectiveDraftCustomParticipants.map(
+                      (participant, index) => (
+                        <OptionListRow
+                          isLast={
+                            index ===
+                            effectiveDraftCustomParticipants.length - 1
+                          }
+                          key={participant.id}
+                          rightAccessory={
+                            <Pressable
+                              accessibilityLabel={`Remove ${formatCustomParticipantName(
+                                participant,
+                                index,
+                              )}`}
+                              accessibilityRole="button"
+                              hitSlop={12}
+                              onPress={() => {
+                                handleRemoveDraftCustomParticipant(
+                                  participant.id,
+                                );
+                              }}
+                              style={({ pressed }) => [
+                                styles.removeCustomParticipantButton,
+                                pressed
+                                  ? styles.removeCustomParticipantButtonPressed
+                                  : null,
+                              ]}
+                              testID={`bill-custom-participant-remove-${index}`}
+                            >
                               <Ionicons
-                                color={
-                                  isSelected
-                                    ? theme.colors.text.brand
-                                    : theme.colors.text.muted
-                                }
-                                name={
-                                  isSelected ? "checkbox" : "square-outline"
-                                }
-                                size={20}
+                                color={theme.colors.text.danger}
+                                name="trash-outline"
+                                size={18}
                               />
-                            }
-                            onPress={() => {
-                              handleToggleDraftFriend(friend);
-                            }}
-                            style={
-                              isSelected ? styles.friendRowSelected : undefined
-                            }
-                            subtitle={friendSubtitle}
-                            testID={`bill-friends-option-${index}`}
-                            title={normalizeFriendName(friend)}
-                          />
-                        );
-                      })}
-                    </OptionList>
-                  </>
-                ) : null}
-              </View>
-            </ScrollView>
+                            </Pressable>
+                          }
+                          subtitle={
+                            participant.userId
+                              ? "Existing participant outside your friend list"
+                              : "Added by name"
+                          }
+                          title={formatCustomParticipantName(
+                            participant,
+                            index,
+                          )}
+                        />
+                      ),
+                    )}
+                  </OptionList>
+                </>
+              ) : null}
+
+              {shouldShowFriendsPickerGroup ? (
+                <>
+                  <Text
+                    style={styles.participantGroupLabel}
+                    variant="bodySmCompact"
+                  >
+                    Friends
+                  </Text>
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    style={styles.modalListScroll}
+                  >
+                    <View style={styles.modalListContent}>
+                      <Input
+                        containerStyle={styles.friendSearchInput}
+                        onChangeText={onChangeFriendSearchQuery}
+                        placeholder="Search friends"
+                        testID="bill-friends-search-input"
+                        value={friendSearchQuery}
+                      />
+                      {normalizedFriendSearchQuery.length > 0 &&
+                      visibleFriends.length === 0 ? (
+                        <Text style={styles.sectionHint} variant="bodySmCompact">
+                          No friends match your search.
+                        </Text>
+                      ) : null}
+                      {visibleFriends.length > 0 ? (
+                        <OptionList>
+                          {visibleFriends.map((friend, index) => {
+                            const isSelected = draftSelectedFriendIds.includes(
+                              friend.id,
+                            );
+                            const friendSubtitle = isSyntheticFriendEmail(
+                              friend.email,
+                            )
+                              ? undefined
+                              : friend.email;
+
+                            return (
+                              <OptionListRow
+                                chevron={false}
+                                isLast={index === visibleFriends.length - 1}
+                                key={friend.id}
+                                leading={
+                                  <Ionicons
+                                    color={
+                                      isSelected
+                                        ? theme.colors.text.brand
+                                        : theme.colors.text.muted
+                                    }
+                                    name={
+                                      isSelected ? "checkbox" : "square-outline"
+                                    }
+                                    size={20}
+                                  />
+                                }
+                                onPress={() => {
+                                  handleToggleDraftFriend(friend);
+                                }}
+                                style={
+                                  isSelected ? styles.friendRowSelected : undefined
+                                }
+                                subtitle={friendSubtitle}
+                                testID={`bill-friends-option-${index}`}
+                                title={normalizeFriendName(friend)}
+                              />
+                            );
+                          })}
+                        </OptionList>
+                      ) : null}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
+            </>
           ) : null}
 
           {!isLoading && !hasBlockingFriendsError && showLoadMore ? (

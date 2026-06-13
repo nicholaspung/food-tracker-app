@@ -175,7 +175,6 @@ export function useCreateBillParticipantsController({
     participants,
     payerParticipantId,
     selectedFriendIds,
-    shouldShowFriendSearch: friendPicker.shouldShowFriendSearch,
     totalAcceptedFriends: friendPicker.totalAcceptedFriends,
     toggleFriend,
     visibleFriends: friendPicker.visibleFriends,

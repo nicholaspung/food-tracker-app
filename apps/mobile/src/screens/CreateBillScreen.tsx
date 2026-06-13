@@ -372,7 +372,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     participants,
     payerParticipantId,
     selectedFriendIds,
-    shouldShowFriendSearch,
     totalAcceptedFriends,
     visibleFriends,
     setFriendSearchQuery,
@@ -1458,7 +1457,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         normalizedFriendSearchQuery={normalizedFriendSearchQuery}
         selectedFriendIds={selectedFriendIds}
         selectedFriends={selectedFriends}
-        shouldShowFriendSearch={shouldShowFriendSearch}
         totalAcceptedFriends={totalAcceptedFriends}
         visibleFriends={visibleFriends}
         onChangeFriendSearchQuery={setFriendSearchQuery}

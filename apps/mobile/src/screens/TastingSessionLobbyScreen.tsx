@@ -18,7 +18,7 @@ import {
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, ListItem, Modal, Text } from '../ui';
+import { Button, Card, Input, ListItem, Modal, Text } from '../ui';
 import {
   formatCountdown,
   getTastingInviteDisplayStatus,
@@ -82,6 +82,9 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.colors.border.subtle,
     height: 1,
   },
+  lobbySearchInput: {
+    marginTop: theme.spacing.xs,
+  },
 }));
 
 function getParticipantRoleBadge(participant: TastingParticipantRecord) {
@@ -110,6 +113,10 @@ function getInviteStatusBadge(status: TastingInviteRecord['status'] | 'expired')
   return { label: 'Pending', tone: 'warning' as const };
 }
 
+function matchesLobbySearch(value: string | undefined, query: string): boolean {
+  return Boolean(value?.toLowerCase().includes(query));
+}
+
 export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionLobbyScreenProps) {
   const styles = useStyles();
   const theme = useTheme();
@@ -133,6 +140,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [isLeaveSessionModalVisible, setIsLeaveSessionModalVisible] = useState(false);
   const [isLeavingSession, setIsLeavingSession] = useState(false);
+  const [participantSearchQuery, setParticipantSearchQuery] = useState('');
 
   const session = sessionQuery.data;
   const isLeader = lifecycle.roles.isLeader;
@@ -142,6 +150,23 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const lobbyInstruction = isLeader
     ? 'Invite people, share the code, and start planning when the group is ready.'
     : 'You are in the lobby. Wait for the leader to lock the group and start planning.';
+  const normalizedParticipantSearchQuery = participantSearchQuery.trim().toLowerCase();
+  const filteredParticipants = session && normalizedParticipantSearchQuery
+    ? session.participants.filter((participant) =>
+        matchesLobbySearch(participant.name, normalizedParticipantSearchQuery) ||
+        matchesLobbySearch(participant.role, normalizedParticipantSearchQuery),
+      )
+    : session?.participants ?? [];
+  const filteredInvites = session && normalizedParticipantSearchQuery
+    ? session.invites.filter((invite) => {
+        const inviteStatus = getTastingInviteDisplayStatus(invite, session);
+
+        return (
+          matchesLobbySearch(invite.invitedUserName, normalizedParticipantSearchQuery) ||
+          matchesLobbySearch(inviteStatus, normalizedParticipantSearchQuery)
+        );
+      })
+    : session?.invites ?? [];
 
   useEffect(() => {
     if (hasHandledRevokedAccessRef.current || !lifecycle.missingAccess.shouldHandle) {
@@ -399,40 +424,53 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
 
           <Card style={styles.sectionCard}>
             <Text variant="label">Participants</Text>
+            <Input
+              containerStyle={styles.lobbySearchInput}
+              onChangeText={setParticipantSearchQuery}
+              placeholder="Search participants"
+              testID="tasting-lobby-participant-search-input"
+              value={participantSearchQuery}
+            />
             <View style={styles.lobbyList}>
-              {availableSession.participants.map((participant, index) => {
-            const roleBadge = getParticipantRoleBadge(participant);
+              {filteredParticipants.length > 0 ? (
+                filteredParticipants.map((participant, index) => {
+                  const roleBadge = getParticipantRoleBadge(participant);
 
-            return (
-              <Fragment key={participant.id}>
-                <ListItem
-                  style={styles.lobbyListItem}
-                  title={participant.name}
-                  titleAccessory={<StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />}
-                  trailing={
-                    isLeader && participant.role !== 'leader' ? (
-                      <Pressable
-                        accessibilityLabel={`Remove ${participant.name}`}
-                        accessibilityRole="button"
-                        disabled={!isOnline}
-                        hitSlop={12}
-                        onPress={() => setPendingKick(participant)}
-                        style={({ pressed }) => [
-                          styles.rowIconButton,
-                          pressed ? styles.destructiveIconButtonPressed : null,
-                          !isOnline ? styles.iconButtonDisabled : null,
-                        ]}
-                        testID={`remove-tasting-participant-${participant.id}`}
-                      >
-                        <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-                      </Pressable>
-                    ) : null
-                  }
-                />
-                    {index < availableSession.participants.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
-              </Fragment>
-            );
-          })}
+                  return (
+                    <Fragment key={participant.id}>
+                      <ListItem
+                        style={styles.lobbyListItem}
+                        title={participant.name}
+                        titleAccessory={
+                          <StatusPill label={roleBadge.label} style={styles.statusBadge} tone={roleBadge.tone} />
+                        }
+                        trailing={
+                          isLeader && participant.role !== 'leader' ? (
+                            <Pressable
+                              accessibilityLabel={`Remove ${participant.name}`}
+                              accessibilityRole="button"
+                              disabled={!isOnline}
+                              hitSlop={12}
+                              onPress={() => setPendingKick(participant)}
+                              style={({ pressed }) => [
+                                styles.rowIconButton,
+                                pressed ? styles.destructiveIconButtonPressed : null,
+                                !isOnline ? styles.iconButtonDisabled : null,
+                              ]}
+                              testID={`remove-tasting-participant-${participant.id}`}
+                            >
+                              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+                            </Pressable>
+                          ) : null
+                        }
+                      />
+                      {index < filteredParticipants.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+                    </Fragment>
+                  );
+                })
+              ) : (
+                <Text tone="secondary">No participants match your search.</Text>
+              )}
             </View>
           </Card>
 
@@ -440,30 +478,38 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
             <Card style={styles.sectionCard}>
               <Text variant="label">Invites</Text>
               <View style={styles.lobbyList}>
-                {availableSession.invites.map((invite, index) => {
-                  const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, availableSession));
+                {filteredInvites.length > 0 ? (
+                  filteredInvites.map((invite, index) => {
+                    const statusBadge = getInviteStatusBadge(getTastingInviteDisplayStatus(invite, availableSession));
 
-              return (
-                <Fragment key={invite.id}>
-                  <ListItem
-                    style={styles.lobbyListItem}
-                    title={invite.invitedUserName}
-                    titleAccessory={<StatusPill label={statusBadge.label} style={styles.statusBadge} tone={statusBadge.tone} />}
-                    trailing={
-                      isLeader && (invite.status === 'dismissed' || invite.status === 'revoked') && inviteWindowOpen ? (
-                        <Button
-                          disabled={!isOnline}
-                          label="Resend"
-                          onPress={() => void handleResendInvite(invite)}
-                          variant="secondary"
+                    return (
+                      <Fragment key={invite.id}>
+                        <ListItem
+                          style={styles.lobbyListItem}
+                          title={invite.invitedUserName}
+                          titleAccessory={
+                            <StatusPill label={statusBadge.label} style={styles.statusBadge} tone={statusBadge.tone} />
+                          }
+                          trailing={
+                            isLeader &&
+                            (invite.status === 'dismissed' || invite.status === 'revoked') &&
+                            inviteWindowOpen ? (
+                              <Button
+                                disabled={!isOnline}
+                                label="Resend"
+                                onPress={() => void handleResendInvite(invite)}
+                                variant="secondary"
+                              />
+                            ) : null
+                          }
                         />
-                      ) : null
-                    }
-                  />
-                      {index < availableSession.invites.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
-                </Fragment>
-              );
-            })}
+                        {index < filteredInvites.length - 1 ? <View style={styles.lobbyListSeparator} /> : null}
+                      </Fragment>
+                    );
+                  })
+                ) : (
+                  <Text tone="secondary">No invites match your search.</Text>
+                )}
               </View>
             </Card>
           ) : null}

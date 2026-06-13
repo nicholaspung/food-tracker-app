@@ -100,7 +100,6 @@ export function useAcceptedFriendPickerState({
     [acceptedFriends],
   );
   const totalAcceptedFriends = friendsState.totalItems;
-  const shouldShowFriendSearch = normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 5;
   const visibleFriends = useMemo(() => {
     if (shouldQueryFriendsBySearch || normalizedFriendSearchQuery.length === 0) {
       return selectableFriends;
@@ -157,7 +156,6 @@ export function useAcceptedFriendPickerState({
     normalizedFriendSearchQuery,
     selectableFriends,
     setFriendSearchQuery,
-    shouldShowFriendSearch,
     totalAcceptedFriends,
     visibleFriends,
   };
