@@ -22,8 +22,18 @@ export const restaurantListQueryKeys = {
   list: (listId: string) => ['feature', 'restaurantList', listId] as const,
   detailRoot: ['feature', 'restaurantListDetail'] as const,
   detail: (listId: string) => ['feature', 'restaurantListDetail', listId] as const,
+  detailPages: (listId: string) => ['feature', 'restaurantListDetail', listId, 'pages'] as const,
+  bookmarkStateRoot: ['feature', 'restaurantListBookmarkState'] as const,
+  bookmarkState: (listId: string, bookmarkKeys: string[]) =>
+    [
+      'feature',
+      'restaurantListBookmarkState',
+      listId,
+      normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys),
+    ] as const,
   sharedRoot: ['feature', 'sharedRestaurantList'] as const,
   shared: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken] as const,
+  sharedPages: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken, 'pages'] as const,
   itemsRoot: ['feature', 'restaurantListItems'] as const,
   items: (listId: string) => ['feature', 'restaurantListItems', listId] as const,
   itemLinksRoot: ['feature', 'restaurantListItemLinks'] as const,
@@ -44,6 +54,18 @@ export const restaurantListQueryKeys = {
       normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds),
     ] as const,
 };
+
+function normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys: string[]): string {
+  return Array.from(
+    new Set(
+      bookmarkKeys
+        .map((bookmarkKey) => bookmarkKey.trim())
+        .filter((bookmarkKey) => bookmarkKey.length > 0),
+    ),
+  )
+    .sort()
+    .join('|');
+}
 
 export function normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds: string[]): string {
   return Array.from(

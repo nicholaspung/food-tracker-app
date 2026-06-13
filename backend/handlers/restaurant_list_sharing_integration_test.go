@@ -150,6 +150,11 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 				SourceUserName string  `json:"sourceUserName"`
 			} `json:"bookmarkedItems"`
 		} `json:"items"`
+		Page          int  `json:"page"`
+		PageSize      int  `json:"pageSize"`
+		TotalItems    int  `json:"totalItems"`
+		TotalPages    int  `json:"totalPages"`
+		HasNextPage   bool `json:"hasNextPage"`
 		PhotoPreviews []struct {
 			FoodItemID string `json:"food_item"`
 			OwnerName  string `json:"ownerName"`
@@ -169,6 +174,9 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 	}
 	if len(publicPayload.Items) != 1 || publicPayload.Items[0].RestaurantName != "Shared Ramen" {
 		t.Fatalf("unexpected public items: %#v", publicPayload.Items)
+	}
+	if publicPayload.Page != 1 || publicPayload.PageSize != 20 || publicPayload.TotalItems != 1 || publicPayload.TotalPages != 1 || publicPayload.HasNextPage {
+		t.Fatalf("unexpected public pagination metadata: %#v", publicPayload)
 	}
 	if publicPayload.Items[0].SourceUserID != "" || publicPayload.Items[0].SourceUserName != "" {
 		t.Fatalf("public item leaked source user identity: %#v", publicPayload.Items[0])

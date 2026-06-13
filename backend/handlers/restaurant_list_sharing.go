@@ -32,6 +32,11 @@ type sharedRestaurantListSaveRecommendationRequest struct {
 type sharedRestaurantListResponse struct {
 	List          sharedRestaurantListRecord                 `json:"list"`
 	Items         []sharedRestaurantListItemRecord           `json:"items"`
+	Page          int                                        `json:"page"`
+	PageSize      int                                        `json:"pageSize"`
+	TotalItems    int                                        `json:"totalItems"`
+	TotalPages    int                                        `json:"totalPages"`
+	HasNextPage   bool                                       `json:"hasNextPage"`
 	PhotoPreviews []sharedRestaurantListPhotoPreview         `json:"photoPreviews"`
 	BookmarkState *restaurantListDetailBookmarkStateResponse `json:"bookmarkState,omitempty"`
 	ViewerLists   []restaurantListDetailListResponse         `json:"viewerLists,omitempty"`
@@ -95,7 +100,15 @@ func registerRestaurantListSharingSummaryHandler(se *core.ServeEvent, app core.A
 			viewerRecord = e.Auth
 		}
 
-		response, err := getSharedRestaurantListResponse(app, shareToken, viewerRecord)
+		page, pageSize, err := parseRestaurantListDetailPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getSharedRestaurantListResponse(app, shareToken, viewerRecord, page, pageSize)
 		if err != nil {
 			if errors.Is(err, errRestaurantListDetailNotFound) {
 				return apis.NewNotFoundError("shared restaurant list not found", nil)
@@ -265,7 +278,13 @@ func buildRequestOrigin(request *http.Request) string {
 	return scheme + "://" + host
 }
 
-func getSharedRestaurantListResponse(app core.App, shareToken string, viewerRecord *core.Record) (sharedRestaurantListResponse, error) {
+func getSharedRestaurantListResponse(
+	app core.App,
+	shareToken string,
+	viewerRecord *core.Record,
+	page int,
+	pageSize int,
+) (sharedRestaurantListResponse, error) {
 	response := sharedRestaurantListResponse{
 		Items:         []sharedRestaurantListItemRecord{},
 		PhotoPreviews: []sharedRestaurantListPhotoPreview{},
@@ -286,7 +305,7 @@ func getSharedRestaurantListResponse(app core.App, shareToken string, viewerReco
 		return response, err
 	}
 
-	detail, err := getRestaurantListDetailResponse(app, ownerID, false, listRecord.Id, 1, 0)
+	detail, err := getRestaurantListDetailResponse(app, ownerID, false, listRecord.Id, page, pageSize)
 	if err != nil {
 		return response, err
 	}
@@ -305,6 +324,11 @@ func getSharedRestaurantListResponse(app core.App, shareToken string, viewerReco
 	}
 
 	response.Items = make([]sharedRestaurantListItemRecord, 0, len(detail.Items))
+	response.Page = detail.Page
+	response.PageSize = detail.PageSize
+	response.TotalItems = detail.TotalItems
+	response.TotalPages = detail.TotalPages
+	response.HasNextPage = detail.HasNextPage
 	visibleBookmarkLookupIDs := []string{}
 	visibleBookmarkLookupSet := map[string]struct{}{}
 	for _, item := range detail.Items {

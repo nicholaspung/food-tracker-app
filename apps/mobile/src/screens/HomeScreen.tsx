@@ -37,9 +37,14 @@ import {
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
-  type RestaurantListBookmarkedItemRecord,
   type VisitRecord,
 } from '../features';
+import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
+import {
+  getRestaurantListBookmarkState,
+  type RestaurantListBookmarkStateRecord,
+  type RestaurantListBookmarkStateTargetInput,
+} from '../features/store/restaurantListsStore';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
@@ -298,41 +303,6 @@ function getFriendFeedBookmarkKey(item: VisitRecord['items'][number], restaurant
   return item.menuItemId?.trim() || buildFriendFeedNameBookmarkKey(restaurantId, item.name) || item.id;
 }
 
-function getSavedFriendFeedBookmarkKeys(
-  restaurantId: string,
-  bookmarkedItem: RestaurantListBookmarkedItemRecord,
-): string[] {
-  const keys = new Set<string>();
-  if (bookmarkedItem.userFoodItemId) {
-    keys.add(bookmarkedItem.userFoodItemId);
-  }
-  if (bookmarkedItem.menuItemId) {
-    keys.add(bookmarkedItem.menuItemId);
-  }
-  if (bookmarkedItem.id) {
-    keys.add(bookmarkedItem.id);
-  }
-
-  const nameKey = buildFriendFeedNameBookmarkKey(
-    restaurantId,
-    bookmarkedItem.name || bookmarkedItem.userFoodItemName,
-  );
-  if (nameKey) {
-    keys.add(nameKey);
-  }
-
-  return Array.from(keys);
-}
-
-function getSavedFriendFeedBookmarkTarget(
-  restaurantId: string,
-  bookmarkedItem: RestaurantListBookmarkedItemRecord,
-): FriendFeedBookmarkTarget {
-  return bookmarkedItem.menuItemId
-    ? { restaurantId, menuItemId: bookmarkedItem.menuItemId }
-    : { foodItemId: bookmarkedItem.id, restaurantId };
-}
-
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
   const mineFeedListRef = useRef<FlatList<FeedItem> | null>(null);
@@ -444,7 +414,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         typeFilter,
       }),
   });
-  const { defaultListDetailQuery, defaultListId, defaultListQuery } = useWantToTryListRead();
+  const { defaultListId, defaultListQuery } = useWantToTryListRead({ includeDetail: false });
   const resetMapState = useCallback(() => {
     setSelectedMapGroupId(null);
     setMapResetSignal((value) => value + 1);
@@ -542,35 +512,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   );
   const mapPoints = homeFeedMapQuery.data?.points ?? [];
   const mapPhotoPreviews = homeFeedMapQuery.data?.photoPreviews ?? [];
-  const savedFriendFeedBookmarkTargets = useMemo(() => {
-    const targets = new Map(locallySavedFriendFeedBookmarkTargets);
-    for (const item of defaultListDetailQuery.data?.items ?? []) {
-      const restaurantId = item.restaurantId?.trim();
-      if (!restaurantId) {
-        continue;
-      }
-      for (const bookmarkedItem of item.bookmarkedItems) {
-        const target = getSavedFriendFeedBookmarkTarget(restaurantId, bookmarkedItem);
-        for (const bookmarkKey of getSavedFriendFeedBookmarkKeys(restaurantId, bookmarkedItem)) {
-          if (!targets.has(bookmarkKey)) {
-            targets.set(bookmarkKey, target);
-          }
-        }
-      }
-    }
-    for (const bookmarkKey of locallyRemovedFriendFeedItemIds) {
-      targets.delete(bookmarkKey);
-    }
-    return targets;
-  }, [
-    defaultListDetailQuery.data?.items,
-    locallyRemovedFriendFeedItemIds,
-    locallySavedFriendFeedBookmarkTargets,
-  ]);
-  const savedFriendFeedItemIds = useMemo(() => {
-    const ids = new Set([...locallySavedFriendFeedItemIds, ...savedFriendFeedBookmarkTargets.keys()]);
-    return ids;
-  }, [locallySavedFriendFeedItemIds, savedFriendFeedBookmarkTargets]);
 
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
@@ -614,6 +555,86 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       }, []),
     [browseState.items, currentUserId, feedMode],
   );
+  const friendFeedBookmarkTargets = useMemo<RestaurantListBookmarkStateTargetInput[]>(() => {
+    if (feedMode !== 'friends') {
+      return [];
+    }
+
+    const targets: RestaurantListBookmarkStateTargetInput[] = [];
+    const seenTargets = new Set<string>();
+    for (const feedItem of loadedFeed) {
+      if (feedItem.source !== 'visit' || !feedItem.isFriend) {
+        continue;
+      }
+
+      const restaurantId = feedItem.visit.restaurantId?.trim();
+      if (!restaurantId) {
+        continue;
+      }
+
+      for (const item of feedItem.visit.items) {
+        const bookmarkKey = getFriendFeedBookmarkKey(item, restaurantId);
+        const menuItemId = item.menuItemId?.trim() || undefined;
+        const target: RestaurantListBookmarkStateTargetInput = {
+          bookmarkKey,
+          restaurantId,
+          ...(menuItemId ? { menuItemId } : { foodItemId: item.id }),
+        };
+        const dedupeKey = `${target.bookmarkKey}:${target.restaurantId}:${target.foodItemId ?? ''}:${target.menuItemId ?? ''}`;
+        if (seenTargets.has(dedupeKey)) {
+          continue;
+        }
+        seenTargets.add(dedupeKey);
+        targets.push(target);
+      }
+    }
+
+    return targets;
+  }, [feedMode, loadedFeed]);
+  const friendFeedBookmarkKeys = useMemo(
+    () => friendFeedBookmarkTargets.map((target) => target.bookmarkKey),
+    [friendFeedBookmarkTargets],
+  );
+  const friendFeedBookmarkStateQuery = useQuery({
+    enabled: feedMode === 'friends' && Boolean(defaultListId) && friendFeedBookmarkTargets.length > 0,
+    queryKey: defaultListId
+      ? restaurantListQueryKeys.bookmarkState(defaultListId, friendFeedBookmarkKeys)
+      : restaurantListQueryKeys.bookmarkState('__default_list_pending__', []),
+    queryFn: ({ signal }): Promise<RestaurantListBookmarkStateRecord> | RestaurantListBookmarkStateRecord =>
+      defaultListId
+        ? getRestaurantListBookmarkState(defaultListId, friendFeedBookmarkTargets, { signal })
+        : { savedTargetsByBookmarkKey: {} },
+  });
+  const savedFriendFeedBookmarkTargets = useMemo(() => {
+    const targets = new Map(locallySavedFriendFeedBookmarkTargets);
+    const savedTargets = friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey ?? {};
+
+    for (const savedTarget of Object.values(savedTargets)) {
+      if (!savedTarget) {
+        continue;
+      }
+
+      targets.set(savedTarget.bookmarkKey, {
+        restaurantId: savedTarget.restaurantId,
+        ...(savedTarget.menuItemId
+          ? { menuItemId: savedTarget.menuItemId }
+          : { foodItemId: savedTarget.foodItemId }),
+      });
+    }
+
+    for (const bookmarkKey of locallyRemovedFriendFeedItemIds) {
+      targets.delete(bookmarkKey);
+    }
+    return targets;
+  }, [
+    friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey,
+    locallyRemovedFriendFeedItemIds,
+    locallySavedFriendFeedBookmarkTargets,
+  ]);
+  const savedFriendFeedItemIds = useMemo(() => {
+    const ids = new Set([...locallySavedFriendFeedItemIds, ...savedFriendFeedBookmarkTargets.keys()]);
+    return ids;
+  }, [locallySavedFriendFeedItemIds, savedFriendFeedBookmarkTargets]);
 
   const isLoading = browseState.isLoading;
   const hasBlockingFeedError = browseState.hasBlockingError;
@@ -1071,9 +1092,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
         if (result.status === 'completed') {
           void defaultListQuery.refetch();
-          if (defaultListId) {
-            void defaultListDetailQuery.refetch();
-          }
+          void queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.bookmarkStateRoot });
         }
 
         trackObservabilityEvent('HOME_FRIEND_RECOMMENDATION_BOOKMARK_SAVED', {
@@ -1102,9 +1121,9 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
     },
     [
-      defaultListDetailQuery,
       defaultListId,
       defaultListQuery,
+      queryClient,
       restaurantListWrites,
       savedFriendFeedItemIds,
     ],
@@ -1152,7 +1171,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         });
 
         if (result.status === 'completed') {
-          void defaultListDetailQuery.refetch();
+          void queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.bookmarkStateRoot });
         }
 
         trackObservabilityEvent('HOME_FRIEND_RECOMMENDATION_BOOKMARK_REMOVED', {
@@ -1171,8 +1190,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
     },
     [
-      defaultListDetailQuery,
       defaultListId,
+      queryClient,
       restaurantListWrites,
       savedFriendFeedBookmarkTargets,
       savedFriendFeedItemIds,

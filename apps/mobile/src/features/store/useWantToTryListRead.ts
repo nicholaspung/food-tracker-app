@@ -8,14 +8,19 @@ import {
 
 const PENDING_DEFAULT_LIST_ID = '__default_list_pending__';
 
-export function useWantToTryListRead() {
+interface UseWantToTryListReadOptions {
+  includeDetail?: boolean;
+}
+
+export function useWantToTryListRead(options: UseWantToTryListReadOptions = {}) {
+  const includeDetail = options.includeDetail ?? true;
   const defaultListQuery = useQuery({
     queryKey: restaurantListQueryKeys.defaultList,
     queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
   });
   const defaultListId = defaultListQuery.data?.id;
   const defaultListDetailQuery = useQuery({
-    enabled: Boolean(defaultListId),
+    enabled: includeDetail && Boolean(defaultListId),
     queryKey: defaultListId
       ? restaurantListQueryKeys.detail(defaultListId)
       : restaurantListQueryKeys.detail(PENDING_DEFAULT_LIST_ID),

@@ -13,6 +13,10 @@ import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery
 import { localPersistence } from '../localPersistence';
 import { clearPersistedQueryCache, queryPersister, shouldPersistQuery } from '../providers/queryPersistence';
 
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
 describe('React Query persistence', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -305,9 +309,7 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft'))).toEqual(
       sourceClient.getQueryData(notesQueryKeys.paginated('draft')),
     );
-    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toEqual(
-      sourceClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles')),
-    );
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toBeUndefined();
     expect(restoredClient.getQueryData(notesQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(notesQueryKeys.summary),
     );
@@ -345,6 +347,222 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(friendsQueryKeys.paginated('user-1', 'friends', 'tay'))).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'homeFeed', 'paginated', 'friends', 'all', 'created', ''])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'friends', 'summary'])).toBeUndefined();
+
+    sourceClient.clear();
+    restoredClient.clear();
+  });
+
+  it('bounds persisted infinite-query data to the first page window', async () => {
+    const homeFeedKey = homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', '');
+    const notesKey = notesQueryKeys.paginated('draft');
+    const feedbackKey = feedbackQueryKeys.list;
+    const homeFeedData = {
+      pages: [
+        {
+          items: Array.from({ length: 60 }, (_, index) => ({
+            source: 'visit',
+            eventAt: `2026-02-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+            visit: {
+              id: `visit_${index + 1}`,
+            },
+          })),
+          cursor: 'cursor_2',
+          hasNextPage: true,
+          totalFoodProducts: 0,
+          totalVisits: 120,
+        },
+        {
+          items: [
+            {
+              source: 'visit',
+              eventAt: '2026-03-01T00:00:00.000Z',
+              visit: {
+                id: 'visit_61',
+              },
+            },
+          ],
+          cursor: undefined,
+          hasNextPage: false,
+          totalFoodProducts: 0,
+          totalVisits: 120,
+        },
+      ],
+      pageParams: [undefined, 'cursor_2'],
+    };
+    const notesData = {
+      pages: [
+        {
+          items: [
+            {
+              id: 'note_1',
+              title: 'Saved place',
+              content: 'Try the noodles',
+              status: 'draft',
+              createdAt: '2026-02-12T00:00:00.000Z',
+              updatedAt: '2026-02-12T00:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 2,
+          totalPages: 2,
+          hasNextPage: true,
+        },
+        {
+          items: [
+            {
+              id: 'note_2',
+              title: 'Second page',
+              content: 'Too much cache',
+              status: 'draft',
+              createdAt: '2026-02-13T00:00:00.000Z',
+              updatedAt: '2026-02-13T00:00:00.000Z',
+            },
+          ],
+          page: 2,
+          pageSize: 20,
+          totalItems: 2,
+          totalPages: 2,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1, 2],
+    };
+    const feedbackData = {
+      pages: [
+        {
+          items: [
+            {
+              id: 'feedback_1',
+              userId: 'user_1',
+              title: 'Bug',
+              description: 'App crashed',
+              status: 'open',
+              adminUnreadCount: 0,
+              userUnreadCount: 1,
+              createdAt: '2026-02-12T00:00:00.000Z',
+              updatedAt: '2026-02-12T00:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 2,
+          totalPages: 2,
+          hasNextPage: true,
+        },
+        {
+          items: [
+            {
+              id: 'feedback_2',
+              userId: 'user_1',
+              title: 'Second page',
+              description: 'Should not persist',
+              status: 'open',
+              adminUnreadCount: 0,
+              userUnreadCount: 0,
+              createdAt: '2026-02-13T00:00:00.000Z',
+              updatedAt: '2026-02-13T00:00:00.000Z',
+            },
+          ],
+          page: 2,
+          pageSize: 20,
+          totalItems: 2,
+          totalPages: 2,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1, 2],
+    };
+    const sourceClient = new QueryClient();
+    sourceClient.setQueryData(homeFeedKey, homeFeedData);
+    sourceClient.setQueryData(notesKey, notesData);
+    sourceClient.setQueryData(feedbackKey, feedbackData);
+
+    await persistQueryClientSave({
+      queryClient: sourceClient,
+      persister: queryPersister,
+      dehydrateOptions: {
+        shouldDehydrateQuery: shouldPersistQuery,
+      },
+    });
+
+    const restoredClient = new QueryClient();
+    await persistQueryClientRestore({
+      queryClient: restoredClient,
+      persister: queryPersister,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+
+    expect(restoredClient.getQueryData(homeFeedKey)).toEqual({
+      ...homeFeedData,
+      pages: [
+        {
+          ...homeFeedData.pages[0],
+          items: homeFeedData.pages[0].items.slice(0, 50),
+        },
+      ],
+      pageParams: [null],
+    });
+    expect(restoredClient.getQueryData(notesKey)).toEqual({
+      ...notesData,
+      pages: [notesData.pages[0]],
+      pageParams: [1],
+    });
+    expect(restoredClient.getQueryData(feedbackKey)).toEqual({
+      ...feedbackData,
+      pages: [feedbackData.pages[0]],
+      pageParams: [1],
+    });
+    expect(await AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).toContain(
+      '"trimmed":true',
+    );
+
+    sourceClient.clear();
+    restoredClient.clear();
+  });
+
+  it('excludes transient search-specific browse query caches', async () => {
+    const homeSearchKey = homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', 'ramen');
+    const notesSearchKey = notesQueryKeys.paginated('draft', 'noodles');
+    const friendsSearchKey = friendsQueryKeys.paginated('user-1', 'friends', 'tay');
+    const sourceClient = new QueryClient();
+    sourceClient.setQueryData(homeSearchKey, {
+      pages: [{ items: [{ id: 'visit_search_1' }], hasNextPage: false }],
+      pageParams: [undefined],
+    });
+    sourceClient.setQueryData(notesSearchKey, {
+      pages: [{ items: [{ id: 'note_search_1' }], hasNextPage: false }],
+      pageParams: [1],
+    });
+    sourceClient.setQueryData(friendsSearchKey, {
+      pages: [{ items: [{ id: 'friend_search_1' }], hasNextPage: false }],
+      pageParams: [1],
+    });
+    sourceClient.setQueryData(profileQueryKeys.profile, {
+      displayName: 'Persisted profile keeps save non-empty',
+    });
+
+    await persistQueryClientSave({
+      queryClient: sourceClient,
+      persister: queryPersister,
+      dehydrateOptions: {
+        shouldDehydrateQuery: shouldPersistQuery,
+      },
+    });
+
+    const restoredClient = new QueryClient();
+    await persistQueryClientRestore({
+      queryClient: restoredClient,
+      persister: queryPersister,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+
+    expect(restoredClient.getQueryData(homeSearchKey)).toBeUndefined();
+    expect(restoredClient.getQueryData(notesSearchKey)).toBeUndefined();
+    expect(restoredClient.getQueryData(friendsSearchKey)).toBeUndefined();
+    expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual({
+      displayName: 'Persisted profile keeps save non-empty',
+    });
 
     sourceClient.clear();
     restoredClient.clear();
@@ -403,7 +621,7 @@ describe('React Query persistence', () => {
     queryClient.clear();
   });
 
-  it('round-trips current Notes data and redacts private Feedback fields', async () => {
+  it('round-trips current default Notes data and redacts private Feedback fields', async () => {
     const notesData = {
       pages: [
         {
@@ -528,7 +746,7 @@ describe('React Query persistence', () => {
     });
 
     expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft'))).toEqual(notesData);
-    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toEqual(notesData);
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toBeUndefined();
     expect(restoredClient.getQueryData(feedbackQueryKeys.list)).toEqual(redactedFeedbackData);
     expect(restoredClient.getQueryData(feedbackQueryKeys.messages('feedback_1'))).toEqual(
       redactedFeedbackMessagesData,

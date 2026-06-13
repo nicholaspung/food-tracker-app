@@ -68,6 +68,11 @@ interface ReadRequestOptions {
   signal?: AbortSignal;
 }
 
+interface PaginatedReadRequestOptions extends ReadRequestOptions {
+  page?: number;
+  pageSize?: number;
+}
+
 interface RestaurantListDetailApiListRecord {
   id: string;
   name: string;
@@ -145,11 +150,38 @@ interface RestaurantListDetailApiPhotoPreviewRecord {
 interface RestaurantListDetailApiResponse {
   list: RestaurantListDetailApiListRecord;
   items?: RestaurantListDetailApiItemRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
   bookmarkState?: {
     savedListIdsByBookmarkLookupId?: Record<string, string[] | undefined>;
   };
   photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
   viewerLists?: RestaurantListDetailApiListRecord[];
+}
+
+export interface RestaurantListBookmarkStateTargetInput {
+  bookmarkKey: string;
+  restaurantId: string;
+  foodItemId?: string;
+  menuItemId?: string;
+}
+
+export interface RestaurantListBookmarkStateTargetRecord {
+  bookmarkKey: string;
+  restaurantId: string;
+  foodItemId?: string;
+  menuItemId?: string;
+}
+
+export interface RestaurantListBookmarkStateRecord {
+  savedTargetsByBookmarkKey: Record<string, RestaurantListBookmarkStateTargetRecord | undefined>;
+}
+
+interface RestaurantListBookmarkStateApiResponse {
+  savedTargetsByBookmarkKey?: Record<string, RestaurantListBookmarkStateTargetRecord | undefined>;
 }
 
 interface SharedRestaurantListApiResponse {
@@ -163,6 +195,11 @@ interface SharedRestaurantListApiResponse {
     updatedAt: string;
   };
   items?: RestaurantListDetailApiItemRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
   bookmarkState?: {
     savedListIdsByBookmarkLookupId?: Record<string, string[] | undefined>;
   };
@@ -361,6 +398,11 @@ function createEmptyRestaurantListDetail(): RestaurantListDetailRecord {
   return {
     list: null,
     items: [],
+    page: 1,
+    pageSize: 0,
+    totalItems: 0,
+    totalPages: 0,
+    hasNextPage: false,
     bookmarkState: {
       savedListIdsByBookmarkLookupId: {},
     },
@@ -373,6 +415,11 @@ function createEmptySharedRestaurantListDetail(): SharedRestaurantListDetailReco
   return {
     list: null,
     items: [],
+    page: 1,
+    pageSize: 0,
+    totalItems: 0,
+    totalPages: 0,
+    hasNextPage: false,
     bookmarkState: {
       savedListIdsByBookmarkLookupId: {},
     },
@@ -449,6 +496,11 @@ function mapRestaurantListDetailResponse(response: RestaurantListDetailApiRespon
   return {
     list: mapRestaurantListDetailApiListRecord(response.list),
     items: (response.items ?? []).map(mapRestaurantListDetailItemRecord),
+    page: response.page ?? 1,
+    pageSize: response.pageSize ?? response.items?.length ?? 0,
+    totalItems: response.totalItems ?? response.items?.length ?? 0,
+    totalPages: response.totalPages ?? 1,
+    hasNextPage: response.hasNextPage ?? false,
     bookmarkState: {
       savedListIdsByBookmarkLookupId,
     },
@@ -485,6 +537,11 @@ function mapSharedRestaurantListResponse(response: SharedRestaurantListApiRespon
       updatedAt: response.list.updatedAt,
     },
     items: (response.items ?? []).map(mapRestaurantListDetailItemRecord),
+    page: response.page ?? 1,
+    pageSize: response.pageSize ?? response.items?.length ?? 0,
+    totalItems: response.totalItems ?? response.items?.length ?? 0,
+    totalPages: response.totalPages ?? 1,
+    hasNextPage: response.hasNextPage ?? false,
     bookmarkState: {
       savedListIdsByBookmarkLookupId,
     },
@@ -645,7 +702,7 @@ export async function getRestaurantListById(
 
 export async function getRestaurantListDetail(
   listId: string,
-  options?: ReadRequestOptions,
+  options?: PaginatedReadRequestOptions,
 ): Promise<RestaurantListDetailRecord> {
   if (!pb.authStore.record?.id) {
     return createEmptyRestaurantListDetail();
@@ -657,8 +714,16 @@ export async function getRestaurantListDetail(
   }
 
   try {
+    const query = new URLSearchParams();
+    if (options?.page) {
+      query.set('page', String(options.page));
+    }
+    if (options?.pageSize) {
+      query.set('pageSize', String(options.pageSize));
+    }
+    const querySuffix = query.toString() ? `?${query.toString()}` : '';
     const response = await sendApiRequest<RestaurantListDetailApiResponse>(
-      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/detail`,
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/detail${querySuffix}`,
       {
         method: 'GET',
         signal: options?.signal,
@@ -675,9 +740,53 @@ export async function getRestaurantListDetail(
   }
 }
 
+export async function getRestaurantListBookmarkState(
+  listId: string,
+  targets: RestaurantListBookmarkStateTargetInput[],
+  options?: ReadRequestOptions,
+): Promise<RestaurantListBookmarkStateRecord> {
+  if (!pb.authStore.record?.id) {
+    return { savedTargetsByBookmarkKey: {} };
+  }
+
+  const trimmedListId = listId.trim();
+  const normalizedTargets = targets
+    .map((target) => ({
+      bookmarkKey: target.bookmarkKey.trim(),
+      restaurantId: target.restaurantId.trim(),
+      foodItemId: target.foodItemId?.trim() || undefined,
+      menuItemId: target.menuItemId?.trim() || undefined,
+    }))
+    .filter(
+      (target) =>
+        target.bookmarkKey.length > 0 &&
+        target.restaurantId.length > 0 &&
+        (target.foodItemId || target.menuItemId),
+    );
+
+  if (!trimmedListId || normalizedTargets.length === 0) {
+    return { savedTargetsByBookmarkKey: {} };
+  }
+
+  const response = await sendApiRequest<RestaurantListBookmarkStateApiResponse>(
+    `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/bookmark-state`,
+    {
+      method: 'POST',
+      signal: options?.signal,
+      body: {
+        targets: normalizedTargets,
+      },
+    },
+  );
+
+  return {
+    savedTargetsByBookmarkKey: response.savedTargetsByBookmarkKey ?? {},
+  };
+}
+
 export async function getSharedRestaurantList(
   shareToken: string,
-  options?: ReadRequestOptions,
+  options?: PaginatedReadRequestOptions,
 ): Promise<SharedRestaurantListDetailRecord> {
   const trimmedShareToken = shareToken.trim();
   if (!trimmedShareToken) {
@@ -685,8 +794,16 @@ export async function getSharedRestaurantList(
   }
 
   try {
+    const query = new URLSearchParams();
+    if (options?.page) {
+      query.set('page', String(options.page));
+    }
+    if (options?.pageSize) {
+      query.set('pageSize', String(options.pageSize));
+    }
+    const querySuffix = query.toString() ? `?${query.toString()}` : '';
     const response = await sendApiRequest<SharedRestaurantListApiResponse>(
-      `/api/public/restaurant-lists/${encodeURIComponent(trimmedShareToken)}`,
+      `/api/public/restaurant-lists/${encodeURIComponent(trimmedShareToken)}${querySuffix}`,
       {
         method: 'GET',
         signal: options?.signal,

@@ -181,6 +181,11 @@ export interface SharedRestaurantListPhotoPreviewRecord {
 export interface SharedRestaurantListDetailRecord {
   list: SharedRestaurantListRecord | null;
   items: RestaurantListItemRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
   photoPreviews: SharedRestaurantListPhotoPreviewRecord[];
   bookmarkState: {
     savedListIdsByBookmarkLookupId: Record<string, string[]>;

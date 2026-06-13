@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Share } from 'react-native';
 
 import {
@@ -91,9 +91,46 @@ const mockTheme = {
 };
 
 jest.mock('@tanstack/react-query', () => ({
+  useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
+
+jest.mock('react-native', () => {
+  const actual = jest.requireActual<typeof import('react-native')>('react-native');
+  const react = jest.requireActual<typeof import('react')>('react');
+  const renderListElement = (element: unknown) => {
+    if (!element) {
+      return null;
+    }
+    if (react.isValidElement(element)) {
+      return element;
+    }
+    if (typeof element === 'function') {
+      return element();
+    }
+    return null;
+  };
+
+  const mockedReactNative = Object.create(actual) as any;
+  mockedReactNative.FlatList = ({ data = [], renderItem, ListEmptyComponent, ...props }: Record<string, any>) => {
+    return react.createElement(
+      'FlatList',
+      props,
+      Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
+        ? data.map((item, index) =>
+            react.createElement(
+              react.Fragment,
+              { key: props.keyExtractor?.(item, index) ?? index },
+              renderItem({ item, index }),
+            ),
+          )
+        : renderListElement(ListEmptyComponent),
+    );
+  };
+
+  return mockedReactNative;
+});
 
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
@@ -109,6 +146,7 @@ jest.mock('../features', () => ({
   restaurantListQueryKeys: {
     root: ['feature', 'restaurantLists'],
     detail: (listId: string) => ['feature', 'restaurantListDetail', listId],
+    detailPages: (listId: string) => ['feature', 'restaurantListDetail', listId, 'pages'],
     paginated: (scope: string, searchQuery: string) =>
       ['feature', 'restaurantLists', scope, 'paginated', searchQuery],
   },
@@ -260,6 +298,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: () => null,
 }));
 
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
@@ -326,6 +365,7 @@ function buildDetail(overrides: Partial<RestaurantListDetailRecord> = {}): Resta
 }
 
 function buildQueryResult(data = buildDetail()) {
+  mockedUseInfiniteQuery.mockReturnValue(buildInfiniteQueryResult(data));
   return {
     data,
     isError: false,
@@ -335,6 +375,24 @@ function buildQueryResult(data = buildDetail()) {
     isSuccess: true,
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useQuery>;
+}
+
+function buildInfiniteQueryResult(data = buildDetail()) {
+  return {
+    data: {
+      pageParams: [1],
+      pages: [data],
+    },
+    fetchNextPage: jest.fn(),
+    hasNextPage: Boolean(data.hasNextPage),
+    isError: false,
+    isFetching: false,
+    isFetchingNextPage: false,
+    isLoading: false,
+    isRefetching: false,
+    isSuccess: true,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useInfiniteQuery>;
 }
 
 function createDeferred<T>() {
@@ -464,6 +522,7 @@ describe('ListDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedBuildPocketBaseFileUrl.mockReturnValue('photo-url');
+    mockedUseInfiniteQuery.mockReturnValue(buildInfiniteQueryResult());
     mockedUseQuery.mockReturnValue(buildQueryResult());
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
     mockedGetRestaurantListDetail.mockResolvedValue(buildDetail());
@@ -1120,6 +1179,28 @@ describe('ListDetailScreen', () => {
   });
 
   it('loads destination lists from the owner list query when detail viewer lists are empty', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildInfiniteQueryResult(
+        buildDetail({
+          viewerLists: [],
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  sourceUserId: 'friend_1',
+                  sourceUserName: 'Friend',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
     mockedUseQuery.mockImplementation((options: any) => {
       if (options.queryKey?.[0] === 'feature' && options.queryKey?.[1] === 'restaurantLists') {
         return {
@@ -1892,10 +1973,10 @@ describe('ListDetailScreen', () => {
 
   it('keeps the detail scaffold refreshing prop active until the refetch lifecycle settles', async () => {
     const refetchDeferred = createDeferred<{ data: RestaurantListDetailRecord }>();
-    const queryResult = buildQueryResult();
+    const queryResult = buildInfiniteQueryResult();
     queryResult.refetch = jest.fn(() => refetchDeferred.promise as never);
     queryResult.isRefetching = false;
-    mockedUseQuery.mockReturnValue(queryResult);
+    mockedUseInfiniteQuery.mockReturnValue(queryResult);
 
     let renderer: any = null;
 
@@ -2114,5 +2195,35 @@ describe('ListDetailScreen', () => {
 
     expect(renderer.root.findByProps({ testID: 'locked-restaurant-restaurant_private' })).toBeTruthy();
     expect(() => renderer.root.findByProps({ testID: 'save-list-item-list_item_1' })).toThrow();
+  });
+
+  it('fetches the first list-detail page and loads the next page on list end', async () => {
+    const fetchNextPage = jest.fn();
+    let infiniteQueryOptions: any = null;
+    mockedUseInfiniteQuery.mockImplementation((options: any) => {
+      infiniteQueryOptions = options;
+      return {
+        ...buildInfiniteQueryResult(buildDetail({ hasNextPage: true, page: 1, pageSize: 20 })),
+        fetchNextPage,
+        hasNextPage: true,
+      } as ReturnType<typeof useInfiniteQuery>;
+    });
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    await infiniteQueryOptions.queryFn({ pageParam: 1, signal: undefined });
+    expect(mockedGetRestaurantListDetail).toHaveBeenCalledWith('list_1', {
+      page: 1,
+      pageSize: 20,
+      signal: undefined,
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-rows' }).props.onEndReached();
+    });
+    expect(fetchNextPage).toHaveBeenCalled();
   });
 });

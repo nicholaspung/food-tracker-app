@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, View } from 'react-native';
+import { FlatList, Linking, Platform, Pressable, View } from 'react-native';
 
 import {
   AuthBrandMark,
@@ -37,6 +37,7 @@ import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDe
 import type { GroupedBookmarkedItem, OwnerItemPhotoEntry } from './listDetail/listDetailTypes';
 
 type SharedRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'SharedRestaurantList'>;
+const SHARED_LIST_PAGE_SIZE = 20;
 
 interface GroupedSharedRestaurant {
   restaurantId: string;
@@ -177,9 +178,16 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const isAuthenticated = status === 'authenticated';
 
-  const query = useQuery({
-    queryKey: restaurantListQueryKeys.shared(shareToken),
-    queryFn: ({ signal }) => getSharedRestaurantList(shareToken, { signal }),
+  const query = useInfiniteQuery({
+    queryKey: restaurantListQueryKeys.sharedPages(shareToken),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) =>
+      getSharedRestaurantList(shareToken, {
+        page: pageParam,
+        pageSize: SHARED_LIST_PAGE_SIZE,
+        signal,
+      }),
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? (lastPage.page ?? 1) + 1 : undefined,
   });
 
   useEffect(() => {
@@ -197,18 +205,37 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     };
   }, []);
 
+  const loadedSharedList = useMemo(() => {
+    const pages = query.data?.pages ?? [];
+    const firstPage = pages[0];
+    if (!firstPage) {
+      return undefined;
+    }
+    const lastPage = pages[pages.length - 1] ?? firstPage;
+
+    return {
+      ...firstPage,
+      items: pages.flatMap((page) => page.items),
+      photoPreviews: pages.flatMap((page) => page.photoPreviews),
+      page: lastPage.page ?? pages.length,
+      pageSize: lastPage.pageSize,
+      totalItems: lastPage.totalItems,
+      totalPages: lastPage.totalPages,
+      hasNextPage: lastPage.hasNextPage,
+    };
+  }, [query.data?.pages]);
   const groupedRestaurants = useMemo(
-    () => groupSharedListItems(query.data?.items ?? []),
-    [query.data?.items],
+    () => groupSharedListItems(loadedSharedList?.items ?? []),
+    [loadedSharedList?.items],
   );
   const photosByFoodItemId = useMemo(
-    () => groupSharedPhotosByFoodItemId(query.data?.photoPreviews ?? []),
-    [query.data?.photoPreviews],
+    () => groupSharedPhotosByFoodItemId(loadedSharedList?.photoPreviews ?? []),
+    [loadedSharedList?.photoPreviews],
   );
   const savedListIdsByBookmarkLookupId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
     for (const [bookmarkLookupId, rawListIds] of Object.entries(
-      query.data?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
+      loadedSharedList?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
     )) {
       const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
       for (const listId of rawListIds) {
@@ -219,8 +246,8 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       mapping.set(bookmarkLookupId, listIds);
     }
     return mapping;
-  }, [query.data?.bookmarkState.savedListIdsByBookmarkLookupId]);
-  const viewerLists = query.data?.viewerLists ?? [];
+  }, [loadedSharedList?.bookmarkState.savedListIdsByBookmarkLookupId]);
+  const viewerLists = loadedSharedList?.viewerLists ?? [];
   const defaultList = viewerLists.find((viewerList) => viewerList.isDefault);
 
   const saveReturnTarget = async () => {
@@ -323,7 +350,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     setPhotoViewerVisible(true);
   };
 
-  const list = query.data?.list ?? null;
+  const list = loadedSharedList?.list ?? null;
   const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
   const subtitle = list
     ? `${list.ownerName ? `${list.ownerName}'s list · ` : ''}${restaurantCount} ${
@@ -358,6 +385,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     <FeatureDetailScreenScaffold
       customHeader={guestHeader}
       headerScrollMode="fixed"
+      scroll={false}
       onBackPress={handleBack}
       primaryAction={
         !isAuthenticated
@@ -413,13 +441,24 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
             <PageErrorToast errorMessage={marketingLinkErrorMessage} title="Could not open website" />
             <PageErrorToast errorMessage={saveErrorMessage} title="Could not save recommendation" />
 
-            {groupedRestaurants.length === 0 ? (
-              <EmptyState
-                description="There are no restaurants in this shared list yet."
-                title="No recommendations yet"
-              />
-            ) : (
-              groupedRestaurants.map((group, groupIndex) => {
+            <FlatList
+              data={groupedRestaurants}
+              testID="shared-list-rows"
+              keyExtractor={(group) => group.restaurantId}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <EmptyState
+                  description="There are no restaurants in this shared list yet."
+                  title="No recommendations yet"
+                />
+              }
+              onEndReached={() => {
+                if (query.hasNextPage && !query.isFetchingNextPage) {
+                  void query.fetchNextPage();
+                }
+              }}
+              onEndReachedThreshold={0.4}
+              renderItem={({ item: group, index: groupIndex }) => {
                 const primaryMetaLabel = group.restaurantCity || group.restaurantCuisineType || 'Location not set';
                 const secondaryMetaLabel =
                   group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null;
@@ -456,8 +495,8 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                     secondaryMetaLabel={secondaryMetaLabel}
                   />
                 );
-              })
-            )}
+              }}
+            />
           </>
         )}
       </View>

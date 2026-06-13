@@ -11,7 +11,11 @@ import {
   trackProductEvent,
 } from '../observability/productAnalytics';
 import { SplashScreen } from '../screens/SplashScreen';
-import { queryPersister, shouldPersistQuery } from './queryPersistence';
+import {
+  queryPersister,
+  readPersistedQueryCacheMetadata,
+  shouldPersistQuery,
+} from './queryPersistence';
 import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
@@ -27,6 +31,7 @@ const queryClient = new QueryClient({
   },
 });
 const QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS = 4000;
+type QueryRestoreOutcome = 'successful_restore' | 'trimmed_restore' | 'failed_restore' | 'timeout';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -65,9 +70,11 @@ export function AppProviders({ children }: AppProvidersProps) {
     let isMounted = true;
     const restoreStartedAt = Date.now();
     let restoreFailed = false;
+    let queryRestoreOutcome: QueryRestoreOutcome = 'successful_restore';
     let unsubscribe = () => {};
 
     const restorePersistedQueries = async () => {
+      const persistedCacheMetadata = await readPersistedQueryCacheMetadata();
       const [nextUnsubscribe, restorePromise] = persistQueryClient({
         queryClient,
         persister: queryPersister,
@@ -83,11 +90,13 @@ export function AppProviders({ children }: AppProvidersProps) {
         QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS,
         'Persisted React Query cache restore timed out.',
       );
+      queryRestoreOutcome = persistedCacheMetadata?.trimmed ? 'trimmed_restore' : 'successful_restore';
     };
 
     void restorePersistedQueries()
       .catch((error) => {
         restoreFailed = true;
+        queryRestoreOutcome = isTimeoutError(error) ? 'timeout' : 'failed_restore';
         logger.warn('[AppProviders] Failed to restore persisted React Query cache:', error);
       })
       .finally(() => {
@@ -99,6 +108,7 @@ export function AppProviders({ children }: AppProvidersProps) {
               appStartupDurationMs: Date.now() - appStartedAtRef.current,
               queryRestoreDurationMs: Date.now() - restoreStartedAt,
               restoreFailed,
+              queryRestoreOutcome,
               source: 'AppProviders',
             });
           }
@@ -205,7 +215,9 @@ async function resolveProductAnalyticsAnonymousId(): Promise<string> {
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      reject(new Error(message));
+      const error = new Error(message);
+      error.name = 'TimeoutError';
+      reject(error);
     }, timeoutMs);
 
     promise.then(
@@ -219,4 +231,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       },
     );
   });
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'TimeoutError';
 }

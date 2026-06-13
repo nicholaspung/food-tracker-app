@@ -1,5 +1,6 @@
 import {
   getDefaultRestaurantList,
+  getRestaurantListBookmarkState,
   getRestaurantListCandidateRestaurants,
   removeRestaurantFoodItemBookmarkFromList,
   saveRestaurantToDefaultList,
@@ -243,6 +244,83 @@ describe('restaurantListsStore.getDefaultRestaurantList', () => {
       method: 'GET',
       signal: abortController.signal,
     });
+  });
+});
+
+describe('restaurantListsStore.getRestaurantListBookmarkState', () => {
+  beforeEach(() => {
+    mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
+    mockedUpdateCollectionRecord.mockReset();
+    mockedPocketBase.collection.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('posts only normalized visible bookmark targets to the bounded state endpoint', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      savedTargetsByBookmarkKey: {
+        'restaurant-item:restaurant-1:friend noodles': {
+          bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+          foodItemId: 'food-item-1',
+          restaurantId: 'restaurant-1',
+        },
+      },
+    });
+
+    await expect(
+      getRestaurantListBookmarkState(' default-list ', [
+        {
+          bookmarkKey: ' restaurant-item:restaurant-1:friend noodles ',
+          foodItemId: ' food-item-1 ',
+          restaurantId: ' restaurant-1 ',
+        },
+        {
+          bookmarkKey: 'menu-item-1',
+          menuItemId: ' menu-item-1 ',
+          restaurantId: ' restaurant-1 ',
+        },
+        {
+          bookmarkKey: 'missing-target',
+          restaurantId: 'restaurant-1',
+        },
+      ]),
+    ).resolves.toEqual({
+      savedTargetsByBookmarkKey: {
+        'restaurant-item:restaurant-1:friend noodles': {
+          bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+          foodItemId: 'food-item-1',
+          restaurantId: 'restaurant-1',
+        },
+      },
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurant-lists/default-list/bookmark-state',
+      {
+        method: 'POST',
+        signal: undefined,
+        body: {
+          targets: [
+            {
+              bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+              foodItemId: 'food-item-1',
+              menuItemId: undefined,
+              restaurantId: 'restaurant-1',
+            },
+            {
+              bookmarkKey: 'menu-item-1',
+              foodItemId: undefined,
+              menuItemId: 'menu-item-1',
+              restaurantId: 'restaurant-1',
+            },
+          ],
+        },
+      },
+    );
   });
 });
 

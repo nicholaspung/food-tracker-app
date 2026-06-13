@@ -1,8 +1,8 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, Share, Switch, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlatList, Pressable, Share, Switch, View } from 'react-native';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -74,6 +74,7 @@ const LIST_DETAIL_VIEW_OPTIONS: readonly SegmentedControlOption<ListDetailViewMo
   { label: 'List', value: 'list' },
   { label: 'Map', value: 'map' },
 ];
+const LIST_DETAIL_PAGE_SIZE = 20;
 const TRANSFER_LIST_PAGE_SIZE = 100;
 const TRANSFER_LIST_QUERY_KEY = ['feature', 'restaurantLists', 'my', 'transferDestinations'] as const;
 
@@ -332,9 +333,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [isDisablingShareLink, setIsDisablingShareLink] = useState(false);
   const [listSearchQuery, setListSearchQuery] = useState('');
 
-  const detailQuery = useQuery({
-    queryKey: restaurantListQueryKeys.detail(listId),
-    queryFn: ({ signal }) => getRestaurantListDetail(listId, { signal }),
+  const detailQuery = useInfiniteQuery({
+    queryKey: restaurantListQueryKeys.detailPages(listId),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) =>
+      getRestaurantListDetail(listId, {
+        page: pageParam,
+        pageSize: LIST_DETAIL_PAGE_SIZE,
+        signal,
+      }),
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? (lastPage.page ?? 1) + 1 : undefined,
   });
   const transferListsQuery = useQuery({
     enabled: transferTarget !== null,
@@ -350,19 +358,39 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(detailQuery.isRefetching);
 
+  const loadedDetail = useMemo(() => {
+    const pages = detailQuery.data?.pages ?? [];
+    const firstPage = pages[0];
+    if (!firstPage) {
+      return undefined;
+    }
+    const lastPage = pages[pages.length - 1] ?? firstPage;
+
+    return {
+      ...firstPage,
+      items: pages.flatMap((page) => page.items),
+      photoPreviews: pages.flatMap((page) => page.photoPreviews),
+      page: lastPage.page ?? pages.length,
+      pageSize: lastPage.pageSize,
+      totalItems: lastPage.totalItems,
+      totalPages: lastPage.totalPages,
+      hasNextPage: lastPage.hasNextPage,
+    };
+  }, [detailQuery.data?.pages]);
+
   const readModel = useMemo(
     () =>
       buildListDetailReadModel({
-        detail: detailQuery.data,
+        detail: loadedDetail,
         isError: detailQuery.isError,
         isLoading: detailQuery.isLoading,
         saveBookmarkTarget: null,
         userId: user?.id,
       }),
     [
-      detailQuery.data,
       detailQuery.isError,
       detailQuery.isLoading,
+      loadedDetail,
       user?.id,
     ],
   );
@@ -1222,6 +1250,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   return (
     <FeatureDetailScreenScaffold
       headerScrollMode="fixed"
+      scroll={false}
       onRefresh={handleRefresh}
       onBackPress={handleBack}
       refreshing={isPullRefreshing}
@@ -1430,34 +1459,47 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               </Pressable>
             ) : null}
 
-            {visibleRestaurantRows.length === 0 ? (
-              <EmptyState
-                actionLabel={hasListSearch ? 'Clear Search' : undefined}
-                description={
-                  hasListSearch
-                    ? 'Try another restaurant, city, cuisine, or menu item.'
-                    : isOwner && isDefaultList && showFriendMatches
-                    ? 'No friends have matching Want to Try bookmarks for these restaurants yet.'
-                    : readModel.emptyRestaurantsDescription
+            <FlatList
+              data={visibleRestaurantRows}
+              testID="list-detail-rows"
+              keyExtractor={(row) => row.group.restaurantId}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <EmptyState
+                  actionLabel={hasListSearch ? 'Clear Search' : undefined}
+                  description={
+                    hasListSearch
+                      ? 'Try another restaurant, city, cuisine, or menu item.'
+                      : isOwner && isDefaultList && showFriendMatches
+                      ? 'No friends have matching Want to Try bookmarks for these restaurants yet.'
+                      : readModel.emptyRestaurantsDescription
+                  }
+                  onAction={
+                    hasListSearch
+                      ? () => {
+                          setListSearchQuery('');
+                        }
+                      : undefined
+                  }
+                  tone="default"
+                  title={
+                    hasListSearch
+                      ? 'No matching restaurants'
+                      : isOwner && isDefaultList && showFriendMatches
+                        ? 'No friend matches yet'
+                        : 'No restaurants yet'
+                  }
+                />
+              }
+              onEndReached={() => {
+                if (detailQuery.hasNextPage && !detailQuery.isFetchingNextPage) {
+                  void detailQuery.fetchNextPage();
                 }
-                onAction={
-                  hasListSearch
-                    ? () => {
-                        setListSearchQuery('');
-                      }
-                    : undefined
-                }
-                tone="default"
-                title={
-                  hasListSearch
-                    ? 'No matching restaurants'
-                    : isOwner && isDefaultList && showFriendMatches
-                      ? 'No friend matches yet'
-                      : 'No restaurants yet'
-                }
-              />
-            ) : (
-              visibleRestaurantRows.map((row, visibleRowIndex) => {
+              }}
+              onEndReachedThreshold={0.4}
+              refreshing={isPullRefreshing}
+              onRefresh={handleRefresh}
+              renderItem={({ item: row, index: visibleRowIndex }) => {
                 const { group, groupIndex, isRestaurantLocked, primaryMetaLabel, secondaryMetaLabel } = row;
 
                 return isDefaultList && isOwner ? (
@@ -1601,8 +1643,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     secondaryMetaLabel={secondaryMetaLabel}
                   />
                 );
-              })
-            )}
+              }}
+            />
           </>
         )}
 

@@ -178,6 +178,34 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	if len(viewerPayload.Items) != 2 {
 		t.Fatalf("expected hydrated list items, got %#v", viewerPayload.Items)
 	}
+
+	paginatedViewerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=1",
+		viewerToken,
+		"",
+	)
+	if paginatedViewerResponse.Code != http.StatusOK {
+		t.Fatalf("expected paginated viewer response 200 OK, got %d: %s", paginatedViewerResponse.Code, paginatedViewerResponse.Body.String())
+	}
+	var paginatedViewerPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(paginatedViewerResponse.Body.Bytes(), &paginatedViewerPayload); err != nil {
+		t.Fatalf("failed to decode paginated viewer payload: %v; body=%s", err, paginatedViewerResponse.Body.String())
+	}
+	if len(paginatedViewerPayload.Items) != 1 || paginatedViewerPayload.Page != 1 || paginatedViewerPayload.PageSize != 1 || paginatedViewerPayload.TotalItems != 2 || paginatedViewerPayload.TotalPages != 2 || !paginatedViewerPayload.HasNextPage {
+		t.Fatalf("unexpected paginated viewer payload: %#v", paginatedViewerPayload)
+	}
 	if viewerPayload.Items[0].ID != firstListItem.Id || viewerPayload.Items[0].RestaurantID != restaurantA.Id {
 		t.Fatalf("unexpected first list item payload: %#v", viewerPayload.Items[0])
 	}

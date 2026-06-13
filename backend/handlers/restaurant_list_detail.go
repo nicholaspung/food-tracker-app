@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	defaultRestaurantListsPageSize      = 20
-	maxRestaurantListsPageSize          = 50
-	defaultRestaurantListDetailPageSize = 20
-	maxRestaurantListDetailPageSize     = 50
+	defaultRestaurantListsPageSize        = 20
+	maxRestaurantListsPageSize            = 50
+	defaultRestaurantListDetailPageSize   = 20
+	maxRestaurantListDetailPageSize       = 50
+	maxRestaurantListBookmarkStateTargets = 100
 )
 
 var errRestaurantListDetailNotFound = errors.New("restaurant list detail not found")
@@ -86,6 +87,28 @@ type restaurantListDetailItemResponse struct {
 
 type restaurantListDetailBookmarkStateResponse struct {
 	SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
+}
+
+type restaurantListBookmarkStateTargetRequest struct {
+	BookmarkKey  string `json:"bookmarkKey"`
+	RestaurantID string `json:"restaurantId"`
+	FoodItemID   string `json:"foodItemId,omitempty"`
+	MenuItemID   string `json:"menuItemId,omitempty"`
+}
+
+type restaurantListBookmarkStateRequest struct {
+	Targets []restaurantListBookmarkStateTargetRequest `json:"targets"`
+}
+
+type restaurantListBookmarkStateTargetResponse struct {
+	BookmarkKey  string `json:"bookmarkKey"`
+	RestaurantID string `json:"restaurantId"`
+	FoodItemID   string `json:"foodItemId,omitempty"`
+	MenuItemID   string `json:"menuItemId,omitempty"`
+}
+
+type restaurantListBookmarkStateResponse struct {
+	SavedTargetsByBookmarkKey map[string]restaurantListBookmarkStateTargetResponse `json:"savedTargetsByBookmarkKey"`
 }
 
 type restaurantListDetailPhotoPreviewResponse struct {
@@ -257,13 +280,48 @@ func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.Ap
 			return apis.NewBadRequestError("listId is required", nil)
 		}
 
-		response, err := getRestaurantListDetailHydratedResponse(app, e.Auth.Id, e.Auth.GetBool("isAdmin"), listID)
+		var response any
+		var err error
+		if strings.TrimSpace(e.Request.URL.Query().Get("page")) != "" || strings.TrimSpace(e.Request.URL.Query().Get("pageSize")) != "" {
+			page, pageSize, parseErr := parseRestaurantListDetailPagination(
+				e.Request.URL.Query().Get("page"),
+				e.Request.URL.Query().Get("pageSize"),
+			)
+			if parseErr != nil {
+				return apis.NewBadRequestError(parseErr.Error(), nil)
+			}
+			response, err = getRestaurantListDetailResponse(app, e.Auth.Id, e.Auth.GetBool("isAdmin"), listID, page, pageSize)
+		} else {
+			response, err = getRestaurantListDetailHydratedResponse(app, e.Auth.Id, e.Auth.GetBool("isAdmin"), listID)
+		}
 		if err != nil {
 			if errors.Is(err, errRestaurantListDetailNotFound) {
 				return apis.NewNotFoundError("list not found", nil)
 			}
 
 			return apis.NewApiError(500, "failed to load restaurant list detail", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/bookmark-state", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if listID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		requestBody := restaurantListBookmarkStateRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		response, err := buildRestaurantListBookmarkStateResponse(app, e.Auth.Id, listID, requestBody.Targets)
+		if err != nil {
+			if errors.Is(err, errRestaurantListDetailNotFound) {
+				return apis.NewNotFoundError("list not found", nil)
+			}
+			return err
 		}
 
 		return e.JSON(200, response)
@@ -1698,6 +1756,146 @@ func resolveFoodItemRestaurantID(foodItem *core.Record, visitsByID map[string]*c
 	}
 
 	return strings.TrimSpace(visitRecord.GetString("restaurant"))
+}
+
+func buildRestaurantListBookmarkStateResponse(
+	app core.App,
+	userID string,
+	listID string,
+	targets []restaurantListBookmarkStateTargetRequest,
+) (restaurantListBookmarkStateResponse, error) {
+	response := restaurantListBookmarkStateResponse{
+		SavedTargetsByBookmarkKey: map[string]restaurantListBookmarkStateTargetResponse{},
+	}
+
+	if len(targets) > maxRestaurantListBookmarkStateTargets {
+		return response, apis.NewBadRequestError("too many bookmark targets", nil)
+	}
+
+	listRecord, err := findOwnedRestaurantListRecord(app, listID, userID)
+	if err != nil {
+		return response, err
+	}
+	if !listRecord.GetBool("isDefault") {
+		return response, apis.NewBadRequestError("bookmark state can only be loaded for the default list", nil)
+	}
+
+	filter, params := buildRestaurantListBookmarkStateTargetFilter(listRecord.Id, targets)
+	if filter == "" {
+		return response, nil
+	}
+
+	records, err := app.FindRecordsByFilter("list_items", filter, "", maxRestaurantListBookmarkStateTargets, 0, params)
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load bookmark state", err)
+	}
+
+	for _, target := range normalizeRestaurantListBookmarkStateTargets(targets) {
+		for _, record := range records {
+			if !restaurantListBookmarkStateTargetMatchesRecord(target, record) {
+				continue
+			}
+
+			response.SavedTargetsByBookmarkKey[target.BookmarkKey] = restaurantListBookmarkStateTargetResponse{
+				BookmarkKey:  target.BookmarkKey,
+				RestaurantID: target.RestaurantID,
+				FoodItemID:   target.FoodItemID,
+				MenuItemID:   target.MenuItemID,
+			}
+			break
+		}
+	}
+
+	return response, nil
+}
+
+func normalizeRestaurantListBookmarkStateTargets(
+	targets []restaurantListBookmarkStateTargetRequest,
+) []restaurantListBookmarkStateTargetRequest {
+	normalizedTargets := make([]restaurantListBookmarkStateTargetRequest, 0, len(targets))
+	seen := map[string]struct{}{}
+
+	for _, target := range targets {
+		normalizedTarget := restaurantListBookmarkStateTargetRequest{
+			BookmarkKey:  strings.TrimSpace(target.BookmarkKey),
+			RestaurantID: strings.TrimSpace(target.RestaurantID),
+			FoodItemID:   strings.TrimSpace(target.FoodItemID),
+			MenuItemID:   strings.TrimSpace(target.MenuItemID),
+		}
+		if normalizedTarget.BookmarkKey == "" || normalizedTarget.RestaurantID == "" {
+			continue
+		}
+		if normalizedTarget.FoodItemID == "" && normalizedTarget.MenuItemID == "" {
+			continue
+		}
+
+		dedupeKey := normalizedTarget.BookmarkKey + "\x00" + normalizedTarget.RestaurantID + "\x00" + normalizedTarget.FoodItemID + "\x00" + normalizedTarget.MenuItemID
+		if _, exists := seen[dedupeKey]; exists {
+			continue
+		}
+
+		seen[dedupeKey] = struct{}{}
+		normalizedTargets = append(normalizedTargets, normalizedTarget)
+	}
+
+	return normalizedTargets
+}
+
+func buildRestaurantListBookmarkStateTargetFilter(
+	listID string,
+	targets []restaurantListBookmarkStateTargetRequest,
+) (string, dbx.Params) {
+	params := dbx.Params{"listId": listID}
+	clauses := make([]string, 0, len(targets))
+	seen := map[string]struct{}{}
+
+	for index, target := range normalizeRestaurantListBookmarkStateTargets(targets) {
+		lookupID := target.FoodItemID
+		if target.MenuItemID != "" {
+			lookupID = target.MenuItemID
+		}
+		if _, exists := seen[lookupID]; exists {
+			continue
+		}
+
+		seen[lookupID] = struct{}{}
+		paramKey := fmt.Sprintf("lookupId%d", index)
+		params[paramKey] = lookupID
+		clauses = append(clauses, fmt.Sprintf(
+			"(foodItem = {:%s} || userFoodItem = {:%s} || recommendedItems ?= {:%s} || menuItem = {:%s})",
+			paramKey,
+			paramKey,
+			paramKey,
+			paramKey,
+		))
+	}
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+
+	return fmt.Sprintf(`list = {:listId} && (%s)`, strings.Join(clauses, " || ")), params
+}
+
+func restaurantListBookmarkStateTargetMatchesRecord(
+	target restaurantListBookmarkStateTargetRequest,
+	record *core.Record,
+) bool {
+	if strings.TrimSpace(record.GetString("restaurant")) != target.RestaurantID {
+		return false
+	}
+
+	if target.MenuItemID != "" {
+		return strings.TrimSpace(record.GetString("menuItem")) == target.MenuItemID
+	}
+
+	for _, lookupID := range restaurantListDetailLookupIDsForRecord(record) {
+		if lookupID == target.FoodItemID {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildRestaurantListDetailBookmarkState(

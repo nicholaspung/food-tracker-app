@@ -318,6 +318,11 @@ export interface RestaurantListDetailPage extends PaginatedResult<RestaurantList
 export interface RestaurantListDetailRecord {
   list: RestaurantListRecord | null;
   items: RestaurantListItemRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
   bookmarkState: RestaurantListDetailBookmarkState;
   photoPreviews: RestaurantListDetailPhotoPreviewRecord[];
   viewerLists: RestaurantListRecord[];
