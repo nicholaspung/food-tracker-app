@@ -149,6 +149,7 @@ const useStyles = createThemedStyles((theme) => ({
   screenBody: {
     flex: 1,
     paddingBottom: 0,
+    paddingTop: 0,
   },
   subtitleText: {
     color: theme.colors.text.secondary,
@@ -318,6 +319,7 @@ const useStyles = createThemedStyles((theme) => ({
   listHeader: {
     gap: theme.spacing.sm,
     paddingBottom: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
   },
   list: {
     flex: 1,
