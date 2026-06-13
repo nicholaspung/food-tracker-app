@@ -88,6 +88,8 @@ _Avoid_: Menu item, catalog item
 The leader-selected set of restaurants and menu items for a group tasting session.
 _Avoid_: Suggestions, readiness
 
+Technical aliases / legacy names: existing API, storage, and model boundaries may still use suggestion naming for compatibility. `restaurantSuggestionId` is the selected restaurant row in a **Tasting Plan**. `itemSuggestionId` is the selected or previously proposed menu-item row in a **Tasting Plan**. `TastingSuggestionStatus` is the plan-entry selection state: `approved` means selected for the plan, `rejected` means removed or excluded, and `pending` is the legacy unresolved state. New domain docs, issue drafts, and UI copy should continue to use **Tasting Plan**, selected restaurant, and selected menu item language.
+
 **Tasting Rating Submission**:
 A participant's personal ratings for the selected menu items they tried during a group tasting session.
 _Avoid_: Assigned items
@@ -103,6 +105,8 @@ _Avoid_: tasting session mutation helper, group tasting action wrapper
 **Tasting Plan Writes**:
 The mobile module that owns leader-selected **Tasting Plan** changes before tasting starts, including adding/removing restaurants, adding/removing menu items, starting tasting, and refreshing affected session state.
 _Avoid_: tasting suggestion helper, planning screen actions
+
+Technical aliases / legacy names: existing write functions and endpoints may still use names such as `suggestTastingRestaurant`, `suggestTastingMenuItem`, `tasting_session_restaurants`, `restaurant_suggestion`, `restaurantSuggestionId`, and `itemSuggestionId`. Those names refer to selected **Tasting Plan** entries, not a separate suggestions domain.
 
 **Tasting Rating Submission Writes**:
 The mobile module that owns submitting a participant's **Tasting Rating Submission**, including payload construction, generated Visit photo upload handoff, cache effects, and leader completion.
@@ -135,6 +139,10 @@ _Avoid_: photo submit hook, process photos helper
 **Friend Writes**:
 The mobile module that owns friend request and friendship mutation flows, including offline replay payloads, friendship cache effects, queued feedback, and request entry adapters such as manual code entry and QR scanning.
 _Avoid_: friend action helper, social mutation wrapper
+
+**Friend Invite Handoff**:
+The TTL-bounded post-signup handoff that stores inviter identity and the invited app-user id locally so signup can complete the inviter relationship after authentication without persisting the invited email.
+_Avoid_: friend suggestion, friend recommendation, pending friendship
 
 **Feedback Writes**:
 The mobile module that owns user feedback creation and feedback thread replies, including offline replay payloads, feedback list/thread cache effects, and queued feedback.
@@ -273,6 +281,8 @@ _Avoid_: notification inbox, user notification history
 - The leader may move between restaurant selection and menu item selection while planning; only starting the tasting locks the **Tasting Plan**.
 - A **Tasting Plan** is ready to start when it has at least one selected restaurant and at least one selected menu item.
 - Every participant sees all selected menu items in the **Tasting Plan** and chooses which items to include in their own **Tasting Rating Submission**.
+- **Tasting Rating Submission** payloads identify the selected **Tasting Plan** restaurant with the legacy `restaurantSuggestionId` field.
+- **Tasting Rating Submission** payload item ids point at selected **Tasting Plan** menu-item rows, even when the payload field is named `itemId`.
 - Saving a **Tasting Rating Submission** creates or updates the participant's own restaurant visit records immediately.
 - Reviewing a **Tasting Rating Submission** is the final in-progress stage of the **Tasting Session Lifecycle** before completion.
 - A participant may edit and resubmit their **Tasting Rating Submission** until the group tasting session is completed.
@@ -322,6 +332,11 @@ _Avoid_: notification inbox, user notification history
 - Queued Visit replay may preserve **Suggestion Provenance**, but stale provenance must not block creating the **Visit Item**.
 - **Photo Processing Submission** uses **Visit Writes** and **Food Product Writes** to create entries from processed photos.
 - **Friend Writes** preserve the write lifecycle for friend request send, accept, decline, cancel, and remove actions.
+- A **Friend Invite Handoff** is created when signup receives a valid inviter code and needs to complete the inviter relationship after auth.
+- A **Friend Invite Handoff** is a local auth/friendship handoff, not a friend recommendation surface or a normal friend request.
+- A **Friend Invite Handoff** stores inviter identity, invited app-user id, created timestamp, and expiry timestamp, but not the invited user's email.
+- A **Friend Invite Handoff** expires after 24 hours and must be cleared on accept, dismiss, invalid parse or shape, account mismatch, or expiry.
+- Accepting a **Friend Invite Handoff** creates or accepts the relevant friendship through **Friend Writes** behavior.
 - **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
 - **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.
 - **Settings Preferences** include default Visit, Restaurant, Restaurant List, and Home feed preferences.
@@ -416,3 +431,4 @@ _Avoid_: notification inbox, user notification history
 - "custom" in bill splitting was ambiguous with receipt scanning - resolved: **Custom Split** may start from a **Receipt Scan** or from manual item entry.
 - "Saved list" was ambiguous with generic saved states - resolved: the default Restaurant List is **Want to Try**.
 - "receipt review" was ambiguous between extraction preview and draft editing - resolved: **Receipt Scan** only previews extraction results; **Bill Draft** owns editing and assignment.
+- "pending friend suggestion" was used for the signup inviter handoff - resolved: use **Friend Invite Handoff** in product and domain docs, reserving `pending_friend_suggestion_v1` and friend-suggestion API copy for legacy implementation naming.
