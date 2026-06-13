@@ -12,6 +12,7 @@ import {
 } from './tastingSessionsApiStore';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 import { uploadVisitPhotos } from './visitPhotoUploads';
+import { syncVisitMutationCaches } from './visitsQuery';
 
 export interface TastingRatingDraftPhoto {
   id: string;
@@ -178,6 +179,10 @@ export function useTastingRatingSubmissionWrites() {
         ]);
       }
 
+      await syncVisitMutationCaches(queryClient, {
+        includeUsage: nextUploadedKeys.size > 0,
+        includeVisitPhotos: nextUploadedKeys.size > 0,
+      });
       await refreshTastingSession(queryClient, sessionId);
       return {
         result: nextSession,

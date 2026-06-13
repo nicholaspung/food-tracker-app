@@ -31,7 +31,11 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   }, [lifecycle.redirectDestination, navigation]);
 
   return (
-    <FeatureDetailScreenScaffold onBackPress={() => navigation.navigate('TastingSessions')} title="Tasting Session">
+    <FeatureDetailScreenScaffold
+      headerScrollMode="fixed"
+      onBackPress={() => navigation.navigate('TastingSessions')}
+      title="Tasting Session"
+    >
       <EmptyState description="Opening the right tasting step." title="Loading session" />
     </FeatureDetailScreenScaffold>
   );

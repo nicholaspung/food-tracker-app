@@ -6,13 +6,22 @@ import {
   completeTastingSession,
   submitTastingRatings,
 } from '../features/store/tastingSessionsApiStore';
+import { homeFeedMapQueryKeys } from '../features/store/homeFeedMapQuery';
+import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
+import { usageQueryKeys } from '../features/store/usageQuery';
 import { useTastingRatingSubmissionWrites } from '../features/store/useTastingRatingSubmissionWrites';
+import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
+import { visitsQueryKeys } from '../features/store/visitsQuery';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import type { TastingMenuItemRecord, TastingRestaurantRecord, TastingSessionRecord } from '../features/models';
 
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
 }));
 
 jest.mock('../features/store/tastingSessionsApiStore', () => ({
@@ -189,6 +198,21 @@ describe('useTastingRatingSubmissionWrites', () => {
     );
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.detail('session_1'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: homeFeedQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: homeFeedMapQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitsQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitPhotosQueryKeys.root,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: usageQueryKeys.monthlyRoot,
     });
 
     await act(async () => {

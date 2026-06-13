@@ -1644,7 +1644,17 @@ func resolveGeneratedTastingVisit(app core.App, userID string, restaurantID stri
 	if cache[restaurantID] != nil {
 		return cache[restaurantID], nil
 	}
-	record, err := app.FindFirstRecordByFilter("visits", "user = {:user} && restaurant = {:restaurant} && visibility = 'friends'", dbx.Params{"user": userID, "restaurant": restaurantID})
+	now := time.Now().UTC()
+	visitLocalDate := now.Format("2006-01-02")
+	record, err := app.FindFirstRecordByFilter(
+		"visits",
+		"user = {:user} && restaurant = {:restaurant} && visibility = 'friends' && "+visitLocalDateFieldName+" = {:visitLocalDate}",
+		dbx.Params{
+			"user":           userID,
+			"restaurant":     restaurantID,
+			"visitLocalDate": visitLocalDate,
+		},
+	)
 	if err == nil && record != nil {
 		cache[restaurantID] = record
 		return record, nil
@@ -1656,12 +1666,11 @@ func resolveGeneratedTastingVisit(app core.App, userID string, restaurantID stri
 	if err != nil {
 		return nil, apis.NewApiError(500, "internal error", err)
 	}
-	now := time.Now().UTC()
 	record = core.NewRecord(collection)
 	record.Set("restaurant", restaurantID)
 	record.Set("user", userID)
 	record.Set("visitDate", now)
-	record.Set(visitLocalDateFieldName, now.Format("2006-01-02"))
+	record.Set(visitLocalDateFieldName, visitLocalDate)
 	record.Set("visibility", "friends")
 	if err := app.Save(record); err != nil {
 		return nil, apis.NewApiError(500, "failed to create generated visit", err)
@@ -1683,10 +1692,10 @@ func upsertGeneratedTastingFoodItem(app core.App, userID string, visitID string,
 			return nil, apis.NewApiError(500, "internal error", err)
 		}
 		record = core.NewRecord(collection)
-		record.Set("visit", visitID)
-		record.Set("user", userID)
-		record.Set("itemType", foodItemTypeVisitItem)
 	}
+	record.Set("visit", visitID)
+	record.Set("user", userID)
+	record.Set("itemType", foodItemTypeVisitItem)
 	record.Set("name", strings.TrimSpace(menuItemRecord.GetString("name")))
 	record.Set("rating", payload.Rating)
 	record.Set("notes", emptyStringToNil(payload.Note))

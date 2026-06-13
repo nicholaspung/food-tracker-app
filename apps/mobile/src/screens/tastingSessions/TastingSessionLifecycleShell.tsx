@@ -26,7 +26,7 @@ export function TastingSessionLifecycleShell({
 }: TastingSessionLifecycleShellProps) {
   if (isError && !session) {
     return (
-      <FeatureDetailScreenScaffold onBackPress={onBackPress} title={title}>
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={onBackPress} title={title}>
         <ErrorState description="Could not load this tasting session." title="Session unavailable" />
       </FeatureDetailScreenScaffold>
     );
@@ -34,7 +34,7 @@ export function TastingSessionLifecycleShell({
 
   if (!session) {
     return (
-      <FeatureDetailScreenScaffold onBackPress={onBackPress} title={title}>
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={onBackPress} title={title}>
         <EmptyState title={loadingTitle} />
       </FeatureDetailScreenScaffold>
     );

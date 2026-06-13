@@ -1641,6 +1641,7 @@ export function RestaurantDiscoveryScreen({
   return (
     <BackHeaderScreenScaffold
       bodyStyle={isSearchMapMode ? styles.mapBody : undefined}
+      headerScrollMode="fixed"
       onBackPress={() => {
         navigation.goBack();
       }}

@@ -175,6 +175,7 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
     >
       {(availableSession) => (
         <FeatureDetailScreenScaffold
+          headerScrollMode="fixed"
           onBackPress={() => navigation.navigate('TastingSessions')}
           subtitle={
             availableSession.status === 'completed'

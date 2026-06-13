@@ -299,6 +299,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
               steps={TASTING_SESSION_LIFECYCLE_STEPS}
             />
           }
+          headerScrollMode="fixed"
           onBackPress={() => navigation.navigate('TastingSessions')}
           rightAccessory={
             isLeader ? (

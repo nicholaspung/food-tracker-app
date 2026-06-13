@@ -316,6 +316,7 @@ export function RestaurantDiscoveryRestaurantScreen({
 
   return (
     <FeatureDetailScreenScaffold
+      headerScrollMode="fixed"
       onBackPress={() => {
         navigation.goBack();
       }}

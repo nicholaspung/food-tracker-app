@@ -61,9 +61,11 @@ type tastingSessionItemEntry struct {
 }
 
 type tastingSessionRatingEntry struct {
-	ParticipantID string  `json:"participantId"`
-	Rating        float64 `json:"rating"`
-	Note          string  `json:"note"`
+	ParticipantID       string  `json:"participantId"`
+	Rating              float64 `json:"rating"`
+	Note                string  `json:"note"`
+	GeneratedVisitID    string  `json:"generatedVisitId"`
+	GeneratedFoodItemID string  `json:"generatedFoodItemId"`
 }
 
 func parseJSONResponse[T any](t *testing.T, body []byte) T {
@@ -1051,6 +1053,163 @@ func TestTastingSessionWorkflowEndpointsPersistBackendState(t *testing.T) {
 	}
 	if completedSession.Restaurants[0].Items[0].Ratings[0].Note != "Crisp finish" {
 		t.Fatalf("expected persisted rating note, got %#v", completedSession.Restaurants[0].Items[0].Ratings)
+	}
+}
+
+func TestTastingSessionRatingCreatesCurrentVisitForHomeFeedWhenOlderRestaurantVisitExists(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, authToken := createAuthUser(t, server.app, false, false)
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		authToken,
+		`{"name":"Current Flight","joinDurationMinutes":60}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		authToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock membership to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	suggestRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		authToken,
+		`{"restaurantName":"Snack Lab"}`,
+	)
+	if suggestRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected suggest restaurant to succeed, got %d: %s", suggestRestaurantResponse.Code, suggestRestaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, suggestRestaurantResponse.Body.Bytes())
+	restaurantSuggestionID := sessionWithRestaurant.Restaurants[0].ID
+	restaurantID := sessionWithRestaurant.Restaurants[0].RestaurantID
+
+	olderVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":     restaurantID,
+		"user":           leader.Id,
+		"visitDate":      "2026-01-10T18:00:00.000Z",
+		"visitLocalDate": "2026-01-10",
+		"visibility":     "friends",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", olderVisit.Id, "2026-01-10 18:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":      olderVisit.Id,
+		"user":       leader.Id,
+		"name":       "Old Chips",
+		"rating":     2,
+		"visibility": "friends",
+	})
+
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Sea Salt Chips",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+
+	addItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/items",
+		authToken,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
+	)
+	if addItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected add item to succeed, got %d: %s", addItemResponse.Code, addItemResponse.Body.String())
+	}
+	sessionWithItem := parseJSONResponse[tastingSessionResponse](t, addItemResponse.Body.Bytes())
+	itemID := sessionWithItem.Restaurants[0].Items[0].ID
+
+	startRatingResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/start",
+		authToken,
+		`{}`,
+	)
+	if startRatingResponse.Code != http.StatusOK {
+		t.Fatalf("expected start rating to succeed, got %d: %s", startRatingResponse.Code, startRatingResponse.Body.String())
+	}
+
+	rateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		authToken,
+		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+itemID+`","rating":5,"note":"Fresh tasting"}]}]}`,
+	)
+	if rateResponse.Code != http.StatusOK {
+		t.Fatalf("expected rate item to succeed, got %d: %s", rateResponse.Code, rateResponse.Body.String())
+	}
+	ratedSession := parseJSONResponse[tastingSessionResponse](t, rateResponse.Body.Bytes())
+	generatedVisitID := ratedSession.Restaurants[0].Items[0].Ratings[0].GeneratedVisitID
+	if generatedVisitID == "" {
+		t.Fatalf("expected rating response to include generated visit id, got %#v", ratedSession.Restaurants[0].Items[0].Ratings[0])
+	}
+	if generatedVisitID == olderVisit.Id {
+		t.Fatalf("expected tasting rating to create a current visit instead of reusing older visit %s", olderVisit.Id)
+	}
+
+	homeFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=5&scope=mine&typeFilter=visits&sort=created",
+		authToken,
+		"",
+	)
+	if homeFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected home feed to load, got %d: %s", homeFeedResponse.Code, homeFeedResponse.Body.String())
+	}
+
+	var homeFeedPayload struct {
+		Items []struct {
+			Visit *struct {
+				ID    string `json:"id"`
+				Items []struct {
+					Name string `json:"name"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+		TotalVisits int `json:"totalVisits"`
+	}
+	if err := json.Unmarshal(homeFeedResponse.Body.Bytes(), &homeFeedPayload); err != nil {
+		t.Fatalf("failed to parse home feed response: %v", err)
+	}
+	if homeFeedPayload.TotalVisits != 2 {
+		t.Fatalf("expected old visit and current tasting visit in totals, got %d: %#v", homeFeedPayload.TotalVisits, homeFeedPayload)
+	}
+	if len(homeFeedPayload.Items) == 0 || homeFeedPayload.Items[0].Visit == nil {
+		t.Fatalf("expected generated tasting visit to appear in home feed, got %#v", homeFeedPayload)
+	}
+	if homeFeedPayload.Items[0].Visit.ID != generatedVisitID {
+		t.Fatalf("expected generated tasting visit first in home feed, got %s want %s", homeFeedPayload.Items[0].Visit.ID, generatedVisitID)
+	}
+	if len(homeFeedPayload.Items[0].Visit.Items) != 1 || homeFeedPayload.Items[0].Visit.Items[0].Name != "Sea Salt Chips" {
+		t.Fatalf("expected generated tasting item on first home feed visit, got %#v", homeFeedPayload.Items[0].Visit.Items)
 	}
 }
 
