@@ -193,7 +193,7 @@ export function VisitMenuItemOptionRow({
                   size={12}
                 />
                 <Text tone="success" variant="bodySm">
-                  {`Ate ${normalizedEatenCount} ${normalizedEatenCount === 1 ? 'time' : 'times'}`}
+                  {`Had ${normalizedEatenCount} ${normalizedEatenCount === 1 ? 'time' : 'times'}`}
                 </Text>
               </View>
             ) : null}
@@ -205,7 +205,7 @@ export function VisitMenuItemOptionRow({
                   size={12}
                 />
                 <Text tone="info" variant="bodySm">
-                  {`Ate ${normalizedFriendEatenCount} ${normalizedFriendEatenCount === 1 ? 'time' : 'times'}`}
+                  {`Had ${normalizedFriendEatenCount} ${normalizedFriendEatenCount === 1 ? 'time' : 'times'}`}
                 </Text>
               </View>
             ) : null}

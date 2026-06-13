@@ -55,6 +55,18 @@ const useStyles = createThemedStyles((theme) => ({
     flexWrap: "wrap",
     gap: theme.spacing.xs,
   },
+  historyBadge: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
   menuItemListItem: {
     backgroundColor: "transparent",
     borderColor: "transparent",
@@ -66,10 +78,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   menuSuggestionDescription: {
     gap: theme.spacing.xxs,
-  },
-  menuSuggestionRow: {
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.subtle,
   },
   menuItemSeparator: {
     backgroundColor: theme.colors.border.subtle,
@@ -118,6 +126,10 @@ function buildLatestLocationLabel(
   }
 
   return `Latest at ${parts.join(" • ")}`;
+}
+
+function buildHadCountLabel(orderCount: number) {
+  return `Had ${formatCount(orderCount, "time")}`;
 }
 
 export function RestaurantDiscoveryRestaurantScreen({
@@ -472,12 +484,29 @@ export function RestaurantDiscoveryRestaurantScreen({
                 const orderedHistoryLabel = row.meta.find(
                   (meta) => meta.label,
                 )?.label;
+                const orderedHistory = row.orderedHistory;
+                const exactHistoryOrderCount =
+                  orderedHistory?.kind === "exactLocation" &&
+                  orderedHistory.orderCount > 0
+                    ? orderedHistory.orderCount
+                    : 0;
 
                 return (
                   <Fragment key={item.id}>
                     <ListItem
                       description={
-                        orderedHistoryLabel ? (
+                        exactHistoryOrderCount > 0 ? (
+                          <View style={styles.historyBadge}>
+                            <Ionicons
+                              color={theme.colors.text.success}
+                              name="restaurant-outline"
+                              size={12}
+                            />
+                            <Text tone="success" variant="bodySm">
+                              {buildHadCountLabel(exactHistoryOrderCount)}
+                            </Text>
+                          </View>
+                        ) : orderedHistoryLabel ? (
                           <Text tone="secondary" variant="bodySm">
                             {orderedHistoryLabel}
                           </Text>
@@ -547,11 +576,6 @@ export function RestaurantDiscoveryRestaurantScreen({
                     <ListItem
                       description={
                         <View style={styles.menuSuggestionDescription}>
-                          {suggestion.orderedHistory ? (
-                            <Text tone="secondary" variant="bodySm">
-                              {suggestion.orderedHistory.label}
-                            </Text>
-                          ) : null}
                           <View style={styles.itemMetaRow}>
                             <Text tone="secondary" variant="bodySm">
                               Suggested from {sourceRestaurantCount}{" "}
@@ -560,31 +584,11 @@ export function RestaurantDiscoveryRestaurantScreen({
                                 : "related locations"}
                             </Text>
                           </View>
-                          <Text tone="secondary" variant="bodySm">
-                            Starts a visit here with this item preselected.
-                          </Text>
                         </View>
                       }
-                      onPress={() => {
-                        navigation.navigate("CreateVisit", {
-                          preselectedRestaurantId: restaurant.id,
-                          preselectedRestaurantName: restaurant.name,
-                          preselectedMenuItemId: suggestion.id,
-                          preselectedMenuItemName: suggestion.name,
-                          preselectedMenuItemSuggestionSource:
-                            suggestion.suggestionSource,
-                        });
-                      }}
-                      style={styles.menuSuggestionRow}
+                      style={styles.menuItemListItem}
                       testID={`restaurant-discovery-related-menu-suggestion-${index}`}
                       title={suggestion.name}
-                      trailing={
-                        <Ionicons
-                          color={theme.colors.text.brand}
-                          name="chevron-forward"
-                          size={18}
-                        />
-                      }
                     />
                     {index < relatedMenuSuggestions.length - 1 ? (
                       <View style={styles.menuItemSeparator} />

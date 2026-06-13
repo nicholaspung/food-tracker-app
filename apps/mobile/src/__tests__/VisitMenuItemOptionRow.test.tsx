@@ -123,9 +123,9 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Ate 2 times' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Had 2 times' })).toBeDefined();
     expect(renderer.root.findByProps({ name: 'restaurant-outline' }).props.color).toBe('success');
-    expect(renderer.root.findByProps({ children: 'Ate 2 times' }).props.tone).toBe('success');
+    expect(renderer.root.findByProps({ children: 'Had 2 times' }).props.tone).toBe('success');
 
     await act(async () => {
       renderer.update(
@@ -138,7 +138,7 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Ate 1 time' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Had 1 time' })).toBeDefined();
 
     await act(async () => {
       renderer.update(
@@ -154,7 +154,7 @@ describe('VisitMenuItemOptionRow', () => {
     expect(
       renderer.root.findAll(
         (node: { props: { children?: React.ReactNode } }) =>
-          node.props.children === 'Ate 1 time' || node.props.children === 'Ate 2 times',
+          node.props.children === 'Had 1 time' || node.props.children === 'Had 2 times',
       ),
     ).toHaveLength(0);
   });
@@ -173,9 +173,9 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Ate 3 times' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Had 3 times' })).toBeDefined();
     expect(renderer.root.findByProps({ name: 'people-outline' }).props.color).toBe('info');
-    expect(renderer.root.findByProps({ children: 'Ate 3 times' }).props.tone).toBe('info');
+    expect(renderer.root.findByProps({ children: 'Had 3 times' }).props.tone).toBe('info');
 
     await act(async () => {
       renderer.update(
@@ -188,7 +188,7 @@ describe('VisitMenuItemOptionRow', () => {
       );
     });
 
-    expect(renderer.root.findByProps({ children: 'Ate 1 time' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Had 1 time' })).toBeDefined();
 
     await act(async () => {
       renderer.update(
@@ -204,7 +204,7 @@ describe('VisitMenuItemOptionRow', () => {
     expect(
       renderer.root.findAll(
         (node: { props: { children?: React.ReactNode } }) =>
-          node.props.children === 'Ate 1 time' || node.props.children === 'Ate 3 times',
+          node.props.children === 'Had 1 time' || node.props.children === 'Had 3 times',
       ),
     ).toHaveLength(0);
   });

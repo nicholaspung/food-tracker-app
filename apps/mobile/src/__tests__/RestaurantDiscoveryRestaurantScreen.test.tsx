@@ -116,8 +116,8 @@ jest.mock("../theme", () => ({
               success: "success",
             },
           },
-          radii: { md: 8 },
-          spacing: { md: 16, sm: 8, xs: 4 },
+          radii: { md: 8, pill: 999 },
+          spacing: { md: 16, sm: 8, xs: 4, xxs: 2 },
         },
         ...args,
       ),
@@ -589,10 +589,11 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
 
     const text = renderer.root.findAllByType("Text").map(collectText).join(" ");
     expect(text).toContain("Suggested from 2 related locations");
+    expect(text).not.toContain("Starts a visit here with this item preselected.");
     expect(text).not.toContain("Restaurant Group");
   });
 
-  it("renders ordered-history labels on exact menu rows and related-location suggestions", () => {
+  it("renders exact ordered-history badges on menu rows without adding history labels to suggestions", () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {
@@ -719,13 +720,14 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
     const listItemTitles = renderer.root
       .findAllByType("ListItem")
       .map((node: any) => node.props.title);
-    expect(text).toContain("Had here");
-    expect(text).toContain("Had at related locations");
+    expect(text).toContain("Had 1 time");
+    expect(text).not.toContain("Had here");
+    expect(text).not.toContain("Had at related locations");
     expect(listItemTitles).toContain("No History Item");
     expect(text).not.toContain("User typed ramen text");
   });
 
-  it("starts a visit with the exact restaurant and suggested item selected", () => {
+  it("renders related-location suggestions as informational rows", () => {
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {
@@ -783,26 +785,18 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
     });
     const renderer = renderScreen();
 
-    act(() => {
-      renderer.root
-        .findByProps({
-          testID: "restaurant-discovery-related-menu-suggestion-0",
-        })
-        .props.onPress();
+    const suggestionRow = renderer.root.findByProps({
+      testID: "restaurant-discovery-related-menu-suggestion-0",
     });
 
-    expect(mockNavigate).toHaveBeenCalledWith("CreateVisit", {
-      preselectedRestaurantId: "restaurant-1",
-      preselectedRestaurantName: "Erewhon West Hollywood",
-      preselectedMenuItemId: "related-location:coconut yogurt",
-      preselectedMenuItemName: "Coconut Yogurt",
-      preselectedMenuItemSuggestionSource: {
-        normalizedItemName: "coconut yogurt",
-        sourceMenuItemId: "menu-item-2",
-        sourceRestaurantId: "restaurant-2",
-        type: "groupMenuSuggestion",
-      },
-    });
+    expect(suggestionRow.props.title).toBe("Coconut Yogurt");
+    expect(suggestionRow.props.onPress).toBeUndefined();
+    expect(suggestionRow.props.trailing).toBeUndefined();
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    const text = renderer.root.findAllByType("Text").map(collectText).join(" ");
+    expect(text).toContain("Suggested from 1 related location");
+    expect(text).not.toContain("Starts a visit here with this item preselected.");
   });
 
   it("hides related-location suggestions when none qualify", () => {

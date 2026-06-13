@@ -69,6 +69,10 @@ export interface FoodDiscoveryMenuSelectionSuggestion extends MenuSelectionSugge
   orderedHistory?: FoodDiscoveryOrderedHistory;
 }
 
+export interface FoodDiscoveryMenuCatalogRow extends RestaurantMapItem {
+  orderedHistory?: FoodDiscoveryOrderedHistory;
+}
+
 interface FoodDiscoveryRestaurantDetailReadModel {
   allLocationsHistory: AllLocationsHistoryRecord | undefined;
   allLocationsHistoryErrorMessage: string | null;
@@ -79,7 +83,7 @@ interface FoodDiscoveryRestaurantDetailReadModel {
   groupMenuSuggestionsLoading: boolean;
   menuCatalogErrorMessage: string | null;
   menuCatalogLoading: boolean;
-  menuCatalogRows: RestaurantMapItem[];
+  menuCatalogRows: FoodDiscoveryMenuCatalogRow[];
   menuItems: MenuItemRecord[];
   menuSelectionSuggestions: MenuSelectionSuggestion[];
   refetchAllLocationsHistory: () => Promise<unknown>;
@@ -293,7 +297,7 @@ function buildFoodDiscoveryMenuCatalogRows(
   items: readonly MenuItemRecord[],
   allLocationsHistory: AllLocationsHistoryRecord | undefined,
   currentRestaurantId: string,
-): RestaurantMapItem[] {
+): FoodDiscoveryMenuCatalogRow[] {
   return [...items]
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
     .map((item) => {
@@ -308,6 +312,7 @@ function buildFoodDiscoveryMenuCatalogRows(
         id: item.id,
         meta: buildOrderedHistoryMeta(orderedHistory),
         name: item.name,
+        ...(orderedHistory ? { orderedHistory } : {}),
       };
     });
 }
