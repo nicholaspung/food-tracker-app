@@ -439,10 +439,32 @@ describe('NotesScreen', () => {
     expect(findBannerNodes().length).toBeGreaterThan(0);
 
     await act(async () => {
-      renderer?.root.findByType('MockSegmentedControl').props.onChange('all');
+      renderer?.root.findByType('MockSegmentedControl').props.onChange('unused');
     });
 
     expect(findBannerNodes()).toHaveLength(0);
+  });
+
+  it('does not expose the removed All notes filter', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const filterOptions = renderer?.root.findByType('MockSegmentedControl').props.options;
+
+    expect(filterOptions).toEqual([
+      expect.objectContaining({ label: 'Unused', value: 'unused' }),
+      expect.objectContaining({ label: 'Used', value: 'used' }),
+    ]);
   });
 
   it('renders used note cards with the default white card tone', async () => {
@@ -1227,7 +1249,6 @@ describe('NotesScreen', () => {
     expect(filterOptions).toEqual([
       expect.objectContaining({ value: 'unused', badgeCount: 1 }),
       expect.objectContaining({ value: 'used', badgeCount: 1 }),
-      expect.objectContaining({ value: 'all', badgeCount: 2 }),
     ]);
   });
 

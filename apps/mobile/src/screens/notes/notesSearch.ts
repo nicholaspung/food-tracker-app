@@ -4,16 +4,12 @@ import type { NotesFilter } from './notesTypes';
 export const MIN_SERVER_NOTE_SEARCH_LENGTH = 2;
 export const NOTE_SEARCH_DEBOUNCE_MS = 250;
 
-export function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | 'used' {
+export function resolveNoteStatusFilter(activeFilter: NotesFilter): 'draft' | 'used' {
   if (activeFilter === 'unused') {
     return 'draft';
   }
 
-  if (activeFilter === 'used') {
-    return 'used';
-  }
-
-  return 'all';
+  return 'used';
 }
 
 export function buildNotePreview(content: string): string {

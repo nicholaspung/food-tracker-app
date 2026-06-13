@@ -5,6 +5,7 @@ import { AppState, Linking, Switch, View } from 'react-native';
 
 import {
   BackHeaderScreenScaffold,
+  PageInfoToast,
   SectionCard,
 } from '../components/shared';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -510,13 +511,11 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
             </SectionCard>
 
             <PageErrorToast errorMessage={errorMessage} title="Notification preferences update failed" />
-            {successMessage ? (
-              <Card tone="success">
-                <Text tone="success" variant="label">
-                  {successMessage}
-                </Text>
-              </Card>
-            ) : null}
+            <PageInfoToast
+              message={successMessage}
+              title="Notification preferences saved"
+              tone="success"
+            />
           </>
         </SettingsDetailReadStateView>
       </View>

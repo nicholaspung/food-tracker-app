@@ -1,1 +1,1 @@
-export type NotesFilter = 'unused' | 'used' | 'all';
+export type NotesFilter = 'unused' | 'used';

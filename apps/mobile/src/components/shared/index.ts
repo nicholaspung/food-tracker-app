@@ -36,6 +36,7 @@ export * from './LocalDatePickerField';
 export * from './OptionList';
 export * from './PhotoViewerModal';
 export * from './PageErrorToast';
+export * from './PageInfoToast';
 export * from './PendingQueuedWriteRow';
 export * from './PhotoDetectedDateField';
 export * from './PhotoInputField';

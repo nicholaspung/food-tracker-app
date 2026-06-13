@@ -7,24 +7,29 @@ import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
 
+type ToastTone = 'danger' | 'info' | 'success' | 'warning';
+
 interface ErrorToastState {
   id: number;
   title: string;
   message: string;
+  tone: ToastTone;
   actionLabel?: string;
   onAction?: () => void;
   source?: string;
 }
 
-interface ShowErrorOptions {
+interface ShowToastOptions {
   title?: string;
+  tone?: ToastTone;
   actionLabel?: string;
   onAction?: () => void;
   source?: string;
 }
 
 interface ErrorToastContextValue {
-  showError: (message: string, options?: ShowErrorOptions) => void;
+  showToast: (message: string, options?: ShowToastOptions) => void;
+  showError: (message: string, options?: Omit<ShowToastOptions, 'tone'>) => void;
   dismissError: () => void;
 }
 
@@ -36,6 +41,20 @@ const EXIT_ANIMATION_MS = 140;
 const HIDDEN_Y_OFFSET = -24;
 const AUTO_DISMISS_MS = 5000;
 const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
+
+function getDefaultTitle(tone: ToastTone): string {
+  switch (tone) {
+    case 'success':
+      return 'Saved';
+    case 'info':
+      return 'Info';
+    case 'warning':
+      return 'Heads up';
+    case 'danger':
+    default:
+      return DEFAULT_ERROR_TITLE;
+  }
+}
 
 export function ErrorToastProvider({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
@@ -94,22 +113,34 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
     });
   }, [opacity, toast, translateY]);
 
-  const showError = useCallback((messageValue: string, options?: ShowErrorOptions) => {
+  const showToast = useCallback((messageValue: string, options?: ShowToastOptions) => {
     const message = messageValue.trim();
     if (!message) {
       return;
     }
 
+    const tone = options?.tone ?? 'danger';
     nextToastIdRef.current += 1;
     setToast({
       id: nextToastIdRef.current,
-      title: options?.title?.trim() || DEFAULT_ERROR_TITLE,
+      title: options?.title?.trim() || getDefaultTitle(tone),
       message,
+      tone,
       actionLabel: options?.actionLabel?.trim() || undefined,
       onAction: options?.onAction,
       source: options?.source?.trim() || 'unknown',
     });
   }, []);
+
+  const showError = useCallback<ErrorToastContextValue['showError']>(
+    (message, options) => {
+      showToast(message, {
+        ...options,
+        tone: 'danger',
+      });
+    },
+    [showToast],
+  );
 
   useEffect(() => {
     if (!toast) {
@@ -123,6 +154,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
         messageLength: toast.message.length,
         source: 'ErrorToastProvider',
         title: toast.title,
+        tone: toast.tone,
         toastSource: toast.source ?? 'unknown',
       });
     }
@@ -152,6 +184,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       actionLabel: toast.actionLabel ?? null,
       source: 'ErrorToastProvider',
       title: toast.title,
+      tone: toast.tone,
       toastSource: toast.source ?? 'unknown',
     });
     toast.onAction();
@@ -159,11 +192,30 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
 
   const contextValue = useMemo<ErrorToastContextValue>(
     () => ({
+      showToast,
       showError,
       dismissError,
     }),
-    [dismissError, showError],
+    [dismissError, showError, showToast],
   );
+
+  const toastTone = toast?.tone ?? 'danger';
+  const toastBorderColor =
+    toastTone === 'success'
+      ? theme.colors.status.successBorder
+      : toastTone === 'info'
+        ? theme.colors.status.infoBorder
+        : toastTone === 'warning'
+          ? theme.colors.status.warningBorder
+          : theme.colors.status.dangerBorder;
+  const toastBackgroundColor =
+    toastTone === 'success'
+      ? theme.colors.status.successBg
+      : toastTone === 'info'
+        ? theme.colors.status.infoBg
+        : toastTone === 'warning'
+          ? theme.colors.status.warningBg
+          : theme.colors.status.dangerBg;
 
   const styles = StyleSheet.create({
     safeAreaContainer: {
@@ -183,8 +235,8 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       maxWidth: 640,
       borderRadius: theme.radii.md,
       borderWidth: 1,
-      borderColor: theme.colors.status.dangerBorder,
-      backgroundColor: theme.colors.status.dangerBg,
+      borderColor: toastBorderColor,
+      backgroundColor: toastBackgroundColor,
       paddingVertical: theme.spacing.xs,
       paddingHorizontal: theme.spacing.sm,
       gap: theme.spacing.xs,
@@ -243,10 +295,10 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
                 style={styles.toast}
               >
                 <View style={styles.messageGroup}>
-                  <Text tone="danger" variant="label" numberOfLines={1}>
+                  <Text tone={toast.tone} variant="label" numberOfLines={1}>
                     {toast.title}
                   </Text>
-                  <Text tone="danger" numberOfLines={2}>
+                  <Text tone={toast.tone} numberOfLines={2}>
                     {toast.message}
                   </Text>
                   {toast.onAction && toast.actionLabel ? (
@@ -257,7 +309,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
                         onPress={handleActionPress}
                         style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.75 } : null]}
                       >
-                        <Text tone="danger" variant="label">
+                        <Text tone={toast.tone} variant="label">
                           {toast.actionLabel}
                         </Text>
                       </Pressable>
@@ -265,12 +317,12 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
                   ) : null}
                 </View>
                 <Pressable
-                  accessibilityLabel="Dismiss error message"
+                  accessibilityLabel="Dismiss message"
                   accessibilityRole="button"
                   onPress={dismissError}
                   style={({ pressed }) => [styles.dismissButton, pressed ? { opacity: 0.75 } : null]}
                 >
-                  <Text tone="danger" variant="label">
+                  <Text tone={toast.tone} variant="label">
                     Dismiss
                   </Text>
                 </Pressable>

@@ -324,7 +324,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       : baseNotesQuery.data?.pages[0]?.summary;
   const unusedCount = noteSummary?.draftCount ?? baseNotes.filter((note) => note.status === 'draft').length;
   const usedCount = noteSummary?.usedCount ?? baseNotes.filter((note) => note.status === 'used').length;
-  const allCount = noteSummary?.allCount ?? baseNotes.length;
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
       source: 'NotesScreen',
@@ -360,9 +359,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     () => [
       { label: 'Unused', value: 'unused', badgeCount: unusedCount },
       { label: 'Used', value: 'used', badgeCount: usedCount },
-      { label: 'All', value: 'all', badgeCount: allCount },
     ],
-    [allCount, unusedCount, usedCount],
+    [unusedCount, usedCount],
   );
 
   const styles = useStyles();
@@ -714,9 +712,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           description={
             activeFilter === 'unused'
               ? 'No unused notes.'
-              : activeFilter === 'used'
-                ? 'No used notes yet.'
-                : 'No notes yet.'
+              : 'No used notes yet.'
           }
           onAction={() => {
             trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {

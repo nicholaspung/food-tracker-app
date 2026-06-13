@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import {
   BackHeaderScreenScaffold,
   EmptyState,
+  PageInfoToast,
   SectionCard,
   SegmentedControl,
   VisibilityOptionSelector,
@@ -24,7 +25,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme, type ThemePreference } from '../theme';
-import { Card, Text } from '../ui';
+import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { SettingsDetailReadStateView } from './settings/SettingsDetailReadStateView';
 
@@ -465,13 +466,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
             </SectionCard>
 
             <PageErrorToast errorMessage={errorMessage} title="Settings update failed" />
-            {successMessage ? (
-              <Card tone="success">
-                <Text tone="success" variant="label">
-                  {successMessage}
-                </Text>
-              </Card>
-            ) : null}
+            <PageInfoToast message={successMessage} title="Settings saved" tone="success" />
           </>
         </SettingsDetailReadStateView>
       </View>
