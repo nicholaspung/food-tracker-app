@@ -190,6 +190,12 @@ jest.mock('../theme', () => ({
             },
             border: {
               default: 'default-border',
+              strong: 'strong-border',
+            },
+            button: {
+              primaryBg: 'primary-bg',
+              primaryDisabledBg: 'primary-disabled-bg',
+              primaryText: 'primary-text',
             },
             status: {
               warningBg: 'warning-bg',
@@ -203,7 +209,7 @@ jest.mock('../theme', () => ({
               secondary: 'secondary',
             },
           },
-          radii: { md: 8 },
+          radii: { md: 8, pill: 999 },
           sizes: { inputMinHeight: 48 },
           spacing: { md: 16, sm: 8, xs: 4, xxs: 2 },
         },
@@ -213,9 +219,13 @@ jest.mock('../theme', () => ({
     colors: {
       text: {
         info: 'info',
+        muted: 'muted',
         primary: 'primary',
         secondary: 'secondary',
         danger: 'danger',
+      },
+      button: {
+        primaryText: 'primary-text',
       },
     },
     spacing: { lg: 24, sm: 8 },
@@ -712,6 +722,7 @@ describe('RestaurantDiscoveryScreen', () => {
     expect(renderer.root.findAllByType('VisitRestaurantSearchSection')).toHaveLength(0);
     expect(renderer.root.findAllByType('RestaurantMapView')).toHaveLength(1);
     expect(renderer.root.findByType('BackHeaderScreenScaffold').props.scroll).toBe(false);
+    expect(renderer.root.findByType('BackHeaderScreenScaffold').props.screenBackgroundTone).toBe('surface');
     expect(renderer.root.findByProps({ testID: 'restaurant-discovery-map-search-panel' })).toBeTruthy();
     expect(renderer.root.findByProps({
       testID: 'restaurant-discovery-map-search-panel-toggle',
@@ -894,8 +905,7 @@ describe('RestaurantDiscoveryScreen', () => {
       testID: 'restaurant-discovery-map-search-panel-expanded-content',
     }).length).toBeGreaterThan(0);
     expect(renderer.root.findAllByType('Input')).toHaveLength(2);
-    expect(renderer.root.findAllByType('CurrentLocationButton')).toHaveLength(1);
-    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Search Food Places')).toBe(true);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Search Food Places' }).length).toBeGreaterThan(0);
 
     act(() => {
       renderer.root.findByProps({

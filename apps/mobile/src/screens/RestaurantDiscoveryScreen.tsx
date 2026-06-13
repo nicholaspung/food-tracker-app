@@ -75,6 +75,10 @@ type ImageSource = PhotoPickerPermissionSource;
 type DiscoveryTab = 'search' | 'scan';
 type DiscoverySearchViewMode = 'list' | 'map';
 
+const CURRENT_LOCATION_LABEL = 'Current location';
+const LEGACY_CURRENT_PHONE_LOCATION_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_PHONE_LOCATION_PARTIAL_PREFIX = 'Your location (phone GPS';
+
 const DISCOVERY_TAB_OPTIONS: readonly SegmentedControlOption<DiscoveryTab>[] = [
   { label: 'Search', value: 'search' },
   { label: 'Scan', value: 'scan' },
@@ -161,13 +165,6 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xs,
   },
-  floatingSearchPanelText: {
-    flex: 1,
-    gap: 2,
-  },
-  floatingSearchPanelStatus: {
-    color: theme.colors.text.secondary,
-  },
   floatingSearchPanelToggle: {
     alignItems: 'center',
     borderRadius: theme.radii.md,
@@ -197,6 +194,9 @@ const useStyles = createThemedStyles((theme) => ({
     height: theme.sizes.inputMinHeight,
     minHeight: theme.sizes.inputMinHeight,
   },
+  currentLocationInputText: {
+    color: theme.colors.text.info,
+  },
   locationAction: {
     alignSelf: 'flex-end',
     height: theme.sizes.inputMinHeight,
@@ -216,22 +216,33 @@ const useStyles = createThemedStyles((theme) => ({
   currentLocationOption: {
     alignItems: 'center',
     backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.default,
+    borderColor: theme.colors.border.strong,
     borderRadius: theme.radii.md,
     borderWidth: 1,
     flexDirection: 'row',
     gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    minHeight: theme.sizes.inputMinHeight,
+    paddingLeft: theme.spacing.md,
+    paddingRight: theme.spacing.sm,
   },
   currentLocationOptionPressed: {
     backgroundColor: theme.colors.background.muted,
   },
   currentLocationOptionIcon: {
     alignItems: 'center',
-    height: 28,
+    height: 32,
     justifyContent: 'center',
-    width: 28,
+    width: 32,
+  },
+  clearButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  clearButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
   },
   viewModeControl: {
     alignSelf: 'stretch',
@@ -588,6 +599,7 @@ export function RestaurantDiscoveryScreen({
   const [searchViewMode, setSearchViewMode] = useState<DiscoverySearchViewMode>('list');
   const [mapSearchPanelExpanded, setMapSearchPanelExpanded] = useState(false);
   const [isMapLocationFocused, setIsMapLocationFocused] = useState(false);
+  const [isMapCurrentLocationDefaultEnabled, setIsMapCurrentLocationDefaultEnabled] = useState(true);
   const [isRestaurantSearchFocused, setIsRestaurantSearchFocused] = useState(false);
   const [focusedLocationOptionsDismissSignal, setFocusedLocationOptionsDismissSignal] = useState(0);
   const [mapSearchPanelHeight, setMapSearchPanelHeight] = useState(0);
@@ -869,6 +881,9 @@ export function RestaurantDiscoveryScreen({
 
   const handleSearchViewModeChange = useCallback((nextViewMode: DiscoverySearchViewMode) => {
     setSearchViewMode(nextViewMode);
+    if (nextViewMode === 'map' && !manualLocation.trim()) {
+      setIsMapCurrentLocationDefaultEnabled(true);
+    }
     setSelectedMapGroupId(null);
     setMapSheetTab('location');
     setMapResetSignal((value) => value + 1);
@@ -878,7 +893,7 @@ export function RestaurantDiscoveryScreen({
       source: 'RestaurantDiscoveryScreen',
       viewMode: nextViewMode,
     });
-  }, []);
+  }, [manualLocation]);
 
   const handleDiscoveryTabChange = useCallback((nextTab: DiscoveryTab) => {
     setActiveTab(nextTab);
@@ -1225,6 +1240,7 @@ export function RestaurantDiscoveryScreen({
     setLastMapSearchRegion(null);
     setShowSearchHereButton(false);
     setPreserveMapRegionOnGroupsChange(false);
+    setIsMapCurrentLocationDefaultEnabled(true);
   }, [clearPlacesSearchState]);
 
   const handleUseCurrentSearchLocationPress = useCallback(async () => {
@@ -1546,18 +1562,76 @@ export function RestaurantDiscoveryScreen({
   const isMapSearchActionDisabled = searchButtonDisabled || isSearchingRestaurants;
   const isCurrentLocationActionLoading = isSearchingNearbyRestaurants || isGettingLocation;
   const canUseCurrentLocation = !searchButtonDisabled && !isCurrentLocationActionLoading;
-  const shouldShowMapCurrentLocationOption = isMapLocationFocused && !isUsingCurrentLocation;
-  const mapLocationHelperText = isUsingCurrentLocation
-    ? "Using this phone's current location for Google Places search."
-    : undefined;
+  const isMapCurrentLocationToken =
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_LABEL ||
+    manualLocation === LEGACY_CURRENT_PHONE_LOCATION_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_PHONE_LOCATION_PARTIAL_PREFIX) ||
+    (isMapCurrentLocationDefaultEnabled && !manualLocation.trim());
+  const mapLocationInputValue = isMapCurrentLocationToken ? CURRENT_LOCATION_LABEL : manualLocation;
+  const shouldShowMapCurrentLocationOption = isMapLocationFocused && !isMapCurrentLocationToken;
+  const mapSearchQueryClearButton = searchQuery.length > 0 ? (
+    <Pressable
+      accessibilityLabel="Clear place name or type"
+      accessibilityRole="button"
+      onPress={() => {
+        setSearchQuery('');
+      }}
+      style={({ pressed }) => [styles.clearButton, pressed ? styles.clearButtonPressed : null]}
+    >
+      <Ionicons color={theme.colors.text.muted} name="close-circle" size={18} />
+    </Pressable>
+  ) : null;
+  const mapLocationClearButton = mapLocationInputValue.length > 0 ? (
+    <Pressable
+      accessibilityLabel="Clear location"
+      accessibilityRole="button"
+      onPress={() => {
+        setIsMapCurrentLocationDefaultEnabled(false);
+        setManualLocation('');
+      }}
+      style={({ pressed }) => [styles.clearButton, pressed ? styles.clearButtonPressed : null]}
+    >
+      <Ionicons color={theme.colors.text.muted} name="close-circle" size={18} />
+    </Pressable>
+  ) : null;
+  const handleMapSearchPress = () => {
+    if (isMapCurrentLocationToken) {
+      void handleUseCurrentSearchLocationPress();
+      return;
+    }
+
+    void searchByText();
+  };
+  const handleMapManualLocationChange = (value: string) => {
+    if (
+      isMapCurrentLocationToken &&
+      (value === '' ||
+        mapLocationInputValue.startsWith(value) ||
+        CURRENT_LOCATION_LABEL.startsWith(value) ||
+        LEGACY_CURRENT_PHONE_LOCATION_LABEL.startsWith(value))
+    ) {
+      setIsMapCurrentLocationDefaultEnabled(false);
+      setManualLocation('');
+      return;
+    }
+
+    setIsMapCurrentLocationDefaultEnabled(false);
+    setManualLocation(value);
+  };
+  const handleMapManualLocationPress = () => {
+    if (isMapCurrentLocationToken) {
+      setIsMapCurrentLocationDefaultEnabled(false);
+      setManualLocation('');
+      setIsMapLocationFocused(true);
+    }
+  };
   const mapSearchIconButton = (
     <Pressable
       accessibilityLabel={expandedSearchLabel}
       accessibilityRole="button"
       disabled={isMapSearchActionDisabled}
-      onPress={() => {
-        void searchByText();
-      }}
+      onPress={handleMapSearchPress}
       style={({ pressed }) => [
         styles.locationAction,
         styles.searchIconButton,
@@ -1583,6 +1657,7 @@ export function RestaurantDiscoveryScreen({
         }
 
         setIsMapLocationFocused(false);
+        setIsMapCurrentLocationDefaultEnabled(true);
         void handleUseCurrentSearchLocationPress();
       }}
       style={({ pressed }) => [
@@ -1661,12 +1736,7 @@ export function RestaurantDiscoveryScreen({
       >
         <View style={styles.floatingSearchPanelTitleRow}>
           <Ionicons color={theme.colors.text.info} name="search-outline" size={18} />
-          <View style={styles.floatingSearchPanelText}>
-            <Text variant="label">Search for food places</Text>
-            <Text numberOfLines={1} style={styles.floatingSearchPanelStatus} variant="bodySmTight">
-              {foodDiscoveryMap.mapStatusLabel}
-            </Text>
-          </View>
+          <Text variant="label">Search for food places</Text>
         </View>
         <View style={styles.floatingSearchPanelToggle}>
           <Ionicons
@@ -1684,34 +1754,40 @@ export function RestaurantDiscoveryScreen({
         >
           <Input
             autoCapitalize="words"
-            label="Place name or type"
             onChangeText={setSearchQuery}
-            onFocus={() => {
-              setIsRestaurantSearchFocused(true);
-            }}
-            placeholder="e.g., Starbucks, cafe, bakery"
+            placeholder="Place name or type"
+            rightAccessory={mapSearchQueryClearButton}
             value={searchQuery}
           />
-            <View style={styles.row}>
-              <Input
-                autoCapitalize="words"
-                containerStyle={styles.locationField}
-                helperText={mapLocationHelperText}
-                inputStyle={styles.locationInput}
-                label="Location (city, zip, or address)"
-                onBlur={() => {
-                  setIsMapLocationFocused(false);
-                }}
-                onChangeText={setManualLocation}
-                onFocus={() => {
-                  setIsMapLocationFocused(true);
-                }}
-                placeholder="e.g., 90210, Los Angeles"
-                value={manualLocation}
-              />
-              {mapSearchIconButton}
-            </View>
-            {mapCurrentLocationOption}
+          <View style={styles.row}>
+            <Input
+              autoCapitalize="words"
+              containerStyle={styles.locationField}
+              inputStyle={[
+                styles.locationInput,
+                isMapCurrentLocationToken ? styles.currentLocationInputText : null,
+              ]}
+              onBlur={() => {
+                setIsMapLocationFocused(false);
+              }}
+              onChangeText={handleMapManualLocationChange}
+              onFocus={() => {
+                setIsMapLocationFocused(true);
+              }}
+              onKeyPress={(event) => {
+                if (isMapCurrentLocationToken && event.nativeEvent.key === 'Backspace') {
+                  setIsMapCurrentLocationDefaultEnabled(false);
+                  setManualLocation('');
+                }
+              }}
+              onPressIn={handleMapManualLocationPress}
+              placeholder="City, zip, address, or your location"
+              rightAccessory={mapLocationClearButton}
+              value={mapLocationInputValue}
+            />
+            {mapSearchIconButton}
+          </View>
+          {mapCurrentLocationOption}
           {isOnline && isPlacesQuotaReached ? (
             <Text tone="warning">
               {shouldEnforceUsageLimitsClientSide
@@ -1782,6 +1858,7 @@ export function RestaurantDiscoveryScreen({
         navigation.goBack();
       }}
       scroll={shouldShowFocusedRestaurantSearch || !isSearchMapMode}
+      screenBackgroundTone="surface"
       subtitle="Search food places, read storefronts, and add menu items."
       title="Food Discovery"
       testID="restaurant-discovery-screen"
