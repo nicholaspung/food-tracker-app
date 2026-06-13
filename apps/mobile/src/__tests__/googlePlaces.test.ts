@@ -88,11 +88,11 @@ describe('googlePlaces', () => {
     expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledWith(
       '/api/places/search',
       expect.objectContaining({
-        body: {
+        body: expect.objectContaining({
           locationText: 'San Francisco, CA',
           query: 'pizza',
           radius: 4000,
-        },
+        }),
         headers: {
           Authorization: 'Bearer test-token',
           'Content-Type': 'application/json',
@@ -115,6 +115,36 @@ describe('googlePlaces', () => {
         userVisitCount: 3,
       }),
     ]);
+  });
+
+  it('sends coordinate bias for text search when provided', async () => {
+    mockedPocketbaseModule.__mockSend.mockResolvedValue({
+      restaurants: [],
+      resolvedLocation: {
+        lat: 37.7749,
+        lng: -122.4194,
+      },
+    });
+
+    await searchAndCacheRestaurantsByText({
+      latitude: 37.7749,
+      longitude: -122.4194,
+      query: 'tacos',
+    });
+
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledWith(
+      '/api/places/search',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          latitude: 37.7749,
+          longitude: -122.4194,
+          locationText: '',
+          query: 'tacos',
+          radius: 5000,
+        }),
+        method: 'POST',
+      }),
+    );
   });
 
   it('returns nearby results with the updated usage snapshot', async () => {

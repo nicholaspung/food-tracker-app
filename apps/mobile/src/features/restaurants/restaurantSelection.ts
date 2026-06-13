@@ -36,6 +36,7 @@ interface RestaurantTextSearchAdapterResult {
 }
 
 interface RunRestaurantTextSearchInput {
+  coordinateBias?: VisitRestaurantReferenceCoords | null;
   effectiveReferenceCoords: VisitRestaurantReferenceCoords | null;
   isOnline: boolean;
   isQuotaReached: boolean;
@@ -43,6 +44,8 @@ interface RunRestaurantTextSearchInput {
   query: string;
   queryClient: QueryClient;
   searchByText: (params: {
+    latitude?: number;
+    longitude?: number;
     locationText?: string;
     query: string;
     radius: number;
@@ -194,6 +197,21 @@ export function buildRecentRestaurantsQueryOptions({
   };
 }
 
+export function buildRestaurantSuggestionSearchText({
+  locationQuery,
+  searchQuery,
+}: {
+  locationQuery: string;
+  searchQuery: string;
+}): string {
+  const normalizedSearchQuery = searchQuery.replace(/\s+/g, ' ').trim();
+  if (normalizedSearchQuery) {
+    return normalizedSearchQuery;
+  }
+
+  return locationQuery.replace(/\s+/g, ' ').trim();
+}
+
 export function buildRestaurantSearchQueryOptions({
   enabled,
   pageSize = RESTAURANT_SELECTION_PAGE_SIZE,
@@ -288,16 +306,25 @@ export function syncMonthlyUsageSnapshot(
 }
 
 export function buildDisplayedSavedRestaurants({
+  locationQuery = '',
   referenceCoords,
   savedRestaurantRecords,
+  searchQuery = '',
   selectedRestaurantId,
 }: {
+  locationQuery?: string;
   referenceCoords: VisitRestaurantReferenceCoords | null;
   savedRestaurantRecords: RestaurantRecord[];
+  searchQuery?: string;
   selectedRestaurantId: string | null;
 }): VisitRestaurantWithDistance[] {
+  const filtered = savedRestaurantRecords.filter((restaurant) =>
+    matchesVisitRestaurantSearch(restaurant, searchQuery) &&
+    matchesVisitRestaurantSearch(restaurant, locationQuery),
+  );
+
   return prioritizeSelectedVisitRestaurant(
-    withVisitRestaurantDistance(savedRestaurantRecords, referenceCoords),
+    withVisitRestaurantDistance(filtered, referenceCoords),
     selectedRestaurantId,
   );
 }
@@ -399,6 +426,7 @@ export function resolveRestaurantNearbySearchPreflight({
 }
 
 export async function runRestaurantTextSearch({
+  coordinateBias,
   effectiveReferenceCoords,
   isOnline,
   isQuotaReached,
@@ -413,7 +441,7 @@ export async function runRestaurantTextSearch({
   const preflight = resolveRestaurantTextSearchPreflight({
     isOnline,
     isQuotaReached,
-    locationText,
+    locationText: coordinateBias ? 'current location' : locationText,
     query,
     shouldEnforceUsageLimitsClientSide,
   });
@@ -424,18 +452,24 @@ export async function runRestaurantTextSearch({
   let didSyncMonthlyUsageSnapshot = false;
 
   try {
-    const { resolvedLocation, restaurants, usageSnapshot } = await searchByText({
+    const searchParams: Parameters<RunRestaurantTextSearchInput['searchByText']>[0] = {
       locationText: trimmedLocation || undefined,
       query: trimmedQuery || 'food',
       radius: 5000,
-    });
+    };
+    if (coordinateBias) {
+      searchParams.latitude = coordinateBias.lat;
+      searchParams.longitude = coordinateBias.lng;
+    }
+
+    const { resolvedLocation, restaurants, usageSnapshot } = await searchByText(searchParams);
     didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(
       queryClient,
       usageSnapshot,
     );
 
     return {
-      referenceCoords: trimmedLocation ? resolvedLocation : effectiveReferenceCoords,
+      referenceCoords: coordinateBias ?? (trimmedLocation ? resolvedLocation : effectiveReferenceCoords),
       results: restaurants,
       status: 'success',
     };

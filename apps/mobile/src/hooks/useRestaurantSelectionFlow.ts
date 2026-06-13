@@ -33,6 +33,7 @@ import {
   buildDisplayedSavedRestaurants,
   buildLoadedRestaurantRecords,
   buildRecentRestaurantsQueryOptions,
+  buildRestaurantSuggestionSearchText,
   buildRestaurantMenuItemsQueryOptions,
   resolveSavedRestaurantsUiState,
   resolveRestaurantTextSearchPreflight,
@@ -46,6 +47,8 @@ import {
 } from '../features/restaurants/restaurantSelection';
 
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
+const RESTAURANT_SUGGESTIONS_DEBOUNCE_MS = 250;
+const CURRENT_PHONE_LOCATION_LABEL = 'Your location (phone GPS)';
 
 interface RestaurantSelectionUsageOptions {
   enforceQuota: boolean;
@@ -56,6 +59,7 @@ interface RestaurantSelectionUsageOptions {
 interface UseSavedRestaurantSuggestionsOptions {
   enabled: boolean;
   hasReferenceCoords?: boolean;
+  locationQuery: string;
   recentLimit?: number;
   savedRestaurantsEmptyDescription?: string;
   searchQuery: string;
@@ -95,6 +99,7 @@ interface UseRestaurantSelectionFlowResult {
   isSearchExpanded: boolean;
   isSearchingNearbyRestaurants: boolean;
   isSearchingRestaurants: boolean;
+  isUsingCurrentLocation: boolean;
   loadedRestaurantRecords: RestaurantRecord[];
   gpsReferenceCoords: VisitRestaurantReferenceCoords | null;
   locationPermissionNeedsSettings: boolean;
@@ -115,6 +120,7 @@ interface UseRestaurantSelectionFlowResult {
     collapseAfterSearch?: boolean;
     queryOverride?: string;
   }) => Promise<TextRestaurantSearchResult>;
+  searchCurrentLocationByText: () => Promise<CurrentLocationRestaurantSearchResult>;
   searchErrorMessage: string | null;
   searchNearby: () => Promise<NearbyRestaurantSearchResult>;
   searchNearbyAt: (
@@ -153,6 +159,7 @@ interface RestaurantSelectionSearchActions {
   gpsReferenceCoords: VisitRestaurantReferenceCoords | null;
   isSearchingNearby: boolean;
   isSearchingText: boolean;
+  isUsingCurrentLocation: boolean;
   locationPermissionNeedsSettings: boolean;
   manualLocation: string;
   nearby: () => Promise<NearbyRestaurantSearchResult>;
@@ -166,6 +173,7 @@ interface RestaurantSelectionSearchActions {
     collapseAfterSearch?: boolean;
     queryOverride?: string;
   }) => Promise<TextRestaurantSearchResult>;
+  searchCurrentLocationByText: () => Promise<CurrentLocationRestaurantSearchResult>;
   searchButtonDisabled: boolean;
   searchErrorMessage: string | null;
   setExpanded: Dispatch<SetStateAction<boolean>>;
@@ -203,19 +211,51 @@ export type TextRestaurantSearchResult = RestaurantTextSearchResult;
 
 export type NearbyRestaurantSearchResult = RestaurantNearbySearchResult;
 
+export type CurrentLocationRestaurantSearchResult =
+  | TextRestaurantSearchResult
+  | Extract<NearbyRestaurantSearchResult, { status: 'permission_denied' | 'location_error' }>;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    if (Object.is(value, debouncedValue)) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [debouncedValue, delayMs, value]);
+
+  return debouncedValue;
+}
+
 export function useSavedRestaurantSuggestions({
   enabled,
   hasReferenceCoords = false,
+  locationQuery,
   recentLimit = RESTAURANT_SUGGESTIONS_LIMIT,
   savedRestaurantsEmptyDescription = 'Search nearby places or add a new restaurant to start.',
   searchQuery,
 }: UseSavedRestaurantSuggestionsOptions): UseSavedRestaurantSuggestionsResult {
   const trimmedSearchQuery = searchQuery.trim();
+  const trimmedLocationQuery = locationQuery.trim();
+  const debouncedSearchQuery = useDebouncedValue(trimmedSearchQuery, RESTAURANT_SUGGESTIONS_DEBOUNCE_MS);
+  const debouncedLocationQuery = useDebouncedValue(trimmedLocationQuery, RESTAURANT_SUGGESTIONS_DEBOUNCE_MS);
+  const suggestionSearchText = buildRestaurantSuggestionSearchText({
+    locationQuery: debouncedLocationQuery,
+    searchQuery: debouncedSearchQuery,
+  });
   const recentRestaurantsQuery = useQuery<RestaurantRecord[]>(
     buildRecentRestaurantsQueryOptions({
       enabled,
       limit: recentLimit,
-      search: trimmedSearchQuery,
+      search: suggestionSearchText,
     }),
   );
 
@@ -228,7 +268,7 @@ export function useSavedRestaurantSuggestions({
       resolveSavedRestaurantsUiState({
         savedRestaurantsEmptyDescription,
         hasReferenceCoords,
-        hasSearchQuery: Boolean(trimmedSearchQuery),
+        hasSearchQuery: Boolean(trimmedSearchQuery || trimmedLocationQuery),
         recentRestaurantsIsError: recentRestaurantsQuery.isError,
         recentRestaurantsIsLoading: recentRestaurantsQuery.isLoading,
       }),
@@ -237,6 +277,7 @@ export function useSavedRestaurantSuggestions({
       recentRestaurantsQuery.isError,
       recentRestaurantsQuery.isLoading,
       savedRestaurantsEmptyDescription,
+      trimmedLocationQuery,
       trimmedSearchQuery,
     ],
   );
@@ -273,6 +314,7 @@ export function useRestaurantSelectionFlow({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [manualLocation, setManualLocation] = useState('');
+  const [isUsingCurrentLocation, setIsUsingCurrentLocation] = useState(false);
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
   const [referenceCoords, setReferenceCoords] = useState<VisitRestaurantReferenceCoords | null>(null);
   const [gpsReferenceCoords, setGpsReferenceCoords] = useState<VisitRestaurantReferenceCoords | null>(null);
@@ -307,6 +349,7 @@ export function useRestaurantSelectionFlow({
   } = useSavedRestaurantSuggestions({
     enabled: savedRestaurantsEnabled,
     hasReferenceCoords: Boolean(effectiveReferenceCoords),
+    locationQuery: isUsingCurrentLocation ? '' : manualLocation,
     savedRestaurantsEmptyDescription,
     searchQuery,
   });
@@ -321,11 +364,20 @@ export function useRestaurantSelectionFlow({
 
   const displayedSavedRestaurants = useMemo(() => {
     return buildDisplayedSavedRestaurants({
+      locationQuery: isUsingCurrentLocation ? '' : manualLocation,
       referenceCoords: effectiveReferenceCoords,
       savedRestaurantRecords,
+      searchQuery,
       selectedRestaurantId,
     });
-  }, [effectiveReferenceCoords, savedRestaurantRecords, selectedRestaurantId]);
+  }, [
+    effectiveReferenceCoords,
+    isUsingCurrentLocation,
+    manualLocation,
+    savedRestaurantRecords,
+    searchQuery,
+    selectedRestaurantId,
+  ]);
 
   const displayedNearbyRestaurants = useMemo(() => {
     return buildDisplayedNearbyRestaurants({
@@ -379,6 +431,7 @@ export function useRestaurantSelectionFlow({
     setSearchQuery('');
     setIsSearchExpanded(false);
     setManualLocation('');
+    setIsUsingCurrentLocation(false);
     setReferenceCoords(null);
     setGpsReferenceCoords(null);
     setShowNearbyPlaces(false);
@@ -435,10 +488,12 @@ export function useRestaurantSelectionFlow({
       queryOverride?: string;
     } = {}): Promise<TextRestaurantSearchResult> => {
       const effectiveSearchQuery = queryOverride?.trim() ?? trimmedSearchQuery;
+      const coordinateBias = isUsingCurrentLocation ? gpsReferenceCoords : null;
+      const locationText = coordinateBias ? '' : manualLocation;
       const preflight = resolveRestaurantTextSearchPreflight({
         isOnline,
         isQuotaReached: searchUi.isQuotaReached,
-        locationText: manualLocation,
+        locationText: coordinateBias ? 'current location' : locationText,
         query: effectiveSearchQuery,
         shouldEnforceUsageLimitsClientSide,
       });
@@ -457,10 +512,11 @@ export function useRestaurantSelectionFlow({
       resetLocationPermissionNeedsSettings();
 
       const result = await runRestaurantTextSearch({
+        coordinateBias,
         effectiveReferenceCoords,
         isOnline,
         isQuotaReached: searchUi.isQuotaReached,
-        locationText: manualLocation,
+        locationText,
         query: effectiveSearchQuery,
         queryClient,
         searchByText: searchAndCacheRestaurantsByText,
@@ -470,6 +526,7 @@ export function useRestaurantSelectionFlow({
       if (result.status === 'success') {
         setReferenceCoords(result.referenceCoords);
         setSearchResults(result.results);
+        setIsUsingCurrentLocation(false);
       } else {
         setSearchErrorMessage(result.message);
       }
@@ -483,6 +540,8 @@ export function useRestaurantSelectionFlow({
     [
       effectiveReferenceCoords,
       isOnline,
+      isUsingCurrentLocation,
+      gpsReferenceCoords,
       manualLocation,
       queryClient,
       resetLocationPermissionNeedsSettings,
@@ -523,6 +582,8 @@ export function useRestaurantSelectionFlow({
       if ('referenceCoords' in result) {
         setReferenceCoords(result.referenceCoords);
         setGpsReferenceCoords(result.referenceCoords);
+        setManualLocation(CURRENT_PHONE_LOCATION_LABEL);
+        setIsUsingCurrentLocation(true);
       }
 
       if (result.status === 'success') {
@@ -599,6 +660,91 @@ export function useRestaurantSelectionFlow({
     shouldEnforceUsageLimitsClientSide,
   ]);
 
+  const searchCurrentLocationByText = useCallback(async (): Promise<CurrentLocationRestaurantSearchResult> => {
+    const preflight = resolveRestaurantNearbySearchPreflight({
+      isOnline,
+      isQuotaReached: searchUi.isQuotaReached,
+      shouldEnforceUsageLimitsClientSide,
+    });
+    if (!('ok' in preflight)) {
+      setSearchErrorMessage(preflight.message);
+      return preflight;
+    }
+
+    setShowNearbyPlaces(true);
+    setSearchErrorMessage(null);
+    resetLocationPermissionNeedsSettings();
+    setIsSearchingNearbyRestaurants(true);
+
+    try {
+      const locationCapture = await captureLocation();
+      if (locationCapture.status === 'permission_denied') {
+        setSearchErrorMessage(locationCapture.message);
+        return {
+          canAskAgain: locationCapture.canAskAgain,
+          message: locationCapture.message,
+          status: 'permission_denied',
+        };
+      }
+
+      if (locationCapture.status === 'error') {
+        setSearchErrorMessage(locationCapture.message);
+        return {
+          error: locationCapture.error,
+          message: locationCapture.message,
+          status: 'location_error',
+        };
+      }
+
+      const coords = {
+        lat: locationCapture.coordinates.latitude,
+        lng: locationCapture.coordinates.longitude,
+      };
+      setReferenceCoords(coords);
+      setGpsReferenceCoords(coords);
+      setManualLocation(CURRENT_PHONE_LOCATION_LABEL);
+      setIsUsingCurrentLocation(true);
+      setIsSearchingNearbyRestaurants(false);
+      setIsSearchingRestaurants(true);
+
+      const result = await runRestaurantTextSearch({
+        coordinateBias: coords,
+        effectiveReferenceCoords: coords,
+        isOnline,
+        isQuotaReached: searchUi.isQuotaReached,
+        locationText: '',
+        query: trimmedSearchQuery,
+        queryClient,
+        searchByText: searchAndCacheRestaurantsByText,
+        shouldEnforceUsageLimitsClientSide,
+      });
+
+      if (result.status === 'success') {
+        setSearchResults(result.results);
+      } else {
+        setSearchErrorMessage(result.message);
+      }
+
+      return result;
+    } finally {
+      setIsSearchingNearbyRestaurants(false);
+      setIsSearchingRestaurants(false);
+    }
+  }, [
+    captureLocation,
+    isOnline,
+    queryClient,
+    resetLocationPermissionNeedsSettings,
+    searchUi.isQuotaReached,
+    shouldEnforceUsageLimitsClientSide,
+    trimmedSearchQuery,
+  ]);
+
+  const setManualLocationFromInput = useCallback<Dispatch<SetStateAction<string>>>((value) => {
+    setIsUsingCurrentLocation(false);
+    setManualLocation(value);
+  }, []);
+
   return {
     clearPlacesSearchState,
     clearSearchErrorMessage,
@@ -612,6 +758,7 @@ export function useRestaurantSelectionFlow({
     isSearchExpanded,
     isSearchingNearbyRestaurants,
     isSearchingRestaurants,
+    isUsingCurrentLocation,
     loadedRestaurantRecords,
     locationPermissionNeedsSettings,
     manualLocation,
@@ -628,12 +775,13 @@ export function useRestaurantSelectionFlow({
     savedRestaurantsTitle,
     searchButtonDisabled: searchUi.isSearchDisabled,
     searchByText,
+    searchCurrentLocationByText,
     searchErrorMessage,
     searchNearby,
     searchNearbyAt,
     searchQuery,
     setIsSearchExpanded,
-    setManualLocation,
+    setManualLocation: setManualLocationFromInput,
     setSearchQuery,
     shouldEnforceUsageLimitsClientSide,
     shouldQuerySavedRestaurantsBySearch,
@@ -676,6 +824,7 @@ function buildRestaurantSelectionConceptInterfaces(
       isGettingLocation: flow.isGettingLocation,
       isSearchingNearby: flow.isSearchingNearbyRestaurants,
       isSearchingText: flow.isSearchingRestaurants,
+      isUsingCurrentLocation: flow.isUsingCurrentLocation,
       locationPermissionNeedsSettings: flow.locationPermissionNeedsSettings,
       manualLocation: flow.manualLocation,
       nearby: flow.searchNearby,
@@ -684,6 +833,7 @@ function buildRestaurantSelectionConceptInterfaces(
       referenceCoords: flow.referenceCoords,
       searchByText: flow.searchByText,
       searchButtonDisabled: flow.searchButtonDisabled,
+      searchCurrentLocationByText: flow.searchCurrentLocationByText,
       searchErrorMessage: flow.searchErrorMessage,
       setExpanded: flow.setIsSearchExpanded,
       setManualLocation: flow.setManualLocation,

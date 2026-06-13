@@ -645,10 +645,12 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 
 		// Parse request body
 		var requestData struct {
-			Query        string `json:"query"`
-			Location     string `json:"location"`
-			LocationText string `json:"locationText"`
-			Radius       int    `json:"radius"` // in meters
+			Query        string   `json:"query"`
+			Location     string   `json:"location"`
+			LocationText string   `json:"locationText"`
+			Latitude     *float64 `json:"latitude"`
+			Longitude    *float64 `json:"longitude"`
+			Radius       int      `json:"radius"` // in meters
 		}
 
 		if err := e.BindBody(&requestData); err != nil {
@@ -678,6 +680,11 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 		requestData.Radius = radius
+		latitude, longitude := normalizePlacesCoordinateBias(requestData.Latitude, requestData.Longitude)
+		if locationText != "" {
+			latitude = nil
+			longitude = nil
+		}
 
 		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
@@ -690,113 +697,39 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		log.Printf(
 			"Searching places by text with has_query=%t has_location_bias=%t radius=%d",
 			requestData.Query != "",
-			locationText != "",
+			locationText != "" || (latitude != nil && longitude != nil),
 			requestData.Radius,
 		)
 
-		// Initialize new Places API client
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
 		defer cancel()
-		placesClient, err := newPlacesAPIClient(ctx, placesAPIKey)
-		if err != nil {
-			log.Printf("Failed to create Places API client: %v", err)
-			return apis.NewApiError(500, "failed to initialize Google Places API", err)
-		}
-		defer placesClient.Close()
 
-		// Build text search request
-		searchReq := &placespb.SearchTextRequest{
-			TextQuery: requestData.Query,
-			// No type filtering - let the text query determine what's relevant
-			// This allows finding cafes, bakeries, coffee shops, etc.
-		}
-
-		// If location is provided, add location bias
-		var resolvedLocation *placeLocation
-		if locationText != "" {
-			// Use old Maps client for geocoding (Geocoding API is separate)
-			mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey), maps.WithHTTPClient(geocodeHTTPClient))
-			if err == nil {
-				geocodeReq := &maps.GeocodingRequest{
-					Address: locationText,
-				}
-				geocodeResp, err := mapsClient.Geocode(ctx, geocodeReq)
-				if err == nil && len(geocodeResp) > 0 {
-					location := geocodeResp[0].Geometry.Location
-					log.Printf("Resolved location bias for text search")
-					resolvedLocation = &placeLocation{
-						Lat: location.Lat,
-						Lng: location.Lng,
-					}
-
-					// Add location bias with circle
-					searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
-						Type: &placespb.SearchTextRequest_LocationBias_Circle{
-							Circle: &placespb.Circle{
-								Center: &latlng.LatLng{
-									Latitude:  resolvedLocation.Lat,
-									Longitude: resolvedLocation.Lng,
-								},
-								Radius: float64(requestData.Radius),
-							},
-						},
-					}
-				} else if err != nil {
-					log.Printf("Failed to geocode location bias for text search: %v", err)
-				}
-			} else {
-				log.Printf("Failed to create Google Maps client for text search bias: %v", err)
-			}
-		}
-
-		// Set field mask in context to specify which fields to return
-		ctx = metadata.AppendToOutgoingContext(ctx,
-			"x-goog-fieldmask", "places.id,places.displayName,places.formattedAddress,places.types,places.location")
-
-		// Start tracking for analytics
-		startTime := time.Now()
-
-		// Perform text search
-		resp, err := placesClient.SearchText(ctx, searchReq)
-
-		// Calculate duration
-		durationMs := time.Since(startTime).Milliseconds()
-
-		// Handle error case
+		searchOutput, err := searchGooglePlacesByText(ctx, authRecord, placesAPIKey, googlePlacesTextSearchInput{
+			APIType:         "search",
+			Latitude:        latitude,
+			LocationText:    locationText,
+			Longitude:       longitude,
+			Query:           requestData.Query,
+			Radius:          requestData.Radius,
+			UseShortAddress: false,
+		})
 		if err != nil {
 			log.Printf("Google Places text search error: %v", err)
-
-			// Track failed API call
-			lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
-				APIType:     "search",
-				DurationMs:  durationMs,
-				Success:     false,
-				ErrorType:   fmt.Sprintf("%T", err),
-				ResultCount: 0,
-				HasLocation: locationText != "",
-			})
-
 			return apis.NewApiError(500, "failed to search places", err)
 		}
 
-		log.Printf("Text search found %d places", len(resp.Places))
-
-		// Track successful API call
-		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
-			APIType:     "search",
-			DurationMs:  durationMs,
-			Success:     true,
-			ResultCount: len(resp.Places),
-			HasLocation: locationText != "",
-		})
-
-		responsePayload, err := buildPlacesSearchResponse(e.App, authRecord, resp.Places, false)
+		restaurants, err := syncGooglePlaceRestaurants(e.App, authRecord, searchOutput.Places)
 		if err != nil {
 			log.Printf("Failed to normalize text search places: %v", err)
 			return apis.NewApiError(500, "failed to normalize places", err)
 		}
-		responsePayload.ResolvedLocation = resolvedLocation
-		responsePayload.Usage = loadMonthlyUsageSnapshot(e.App, authRecord)
+
+		responsePayload := placesSearchResponse{
+			Places:           searchOutput.Places,
+			Restaurants:      restaurants,
+			ResolvedLocation: searchOutput.ResolvedLocation,
+			Usage:            loadMonthlyUsageSnapshot(e.App, authRecord),
+		}
 
 		return e.JSON(200, responsePayload)
 	})

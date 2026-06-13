@@ -1,11 +1,10 @@
 import { Ionicons } from '../../ui/AppIcon';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import { View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Card, Input, ListItem, Text } from '../../ui';
-import { CurrentLocationButton } from './CurrentLocationButton';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { PageErrorToast } from './PageErrorToast';
@@ -36,6 +35,7 @@ interface VisitRestaurantSearchSectionProps {
   onUseCurrentLocationPress: () => void;
   currentLocationLoading?: boolean;
   currentLocationDisabled?: boolean;
+  isUsingCurrentLocation?: boolean;
   connectivityWarningMessage?: string | null;
   quotaWarningMessage?: string | null;
   upgradePromptTitle?: string | null;
@@ -102,7 +102,39 @@ const useStyles = createThemedStyles((theme) => ({
   },
   locationAction: {
     alignSelf: 'flex-end',
-    minWidth: 96,
+    height: theme.sizes.inputMinHeight,
+    minHeight: theme.sizes.inputMinHeight,
+    width: theme.sizes.inputMinHeight,
+  },
+  searchIconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.button.primaryBg,
+    borderRadius: theme.radii.md,
+    justifyContent: 'center',
+  },
+  searchIconButtonDisabled: {
+    backgroundColor: theme.colors.button.primaryDisabledBg,
+    opacity: 0.9,
+  },
+  currentLocationOption: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  currentLocationOptionPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  currentLocationOptionIcon: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
   },
   statusCard: {
     gap: theme.spacing.xs,
@@ -131,6 +163,7 @@ export function VisitRestaurantSearchSection({
   onUseCurrentLocationPress,
   currentLocationLoading = false,
   currentLocationDisabled = false,
+  isUsingCurrentLocation = false,
   connectivityWarningMessage,
   quotaWarningMessage,
   upgradePromptTitle,
@@ -159,6 +192,70 @@ export function VisitRestaurantSearchSection({
 }: VisitRestaurantSearchSectionProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
+  const isSearchActionDisabled = searchButtonDisabled || searchButtonLoading;
+  const canUseCurrentLocation = !currentLocationDisabled && !currentLocationLoading;
+  const shouldShowCurrentLocationOption = isLocationFocused && !isUsingCurrentLocation;
+  const locationHelperText = isUsingCurrentLocation
+    ? "Using this phone's current location for Google Places search."
+    : undefined;
+
+  const searchIconButton = (
+    <Pressable
+      accessibilityLabel={searchButtonLabel}
+      accessibilityRole="button"
+      disabled={isSearchActionDisabled}
+      onPress={onSearchPress}
+      style={({ pressed }) => [
+        styles.locationAction,
+        styles.searchIconButton,
+        isSearchActionDisabled ? styles.searchIconButtonDisabled : null,
+        pressed && !isSearchActionDisabled ? { opacity: 0.8 } : null,
+      ]}
+    >
+      {searchButtonLoading ? (
+        <ActivityIndicator color={theme.colors.button.primaryText} />
+      ) : (
+        <Ionicons color={theme.colors.button.primaryText} name="search-outline" size={20} />
+      )}
+    </Pressable>
+  );
+
+  const currentLocationOption = shouldShowCurrentLocationOption ? (
+    <Pressable
+      accessibilityLabel="Use your current phone location"
+      accessibilityRole="button"
+      disabled={!canUseCurrentLocation}
+      onPressIn={() => {
+        if (!canUseCurrentLocation) {
+          return;
+        }
+
+        setIsLocationFocused(false);
+        onUseCurrentLocationPress();
+      }}
+      style={({ pressed }) => [
+        styles.currentLocationOption,
+        pressed && canUseCurrentLocation ? styles.currentLocationOptionPressed : null,
+        !canUseCurrentLocation ? { opacity: 0.55 } : null,
+      ]}
+      testID="visit-restaurant-current-location-option"
+    >
+      <View style={styles.currentLocationOptionIcon}>
+        {currentLocationLoading ? (
+          <ActivityIndicator color={theme.colors.text.secondary} />
+        ) : (
+          <Ionicons color={theme.colors.text.secondary} name="locate-outline" size={18} />
+        )}
+      </View>
+      <View>
+        <Text variant="label">Your location</Text>
+        <Text tone="secondary" variant="bodySm">
+          Use this phone's current location
+        </Text>
+      </View>
+    </Pressable>
+  ) : null;
 
   return (
     <>
@@ -182,22 +279,33 @@ export function VisitRestaurantSearchSection({
         ) : null}
 
         {searchInputsMode === 'compact' ? (
-          <View style={styles.compactSearchRow}>
+          <>
             <Input
               autoCapitalize="words"
-              containerStyle={styles.compactSearchField}
               onChangeText={onSearchQueryChange}
               placeholder="Place name or type"
               value={searchQuery}
             />
-            <Button
-              disabled={searchButtonDisabled}
-              label={searchButtonLoading ? 'Searching...' : searchButtonLabel}
-              loading={searchButtonLoading}
-              onPress={onSearchPress}
-              style={styles.compactSearchButton}
-            />
-          </View>
+            <View style={styles.row}>
+              <Input
+                autoCapitalize="words"
+                containerStyle={styles.locationField}
+                helperText={locationHelperText}
+                inputStyle={styles.locationInput}
+                onBlur={() => {
+                  setIsLocationFocused(false);
+                }}
+                onChangeText={onManualLocationChange}
+                onFocus={() => {
+                  setIsLocationFocused(true);
+                }}
+                placeholder="City, zip, address, or your location"
+                value={manualLocation}
+              />
+              {searchIconButton}
+            </View>
+            {currentLocationOption}
+          </>
         ) : (
           <>
             <Input
@@ -212,28 +320,22 @@ export function VisitRestaurantSearchSection({
               <Input
                 autoCapitalize="words"
                 containerStyle={styles.locationField}
+                helperText={locationHelperText}
                 inputStyle={styles.locationInput}
                 label="Location (city, zip, or address)"
+                onBlur={() => {
+                  setIsLocationFocused(false);
+                }}
                 onChangeText={onManualLocationChange}
+                onFocus={() => {
+                  setIsLocationFocused(true);
+                }}
                 placeholder="e.g., 90210, Los Angeles"
                 value={manualLocation}
               />
-              <CurrentLocationButton
-                accessibilityLabel="Use current location"
-                disabled={currentLocationDisabled}
-                loading={currentLocationLoading}
-                onPress={onUseCurrentLocationPress}
-                style={styles.locationAction}
-                variant="inline"
-              />
+              {searchIconButton}
             </View>
-
-            <Button
-              disabled={searchButtonDisabled}
-              label={searchButtonLoading ? 'Searching...' : searchButtonLabel}
-              loading={searchButtonLoading}
-              onPress={onSearchPress}
-            />
+            {currentLocationOption}
 
             {footerContent}
           </>

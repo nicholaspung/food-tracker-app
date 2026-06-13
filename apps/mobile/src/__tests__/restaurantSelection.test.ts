@@ -4,6 +4,7 @@ import {
   buildLoadedRestaurantRecords,
   buildRecentRestaurantsQueryOptions,
   buildRestaurantMenuItemsQueryOptions,
+  buildRestaurantSuggestionSearchText,
   resolveSavedRestaurantsUiState,
   runRestaurantNearbyCoordinateSearch,
   runRestaurantNearbySearch,
@@ -23,6 +24,14 @@ jest.mock('../features/store/featureStore', () => ({
   listMenuItemsForRestaurant: jest.fn(),
   listRestaurantSuggestions: jest.fn(),
   searchRestaurantsPage: jest.fn(),
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../observability/telemetryError', () => ({
+  buildSafeTelemetryErrorProperties: jest.fn(() => ({})),
 }));
 
 jest.mock('../lib/googlePlaces', () => ({
@@ -122,6 +131,29 @@ describe('restaurant selection module', () => {
       'restaurant-ramen',
       'restaurant-bakery',
     ]);
+  });
+
+  it('uses place query before location query for saved suggestion fetches', () => {
+    expect(buildRestaurantSuggestionSearchText({
+      locationQuery: '  San   Francisco  ',
+      searchQuery: ' ramen ',
+    })).toBe('ramen');
+    expect(buildRestaurantSuggestionSearchText({
+      locationQuery: '  San   Francisco  ',
+      searchQuery: ' ',
+    })).toBe('San Francisco');
+  });
+
+  it('filters saved restaurants by place and typed location locally', () => {
+    const displayed = buildDisplayedSavedRestaurants({
+      locationQuery: 'San Francisco',
+      referenceCoords: null,
+      savedRestaurantRecords: restaurants,
+      searchQuery: 'Japanese',
+      selectedRestaurantId: null,
+    });
+
+    expect(displayed.map(({ restaurant }) => restaurant.id)).toEqual(['restaurant-ramen']);
   });
 
   it('dedupes nearby and text results before filtering by search query', () => {
@@ -300,6 +332,43 @@ describe('restaurant selection module', () => {
       usageSnapshot,
     );
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('runs text search with coordinate bias for phone location', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    };
+    const searchByText = jest.fn().mockResolvedValue({
+      resolvedLocation: { lat: 10, lng: 20 },
+      restaurants,
+      usageSnapshot: null,
+    });
+
+    const result = await runRestaurantTextSearch({
+      coordinateBias: { lat: 37.8, lng: -122.4 },
+      effectiveReferenceCoords: null,
+      isOnline: true,
+      isQuotaReached: false,
+      locationText: '',
+      query: '',
+      queryClient: queryClient as never,
+      searchByText,
+      shouldEnforceUsageLimitsClientSide: true,
+    });
+
+    expect(result).toEqual({
+      referenceCoords: { lat: 37.8, lng: -122.4 },
+      results: restaurants,
+      status: 'success',
+    });
+    expect(searchByText).toHaveBeenCalledWith({
+      latitude: 37.8,
+      longitude: -122.4,
+      locationText: undefined,
+      query: 'food',
+      radius: 5000,
+    });
   });
 
   it('normalizes text search limit errors and invalidates monthly usage when no snapshot is synced', async () => {

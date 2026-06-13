@@ -17,6 +17,8 @@ export interface NearbySearchParams {
 }
 
 export interface TextSearchParams {
+  latitude?: number;
+  longitude?: number;
   query: string;
   locationText?: string;
   radius?: number;
@@ -79,6 +81,8 @@ export async function searchAndCacheRestaurantsByText(
   const response = await sendApiRequest<PlacesApiResponse>('/api/places/search', {
     method: 'POST',
     body: {
+      latitude: params.latitude,
+      longitude: params.longitude,
       query: params.query,
       locationText: params.locationText ?? '',
       radius: params.radius ?? 5000,

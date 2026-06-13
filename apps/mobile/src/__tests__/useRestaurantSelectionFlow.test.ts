@@ -32,6 +32,14 @@ jest.mock('../features/store/featureStore', () => ({
   searchRestaurantsPage: jest.fn(),
 }));
 
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../observability/telemetryError', () => ({
+  buildSafeTelemetryErrorProperties: jest.fn(() => ({})),
+}));
+
 const mockCaptureLocation = jest.fn();
 const mockResetPermissionNeedsSettings = jest.fn();
 
@@ -99,11 +107,17 @@ describe('useRestaurantSelectionFlow', () => {
     );
   }
 
-  async function flushPromises() {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
+    async function flushPromises() {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    async function flushDebounce() {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+    }
 
   beforeEach(() => {
     mockedSearchRestaurantsPage.mockReset();
@@ -186,6 +200,7 @@ describe('useRestaurantSelectionFlow', () => {
     function SavedSuggestionsHarness({ searchQuery }: { searchQuery: string }) {
       latestResult = useSavedRestaurantSuggestions({
         enabled: true,
+        locationQuery: '',
         searchQuery,
       });
       return null;
@@ -228,6 +243,7 @@ describe('useRestaurantSelectionFlow', () => {
     function SavedSuggestionsHarness({ searchQuery }: { searchQuery: string }) {
       latestResult = useSavedRestaurantSuggestions({
         enabled: true,
+        locationQuery: '',
         searchQuery,
       });
       return null;
@@ -287,6 +303,7 @@ describe('useRestaurantSelectionFlow', () => {
       latestResult = useSavedRestaurantSuggestions({
         enabled: true,
         hasReferenceCoords: true,
+        locationQuery: '',
         searchQuery: '',
       });
       return null;
@@ -311,7 +328,7 @@ describe('useRestaurantSelectionFlow', () => {
     expect(getLatestResult().savedRestaurantsTitle).toBe('Nearby restaurants');
   });
 
-  it('runs Google Places text search only from the explicit search action', async () => {
+    it('runs Google Places text search only from the explicit search action', async () => {
     mockedListRestaurantSuggestions.mockResolvedValue(restaurants);
     mockedSearchAndCacheRestaurantsByText.mockResolvedValue({
       resolvedLocation: null,
@@ -349,9 +366,10 @@ describe('useRestaurantSelectionFlow', () => {
     });
     await flushPromises();
 
-    await act(async () => {
-      getLatestResult().setSearchQuery('pizza');
-    });
+      await act(async () => {
+        getLatestResult().setSearchQuery('pizza');
+      });
+      await flushDebounce();
 
     expect(mockedSearchRestaurantsPage).not.toHaveBeenCalled();
     expect(mockedSearchAndCacheRestaurantsByText).not.toHaveBeenCalled();
@@ -365,10 +383,76 @@ describe('useRestaurantSelectionFlow', () => {
       query: 'pizza',
       radius: 5000,
     });
-    expect(mockedSearchRestaurantsPage).not.toHaveBeenCalled();
-  });
+      expect(mockedSearchRestaurantsPage).not.toHaveBeenCalled();
+    });
 
-  it('auto-captures reference location once when enabled and sorts saved restaurants by distance', async () => {
+    it('runs current phone location as a coordinate-biased text search', async () => {
+      mockedListRestaurantSuggestions.mockResolvedValue(restaurants);
+      mockedSearchAndCacheRestaurantsByText.mockResolvedValue({
+        resolvedLocation: null,
+        restaurants,
+        usageSnapshot: null,
+      });
+      mockCaptureLocation.mockResolvedValue({
+        coordinates: {
+          latitude: 37.8,
+          longitude: -122.4,
+        },
+        status: 'success',
+      });
+      const queryClient = createQueryClient();
+      let latestResult: ReturnType<typeof useRestaurantSelectionFlow> | null = null;
+
+      function RestaurantSelectionHarness() {
+        latestResult = useRestaurantSelectionFlow({
+          isOnline: true,
+          menuItemsEnabled: false,
+          savedRestaurantsEnabled: true,
+          selectedRestaurantId: null,
+          usage: {
+            enforceQuota: false,
+            isFreeTier: false,
+            placesQueriesRemaining: null,
+          },
+        });
+        return null;
+      }
+
+      function getLatestResult(): ReturnType<typeof useRestaurantSelectionFlow> {
+        if (!latestResult) {
+          throw new Error('Restaurant selection hook did not render.');
+        }
+
+        return latestResult;
+      }
+
+      await act(async () => {
+        renderWithQueryClient(queryClient, React.createElement(RestaurantSelectionHarness));
+      });
+      await flushPromises();
+
+      await act(async () => {
+        getLatestResult().setSearchQuery('ramen');
+      });
+      await flushDebounce();
+
+      await act(async () => {
+        await getLatestResult().searchCurrentLocationByText();
+      });
+
+      expect(mockCaptureLocation).toHaveBeenCalledTimes(1);
+      expect(mockedSearchAndCacheRestaurantsByText).toHaveBeenCalledWith({
+        latitude: 37.8,
+        longitude: -122.4,
+        locationText: undefined,
+        query: 'ramen',
+        radius: 5000,
+      });
+      expect(getLatestResult().manualLocation).toBe('Your location (phone GPS)');
+      expect(getLatestResult().isUsingCurrentLocation).toBe(true);
+    });
+
+    it('auto-captures reference location once when enabled and sorts saved restaurants by distance', async () => {
     const distantRestaurant = {
       ...restaurants[0],
       latitude: 37.8,

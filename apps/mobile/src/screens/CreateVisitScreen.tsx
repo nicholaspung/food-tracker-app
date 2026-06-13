@@ -579,6 +579,7 @@ export function CreateVisitScreen({
   const isSearchExpanded = restaurantSearch.isExpanded;
   const isSearchingNearby = restaurantSearch.isSearchingNearby;
   const isSearching = restaurantSearch.isSearchingText;
+  const isUsingCurrentLocation = restaurantSearch.isUsingCurrentLocation;
   const loadedRestaurantRecords = menuItems.loadedRestaurantRecords;
   const locationPermissionNeedsSettings = restaurantSearch.locationPermissionNeedsSettings;
   const manualLocation = restaurantSearch.manualLocation;
@@ -619,9 +620,9 @@ export function CreateVisitScreen({
   const savedRestaurantsLoading = savedSuggestions.isLoading;
   const savedRestaurantsTitle = savedSuggestions.title;
   const searchButtonDisabled = restaurantSearch.searchButtonDisabled;
+  const runCurrentLocationRestaurantSearch = restaurantSearch.searchCurrentLocationByText;
   const runRestaurantSearchByText = restaurantSearch.searchByText;
   const searchErrorMessage = restaurantSearch.searchErrorMessage;
-  const runNearbyRestaurantSearch = restaurantSearch.nearby;
   const restaurantSearchQuery = restaurantSearch.query;
   const setIsSearchExpanded = restaurantSearch.setExpanded;
   const setManualLocation = restaurantSearch.setManualLocation;
@@ -1187,14 +1188,17 @@ export function CreateVisitScreen({
     }
   };
 
-  const handleSearchNearby = async () => {
+  const handleSearchCurrentLocationByText = async () => {
+    const trimmedQuery = restaurantSearchQuery.trim();
     if (isOnline && !(isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)) {
-      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_STARTED", {
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_STARTED", {
+        hasLocation: true,
+        hasQuery: Boolean(trimmedQuery),
         source: "CreateVisitScreen",
       });
     }
 
-    const result = await runNearbyRestaurantSearch();
+    const result = await runCurrentLocationRestaurantSearch();
 
     if (result.status === "quota_reached") {
       trackObservabilityEvent("USAGE_LIMIT_REACHED", {
@@ -1208,31 +1212,14 @@ export function CreateVisitScreen({
       return;
     }
 
-    if (result.status === "permission_denied") {
-      trackObservabilityEvent("CREATE_VISIT_LOCATION_PERMISSION_DENIED", {
-        canAskAgain: result.canAskAgain,
-        source: "CreateVisitScreen",
-      });
-      return;
-    }
-
-    if (result.status === "location_error") {
-      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
-        errorMessage: result.message,
-        errorType:
-          result.error instanceof Error
-            ? result.error.name
-            : "unknown_error",
-        source: "CreateVisitScreen",
-      });
-      return;
-    }
-
     if (result.status === "success") {
-      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_COMPLETED", {
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_COMPLETED", {
         resultCount: result.results.length,
         source: "CreateVisitScreen",
       });
+      setTimeout(() => {
+        scrollToRestaurantList();
+      }, 60);
       return;
     }
 
@@ -1249,7 +1236,7 @@ export function CreateVisitScreen({
           userTier: result.limitPayload.userTier ?? null,
         });
       }
-      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_FAILED", {
         errorMessage: result.message,
         errorType:
           result.error instanceof Error ? result.error.name : "unknown_error",
@@ -2266,6 +2253,7 @@ export function CreateVisitScreen({
               />
             }
             isSearchResultsLoading={isSearching || isSearchingNearby || isGettingLocation}
+            isUsingCurrentLocation={isUsingCurrentLocation}
             locationPermissionNeedsSettings={locationPermissionNeedsSettings}
             manualLocation={manualLocation}
             onClearSearchResults={clearSearchState}
@@ -2287,7 +2275,7 @@ export function CreateVisitScreen({
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
             }}
             onUseCurrentLocationPress={() => {
-              void handleSearchNearby();
+              void handleSearchCurrentLocationByText();
             }}
             quotaWarningMessage={
               isOnline && isPlacesQuotaReached
