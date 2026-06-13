@@ -16,6 +16,7 @@ export * from './FeatureActionCard';
 export * from './FeatureActionListRow';
 export * from './FeatureListFooter';
 export * from './FeatureIntroScreenContent';
+export * from './FocusedRestaurantSearchHeader';
 export * from './FeedbackStatus';
 export * from './FeedbackThreadCard';
 export * from './FeedRatingDisplay';

@@ -48,7 +48,7 @@ import {
 
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
 const RESTAURANT_SUGGESTIONS_DEBOUNCE_MS = 250;
-const CURRENT_PHONE_LOCATION_LABEL = 'Your location (phone GPS)';
+const CURRENT_PHONE_LOCATION_LABEL = 'Current location';
 
 interface RestaurantSelectionUsageOptions {
   enforceQuota: boolean;

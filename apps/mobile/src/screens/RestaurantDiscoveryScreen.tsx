@@ -17,6 +17,7 @@ import {
   ConfirmDestructiveModal,
   ExpandableText,
   FeatureListFooter,
+  FocusedRestaurantSearchHeader,
   LoadingState,
   PageErrorToast,
   PhotoSourcePicker,
@@ -587,6 +588,8 @@ export function RestaurantDiscoveryScreen({
   const [searchViewMode, setSearchViewMode] = useState<DiscoverySearchViewMode>('list');
   const [mapSearchPanelExpanded, setMapSearchPanelExpanded] = useState(false);
   const [isMapLocationFocused, setIsMapLocationFocused] = useState(false);
+  const [isRestaurantSearchFocused, setIsRestaurantSearchFocused] = useState(false);
+  const [focusedLocationOptionsDismissSignal, setFocusedLocationOptionsDismissSignal] = useState(0);
   const [mapSearchPanelHeight, setMapSearchPanelHeight] = useState(0);
   const [latestUserMapRegion, setLatestUserMapRegion] = useState<Region | null>(null);
   const [lastMapSearchRegion, setLastMapSearchRegion] = useState<Region | null>(null);
@@ -744,6 +747,7 @@ export function RestaurantDiscoveryScreen({
       : mapSearchPanelHeight + theme.spacing.sm;
 
   const handleSelectRestaurant = useCallback((restaurant: RestaurantRecord) => {
+    setIsRestaurantSearchFocused(false);
     trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_SELECTED', {
       isGooglePlace: restaurant.isGooglePlace === true,
       source: 'RestaurantDiscoveryScreen',
@@ -1596,13 +1600,51 @@ export function RestaurantDiscoveryScreen({
         )}
       </View>
       <View>
-        <Text variant="label">Your location</Text>
+        <Text variant="label">Current location</Text>
         <Text tone="secondary" variant="bodySm">
           Use this phone's current location
         </Text>
       </View>
     </Pressable>
   ) : null;
+  const shouldShowFocusedRestaurantSearch = isRestaurantSearchFocused && activeTab === 'search';
+  const dismissFocusedLocationOptions = useCallback(() => {
+    if (!shouldShowFocusedRestaurantSearch) {
+      return;
+    }
+
+    setFocusedLocationOptionsDismissSignal((currentSignal) => currentSignal + 1);
+  }, [shouldShowFocusedRestaurantSearch]);
+  const focusedRestaurantSearchHeader = (
+    <FocusedRestaurantSearchHeader
+      currentLocationDisabled={
+        !isOnline ||
+        isGettingLocation ||
+        isSearchingNearbyRestaurants ||
+        (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+      }
+      currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+      isUsingCurrentLocation={isUsingCurrentLocation}
+      locationOptionsDismissSignal={focusedLocationOptionsDismissSignal}
+      manualLocation={manualLocation}
+      onBackPress={() => {
+        setIsRestaurantSearchFocused(false);
+      }}
+      onManualLocationChange={setManualLocation}
+      onSearchPress={() => {
+        void searchByText();
+      }}
+      onSearchQueryChange={setSearchQuery}
+      onUseCurrentLocationPress={() => {
+        void handleUseCurrentSearchLocationPress();
+      }}
+      searchButtonDisabled={searchButtonDisabled}
+      searchButtonLabel={expandedSearchLabel}
+      searchButtonLoading={isSearchingRestaurants}
+      searchQuery={searchQuery}
+      testID="restaurant-discovery-focused-restaurant-search-header"
+    />
+  );
 
   const mapSearchPanel = (
     <View
@@ -1644,6 +1686,9 @@ export function RestaurantDiscoveryScreen({
             autoCapitalize="words"
             label="Place name or type"
             onChangeText={setSearchQuery}
+            onFocus={() => {
+              setIsRestaurantSearchFocused(true);
+            }}
             placeholder="e.g., Starbucks, cafe, bakery"
             value={searchQuery}
           />
@@ -1730,17 +1775,93 @@ export function RestaurantDiscoveryScreen({
 
   return (
     <BackHeaderScreenScaffold
-      bodyStyle={isSearchMapMode ? styles.mapBody : undefined}
+      bodyStyle={!shouldShowFocusedRestaurantSearch && isSearchMapMode ? styles.mapBody : undefined}
+      customHeader={shouldShowFocusedRestaurantSearch ? focusedRestaurantSearchHeader : undefined}
       headerScrollMode="fixed"
       onBackPress={() => {
         navigation.goBack();
       }}
-      scroll={!isSearchMapMode}
+      scroll={shouldShowFocusedRestaurantSearch || !isSearchMapMode}
       subtitle="Search food places, read storefronts, and add menu items."
       title="Food Discovery"
       testID="restaurant-discovery-screen"
     >
-      {isSearchMapMode ? (
+      {shouldShowFocusedRestaurantSearch ? (
+        <View onTouchStart={dismissFocusedLocationOptions}>
+          <VisitRestaurantSearchSection
+            connectivityWarningMessage={!isOnline ? 'Online search is unavailable while offline.' : null}
+            currentLocationDisabled={
+              !isOnline ||
+              isGettingLocation ||
+              isSearchingNearbyRestaurants ||
+              (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+            }
+            currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+            hideSearchCard
+            isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
+            isUsingCurrentLocation={isUsingCurrentLocation}
+            locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+            manualLocation={manualLocation}
+            onClearSearchResults={handleClearPlacesSearchState}
+            onManualLocationChange={setManualLocation}
+            onOpenLocationSettings={() => {
+              void Linking.openSettings();
+            }}
+            onRetrySavedResults={() => {
+              void triggerSavedRestaurantsRefetch();
+            }}
+            onSearchPress={() => {
+              void searchByText();
+            }}
+            onSearchQueryChange={setSearchQuery}
+            onUseCurrentLocationPress={() => {
+              void handleUseCurrentSearchLocationPress();
+            }}
+            quotaWarningMessage={
+              isOnline && isPlacesQuotaReached
+                ? shouldEnforceUsageLimitsClientSide
+                  ? 'Monthly food place search limit reached.'
+                  : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
+                : null
+            }
+            savedEmptyDescription={savedEmptyDescription}
+            savedEmptyTitle={savedEmptyTitle}
+            savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, 'saved'),
+            )}
+            savedResultsErrorMessage={savedRestaurantsErrorMessage}
+            savedResultsLoading={savedRestaurantsLoading}
+            savedResultsTitle={savedRestaurantsTitle}
+            searchButtonDisabled={searchButtonDisabled}
+            searchButtonLabel={expandedSearchLabel}
+            searchButtonLoading={isSearchingRestaurants}
+            searchErrorMessage={searchErrorMessage}
+            searchQuery={searchQuery}
+            searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, 'search'),
+            )}
+            showSearchResults={showNearbyPlaces}
+            upgradePromptDescription={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                  : `Only ${flowPlacesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+                : null
+            }
+            upgradePromptTitle={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? 'Free limit reached'
+                  : 'You are close to your free limit'
+                : null
+            }
+          />
+          <PageErrorToast
+            errorMessage={bookmarkErrorMessage}
+            title="Could not save bookmark"
+          />
+        </View>
+      ) : isSearchMapMode ? (
         <View style={styles.mapModeRoot}>
           <View style={styles.mapModeControls}>
             {discoveryTabControl}
@@ -1824,6 +1945,9 @@ export function RestaurantDiscoveryScreen({
                   void searchByText();
                 }}
                 onSearchQueryChange={setSearchQuery}
+                onSearchQueryFocus={() => {
+                  setIsRestaurantSearchFocused(true);
+                }}
                 onUseCurrentLocationPress={() => {
                   void handleUseCurrentSearchLocationPress();
                 }}

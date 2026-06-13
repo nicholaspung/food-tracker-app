@@ -1,5 +1,6 @@
 import { Ionicons } from './AppIcon';
 import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 
@@ -12,6 +13,7 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
   errorText?: string | null;
   containerStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
+  rightAccessory?: ReactNode;
   passwordMode?: PasswordInputMode;
   showInlineKeyboardDismissButton?: boolean;
   useDefaultReturnKeyType?: boolean;
@@ -77,6 +79,7 @@ export function Input({
   errorText,
   containerStyle,
   inputStyle,
+  rightAccessory,
   passwordMode,
   showInlineKeyboardDismissButton = true,
   useDefaultReturnKeyType = true,
@@ -148,6 +151,7 @@ export function Input({
           }}
           style={[styles.input, isMultiline ? styles.multilineInput : null, inputStyle]}
         />
+        {rightAccessory}
         {shouldShowInlineDismissButton ? (
           <Pressable
             accessibilityLabel="Hide keyboard"

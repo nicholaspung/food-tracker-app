@@ -14,6 +14,7 @@ export interface FeatureFormScreenScaffoldProps {
   title: string;
   subtitle?: ReactNode;
   onBackPress: () => void;
+  customHeader?: ReactNode;
   rightAccessory?: ReactNode;
   headerBottomContent?: ReactNode;
   headerBottomCompact?: boolean;
@@ -64,6 +65,7 @@ export function FeatureFormScreenScaffold({
   title,
   subtitle,
   onBackPress,
+  customHeader,
   rightAccessory,
   headerBottomContent,
   headerBottomCompact = false,
@@ -96,14 +98,16 @@ export function FeatureFormScreenScaffold({
       scroll={false}
       testID={testID}
     >
-      <ScreenHeader
-        backAccessibilityLabel={backAccessibilityLabel}
-        onBackPress={onBackPress}
-        rightAccessory={rightAccessory}
-        subtitle={subtitle}
-        title={title}
-        variant="compact"
-      />
+      {customHeader ?? (
+        <ScreenHeader
+          backAccessibilityLabel={backAccessibilityLabel}
+          onBackPress={onBackPress}
+          rightAccessory={rightAccessory}
+          subtitle={subtitle}
+          title={title}
+          variant="compact"
+        />
+      )}
       {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       <View style={styles.bodyContainer}>
         <KeyboardAwareScrollView

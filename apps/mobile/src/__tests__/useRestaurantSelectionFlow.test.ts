@@ -448,7 +448,7 @@ describe('useRestaurantSelectionFlow', () => {
         query: 'ramen',
         radius: 5000,
       });
-      expect(getLatestResult().manualLocation).toBe('Your location (phone GPS)');
+      expect(getLatestResult().manualLocation).toBe('Current location');
       expect(getLatestResult().isUsingCurrentLocation).toBe(true);
     });
 

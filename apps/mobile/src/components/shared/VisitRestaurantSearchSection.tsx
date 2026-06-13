@@ -20,10 +20,12 @@ export interface VisitRestaurantSearchOption {
   testID?: string;
 }
 
-interface VisitRestaurantSearchSectionProps {
+export interface VisitRestaurantSearchSectionProps {
   locationMetadataHintText?: string | null;
   headerAccessory?: ReactNode;
   searchInputsMode?: 'full' | 'compact';
+  hideSearchCard?: boolean;
+  onSearchQueryFocus?: () => void;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   manualLocation: string;
@@ -63,7 +65,14 @@ interface VisitRestaurantSearchSectionProps {
   onSavedResultsLayout?: (event: LayoutChangeEvent) => void;
 }
 
+const CURRENT_LOCATION_LABEL = 'Current location';
+const LEGACY_CURRENT_PHONE_LOCATION_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_PHONE_LOCATION_PARTIAL_PREFIX = 'Your location (phone GPS';
+
 const useStyles = createThemedStyles((theme) => ({
+  sectionRoot: {
+    gap: theme.spacing.md,
+  },
   sectionCard: {
     gap: theme.spacing.sm,
   },
@@ -99,6 +108,9 @@ const useStyles = createThemedStyles((theme) => ({
   locationInput: {
     height: theme.sizes.inputMinHeight,
     minHeight: theme.sizes.inputMinHeight,
+  },
+  currentLocationInputText: {
+    color: theme.colors.text.info,
   },
   locationAction: {
     alignSelf: 'flex-end',
@@ -136,6 +148,16 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     width: 28,
   },
+  clearButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  clearButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
   statusCard: {
     gap: theme.spacing.xs,
   },
@@ -152,6 +174,8 @@ export function VisitRestaurantSearchSection({
   locationMetadataHintText,
   headerAccessory,
   searchInputsMode = 'full',
+  hideSearchCard = false,
+  onSearchQueryFocus,
   searchQuery,
   onSearchQueryChange,
   manualLocation,
@@ -195,10 +219,61 @@ export function VisitRestaurantSearchSection({
   const [isLocationFocused, setIsLocationFocused] = useState(false);
   const isSearchActionDisabled = searchButtonDisabled || searchButtonLoading;
   const canUseCurrentLocation = !currentLocationDisabled && !currentLocationLoading;
-  const shouldShowCurrentLocationOption = isLocationFocused && !isUsingCurrentLocation;
-  const locationHelperText = isUsingCurrentLocation
-    ? "Using this phone's current location for Google Places search."
-    : undefined;
+  const isCurrentLocationToken =
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_LABEL ||
+    manualLocation === LEGACY_CURRENT_PHONE_LOCATION_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_PHONE_LOCATION_PARTIAL_PREFIX);
+  const shouldShowCurrentLocationOption = isLocationFocused && !isCurrentLocationToken;
+  const searchQueryClearButton = searchQuery.length > 0 ? (
+    <Pressable
+      accessibilityLabel="Clear place name or type"
+      accessibilityRole="button"
+      onPress={() => {
+        onSearchQueryChange('');
+      }}
+      style={({ pressed }) => [styles.clearButton, pressed ? styles.clearButtonPressed : null]}
+    >
+      <Ionicons color={theme.colors.text.muted} name="close-circle" size={18} />
+    </Pressable>
+  ) : null;
+  const manualLocationClearButton = manualLocation.length > 0 ? (
+    <Pressable
+      accessibilityLabel="Clear location"
+      accessibilityRole="button"
+      onPress={() => {
+        onManualLocationChange('');
+      }}
+      style={({ pressed }) => [styles.clearButton, pressed ? styles.clearButtonPressed : null]}
+    >
+      <Ionicons color={theme.colors.text.muted} name="close-circle" size={18} />
+    </Pressable>
+  ) : null;
+  const handleManualLocationChange = (value: string) => {
+    if (
+      isCurrentLocationToken &&
+      (value === '' ||
+        manualLocation.startsWith(value) ||
+        CURRENT_LOCATION_LABEL.startsWith(value) ||
+        LEGACY_CURRENT_PHONE_LOCATION_LABEL.startsWith(value))
+    ) {
+      onManualLocationChange('');
+      return;
+    }
+
+    onManualLocationChange(value);
+  };
+  const handleManualLocationKeyPress = (key: string) => {
+    if (isCurrentLocationToken && key === 'Backspace') {
+      onManualLocationChange('');
+    }
+  };
+  const handleManualLocationPress = () => {
+    if (isCurrentLocationToken) {
+      onManualLocationChange('');
+      setIsLocationFocused(true);
+    }
+  };
 
   const searchIconButton = (
     <Pressable
@@ -249,7 +324,7 @@ export function VisitRestaurantSearchSection({
         )}
       </View>
       <View>
-        <Text variant="label">Your location</Text>
+        <Text variant="label">Current location</Text>
         <Text tone="secondary" variant="bodySm">
           Use this phone's current location
         </Text>
@@ -258,99 +333,107 @@ export function VisitRestaurantSearchSection({
   ) : null;
 
   return (
-    <>
-      <Card style={styles.sectionCard}>
-        <View style={styles.searchHeader}>
-          <View style={styles.searchHeaderTitle}>
-            <Ionicons
-              color={theme.colors.text.info}
-              name="search-outline"
-              size={18}
-            />
-            <Text variant="label">Search for food places</Text>
+    <View style={styles.sectionRoot}>
+      {!hideSearchCard ? (
+        <Card style={styles.sectionCard}>
+          <View style={styles.searchHeader}>
+            <View style={styles.searchHeaderTitle}>
+              <Ionicons
+                color={theme.colors.text.info}
+                name="search-outline"
+                size={18}
+              />
+              <Text variant="label">Search for food places</Text>
+            </View>
+            {searchInputsMode === 'compact' ? null : headerAccessory}
           </View>
-          {headerAccessory}
-        </View>
 
-        {locationMetadataHintText ? (
-          <Text tone="info" variant="bodySm">
-            {locationMetadataHintText}
-          </Text>
-        ) : null}
+          {locationMetadataHintText ? (
+            <Text tone="info" variant="bodySm">
+              {locationMetadataHintText}
+            </Text>
+          ) : null}
 
-        {searchInputsMode === 'compact' ? (
-          <>
-            <Input
-              autoCapitalize="words"
-              onChangeText={onSearchQueryChange}
-              placeholder="Place name or type"
-              value={searchQuery}
-            />
-            <View style={styles.row}>
+          {searchInputsMode === 'compact' ? (
+            <>
               <Input
                 autoCapitalize="words"
-                containerStyle={styles.locationField}
-                helperText={locationHelperText}
-                inputStyle={styles.locationInput}
-                onBlur={() => {
-                  setIsLocationFocused(false);
-                }}
-                onChangeText={onManualLocationChange}
-                onFocus={() => {
-                  setIsLocationFocused(true);
-                }}
-                placeholder="City, zip, address, or your location"
-                value={manualLocation}
+                onChangeText={onSearchQueryChange}
+                onFocus={onSearchQueryFocus}
+                placeholder="Place name or type"
+                rightAccessory={searchQueryClearButton}
+                value={searchQuery}
               />
-              {searchIconButton}
-            </View>
-            {currentLocationOption}
-          </>
-        ) : (
-          <>
-            <Input
-              autoCapitalize="words"
-              label="Place name or type"
-              onChangeText={onSearchQueryChange}
-              placeholder="e.g., Starbucks, cafe, bakery"
-              value={searchQuery}
-            />
-
-            <View style={styles.row}>
+            </>
+          ) : (
+            <>
               <Input
                 autoCapitalize="words"
-                containerStyle={styles.locationField}
-                helperText={locationHelperText}
-                inputStyle={styles.locationInput}
-                label="Location (city, zip, or address)"
-                onBlur={() => {
-                  setIsLocationFocused(false);
-                }}
-                onChangeText={onManualLocationChange}
-                onFocus={() => {
-                  setIsLocationFocused(true);
-                }}
-                placeholder="e.g., 90210, Los Angeles"
-                value={manualLocation}
+                label="Place name or type"
+                onChangeText={onSearchQueryChange}
+                onFocus={onSearchQueryFocus}
+                placeholder="e.g., Starbucks, cafe, bakery"
+                rightAccessory={searchQueryClearButton}
+                value={searchQuery}
               />
-              {searchIconButton}
-            </View>
-            {currentLocationOption}
 
-            {footerContent}
-          </>
-        )}
+              <View style={styles.row}>
+                <Input
+                  autoCapitalize="words"
+                  containerStyle={styles.locationField}
+                  inputStyle={[
+                    styles.locationInput,
+                    isCurrentLocationToken ? styles.currentLocationInputText : null,
+                  ]}
+                  label="Location (city, zip, or address)"
+                  onBlur={() => {
+                    setIsLocationFocused(false);
+                  }}
+                  onChangeText={handleManualLocationChange}
+                  onFocus={() => {
+                    setIsLocationFocused(true);
+                  }}
+                  onKeyPress={(event) => {
+                    handleManualLocationKeyPress(event.nativeEvent.key);
+                  }}
+                  onPressIn={handleManualLocationPress}
+                  placeholder="e.g., 90210, Los Angeles"
+                  rightAccessory={manualLocationClearButton}
+                  value={manualLocation}
+                />
+                {searchIconButton}
+              </View>
+              {currentLocationOption}
 
-        {connectivityWarningMessage ? <Text tone="warning">{connectivityWarningMessage}</Text> : null}
-        {quotaWarningMessage ? <Text tone="warning">{quotaWarningMessage}</Text> : null}
+              {footerContent}
+            </>
+          )}
 
-        {upgradePromptTitle && upgradePromptDescription ? (
-          <UpgradePromptCard
-            description={upgradePromptDescription}
-            title={upgradePromptTitle}
-          />
-        ) : null}
-      </Card>
+          {connectivityWarningMessage ? <Text tone="warning">{connectivityWarningMessage}</Text> : null}
+          {quotaWarningMessage ? <Text tone="warning">{quotaWarningMessage}</Text> : null}
+
+          {upgradePromptTitle && upgradePromptDescription ? (
+            <UpgradePromptCard
+              description={upgradePromptDescription}
+              title={upgradePromptTitle}
+            />
+          ) : null}
+        </Card>
+      ) : null}
+
+      {hideSearchCard &&
+      (connectivityWarningMessage || quotaWarningMessage || (upgradePromptTitle && upgradePromptDescription)) ? (
+        <Card style={styles.statusCard}>
+          {connectivityWarningMessage ? <Text tone="warning">{connectivityWarningMessage}</Text> : null}
+          {quotaWarningMessage ? <Text tone="warning">{quotaWarningMessage}</Text> : null}
+          {upgradePromptTitle && upgradePromptDescription ? (
+            <UpgradePromptCard
+              description={upgradePromptDescription}
+              title={upgradePromptTitle}
+            />
+          ) : null}
+        </Card>
+      ) : null}
 
       {searchErrorMessage ? (
         <Card style={styles.statusCard}>
@@ -443,6 +526,6 @@ export function VisitRestaurantSearchSection({
           </Card>
         </View>
       )}
-    </>
+    </View>
   );
 }

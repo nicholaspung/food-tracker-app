@@ -4,6 +4,7 @@ import {
   Linking,
   Pressable,
   StyleSheet,
+  View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
@@ -13,6 +14,7 @@ import {
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
+  FocusedRestaurantSearchHeader,
   LinkedNoteCard,
   LoadingState,
   OptionList,
@@ -521,6 +523,8 @@ export function CreateVisitScreen({
   const hasTrackedEditNotFoundRef = useRef(false);
 
   const [step, setStep] = useState<VisitWizardStep>(0);
+  const [isRestaurantSearchFocused, setIsRestaurantSearchFocused] = useState(false);
+  const [focusedLocationOptionsDismissSignal, setFocusedLocationOptionsDismissSignal] = useState(0);
   const [restaurantName, setRestaurantName] = useState("");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<
     string | null
@@ -998,6 +1002,12 @@ export function CreateVisitScreen({
   }, [selectedRestaurantId]);
 
   useEffect(() => {
+    if (step !== 0) {
+      setIsRestaurantSearchFocused(false);
+    }
+  }, [step]);
+
+  useEffect(() => {
     if (step !== 2) {
       if (step !== 1) {
         setIsTipPopoverVisible(false);
@@ -1033,6 +1043,7 @@ export function CreateVisitScreen({
     if (selectedRestaurantId && selectedRestaurantId !== restaurant.id) {
       setDraftItems([]);
     }
+    setIsRestaurantSearchFocused(false);
     setRestaurantName(restaurant.name);
     setSelectedRestaurantId(restaurant.id);
     setErrorMessage(null);
@@ -1706,6 +1717,43 @@ export function CreateVisitScreen({
   const headerProgress = (
     <StepProgressBar compact currentStep={step} steps={WIZARD_STEPS} />
   );
+  const dismissFocusedLocationOptions = useCallback(() => {
+    if (!isRestaurantSearchFocused) {
+      return;
+    }
+
+    setFocusedLocationOptionsDismissSignal((currentSignal) => currentSignal + 1);
+  }, [isRestaurantSearchFocused]);
+  const focusedRestaurantSearchHeader = (
+    <FocusedRestaurantSearchHeader
+      currentLocationDisabled={
+        !isOnline ||
+        isGettingLocation ||
+        isSearchingNearby ||
+        (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+      }
+      currentLocationLoading={isGettingLocation || isSearchingNearby}
+      isUsingCurrentLocation={isUsingCurrentLocation}
+      locationOptionsDismissSignal={focusedLocationOptionsDismissSignal}
+      manualLocation={manualLocation}
+      onBackPress={() => {
+        setIsRestaurantSearchFocused(false);
+      }}
+      onManualLocationChange={setManualLocation}
+      onSearchPress={() => {
+        void handleSearchByText(false);
+      }}
+      onSearchQueryChange={setRestaurantSearchQuery}
+      onUseCurrentLocationPress={() => {
+        void handleSearchCurrentLocationByText();
+      }}
+      searchButtonDisabled={searchButtonDisabled}
+      searchButtonLabel={expandedSearchLabel}
+      searchButtonLoading={isSearching}
+      searchQuery={restaurantSearchQuery}
+      testID="create-visit-focused-restaurant-search-header"
+    />
+  );
   const menuItemsLabel = menuItemSearchQuery.trim()
     ? `Search results (${(menuItemsQuery.data ?? []).filter((item) =>
         item.name.toLowerCase().includes(menuItemSearchQuery.trim().toLowerCase()),
@@ -2079,14 +2127,15 @@ export function CreateVisitScreen({
 
   return (
     <FeatureFormScreenScaffold
+      customHeader={isRestaurantSearchFocused ? focusedRestaurantSearchHeader : undefined}
       headerBottomCompact
-      headerBottomContent={headerProgress}
+      headerBottomContent={isRestaurantSearchFocused ? undefined : headerProgress}
       keyboardAware
       onBackPress={handleBackPress}
-      primaryAction={primaryAction}
+      primaryAction={isRestaurantSearchFocused ? undefined : primaryAction}
       rightAccessory={editVisitHeaderAccessory}
       scrollViewRef={scrollViewRef}
-      secondaryAction={secondaryAction}
+      secondaryAction={isRestaurantSearchFocused ? undefined : secondaryAction}
       subtitle={headerSubtitle}
       testID={isEditMode ? "edit-visit-screen" : "create-visit-screen"}
       title={isEditMode ? "Edit Restaurant Visit" : "Track Restaurant Visit"}
@@ -2214,7 +2263,9 @@ export function CreateVisitScreen({
       ) : null}
 
       {step === 0 ? (
-        <>
+        <View
+          onTouchStart={isRestaurantSearchFocused ? dismissFocusedLocationOptions : undefined}
+        >
           <VisitRestaurantSearchSection
             connectivityWarningMessage={
               !isOnline ? "Google Places search requires internet connection." : null
@@ -2252,6 +2303,7 @@ export function CreateVisitScreen({
                 testID="create-visit-search-toggle"
               />
             }
+            hideSearchCard={isRestaurantSearchFocused}
             isSearchResultsLoading={isSearching || isSearchingNearby || isGettingLocation}
             isUsingCurrentLocation={isUsingCurrentLocation}
             locationPermissionNeedsSettings={locationPermissionNeedsSettings}
@@ -2271,6 +2323,9 @@ export function CreateVisitScreen({
               void handleSearchByText(true);
             }}
             onSearchQueryChange={setRestaurantSearchQuery}
+            onSearchQueryFocus={() => {
+              setIsRestaurantSearchFocused(true);
+            }}
             onSearchResultsLayout={(event) => {
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
             }}
@@ -2293,7 +2348,7 @@ export function CreateVisitScreen({
             savedResultsLoading={savedRestaurantsLoading}
             savedResultsTitle={savedRestaurantsTitle}
             searchButtonDisabled={searchButtonDisabled}
-            searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+            searchButtonLabel={isRestaurantSearchFocused || isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
             searchButtonLoading={isSearching}
             searchErrorMessage={searchErrorMessage}
             searchInputsMode={isSearchExpanded ? "full" : "compact"}
@@ -2317,7 +2372,7 @@ export function CreateVisitScreen({
                 : null
             }
           />
-        </>
+        </View>
       ) : null}
 
       {step === 1 ? (
