@@ -1,7 +1,7 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, Share, Switch, View } from 'react-native';
+import { FlatList, Keyboard, Pressable, Share, Switch, TextInput, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -33,7 +33,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { createPlatformShadow } from '../theme/shadows';
-import { Button, Card, Input, Modal, Text } from '../ui';
+import { Button, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 import {
   disableShareLinkAction,
@@ -143,7 +143,12 @@ function getLocallyRemovedListItemKey(
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
-    gap: theme.spacing.md,
+    flex: 1,
+    gap: theme.spacing.sm,
+  },
+  screenBody: {
+    flex: 1,
+    paddingBottom: 0,
   },
   subtitleText: {
     color: theme.colors.text.secondary,
@@ -167,16 +172,6 @@ const useStyles = createThemedStyles((theme) => ({
   headerIconButtonActive: {
     backgroundColor: theme.colors.status.infoBg,
     borderColor: theme.colors.border.info,
-  },
-  shareStatusCard: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  shareStatusText: {
-    color: theme.colors.text.info,
-    flex: 1,
-    ...theme.typography.bodyMdMedium,
   },
   addBannerButton: {
     alignItems: 'center',
@@ -267,24 +262,72 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.secondary,
   },
   searchRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
   searchField: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
     flex: 1,
+    flexDirection: 'row',
+    minHeight: 42,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  searchInput: {
+    color: theme.colors.text.primary,
+    flex: 1,
+    ...theme.typography.bodyLg,
+    paddingVertical: theme.spacing.xs,
   },
   clearSearchButton: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: theme.sizes.secondaryButtonHeight,
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
   },
   clearSearchButtonPressed: {
     backgroundColor: theme.colors.background.muted,
+  },
+  clearSearchLabel: {
+    color: theme.colors.text.muted,
+  },
+  filtersToggle: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 42,
+    minWidth: 82,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  filtersToggleActive: {
+    backgroundColor: theme.colors.fill.brand,
+    borderColor: theme.colors.fill.brand,
+  },
+  filtersToggleLabel: {
+    color: theme.colors.text.primary,
+  },
+  filtersToggleLabelActive: {
+    color: theme.colors.text.inverse,
+  },
+  listHeader: {
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.sm,
+  },
+  listItemSeparator: {
+    height: theme.spacing.sm,
   },
   mapWrap: {
     borderColor: theme.colors.border.default,
@@ -326,6 +369,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ListDetailViewMode>('list');
   const [showFriendMatches, setShowFriendMatches] = useState(false);
+  const [listFiltersExpanded, setListFiltersExpanded] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [isSharingList, setIsSharingList] = useState(false);
@@ -1203,6 +1247,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
   }, [detailQuery, runPullRefresh]);
 
+  const handleAddRestaurant = useCallback(() => {
+    trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
+      source: 'ListDetailScreen',
+      isDefaultList,
+    });
+    if (isDefaultList) {
+      navigation.navigate('RestaurantDiscovery');
+      return;
+    }
+    navigation.navigate('AddRestaurantToList', { listId });
+  }, [isDefaultList, listId, navigation]);
+
   if (detailQuery.isLoading) {
     return (
       <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
@@ -1247,15 +1303,160 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     );
   }
 
+  const listDetailHeaderContent = (
+    <View style={styles.listHeader}>
+      <PageErrorToast errorMessage={errorMessage} title="List update failed" />
+      <PageErrorToast
+        actionLabel="Retry"
+        errorMessage={hasListItemsRefreshError ? 'Could not refresh list detail. Showing saved data.' : null}
+        onAction={() => {
+          void detailQuery.refetch();
+        }}
+        title="List detail unavailable"
+      />
+
+      <SegmentedControl
+        activeLabelStyle={styles.viewModeLabelActive}
+        activeSegmentStyle={styles.viewModeSegmentActive}
+        containerStyle={styles.viewModeControl}
+        getOptionTestID={(value) => `list-detail-view-mode-${value}`}
+        labelStyle={styles.viewModeLabel}
+        onChange={(nextViewMode) => {
+          setViewMode(nextViewMode);
+          setSelectedMapGroupId(null);
+        }}
+        options={LIST_DETAIL_VIEW_OPTIONS}
+        segmentStyle={styles.viewModeSegment}
+        value={viewMode}
+      />
+
+      <View style={styles.searchRow}>
+        <View style={styles.searchField}>
+          <TextInput
+            accessibilityLabel="Search list"
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setListSearchQuery}
+            onSubmitEditing={() => {
+              Keyboard.dismiss();
+            }}
+            placeholder="Search restaurants or items"
+            placeholderTextColor={theme.colors.text.muted}
+            returnKeyType="search"
+            style={styles.searchInput}
+            testID="list-detail-search-input"
+            value={listSearchQuery}
+          />
+          {hasListSearch ? (
+            <Pressable
+              accessibilityLabel="Clear list search"
+              accessibilityRole="button"
+              onPress={() => {
+                setListSearchQuery('');
+                trackObservabilityEvent('LIST_DETAIL_SEARCH_CLEARED', {
+                  source: 'ListDetailScreen',
+                });
+              }}
+              style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
+              testID="list-detail-clear-search-button"
+            >
+              <Text style={styles.clearSearchLabel} variant="bodySmTightSemiBold">Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {isOwner && isDefaultList ? (
+          <Pressable
+            accessibilityLabel="Show list filters"
+            accessibilityRole="button"
+            onPress={() => {
+              setListFiltersExpanded((previous) => !previous);
+            }}
+            style={[styles.filtersToggle, listFiltersExpanded && styles.filtersToggleActive]}
+            testID="list-detail-filters-button"
+          >
+            <Text
+              style={[styles.filtersToggleLabel, listFiltersExpanded && styles.filtersToggleLabelActive]}
+              variant="button"
+            >
+              Filters
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {isOwner && isDefaultList && listFiltersExpanded ? (
+        <View style={styles.friendMatchesToggleRow}>
+          <View style={styles.friendMatchesToggleTextWrap}>
+            <Text style={styles.friendMatchesToggleTitle} variant="label">
+              Show friend matches
+            </Text>
+            <Text style={styles.friendMatchesToggleSubtitle} variant="bodySmTight">
+              Only show restaurants friends also saved, with their names.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Show friend matches"
+            ios_backgroundColor={theme.colors.border.strong}
+            onValueChange={(nextValue) => {
+              setShowFriendMatches(nextValue);
+              trackObservabilityEvent('LIST_DETAIL_FRIEND_MATCHES_TOGGLED', {
+                source: 'ListDetailScreen',
+                enabled: nextValue,
+              });
+            }}
+            testID="want-to-try-friend-matches-toggle"
+            thumbColor={theme.colors.background.surface}
+            trackColor={{
+              false: theme.colors.border.strong,
+              true: theme.colors.fill.brand,
+            }}
+            value={showFriendMatches}
+          />
+        </View>
+      ) : null}
+
+      {isOwner && !isDefaultList ? (
+        <Pressable
+          accessibilityLabel="Add restaurant to list"
+          accessibilityRole="button"
+          onPress={handleAddRestaurant}
+          style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
+          testID="add-restaurant-banner"
+        >
+          <Ionicons
+            color={theme.colors.button.primaryText}
+            name="add-outline"
+            size={20}
+          />
+          <Text style={styles.addBannerLabel}>
+            Add Visit Ratings to List
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
   return (
     <FeatureDetailScreenScaffold
       headerScrollMode="fixed"
       scroll={false}
+      screenBackgroundTone="surface"
       onRefresh={handleRefresh}
       onBackPress={handleBack}
       refreshing={isPullRefreshing}
+      bodyStyle={styles.screenBody}
       rightAccessory={
-        isOwner && !isDefaultList ? (
+        isOwner && isDefaultList ? (
+          <Pressable
+            accessibilityLabel="Find restaurants to bookmark"
+            accessibilityRole="button"
+            onPress={handleAddRestaurant}
+            style={styles.headerIconButton}
+            testID="list-detail-add-button"
+          >
+            <Ionicons color={theme.colors.text.primary} name="add-outline" size={18} />
+          </Pressable>
+        ) : isOwner ? (
           <View style={styles.headerRightRow}>
             <Pressable
               accessibilityLabel="Share list"
@@ -1311,159 +1512,42 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       title={list.name}
     >
       <View style={styles.container}>
-        <PageErrorToast errorMessage={errorMessage} title="List update failed" />
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={hasListItemsRefreshError ? 'Could not refresh list detail. Showing saved data.' : null}
-          onAction={() => {
-            void detailQuery.refetch();
-          }}
-          title="List detail unavailable"
-        />
-        {isOwner && list.shareEnabled ? (
-          <Card style={styles.shareStatusCard} testID="list-detail-share-enabled-indicator" tone="info">
-            <Ionicons color={theme.colors.text.info} name="link-outline" size={16} />
-            <Text style={styles.shareStatusText}>Shared by secret link</Text>
-          </Card>
-        ) : null}
-
-        <SegmentedControl
-          activeLabelStyle={styles.viewModeLabelActive}
-          activeSegmentStyle={styles.viewModeSegmentActive}
-          containerStyle={styles.viewModeControl}
-          getOptionTestID={(value) => `list-detail-view-mode-${value}`}
-          labelStyle={styles.viewModeLabel}
-          onChange={(nextViewMode) => {
-            setViewMode(nextViewMode);
-            setSelectedMapGroupId(null);
-          }}
-          options={LIST_DETAIL_VIEW_OPTIONS}
-          segmentStyle={styles.viewModeSegment}
-          value={viewMode}
-        />
-
-        <View style={styles.searchRow}>
-          <Input
-            accessibilityLabel="Search list"
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            containerStyle={styles.searchField}
-            onChangeText={setListSearchQuery}
-            placeholder="Search restaurants or items"
-            returnKeyType="search"
-            testID="list-detail-search-input"
-            value={listSearchQuery}
-          />
-          {hasListSearch ? (
-            <Pressable
-              accessibilityLabel="Clear list search"
-              accessibilityRole="button"
-              onPress={() => {
-                setListSearchQuery('');
-                trackObservabilityEvent('LIST_DETAIL_SEARCH_CLEARED', {
-                  source: 'ListDetailScreen',
-                });
-              }}
-              style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
-              testID="list-detail-clear-search-button"
-            >
-              <Ionicons color={theme.colors.text.secondary} name="close-outline" size={20} />
-            </Pressable>
-          ) : null}
-        </View>
-
         {viewMode === 'map' ? (
-          <RestaurantMapView
-            analyticsSource="ListDetailMapView"
-            emptyDescription={
-              hasListSearch
-                ? 'Try another restaurant, city, cuisine, or menu item.'
-                : 'Restaurants need a saved location before they can appear here.'
-            }
-            emptyTitle={hasListSearch ? 'No matching restaurants' : 'No map locations yet'}
-            errorMessage={null}
-            groups={listDetailMapGroups}
-            hiddenLocationPluralLabel="restaurants"
-            hiddenLocationSingularLabel="restaurant"
-            loading={false}
-            mapTestID="list-detail-map"
-            omittedWithoutCoordinates={omittedVisibleMapRestaurantCount}
-            onRetry={() => {
-              void detailQuery.refetch();
-            }}
-            onSelectedGroupChange={setSelectedMapGroupId}
-            selectedGroupId={selectedMapGroupId}
-            style={styles.mapWrap}
-            testID="list-detail-map-view"
-          />
-        ) : (
           <>
-            {isOwner && isDefaultList ? (
-              <View style={styles.friendMatchesToggleRow}>
-                <View style={styles.friendMatchesToggleTextWrap}>
-                  <Text style={styles.friendMatchesToggleTitle} variant="label">
-                    Show friend matches
-                  </Text>
-                  <Text style={styles.friendMatchesToggleSubtitle} variant="bodySmTight">
-                    Only show restaurants friends also saved, with their names.
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityLabel="Show friend matches"
-                  ios_backgroundColor={theme.colors.border.strong}
-                  onValueChange={(nextValue) => {
-                    setShowFriendMatches(nextValue);
-                    trackObservabilityEvent('LIST_DETAIL_FRIEND_MATCHES_TOGGLED', {
-                      source: 'ListDetailScreen',
-                      enabled: nextValue,
-                    });
-                  }}
-                  testID="want-to-try-friend-matches-toggle"
-                  thumbColor={theme.colors.background.surface}
-                  trackColor={{
-                    false: theme.colors.border.strong,
-                    true: theme.colors.fill.brand,
-                  }}
-                  value={showFriendMatches}
-                />
-              </View>
-            ) : null}
-
-            {isOwner ? (
-              <Pressable
-                accessibilityLabel={isDefaultList ? 'Browse Food Discovery' : 'Add restaurant to list'}
-                accessibilityRole="button"
-                onPress={() => {
-                  trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
-                    source: 'ListDetailScreen',
-                    isDefaultList,
-                  });
-                  if (isDefaultList) {
-                    navigation.navigate('RestaurantDiscovery');
-                    return;
-                  }
-                  navigation.navigate('AddRestaurantToList', { listId });
-                }}
-                style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
-                testID="add-restaurant-banner"
-              >
-                <Ionicons
-                  color={theme.colors.button.primaryText}
-                  name={isDefaultList ? 'compass-outline' : 'add-outline'}
-                  size={20}
-                />
-                <Text style={styles.addBannerLabel}>
-                  {isDefaultList ? 'Find Restaurants to Bookmark' : 'Add Visit Ratings to List'}
-                </Text>
-              </Pressable>
-            ) : null}
-
+            {listDetailHeaderContent}
+            <RestaurantMapView
+              analyticsSource="ListDetailMapView"
+              emptyDescription={
+                hasListSearch
+                  ? 'Try another restaurant, city, cuisine, or menu item.'
+                  : 'Restaurants need a saved location before they can appear here.'
+              }
+              emptyTitle={hasListSearch ? 'No matching restaurants' : 'No map locations yet'}
+              errorMessage={null}
+              groups={listDetailMapGroups}
+              hiddenLocationPluralLabel="restaurants"
+              hiddenLocationSingularLabel="restaurant"
+              loading={false}
+              mapTestID="list-detail-map"
+              omittedWithoutCoordinates={omittedVisibleMapRestaurantCount}
+              onRetry={() => {
+                void detailQuery.refetch();
+              }}
+              onSelectedGroupChange={setSelectedMapGroupId}
+              selectedGroupId={selectedMapGroupId}
+              style={styles.mapWrap}
+              testID="list-detail-map-view"
+            />
+          </>
+        ) : (
             <FlatList
+              contentContainerStyle={styles.listContent}
               data={visibleRestaurantRows}
               testID="list-detail-rows"
+              ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
               keyExtractor={(row) => row.group.restaurantId}
               keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={listDetailHeaderContent}
               ListEmptyComponent={
                 <EmptyState
                   actionLabel={hasListSearch ? 'Clear Search' : undefined}
@@ -1644,8 +1728,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                   />
                 );
               }}
+              style={styles.list}
             />
-          </>
         )}
 
       </View>

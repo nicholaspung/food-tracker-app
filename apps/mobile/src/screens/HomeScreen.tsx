@@ -97,8 +97,8 @@ type HomeFeedRecord = HomeFeedPageResult['items'][number];
 type HomeFeedInfiniteData = InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>;
 
 const useStyles = createThemedStyles((theme) => {
-  const feedGap = theme.spacing.xs;
-  const leadInGap = theme.spacing.sm;
+  const feedGap = theme.spacing.sm;
+  const leadInGap = feedGap;
 
   return {
   screenContent: {

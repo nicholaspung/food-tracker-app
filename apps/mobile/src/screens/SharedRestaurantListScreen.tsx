@@ -386,6 +386,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       customHeader={guestHeader}
       headerScrollMode="fixed"
       scroll={false}
+      screenBackgroundTone="surface"
       onBackPress={handleBack}
       primaryAction={
         !isAuthenticated

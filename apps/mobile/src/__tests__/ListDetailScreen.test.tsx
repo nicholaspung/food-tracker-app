@@ -113,10 +113,18 @@ jest.mock('react-native', () => {
   };
 
   const mockedReactNative = Object.create(actual) as any;
-  mockedReactNative.FlatList = ({ data = [], renderItem, ListEmptyComponent, ...props }: Record<string, any>) => {
+  mockedReactNative.FlatList = ({
+    data = [],
+    renderItem,
+    ListEmptyComponent,
+    ListFooterComponent,
+    ListHeaderComponent,
+    ...props
+  }: Record<string, any>) => {
     return react.createElement(
       'FlatList',
       props,
+      renderListElement(ListHeaderComponent),
       Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
         ? data.map((item, index) =>
             react.createElement(
@@ -126,6 +134,7 @@ jest.mock('react-native', () => {
             ),
           )
         : renderListElement(ListEmptyComponent),
+      renderListElement(ListFooterComponent),
     );
   };
 
@@ -1562,6 +1571,13 @@ describe('ListDetailScreen', () => {
     expect(findExactTextNodes(renderer.root, 'Meri')).toHaveLength(0);
     expect(findExactTextNodes(renderer.root, 'Nicholas')).toHaveLength(0);
     expect(findExactTextNodes(renderer.root, '2 friends also want to try this')).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'want-to-try-friend-matches-toggle' })).toHaveLength(0);
+    expect(findRightAccessoryElementByTestID(renderer.root, 'list-detail-add-button')).toBeTruthy();
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'list-detail-filters-button' }).props.onPress();
+    });
+
     expect(renderer.root.findByProps({ testID: 'want-to-try-friend-matches-toggle' })).toBeTruthy();
 
     await act(async () => {
@@ -1574,11 +1590,16 @@ describe('ListDetailScreen', () => {
     expect(findExactTextNode(renderer.root, 'Nicholas')).toBeTruthy();
     expect(findTextNodeContaining(renderer.root, 'Meri also wants to try this')).toBeTruthy();
     expect(findTextNodeContaining(renderer.root, 'Nicholas saved Croissant')).toBeTruthy();
-    expect(findExactTextNode(renderer.root, 'Find Restaurants to Bookmark')).toBeTruthy();
+    expect(findExactTextNodes(renderer.root, 'Find Restaurants to Bookmark')).toHaveLength(0);
     expect(renderer.root.findAllByType('FoodItemRatingRecordCard')).toHaveLength(0);
     expect(renderer.root.findAllByProps({ title: 'Bookmarked Items' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ title: 'Recommended Items' })).toHaveLength(0);
-    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.rightAccessory).toBeUndefined();
+
+    await act(async () => {
+      findRightAccessoryElementByTestID(renderer.root, 'list-detail-add-button').props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('RestaurantDiscovery');
 
     await act(async () => {
       renderer.root.findByProps({ testID: 'i-went-restaurant-bookmark-0' }).props.onPress();
@@ -1810,6 +1831,7 @@ describe('ListDetailScreen', () => {
             isDefault: false,
             name: 'Dinner Ideas',
             restaurantCount: 1,
+            shareEnabled: true,
           }),
           items: [
             buildListItem({
@@ -1841,6 +1863,8 @@ describe('ListDetailScreen', () => {
     expect(renderer.root.findByProps({ title: 'Bookmarked Items' })).toBeTruthy();
     expect(renderer.root.findByType('FoodItemRatingRecordCard').props.itemName).toBe('Spicy Ramen');
     expect(findRightAccessoryElementByTestID(renderer.root, 'list-detail-share-button')).toBeTruthy();
+    expect(renderer.root.findAllByProps({ testID: 'list-detail-share-enabled-indicator' })).toHaveLength(0);
+    expect(findExactTextNodes(renderer.root, 'Shared by secret link')).toHaveLength(0);
   });
 
   it('filters Want to Try detail restaurants by search query', async () => {
@@ -1986,6 +2010,8 @@ describe('ListDetailScreen', () => {
 
     const findScaffold = () => renderer.root.findByType('FeatureDetailScreenScaffold');
 
+    expect(findScaffold().props.screenBackgroundTone).toBe('surface');
+    expect(findScaffold().props.scroll).toBe(false);
     expect(findScaffold().props.refreshing).toBe(false);
 
     let refreshPromise: Promise<unknown> | null = null;
