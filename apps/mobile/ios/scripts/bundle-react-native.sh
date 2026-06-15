@@ -58,6 +58,12 @@ POSTHOG_CLI_BIN="$(resolve_posthog_cli || true)"
 HAS_POSTHOG_CONFIG="false"
 HAS_POSTHOG_GIT_CONTEXT="false"
 
+sanitize_optional_tool_output() {
+  sed \
+    -e 's/^error:/warning:/' \
+    -e 's/^fatal error:/warning:/'
+}
+
 if [[ -n "${POSTHOG_CLI_API_KEY:-}" && -n "${POSTHOG_CLI_HOST:-}" && -n "${POSTHOG_CLI_PROJECT_ID:-}" ]]; then
   HAS_POSTHOG_CONFIG="true"
 fi
@@ -79,14 +85,20 @@ fi
 # PostHog sourcemap upload is optional. Fall back to the standard React Native
 # bundling script when the CLI, its credentials, or Git/CI metadata are unavailable.
 if [[ -n "$POSTHOG_CLI_BIN" && "$HAS_POSTHOG_CONFIG" = "true" && "$HAS_POSTHOG_GIT_CONTEXT" = "true" ]]; then
+  POSTHOG_OUTPUT_FILE="$(mktemp "${TMPDIR:-/tmp}/posthog-xcode-output.XXXXXX")"
+  trap 'rm -f "$POSTHOG_OUTPUT_FILE"' EXIT
+
   set +e
-  /bin/sh "$POSTHOG_XCODE_SCRIPT" "$REACT_NATIVE_XCODE_SCRIPT"
+  /bin/sh "$POSTHOG_XCODE_SCRIPT" "$REACT_NATIVE_XCODE_SCRIPT" >"$POSTHOG_OUTPUT_FILE" 2>&1
   POSTHOG_XCODE_EXIT_CODE=$?
   set -e
 
   if [[ "$POSTHOG_XCODE_EXIT_CODE" -ne 0 ]]; then
+    sanitize_optional_tool_output <"$POSTHOG_OUTPUT_FILE"
     echo "warning: PostHog sourcemap upload failed; retrying standard React Native bundling without sourcemap upload."
     /bin/sh "$REACT_NATIVE_XCODE_SCRIPT"
+  else
+    cat "$POSTHOG_OUTPUT_FILE"
   fi
 else
   if [[ -z "$POSTHOG_CLI_BIN" ]]; then
