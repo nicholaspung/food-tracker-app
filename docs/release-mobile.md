@@ -66,6 +66,9 @@ bash scripts/deploy.sh production
 
 - Confirm the release candidate commit is final.
 - Bump the mobile app version for the release before creating store builds:
+  - For standard patch releases, the production build scripts run `mobile:version:bump:patch` automatically.
+  - That script syncs `apps/mobile/app.json`, `apps/mobile/ios/YummyRecs/Info.plist`, `apps/mobile/ios/YummyRecs/Supporting/Expo.plist`, and iOS `MARKETING_VERSION` settings before EAS archives the native project.
+  - Use the manual version steps below for non-patch releases or runtime changes that need review before the EAS build starts.
   - Update `expo.version` in `apps/mobile/app.json`.
   - Update `expo.ios.runtimeVersion` in `apps/mobile/app.json` when the release should use a new iOS OTA runtime.
   - Update preview runtime expectations in `scripts/assert-mobile-preview-config.mjs` when the release should use a new preview OTA runtime.
@@ -76,6 +79,11 @@ bash scripts/deploy.sh production
 - Confirm production environment variables/config point at production services.
 - Confirm EAS production profile is being used.
 - Build both platforms from the same commit unless a split release is intentional.
+- Choose one iOS production path:
+  - `pnpm run mobile:build:ios:production` bumps the patch version and creates a production iOS build.
+  - `pnpm run mobile:build:ios:production:submit` bumps the patch version, creates a production iOS build, and submits it through the `production` submit profile after the build completes.
+  - Do not run both for the same release unless you intentionally want another patch version bump.
+- After running either production build script, review the version changes before committing the release.
 
 Version verification:
 
@@ -84,13 +92,21 @@ APP_VARIANT=production EXPO_PUBLIC_APP_ENV=production EAS_BUILD_PROFILE=producti
 plutil -p apps/mobile/ios/YummyRecs/Info.plist | rg "CFBundleShortVersionString|CFBundleVersion" -A1
 ```
 
+Production iOS build only:
+
 ```sh
-cd apps/mobile
-pnpm exec eas build --platform ios --profile production
+pnpm run mobile:build:ios:production
+```
+
+Production iOS build and submit:
+
+```sh
+pnpm run mobile:build:ios:production:submit
 ```
 
 - Record the EAS build links in the release record.
 - Install or distribute the builds for final smoke testing.
+- If you used `mobile:build:ios:production:submit`, confirm the submission started and skip the iOS submit command in the next section.
 
 ## 5. Store Submission
 
@@ -123,11 +139,16 @@ Existing review context:
 - Account deletion remains available from the profile/account flow.
 ```
 
-Common commands:
+One-step build and submit path:
 
 ```sh
-cd apps/mobile
-pnpm exec eas submit --platform ios --profile production --latest
+pnpm run mobile:build:ios:production:submit
+```
+
+Use the one-step path instead of the build-only command in section 4. If the production build already exists and was not auto-submitted, submit the existing build without bumping the version:
+
+```sh
+pnpm --filter @food-tracker/mobile exec eas submit --platform ios --profile production --latest
 ```
 
 ## 6. Final Production Smoke Test

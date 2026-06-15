@@ -14,14 +14,15 @@ const deployTarget = readOptionalEnvValue(process.env.MOBILE_DEPLOY_TARGET) ?? '
 const appEnvironment = readOptionalEnvValue(process.env.EXPO_PUBLIC_APP_ENV);
 const appVariant = readOptionalEnvValue(process.env.APP_VARIANT);
 const expectedAppEnvironment = deployTarget === 'production' ? 'production' : 'beta';
+const expectedRuntimeVersion = `${config.version}-preview-embedded-1`;
 
 expectEqual('APP_VARIANT', appVariant, 'preview');
 expectEqual('EXPO_PUBLIC_APP_ENV', appEnvironment, expectedAppEnvironment);
 expectEqual('name', config.name, 'Yummy Recs Preview');
 expectEqual('scheme', config.scheme, 'yummyrecs-preview');
 expectEqual('ios.bundleIdentifier', config.ios?.bundleIdentifier, 'com.yummyrecs.mobile.preview');
-expectEqual('runtimeVersion', config.runtimeVersion, '1.1.0-preview-embedded-1');
-expectEqual('ios.runtimeVersion', config.ios?.runtimeVersion, '1.1.0-preview-embedded-1');
+expectEqual('runtimeVersion', config.runtimeVersion, expectedRuntimeVersion);
+expectEqual('ios.runtimeVersion', config.ios?.runtimeVersion, expectedRuntimeVersion);
 expectEqual('updates.checkAutomatically', config.updates?.checkAutomatically, 'ON_ERROR_RECOVERY');
 expectEqual('updates.fallbackToCacheTimeout', config.updates?.fallbackToCacheTimeout, 0);
 expectIncludes(
