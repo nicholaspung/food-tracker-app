@@ -24,6 +24,8 @@
     "version:bump:patch": "node ../../scripts/bump-mobile-expo-version.mjs patch",
     "build:ios:production": "pnpm run version:bump:patch && APP_VARIANT=production eas build --platform ios --profile production",
     "build:ios:production:submit": "pnpm run version:bump:patch && APP_VARIANT=production eas build --platform ios --profile production --auto-submit",
+    "build:ios:production:submit:no-bump": "APP_VARIANT=production eas build --platform ios --profile production --auto-submit",
+    "submit:ios:production": "APP_VARIANT=production eas submit --platform ios --profile production --latest",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand"

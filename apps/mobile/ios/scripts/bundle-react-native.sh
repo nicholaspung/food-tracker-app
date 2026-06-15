@@ -79,7 +79,15 @@ fi
 # PostHog sourcemap upload is optional. Fall back to the standard React Native
 # bundling script when the CLI, its credentials, or Git/CI metadata are unavailable.
 if [[ -n "$POSTHOG_CLI_BIN" && "$HAS_POSTHOG_CONFIG" = "true" && "$HAS_POSTHOG_GIT_CONTEXT" = "true" ]]; then
+  set +e
   /bin/sh "$POSTHOG_XCODE_SCRIPT" "$REACT_NATIVE_XCODE_SCRIPT"
+  POSTHOG_XCODE_EXIT_CODE=$?
+  set -e
+
+  if [[ "$POSTHOG_XCODE_EXIT_CODE" -ne 0 ]]; then
+    echo "warning: PostHog sourcemap upload failed; retrying standard React Native bundling without sourcemap upload."
+    /bin/sh "$REACT_NATIVE_XCODE_SCRIPT"
+  fi
 else
   if [[ -z "$POSTHOG_CLI_BIN" ]]; then
     echo "warning: posthog-cli unavailable in this build environment; skipping sourcemap upload."

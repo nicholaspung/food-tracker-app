@@ -82,6 +82,8 @@ bash scripts/deploy.sh production
 - Choose one iOS production path:
   - `pnpm run mobile:build:ios:production` bumps the patch version and creates a production iOS build.
   - `pnpm run mobile:build:ios:production:submit` bumps the patch version, creates a production iOS build, and submits it through the `production` submit profile after the build completes.
+  - `pnpm run mobile:build:ios:production:submit:no-bump` creates and submits a production iOS build without changing the version. Use it only to retry a failed build after the version bump has already been committed locally.
+  - `pnpm run mobile:submit:ios:production` submits the latest existing production iOS build without creating a new build or changing the version.
   - Do not run both for the same release unless you intentionally want another patch version bump.
 - After running either production build script, review the version changes before committing the release.
 
@@ -102,6 +104,12 @@ Production iOS build and submit:
 
 ```sh
 pnpm run mobile:build:ios:production:submit
+```
+
+Retry production iOS build and submit without another version bump:
+
+```sh
+pnpm run mobile:build:ios:production:submit:no-bump
 ```
 
 - Record the EAS build links in the release record.
@@ -148,7 +156,7 @@ pnpm run mobile:build:ios:production:submit
 Use the one-step path instead of the build-only command in section 4. If the production build already exists and was not auto-submitted, submit the existing build without bumping the version:
 
 ```sh
-pnpm --filter @food-tracker/mobile exec eas submit --platform ios --profile production --latest
+pnpm run mobile:submit:ios:production
 ```
 
 ## 6. Final Production Smoke Test

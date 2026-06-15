@@ -7,6 +7,7 @@
   "packageManager": "pnpm@11.5.3",
   "description": "Mobile tracker application with React frontend and Go backend",
   "scripts": {
+    "pick": "node scripts/pick-pnpm-script.mjs",
     "dev": "bash scripts/dev.sh",
     "dev:stream": "FOOD_TRACKER_DEV_UI=stream bash scripts/dev.sh",
     "dev:app": "bash scripts/mobile-expo.sh local",
@@ -38,6 +39,8 @@
     "mobile:version:bump:patch": "pnpm --filter @food-tracker/mobile version:bump:patch",
     "mobile:build:ios:production": "pnpm --filter @food-tracker/mobile build:ios:production",
     "mobile:build:ios:production:submit": "pnpm --filter @food-tracker/mobile build:ios:production:submit",
+    "mobile:build:ios:production:submit:no-bump": "pnpm --filter @food-tracker/mobile build:ios:production:submit:no-bump",
+    "mobile:submit:ios:production": "pnpm --filter @food-tracker/mobile submit:ios:production",
     "mobile:build:ios:preview:local": "bash scripts/mobile-eas-build-ios-preview-local.sh",
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
     "mobile:doctor": "bash scripts/mobile-doctor.sh",
