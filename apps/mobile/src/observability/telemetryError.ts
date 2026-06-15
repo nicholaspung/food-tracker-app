@@ -19,6 +19,10 @@ export function buildSafeTelemetryErrorProperties(
   const hasRawMessage = hasUnsafeErrorMessage(normalizedInput);
 
   return compactTelemetryErrorProperties({
+    errorCategory: resolveErrorCategory({
+      error: normalizedInput.error,
+      statusCode,
+    }),
     errorMessage: resolveSafeErrorMessage({
       error: normalizedInput.error,
       errorType,
@@ -26,6 +30,7 @@ export function buildSafeTelemetryErrorProperties(
     }),
     errorMessageRedacted: hasRawMessage,
     errorType,
+    isAbort: isAbortError(normalizedInput.error),
     retryable: typeof normalizedInput.retryable === 'boolean' ? normalizedInput.retryable : undefined,
     sourceOperation: normalizedInput.sourceOperation ?? undefined,
     statusCode,
@@ -86,6 +91,29 @@ function resolveSafeErrorMessage(input: {
   }
 
   return input.errorType;
+}
+
+function resolveErrorCategory(input: {
+  error: unknown;
+  statusCode: number | null;
+}): string {
+  if (isAbortError(input.error)) {
+    return 'request_aborted';
+  }
+
+  if (input.statusCode !== null) {
+    return 'http_error';
+  }
+
+  if (input.error instanceof ClientResponseError) {
+    return 'transport_error';
+  }
+
+  if (input.error instanceof Error) {
+    return 'error';
+  }
+
+  return 'unknown_error';
 }
 
 function hasUnsafeErrorMessage(input: SafeTelemetryErrorInput): boolean {

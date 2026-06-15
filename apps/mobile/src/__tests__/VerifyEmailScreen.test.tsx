@@ -469,6 +469,97 @@ describe('VerifyEmailScreen', () => {
     expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('expired@example.com');
   });
 
+  it('shows retry copy for transient verification confirmation failures', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: null,
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'unauthenticated',
+      verificationStatus: 'verified',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedConfirmUserEmailVerification
+      .mockRejectedValueOnce({ status: 0 })
+      .mockResolvedValueOnce(undefined);
+    const token = createToken({ email: 'transient@example.com', type: 'verification' });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-token-transient',
+            name: 'VerifyEmail',
+            params: {
+              source: 'email_link',
+              token,
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'We could not reach the verification server. Check your connection and try again.',
+    );
+    expect(renderer.root.findByType('AuthIntroCard').props.description).toBe(
+      'We could not reach the verification server.',
+    );
+
+    await act(async () => {
+      pressButtonByLabel(renderer, 'Try Again');
+      await Promise.resolve();
+    });
+
+    expect(mockedConfirmUserEmailVerification).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Your email has been verified. You can sign in now.',
+    );
+  });
+
+  it('keeps a verified success state when retained-session refresh fails', async () => {
+    const refreshAuthSession = jest.fn().mockRejectedValue(new Error('refresh failed'));
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'refresh-user@example.com',
+      },
+      refreshAuthSession,
+      signOut: jest.fn(),
+      status: 'authenticated',
+      verificationStatus: 'grace_period',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedConfirmUserEmailVerification.mockResolvedValue(undefined);
+    const token = createToken({ email: 'refresh-user@example.com', type: 'verification' });
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-token-refresh-failure',
+            name: 'VerifyEmail',
+            params: {
+              source: 'email_link',
+              token,
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(refreshAuthSession).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('AuthIntroCard').props.description).toBe(
+      'Your email address has been verified.',
+    );
+    expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
+      'Your email has been verified. If the app does not update automatically, close and reopen it.',
+    );
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
+  });
+
   it('keeps the resend cooldown after remounting', async () => {
     mockedUseAuth.mockReturnValue({
       actualUser: null,

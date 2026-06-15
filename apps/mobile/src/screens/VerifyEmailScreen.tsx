@@ -23,6 +23,7 @@ import {
 import { decodeAuthActionTokenPayload } from '../lib/authActionToken';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { buildSafeTelemetryErrorProperties } from '../observability/telemetryError';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
@@ -73,6 +74,14 @@ function resolveVerificationEmailErrorMessage(error: unknown): string {
   return 'Could not send a verification email right now.';
 }
 
+function isTransientEmailVerificationConfirmError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('status' in error)) {
+    return false;
+  }
+
+  return (error as { status?: unknown }).status === 0;
+}
+
 export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps) {
   const {
     actualUser,
@@ -87,6 +96,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const [tokenConfirmationStatus, setTokenConfirmationStatus] = useState<
     'idle' | 'confirming' | 'succeeded' | 'failed'
   >('idle');
+  const [tokenFailureKind, setTokenFailureKind] = useState<'invalid' | 'transient' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const pendingEmail =
@@ -248,44 +258,72 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     void sendVerificationEmail('screen_open');
   }, [isTokenVerification, pendingEmail, sendVerificationEmail, verificationStatus]);
 
-  useEffect(() => {
-    if (!verificationToken || !isOnline || hasTriggeredTokenConfirmationRef.current) {
+  const confirmVerificationToken = useCallback(async () => {
+    if (!verificationToken || !isOnline) {
       return;
     }
 
-    hasTriggeredTokenConfirmationRef.current = true;
     setTokenConfirmationStatus('confirming');
+    setTokenFailureKind(null);
     setErrorMessage(null);
     setSuccessMessage(null);
     trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_STARTED', {
       source: 'VerifyEmailScreen',
     });
 
-    void confirmUserEmailVerification(verificationToken)
-      .then(async () => {
-        setTokenConfirmationStatus('succeeded');
-        setSuccessMessage(
-          hasRetainedSession
-            ? 'Your email has been verified. The app will refresh your account status automatically.'
-            : 'Your email has been verified. You can sign in now.',
-        );
-        trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_SUCCEEDED', {
-          source: 'VerifyEmailScreen',
-        });
-
-        if (hasRetainedSession) {
-          await refreshAuthSession();
-        }
-      })
-      .catch((error) => {
-        setTokenConfirmationStatus('failed');
-        setErrorMessage('This verification link is invalid or expired. Request a new verification email.');
-        trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_FAILED', {
-          source: 'VerifyEmailScreen',
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
+    try {
+      await confirmUserEmailVerification(verificationToken);
+    } catch (error) {
+      const isTransientFailure = isTransientEmailVerificationConfirmError(error);
+      setTokenConfirmationStatus('failed');
+      setTokenFailureKind(isTransientFailure ? 'transient' : 'invalid');
+      setErrorMessage(
+        isTransientFailure
+          ? 'We could not reach the verification server. Check your connection and try again.'
+          : 'This verification link is invalid or expired. Request a new verification email.',
+      );
+      trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_FAILED', {
+        failureStage: 'confirm',
+        source: 'VerifyEmailScreen',
+        ...buildSafeTelemetryErrorProperties(error),
       });
+      return;
+    }
+
+    setTokenConfirmationStatus('succeeded');
+    setSuccessMessage(
+      hasRetainedSession
+        ? 'Your email has been verified. The app will refresh your account status automatically.'
+        : 'Your email has been verified. You can sign in now.',
+    );
+    trackObservabilityEvent('AUTH_EMAIL_VERIFY_CONFIRM_SUCCEEDED', {
+      source: 'VerifyEmailScreen',
+    });
+
+    if (!hasRetainedSession) {
+      return;
+    }
+
+    try {
+      await refreshAuthSession();
+    } catch (error) {
+      setSuccessMessage('Your email has been verified. If the app does not update automatically, close and reopen it.');
+      trackObservabilityEvent('AUTH_EMAIL_VERIFY_REFRESH_FAILED', {
+        failureStage: 'refresh',
+        source: 'VerifyEmailScreen',
+        ...buildSafeTelemetryErrorProperties(error),
+      });
+    }
   }, [hasRetainedSession, isOnline, refreshAuthSession, verificationToken]);
+
+  useEffect(() => {
+    if (!verificationToken || !isOnline || hasTriggeredTokenConfirmationRef.current) {
+      return;
+    }
+
+    hasTriggeredTokenConfirmationRef.current = true;
+    void confirmVerificationToken();
+  }, [confirmVerificationToken, isOnline, verificationToken]);
 
   useEffect(() => {
     if (!hasRetainedSession || verificationStatus !== 'verified') {
@@ -329,8 +367,25 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
 
   if (isTokenVerification) {
     const isConfirmingToken = tokenConfirmationStatus === 'confirming';
+    const isTransientTokenFailure =
+      tokenConfirmationStatus === 'failed' && tokenFailureKind === 'transient';
     const canRequestNewVerification =
-      tokenConfirmationStatus === 'failed' && Boolean(pendingEmail) && canResendVerificationEmail && isOnline;
+      tokenConfirmationStatus === 'failed' &&
+      tokenFailureKind !== 'transient' &&
+      Boolean(pendingEmail) &&
+      canResendVerificationEmail &&
+      isOnline;
+    const tokenDescription = isConfirmingToken
+      ? 'We are verifying your email address.'
+      : tokenConfirmationStatus === 'succeeded'
+        ? 'Your email address has been verified.'
+        : tokenConfirmationStatus === 'failed'
+          ? isTransientTokenFailure
+            ? 'We could not reach the verification server.'
+            : 'This verification link could not be completed.'
+          : isOnline
+            ? 'We are preparing to verify your email address.'
+            : 'Connect to the internet to verify your email address.';
 
     return (
       <Screen background="app" keyboardAware scroll testID="verify-email-token-screen">
@@ -355,13 +410,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
           contentStyle={styles.formContent}
         >
           <AuthIntroCard
-            description={
-              isConfirmingToken
-                ? 'We are verifying your email address.'
-                : tokenConfirmationStatus === 'succeeded'
-                  ? 'Your email address has been verified.'
-                  : 'This verification link could not be completed.'
-            }
+            description={tokenDescription}
             iconName="mail-unread-outline"
             title="Verify Email"
           />
@@ -377,7 +426,17 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
 
             {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
-            {tokenConfirmationStatus === 'failed' && pendingEmail ? (
+            {isTransientTokenFailure ? (
+              <Button
+                disabled={!isOnline}
+                label="Try Again"
+                onPress={() => {
+                  void confirmVerificationToken();
+                }}
+              />
+            ) : null}
+
+            {tokenConfirmationStatus === 'failed' && tokenFailureKind !== 'transient' && pendingEmail ? (
               <Button
                 disabled={!canRequestNewVerification}
                 label={resendButtonLabel}

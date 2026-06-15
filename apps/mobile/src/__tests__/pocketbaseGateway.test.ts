@@ -1,6 +1,13 @@
+import { ClientResponseError } from 'pocketbase';
+
 import * as pocketbaseModule from '../lib/pocketbase';
 import { trackObservabilityEvent } from '../observability';
-import { listCollectionPage, listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
+import {
+  confirmUserEmailVerification,
+  listCollectionPage,
+  listCollectionRecords,
+  sendApiRequest,
+} from '../features/store/pocketbaseGateway';
 
 jest.mock('../lib/pocketbase', () => ({
   pb: {
@@ -8,10 +15,12 @@ jest.mock('../lib/pocketbase', () => ({
       token: 'test-token',
     },
     collection: jest.fn(() => ({
+      confirmVerification: jest.fn(),
       getList: jest.fn(),
     })),
     send: jest.fn(),
   },
+  __mockConfirmVerification: jest.fn(),
   __mockGetList: jest.fn(),
   __mockSend: jest.fn(),
 }));
@@ -21,6 +30,7 @@ jest.mock('../observability', () => ({
 }));
 
 const mockedPocketbaseModule = pocketbaseModule as typeof pocketbaseModule & {
+  __mockConfirmVerification: jest.Mock;
   __mockGetList: jest.Mock;
   __mockSend: jest.Mock;
 };
@@ -34,11 +44,13 @@ describe('pocketbaseGateway', () => {
     const mockSend = mockedPocketbaseModule.pb.send as jest.Mock;
 
     mockCollection.mockImplementation(() => ({
+      confirmVerification: mockedPocketbaseModule.__mockConfirmVerification,
       getList: mockedPocketbaseModule.__mockGetList,
     }));
     mockCollection.mockClear();
     mockSend.mockImplementation(mockedPocketbaseModule.__mockSend);
     mockSend.mockClear();
+    mockedPocketbaseModule.__mockConfirmVerification.mockReset();
     mockedPocketbaseModule.__mockGetList.mockReset();
     mockedPocketbaseModule.__mockSend.mockReset();
     mockedTrackObservabilityEvent.mockReset();
@@ -144,6 +156,66 @@ describe('pocketbaseGateway', () => {
         isAuthenticated: true,
         method: 'POST',
         path: '/api/friends/invite',
+      }),
+    );
+  });
+
+  it('confirms email verification with auto-cancel disabled', async () => {
+    mockedPocketbaseModule.__mockConfirmVerification.mockResolvedValue(true);
+
+    await confirmUserEmailVerification('verification-token');
+
+    expect(mockedPocketbaseModule.pb.collection).toHaveBeenCalledWith('users');
+    expect(mockedPocketbaseModule.__mockConfirmVerification).toHaveBeenCalledWith('verification-token', {
+      requestKey: null,
+    });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'AUTH_EMAIL_VERIFICATION_CONFIRM_SUCCEEDED',
+      expect.objectContaining({
+        attempt: 1,
+        source: 'pocketbaseGateway',
+      }),
+    );
+  });
+
+  it('retries statusless PocketBase verification confirmation failures once', async () => {
+    mockedPocketbaseModule.__mockConfirmVerification
+      .mockRejectedValueOnce(new ClientResponseError({ status: 0 }))
+      .mockResolvedValueOnce(true);
+
+    await confirmUserEmailVerification('verification-token');
+
+    expect(mockedPocketbaseModule.__mockConfirmVerification).toHaveBeenCalledTimes(2);
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'AUTH_EMAIL_VERIFICATION_CONFIRM_RETRYING',
+      expect.objectContaining({
+        attempt: 1,
+        errorCategory: 'transport_error',
+        source: 'pocketbaseGateway',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'AUTH_EMAIL_VERIFICATION_CONFIRM_SUCCEEDED',
+      expect.objectContaining({
+        attempt: 2,
+        source: 'pocketbaseGateway',
+      }),
+    );
+  });
+
+  it('does not retry HTTP verification confirmation failures', async () => {
+    mockedPocketbaseModule.__mockConfirmVerification.mockRejectedValue(new ClientResponseError({ status: 400 }));
+
+    await expect(confirmUserEmailVerification('verification-token')).rejects.toBeInstanceOf(ClientResponseError);
+
+    expect(mockedPocketbaseModule.__mockConfirmVerification).toHaveBeenCalledTimes(1);
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'AUTH_EMAIL_VERIFICATION_CONFIRM_FAILED',
+      expect.objectContaining({
+        attempt: 1,
+        errorMessage: 'HTTP 400',
+        source: 'pocketbaseGateway',
+        statusCode: 400,
       }),
     );
   });

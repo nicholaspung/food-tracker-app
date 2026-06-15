@@ -1,10 +1,14 @@
-import type { RecordModel } from 'pocketbase';
+import { ClientResponseError, type CommonOptions, type RecordModel } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import { trackObservabilityEvent } from '../../observability';
 import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+const EMAIL_VERIFICATION_CONFIRM_MAX_ATTEMPTS = 2;
+const EMAIL_VERIFICATION_CONFIRM_OPTIONS: CommonOptions = {
+  requestKey: null,
+};
 
 interface PocketBaseRequestOptions {
   signal?: AbortSignal;
@@ -350,22 +354,48 @@ export async function requestUserEmailVerification(email: string): Promise<void>
 }
 
 export async function confirmUserEmailVerification(token: string): Promise<void> {
-  try {
-    await pb.collection('users').confirmVerification(token);
-    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_SUCCEEDED', {
-      source: 'pocketbaseGateway',
-    });
-  } catch (error) {
-    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_FAILED', {
-      source: 'pocketbaseGateway',
-      ...resolveErrorProperties(error),
-    });
-    throw error;
+  let attempt = 0;
+
+  while (attempt < EMAIL_VERIFICATION_CONFIRM_MAX_ATTEMPTS) {
+    attempt += 1;
+
+    try {
+      await pb.collection('users').confirmVerification(token, EMAIL_VERIFICATION_CONFIRM_OPTIONS);
+      trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_SUCCEEDED', {
+        attempt,
+        source: 'pocketbaseGateway',
+      });
+      return;
+    } catch (error) {
+      const shouldRetry =
+        attempt < EMAIL_VERIFICATION_CONFIRM_MAX_ATTEMPTS &&
+        isTransientPocketBaseRequestError(error);
+
+      if (shouldRetry) {
+        trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_RETRYING', {
+          attempt,
+          source: 'pocketbaseGateway',
+          ...resolveErrorProperties(error),
+        });
+        continue;
+      }
+
+      trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_CONFIRM_FAILED', {
+        attempt,
+        source: 'pocketbaseGateway',
+        ...resolveErrorProperties(error),
+      });
+      throw error;
+    }
   }
 }
 
 function resolveErrorProperties(error: unknown) {
   return buildSafeTelemetryErrorProperties(error);
+}
+
+function isTransientPocketBaseRequestError(error: unknown): boolean {
+  return error instanceof ClientResponseError && error.status === 0;
 }
 
 function resolveApiRequestHeaders(init: ApiRequestInit): Record<string, string> | undefined {
