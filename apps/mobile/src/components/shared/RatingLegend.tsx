@@ -92,9 +92,18 @@ export function RatingLegend({
 
   return (
     <Card style={styles.card}>
-      <Pressable onPress={handleToggle} style={styles.header} testID="rating-legend-toggle">
+      <Pressable
+        accessibilityLabel="Rating Guide"
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={handleToggle}
+        style={styles.header}
+        testID="rating-legend-toggle"
+      >
         <Text variant="label">Rating Guide</Text>
-        <Text tone="muted">{isExpanded ? '▲' : '▼'}</Text>
+        <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" tone="muted">
+          {isExpanded ? '▲' : '▼'}
+        </Text>
       </Pressable>
 
       {isExpanded ? (

@@ -280,12 +280,23 @@ export function FeedHeaderControls({
             value={searchQuery}
           />
           {searchQuery ? (
-            <Pressable onPress={onClearSearch} style={styles.clearSearchButton}>
+            <Pressable
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
+              onPress={onClearSearch}
+              style={styles.clearSearchButton}
+            >
               <Text style={styles.clearSearchLabel} variant="bodySmTightSemiBold">Clear</Text>
             </Pressable>
           ) : null}
         </View>
-        <Pressable onPress={onToggleFilters} style={[styles.filtersToggle, filtersExpanded && styles.filtersToggleActive]}>
+        <Pressable
+          accessibilityLabel="Filters"
+          accessibilityRole="button"
+          accessibilityState={{ expanded: filtersExpanded }}
+          onPress={onToggleFilters}
+          style={[styles.filtersToggle, filtersExpanded && styles.filtersToggleActive]}
+        >
           <Text
             style={[styles.filtersToggleLabel, filtersExpanded && styles.filtersToggleLabelActive]}
             variant="button"

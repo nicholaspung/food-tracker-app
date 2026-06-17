@@ -73,6 +73,7 @@ export function FilterChipGroup<T extends string>({
     return (
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ selected: isSelected }}
         key={option.value}
         onPress={() => {
           onChange(option.value);

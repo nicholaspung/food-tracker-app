@@ -1,5 +1,5 @@
 import { Ionicons } from '../../ui/AppIcon';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 import type { GestureResponderEvent, StyleProp, ViewStyle } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
@@ -42,6 +42,12 @@ const useStyles = createThemedStyles((theme) => ({
     flex: 1,
   },
   removeButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  removeButtonIcon: {
     alignItems: 'center',
     borderColor: theme.colors.border.default,
     borderRadius: theme.radii.pill,
@@ -91,7 +97,9 @@ export function PhotoAttachmentRow({
         onPress={handleRemovePress}
         style={styles.removeButton}
       >
-        <Ionicons color={theme.colors.text.secondary} name="close" size={12} />
+        <View style={styles.removeButtonIcon}>
+          <Ionicons color={theme.colors.text.secondary} name="close" size={12} />
+        </View>
       </Pressable>
     </Pressable>
   );

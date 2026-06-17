@@ -85,8 +85,9 @@ const useStyles = createThemedStyles((theme) => ({
   removeItemButton: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
+    height: 44,
     justifyContent: 'center',
-    padding: 2,
+    width: 44,
   },
   itemSplitBody: {
     gap: theme.spacing.sm,
@@ -267,6 +268,7 @@ export function BillDraftItemEditor({
                       </Text>
                       <Pressable
                         accessibilityLabel={`Remove ${item.name}`}
+                        accessibilityRole="button"
                         onPress={() => {
                           onRemoveItemRequest(item);
                         }}

@@ -108,6 +108,7 @@ export function ListItem({
       <View style={[styles.item, style, disabled && styles.disabled]}>
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ disabled }}
           disabled={disabled}
           onLongPress={onLongPress}
           onPress={onPress}
@@ -127,6 +128,7 @@ export function ListItem({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onLongPress={onLongPress}
       onPress={onPress}

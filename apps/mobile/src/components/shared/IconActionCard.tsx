@@ -116,7 +116,13 @@ export function IconActionCard({
   const descriptionTone = tone === 'muted' ? 'muted' : 'secondary';
 
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} testID={testID}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      testID={testID}
+    >
       {({ pressed }) => (
         <Card style={[styles.card, disabled ? styles.cardDisabled : null, pressed && !disabled ? styles.cardPressed : null]}>
           <View style={styles.contentRow}>

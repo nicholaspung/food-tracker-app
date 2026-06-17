@@ -72,6 +72,27 @@ function hasAncestor(node: any, possibleAncestor: any) {
 }
 
 describe('ListItem', () => {
+  it('announces disabled state for disabled pressable rows', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <ListItem
+          disabled
+          onPress={jest.fn()}
+          testID="disabled-row"
+          title="Disabled row"
+        />,
+      );
+    });
+
+    const rowPressable = renderer.root
+      .findAllByType('Pressable')
+      .find((node: any) => node.props.testID === 'disabled-row');
+
+    expect(rowPressable?.props.accessibilityState).toEqual({ disabled: true });
+  });
+
   it('keeps separate trailing actions outside the row press target', async () => {
     let renderer: any = null;
 
@@ -97,6 +118,29 @@ describe('ListItem', () => {
     expect(rowPressable).toBeTruthy();
     expect(trailingAction).toBeTruthy();
     expect(hasAncestor(trailingAction, rowPressable)).toBe(false);
+  });
+
+  it('announces disabled state for rows with separate trailing actions', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <ListItem
+          disabled
+          onPress={jest.fn()}
+          separateTrailingAction
+          testID="disabled-content-row"
+          title="Restaurant"
+          trailing={<PressableAction />}
+        />,
+      );
+    });
+
+    const rowPressable = renderer.root
+      .findAllByType('Pressable')
+      .find((node: any) => node.props.testID === 'disabled-content-row');
+
+    expect(rowPressable?.props.accessibilityState).toEqual({ disabled: true });
   });
 });
 

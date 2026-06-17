@@ -190,6 +190,20 @@ const TABS: {
   },
 ];
 
+function getFriendsTabAccessibilityLabel(pendingInvitesCount: number): string {
+  if (pendingInvitesCount <= 0) {
+    return 'Friends';
+  }
+
+  if (pendingInvitesCount > 9) {
+    return 'Friends, 9 or more pending invites';
+  }
+
+  const inviteLabel = pendingInvitesCount === 1 ? 'pending invite' : 'pending invites';
+
+  return `Friends, ${pendingInvitesCount} ${inviteLabel}`;
+}
+
 export function BottomTabNavigation({
   currentRouteName,
   currentRouteParams,
@@ -211,18 +225,22 @@ export function BottomTabNavigation({
     refetchOnReconnect: 'always',
   });
   const pendingInvitesCount = friendsSummary?.requestsCount ?? 0;
+  const activeTabRoute = getBottomTabRouteForScreen(currentRouteName, currentRouteParams);
 
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         {TABS.map((tab) => {
-          const activeTabRoute = getBottomTabRouteForScreen(currentRouteName, currentRouteParams);
           const isActive = activeTabRoute === tab.route;
           const showBadge = tab.route === 'Friends' && pendingInvitesCount > 0;
+          const accessibilityLabel =
+            tab.route === 'Friends' ? getFriendsTabAccessibilityLabel(pendingInvitesCount) : tab.label;
 
           return (
             <Pressable
+              accessibilityLabel={accessibilityLabel}
               accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
               key={tab.route}
               onPress={() => {
                 onNavigate(tab.route);
@@ -237,7 +255,11 @@ export function BottomTabNavigation({
                   size={22}
                 />
                 {showBadge ? (
-                  <View style={styles.badge}>
+                  <View
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={styles.badge}
+                  >
                     <Text tone="inverse" variant="captionStrong">
                       {pendingInvitesCount > 9 ? '9+' : pendingInvitesCount}
                     </Text>

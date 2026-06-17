@@ -78,6 +78,27 @@ function flattenStyle(style: unknown) {
 }
 
 describe('IconActionCard', () => {
+  it('announces disabled state for disabled cards', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <IconActionCard
+          disabled
+          iconBackground="icon-background"
+          iconColor="icon-color"
+          iconName="image-outline"
+          onPress={jest.fn()}
+          title="Upload Image"
+        />,
+      );
+    });
+
+    const cardButton = renderer.root.findByType('Pressable');
+
+    expect(cardButton.props.accessibilityState).toEqual({ disabled: true });
+  });
+
   it('uses muted styling and quieter text tones when tone is muted', async () => {
     let renderer: any = null;
 
