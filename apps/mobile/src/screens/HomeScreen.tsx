@@ -26,17 +26,15 @@ import {
   WantToTryBookmarkButton,
 } from '../components/shared';
 import {
-  createFriendSuggestionAcceptance,
-  friendsQueryKeys,
   homeFeedQueryKeys,
   homeFeedMapQueryKeys,
-  invalidateHomeFeedQueries,
   HOME_FEED_DEFAULT_SORTS,
   listHomeFeedMapPoints,
   mapHomeFeedDefaultsFromRecord,
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
+  useFriendWrites,
   type VisitRecord,
 } from '../features';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
@@ -46,10 +44,8 @@ import {
   type RestaurantListBookmarkStateTargetInput,
 } from '../features/store/restaurantListsStore';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
-import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
-import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
@@ -312,8 +308,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const writeFeature = useOfflineAwareFeatureWrite();
-  const trackWriteTelemetry = useWriteTelemetry();
+  const friendWrites = useFriendWrites();
   const restaurantListWrites = useRestaurantListWrites();
   const { queuedWrites: pendingHomeCreateWrites } = useQueuedFeatureWrites([
     'visit.create',
@@ -354,9 +349,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
-    queryClient,
-    trackWriteTelemetry,
-    writeFeature,
   });
   const feedScope = feedMode;
   const sortFilter = sortByMode[feedMode];
@@ -1277,12 +1269,9 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     });
 
     try {
-      await trackWriteTelemetry('friend.suggestion.accept');
-      await createFriendSuggestionAcceptance({ inviterId: friendSuggestion.inviterId });
+      await friendWrites.acceptFriendSuggestion({ inviterId: friendSuggestion.inviterId });
       await clearPendingFriendSuggestion();
       setFriendSuggestion(null);
-      await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
-      await invalidateHomeFeedQueries(queryClient);
       trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_SUCCEEDED', {
         source: 'HomeScreen',
       });
@@ -1303,7 +1292,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     } finally {
       setIsApplyingFriendSuggestion(false);
     }
-  }, [friendSuggestion, isOnline, queryClient, trackWriteTelemetry]);
+  }, [friendSuggestion, friendWrites, isOnline]);
 
   const renderStandardFeedEntry = useCallback(
     ({

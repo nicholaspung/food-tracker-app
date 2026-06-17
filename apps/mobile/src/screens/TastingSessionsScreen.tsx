@@ -225,7 +225,10 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     });
   }, [refetchSessions, runPullRefresh]);
 
+  const hasResolvedSessions = sessionsQuery.data !== undefined;
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
+  const showOfflineUnavailable = !isOnline && !hasResolvedSessions && !sessionsQuery.isLoading;
+  const showEmptySessions = !sessionsQuery.isLoading && sessions.length === 0 && !showOfflineUnavailable;
   useEffect(() => {
     if (!route.params?.errorMessage) {
       return;
@@ -424,9 +427,16 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
         title="Sessions may be stale"
       />
 
+      {showOfflineUnavailable ? (
+        <EmptyState
+          description="Connect to load group tastings, or open this screen after sessions have been saved locally."
+          title="No saved sessions available offline"
+        />
+      ) : null}
+
       {sessionsQuery.isLoading && sessions.length === 0 ? <LoadingState label="Loading group tastings..." /> : null}
 
-      {!sessionsQuery.isLoading && sessions.length === 0 ? (
+      {showEmptySessions ? (
         <EmptyState description="No sessions yet." title="No group tastings" />
       ) : null}
 

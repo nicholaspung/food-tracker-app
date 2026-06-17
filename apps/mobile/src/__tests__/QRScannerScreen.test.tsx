@@ -4,7 +4,6 @@ import { useCameraPermissions } from 'expo-camera';
 
 import { QRScannerScreen } from '../screens/QRScannerScreen';
 import { useFriendWrites } from '../features';
-import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { useAuth } from '../providers/AuthProvider';
 
 const mockReact = React;
@@ -55,10 +54,6 @@ jest.mock('../features', () => {
     useFriendWrites: jest.fn(),
   };
 });
-
-jest.mock('../features/store/useWriteTelemetry', () => ({
-  useWriteTelemetry: jest.fn(),
-}));
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
@@ -126,7 +121,6 @@ jest.mock('../ui', () => ({
 
 const mockedUseCameraPermissions = useCameraPermissions as jest.MockedFunction<typeof useCameraPermissions>;
 const mockedUseFriendWrites = useFriendWrites as jest.MockedFunction<typeof useFriendWrites>;
-const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 
 function renderScanner() {
@@ -159,12 +153,9 @@ describe('QRScannerScreen', () => {
   let sendFriendRequest: jest.Mock;
 
   beforeEach(() => {
-    sendFriendRequest = jest.fn(async ({ beforeExecute }: { beforeExecute?: () => Promise<void> }) => {
-      await beforeExecute?.();
-      return {
-        status: 'completed',
-      };
-    });
+    sendFriendRequest = jest.fn(async () => ({
+      status: 'completed',
+    }));
 
     mockedUseCameraPermissions.mockReturnValue([
       {
@@ -175,10 +166,10 @@ describe('QRScannerScreen', () => {
     ] as never);
     mockedUseFriendWrites.mockReturnValue({
       acceptFriendRequest: jest.fn(),
+      acceptFriendSuggestion: jest.fn(),
       removeFriend: jest.fn(),
       sendFriendRequest,
     } as never);
-    mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseAuth.mockReturnValue({
       user: {
         friendCode: 'SELF1234',
@@ -218,9 +209,8 @@ describe('QRScannerScreen', () => {
     });
 
     expect(sendFriendRequest).toHaveBeenCalledWith({
-      beforeExecute: expect.any(Function),
       code: 'ABCD1234',
-      trackOnlineWrite: false,
+      entryMethod: 'qr_scan',
     });
   });
 

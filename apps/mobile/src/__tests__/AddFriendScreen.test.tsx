@@ -158,6 +158,7 @@ describe('AddFriendScreen', () => {
 
     mockedUseFriendWrites.mockReturnValue({
       acceptFriendRequest: jest.fn(),
+      acceptFriendSuggestion: jest.fn(),
       removeFriend: jest.fn(),
       sendFriendRequest,
     } as never);

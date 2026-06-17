@@ -3,6 +3,7 @@ import {
   calculateSuggestedBillAmounts,
   sanitizeBillNumericInput,
   type BillDraftSubmissionSnapshot,
+  type BillDraftTransitionState,
   type DraftBillItem,
   type DraftParticipant,
 } from '../features/bills/billDraft';
@@ -130,6 +131,30 @@ function buildDraftItem(overrides: Partial<DraftBillItem> = {}): DraftBillItem {
     assignedParticipantIds: ['user:self', 'custom:alex'],
     advancedSplitType: 'percentage',
     advancedSplits: [],
+    ...overrides,
+  };
+}
+
+function buildTransitionState(
+  overrides: Partial<BillDraftTransitionState> = {},
+): BillDraftTransitionState {
+  return {
+    billTitle: '',
+    createStep: 'splitType',
+    customTipSplits: [],
+    customTipSplitType: 'amount',
+    draftItemName: '',
+    draftItemPrice: '',
+    expandedItemIds: [],
+    feesInput: '',
+    finalTotalInput: '',
+    isCustomTipEnabled: false,
+    items: [],
+    owedAmountOverrides: {},
+    receiptScanWarnings: [],
+    splitMode: 'equal',
+    taxInput: '',
+    tipInput: '',
     ...overrides,
   };
 }
@@ -765,6 +790,92 @@ describe('bill draft editing lifecycle', () => {
       'Possible duplicate line.',
       'Review "Sushi" before saving.',
     ]);
+  });
+
+  it('reduces split-mode and receipt-scan transitions as a coherent draft state', () => {
+    const customItem = buildDraftItem();
+    const customState = billDraftFacade.transitionState(
+      buildTransitionState({
+        customTipSplits: [
+          {
+            participantId: 'user:self',
+            percentageValue: '100',
+            amountValue: '5',
+            percentageLocked: false,
+            amountLocked: false,
+          },
+        ],
+        customTipSplitType: 'percentage',
+        draftItemName: 'Temp',
+        draftItemPrice: '12',
+        expandedItemIds: [customItem.id],
+        feesInput: '1',
+        finalTotalInput: '20',
+        isCustomTipEnabled: true,
+        items: [customItem],
+        receiptScanWarnings: ['Review receipt'],
+        splitMode: 'custom',
+        taxInput: '2',
+        tipInput: '3',
+      }),
+      {
+        type: 'changeSplitMode',
+        nextSplitMode: 'equal',
+      },
+    );
+
+    expect(customState).toMatchObject({
+      splitMode: 'equal',
+      customTipSplits: [],
+      customTipSplitType: 'amount',
+      draftItemName: '',
+      draftItemPrice: '',
+      expandedItemIds: [],
+      feesInput: '',
+      finalTotalInput: '',
+      isCustomTipEnabled: false,
+      items: [],
+      receiptScanWarnings: [],
+      taxInput: '',
+      tipInput: '',
+    });
+
+    const receiptState = billDraftFacade.transitionState(customState, {
+      type: 'applyReceiptScan',
+      createEntityId,
+      isEditMode: false,
+      participantCount: 2,
+      scanResult: {
+        requestCorrelation: 'scan_2',
+        restaurantName: 'Nori',
+        items: [{ name: 'Ramen', price: 18, confidence: 'high' }],
+        tax: 1.5,
+        tip: 3,
+        fees: 0.5,
+        finalTotal: 23,
+        confidence: 'high',
+        warnings: [],
+      },
+    });
+
+    expect(receiptState).toMatchObject({
+      billTitle: 'Nori',
+      createStep: 'items',
+      splitMode: 'custom',
+      taxInput: '1.50',
+      tipInput: '3.00',
+      feesInput: '0.50',
+      finalTotalInput: '',
+      isCustomTipEnabled: false,
+      customTipSplits: [],
+    });
+    expect(receiptState.items).toEqual([
+      expect.objectContaining({
+        name: 'Ramen',
+        price: '18.00',
+      }),
+    ]);
+    expect(receiptState.expandedItemIds).toEqual([receiptState.items[0]?.id]);
   });
 
   it('derives submission-ready preview totals and manual owed validation state', () => {

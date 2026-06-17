@@ -4,8 +4,71 @@ const FRIEND_QR_HOST = 'friends';
 const FRIEND_QR_PATHNAME = '/add';
 const FRIEND_QR_CODE_PARAM = 'friendCode';
 
+export type FriendRequestEntryMethod = 'manual_code' | 'qr_scan';
+
+export type FriendRequestValidationFailureReason =
+  | 'missing_code'
+  | 'invalid_code_length'
+  | 'self_code';
+
+export type FriendRequestValidationResult =
+  | {
+      code: string;
+      ok: true;
+    }
+  | {
+      codeLength: number;
+      message: string;
+      ok: false;
+      reason: FriendRequestValidationFailureReason;
+    };
+
 export function sanitizeFriendCode(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, FRIEND_CODE_LENGTH);
+}
+
+export function validateFriendRequestCode({
+  code,
+  entryMethod,
+  ownFriendCode,
+}: {
+  code: string;
+  entryMethod: FriendRequestEntryMethod;
+  ownFriendCode: string;
+}): FriendRequestValidationResult {
+  const normalizedCode = sanitizeFriendCode(code);
+
+  if (!normalizedCode) {
+    return {
+      codeLength: 0,
+      message: 'Friend code is required.',
+      ok: false,
+      reason: entryMethod === 'manual_code' ? 'missing_code' : 'invalid_code_length',
+    };
+  }
+
+  if (normalizedCode.length !== FRIEND_CODE_LENGTH) {
+    return {
+      codeLength: normalizedCode.length,
+      message: 'Friend code must be 8 characters.',
+      ok: false,
+      reason: 'invalid_code_length',
+    };
+  }
+
+  if (normalizedCode === ownFriendCode) {
+    return {
+      codeLength: normalizedCode.length,
+      message: 'You cannot add yourself as a friend.',
+      ok: false,
+      reason: 'self_code',
+    };
+  }
+
+  return {
+    code: normalizedCode,
+    ok: true,
+  };
 }
 
 export function resolveOwnFriendCode(userId?: string, persistedFriendCode?: string): string {

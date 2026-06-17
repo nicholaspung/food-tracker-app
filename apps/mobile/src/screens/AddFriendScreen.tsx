@@ -10,9 +10,9 @@ import {
   resolveOwnFriendCode,
   sanitizeFriendCode,
   useFriendWrites,
+  validateFriendRequestCode,
 } from '../features';
 import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
-import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -142,7 +142,6 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const friendWrites = useFriendWrites();
-  const trackWriteTelemetry = useWriteTelemetry();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -225,27 +224,20 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   };
 
   const handleSubmit = async () => {
-    const normalizedCode = sanitizeFriendCode(friendCode);
+    const validationResult = validateFriendRequestCode({
+      code: friendCode,
+      entryMethod: 'manual_code',
+      ownFriendCode: myFriendCode,
+    });
 
-    if (!normalizedCode) {
+    if (!validationResult.ok) {
       trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
         source: 'AddFriendScreen',
         entryMethod: 'manual_code',
-        reason: 'missing_code',
+        reason: validationResult.reason,
         isOnline,
       });
-      setErrorMessage('Friend code is required.');
-      return;
-    }
-
-    if (normalizedCode === myFriendCode) {
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
-        source: 'AddFriendScreen',
-        entryMethod: 'manual_code',
-        reason: 'self_code',
-        isOnline,
-      });
-      setErrorMessage('You cannot add yourself as a friend.');
+      setErrorMessage(validationResult.message);
       return;
     }
 
@@ -253,14 +245,15 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
       source: 'AddFriendScreen',
       entryMethod: 'manual_code',
-      codeLength: normalizedCode.length,
+      codeLength: validationResult.code.length,
       isOnline,
     });
     setIsSubmitting(true);
 
     try {
       const requestResult = await friendWrites.sendFriendRequest({
-        code: normalizedCode,
+        code: validationResult.code,
+        entryMethod: 'manual_code',
       });
 
       if (requestResult.status === 'queued') {
@@ -305,50 +298,41 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   };
 
   const handleScanResult = async (inviteCode: string) => {
-    const normalizedCode = sanitizeFriendCode(inviteCode);
+    const validationResult = validateFriendRequestCode({
+      code: inviteCode,
+      entryMethod: 'qr_scan',
+      ownFriendCode: myFriendCode,
+    });
     trackObservabilityEvent('QR_SCAN_SUBMIT_STARTED', {
       source: 'AddFriendScreen',
     });
 
-    if (normalizedCode.length !== 8) {
+    if (!validationResult.ok) {
       trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
         source: 'AddFriendScreen',
         entryMethod: 'qr_scan',
-        reason: 'invalid_code_length',
-        codeLength: normalizedCode.length,
+        reason: validationResult.reason,
+        codeLength: validationResult.codeLength,
       });
-      setErrorMessage('Friend code must be 8 characters.');
-      setHasScanned(true);
-      return;
-    }
-
-    if (normalizedCode === myFriendCode) {
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
-        source: 'AddFriendScreen',
-        entryMethod: 'qr_scan',
-        reason: 'self_code',
-        codeLength: normalizedCode.length,
-      });
-      setErrorMessage('You cannot add yourself as a friend.');
+      setErrorMessage(validationResult.message);
       setHasScanned(true);
       return;
     }
 
     setErrorMessage(null);
-    setScannedCode(normalizedCode);
+    setScannedCode(validationResult.code);
     trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
       source: 'AddFriendScreen',
       entryMethod: 'qr_scan',
-      codeLength: normalizedCode.length,
+      codeLength: validationResult.code.length,
       isOnline,
     });
     setIsSubmitting(true);
 
     try {
       const requestResult = await friendWrites.sendFriendRequest({
-        code: normalizedCode,
-        trackOnlineWrite: false,
-        beforeExecute: () => trackWriteTelemetry('friend.qr.scan'),
+        code: validationResult.code,
+        entryMethod: 'qr_scan',
       });
 
       if (requestResult.status === 'queued') {

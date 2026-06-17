@@ -201,6 +201,40 @@ export interface ApplyReceiptScanToBillDraftResult {
   tipInput: string;
 }
 
+export type BillDraftCreateStep = 'splitType' | 'source' | 'details' | 'items' | 'review';
+
+export interface BillDraftTransitionState {
+  billTitle: string;
+  createStep: BillDraftCreateStep;
+  customTipSplits: DraftAdvancedSplitEntry[];
+  customTipSplitType: DraftAdvancedSplitType;
+  draftItemName: string;
+  draftItemPrice: string;
+  expandedItemIds: string[];
+  feesInput: string;
+  finalTotalInput: string;
+  isCustomTipEnabled: boolean;
+  items: DraftBillItem[];
+  owedAmountOverrides: Record<string, string>;
+  receiptScanWarnings: string[];
+  splitMode: CreateBillSplitMode;
+  taxInput: string;
+  tipInput: string;
+}
+
+export type BillDraftTransitionEvent =
+  | {
+      nextSplitMode: CreateBillSplitMode;
+      type: 'changeSplitMode';
+    }
+  | {
+      createEntityId: (prefix: string) => string;
+      isEditMode: boolean;
+      participantCount: number;
+      scanResult: ReceiptScanDraftResult;
+      type: 'applyReceiptScan';
+    };
+
 interface CalculateSuggestedBillAmountsInput {
   customTipSplits: DraftAdvancedSplitEntry[];
   customTipSplitType: DraftAdvancedSplitType;
@@ -1631,6 +1665,52 @@ function applyReceiptScanToBillDraft({
   };
 }
 
+function reduceBillDraftTransitionState(
+  state: BillDraftTransitionState,
+  event: BillDraftTransitionEvent,
+): BillDraftTransitionState {
+  if (event.type === 'changeSplitMode') {
+    const transition = changeBillDraftSplitMode({
+      currentSplitMode: state.splitMode,
+      nextSplitMode: event.nextSplitMode,
+      draft: {
+        customTipSplits: state.customTipSplits,
+        customTipSplitType: state.customTipSplitType,
+        draftItemName: state.draftItemName,
+        draftItemPrice: state.draftItemPrice,
+        expandedItemIds: state.expandedItemIds,
+        feesInput: state.feesInput,
+        finalTotalInput: state.finalTotalInput,
+        isCustomTipEnabled: state.isCustomTipEnabled,
+        items: state.items,
+        owedAmountOverrides: state.owedAmountOverrides,
+        receiptScanWarnings: state.receiptScanWarnings,
+        taxInput: state.taxInput,
+        tipInput: state.tipInput,
+      },
+    });
+
+    return {
+      ...state,
+      ...transition,
+    };
+  }
+
+  const receiptDraft = applyReceiptScanToBillDraft({
+    billTitle: state.billTitle,
+    createEntityId: event.createEntityId,
+    isEditMode: event.isEditMode,
+    participantCount: event.participantCount,
+    scanResult: event.scanResult,
+  });
+
+  return {
+    ...state,
+    ...receiptDraft,
+    createStep: receiptDraft.createStep ?? state.createStep,
+  };
+}
+
 function deriveBillDraftPreviewState({
   customTipSplits,
   customTipSplitType,
@@ -2245,6 +2325,7 @@ export const billDraftFacade = {
   changeCustomTipSplitType: changeAdvancedSplitType,
   changeSplitMode: changeBillDraftSplitMode,
   derivePreviewState: deriveBillDraftPreviewState,
+  transitionState: reduceBillDraftTransitionState,
   hydrateEditDraft: hydrateBillDraftForEdit,
   inferEditSplitMode,
   getAdvancedSplitInputValue: getAdvancedSplitRawValue,

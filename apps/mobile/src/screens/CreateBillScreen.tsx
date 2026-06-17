@@ -31,6 +31,7 @@ import {
   sanitizeBillNumericInput,
   sanitizeParticipantName,
   type CreateBillSplitMode,
+  type BillDraftTransitionState,
   type DraftAdvancedSplitEntry,
   type DraftAdvancedSplitType,
   type DraftBillItem,
@@ -538,6 +539,69 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     resetDraftState,
   } = itemCompositionController;
 
+  const buildBillDraftTransitionState = useCallback(
+    (): BillDraftTransitionState => ({
+      billTitle,
+      createStep,
+      customTipSplits,
+      customTipSplitType,
+      draftItemName,
+      draftItemPrice,
+      expandedItemIds,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      items,
+      owedAmountOverrides,
+      receiptScanWarnings,
+      splitMode,
+      taxInput,
+      tipInput,
+    }),
+    [
+      billTitle,
+      createStep,
+      customTipSplits,
+      customTipSplitType,
+      draftItemName,
+      draftItemPrice,
+      expandedItemIds,
+      feesInput,
+      finalTotalInput,
+      isCustomTipEnabled,
+      items,
+      owedAmountOverrides,
+      receiptScanWarnings,
+      splitMode,
+      taxInput,
+      tipInput,
+    ],
+  );
+
+  const applyBillDraftTransitionState = useCallback(
+    (nextState: BillDraftTransitionState) => {
+      setSplitMode(nextState.splitMode);
+      setCreateStep(nextState.createStep);
+      setBillTitle(nextState.billTitle);
+      replaceDraftState({
+        draftItemName: nextState.draftItemName,
+        draftItemPrice: nextState.draftItemPrice,
+        items: nextState.items,
+        expandedItemIds: nextState.expandedItemIds,
+      });
+      setTaxInput(nextState.taxInput);
+      setTipInput(nextState.tipInput);
+      setFeesInput(nextState.feesInput);
+      setFinalTotalInput(nextState.finalTotalInput);
+      setIsCustomTipEnabled(nextState.isCustomTipEnabled);
+      setCustomTipSplitType(nextState.customTipSplitType);
+      setCustomTipSplits(nextState.customTipSplits);
+      setOwedAmountOverrides(nextState.owedAmountOverrides);
+      setReceiptScanWarnings(nextState.receiptScanWarnings);
+    },
+    [replaceDraftState],
+  );
+
   const billNumericInputProps = {
     showInlineKeyboardDismissButton: false,
     useDefaultReturnKeyType: false,
@@ -574,61 +638,22 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         nextSplitMode,
       });
 
-      const transition = billDraftFacade.changeSplitMode({
-        currentSplitMode: splitMode,
-        nextSplitMode,
-        draft: {
-          customTipSplits,
-          customTipSplitType,
-          draftItemName,
-          draftItemPrice,
-          expandedItemIds,
-          feesInput,
-          finalTotalInput,
-          isCustomTipEnabled,
-          items,
-          owedAmountOverrides,
-          receiptScanWarnings,
-          taxInput,
-          tipInput,
+      const transition = billDraftFacade.transitionState(
+        buildBillDraftTransitionState(),
+        {
+          type: 'changeSplitMode',
+          nextSplitMode,
         },
-      });
+      );
 
-      replaceDraftState({
-        draftItemName: transition.draftItemName,
-        draftItemPrice: transition.draftItemPrice,
-        items: transition.items,
-        expandedItemIds: transition.expandedItemIds,
-      });
-      setTaxInput(transition.taxInput);
-      setTipInput(transition.tipInput);
-      setFeesInput(transition.feesInput);
-      setFinalTotalInput(transition.finalTotalInput);
-      setIsCustomTipEnabled(transition.isCustomTipEnabled);
-      setCustomTipSplitType(transition.customTipSplitType);
-      setCustomTipSplits(transition.customTipSplits);
-      setOwedAmountOverrides(transition.owedAmountOverrides);
-      setReceiptScanWarnings(transition.receiptScanWarnings);
+      applyBillDraftTransitionState(transition);
       setPendingReceiptScanResult(null);
       setErrorMessage(null);
-      setSplitMode(transition.splitMode);
     },
     [
-      customTipSplitType,
-      customTipSplits,
-      draftItemName,
-      draftItemPrice,
-      expandedItemIds,
-      feesInput,
-      finalTotalInput,
-      isCustomTipEnabled,
-      items,
-      owedAmountOverrides,
-      receiptScanWarnings,
-      replaceDraftState,
+      applyBillDraftTransitionState,
+      buildBillDraftTransitionState,
       splitMode,
-      taxInput,
-      tipInput,
     ],
   );
 
@@ -839,49 +864,31 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const applyReceiptScanResult = useCallback(
     (scanResult: ReceiptScanDraftResult) => {
-      const receiptDraft = billDraftFacade.applyReceiptScan({
-        billTitle,
+      const transition = billDraftFacade.transitionState(buildBillDraftTransitionState(), {
+        type: 'applyReceiptScan',
         createEntityId,
         isEditMode,
         participantCount: participants.length,
         scanResult,
       });
 
-      setSplitMode(receiptDraft.splitMode);
-      replaceDraftState({
-        draftItemName: receiptDraft.draftItemName,
-        draftItemPrice: receiptDraft.draftItemPrice,
-        items: receiptDraft.items,
-        expandedItemIds: receiptDraft.expandedItemIds,
-      });
-      setTaxInput(receiptDraft.taxInput);
-      setTipInput(receiptDraft.tipInput);
-      setFeesInput(receiptDraft.feesInput);
-      setFinalTotalInput(receiptDraft.finalTotalInput);
-      setBillTitle(receiptDraft.billTitle);
-      setIsCustomTipEnabled(receiptDraft.isCustomTipEnabled);
-      setCustomTipSplits(receiptDraft.customTipSplits);
-      setCustomTipSplitType(receiptDraft.customTipSplitType);
-      setReceiptScanWarnings(receiptDraft.receiptScanWarnings);
+      applyBillDraftTransitionState(transition);
       setErrorMessage(null);
       setPendingReceiptScanResult(null);
-      if (receiptDraft.createStep) {
-        setCreateStep(receiptDraft.createStep);
-      }
       appliedReceiptScanCorrelationRef.current = scanResult.requestCorrelation;
       trackObservabilityEvent('CREATE_BILL_RECEIPT_SCAN_APPLIED', {
         source: 'CreateBillScreen',
         isEditMode,
-        itemCount: receiptDraft.items.length,
-        warningCount: receiptDraft.receiptScanWarnings.length,
+        itemCount: transition.items.length,
+        warningCount: transition.receiptScanWarnings.length,
         confidence: scanResult.confidence,
       });
     },
     [
-      billTitle,
+      applyBillDraftTransitionState,
+      buildBillDraftTransitionState,
       isEditMode,
       participants.length,
-      replaceDraftState,
     ],
   );
 

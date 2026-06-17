@@ -333,6 +333,7 @@ describe('FriendsScreen', () => {
     mockedUseFriendWrites.mockReset();
     mockedUseFriendWrites.mockReturnValue({
       acceptFriendRequest: jest.fn().mockResolvedValue({ status: 'completed' }),
+      acceptFriendSuggestion: jest.fn(),
       removeFriend: jest.fn(async ({ friend, operationName, removedUserId }) => {
         await mockedRemoveFriend(friend.id);
         if (operationName === 'friend.remove') {

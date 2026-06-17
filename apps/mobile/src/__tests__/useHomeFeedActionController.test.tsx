@@ -1,34 +1,26 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { useQueryClient } from '@tanstack/react-query';
 
 import {
   buildPocketBaseFileUrl,
 } from '../features';
-import { invalidateHomeFeedQueries } from '../features/store/homeFeedQuery';
-import { moveVisitItem } from '../features/store/visitsStore';
-import { syncVisitMutationCaches } from '../features/store/visitsQuery';
-import { moveVisitItemApiMutationInput } from '../features/store/featureOutboxOperations';
 import { useFoodProductWrites } from '../features/store/useFoodProductWrites';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useVisitWrites } from '../features/store/useVisitWrites';
+import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   type HomeFeedActionController,
   useHomeFeedActionController,
 } from '../screens/home/useHomeFeedActionController';
 
+jest.mock('@tanstack/react-query', () => ({
+  useQueryClient: jest.fn(),
+}));
+
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(),
-  deleteFoodProduct: jest.fn(),
-  deleteVisit: jest.fn(),
-  homeFeedQueryKeys: {
-    root: ['feature', 'homeFeed'],
-  },
   invalidateHomeFeedQueries: jest.fn(),
-  moveVisitItem: jest.fn(),
   reportContent: jest.fn(),
-  syncVisitMutationCaches: jest.fn(),
-  visitsQueryKeys: {
-    root: ['feature', 'visits'],
-  },
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
@@ -37,52 +29,27 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
   ),
 }));
 
-jest.mock('../features/store/featureOutboxOperations', () => ({
-  moveVisitItemApiMutationInput: jest.fn(),
-}));
-
-jest.mock('../features/store/homeFeedQuery', () => ({
-  homeFeedQueryKeys: {
-    root: ['feature', 'homeFeed'],
-  },
-  invalidateHomeFeedQueries: jest.fn(),
-}));
-
-jest.mock('../features/store/visitsQuery', () => ({
-  syncVisitMutationCaches: jest.fn(),
-  visitsQueryKeys: {
-    root: ['feature', 'visits'],
-  },
-}));
-
-jest.mock('../features/store/visitsStore', () => ({
-  deleteVisit: jest.fn(),
-  moveVisitItem: jest.fn(),
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
 }));
 
 jest.mock('../features/store/useFoodProductWrites', () => ({
   useFoodProductWrites: jest.fn(),
 }));
 
-jest.mock('../lib/offlineAlerts', () => ({
-  showQueuedOfflineAlert: jest.fn(),
+jest.mock('../features/store/useVisitWrites', () => ({
+  useVisitWrites: jest.fn(),
+}));
+
+jest.mock('../features/store/useWriteTelemetry', () => ({
+  useWriteTelemetry: jest.fn(),
 }));
 
 const mockedBuildPocketBaseFileUrl = buildPocketBaseFileUrl as jest.MockedFunction<typeof buildPocketBaseFileUrl>;
-const mockedInvalidateHomeFeedQueries = invalidateHomeFeedQueries as jest.MockedFunction<
-  typeof invalidateHomeFeedQueries
->;
-const mockedMoveVisitItem = moveVisitItem as jest.MockedFunction<typeof moveVisitItem>;
-const mockedSyncVisitMutationCaches = syncVisitMutationCaches as jest.MockedFunction<
-  typeof syncVisitMutationCaches
->;
-const mockedMoveVisitItemApiMutationInput =
-  moveVisitItemApiMutationInput as jest.MockedFunction<
-    typeof moveVisitItemApiMutationInput
-  >;
+const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseFoodProductWrites = useFoodProductWrites as jest.MockedFunction<typeof useFoodProductWrites>;
-const mockedShowQueuedOfflineAlert =
-  showQueuedOfflineAlert as jest.MockedFunction<typeof showQueuedOfflineAlert>;
+const mockedUseVisitWrites = useVisitWrites as jest.MockedFunction<typeof useVisitWrites>;
+const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 
 function getControllerOrThrow(
   controller: HomeFeedActionController | null,
@@ -124,34 +91,41 @@ function createVisitRecord(
 }
 
 describe('useHomeFeedActionController', () => {
+  const queryClient = {
+    invalidateQueries: jest.fn(),
+  };
+  const visitWrites = {
+    convertVisitItemToFoodProduct: jest.fn(),
+    createVisit: jest.fn(),
+    deleteVisit: jest.fn(),
+    deleteVisitItem: jest.fn(),
+    moveVisitItem: jest.fn(),
+    updateVisit: jest.fn(),
+  };
+
   beforeEach(() => {
     mockedBuildPocketBaseFileUrl.mockReset();
-    mockedInvalidateHomeFeedQueries.mockReset();
-    mockedMoveVisitItem.mockReset();
-    mockedSyncVisitMutationCaches.mockReset();
-    mockedMoveVisitItemApiMutationInput.mockReset();
+    mockedUseQueryClient.mockReset();
     mockedUseFoodProductWrites.mockReset();
-    mockedShowQueuedOfflineAlert.mockReset();
+    mockedUseVisitWrites.mockReset();
+    mockedUseWriteTelemetry.mockReset();
+    queryClient.invalidateQueries.mockReset();
+    Object.values(visitWrites).forEach((mock) => mock.mockReset());
     mockedBuildPocketBaseFileUrl.mockImplementation(({ recordId, filename, thumb }) =>
       `pb://${recordId}/${filename}${thumb ? `?thumb=${thumb}` : ''}`,
     );
-    mockedInvalidateHomeFeedQueries.mockResolvedValue();
-    mockedSyncVisitMutationCaches.mockResolvedValue();
-    mockedMoveVisitItemApiMutationInput.mockReturnValue({
-      body: {
-        destinationVisitId: 'visit-destination',
-      },
-      headers: {
-        'X-Mobile-Write-Operation': 'visit.item.move',
-      },
-      method: 'POST',
-      url: 'https://example.com/api/visit-items/item-1/move',
-    });
+    mockedUseQueryClient.mockReturnValue(queryClient as never);
+    mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
+    visitWrites.deleteVisit.mockResolvedValue({ status: 'completed' });
+    visitWrites.moveVisitItem.mockResolvedValue({ status: 'completed' });
     mockedUseFoodProductWrites.mockReturnValue({
       createFoodProduct: jest.fn(),
       deleteFoodProduct: jest.fn().mockResolvedValue({ status: 'completed' }),
       updateFoodProduct: jest.fn(),
     } as unknown as ReturnType<typeof useFoodProductWrites>);
+    mockedUseVisitWrites.mockReturnValue(
+      visitWrites as unknown as ReturnType<typeof useVisitWrites>,
+    );
   });
 
   it('stores aligned full and preview urls and bounds the initial photo index', async () => {
@@ -161,9 +135,6 @@ describe('useHomeFeedActionController', () => {
     function TestComponent() {
       controller = useHomeFeedActionController({
         isOnline: true,
-        queryClient: {} as never,
-        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
-        writeFeature: jest.fn() as never,
       });
       return null;
     }
@@ -210,20 +181,13 @@ describe('useHomeFeedActionController', () => {
     });
   });
 
-  it('syncs visit mutation caches after deleting a visit', async () => {
+  it('deletes a visit through visit writes after confirmation', async () => {
     let controller: HomeFeedActionController | null = null;
     let renderer: ReactTestRenderer | null = null;
-    const writeFeature = jest.fn().mockResolvedValue({
-      status: 'completed' as const,
-    });
-    const queryClient = {} as never;
 
     function TestComponent() {
       controller = useHomeFeedActionController({
         isOnline: true,
-        queryClient,
-        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
-        writeFeature: writeFeature as never,
       });
       return null;
     }
@@ -240,32 +204,26 @@ describe('useHomeFeedActionController', () => {
       await getControllerOrThrow(controller).confirmDeleteTarget();
     });
 
-    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
+    expect(visitWrites.deleteVisit).toHaveBeenCalledWith({
       visitId: 'visit-1',
       includeVisitPhotos: true,
     });
-    expect(mockedInvalidateHomeFeedQueries).not.toHaveBeenCalled();
-    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalledWith('Visit delete');
+    expect(getControllerOrThrow(controller).pendingDeleteTarget).toBeNull();
+    expect(getControllerOrThrow(controller).deleteErrorMessage).toBeNull();
 
     await act(async () => {
       renderer?.unmount();
     });
   });
 
-  it('syncs visit mutation caches after queueing a visit delete', async () => {
+  it('clears the delete modal after queueing a visit delete', async () => {
     let controller: HomeFeedActionController | null = null;
     let renderer: ReactTestRenderer | null = null;
-    const writeFeature = jest.fn().mockResolvedValue({
-      status: 'queued' as const,
-    });
-    const queryClient = {} as never;
+    visitWrites.deleteVisit.mockResolvedValue({ status: 'queued' });
 
     function TestComponent() {
       controller = useHomeFeedActionController({
         isOnline: false,
-        queryClient,
-        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
-        writeFeature: writeFeature as never,
       });
       return null;
     }
@@ -282,18 +240,19 @@ describe('useHomeFeedActionController', () => {
       await getControllerOrThrow(controller).confirmDeleteTarget();
     });
 
-    expect(mockedSyncVisitMutationCaches).toHaveBeenCalledWith(queryClient, {
+    expect(visitWrites.deleteVisit).toHaveBeenCalledWith({
       visitId: 'visit-queued',
       includeVisitPhotos: true,
     });
-    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Visit delete');
+    expect(getControllerOrThrow(controller).pendingDeleteTarget).toBeNull();
+    expect(getControllerOrThrow(controller).deleteErrorMessage).toBeNull();
 
     await act(async () => {
       renderer?.unmount();
     });
   });
 
-  it('moves a visit item with optimistic cache patching and related invalidation', async () => {
+  it('moves a visit item through visit writes', async () => {
     let controller: HomeFeedActionController | null = null;
 
     const movedItem = {
@@ -313,104 +272,9 @@ describe('useHomeFeedActionController', () => {
       items: [],
     });
 
-    const homeFeedQueryKey = [
-      'feature',
-      'homeFeed',
-      'paginated',
-      'mine',
-      'all',
-      'created',
-      '',
-    ] as const;
-    let homeFeedData = {
-      pageParams: [undefined],
-      pages: [
-        {
-          hasNextPage: false,
-          items: [
-            {
-              eventAt: sourceVisit.visitedAt,
-              source: 'visit' as const,
-              visit: sourceVisit,
-            },
-            {
-              eventAt: destinationVisit.visitedAt,
-              source: 'visit' as const,
-              visit: destinationVisit,
-            },
-          ],
-        },
-      ],
-    };
-
-    const visitDetails = new Map<string, ReturnType<typeof createVisitRecord>>([
-      [JSON.stringify(['feature', 'visit', sourceVisit.id]), sourceVisit],
-      [JSON.stringify(['feature', 'visit', destinationVisit.id]), destinationVisit],
-    ]);
-    const queryClient = {
-      getQueriesData: jest.fn(() => [[homeFeedQueryKey, homeFeedData]]),
-      getQueryData: jest.fn((queryKey: readonly unknown[]) =>
-        visitDetails.get(JSON.stringify(queryKey)),
-      ),
-      invalidateQueries: jest.fn().mockResolvedValue(undefined),
-      setQueriesData: jest.fn(
-        (
-          _filters: unknown,
-          updater: (
-            value: typeof homeFeedData | undefined,
-          ) => typeof homeFeedData | undefined,
-        ) => {
-          homeFeedData = updater(homeFeedData) ?? homeFeedData;
-        },
-      ),
-      setQueryData: jest.fn((queryKey: readonly unknown[], value: unknown) => {
-        visitDetails.set(
-          JSON.stringify(queryKey),
-          value as ReturnType<typeof createVisitRecord>,
-        );
-      }),
-    };
-    const writeFeature = jest.fn(async (options: {
-      execute: () => Promise<unknown>;
-      offline: {
-        input: unknown;
-        strategy: 'api';
-      };
-      operationName: string;
-    }) => {
-      expect(options.operationName).toBe('visit.item.move');
-      expect(options.offline).toEqual({
-        input: {
-          body: {
-            destinationVisitId: 'visit-destination',
-          },
-          headers: {
-            'X-Mobile-Write-Operation': 'visit.item.move',
-          },
-          method: 'POST',
-          url: 'https://example.com/api/visit-items/item-1/move',
-        },
-        strategy: 'api',
-      });
-
-      const result = await options.execute();
-      return {
-        result,
-        status: 'completed' as const,
-      };
-    });
-
-    mockedMoveVisitItem.mockResolvedValue({
-      destinationVisitId: destinationVisit.id,
-      itemId: movedItem.id,
-    });
-
     function TestComponent() {
       controller = useHomeFeedActionController({
         isOnline: true,
-        queryClient: queryClient as never,
-        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
-        writeFeature: writeFeature as never,
       });
       return null;
     }
@@ -431,42 +295,18 @@ describe('useHomeFeedActionController', () => {
       await getControllerOrThrow(controller).confirmMoveVisitItem(destinationVisit);
     });
 
-    expect(mockedMoveVisitItemApiMutationInput).toHaveBeenCalledWith(
-      movedItem.id,
-      destinationVisit.id,
-    );
-    expect(mockedMoveVisitItem).toHaveBeenCalledWith({
-      destinationVisitId: destinationVisit.id,
-      itemId: movedItem.id,
-    });
-    expect(homeFeedData.pages[0]?.items[0]?.visit.items).toEqual([]);
-    expect(homeFeedData.pages[0]?.items[1]?.visit.items).toEqual([movedItem]);
-    expect(
-      visitDetails.get(JSON.stringify(['feature', 'visit', sourceVisit.id]))?.items,
-    ).toEqual([]);
-    expect(
-      visitDetails.get(JSON.stringify(['feature', 'visit', destinationVisit.id]))?.items,
-    ).toEqual([movedItem]);
-    expect(mockedInvalidateHomeFeedQueries).toHaveBeenCalledWith(queryClient);
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visits'],
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visit', sourceVisit.id],
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visit', destinationVisit.id],
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visitPhotos'],
+    expect(visitWrites.moveVisitItem).toHaveBeenCalledWith({
+      destinationVisit,
+      item: movedItem,
+      sourceVisitId: sourceVisit.id,
     });
     expect(getControllerOrThrow(controller).pendingMoveItem).toBeNull();
     expect(getControllerOrThrow(controller).moveErrorMessage).toBeNull();
-    expect(mockedShowQueuedOfflineAlert).not.toHaveBeenCalled();
   });
 
-  it('shows the queued offline alert after queueing a visit item move', async () => {
+  it('clears move state after queueing a visit item move', async () => {
     let controller: HomeFeedActionController | null = null;
+    visitWrites.moveVisitItem.mockResolvedValue({ status: 'queued' });
 
     const movedItem = {
       id: 'item-1',
@@ -484,23 +324,9 @@ describe('useHomeFeedActionController', () => {
       items: [],
     });
 
-    const queryClient = {
-      getQueriesData: jest.fn(() => []),
-      getQueryData: jest.fn(() => undefined),
-      invalidateQueries: jest.fn().mockResolvedValue(undefined),
-      setQueriesData: jest.fn(),
-      setQueryData: jest.fn(),
-    };
-    const writeFeature = jest.fn().mockResolvedValue({
-      status: 'queued' as const,
-    });
-
     function TestComponent() {
       controller = useHomeFeedActionController({
         isOnline: false,
-        queryClient: queryClient as never,
-        trackWriteTelemetry: jest.fn().mockResolvedValue(undefined),
-        writeFeature: writeFeature as never,
       });
       return null;
     }
@@ -521,12 +347,12 @@ describe('useHomeFeedActionController', () => {
       await getControllerOrThrow(controller).confirmMoveVisitItem(destinationVisit);
     });
 
-    expect(mockedMoveVisitItemApiMutationInput).toHaveBeenCalledWith(
-      movedItem.id,
-      destinationVisit.id,
-    );
-    expect(mockedMoveVisitItem).not.toHaveBeenCalled();
-    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Visit item move');
+    expect(visitWrites.moveVisitItem).toHaveBeenCalledWith({
+      destinationVisit,
+      item: movedItem,
+      sourceVisitId: sourceVisit.id,
+    });
     expect(getControllerOrThrow(controller).pendingMoveItem).toBeNull();
+    expect(getControllerOrThrow(controller).moveErrorMessage).toBeNull();
   });
 });

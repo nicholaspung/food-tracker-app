@@ -265,7 +265,7 @@ function buildUserOwnedSession(overrides: Partial<TastingSessionRecord> = {}): T
 }
 
 function renderScreen(
-  sessions: TastingSessionRecord[],
+  sessions: TastingSessionRecord[] | undefined,
   routeParams?: RootStackParamList['TastingSessions'],
 ) {
   const navigation = {
@@ -293,6 +293,10 @@ function renderScreen(
   });
 
   return { navigation, refetch, renderer: renderer! };
+}
+
+function getEmptyStateTitles(renderer: TestRenderer) {
+  return renderer.root.findAllByType('EmptyState').map((node: any) => node.props.title);
 }
 
 function findButton(renderer: TestRenderer, label: string) {
@@ -445,6 +449,36 @@ describe('TastingSessionsScreen', () => {
     };
 
     expect(queryOptions.enabled).toBe(false);
+  });
+
+  it('shows an offline unavailable state instead of the normal empty state when no sessions are cached', () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+
+    const { renderer } = renderScreen(undefined);
+
+    expect(getEmptyStateTitles(renderer)).toContain('No saved sessions available offline');
+    expect(getEmptyStateTitles(renderer)).not.toContain('No group tastings');
+  });
+
+  it('renders cached sessions while offline', () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+
+    const { renderer } = renderScreen([buildUserOwnedSession()]);
+
+    expect(getEmptyStateTitles(renderer)).toEqual([]);
+    expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Owned tasting')).toBe(true);
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.children.join('') === 'Offline mode shows saved sessions. Actions require a connection.')).toBe(true);
+  });
+
+  it('renders the normal empty state after an online empty response', () => {
+    const { renderer } = renderScreen([]);
+
+    expect(getEmptyStateTitles(renderer)).toContain('No group tastings');
+    expect(getEmptyStateTitles(renderer)).not.toContain('No saved sessions available offline');
   });
 
   it('renders completed sessions as list rows with a session date', () => {

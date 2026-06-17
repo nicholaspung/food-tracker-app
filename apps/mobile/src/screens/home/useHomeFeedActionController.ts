@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import type { QueryClient } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import {
   invalidateHomeFeedQueries,
@@ -8,8 +8,8 @@ import {
   type VisitRecord,
 } from '../../features';
 import { useFoodProductWrites } from '../../features/store/useFoodProductWrites';
-import { createVisitActionWrites } from '../../features/store/visitActionWrites';
-import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
+import { useVisitWrites } from '../../features/store/useVisitWrites';
+import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { buildPhotoViewerState } from '../../lib/photoUrls';
 import { trackObservabilityEvent } from '../../observability';
 import type {
@@ -21,9 +21,6 @@ import type {
 
 interface UseHomeFeedActionControllerParams {
   isOnline: boolean;
-  queryClient: QueryClient;
-  trackWriteTelemetry: (operationName: string) => Promise<void>;
-  writeFeature: OfflineAwareFeatureWrite;
 }
 
 export interface HomeFeedActionController {
@@ -63,10 +60,9 @@ export interface HomeFeedActionController {
 
 export function useHomeFeedActionController({
   isOnline,
-  queryClient,
-  trackWriteTelemetry,
-  writeFeature,
 }: UseHomeFeedActionControllerParams): HomeFeedActionController {
+  const queryClient = useQueryClient();
+  const trackWriteTelemetry = useWriteTelemetry();
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>(
     [],
@@ -95,14 +91,7 @@ export function useHomeFeedActionController({
   );
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const foodProductWrites = useFoodProductWrites();
-  const visitActionWrites = useMemo(
-    () =>
-      createVisitActionWrites({
-        queryClient,
-        writeFeature,
-      }),
-    [queryClient, writeFeature],
-  );
+  const visitActionWrites = useVisitWrites();
 
   const invalidateHomeFeed = useCallback(async () => {
     await invalidateHomeFeedQueries(queryClient);

@@ -5,6 +5,7 @@ import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import type { FriendRecord } from '../models';
 import type { InviteFriendInput } from './featureStore';
 import {
+  createFriendSuggestionAcceptance,
   inviteFriend,
   markFriendInviteAccepted,
   removeFriend as removeFriendRecord,
@@ -15,11 +16,14 @@ import {
   friendsQueryKeys,
   removeCachedFriend,
 } from './friendsQuery';
+import { invalidateHomeFeedQueries } from './homeFeedQuery';
+import type { FriendRequestEntryMethod } from './friendCodeUtils';
 import {
   type OfflineAwareFeatureWrite,
   type OfflineAwareFeatureWriteResult,
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
+import { useWriteTelemetry } from './useWriteTelemetry';
 
 export type FriendRemoveOperationName =
   | 'friend.remove'
@@ -27,13 +31,16 @@ export type FriendRemoveOperationName =
   | 'friend.request.cancel';
 
 interface SendFriendRequestWriteInput extends InviteFriendInput {
-  beforeExecute?: () => Promise<void>;
-  trackOnlineWrite?: boolean;
+  entryMethod?: FriendRequestEntryMethod;
 }
 
 interface AcceptFriendRequestWriteInput {
   friend: FriendRecord;
   userId: string | null | undefined;
+}
+
+interface AcceptFriendSuggestionWriteInput {
+  inviterId: string;
 }
 
 interface RemoveFriendWriteInput {
@@ -67,24 +74,28 @@ async function invalidateFriendRemovalQueries(
 }
 
 async function sendFriendRequestWithOfflineSupport({
-  beforeExecute,
   code,
+  entryMethod = 'manual_code',
   queryClient,
-  trackOnlineWrite,
+  trackWriteTelemetry,
   writeFeature,
 }: SendFriendRequestWriteInput & {
   queryClient: QueryClient;
+  trackWriteTelemetry: (operationName: string) => Promise<void>;
   writeFeature: OfflineAwareFeatureWrite;
 }): Promise<OfflineAwareFeatureWriteResult<FriendRecord>> {
+  const isQrScan = entryMethod === 'qr_scan';
   const result = await writeFeature({
     operationName: 'friend.request.send',
-    trackOnlineWrite,
+    trackOnlineWrite: isQrScan ? false : undefined,
     offline: {
       strategy: 'outbox',
       payload: { code },
     },
     execute: async () => {
-      await beforeExecute?.();
+      if (isQrScan) {
+        await trackWriteTelemetry('friend.qr.scan');
+      }
       return inviteFriend({ code });
     },
   });
@@ -134,6 +145,22 @@ async function acceptFriendRequestWithOfflineSupport({
   return result;
 }
 
+async function acceptFriendSuggestionWithWriteTelemetry({
+  inviterId,
+  queryClient,
+  trackWriteTelemetry,
+}: AcceptFriendSuggestionWriteInput & {
+  queryClient: QueryClient;
+  trackWriteTelemetry: (operationName: string) => Promise<void>;
+}): Promise<void> {
+  await trackWriteTelemetry('friend.suggestion.accept');
+  await createFriendSuggestionAcceptance({ inviterId });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root }),
+    invalidateHomeFeedQueries(queryClient),
+  ]);
+}
+
 async function removeFriendWithOfflineSupport({
   friend,
   operationName,
@@ -174,15 +201,17 @@ async function removeFriendWithOfflineSupport({
 export function useFriendWrites() {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const trackWriteTelemetry = useWriteTelemetry();
 
   const sendFriendRequest = useCallback(
     async (input: SendFriendRequestWriteInput): Promise<OfflineAwareFeatureWriteResult<FriendRecord>> =>
       sendFriendRequestWithOfflineSupport({
         ...input,
         queryClient,
+        trackWriteTelemetry,
         writeFeature,
       }),
-    [queryClient, writeFeature],
+    [queryClient, trackWriteTelemetry, writeFeature],
   );
 
   const acceptFriendRequest = useCallback(
@@ -193,6 +222,16 @@ export function useFriendWrites() {
         writeFeature,
       }),
     [queryClient, writeFeature],
+  );
+
+  const acceptFriendSuggestion = useCallback(
+    async (input: AcceptFriendSuggestionWriteInput): Promise<void> =>
+      acceptFriendSuggestionWithWriteTelemetry({
+        ...input,
+        queryClient,
+        trackWriteTelemetry,
+      }),
+    [queryClient, trackWriteTelemetry],
   );
 
   const removeFriend = useCallback(
@@ -207,6 +246,7 @@ export function useFriendWrites() {
 
   return {
     acceptFriendRequest,
+    acceptFriendSuggestion,
     removeFriend,
     sendFriendRequest,
   };
