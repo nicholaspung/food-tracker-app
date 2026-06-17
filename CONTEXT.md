@@ -28,6 +28,10 @@ _Avoid_: visit submit helper, visit mutation wrapper
 The mobile module that owns creating, updating, and deleting food product entries, including offline replay payloads, cache effects, photo usage invalidation, source Note completion timing, and queued feedback.
 _Avoid_: food product submit helper, food product mutation wrapper
 
+**Bill Writes**:
+The mobile module that owns creating, updating, deleting, and payment-state changes for saved Bills, including offline replay payloads, cache effects, and queued feedback.
+_Avoid_: bill submit helper, bill mutation wrapper
+
 **Bill Draft**:
 The in-progress bill split state before a Bill is saved, including participants, items, split modes, custom tip splits, derived totals, and submit payload construction.
 _Avoid_: bill form state, bill helper functions
@@ -48,6 +52,10 @@ _Avoid_: receipt split, manual split
 AI-assisted extraction from a transient receipt photo into a Custom **Bill Draft**.
 _Avoid_: receipt OCR, bill photo import
 
+**Menu Scan Source Image**:
+A retained, resized source image from a successful menu scan tied to a selected **Restaurant**, used for uploader access, admin menu inventory, and **Catalog Contribution** evidence.
+_Avoid_: menu image, menu photo, scan image when retention or access policy matters
+
 **Receipt Line Item**:
 A purchasable row extracted from a receipt and represented as one Bill item with a line-total price.
 _Avoid_: dish, OCR row
@@ -56,9 +64,17 @@ _Avoid_: dish, OCR row
 The workflow that marks a source Note as used after a Visit or Food Product entry is completed or queued.
 _Avoid_: note mark-used helper, note usage side effect
 
+**Note Writes**:
+The mobile module that owns creating, updating, deleting, and marking Notes used, including offline replay payloads, cache effects, and source-entry handoff behavior.
+_Avoid_: note submit helper, note mutation wrapper
+
 **List Detail**:
 The screen for one **Restaurant List**, showing the restaurants and recommendations inside that list.
 _Avoid_: Lists page
+
+**Restaurant List Writes**:
+The mobile module that owns creating, updating, deleting, reordering, and bookmarking inside **Restaurant Lists**, including offline replay payloads and affected list/detail cache effects.
+_Avoid_: list helper, bookmark mutation helper
 
 **Shared Restaurant List**:
 A live, read-only view of a **Restaurant List** made accessible through a revocable secret link.
@@ -143,6 +159,18 @@ _Avoid_: friend action helper, social mutation wrapper
 **Friend Invite Handoff**:
 The TTL-bounded post-signup handoff that stores inviter identity and the invited app-user id locally so signup can complete the inviter relationship after authentication without persisting the invited email.
 _Avoid_: friend suggestion, friend recommendation, pending friendship
+
+**Waitlist Entry**:
+The backend record for an email address that joined the account-access waitlist and is pending, approved, rejected, or signed up.
+_Avoid_: waitlist user, signup approval
+
+**Waitlist Approval Link**:
+The approval email link that lets an approved **Waitlist Entry** create an account without an invite code by carrying the approved email and a one-time **Waitlist Approval Token**.
+_Avoid_: got off waitlist, approved email signup
+
+**Waitlist Approval Token**:
+The one-time signed token attached to a **Waitlist Approval Link** and required to redeem an approved **Waitlist Entry** during account creation.
+_Avoid_: approval email, waitlist mode
 
 **Feedback Writes**:
 The mobile module that owns user feedback creation and feedback thread replies, including offline replay payloads, feedback list/thread cache effects, and queued feedback.
@@ -246,6 +274,11 @@ _Avoid_: notification inbox, user notification history
 - A positive-price **Receipt Line Item** must be assigned to at least one participant before a **Custom Split** can be reviewed.
 - Receipt images are not saved with Bills.
 - Raw receipt extraction debug output may be stored for admin debugging for failures, invalid responses, and low-confidence extractions, with a 30-day retention window.
+- ADR-0002 applies only to **Receipt Scan** debug output and receipt images; it is not the retention policy for **Menu Scan Source Images**.
+- A successful menu scan tied to a selected **Restaurant** may retain a **Menu Scan Source Image**.
+- Menu scans that are not tied to a selected **Restaurant** do not create a **Menu Scan Source Image**.
+- **Menu Scan Source Images** are visible to the uploader and admins; other authenticated users cannot list or view them.
+- **Menu Scan Source Images** are retained until the related **Restaurant** or uploader account is deleted, unless a future product/security decision adds a shorter cleanup window.
 - **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.
@@ -306,7 +339,7 @@ _Avoid_: notification inbox, user notification history
 - Public approved group-suitable source items may produce **Group Menu Suggestions** for any authenticated user who can access the target **Restaurant**.
 - Admin promotion may create a system/admin-owned public **Approved Location Menu Item** from a **Catalog Contribution**.
 - Admin promotion links the source **Catalog Contribution** automatically but does not rewrite historical user-entered item text.
-- **Catalog Contribution** may reference different evidence sources, including user-entered Visit Items, scanned menu items, and menu images.
+- **Catalog Contribution** may reference different evidence sources, including user-entered Visit Items, scanned menu items, and **Menu Scan Source Images**.
 - Admins may promote a **Visit Item** into a system/admin-owned public **Approved Location Menu Item** without rewriting the original **Visit Item**.
 - Admin promotion reuses an existing approved exact-location menu item by normalized name instead of creating a duplicate.
 - **Catalog Contribution** records approval evidence, while **Suggestion Provenance** records tracking usage evidence.
@@ -337,10 +370,20 @@ _Avoid_: notification inbox, user notification history
 - A **Friend Invite Handoff** stores inviter identity, invited app-user id, created timestamp, and expiry timestamp, but not the invited user's email.
 - A **Friend Invite Handoff** expires after 24 hours and must be cleared on accept, dismiss, invalid parse or shape, account mismatch, or expiry.
 - Accepting a **Friend Invite Handoff** creates or accepts the relevant friendship through **Friend Writes** behavior.
+- A **Waitlist Entry** starts when a user joins the waitlist and can be approved or rejected by an admin.
+- Admin approval sends a **Waitlist Approval Link** for the approved email address.
+- A **Waitlist Approval Link** is a token-backed account-access path, not a statement that email identity alone can create an account.
+- Account creation from the waitlist requires a valid unused **Waitlist Approval Token**; an approved email address by itself is insufficient.
+- Invite-code signup and **Waitlist Approval Link** signup are separate account-access paths.
+- Technical aliases / route names such as `waitlist_approved`, `waitlistApprovalToken`, and `waitlist_approval` refer to **Waitlist Approval Link** and **Waitlist Approval Token** implementation details, not canonical product language.
 - **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
 - **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.
 - **Settings Preferences** include default Visit, Restaurant, Restaurant List, and Home feed preferences.
+- **Settings Preferences** writes are part of the offline mutation queue when saving supported preference changes.
 - **Onboarding Progress** is persisted on the authenticated user record and may be updated while offline.
+- **Onboarding Progress** writes are part of the offline mutation queue for first-run completion and supported feature-intro dismissals.
+- Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates.
+- **Tasting Plan Writes** and **Tasting Rating Submission Writes** are separate write modules and should not be described as covered by the tasting-session outbox unless their own replay registrations exist.
 - A **Notification Signal** may appear as a **Device Notification**, an **In-App Indicator**, or both.
 - A **Device Notification** is either a **Remote Device Notification** or a **Local Device Notification**.
 - An **In-App Indicator** stays tied to the unresolved product state it represents.

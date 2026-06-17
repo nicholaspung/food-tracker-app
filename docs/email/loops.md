@@ -47,7 +47,9 @@ Future lifecycle events can include:
 
 ## Waitlist Approval Email
 
-Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email sends the user to the app web signup page with `mode=waitlist_approved` so the mobile app opens account creation without an invite code field. Beta emails use `https://beta.app.yummyrecs.com/signup`; production emails use `https://app.yummyrecs.com/signup`. When Universal Links/App Links association files are deployed, the same HTTPS link can open the installed mobile app and falls back to web when the app is unavailable. The backend will allow account creation only for the approved email.
+Waitlist approval emails are sent through PocketBase SMTP using the sender configured in PocketBase Mail settings. The approval email contains the user's **Waitlist Approval Link**, which sends the user to the app web signup page with the approved email and a one-time **Waitlist Approval Token**. Beta links use `https://beta.app.yummyrecs.com/signup`; production links use `https://app.yummyrecs.com/signup`. When Universal Links/App Links association files are deployed, the same HTTPS link can open the installed mobile app and falls back to web when the app is unavailable.
+
+The backend allows waitlist-backed account creation only when the request includes both the approved email and a valid unused **Waitlist Approval Token**. An approved email address alone is insufficient. The technical route parameters `mode=waitlist_approved` and `waitlistApprovalToken` are implementation aliases for this token-backed **Waitlist Approval Link** flow; they are not canonical product terms.
 
 ## Waitlist Join Email
 
@@ -68,6 +70,6 @@ The backend records `joinedEmailSentAt` after a successful send and `lastJoinedE
 3. Backend sends the waitlist confirmation email once per first join/rejoin.
 4. Backend syncs the contact and `waitlist_joined` event to Loops.
 5. Admin approves the entry from `/waitlist`.
-6. Backend marks the entry `approved` and sends a PocketBase SMTP approval email.
-7. Mobile signup without an invite code succeeds only if the email has an approved waitlist entry.
+6. Backend marks the entry `approved` and sends a PocketBase SMTP approval email with a **Waitlist Approval Link**.
+7. Mobile signup without an invite code succeeds only if the request includes the approved email and a valid unused **Waitlist Approval Token** from that link.
 8. Backend marks the waitlist entry `signed_up`, updates the Loops contact with the user ID, and emits `account_created`.

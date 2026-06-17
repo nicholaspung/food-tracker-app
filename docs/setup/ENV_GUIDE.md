@@ -78,7 +78,7 @@ Notes:
 - `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` are required for backend startup today.
 - `POSTHOG_API_KEY` is optional.
 - `EXPO_PUSH_ACCESS_TOKEN` is optional until Expo push security is enabled. When blank, backend Remote Device Notification sends omit the Expo `Authorization` header so local development and existing deployments keep working. Before enabling push security in the EAS dashboard, set this server-only secret in the matching backend environment.
-- Waitlist approval signup links use `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`.
+- Waitlist approval emails build token-backed **Waitlist Approval Links** from `FOOD_TRACKER_APP_URL`; public marketing links use `FOOD_TRACKER_MARKETING_URL`. The approval link includes the approved email plus the `waitlist_approved` / `waitlistApprovalToken` technical route parameters so signup can require a valid one-time approval token instead of trusting approved email identity alone.
 - Waitlist confirmation emails, mobile invite sharing, and the public marketing App Store badge use `FOOD_TRACKER_IOS_APP_STORE_URL` / `EXPO_PUBLIC_IOS_APP_STORE_URL` / `IOS_APP_STORE_URL`. The default is `https://apps.apple.com/us/app/yummy-recs/id6761597807` in local, beta, and production.
 - The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
 - PostHog Web Analytics Authorized URLs must be configured in the PostHog dashboard for deployed web origins. Add `https://app.yummyrecs.com`, `https://beta.app.yummyrecs.com`, and any local Expo web origin you want to inspect, such as `http://localhost:19000`.
