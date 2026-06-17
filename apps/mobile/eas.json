@@ -17,7 +17,7 @@
       "distribution": "internal",
       "environment": "development",
       "ios": {
-        "image": "latest"
+        "image": "sdk-56"
       },
       "env": {
         "APP_VARIANT": "production",
@@ -30,7 +30,7 @@
       "distribution": "internal",
       "environment": "preview",
       "ios": {
-        "image": "latest",
+        "image": "sdk-56",
         "buildConfiguration": "ReleasePreview"
       },
       "env": {
@@ -47,7 +47,7 @@
       "distribution": "internal",
       "environment": "production",
       "ios": {
-        "image": "latest",
+        "image": "sdk-56",
         "buildConfiguration": "ReleasePreview"
       },
       "env": {
@@ -64,7 +64,7 @@
       "autoIncrement": true,
       "environment": "production",
       "ios": {
-        "image": "latest"
+        "image": "sdk-56"
       },
       "env": {
         "APP_VARIANT": "production",

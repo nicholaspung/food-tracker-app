@@ -14,6 +14,12 @@ Do not split one workaround across the Podfile, package patch metadata, and undo
 
 Generated native files under `apps/mobile/ios/Pods/` and Xcode derived data are not maintenance records. Recreate them with `pod install`, Expo prebuild, or a clean native build instead of preserving hidden state there.
 
+## Native Sync Validation
+
+The repo checks in `apps/mobile/ios`, keeps a custom `ReleasePreview` iOS build configuration, and intentionally carries Podfile build settings that Expo Doctor's broad non-CNG sync check cannot model precisely. `apps/mobile/package.json` disables only that broad Expo Doctor check.
+
+The replacement guardrail is `scripts/verify-mobile-native-sync.mjs`, and `pnpm mobile:doctor` runs it before `expo-doctor`. It validates the resolved production and preview Expo config against the checked-in iOS bundle identifiers, app-link hosts, runtime/version values, deployment target, permission strings, and `ReleasePreview` suffix settings. Update this script when app identity, versioning, deployment target, permissions, or preview-native behavior changes.
+
 ## ExpoSQLite Xcode 26 Decision
 
 Decision: remove the ExpoSQLite/Xcode 26 workaround after the Expo SDK 56 native refresh.
