@@ -82,7 +82,6 @@ import {
   TutorialsScreen,
   CreateTastingSessionScreen,
   JoinTastingSessionScreen,
-  TastingSessionDetailScreen,
   TastingSessionLobbyScreen,
   TastingSessionPlanningScreen,
   TastingSessionResultsScreen,
@@ -286,7 +285,6 @@ export type RootStackParamList = {
     | undefined;
   CreateTastingSession: undefined;
   JoinTastingSession: undefined;
-  TastingSessionDetail: { sessionId: string };
   TastingSessionLobby: { sessionId: string };
   TastingSessionPlanning: { sessionId: string };
   TastingSessionTasting: { sessionId: string };
@@ -384,7 +382,6 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'TastingSessions',
   'CreateTastingSession',
   'JoinTastingSession',
-  'TastingSessionDetail',
   'TastingSessionLobby',
   'TastingSessionPlanning',
   'TastingSessionTasting',
@@ -880,11 +877,6 @@ export function RootNavigator() {
                   <Stack.Screen
                     component={JoinTastingSessionScreen}
                     name="JoinTastingSession"
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    component={TastingSessionDetailScreen}
-                    name="TastingSessionDetail"
                     options={{ headerShown: false }}
                   />
                   <Stack.Screen

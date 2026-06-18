@@ -46,7 +46,6 @@ export * from './SplashScreen';
 export * from './TermsOfServiceScreen';
 export * from './TipCalculatorScreen';
 export * from './TutorialsScreen';
-export * from './TastingSessionDetailScreen';
 export * from './TastingSessionsScreen';
 export * from './CreateTastingSessionScreen';
 export * from './JoinTastingSessionScreen';

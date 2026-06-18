@@ -49,7 +49,6 @@ const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = 
     'BillDetail',
     'TipCalculator',
     'TastingSessions',
-    'TastingSessionDetail',
     'CreateTastingSession',
     'JoinTastingSession',
     'TastingSessionLobby',

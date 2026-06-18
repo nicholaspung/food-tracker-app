@@ -16,7 +16,7 @@ import {
   TASTING_SESSION_LIFECYCLE_STEPS,
 } from './shared';
 
-export type TastingSessionLifecycleScreen = 'detail' | 'lobby' | 'planning' | 'tasting' | 'results';
+export type TastingSessionLifecycleScreen = 'lobby' | 'planning' | 'tasting' | 'results';
 
 export type TastingSessionLifecycleStage = 'lobby' | 'plan' | 'rate' | 'review';
 
@@ -128,9 +128,6 @@ export function getTastingSessionLifecycleRedirectDestination(input: {
   }
 
   const destination = destinationForStatus(session.id, session.status);
-  if (currentScreen === 'detail') {
-    return destination;
-  }
   if (currentScreen === 'lobby' && destination.name !== 'TastingSessionLobby') {
     return destination;
   }
@@ -207,7 +204,6 @@ export function getTastingSessionLifecycleOnlineOnlyFacts(input: {
   }
 
   const warningMessageByScreen: Record<TastingSessionLifecycleScreen, string | null> = {
-    detail: null,
     lobby: 'Lobby actions require a connection.',
     planning: 'Planning actions require a connection.',
     results: null,

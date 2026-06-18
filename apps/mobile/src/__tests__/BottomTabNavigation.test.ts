@@ -97,7 +97,6 @@ describe('getBottomTabRouteForScreen', () => {
     expect(getBottomTabRouteForScreen('TastingSessions')).toBe('Misc');
     expect(getBottomTabRouteForScreen('CreateTastingSession')).toBe('Misc');
     expect(getBottomTabRouteForScreen('JoinTastingSession')).toBe('Misc');
-    expect(getBottomTabRouteForScreen('TastingSessionDetail')).toBe('Misc');
     expect(getBottomTabRouteForScreen('TastingSessionLobby')).toBe('Misc');
     expect(getBottomTabRouteForScreen('TastingSessionPlanning')).toBe('Misc');
     expect(getBottomTabRouteForScreen('TastingSessionTasting')).toBe('Misc');

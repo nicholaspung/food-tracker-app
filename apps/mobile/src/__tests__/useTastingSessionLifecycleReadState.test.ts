@@ -91,20 +91,12 @@ describe('tasting session lifecycle read state', () => {
     expect(shouldPollTastingSessionLifecycleScreen('lobby', true)).toBe(true);
     expect(shouldPollTastingSessionLifecycleScreen('planning', true)).toBe(true);
     expect(shouldPollTastingSessionLifecycleScreen('tasting', true)).toBe(true);
-    expect(shouldPollTastingSessionLifecycleScreen('detail', true)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('results', true)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('lobby', false)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('lobby', true, false)).toBe(false);
   });
 
   it('returns redirect destinations without executing navigation', () => {
-    expect(
-      getTastingSessionLifecycleRedirectDestination({
-        currentScreen: 'detail',
-        session: { id: 'session_1', status: 'planning' },
-      }),
-    ).toEqual({ name: 'TastingSessionPlanning', params: { sessionId: 'session_1' } });
-
     expect(
       getTastingSessionLifecycleRedirectDestination({
         currentScreen: 'lobby',
