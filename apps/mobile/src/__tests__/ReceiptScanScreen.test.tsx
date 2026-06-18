@@ -56,6 +56,15 @@ jest.mock('../components/shared', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourcePickerCard: (props: Record<string, unknown>) =>
     mockReact.createElement('PhotoSourcePickerCard', props),
+  ScanProcessingProgressCard: (props: Record<string, unknown>) =>
+    mockReact.createElement('ScanProcessingProgressCard', props),
+  useScanProcessingProgress: jest.fn(() => ({
+    elapsedLabel: '0s elapsed',
+    processingElapsedMs: 0,
+    processingPercent: 4,
+    processingSpin: '0deg',
+    progressValue: 0.04,
+  })),
 }));
 
 jest.mock('../features', () => ({

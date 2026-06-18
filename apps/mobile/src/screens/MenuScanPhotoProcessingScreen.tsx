@@ -1,12 +1,13 @@
 import { Ionicons } from '../ui/AppIcon';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Easing, Linking, Platform, View } from 'react-native';
+import { Alert, Linking, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
-  LinearProgressBar,
   PageErrorToast,
   PhotoSourcePickerCard,
+  ScanProcessingProgressCard,
+  useScanProcessingProgress,
 } from '../components/shared';
 import { useMenuScanFlow, useMonthlyUsage } from '../features';
 import {
@@ -15,32 +16,6 @@ import {
 } from './photoProcessing/shared';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
-
-const PROCESSING_PROGRESS_CAP = 0.94;
-const PROCESSING_PROGRESS_INTERVAL_MS = 500;
-const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
-
-function getNextProcessingProgress(currentValue: number): number {
-  if (currentValue < 0.35) {
-    return Number(Math.min(0.35, currentValue + 0.07).toFixed(3));
-  }
-
-  const remainingProgress = PROCESSING_PROGRESS_CAP - currentValue;
-  if (remainingProgress <= 0.004) {
-    return PROCESSING_PROGRESS_CAP;
-  }
-
-  return Number(
-    Math.min(
-      PROCESSING_PROGRESS_CAP,
-      currentValue + Math.max(0.004, remainingProgress * 0.12),
-    ).toFixed(3),
-  );
-}
-
-function formatElapsedSeconds(elapsedMs: number): string {
-  return `${Math.max(0, Math.floor(elapsedMs / 1000))}s elapsed`;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   chooseCard: {
@@ -52,31 +27,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderWidth: 1,
     gap: theme.spacing.xs,
   },
-  processingCard: {
-    gap: theme.spacing.sm,
-  },
   processingHint: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  processingMotionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  processingSpinner: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.status.infoBorder,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  processingTextBlock: {
-    flex: 1,
     gap: theme.spacing.xs,
   },
   successCard: {
@@ -124,10 +77,7 @@ export function MenuScanPhotoProcessingScreen({
   const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
   const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
 
-  const [progressValue, setProgressValue] = useState(0);
-  const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
   const [countdownValue, setCountdownValue] = useState(5);
-  const processingSpinValue = useRef(new Animated.Value(0)).current;
   const autoPromptedRef = useRef(false);
   const hasTriggeredCountdownNavigationRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -214,39 +164,7 @@ export function MenuScanPhotoProcessingScreen({
         : menuScanFlow.status === 'error'
           ? 'error'
           : 'choose';
-
-  useEffect(() => {
-    if (menuScanFlow.status === 'processing') {
-      setProgressValue(0.04);
-      setProcessingElapsedMs(0);
-      processingSpinValue.setValue(0);
-      const spinAnimation = Animated.loop(
-        Animated.timing(processingSpinValue, {
-          duration: 1200,
-          easing: Easing.linear,
-          toValue: 1,
-          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
-        }),
-      );
-      spinAnimation.start();
-      const progressInterval = setInterval(() => {
-        setProcessingElapsedMs((currentValue) => currentValue + PROCESSING_PROGRESS_INTERVAL_MS);
-        setProgressValue(getNextProcessingProgress);
-      }, PROCESSING_PROGRESS_INTERVAL_MS);
-
-      return () => {
-        spinAnimation.stop();
-        clearInterval(progressInterval);
-      };
-    }
-
-    if (menuScanFlow.status === 'success') {
-      setProgressValue(1);
-      setProcessingElapsedMs(0);
-    }
-
-    return undefined;
-  }, [menuScanFlow.status, processingSpinValue]);
+  const processingProgress = useScanProcessingProgress(menuScanFlow.status);
 
   useEffect(() => {
     if (
@@ -338,15 +256,10 @@ export function MenuScanPhotoProcessingScreen({
           ? 'New items were added to this restaurant.'
           : 'Existing menu items were matched for this restaurant.'
         : `Capture or upload a menu image for ${restaurantName}.`;
-  const processingPercent = Math.round(progressValue * 100);
-  const processingSpin = processingSpinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
   const processingDetail =
-    processingElapsedMs >= 12000
+    processingProgress.processingElapsedMs >= 12000
       ? 'Still working. Detailed menus can take a little longer.'
-      : progressValue >= 0.72
+      : processingProgress.progressValue >= 0.72
         ? 'Reading item names and matching them to this restaurant.'
         : 'Uploading and preparing your image.';
   const menuScanUsageText = monthlyUsage.snapshot
@@ -408,31 +321,15 @@ export function MenuScanPhotoProcessingScreen({
       ) : null}
 
       {phase === 'processing' ? (
-        <Card style={styles.processingCard}>
-          <View style={styles.processingMotionRow}>
-            <Animated.View
-              style={[
-                styles.processingSpinner,
-                {
-                  transform: [{ rotate: processingSpin }],
-                },
-              ]}
-            >
-              <Ionicons color={theme.colors.text.info} name="sync-outline" size={22} />
-            </Animated.View>
-            <View style={styles.processingTextBlock}>
-              <Text tone="secondary">We're processing your image now.</Text>
-              <Text tone="secondary" variant="bodySm">
-                {formatElapsedSeconds(processingElapsedMs)}
-              </Text>
-            </View>
-          </View>
-          <Text variant="label">Processing "{menuScanFlow.selectedImageName}"</Text>
-          <LinearProgressBar progress={progressValue} />
-          <Text tone="secondary">
-            {processingPercent}% complete. {processingDetail}
-          </Text>
-        </Card>
+        <ScanProcessingProgressCard
+          detailText={processingDetail}
+          elapsedLabel={processingProgress.elapsedLabel}
+          imageName={menuScanFlow.selectedImageName}
+          processingPercent={processingProgress.processingPercent}
+          progressValue={processingProgress.progressValue}
+          spin={processingProgress.processingSpin}
+          statusText="We're processing your image now."
+        />
       ) : null}
 
       {phase === 'success' ? (

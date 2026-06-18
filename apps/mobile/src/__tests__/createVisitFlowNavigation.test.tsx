@@ -127,6 +127,15 @@ jest.mock('../components/shared', () => ({
       props.hideSourceActions ? null : mockReact.createElement('PhotoSourceActionCards', props),
       props.footer as React.ReactNode,
     ),
+  ScanProcessingProgressCard: (props: Record<string, unknown>) =>
+    mockReact.createElement('ScanProcessingProgressCard', props),
+  useScanProcessingProgress: jest.fn(() => ({
+    elapsedLabel: '0s elapsed',
+    processingElapsedMs: 0,
+    processingPercent: 4,
+    processingSpin: '0deg',
+    progressValue: 0.04,
+  })),
   VisibilityOptionSelector: (props: Record<string, unknown>) =>
     mockReact.createElement('VisibilityOptionSelector', props),
 }));

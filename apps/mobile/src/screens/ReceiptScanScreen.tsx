@@ -1,13 +1,13 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Linking, Platform, View } from 'react-native';
+import { Linking, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
-  LinearProgressBar,
   PageErrorToast,
   PhotoSourcePickerCard,
+  ScanProcessingProgressCard,
+  useScanProcessingProgress,
 } from '../components/shared';
 import { useMonthlyUsage, useReceiptScanFlow } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -15,32 +15,6 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type ReceiptScanScreenProps = NativeStackScreenProps<RootStackParamList, 'ReceiptScan'>;
-
-const PROCESSING_PROGRESS_CAP = 0.94;
-const PROCESSING_PROGRESS_INTERVAL_MS = 500;
-const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
-
-function getNextProcessingProgress(currentValue: number): number {
-  if (currentValue < 0.35) {
-    return Number(Math.min(0.35, currentValue + 0.07).toFixed(3));
-  }
-
-  const remainingProgress = PROCESSING_PROGRESS_CAP - currentValue;
-  if (remainingProgress <= 0.004) {
-    return PROCESSING_PROGRESS_CAP;
-  }
-
-  return Number(
-    Math.min(
-      PROCESSING_PROGRESS_CAP,
-      currentValue + Math.max(0.004, remainingProgress * 0.12),
-    ).toFixed(3),
-  );
-}
-
-function formatElapsedSeconds(elapsedMs: number): string {
-  return `${Math.max(0, Math.floor(elapsedMs / 1000))}s elapsed`;
-}
 
 function formatDetectedCurrency(value: number | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
@@ -56,25 +30,6 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.colors.status.infoBg,
     borderColor: theme.colors.status.infoBorder,
     borderWidth: 1,
-    gap: theme.spacing.xs,
-  },
-  processingMotionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  processingSpinner: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.status.infoBorder,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  processingTextBlock: {
-    flex: 1,
     gap: theme.spacing.xs,
   },
   successHeader: {
@@ -118,9 +73,7 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
   const styles = useStyles();
   const receiptScanFlow = useReceiptScanFlow();
   const monthlyUsage = useMonthlyUsage();
-  const [progressValue, setProgressValue] = useState(0);
-  const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
-  const processingSpinValue = useRef(new Animated.Value(0)).current;
+  const processingProgress = useScanProcessingProgress(receiptScanFlow.status);
 
   const phase =
     receiptScanFlow.status === 'processing'
@@ -130,39 +83,6 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
         : receiptScanFlow.status === 'error'
           ? 'error'
           : 'choose';
-
-  useEffect(() => {
-    if (receiptScanFlow.status === 'processing') {
-      setProgressValue(0.04);
-      setProcessingElapsedMs(0);
-      processingSpinValue.setValue(0);
-      const spinAnimation = Animated.loop(
-        Animated.timing(processingSpinValue, {
-          duration: 1200,
-          easing: Easing.linear,
-          toValue: 1,
-          useNativeDriver: SHOULD_USE_NATIVE_ANIMATION_DRIVER,
-        }),
-      );
-      spinAnimation.start();
-      const progressInterval = setInterval(() => {
-        setProcessingElapsedMs((currentValue) => currentValue + PROCESSING_PROGRESS_INTERVAL_MS);
-        setProgressValue(getNextProcessingProgress);
-      }, PROCESSING_PROGRESS_INTERVAL_MS);
-
-      return () => {
-        spinAnimation.stop();
-        clearInterval(progressInterval);
-      };
-    }
-
-    if (receiptScanFlow.status === 'success') {
-      setProgressValue(1);
-      setProcessingElapsedMs(0);
-    }
-
-    return undefined;
-  }, [processingSpinValue, receiptScanFlow.status]);
 
   const returnToBillDraft = () => {
     const result = receiptScanFlow.result;
@@ -189,11 +109,6 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
       : phase === 'success'
         ? 'Review the extracted items before assigning them.'
         : 'Capture or upload a receipt image to fill an itemized bill draft.';
-  const processingPercent = Math.round(progressValue * 100);
-  const processingSpin = processingSpinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
   const usageText = monthlyUsage.snapshot
     ? typeof monthlyUsage.snapshot.limits.receiptScansMonthly === 'number'
       ? `${Math.max(
@@ -254,31 +169,15 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
       ) : null}
 
       {phase === 'processing' ? (
-        <Card style={styles.card}>
-          <View style={styles.processingMotionRow}>
-            <Animated.View
-              style={[
-                styles.processingSpinner,
-                {
-                  transform: [{ rotate: processingSpin }],
-                },
-              ]}
-            >
-              <Ionicons color={theme.colors.text.info} name="sync-outline" size={22} />
-            </Animated.View>
-            <View style={styles.processingTextBlock}>
-              <Text tone="secondary">We're processing your receipt now.</Text>
-              <Text tone="secondary" variant="bodySm">
-                {formatElapsedSeconds(processingElapsedMs)}
-              </Text>
-            </View>
-          </View>
-          <Text variant="label">Processing "{receiptScanFlow.selectedImageName}"</Text>
-          <LinearProgressBar progress={progressValue} />
-          <Text tone="secondary">
-            {processingPercent}% complete. Reading item names, prices, tax, tip, and fees.
-          </Text>
-        </Card>
+        <ScanProcessingProgressCard
+          detailText="Reading item names, prices, tax, tip, and fees."
+          elapsedLabel={processingProgress.elapsedLabel}
+          imageName={receiptScanFlow.selectedImageName}
+          processingPercent={processingProgress.processingPercent}
+          progressValue={processingProgress.progressValue}
+          spin={processingProgress.processingSpin}
+          statusText="We're processing your receipt now."
+        />
       ) : null}
 
       {phase === 'success' && receiptScanFlow.result ? (
