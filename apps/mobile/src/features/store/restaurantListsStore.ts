@@ -1,6 +1,7 @@
 import { pb } from '../../lib/pocketbase';
 import type {
   RestaurantListBookmarkedItemRecord,
+  RestaurantListCreatorGuideUsageProofRecord,
   RestaurantListFriendMatchRecord,
   RestaurantListItemRecord,
   RestaurantListRecord,
@@ -123,6 +124,14 @@ interface RestaurantListRecommendationUsageProofApiRecord {
   actedAt: string;
 }
 
+interface RestaurantListCreatorGuideUsageProofApiRecord {
+  savedCount?: number;
+  triedCount?: number;
+  ratedAfterTryCount?: number;
+  sourceRecommendationCount?: number;
+  totalRecommendationUsageCount?: number;
+}
+
 interface RestaurantListDetailApiItemRecord {
   id: string;
   listId: string;
@@ -169,6 +178,7 @@ interface RestaurantListDetailApiResponse {
   };
   photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
   viewerLists?: RestaurantListDetailApiListRecord[];
+  creatorGuideUsageProof?: RestaurantListCreatorGuideUsageProofApiRecord;
 }
 
 export interface RestaurantListBookmarkStateTargetInput {
@@ -378,6 +388,28 @@ function mapRestaurantListDetailFriendMatchRecord(
   };
 }
 
+function normalizeProofCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function mapRestaurantListCreatorGuideUsageProofRecord(
+  record: RestaurantListCreatorGuideUsageProofApiRecord | undefined,
+): RestaurantListCreatorGuideUsageProofRecord | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const proof = {
+    savedCount: normalizeProofCount(record.savedCount),
+    triedCount: normalizeProofCount(record.triedCount),
+    ratedAfterTryCount: normalizeProofCount(record.ratedAfterTryCount),
+    sourceRecommendationCount: normalizeProofCount(record.sourceRecommendationCount),
+    totalRecommendationUsageCount: normalizeProofCount(record.totalRecommendationUsageCount),
+  };
+
+  return proof.totalRecommendationUsageCount > 0 ? proof : undefined;
+}
+
 function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRecord): RestaurantListItemRecord {
   return {
     id: record.id,
@@ -525,6 +557,7 @@ function mapRestaurantListDetailResponse(response: RestaurantListDetailApiRespon
       ownerName: photoPreview.ownerName?.trim() || undefined,
     })),
     viewerLists: (response.viewerLists ?? []).map(mapRestaurantListDetailApiListRecord),
+    creatorGuideUsageProof: mapRestaurantListCreatorGuideUsageProofRecord(response.creatorGuideUsageProof),
   };
 }
 

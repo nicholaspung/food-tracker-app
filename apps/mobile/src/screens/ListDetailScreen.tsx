@@ -141,6 +141,10 @@ function getLocallyRemovedListItemKey(
   }
 }
 
+function formatCreatorGuideProofCount(count: number): string {
+  return Math.max(0, Math.floor(count)).toLocaleString();
+}
+
 const useStyles = createThemedStyles((theme) => ({
   container: {
     flex: 1,
@@ -260,6 +264,46 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.primary,
   },
   friendMatchesToggleSubtitle: {
+    color: theme.colors.text.secondary,
+  },
+  creatorGuideProofCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+  },
+  creatorGuideProofHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  creatorGuideProofIcon: {
+    flexShrink: 0,
+  },
+  creatorGuideProofTitle: {
+    color: theme.colors.text.primary,
+  },
+  creatorGuideProofStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  creatorGuideProofStat: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    flexGrow: 1,
+    minWidth: 96,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  creatorGuideProofStatCount: {
+    color: theme.colors.text.primary,
+  },
+  creatorGuideProofStatLabel: {
     color: theme.colors.text.secondary,
   },
   searchRow: {
@@ -453,6 +497,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     restaurantRows,
     subtitle,
   } = readModel;
+  const creatorGuideUsageProof =
+    isOwner && !isDefaultList ? loadedDetail?.creatorGuideUsageProof : undefined;
+  const hasCreatorGuideUsageProof =
+    (creatorGuideUsageProof?.totalRecommendationUsageCount ?? 0) > 0;
+  const creatorGuideUsageProofStats = creatorGuideUsageProof
+    ? [
+        { label: 'Saved', value: creatorGuideUsageProof.savedCount },
+        { label: 'Tried', value: creatorGuideUsageProof.triedCount },
+        { label: 'Rated', value: creatorGuideUsageProof.ratedAfterTryCount },
+        { label: 'Recommendations', value: creatorGuideUsageProof.sourceRecommendationCount },
+      ]
+    : [];
 
   const openPhotoViewer = useCallback((entries: OwnerItemPhotoEntry[], initialIndex = 0) => {
     if (entries.length === 0) {
@@ -1334,6 +1390,34 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         segmentStyle={styles.viewModeSegment}
         value={viewMode}
       />
+
+      {hasCreatorGuideUsageProof ? (
+        <View style={styles.creatorGuideProofCard} testID="creator-guide-usage-proof">
+          <View style={styles.creatorGuideProofHeaderRow}>
+            <Ionicons
+              color={theme.colors.text.muted}
+              name="stats-chart-outline"
+              size={16}
+              style={styles.creatorGuideProofIcon}
+            />
+            <Text style={styles.creatorGuideProofTitle} variant="label">
+              Guide Activity
+            </Text>
+          </View>
+          <View style={styles.creatorGuideProofStatsRow}>
+            {creatorGuideUsageProofStats.map((stat) => (
+              <View key={stat.label} style={styles.creatorGuideProofStat}>
+                <Text style={styles.creatorGuideProofStatCount} variant="bodyLgBold">
+                  {formatCreatorGuideProofCount(stat.value)}
+                </Text>
+                <Text style={styles.creatorGuideProofStatLabel} variant="bodySmTight">
+                  {stat.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.searchRow}>
         <View style={styles.searchField}>

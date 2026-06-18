@@ -154,6 +154,14 @@ export interface RestaurantListRecommendationUsageProofRecord {
   actedAt: string;
 }
 
+export interface RestaurantListCreatorGuideUsageProofRecord {
+  savedCount: number;
+  triedCount: number;
+  ratedAfterTryCount: number;
+  sourceRecommendationCount: number;
+  totalRecommendationUsageCount: number;
+}
+
 export interface RestaurantListItemRecord {
   id: string;
   listId: string;

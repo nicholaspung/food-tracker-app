@@ -5,6 +5,7 @@ import type {
   ContentReportReasonCode,
   FeedbackRecord,
   NoteRecord,
+  RestaurantListCreatorGuideUsageProofRecord,
   RestaurantListItemRecord,
   RestaurantListRecord,
   VisitRecord,
@@ -328,6 +329,7 @@ export interface RestaurantListDetailRecord {
   bookmarkState: RestaurantListDetailBookmarkState;
   photoPreviews: RestaurantListDetailPhotoPreviewRecord[];
   viewerLists: RestaurantListRecord[];
+  creatorGuideUsageProof?: RestaurantListCreatorGuideUsageProofRecord;
 }
 
 export interface RestaurantListCandidateRestaurantsResult {

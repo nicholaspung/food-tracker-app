@@ -72,6 +72,14 @@ type restaurantListRecommendationUsageProofResponse struct {
 	ActedAt   string `json:"actedAt"`
 }
 
+type restaurantListCreatorGuideUsageProofResponse struct {
+	SavedCount                    int `json:"savedCount"`
+	TriedCount                    int `json:"triedCount"`
+	RatedAfterTryCount            int `json:"ratedAfterTryCount"`
+	SourceRecommendationCount     int `json:"sourceRecommendationCount"`
+	TotalRecommendationUsageCount int `json:"totalRecommendationUsageCount"`
+}
+
 type restaurantListDetailItemResponse struct {
 	ID                        string                                           `json:"id"`
 	ListID                    string                                           `json:"listId"`
@@ -141,23 +149,25 @@ type restaurantListsPageResponse struct {
 }
 
 type restaurantListDetailResponse struct {
-	List          restaurantListDetailListResponse           `json:"list"`
-	Items         []restaurantListDetailItemResponse         `json:"items"`
-	Page          int                                        `json:"page"`
-	PageSize      int                                        `json:"pageSize"`
-	TotalItems    int                                        `json:"totalItems"`
-	TotalPages    int                                        `json:"totalPages"`
-	HasNextPage   bool                                       `json:"hasNextPage"`
-	BookmarkState restaurantListDetailBookmarkStateResponse  `json:"bookmarkState"`
-	PhotoPreviews []restaurantListDetailPhotoPreviewResponse `json:"photoPreviews"`
+	List                   restaurantListDetailListResponse              `json:"list"`
+	Items                  []restaurantListDetailItemResponse            `json:"items"`
+	Page                   int                                           `json:"page"`
+	PageSize               int                                           `json:"pageSize"`
+	TotalItems             int                                           `json:"totalItems"`
+	TotalPages             int                                           `json:"totalPages"`
+	HasNextPage            bool                                          `json:"hasNextPage"`
+	BookmarkState          restaurantListDetailBookmarkStateResponse     `json:"bookmarkState"`
+	PhotoPreviews          []restaurantListDetailPhotoPreviewResponse    `json:"photoPreviews"`
+	CreatorGuideUsageProof *restaurantListCreatorGuideUsageProofResponse `json:"creatorGuideUsageProof,omitempty"`
 }
 
 type restaurantListDetailHydratedResponse struct {
-	List          restaurantListDetailListResponse           `json:"list"`
-	Items         []restaurantListDetailItemResponse         `json:"items"`
-	BookmarkState restaurantListDetailBookmarkStateResponse  `json:"bookmarkState"`
-	PhotoPreviews []restaurantListDetailPhotoPreviewResponse `json:"photoPreviews"`
-	ViewerLists   []restaurantListDetailListResponse         `json:"viewerLists"`
+	List                   restaurantListDetailListResponse              `json:"list"`
+	Items                  []restaurantListDetailItemResponse            `json:"items"`
+	BookmarkState          restaurantListDetailBookmarkStateResponse     `json:"bookmarkState"`
+	PhotoPreviews          []restaurantListDetailPhotoPreviewResponse    `json:"photoPreviews"`
+	ViewerLists            []restaurantListDetailListResponse            `json:"viewerLists"`
+	CreatorGuideUsageProof *restaurantListCreatorGuideUsageProofResponse `json:"creatorGuideUsageProof,omitempty"`
 }
 
 type restaurantListVisitedRestaurantCandidateFoodItemResponse struct {
@@ -641,6 +651,7 @@ func getRestaurantListDetailHydratedResponse(
 	response.Items = detailResponse.Items
 	response.BookmarkState = detailResponse.BookmarkState
 	response.PhotoPreviews = detailResponse.PhotoPreviews
+	response.CreatorGuideUsageProof = detailResponse.CreatorGuideUsageProof
 
 	if response.List.UserID == userID {
 		return response, nil
@@ -804,6 +815,16 @@ func getRestaurantListDetailResponse(
 		response.List.OwnerName = resolveHomeFeedUserName(ownerRecord)
 	}
 
+	if strings.TrimSpace(listRecord.GetString("user")) == userID &&
+		!listRecord.GetBool("isDefault") &&
+		listRecord.GetBool("shareEnabled") {
+		creatorGuideUsageProof, err := buildCreatorGuideUsageProof(app, listRecord.Id, userID)
+		if err != nil {
+			return response, err
+		}
+		response.CreatorGuideUsageProof = creatorGuideUsageProof
+	}
+
 	recommendationUsageProofsByListItemID := map[string][]restaurantListRecommendationUsageProofResponse{}
 	if strings.TrimSpace(listRecord.GetString("user")) == userID {
 		recommendationUsageProofsByListItemID, err = buildRestaurantListRecommendationUsageProofs(
@@ -939,6 +960,123 @@ func getRestaurantListDetailResponse(
 	response.PhotoPreviews = photoPreviews
 
 	return response, nil
+}
+
+func buildCreatorGuideUsageProof(
+	app core.App,
+	listID string,
+	ownerID string,
+) (*restaurantListCreatorGuideUsageProofResponse, error) {
+	rows := []struct {
+		ID                       string `db:"id"`
+		Kind                     string `db:"kind"`
+		Action                   string `db:"action"`
+		SourceListItem           string `db:"sourceListItem"`
+		SourceListItemSnapshotID string `db:"sourceListItemSnapshotId"`
+	}{}
+
+	err := app.DB().NewQuery(`
+		SELECT
+			ru.id AS [[id]],
+			ru.kind AS [[kind]],
+			ru.action AS [[action]],
+			COALESCE(ru.sourceListItem, '') AS [[sourceListItem]],
+			COALESCE(ru.sourceListItemSnapshotId, '') AS [[sourceListItemSnapshotId]]
+		FROM recommendation_usage ru
+		WHERE ru.sourceRestaurantList = {:listId}
+			AND ru.actor != {:ownerId}
+			AND (
+				(ru.kind = 'saved_recommendation' AND ru.action = 'saved') OR
+				(ru.kind = 'tried_recommendation' AND ru.action = 'tried') OR
+				(ru.kind = 'rated_after_try' AND ru.action = 'rated')
+			)
+		UNION ALL
+		SELECT
+			ru.id AS [[id]],
+			ru.kind AS [[kind]],
+			ru.action AS [[action]],
+			COALESCE(saved.sourceListItem, '') AS [[sourceListItem]],
+			COALESCE(saved.sourceListItemSnapshotId, '') AS [[sourceListItemSnapshotId]]
+		FROM recommendation_usage ru
+		INNER JOIN recommendation_usage saved
+			ON saved.sourceRestaurantList = {:listId}
+			AND saved.kind = 'saved_recommendation'
+			AND saved.action = 'saved'
+			AND saved.actor = ru.actor
+			AND (
+				(
+					COALESCE(saved.targetListItemSnapshotId, '') != ''
+					AND (
+						ru.sourceListItem = saved.targetListItemSnapshotId OR
+						ru.sourceListItemSnapshotId = saved.targetListItemSnapshotId
+					)
+				) OR
+				(
+					COALESCE(saved.targetListItem, '') != ''
+					AND (
+						ru.sourceListItem = saved.targetListItem OR
+						ru.sourceListItemSnapshotId = saved.targetListItem
+					)
+				)
+			)
+		WHERE ru.actor != {:ownerId}
+			AND (
+				(ru.kind = 'tried_recommendation' AND ru.action = 'tried') OR
+				(ru.kind = 'rated_after_try' AND ru.action = 'rated')
+			)
+	`).
+		Bind(dbx.Params{
+			"listId":  listID,
+			"ownerId": ownerID,
+		}).
+		All(&rows)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to load creator guide recommendation usage proof", err)
+	}
+
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	proof := &restaurantListCreatorGuideUsageProofResponse{}
+	sourceRecommendationIDs := map[string]struct{}{}
+	seenUsageIDs := map[string]struct{}{}
+	for _, row := range rows {
+		usageID := strings.TrimSpace(row.ID)
+		if usageID == "" {
+			continue
+		}
+		if _, exists := seenUsageIDs[usageID]; exists {
+			continue
+		}
+		seenUsageIDs[usageID] = struct{}{}
+
+		switch row.Kind {
+		case recommendationUsageKindSavedRecommendation:
+			proof.SavedCount++
+		case recommendationUsageKindTriedRecommendation:
+			proof.TriedCount++
+		case recommendationUsageKindRatedAfterTry:
+			proof.RatedAfterTryCount++
+		default:
+			continue
+		}
+		proof.TotalRecommendationUsageCount++
+
+		sourceListItemID := strings.TrimSpace(row.SourceListItemSnapshotID)
+		if sourceListItemID == "" {
+			sourceListItemID = strings.TrimSpace(row.SourceListItem)
+		}
+		if sourceListItemID != "" {
+			sourceRecommendationIDs[sourceListItemID] = struct{}{}
+		}
+	}
+
+	if proof.TotalRecommendationUsageCount == 0 {
+		return nil, nil
+	}
+	proof.SourceRecommendationCount = len(sourceRecommendationIDs)
+	return proof, nil
 }
 
 func buildRestaurantListRecommendationUsageProofs(

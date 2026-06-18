@@ -183,9 +183,23 @@ describe('restaurantListsStore.getRestaurantListDetail', () => {
       },
       photoPreviews: [],
       viewerLists: [],
+      creatorGuideUsageProof: {
+        savedCount: 2,
+        triedCount: 1,
+        ratedAfterTryCount: 1,
+        sourceRecommendationCount: 2,
+        totalRecommendationUsageCount: 4,
+      },
     });
 
     await expect(getRestaurantListDetail('list-1')).resolves.toMatchObject({
+      creatorGuideUsageProof: {
+        savedCount: 2,
+        triedCount: 1,
+        ratedAfterTryCount: 1,
+        sourceRecommendationCount: 2,
+        totalRecommendationUsageCount: 4,
+      },
       items: [
         {
           id: 'list-item-1',
