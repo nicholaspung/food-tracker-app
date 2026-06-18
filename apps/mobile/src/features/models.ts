@@ -146,6 +146,14 @@ export interface RestaurantListFriendMatchRecord {
   savedAt?: string;
 }
 
+export interface RestaurantListRecommendationUsageProofRecord {
+  actorId: string;
+  actorName: string;
+  kind: 'saved_recommendation' | 'tried_recommendation' | 'rated_after_try';
+  action: 'saved' | 'removed' | 'tried' | 'rated';
+  actedAt: string;
+}
+
 export interface RestaurantListItemRecord {
   id: string;
   listId: string;
@@ -163,6 +171,7 @@ export interface RestaurantListItemRecord {
   bookmarkedItems: RestaurantListBookmarkedItemRecord[];
   friendOverlapCount?: number;
   friendMatches?: RestaurantListFriendMatchRecord[];
+  recommendationUsageProofs?: RestaurantListRecommendationUsageProofRecord[];
   note?: string;
   createdAt: string;
 }

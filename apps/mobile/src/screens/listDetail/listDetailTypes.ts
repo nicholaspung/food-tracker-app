@@ -1,4 +1,7 @@
-import type { RestaurantListFriendMatchRecord } from '../../features';
+import type {
+  RestaurantListFriendMatchRecord,
+  RestaurantListRecommendationUsageProofRecord,
+} from '../../features';
 
 export interface GroupedBookmarkedItem {
   key: string;
@@ -84,6 +87,7 @@ export interface GroupedRestaurant {
   restaurantBookmarkListItemId?: string;
   friendOverlapCount?: number;
   friendMatches?: RestaurantListFriendMatchRecord[];
+  recommendationUsageProofs?: RestaurantListRecommendationUsageProofRecord[];
   items: GroupedBookmarkedItem[];
 }
 

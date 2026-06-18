@@ -1,5 +1,6 @@
 import {
   getDefaultRestaurantList,
+  getRestaurantListDetail,
   getRestaurantListBookmarkState,
   getRestaurantListCandidateRestaurants,
   removeRestaurantFoodItemBookmarkFromList,
@@ -131,6 +132,72 @@ describe('restaurantListsStore.updateRestaurantList', () => {
         headers: undefined,
       },
     );
+  });
+});
+
+describe('restaurantListsStore.getRestaurantListDetail', () => {
+  beforeEach(() => {
+    mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
+    mockedUpdateCollectionRecord.mockReset();
+    mockedPocketBase.collection.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('preserves recommendation usage proof rows from the API response', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      list: {
+        id: 'list-1',
+        name: 'Favorites',
+        visibility: 'private',
+        userId: 'user-1',
+        createdAt: '2026-04-01T00:00:00.000Z',
+        updatedAt: '2026-04-01T00:00:00.000Z',
+      },
+      items: [
+        {
+          id: 'list-item-1',
+          listId: 'list-1',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Noodle House',
+          position: 1,
+          bookmarkedItems: [],
+          recommendationUsageProofs: [
+            {
+              actorId: 'friend-1',
+              actorName: 'Mina',
+              kind: 'saved_recommendation',
+              action: 'saved',
+              actedAt: '2026-04-02T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+      bookmarkState: {
+        savedListIdsByBookmarkLookupId: {},
+      },
+      photoPreviews: [],
+      viewerLists: [],
+    });
+
+    await expect(getRestaurantListDetail('list-1')).resolves.toMatchObject({
+      items: [
+        {
+          id: 'list-item-1',
+          recommendationUsageProofs: [
+            {
+              actorName: 'Mina',
+              kind: 'saved_recommendation',
+            },
+          ],
+        },
+      ],
+    });
   });
 });
 

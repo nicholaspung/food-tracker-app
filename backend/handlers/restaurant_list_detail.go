@@ -64,25 +64,34 @@ type restaurantListDetailFriendMatchResponse struct {
 	SavedAt    string  `json:"savedAt,omitempty"`
 }
 
+type restaurantListRecommendationUsageProofResponse struct {
+	ActorID   string `json:"actorId"`
+	ActorName string `json:"actorName"`
+	Kind      string `json:"kind"`
+	Action    string `json:"action"`
+	ActedAt   string `json:"actedAt"`
+}
+
 type restaurantListDetailItemResponse struct {
-	ID                    string                                       `json:"id"`
-	ListID                string                                       `json:"listId"`
-	RestaurantID          string                                       `json:"restaurantId"`
-	RestaurantName        string                                       `json:"restaurantName"`
-	RestaurantLocation    string                                       `json:"restaurantLocation,omitempty"`
-	RestaurantCity        string                                       `json:"restaurantCity,omitempty"`
-	RestaurantCuisineType string                                       `json:"restaurantCuisineType,omitempty"`
-	RestaurantVisibility  string                                       `json:"restaurantVisibility,omitempty"`
-	Latitude              *float64                                     `json:"latitude,omitempty"`
-	Longitude             *float64                                     `json:"longitude,omitempty"`
-	SourceUserID          string                                       `json:"sourceUserId,omitempty"`
-	SourceUserName        string                                       `json:"sourceUserName,omitempty"`
-	Position              int                                          `json:"position"`
-	BookmarkedItems       []restaurantListDetailBookmarkedItemResponse `json:"bookmarkedItems"`
-	FriendOverlapCount    int                                          `json:"friendOverlapCount,omitempty"`
-	FriendMatches         []restaurantListDetailFriendMatchResponse    `json:"friendMatches,omitempty"`
-	Note                  string                                       `json:"note,omitempty"`
-	CreatedAt             string                                       `json:"createdAt"`
+	ID                        string                                           `json:"id"`
+	ListID                    string                                           `json:"listId"`
+	RestaurantID              string                                           `json:"restaurantId"`
+	RestaurantName            string                                           `json:"restaurantName"`
+	RestaurantLocation        string                                           `json:"restaurantLocation,omitempty"`
+	RestaurantCity            string                                           `json:"restaurantCity,omitempty"`
+	RestaurantCuisineType     string                                           `json:"restaurantCuisineType,omitempty"`
+	RestaurantVisibility      string                                           `json:"restaurantVisibility,omitempty"`
+	Latitude                  *float64                                         `json:"latitude,omitempty"`
+	Longitude                 *float64                                         `json:"longitude,omitempty"`
+	SourceUserID              string                                           `json:"sourceUserId,omitempty"`
+	SourceUserName            string                                           `json:"sourceUserName,omitempty"`
+	Position                  int                                              `json:"position"`
+	BookmarkedItems           []restaurantListDetailBookmarkedItemResponse     `json:"bookmarkedItems"`
+	FriendOverlapCount        int                                              `json:"friendOverlapCount,omitempty"`
+	FriendMatches             []restaurantListDetailFriendMatchResponse        `json:"friendMatches,omitempty"`
+	RecommendationUsageProofs []restaurantListRecommendationUsageProofResponse `json:"recommendationUsageProofs,omitempty"`
+	Note                      string                                           `json:"note,omitempty"`
+	CreatedAt                 string                                           `json:"createdAt"`
 }
 
 type restaurantListDetailBookmarkStateResponse struct {
@@ -795,6 +804,20 @@ func getRestaurantListDetailResponse(
 		response.List.OwnerName = resolveHomeFeedUserName(ownerRecord)
 	}
 
+	recommendationUsageProofsByListItemID := map[string][]restaurantListRecommendationUsageProofResponse{}
+	if strings.TrimSpace(listRecord.GetString("user")) == userID {
+		recommendationUsageProofsByListItemID, err = buildRestaurantListRecommendationUsageProofs(
+			app,
+			userID,
+			isAdmin,
+			acceptedFriendIDs,
+			listItemRecords,
+		)
+		if err != nil {
+			return response, err
+		}
+	}
+
 	items := make([]restaurantListDetailItemResponse, 0, len(listItemRecords))
 	visibleBookmarkLookupIDs := make([]string, 0, len(listItemRecords)*2)
 	visibleBookmarkLookupSet := map[string]struct{}{}
@@ -814,21 +837,22 @@ func getRestaurantListDetailResponse(
 			}
 		}
 		itemResponse := restaurantListDetailItemResponse{
-			ID:                    listItem.Id,
-			ListID:                listItem.GetString("list"),
-			RestaurantID:          listItem.GetString("restaurant"),
-			RestaurantName:        defaultString(resolveRestaurantName(restaurantRecord), "Unknown restaurant"),
-			RestaurantLocation:    resolveRestaurantLocation(restaurantRecord),
-			RestaurantCity:        resolveRestaurantLocation(restaurantRecord),
-			RestaurantCuisineType: resolveRestaurantCuisine(restaurantRecord),
-			RestaurantVisibility:  normalizeRestaurantVisibilityForListDetail(restaurantRecord),
-			Latitude:              latitude,
-			Longitude:             longitude,
-			SourceUserID:          strings.TrimSpace(listItem.GetString("sourceUser")),
-			Position:              listItem.GetInt("position"),
-			BookmarkedItems:       []restaurantListDetailBookmarkedItemResponse{},
-			Note:                  strings.TrimSpace(listItem.GetString("note")),
-			CreatedAt:             strings.TrimSpace(listItem.GetString("created")),
+			ID:                        listItem.Id,
+			ListID:                    listItem.GetString("list"),
+			RestaurantID:              listItem.GetString("restaurant"),
+			RestaurantName:            defaultString(resolveRestaurantName(restaurantRecord), "Unknown restaurant"),
+			RestaurantLocation:        resolveRestaurantLocation(restaurantRecord),
+			RestaurantCity:            resolveRestaurantLocation(restaurantRecord),
+			RestaurantCuisineType:     resolveRestaurantCuisine(restaurantRecord),
+			RestaurantVisibility:      normalizeRestaurantVisibilityForListDetail(restaurantRecord),
+			Latitude:                  latitude,
+			Longitude:                 longitude,
+			SourceUserID:              strings.TrimSpace(listItem.GetString("sourceUser")),
+			Position:                  listItem.GetInt("position"),
+			BookmarkedItems:           []restaurantListDetailBookmarkedItemResponse{},
+			RecommendationUsageProofs: recommendationUsageProofsByListItemID[listItem.Id],
+			Note:                      strings.TrimSpace(listItem.GetString("note")),
+			CreatedAt:                 strings.TrimSpace(listItem.GetString("created")),
 		}
 
 		if sourceUserRecord := usersByID[itemResponse.SourceUserID]; sourceUserRecord != nil {
@@ -915,6 +939,189 @@ func getRestaurantListDetailResponse(
 	response.PhotoPreviews = photoPreviews
 
 	return response, nil
+}
+
+func buildRestaurantListRecommendationUsageProofs(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+	listItemRecords []*core.Record,
+) (map[string][]restaurantListRecommendationUsageProofResponse, error) {
+	result := map[string][]restaurantListRecommendationUsageProofResponse{}
+	listItemIDs := make([]string, 0, len(listItemRecords))
+	listItemIDSet := map[string]struct{}{}
+	for _, listItemRecord := range listItemRecords {
+		listItemIDs = appendUniqueTrimmedID(listItemIDs, listItemIDSet, listItemRecord.Id)
+	}
+	if len(listItemIDs) == 0 {
+		return result, nil
+	}
+
+	usageRecords, err := findRecommendationUsageRecordsForSourceListItems(app, listItemIDs)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage proof", err)
+	}
+	if len(usageRecords) == 0 {
+		return result, nil
+	}
+
+	targetVisitIDs := make([]string, 0, len(usageRecords))
+	targetVisitIDSet := map[string]struct{}{}
+	targetVisitItemIDs := make([]string, 0, len(usageRecords))
+	targetVisitItemIDSet := map[string]struct{}{}
+	actorIDs := make([]string, 0, len(usageRecords))
+	actorIDSet := map[string]struct{}{}
+	for _, usageRecord := range usageRecords {
+		actorID := strings.TrimSpace(usageRecord.GetString("actor"))
+		if actorID == "" || actorID == userID || (!isAdmin && !hasAcceptedFriend(acceptedFriendIDs, actorID)) {
+			continue
+		}
+		actorIDs = appendUniqueTrimmedID(actorIDs, actorIDSet, actorID)
+		targetVisitIDs = appendUniqueTrimmedID(targetVisitIDs, targetVisitIDSet, usageRecord.GetString("targetVisit"))
+		targetVisitItemIDs = appendUniqueTrimmedID(targetVisitItemIDs, targetVisitItemIDSet, usageRecord.GetString("targetVisitItem"))
+	}
+
+	userRecords, err := findRecordsByIDs(app, "users", actorIDs)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage proof actors", err)
+	}
+	usersByID := mapRecordsByID(userRecords)
+
+	targetVisitRecords, err := findRecordsByIDs(app, "visits", targetVisitIDs)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage proof visits", err)
+	}
+	targetVisitsByID := mapRecordsByID(targetVisitRecords)
+	targetVisitItemRecords, err := findRecordsByIDs(app, "food_items", targetVisitItemIDs)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage proof visit items", err)
+	}
+	targetVisitItemsByID := mapRecordsByID(targetVisitItemRecords)
+	targetMenuItemsByID, err := buildAccessibleMenuItemsByID(
+		app,
+		collectVisitItemMenuItemIDs(targetVisitItemRecords),
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+	if err != nil {
+		return result, err
+	}
+
+	for _, usageRecord := range usageRecords {
+		actorID := strings.TrimSpace(usageRecord.GetString("actor"))
+		if actorID == "" || actorID == userID || (!isAdmin && !hasAcceptedFriend(acceptedFriendIDs, actorID)) {
+			continue
+		}
+		if !recommendationUsageProofTargetIsVisible(
+			usageRecord,
+			targetVisitsByID,
+			targetVisitItemsByID,
+			targetMenuItemsByID,
+			userID,
+			isAdmin,
+			acceptedFriendIDs,
+		) {
+			continue
+		}
+
+		sourceListItemID := strings.TrimSpace(usageRecord.GetString("sourceListItemSnapshotId"))
+		if sourceListItemID == "" {
+			sourceListItemID = strings.TrimSpace(usageRecord.GetString("sourceListItem"))
+		}
+		if sourceListItemID == "" {
+			continue
+		}
+
+		proof := restaurantListRecommendationUsageProofResponse{
+			ActorID:   actorID,
+			ActorName: resolveHomeFeedUserName(usersByID[actorID]),
+			Kind:      strings.TrimSpace(usageRecord.GetString("kind")),
+			Action:    strings.TrimSpace(usageRecord.GetString("action")),
+			ActedAt:   firstNonEmpty(strings.TrimSpace(usageRecord.GetString("actedAt")), strings.TrimSpace(usageRecord.GetString("created"))),
+		}
+		if proof.ActorName == "" {
+			continue
+		}
+		result[sourceListItemID] = append(result[sourceListItemID], proof)
+	}
+
+	return result, nil
+}
+
+func findRecommendationUsageRecordsForSourceListItems(app core.App, listItemIDs []string) ([]*core.Record, error) {
+	uniqueIDs := uniqueTrimmedValues(listItemIDs)
+	if len(uniqueIDs) == 0 {
+		return nil, nil
+	}
+
+	records := make([]*core.Record, 0)
+	for _, chunk := range chunkStrings(uniqueIDs, recordLookupFilterChunkSize) {
+		params := dbx.Params{}
+		clauses := make([]string, 0, len(chunk)*2)
+		for index, listItemID := range chunk {
+			paramKey := fmt.Sprintf("sourceListItem%d", index)
+			params[paramKey] = listItemID
+			clauses = append(clauses,
+				fmt.Sprintf("sourceListItem = {:%s}", paramKey),
+				fmt.Sprintf("sourceListItemSnapshotId = {:%s}", paramKey),
+			)
+		}
+
+		filter := strings.Join(clauses, " || ")
+		if len(clauses) > 1 {
+			filter = "(" + filter + ")"
+		}
+		chunkRecords, err := app.FindRecordsByFilter("recommendation_usage", filter, "-actedAt,-created", 2000, 0, params)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, chunkRecords...)
+	}
+
+	return records, nil
+}
+
+func recommendationUsageProofTargetIsVisible(
+	usageRecord *core.Record,
+	targetVisitsByID map[string]*core.Record,
+	targetVisitItemsByID map[string]*core.Record,
+	targetMenuItemsByID map[string]*core.Record,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+) bool {
+	switch strings.TrimSpace(usageRecord.GetString("kind")) {
+	case recommendationUsageKindSavedRecommendation:
+		return true
+	case recommendationUsageKindTriedRecommendation, recommendationUsageKindRatedAfterTry:
+		targetVisitID := strings.TrimSpace(usageRecord.GetString("targetVisit"))
+		if targetVisitID == "" {
+			return false
+		}
+		if !canAccessVisitRecord(targetVisitsByID[targetVisitID], userID, isAdmin, acceptedFriendIDs) {
+			return false
+		}
+		if strings.TrimSpace(usageRecord.GetString("kind")) != recommendationUsageKindRatedAfterTry {
+			return true
+		}
+		targetVisitItemID := strings.TrimSpace(usageRecord.GetString("targetVisitItem"))
+		if targetVisitItemID == "" {
+			return false
+		}
+		targetVisitItem := targetVisitItemsByID[targetVisitItemID]
+		if targetVisitItem == nil {
+			return false
+		}
+		if !canAccessFoodItemRecord(targetVisitItem, targetVisitsByID, userID, isAdmin, acceptedFriendIDs) {
+			return false
+		}
+		targetMenuItemID := strings.TrimSpace(targetVisitItem.GetString("menuItem"))
+		return targetMenuItemID == "" || targetMenuItemsByID[targetMenuItemID] != nil
+	default:
+		return false
+	}
 }
 
 func parseRestaurantListDetailPagination(pageRaw string, pageSizeRaw string) (int, int, error) {

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { SectionHeader } from '../../components/shared';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Text } from '../../ui';
+import type { RestaurantListRecommendationUsageProofRecord } from '../../features';
 
 type RecommendationGroupMode = 'owner' | 'viewer';
 
@@ -21,6 +22,7 @@ interface ListDetailRestaurantRecommendationGroupCardProps<Item> {
   renderItem: (item: Item, itemIndex: number) => ReactNode;
   restaurantId: string;
   restaurantName: string;
+  recommendationUsageProofs?: readonly RestaurantListRecommendationUsageProofRecord[];
   reorderControls?: ReactNode;
   secondaryMetaLabel: string | null;
 }
@@ -80,7 +82,31 @@ const useStyles = createThemedStyles((theme) => ({
     fontStyle: 'italic',
     ...theme.typography.bodyMd,
   },
+  proofRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  proofText: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+    ...theme.typography.bodyMd,
+  },
 }));
+
+function formatRecommendationUsageProofLabel(proof: RestaurantListRecommendationUsageProofRecord): string {
+  const actorName = proof.actorName.trim() || 'Friend';
+  switch (proof.kind) {
+    case 'saved_recommendation':
+      return `${actorName} saved this`;
+    case 'tried_recommendation':
+      return `${actorName} tried this`;
+    case 'rated_after_try':
+      return `${actorName} rated this after trying`;
+    default:
+      return `${actorName} used this recommendation`;
+  }
+}
 
 export function ListDetailRestaurantRecommendationGroupCard<Item>({
   emptyItemsMessage = 'No items added yet.',
@@ -95,6 +121,7 @@ export function ListDetailRestaurantRecommendationGroupCard<Item>({
   renderItem,
   restaurantId,
   restaurantName,
+  recommendationUsageProofs = [],
   reorderControls,
   secondaryMetaLabel,
 }: ListDetailRestaurantRecommendationGroupCardProps<Item>) {
@@ -152,6 +179,18 @@ export function ListDetailRestaurantRecommendationGroupCard<Item>({
             <Text key={`${restaurantId}-note-${noteIndex}`} style={styles.noteText}>
               "{note}"
             </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {recommendationUsageProofs.length > 0 ? (
+        <View style={styles.section} testID={`list-detail-recommendation-usage-proofs-${restaurantId}`}>
+          <SectionHeader title="Friend Activity" titleTone="secondary" />
+          {recommendationUsageProofs.map((proof, proofIndex) => (
+            <View key={`${restaurantId}-proof-${proof.actorId}-${proof.kind}-${proofIndex}`} style={styles.proofRow}>
+              <Ionicons color={theme.colors.text.muted} name="sparkles-outline" size={14} />
+              <Text style={styles.proofText}>{formatRecommendationUsageProofLabel(proof)}</Text>
+            </View>
           ))}
         </View>
       ) : null}

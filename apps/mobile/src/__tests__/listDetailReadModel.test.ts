@@ -65,6 +65,15 @@ function buildDetail(overrides: Partial<RestaurantListDetailRecord> = {}): Resta
         note: 'Great patio',
         sourceUserId: 'friend_2',
         sourceUserName: 'Ari',
+        recommendationUsageProofs: [
+          {
+            actorId: 'friend_3',
+            actorName: 'Mina',
+            kind: 'saved_recommendation',
+            action: 'saved',
+            actedAt: '2026-03-01T00:00:00.000Z',
+          },
+        ],
         bookmarkedItems: [
           {
             id: 'food_1',
@@ -154,6 +163,12 @@ describe('buildListDetailReadModel', () => {
           { id: 'photo_1', ownerLabel: 'Ari' },
           { id: 'photo_2', ownerLabel: 'You' },
         ],
+      },
+    ]);
+    expect(model.restaurantRows[0]?.group.recommendationUsageProofs).toMatchObject([
+      {
+        actorName: 'Mina',
+        kind: 'saved_recommendation',
       },
     ]);
     expect(model.mapGroups[0]).toMatchObject({

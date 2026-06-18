@@ -305,6 +305,210 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	}
 }
 
+func TestRestaurantListDetailEndpointReturnsFriendRecommendationUsageProofs(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+
+	friend.Set("name", "Proof Friend")
+	stranger.Set("name", "Hidden Stranger")
+	if err := server.app.Save(friend); err != nil {
+		t.Fatalf("failed to save friend: %v", err)
+	}
+	if err := server.app.Save(stranger); err != nil {
+		t.Fatalf("failed to save stranger: %v", err)
+	}
+	createFriendshipRecord(t, server.app, owner.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Proof Cafe",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	ownerList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "My Recommendations",
+		"user":       owner.Id,
+		"visibility": "private",
+	})
+	sourceListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       ownerList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    owner.Id,
+		"position":   1,
+	})
+	emptyListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       ownerList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    owner.Id,
+		"position":   2,
+	})
+	friendList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"user":       friend.Id,
+		"visibility": "private",
+	})
+	friendTargetListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       friendList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    friend.Id,
+		"position":   1,
+	})
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-08 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendVisitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Latte",
+		"rating": 5,
+	})
+	privateMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"createdBy":  friend.Id,
+		"name":       "Hidden Latte",
+		"visibility": "private",
+	})
+	privateMenuVisitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":    friendVisit.Id,
+		"user":     friend.Id,
+		"name":     "Hidden Latte",
+		"rating":   5,
+		"menuItem": privateMenuItem.Id,
+	})
+	privateFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-09 18:30:00.000Z",
+		"visibility": "private",
+	})
+
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "saved_recommendation",
+		"action":                   "saved",
+		"actor":                    friend.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"targetListItem":           friendTargetListItem.Id,
+		"actedAt":                  "2026-04-08 18:31:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "tried_recommendation",
+		"action":                   "tried",
+		"actor":                    friend.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"targetVisit":              friendVisit.Id,
+		"actedAt":                  "2026-04-08 18:32:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "rated_after_try",
+		"action":                   "rated",
+		"actor":                    friend.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"targetVisit":              friendVisit.Id,
+		"targetVisitItem":          friendVisitItem.Id,
+		"actedAt":                  "2026-04-08 18:33:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "saved_recommendation",
+		"action":                   "saved",
+		"actor":                    stranger.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"actedAt":                  "2026-04-08 18:34:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "tried_recommendation",
+		"action":                   "tried",
+		"actor":                    friend.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"targetVisit":              privateFriendVisit.Id,
+		"actedAt":                  "2026-04-08 18:35:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                     "rated_after_try",
+		"action":                   "rated",
+		"actor":                    friend.Id,
+		"sourceUser":               owner.Id,
+		"sourceListItem":           sourceListItem.Id,
+		"sourceListItemSnapshotId": sourceListItem.Id,
+		"targetRestaurant":         restaurant.Id,
+		"targetRestaurantList":     friendList.Id,
+		"targetVisit":              friendVisit.Id,
+		"targetVisitItem":          privateMenuVisitItem.Id,
+		"actedAt":                  "2026-04-08 18:36:00.000Z",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/restaurant-lists/"+ownerList.Id+"/detail", ownerToken, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected owner response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                        string `json:"id"`
+			RecommendationUsageProofs []struct {
+				ActorID   string `json:"actorId"`
+				ActorName string `json:"actorName"`
+				Kind      string `json:"kind"`
+				Action    string `json:"action"`
+			} `json:"recommendationUsageProofs"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	proofsByListItemID := map[string][]struct {
+		ActorID   string `json:"actorId"`
+		ActorName string `json:"actorName"`
+		Kind      string `json:"kind"`
+		Action    string `json:"action"`
+	}{}
+	for _, item := range payload.Items {
+		proofsByListItemID[item.ID] = item.RecommendationUsageProofs
+	}
+
+	proofs := proofsByListItemID[sourceListItem.Id]
+	if len(proofs) != 3 {
+		t.Fatalf("expected accepted friend saved/tried/rated proofs only, got %#v", proofs)
+	}
+	kinds := map[string]string{}
+	for _, proof := range proofs {
+		if proof.ActorID != friend.Id || proof.ActorName != "Proof Friend" {
+			t.Fatalf("expected named accepted friend proof, got %#v", proof)
+		}
+		kinds[proof.Kind] = proof.Action
+	}
+	if kinds["saved_recommendation"] != "saved" || kinds["tried_recommendation"] != "tried" || kinds["rated_after_try"] != "rated" {
+		t.Fatalf("expected saved/tried/rated proof kinds, got %#v", kinds)
+	}
+	if len(proofsByListItemID[emptyListItem.Id]) != 0 {
+		t.Fatalf("expected empty proof state on unrelated list item, got %#v", proofsByListItemID[emptyListItem.Id])
+	}
+}
+
 func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureSummaryHandlers(se, app)

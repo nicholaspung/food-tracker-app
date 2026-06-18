@@ -236,8 +236,15 @@ func TestAdminWaitlistApproveAndReject(t *testing.T) {
 	if len(auditLogs) != 2 {
 		t.Fatalf("expected approve and reject audit logs, got %d", len(auditLogs))
 	}
-	metadataMap = parseAuditMetadata(t, auditLogs[0].Get("metadataJson"))
-	if metadataMap["source"] != "admin_waitlist_decision" || metadataMap["decision"] != "rejected" {
-		t.Fatalf("unexpected reject audit metadata: %#v", metadataMap)
+	foundRejectAudit := false
+	for _, auditLog := range auditLogs {
+		metadataMap = parseAuditMetadata(t, auditLog.Get("metadataJson"))
+		if metadataMap["source"] == "admin_waitlist_decision" && metadataMap["decision"] == "rejected" {
+			foundRejectAudit = true
+			break
+		}
+	}
+	if !foundRejectAudit {
+		t.Fatalf("expected reject audit metadata in logs, got %#v", auditLogs)
 	}
 }

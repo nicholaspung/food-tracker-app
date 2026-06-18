@@ -115,6 +115,14 @@ interface RestaurantListDetailApiFriendMatchRecord {
   savedAt?: string;
 }
 
+interface RestaurantListRecommendationUsageProofApiRecord {
+  actorId: string;
+  actorName: string;
+  kind: 'saved_recommendation' | 'tried_recommendation' | 'rated_after_try';
+  action: 'saved' | 'removed' | 'tried' | 'rated';
+  actedAt: string;
+}
+
 interface RestaurantListDetailApiItemRecord {
   id: string;
   listId: string;
@@ -132,6 +140,7 @@ interface RestaurantListDetailApiItemRecord {
   bookmarkedItems?: RestaurantListDetailApiBookmarkedItemRecord[];
   friendOverlapCount?: number;
   friendMatches?: RestaurantListDetailApiFriendMatchRecord[];
+  recommendationUsageProofs?: RestaurantListRecommendationUsageProofApiRecord[];
   note?: string;
   createdAt: string;
 }
@@ -389,6 +398,7 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     friendMatches: (record.friendMatches ?? [])
       .map(mapRestaurantListDetailFriendMatchRecord)
       .filter((match): match is RestaurantListFriendMatchRecord => match !== null),
+    recommendationUsageProofs: record.recommendationUsageProofs,
     note: record.note?.trim() || undefined,
     createdAt: record.createdAt,
   };

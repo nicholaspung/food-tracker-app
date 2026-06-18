@@ -1644,6 +1644,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     mode="owner"
                     notes={group.notes}
                     primaryMetaLabel={primaryMetaLabel}
+                    recommendationUsageProofs={group.recommendationUsageProofs}
                     renderItem={(item, itemIndex) => (
                       <ListDetailOwnerItemCard
                         canCreateVisitFromRestaurant={!isRestaurantLocked}

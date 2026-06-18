@@ -111,6 +111,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 
 function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items']): GroupedRestaurant[] {
   const groups = new Map<string, GroupedRestaurant>();
+  const proofKeysByRestaurant = new Map<string, Set<string>>();
 
   for (const listItem of listItems) {
     const normalizedBookmarkedItems = Array.isArray(listItem.bookmarkedItems)
@@ -149,6 +150,20 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
     if ((listItem.friendMatches?.length ?? 0) > 0 && (group.friendMatches?.length ?? 0) === 0) {
       group.friendMatches = listItem.friendMatches;
       group.friendOverlapCount = listItem.friendOverlapCount;
+    }
+    if ((listItem.recommendationUsageProofs?.length ?? 0) > 0) {
+      const proofKeys = proofKeysByRestaurant.get(listItem.restaurantId) ?? new Set<string>();
+      const nextProofs = [...(group.recommendationUsageProofs ?? [])];
+      for (const proof of listItem.recommendationUsageProofs ?? []) {
+        const proofKey = `${proof.actorId}:${proof.kind}:${proof.action}:${proof.actedAt}`;
+        if (proofKeys.has(proofKey)) {
+          continue;
+        }
+        proofKeys.add(proofKey);
+        nextProofs.push(proof);
+      }
+      proofKeysByRestaurant.set(listItem.restaurantId, proofKeys);
+      group.recommendationUsageProofs = nextProofs;
     }
 
     if (normalizedBookmarkedItems.length === 0 && !group.restaurantBookmarkListItemId) {
