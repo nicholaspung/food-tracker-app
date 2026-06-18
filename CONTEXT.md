@@ -12,6 +12,10 @@ _Avoid_: List, saved places
 The system-managed default Restaurant List for each user. It stores restaurants and recommendations the user wants to try later.
 _Avoid_: Saved list, default curated list
 
+**Recommendation Source**:
+The user, **Visit Item**, and optional **Restaurant List** or **Creator Guide** that originally influenced a saved or tried recommendation.
+_Avoid_: Current list, storage location
+
 **All Locations History**:
 A read-only view of a user's own ordered items across visited restaurants whose names match conservatively by normalized restaurant name.
 _Avoid for MVP_: Chain, Similar Restaurants, Same-name history
@@ -79,6 +83,34 @@ _Avoid_: list helper, bookmark mutation helper
 **Shared Restaurant List**:
 A live, read-only view of a **Restaurant List** made accessible through a revocable secret link.
 _Avoid_: Public Restaurant List, public list
+
+**Creator Guide**:
+A creator-promoted **Shared Restaurant List** that may later support paid access while preserving the underlying **Restaurant List** visibility model.
+_Avoid_: Public Restaurant List, public list
+
+**Creator Guide Unlock**:
+A paid or otherwise gated access event for a **Creator Guide**.
+_Avoid_: Recommendation Usage, save, try
+
+**Recommendation Usage**:
+A user action that shows a **Visit Item** or **Restaurant List** recommendation helped someone discover, save, try, or rate food.
+_Avoid_: Like, engagement, conversion when the action has not reached a purchase or paid unlock
+
+**Saved Recommendation**:
+**Recommendation Usage** where a user adds a recommendation to **Want to Try** or another **Restaurant List**.
+_Avoid_: Like, favorite
+
+**Tried Recommendation**:
+**Recommendation Usage** where a user creates a Visit from a saved or shared recommendation.
+_Avoid_: Check-in, conversion when paid access is meant
+
+**Rated After Try**:
+**Recommendation Usage** where a user records their own **Visit Item** rating after acting on a **Recommendation Source**.
+_Avoid_: Review conversion, copied rating
+
+**Recommendation Usage Proof**:
+The user-facing summary of **Recommendation Usage** shown to the recommendation owner or creator.
+_Avoid_: Analytics dashboard, notification when a durable proof summary is meant
 
 **List Detail Map**:
 A map view of the restaurants inside one **Restaurant List**.
@@ -233,6 +265,16 @@ _Avoid_: notification inbox, user notification history
 - A **Restaurant List** contains zero or more restaurants.
 - A **Shared Restaurant List** represents exactly one **Restaurant List**.
 - A **Shared Restaurant List** shows the current contents of its **Restaurant List**, not a frozen snapshot.
+- A **Creator Guide** is distributed through a **Shared Restaurant List** link, not through a new public **Restaurant List** visibility state.
+- **Recommendation Usage** can credit both the source **Visit Item** and the **Restaurant List** or **Creator Guide** where the acting user discovered it.
+- **Want to Try** stores personal intent and preserves the original **Recommendation Source**; it does not become the credited source when the user later creates a Visit from it.
+- **Recommendation Usage Proof** may show named activity between accepted friends, but **Creator Guide** proof should default to aggregate or anonymized activity.
+- A **Creator Guide Unlock** is a monetization event, not **Recommendation Usage**, though creator-facing reporting may combine both.
+- Removed saved recommendations remain part of **Recommendation Usage** history, while default **Recommendation Usage Proof** surfaces should show active/current saved counts.
+- When a user creates a Visit from **Want to Try**, **Want to Try** may remove the active intent item, but **Recommendation Usage** should preserve the **Recommendation Source** for proof and for the acting user's own history.
+- **Recommendation Source** may attach to a Visit when only the restaurant was recommended, but item-level **Recommendation Source** is authoritative when a specific **Visit Item** or menu item was recommended.
+- First-version **Recommendation Usage** requires an explicit save or Visit creation path from a recommendation; it should not infer credit from views or support retroactive manual attribution.
+- First-version **Recommendation Usage Proof** should appear as passive in-app proof, not as a **Remote Device Notification** or notification inbox item.
 - **All Locations History** spans a user's own item-backed visits at restaurants with conservatively matching names, but it does not replace exact restaurant/location identity.
 - **All Locations History** is shown when the user has item-backed orders at two or more matching restaurant locations, or at one matching ordered location that is different from the restaurant currently being viewed.
 - **All Locations History** is an MVP read model, not a persisted **Restaurant Group**.
