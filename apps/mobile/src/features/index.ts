@@ -1,4 +1,5 @@
 export * from './models';
+export * from './recommendationSourceHandoff';
 export * from './bills/createBillSubmissionLifecycle';
 export * from './photoProcessing/menuItemCsvParsing';
 export * from './photoProcessing/photoProcessingSubmissionLifecycle';

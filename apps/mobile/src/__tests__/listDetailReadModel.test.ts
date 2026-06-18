@@ -1,4 +1,5 @@
 import type { RestaurantListDetailRecord, RestaurantListRecord } from '../features';
+import { createRecommendationSourceHandoff } from '../features/recommendationSourceHandoff';
 import { buildListDetailReadModel } from '../screens/listDetail/listDetailReadModel';
 
 function buildList(overrides: Partial<RestaurantListRecord> = {}): RestaurantListRecord {
@@ -195,6 +196,13 @@ describe('buildListDetailReadModel', () => {
         foodItemId: 'food_1',
         foodItemName: 'Pancakes',
         foodItemRating: 9,
+        recommendationSource: createRecommendationSourceHandoff({
+          discoverySurface: 'list_detail',
+          sourceFoodItemId: 'food_1',
+          sourceListId: 'list_1',
+          sourceListItemId: 'list_item_1',
+          sourceUserId: 'friend_2',
+        }),
         sourceListItemId: 'list_item_1',
         visitedAt: '2025-02-01T00:00:00.000Z',
         sourceNote: 'Great patio',

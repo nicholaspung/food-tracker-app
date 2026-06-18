@@ -24,6 +24,10 @@ import {
   restaurantListQueryKeys,
   useRestaurantListWrites,
 } from '../features';
+import {
+  buildCreateVisitRecommendationSourceParams,
+  createRecommendationSourceHandoff,
+} from '../features/recommendationSourceHandoff';
 import { env } from '../config/env';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -943,8 +947,23 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const handleIWentThere = (
     group: GroupedRestaurant,
-    item?: { listItemId: string; menuItemId?: string; name: string },
+    item?: {
+      foodItemId?: string;
+      listItemId: string;
+      menuItemId?: string;
+      name: string;
+      sourceUserId?: string;
+    },
   ) => {
+    const recommendationSource = createRecommendationSourceHandoff({
+      discoverySurface: 'list_detail',
+      sourceFoodItemId: item?.foodItemId,
+      sourceListId: route.params.listId,
+      sourceListItemId: item?.listItemId ?? group.restaurantBookmarkListItemId,
+      sourceMenuItemId: item?.menuItemId,
+      sourceUserId: item?.sourceUserId,
+    });
+
     trackObservabilityEvent('LIST_DETAIL_I_WENT_TAPPED', {
       source: 'ListDetailScreen',
       hasRestaurantId: Boolean(group.restaurantId),
@@ -968,8 +987,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       preselectedRestaurantName: group.restaurantName,
       preselectedMenuItemId: item ? item.menuItemId ?? `bookmark-${item.listItemId}` : undefined,
       preselectedMenuItemName: item?.name,
-      sourceListId: route.params.listId,
-      sourceListItemId: item?.listItemId ?? group.restaurantBookmarkListItemId,
+      ...buildCreateVisitRecommendationSourceParams(recommendationSource),
       returnToStep: item ? 2 : 1,
     });
   };
@@ -977,17 +995,28 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const buildSaveBookmarkTarget = (
     group: GroupedRestaurant,
     item: GroupedBookmarkedItem,
-  ): SaveBookmarkTarget => ({
-    bookmarkLookupIds: item.bookmarkLookupIds,
-    restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
-    restaurantName: group.restaurantName,
-    foodItemId: item.foodItemId,
-    foodItemName: item.name,
-    foodItemRating: item.rating,
-    sourceListItemId: item.listItemId,
-    visitedAt: item.visitedAt,
-    sourceNote: item.sourceNote,
-  });
+  ): SaveBookmarkTarget => {
+    const recommendationSource = createRecommendationSourceHandoff({
+      discoverySurface: 'list_detail',
+      sourceFoodItemId: item.foodItemId,
+      sourceListId: listId,
+      sourceListItemId: item.listItemId,
+      sourceUserId: item.sourceUserId,
+    });
+
+    return {
+      bookmarkLookupIds: item.bookmarkLookupIds,
+      restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
+      restaurantName: group.restaurantName,
+      foodItemId: item.foodItemId,
+      foodItemName: item.name,
+      foodItemRating: item.rating,
+      recommendationSource,
+      sourceListItemId: item.listItemId,
+      visitedAt: item.visitedAt,
+      sourceNote: item.sourceNote,
+    };
+  };
 
   const resolveAlreadySavedListIdsForBookmarkTarget = useCallback(
     (target: SaveBookmarkTarget) => {

@@ -16,6 +16,10 @@ import {
   restaurantListQueryKeys,
   saveSharedRestaurantListRecommendation,
 } from '../features';
+import {
+  createRecommendationSourceHandoff,
+  resolveSharedRecommendationSourceListItemId,
+} from '../features/recommendationSourceHandoff';
 import type {
   RestaurantListBookmarkedItemRecord,
   RestaurantListItemRecord,
@@ -84,6 +88,8 @@ function mapSharedBookmarkItem(item: RestaurantListBookmarkedItemRecord): Groupe
     name: item.name,
     rating: item.rating,
     visitedAt: item.visitedAt,
+    sourceUserId: item.sourceUserId,
+    sourceUserName: item.sourceUserName,
     userFoodItemId: item.userFoodItemId,
     userFoodItemRating: item.userFoodItemRating,
     userFoodItemVisitedAt: item.userFoodItemVisitedAt,
@@ -318,11 +324,17 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     setSaveErrorMessage(null);
     try {
       const targetListIds = defaultList?.id ? [defaultList.id] : [];
+      const recommendationSource = createRecommendationSourceHandoff({
+        discoverySurface: 'shared_restaurant_list',
+        sourceFoodItemId: item.foodItemId,
+        sourceListItemId: item.listItemId,
+        sourceUserId: item.sourceUserId,
+      });
       await saveSharedRestaurantListRecommendation({
         shareToken,
         restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
         foodItemId: item.foodItemId,
-        sourceListItemId: item.listItemId,
+        sourceListItemId: resolveSharedRecommendationSourceListItemId(recommendationSource),
         targetListIds,
       });
       await query.refetch();

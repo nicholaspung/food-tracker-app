@@ -19,6 +19,7 @@ import { APP_NAME } from '../lib/branding';
 import { clearPendingAuthRedirect, getPendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { MAIN_ONBOARDING_VERSION } from '../features/store/onboardingStore';
+import type { RecommendationSourceHandoff } from '../features/recommendationSourceHandoff';
 import type { AddOnboardingCardId, MoreOnboardingCardId } from '../types/auth';
 import type { MainOnboardingCardId } from '../types/onboarding';
 import { useAuth } from '../providers/AuthProvider';
@@ -193,6 +194,7 @@ export type RootStackParamList = {
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
         preselectedMenuItemSuggestionSource?: VisitItemSuggestionSourceInput;
+        recommendationSource?: RecommendationSourceHandoff;
         sourceListId?: string;
         sourceListItemId?: string;
         sourceNoteId?: string;

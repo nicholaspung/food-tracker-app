@@ -1,5 +1,3 @@
-import type { QueryClient } from '@tanstack/react-query';
-
 import { cleanupStagedPhotoFiles } from '../../lib/photoStaging';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { buildVisitCreatedHomeParams } from '../../navigation/homeRouteParams';
@@ -11,15 +9,14 @@ import {
 } from '../../observability/productAnalytics';
 import {
   formatLimitExceededMessage,
-  linkVisitToListBookmark,
   parseLimitExceededError,
-  restaurantListQueryKeys,
   type CreateVisitInput,
   type MonthlyUsageSnapshot,
   type UpdateVisitInput,
   type VisitPhotoUploadInput,
 } from '../store';
 import type { VisitRecord } from '../models';
+import type { RecommendationSourceHandoff } from '../recommendationSourceHandoff';
 import type { OfflineAwareFeatureWriteResult } from '../store/useOfflineAwareFeatureWrite';
 
 const FREE_MONTHLY_VISIT_PHOTO_LIMIT = 100;
@@ -104,13 +101,12 @@ export interface SubmitCreateVisitInput {
   isDisplayFreeUser: boolean;
   isOnline: boolean;
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
-  queryClient: QueryClient;
+  recommendationSource?: RecommendationSourceHandoff | null;
   restaurantId: string | null;
   restaurantName: string;
   shouldEnforceUsageLimitsClientSide: boolean;
   sourceListItemId: string | null;
   sourceNoteId?: string;
-  trackWriteTelemetry: (operationName: string) => Promise<void>;
   visitDate: string;
   visitVisibility: CreateVisitSubmissionVisibility;
   visitWrites: CreateVisitSubmissionWriter;
@@ -150,6 +146,10 @@ interface ParsedEditVisitItem {
   rating: number;
 }
 
+function resolveCreateVisitSourceListItemId(input: SubmitCreateVisitInput): string | null {
+  return input.recommendationSource?.sourceListItemId ?? input.sourceListItemId;
+}
+
 function trackSubmitValidationFailed(
   input: SubmitCreateVisitInput,
   reason: string,
@@ -161,7 +161,7 @@ function trackSubmitValidationFailed(
     itemCount: input.draftItems.length,
     visitVisibility: input.visitVisibility,
     sourceNoteAttached: Boolean(input.sourceNoteId),
-    sourceListItemAttached: Boolean(input.sourceListItemId),
+    sourceListItemAttached: Boolean(resolveCreateVisitSourceListItemId(input)),
   });
 }
 
@@ -226,7 +226,7 @@ function parseEditDraftItems(
 
 function buildTrackingProperties(input: SubmitCreateVisitInput, parsedItems: ParsedCreateVisitItem[]): TrackingEntryProperties {
   const sourceNoteAttached = Boolean(input.sourceNoteId);
-  const sourceListItemAttached = Boolean(input.sourceListItemId);
+  const sourceListItemAttached = Boolean(resolveCreateVisitSourceListItemId(input));
 
   return {
     entryType: 'restaurant_visit',
@@ -303,43 +303,11 @@ function enforceClientPhotoQuota(
   };
 }
 
-async function linkCreatedVisitToSourceListItem(
-  input: SubmitCreateVisitInput,
-  createdVisit: VisitRecord,
-): Promise<void> {
-  if (!input.sourceListItemId || createdVisit.items.length === 0) {
-    return;
-  }
-
-  const createdItemId = createdVisit.items[0]?.id;
-  if (!createdItemId) {
-    return;
-  }
-
-  try {
-    await input.trackWriteTelemetry('list.bookmark.link-visit');
-    await linkVisitToListBookmark({
-      listItemId: input.sourceListItemId,
-      userFoodItemId: createdItemId,
-    });
-    await Promise.all([
-      input.queryClient.invalidateQueries({
-        queryKey: restaurantListQueryKeys.itemsRoot,
-      }),
-      input.queryClient.invalidateQueries({
-        queryKey: restaurantListQueryKeys.detailRoot,
-      }),
-    ]);
-  } catch {
-    // Keep visit creation successful even when list link-back fails.
-  }
-}
-
 function trackCreateSucceeded(input: SubmitCreateVisitInput, parsedItems: ParsedCreateVisitItem[], queued: boolean): void {
   const hasPhotos = parsedItems.some((item) => item.photos.length > 0);
   const hasNotes = parsedItems.some((item) => Boolean(item.notes));
   const sourceNoteAttached = Boolean(input.sourceNoteId);
-  const sourceListItemAttached = Boolean(input.sourceListItemId);
+  const sourceListItemAttached = Boolean(resolveCreateVisitSourceListItemId(input));
   const trackingProperties = buildTrackingProperties(input, parsedItems);
 
   trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
@@ -417,7 +385,8 @@ export async function submitCreateVisit(
   const hasNotes = parsedItems.some((item) => Boolean(item.notes));
   const hasPhotos = parsedItems.some((item) => item.photos.length > 0);
   const sourceNoteAttached = Boolean(input.sourceNoteId);
-  const sourceListItemAttached = Boolean(input.sourceListItemId);
+  const resolvedSourceListItemId = resolveCreateVisitSourceListItemId(input);
+  const sourceListItemAttached = Boolean(resolvedSourceListItemId);
   const trackingProperties = buildTrackingProperties(input, parsedItems);
 
   trackProductEvent('tracking.rating_added', {
@@ -449,7 +418,7 @@ export async function submitCreateVisit(
   const visitInput: CreateVisitInput = {
     restaurantId: input.restaurantId?.trim() || undefined,
     restaurantName: trimmedRestaurant,
-    sourceListItemId: input.sourceListItemId?.trim() || undefined,
+    sourceListItemId: resolvedSourceListItemId?.trim() || undefined,
     items: parsedItems,
     visitedAt: localDateStringToUTC(trimmedVisitDate),
     visitedOn: trimmedVisitDate,
@@ -482,7 +451,6 @@ export async function submitCreateVisit(
     }
 
     const createdVisit = createResult.result;
-    await linkCreatedVisitToSourceListItem(input, createdVisit);
 
     trackObservabilityEvent('Visit Creation Completed', {
       creationMethod: 'manual',

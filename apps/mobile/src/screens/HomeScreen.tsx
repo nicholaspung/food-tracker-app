@@ -37,6 +37,10 @@ import {
   useFriendWrites,
   type VisitRecord,
 } from '../features';
+import {
+  buildRecommendationBookmarkSourceFields,
+  createRecommendationSourceHandoff,
+} from '../features/recommendationSourceHandoff';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 import {
   getRestaurantListBookmarkState,
@@ -1072,10 +1076,16 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       });
 
       try {
+        const recommendationSource = createRecommendationSourceHandoff({
+          discoverySurface: 'home_friend_feed',
+          sourceFoodItemId: foodItemId,
+          sourceMenuItemId: menuItemId,
+          sourceUserId,
+        });
         const result = await restaurantListWrites.saveBookmarkToDefaultList({
           bookmark: {
             restaurantId,
-            ...(menuItemId ? { menuItemId } : { foodItemId, sourceUserId }),
+            ...buildRecommendationBookmarkSourceFields(recommendationSource),
             note,
           },
           defaultListId,

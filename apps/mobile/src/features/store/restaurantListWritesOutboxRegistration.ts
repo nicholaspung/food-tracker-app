@@ -95,6 +95,8 @@ async function replayDefaultRestaurantListBookmarkSave(
       foodItemId: saveToDefaultPayload.foodItemId,
       menuItemId: saveToDefaultPayload.menuItemId,
       note: saveToDefaultPayload.note,
+      sourceListId: saveToDefaultPayload.sourceListId,
+      sourceListItemId: saveToDefaultPayload.sourceListItemId,
       sourceUserId: saveToDefaultPayload.sourceUserId,
     },
     requestOptions,

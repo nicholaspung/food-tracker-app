@@ -1,6 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
 
-import type { RestaurantListRecord, restaurantListQueryKeys, useRestaurantListWrites } from '../../features';
+import {
+  buildRecommendationBookmarkSourceFields,
+  type RestaurantListRecord,
+  type restaurantListQueryKeys,
+  type useRestaurantListWrites,
+} from '../../features';
 import type { trackObservabilityEvent } from '../../observability';
 import type { trackProductEvent } from '../../observability/productAnalytics';
 import type { SaveBookmarkTarget, SaveBookmarkTrackingContext } from './listDetailTypes';
@@ -320,11 +325,8 @@ export async function saveBookmarkToDefaultListAction({
       sourceListId: deps.listId,
       bookmark: {
         restaurantId: saveBookmarkTarget.restaurantId,
-        foodItemId: saveBookmarkTarget.foodItemId,
+        ...buildRecommendationBookmarkSourceFields(saveBookmarkTarget.recommendationSource),
         ...(saveBookmarkTarget.sourceNote ? { note: saveBookmarkTarget.sourceNote } : {}),
-        sourceListId: deps.listId,
-        sourceListItemId: saveBookmarkTarget.sourceListItemId,
-        sourceUserId: list?.userId,
       },
     });
     const queued = result.status === 'queued';

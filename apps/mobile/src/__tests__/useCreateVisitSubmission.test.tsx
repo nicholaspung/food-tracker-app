@@ -9,7 +9,6 @@ jest.mock('../features', () => ({
   formatLimitExceededMessage: jest.fn(
     (payload: { message?: string }) => payload.message ?? 'Limit exceeded',
   ),
-  linkVisitToListBookmark: jest.fn(),
   markNoteUsed: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
   promoteCachedNoteToUsed: jest.fn(),
@@ -55,9 +54,6 @@ jest.mock('../observability', () => ({
 }));
 
 describe('useCreateVisitSubmission', () => {
-  const queryClient = {
-    invalidateQueries: jest.fn().mockResolvedValue(undefined),
-  };
   const navigation = {
     canGoBack: jest.fn(() => false),
     goBack: jest.fn(),
@@ -97,7 +93,6 @@ describe('useCreateVisitSubmission', () => {
       },
       status: 'completed',
     });
-    queryClient.invalidateQueries.mockClear();
     navigation.canGoBack.mockClear();
     navigation.canGoBack.mockReturnValue(false);
     navigation.goBack.mockClear();
@@ -130,7 +125,6 @@ describe('useCreateVisitSubmission', () => {
         isEditMode: false,
         monthlyUsageSnapshot: null,
         navigation: navigation as never,
-        queryClient: queryClient as never,
         restaurantId: 'restaurant-1',
         restaurantName: 'Noodle House',
         setErrorMessage,

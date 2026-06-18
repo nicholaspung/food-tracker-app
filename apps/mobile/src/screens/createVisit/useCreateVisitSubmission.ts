@@ -1,15 +1,14 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
-import type { QueryClient } from '@tanstack/react-query';
 
 import {
   type MonthlyUsageSnapshot,
+  type RecommendationSourceHandoff,
 } from '../../features';
 import {
   submitCreateVisit,
   submitEditVisit,
 } from '../../features/visitSubmission/createVisitSubmissionLifecycle';
 import { useVisitWrites } from '../../features/store/useVisitWrites';
-import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import {
   type CreateVisitNavigationProp,
   type DraftVisitItem,
@@ -25,7 +24,7 @@ interface UseCreateVisitSubmissionParams {
   isOnline?: boolean;
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
   navigation: CreateVisitNavigationProp;
-  queryClient: QueryClient;
+  recommendationSource?: RecommendationSourceHandoff | null;
   restaurantId: string | null;
   restaurantName: string;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
@@ -47,7 +46,7 @@ export function useCreateVisitSubmission({
   isOnline,
   monthlyUsageSnapshot,
   navigation,
-  queryClient,
+  recommendationSource,
   restaurantId,
   restaurantName,
   setErrorMessage,
@@ -60,7 +59,6 @@ export function useCreateVisitSubmission({
   visitVisibility,
 }: UseCreateVisitSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const trackWriteTelemetry = useWriteTelemetry();
   const visitWrites = useVisitWrites();
   const isCurrentlyOnline = isOnline ?? false;
 
@@ -84,13 +82,12 @@ export function useCreateVisitSubmission({
           isDisplayFreeUser,
           isOnline: isCurrentlyOnline,
           monthlyUsageSnapshot,
-          queryClient,
+          recommendationSource,
           restaurantId,
           restaurantName,
           shouldEnforceUsageLimitsClientSide,
           sourceListItemId,
           sourceNoteId,
-          trackWriteTelemetry,
           visitDate,
           visitVisibility,
           visitWrites,
@@ -156,7 +153,7 @@ export function useCreateVisitSubmission({
     monthlyUsageSnapshot,
     navigation,
     navigateAfterEdit,
-    queryClient,
+    recommendationSource,
     restaurantId,
     restaurantName,
     setErrorMessage,
@@ -165,7 +162,6 @@ export function useCreateVisitSubmission({
     shouldEnforceUsageLimitsClientSide,
     sourceNoteId,
     sourceListItemId,
-    trackWriteTelemetry,
     visitWrites,
     visitDate,
     visitVisibility,

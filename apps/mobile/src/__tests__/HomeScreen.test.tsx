@@ -231,6 +231,9 @@ jest.mock('../features', () => ({
         ? record.defaultHomeFeedTypeFilter
         : 'visits',
   }),
+  useFriendWrites: jest.fn(() => ({
+    acceptFriendSuggestion: jest.fn(),
+  })),
 }));
 
 jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
@@ -1877,6 +1880,7 @@ describe('HomeScreen', () => {
       bookmark: {
         restaurantId: 'restaurant-1',
         menuItemId: 'menu-item-1',
+        sourceUserId: 'friend-user',
         note: 'Order this.',
       },
       defaultListId: 'default-list',

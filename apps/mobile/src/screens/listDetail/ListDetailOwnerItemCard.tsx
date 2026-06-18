@@ -21,7 +21,13 @@ interface ListDetailOwnerItemCardProps {
   itemIndex: number;
   photoEntries: OwnerItemPhotoEntry[];
   onConfirmDeleteItem: (item: PendingDeleteListItem) => void;
-  onIWentThere: (input: { listItemId: string; name: string }) => void;
+  onIWentThere: (input: {
+    foodItemId?: string;
+    listItemId: string;
+    menuItemId?: string;
+    name: string;
+    sourceUserId?: string;
+  }) => void;
   onLongPressItem?: (item: OwnerDisplayItem) => void;
   onOpenPhotos: (entries: OwnerItemPhotoEntry[]) => void;
 }
@@ -90,8 +96,11 @@ export function ListDetailOwnerItemCard({
                 accessibilityRole="button"
                 onPress={() => {
                   onIWentThere({
+                    foodItemId: sourceRating.foodItemId,
                     listItemId: sourceRating.listItemId,
+                    menuItemId: sourceRating.menuItemId,
                     name: item.name,
+                    sourceUserId: sourceRating.sourceUserId,
                   });
                 }}
                 style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}

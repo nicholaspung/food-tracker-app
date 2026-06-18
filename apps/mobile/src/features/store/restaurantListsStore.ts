@@ -12,7 +12,6 @@ import type {
   RestaurantListDetailRecord,
   AddRestaurantVisitRatingsToListInput,
   CreateRestaurantListInput,
-  LinkVisitToListBookmarkInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
   PaginatedResult,
@@ -53,7 +52,6 @@ export type {
   RestaurantListDetailPage,
   AddRestaurantVisitRatingsToListInput,
   CreateRestaurantListInput,
-  LinkVisitToListBookmarkInput,
   ListRestaurantListVisitedRestaurantsPageInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
@@ -1267,36 +1265,6 @@ export async function saveRestaurantToDefaultList(
       hasNote: Boolean(input.note?.trim()),
     },
   );
-}
-
-export async function linkVisitToListBookmark(
-  input: LinkVisitToListBookmarkInput,
-): Promise<RestaurantListItemRecord[]> {
-  return trackFeatureMutation('restaurant_list.bookmark.link', async () => {
-    getAuthenticatedUserId();
-    const listItemId = input.listItemId.trim();
-    const userFoodItemId = input.userFoodItemId.trim();
-
-    if (!listItemId) {
-      throw new Error('List item is required.');
-    }
-
-    if (!userFoodItemId) {
-      throw new Error('Food item is required.');
-    }
-
-    const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
-      `/api/restaurant-lists/list-items/${encodeURIComponent(listItemId)}/link-visit`,
-      {
-        method: 'POST',
-        body: {
-          userFoodItemId,
-        },
-      },
-    );
-
-    return mapRestaurantListMutationGroupItems(response);
-  });
 }
 
 export async function addRestaurantVisitRatingsToList(

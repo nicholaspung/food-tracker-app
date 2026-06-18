@@ -11,7 +11,13 @@ interface ListDetailWantToTryMenuItemRowProps {
   item: OwnerDisplayItem;
   itemIndex: number;
   onDelete: (item: OwnerDisplayItem) => void;
-  onIWentThere: (input: { listItemId: string; menuItemId?: string; name: string }) => void;
+  onIWentThere: (input: {
+    foodItemId?: string;
+    listItemId: string;
+    menuItemId?: string;
+    name: string;
+    sourceUserId?: string;
+  }) => void;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -83,9 +89,11 @@ export function ListDetailWantToTryMenuItemRow({
               accessibilityRole="button"
               onPress={() => {
                 onIWentThere({
+                  foodItemId: item.bookmark.foodItemId,
                   listItemId,
                   menuItemId: item.bookmark.menuItemId,
                   name: item.name,
+                  sourceUserId: item.source?.sourceUserId,
                 });
               }}
               style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}

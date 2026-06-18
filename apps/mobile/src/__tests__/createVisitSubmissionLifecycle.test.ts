@@ -4,7 +4,7 @@ import {
   type SubmitCreateVisitInput,
   type SubmitEditVisitInput,
 } from '../features/visitSubmission/createVisitSubmissionLifecycle';
-import { linkVisitToListBookmark, parseLimitExceededError } from '../features/store';
+import { parseLimitExceededError } from '../features/store';
 import { cleanupStagedPhotoFiles } from '../lib/photoStaging';
 import { buildVisitCreatedHomeParams } from '../navigation/homeRouteParams';
 
@@ -12,12 +12,7 @@ jest.mock('../features/store', () => ({
   formatLimitExceededMessage: jest.fn(
     (payload: { message?: string }) => payload.message ?? 'Limit exceeded',
   ),
-  linkVisitToListBookmark: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
-  restaurantListQueryKeys: {
-    detailRoot: ['feature', 'restaurantLists', 'detail'],
-    itemsRoot: ['feature', 'restaurantLists', 'items'],
-  },
 }));
 
 jest.mock('../lib/photoStaging', () => ({
@@ -44,9 +39,6 @@ jest.mock('../observability/productAnalytics', () => ({
   trackProductEvent: jest.fn(),
 }));
 
-const mockedLinkVisitToListBookmark = linkVisitToListBookmark as jest.MockedFunction<
-  typeof linkVisitToListBookmark
->;
 const mockedCleanupStagedPhotoFiles = cleanupStagedPhotoFiles as jest.MockedFunction<
   typeof cleanupStagedPhotoFiles
 >;
@@ -59,8 +51,6 @@ const mockedParseLimitExceededError = parseLimitExceededError as jest.MockedFunc
 
 describe('submitCreateVisit', () => {
   const createVisit = jest.fn();
-  const invalidateQueries = jest.fn().mockResolvedValue(undefined);
-  const trackWriteTelemetry = jest.fn().mockResolvedValue(undefined);
 
   function buildInput(
     overrides: Partial<SubmitCreateVisitInput> = {},
@@ -79,14 +69,10 @@ describe('submitCreateVisit', () => {
       isDisplayFreeUser: false,
       isOnline: true,
       monthlyUsageSnapshot: null,
-      queryClient: {
-        invalidateQueries,
-      } as never,
       restaurantId: 'restaurant-1',
       restaurantName: 'Noodle House',
       shouldEnforceUsageLimitsClientSide: false,
       sourceListItemId: null,
-      trackWriteTelemetry,
       visitDate: '2026-04-20',
       visitVisibility: 'friends',
       visitWrites: {
@@ -111,8 +97,6 @@ describe('submitCreateVisit', () => {
       },
       status: 'completed',
     });
-    invalidateQueries.mockResolvedValue(undefined);
-    trackWriteTelemetry.mockResolvedValue(undefined);
   });
 
   it('blocks validation failures before creating a visit', async () => {
@@ -361,24 +345,21 @@ describe('submitCreateVisit', () => {
     );
   });
 
-  it('links the first created visit item back to a source restaurant list item', async () => {
+  it('passes source restaurant list item context to backend visit writes', async () => {
     await submitCreateVisit(
       buildInput({
         sourceListItemId: 'list-item-1',
       }),
     );
 
-    expect(trackWriteTelemetry).toHaveBeenCalledWith('list.bookmark.link-visit');
-    expect(mockedLinkVisitToListBookmark).toHaveBeenCalledWith({
-      listItemId: 'list-item-1',
-      userFoodItemId: 'visit-item-1',
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'restaurantLists', 'items'],
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'restaurantLists', 'detail'],
-    });
+    expect(createVisit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          sourceListItemId: 'list-item-1',
+        }),
+        useApiReplay: true,
+      }),
+    );
   });
 });
 

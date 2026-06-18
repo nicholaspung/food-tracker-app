@@ -88,6 +88,8 @@ interface SaveBookmarkToDefaultListOperationPayload {
   foodItemId?: string;
   menuItemId?: string;
   note?: string;
+  sourceListId?: string;
+  sourceListItemId?: string;
   sourceUserId?: string;
 }
 

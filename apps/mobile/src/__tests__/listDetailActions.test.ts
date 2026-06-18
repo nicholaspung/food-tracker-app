@@ -9,6 +9,7 @@ import {
   type ListDetailActionDependencies,
 } from '../screens/listDetail/listDetailActions';
 import type { RestaurantListRecord } from '../features';
+import { createRecommendationSourceHandoff } from '../features/recommendationSourceHandoff';
 import type { SaveBookmarkTarget } from '../screens/listDetail/listDetailTypes';
 
 function buildList(overrides: Partial<RestaurantListRecord> = {}): RestaurantListRecord {
@@ -36,6 +37,13 @@ function buildSaveBookmarkTarget(
     foodItemId: 'food_1',
     foodItemName: 'Noodles',
     foodItemRating: 8,
+    recommendationSource: createRecommendationSourceHandoff({
+      discoverySurface: 'list_detail',
+      sourceFoodItemId: 'food_1',
+      sourceListId: 'list_1',
+      sourceListItemId: 'list_item_1',
+      sourceUserId: 'owner_1',
+    }),
     sourceListItemId: 'list_item_1',
     visitedAt: '2026-01-03T00:00:00.000Z',
     sourceNote: 'Try the broth',

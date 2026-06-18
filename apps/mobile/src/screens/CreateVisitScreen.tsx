@@ -41,6 +41,10 @@ import {
   type VisitItem,
   type VisitPhotoRecord,
 } from '../features';
+import {
+  createRecommendationSourceHandoff,
+  type RecommendationSourceHandoff,
+} from '../features/recommendationSourceHandoff';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
@@ -508,7 +512,7 @@ export function CreateVisitScreen({
   const entrySourceRef = useRef<CreateVisitEntrySource>(
     resolveCreateVisitEntrySource({
       editVisitId,
-      sourceListItemId: route.params?.sourceListItemId,
+      sourceListItemId: route.params?.recommendationSource?.sourceListItemId ?? route.params?.sourceListItemId,
       sourceNoteId,
     }),
   );
@@ -540,6 +544,7 @@ export function CreateVisitScreen({
     resolveDefaultVisitVisibility,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recommendationSource, setRecommendationSource] = useState<RecommendationSourceHandoff | null>(null);
   const [sourceListReturnListId, setSourceListReturnListId] = useState<string | null>(null);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
@@ -824,8 +829,9 @@ export function CreateVisitScreen({
     const preselectedMenuItemId = route.params?.preselectedMenuItemId;
     const preselectedMenuItemName = route.params?.preselectedMenuItemName;
     const preselectedMenuItemSuggestionSource = route.params?.preselectedMenuItemSuggestionSource;
-    const sourceListIdParam = route.params?.sourceListId;
-    const sourceListItemIdParam = route.params?.sourceListItemId;
+    const recommendationSourceParam = route.params?.recommendationSource;
+    const sourceListIdParam = recommendationSourceParam?.sourceListId ?? route.params?.sourceListId;
+    const sourceListItemIdParam = recommendationSourceParam?.sourceListItemId ?? route.params?.sourceListItemId;
     const returnToStep = route.params?.returnToStep;
 
     if (
@@ -885,6 +891,14 @@ export function CreateVisitScreen({
     if (sourceListItemIdParam) {
       setSourceListItemId(sourceListItemIdParam);
       setSourceListReturnListId(sourceListIdParam ?? null);
+      setRecommendationSource(
+        recommendationSourceParam ??
+          createRecommendationSourceHandoff({
+            discoverySurface: 'list_detail',
+            sourceListId: sourceListIdParam,
+            sourceListItemId: sourceListItemIdParam,
+          }),
+      );
     } else if (
       preselectedRestaurantId ||
       preselectedMenuItemId ||
@@ -892,6 +906,7 @@ export function CreateVisitScreen({
     ) {
       setSourceListItemId(null);
       setSourceListReturnListId(null);
+      setRecommendationSource(null);
     }
 
     setErrorMessage(null);
@@ -908,6 +923,7 @@ export function CreateVisitScreen({
       preselectedMenuItemId: undefined,
       preselectedMenuItemName: undefined,
       preselectedMenuItemSuggestionSource: undefined,
+      recommendationSource: undefined,
       sourceListId: undefined,
       sourceListItemId: undefined,
       returnToStep: undefined,
@@ -920,6 +936,7 @@ export function CreateVisitScreen({
     route.params?.preselectedMenuItemId,
     route.params?.preselectedMenuItemName,
     route.params?.preselectedMenuItemSuggestionSource,
+    route.params?.recommendationSource,
     route.params?.sourceListId,
     route.params?.sourceListItemId,
     route.params?.returnToStep,
@@ -984,6 +1001,7 @@ export function CreateVisitScreen({
     clearSearchErrorMessage();
     setSourceListItemId(null);
     setSourceListReturnListId(null);
+    setRecommendationSource(null);
     setHydratedEditVisitId(editVisitId);
   }, [
     clearSearchErrorMessage,
@@ -1424,8 +1442,9 @@ export function CreateVisitScreen({
     navigation,
     onSubmitSucceeded: () => {
       hasCompletedFlowRef.current = true;
+      setRecommendationSource(null);
     },
-    queryClient,
+    recommendationSource,
     restaurantId: selectedRestaurantId,
     restaurantName,
     setErrorMessage,
@@ -1582,12 +1601,13 @@ export function CreateVisitScreen({
     }
   }, [handleConvertVisitItemToFoodProduct, selectedConversionItem]);
 
-  const isSourceListFlow = sourceListItemId !== null || sourceListReturnListId !== null;
+  const isSourceListFlow = recommendationSource !== null || sourceListItemId !== null || sourceListReturnListId !== null;
   const returnToSourceList = (exitMethod: CreateVisitExitMethod) => {
     exitMethodRef.current = exitMethod;
     const returnListId = sourceListReturnListId;
     setSourceListItemId(null);
     setSourceListReturnListId(null);
+    setRecommendationSource(null);
     setErrorMessage(null);
 
     if (navigation.canGoBack()) {
@@ -1617,6 +1637,7 @@ export function CreateVisitScreen({
 
     exitMethodRef.current = 'header_back';
     setSourceListItemId(null);
+    setRecommendationSource(null);
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -1665,6 +1686,7 @@ export function CreateVisitScreen({
 
             exitMethodRef.current = 'secondary_cancel';
             setSourceListItemId(null);
+            setRecommendationSource(null);
             if (navigation.canGoBack()) {
               navigation.goBack();
               return;
@@ -1683,6 +1705,7 @@ export function CreateVisitScreen({
               }
 
               setSourceListItemId(null);
+              setRecommendationSource(null);
               setStep(0);
               setErrorMessage(null);
             },

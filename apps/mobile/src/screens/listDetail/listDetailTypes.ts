@@ -1,4 +1,5 @@
 import type {
+  RecommendationSourceHandoff,
   RestaurantListFriendMatchRecord,
   RestaurantListRecommendationUsageProofRecord,
 } from '../../features';
@@ -98,6 +99,7 @@ export interface SaveBookmarkTarget {
   foodItemId: string;
   foodItemName: string;
   foodItemRating: number;
+  recommendationSource: RecommendationSourceHandoff;
   sourceListItemId: string;
   visitedAt?: string;
   sourceNote?: string;

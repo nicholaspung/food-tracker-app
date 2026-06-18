@@ -20,6 +20,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { ListDetailScreen } from '../screens/ListDetailScreen';
+import { ListDetailBookmarkedItemRow } from '../screens/listDetail/ListDetailBookmarkedItemRow';
 
 const mockReact = React;
 
@@ -142,6 +143,13 @@ jest.mock('react-native', () => {
 });
 
 jest.mock('../features', () => ({
+  buildRecommendationBookmarkSourceFields: jest.fn((handoff) => ({
+    foodItemId: handoff.sourceFoodItemId,
+    ...(handoff.sourceMenuItemId ? { menuItemId: handoff.sourceMenuItemId } : {}),
+    ...(handoff.sourceListId ? { sourceListId: handoff.sourceListId } : {}),
+    ...(handoff.sourceListItemId ? { sourceListItemId: handoff.sourceListItemId } : {}),
+    ...(handoff.sourceUserId ? { sourceUserId: handoff.sourceUserId } : {}),
+  })),
   buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
   createDefaultRestaurantList: jest.fn(),
   disableRestaurantListShareLink: jest.fn(),
@@ -1495,7 +1503,10 @@ describe('ListDetailScreen', () => {
     });
 
     await act(async () => {
-      await renderer.root.findByProps({ testID: 'save-list-item-item_1' }).props.onPress();
+      const bookmarkRow = renderer.root.findByType(ListDetailBookmarkedItemRow);
+      bookmarkRow.props.onSave(bookmarkRow.props.item);
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(restaurantListWrites.saveBookmarkToDefaultList).toHaveBeenCalledWith({
@@ -1618,6 +1629,11 @@ describe('ListDetailScreen', () => {
       preselectedMenuItemName: undefined,
       sourceListId: 'list_1',
       sourceListItemId: 'restaurant_bookmark_1',
+      recommendationSource: {
+        discoverySurface: 'list_detail',
+        sourceListId: 'list_1',
+        sourceListItemId: 'restaurant_bookmark_1',
+      },
       returnToStep: 1,
     });
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
@@ -1803,6 +1819,13 @@ describe('ListDetailScreen', () => {
       preselectedMenuItemName: 'Croissant',
       sourceListId: 'list_1',
       sourceListItemId: 'menu_item_bookmark_1',
+      recommendationSource: {
+        discoverySurface: 'list_detail',
+        sourceFoodItemId: 'food_1',
+        sourceListId: 'list_1',
+        sourceListItemId: 'menu_item_bookmark_1',
+        sourceMenuItemId: 'menu_item_1',
+      },
       returnToStep: 2,
     });
 
@@ -2100,6 +2123,13 @@ describe('ListDetailScreen', () => {
       preselectedMenuItemName: 'Noodles',
       sourceListId: 'list_1',
       sourceListItemId: 'list_item_1',
+      recommendationSource: {
+        discoverySurface: 'list_detail',
+        sourceFoodItemId: 'bookmark_1',
+        sourceListId: 'list_1',
+        sourceListItemId: 'list_item_1',
+        sourceUserId: 'friend_1',
+      },
       returnToStep: 2,
     });
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
