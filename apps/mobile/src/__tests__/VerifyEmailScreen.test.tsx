@@ -153,7 +153,7 @@ describe('VerifyEmailScreen', () => {
 
     expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('user@example.com');
     const resendButton = renderer.root.findAllByType('Button').find(
-      (node: any) => node.props.label === 'Resend in 60s',
+      (node: any) => node.props.label === 'Resend in 1m',
     );
     expect(resendButton).toBeDefined();
   });
@@ -599,7 +599,7 @@ describe('VerifyEmailScreen', () => {
       await Promise.resolve();
     });
 
-    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 60s')).toBe(
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 1m')).toBe(
       true,
     );
   });
@@ -637,9 +637,9 @@ describe('VerifyEmailScreen', () => {
     });
 
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
-      'Please wait about a minute before requesting another verification email.',
+      'Too many verification email requests. Try again in 1 minute.',
     );
-    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 60s')).toBe(
+    expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Resend in 1m')).toBe(
       true,
     );
   });

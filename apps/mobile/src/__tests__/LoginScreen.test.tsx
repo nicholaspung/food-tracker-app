@@ -36,14 +36,19 @@ jest.mock('../hooks/useAuthRateLimit', () => ({
   useAuthRateLimit: jest.fn(),
 }));
 
-jest.mock('../lib/authRateLimiter', () => ({
-  isAuthRateLimitError: jest.fn((error: unknown) =>
-    error instanceof Error ? /rate|too many|try again later|already requested/i.test(error.message) : false,
-  ),
-  recordAuthRateLimitFailure: jest.fn(),
-  recordAuthRateLimitSuccess: jest.fn(),
-  recordServerAuthRateLimit: jest.fn(),
-}));
+jest.mock('../lib/authRateLimiter', () => {
+  const actual = jest.requireActual('../lib/authRateLimiter');
+
+  return {
+    ...actual,
+    isAuthRateLimitError: jest.fn((error: unknown) =>
+      error instanceof Error ? /rate|too many|try again later|already requested/i.test(error.message) : false,
+    ),
+    recordAuthRateLimitFailure: jest.fn(),
+    recordAuthRateLimitSuccess: jest.fn(),
+    recordServerAuthRateLimit: jest.fn(),
+  };
+});
 
 jest.mock('../theme', () => ({
   createThemedStyles: () => () => ({}),
@@ -383,7 +388,7 @@ describe('LoginScreen', () => {
 
     expect(mockedRecordServerAuthRateLimit).toHaveBeenCalledWith('login', 'user@example.com');
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
-      'Too many sign-in attempts. Try again in 900 seconds.',
+      'Too many sign-in attempts. Try again in 15 minutes.',
     );
   });
 });

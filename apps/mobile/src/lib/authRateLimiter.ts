@@ -327,7 +327,7 @@ export async function recordAuthRateLimitCooldown(
   return buildDecision(nextState, now);
 }
 
-function formatAuthRateLimitCountdown(remainingMs: number): string {
+export function formatAuthRateLimitCountdown(remainingMs: number): string {
   const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
 
   if (remainingSeconds < 60) {
@@ -336,6 +336,24 @@ function formatAuthRateLimitCountdown(remainingMs: number): string {
 
   const remainingMinutes = Math.ceil(remainingSeconds / 60);
   return `${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}`;
+}
+
+function formatAuthRateLimitCompactCountdown(remainingMs: number): string {
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+
+  if (remainingSeconds < 60) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${Math.ceil(remainingSeconds / 60)}m`;
+}
+
+export function formatAuthRateLimitActionLabel(action: string, remainingMs: number): string {
+  return `${action} in ${formatAuthRateLimitCompactCountdown(remainingMs)}`;
+}
+
+export function formatAuthRateLimitMessage(reason: string, remainingMs: number): string {
+  return `${reason}. Try again in ${formatAuthRateLimitCountdown(remainingMs)}.`;
 }
 
 function extractErrorText(error: unknown): string {

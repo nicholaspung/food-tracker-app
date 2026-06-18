@@ -29,14 +29,19 @@ jest.mock('../hooks/useAuthRateLimit', () => ({
   useAuthRateLimit: jest.fn(),
 }));
 
-jest.mock('../lib/authRateLimiter', () => ({
-  isAuthRateLimitError: jest.fn((error: unknown) =>
-    error instanceof Error ? /rate|too many|try again later|already requested/i.test(error.message) : false,
-  ),
-  recordAuthRateLimitFailure: jest.fn(),
-  recordAuthRateLimitSuccess: jest.fn(),
-  recordServerAuthRateLimit: jest.fn(),
-}));
+jest.mock('../lib/authRateLimiter', () => {
+  const actual = jest.requireActual('../lib/authRateLimiter');
+
+  return {
+    ...actual,
+    isAuthRateLimitError: jest.fn((error: unknown) =>
+      error instanceof Error ? /rate|too many|try again later|already requested/i.test(error.message) : false,
+    ),
+    recordAuthRateLimitFailure: jest.fn(),
+    recordAuthRateLimitSuccess: jest.fn(),
+    recordServerAuthRateLimit: jest.fn(),
+  };
+});
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
@@ -635,7 +640,7 @@ describe('SignUpScreen', () => {
 
     expect(mockedRecordServerAuthRateLimit).toHaveBeenCalledWith('signup', 'user@example.com');
     expect(renderer.root.findAllByType('PageErrorToast')[0].props.errorMessage).toBe(
-      'Too many attempts to create account. Try again in 900 seconds.',
+      'Too many attempts to create account. Try again in 15 minutes.',
     );
   });
 });

@@ -3,6 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   buildAuthRateLimitKey,
   checkAuthRateLimit,
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitCountdown,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitFailure,
   recordAuthRateLimitSuccess,
@@ -139,6 +142,17 @@ describe('authRateLimiter', () => {
       failedAttempts: 6,
       remainingMs: 900_000,
     });
+  });
+
+  it('formats cooldown copy consistently', () => {
+    expect(formatAuthRateLimitCountdown(30_000)).toBe('30 seconds');
+    expect(formatAuthRateLimitCountdown(60_000)).toBe('1 minute');
+    expect(formatAuthRateLimitCountdown(900_000)).toBe('15 minutes');
+    expect(formatAuthRateLimitActionLabel('Try Again', 30_000)).toBe('Try Again in 30s');
+    expect(formatAuthRateLimitActionLabel('Resend', 60_000)).toBe('Resend in 1m');
+    expect(formatAuthRateLimitMessage('Too many attempts', 900_000)).toBe(
+      'Too many attempts. Try again in 15 minutes.',
+    );
   });
 
   it('normalizes keys and separates flows', () => {

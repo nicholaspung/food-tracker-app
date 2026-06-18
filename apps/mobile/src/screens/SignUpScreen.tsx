@@ -6,6 +6,8 @@ import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay, SegmentedContr
 import { createCollectionRecord, sendApiRequest } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitFailure,
   recordAuthRateLimitSuccess,
@@ -120,10 +122,10 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const isSignupRateLimited = !signupRateLimitDecision.allowed;
   const isWaitlistRateLimited = !waitlistRateLimitDecision.allowed;
   const signupSubmitLabel = isSignupRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(signupRateLimitDecision.remainingMs / 1000))}s`
+    ? formatAuthRateLimitActionLabel('Try Again', signupRateLimitDecision.remainingMs)
     : 'Create Account';
   const waitlistSubmitLabel = isWaitlistRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(waitlistRateLimitDecision.remainingMs / 1000))}s`
+    ? formatAuthRateLimitActionLabel('Try Again', waitlistRateLimitDecision.remainingMs)
     : isOnline ? 'Join Waitlist' : 'Waitlist Requires Internet';
   const isInviteCodeMode = accessMode === 'invite_code';
   const isWaitlistApprovedMode = accessMode === 'waitlist_approved';
@@ -209,7 +211,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
     const rateLimitDecision = await refreshSignupRateLimit();
     if (!rateLimitDecision.allowed) {
-      setErrorMessage(formatAuthSubmitRateLimitMessage('create account', rateLimitDecision.remainingMs));
+      setErrorMessage(formatAuthRateLimitMessage('Too many attempts to create account', rateLimitDecision.remainingMs));
       return;
     }
 
@@ -333,7 +335,9 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         : await recordAuthRateLimitFailure('signup', trimmedEmail);
       setSignupRateLimitDecision(nextDecision);
       setErrorMessage(
-        nextDecision.allowed ? message : formatAuthSubmitRateLimitMessage('create account', nextDecision.remainingMs),
+        nextDecision.allowed
+          ? message
+          : formatAuthRateLimitMessage('Too many attempts to create account', nextDecision.remainingMs),
       );
     } finally {
       setIsSubmitting(false);
@@ -355,7 +359,9 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
     const rateLimitDecision = await refreshWaitlistRateLimit();
     if (!rateLimitDecision.allowed) {
-      setWaitlistErrorMessage(formatAuthSubmitRateLimitMessage('join waitlist', rateLimitDecision.remainingMs));
+      setWaitlistErrorMessage(
+        formatAuthRateLimitMessage('Too many attempts to join waitlist', rateLimitDecision.remainingMs),
+      );
       return;
     }
 
@@ -387,7 +393,9 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         : await recordAuthRateLimitFailure('waitlist', trimmedEmail);
       setWaitlistRateLimitDecision(nextDecision);
       setWaitlistErrorMessage(
-        nextDecision.allowed ? message : formatAuthSubmitRateLimitMessage('join waitlist', nextDecision.remainingMs),
+        nextDecision.allowed
+          ? message
+          : formatAuthRateLimitMessage('Too many attempts to join waitlist', nextDecision.remainingMs),
       );
       trackObservabilityEvent('AUTH_WAITLIST_JOIN_FAILED', {
         source: 'SignUpScreen',
@@ -607,9 +615,4 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       <LoadingOverlay label="Creating account..." visible={isSubmitting} />
     </Screen>
   );
-}
-
-function formatAuthSubmitRateLimitMessage(action: string, remainingMs: number): string {
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  return `Too many attempts to ${action}. Try again in ${remainingSeconds} seconds.`;
 }

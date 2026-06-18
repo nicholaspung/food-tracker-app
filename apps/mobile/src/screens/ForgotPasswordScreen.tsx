@@ -5,6 +5,9 @@ import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../comp
 import { requestUserPasswordReset } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitCountdown,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
@@ -41,12 +44,12 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
     setDecision: setResetRequestRateLimitDecision,
   } = useAuthRateLimit('password_reset_request', normalizedEmail);
   const isResetRequestRateLimited = !resetRequestRateLimitDecision.allowed;
-  const resetRequestRemainingSeconds = Math.max(
-    0,
-    Math.ceil(resetRequestRateLimitDecision.remainingMs / 1000),
-  );
+  const hasResetRequestCooldown = resetRequestRateLimitDecision.remainingMs > 0;
+  const resetRequestCountdown = hasResetRequestCooldown
+    ? formatAuthRateLimitCountdown(resetRequestRateLimitDecision.remainingMs)
+    : '';
   const submitLabel = isResetRequestRateLimited
-    ? `Try Again in ${Math.max(1, resetRequestRemainingSeconds)}s`
+    ? formatAuthRateLimitActionLabel('Try Again', resetRequestRateLimitDecision.remainingMs)
     : 'Send Reset Email';
   const styles = useStyles();
 
@@ -63,7 +66,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
 
     const rateLimitDecision = await refreshResetRequestRateLimit();
     if (!rateLimitDecision.allowed) {
-      setErrorMessage(formatPasswordResetRateLimitMessage(rateLimitDecision.remainingMs));
+      setErrorMessage(formatAuthRateLimitMessage('Too many password reset requests', rateLimitDecision.remainingMs));
       return;
     }
 
@@ -115,7 +118,9 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
       }
       setResetRequestRateLimitDecision(nextDecision);
       setErrorMessage(
-        nextDecision.allowed ? message : formatPasswordResetRateLimitMessage(nextDecision.remainingMs),
+        nextDecision.allowed
+          ? message
+          : formatAuthRateLimitMessage('Too many password reset requests', nextDecision.remainingMs),
       );
     } finally {
       setIsSubmitting(false);
@@ -165,9 +170,9 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
             }}
           />
 
-          {resetRequestRemainingSeconds > 0 ? (
+          {hasResetRequestCooldown ? (
             <Text style={styles.cooldownText} variant="bodySm">
-              You can request another reset email in {resetRequestRemainingSeconds} seconds.
+              You can request another reset email in {resetRequestCountdown}.
             </Text>
           ) : null}
         </Card>
@@ -176,9 +181,4 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
       <LoadingOverlay label="Sending..." visible={isSubmitting} />
     </Screen>
   );
-}
-
-function formatPasswordResetRateLimitMessage(remainingMs: number): string {
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  return `Too many password reset requests. Try again in ${remainingSeconds} seconds.`;
 }

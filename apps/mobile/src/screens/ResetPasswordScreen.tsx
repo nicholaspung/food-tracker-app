@@ -5,6 +5,9 @@ import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverl
 import { confirmUserPasswordReset, requestUserPasswordReset } from '../features';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitCountdown,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
@@ -60,15 +63,15 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
   } = useAuthRateLimit('password_reset_resend', resetEmail);
   const isResetConfirmRateLimited = !resetConfirmRateLimitDecision.allowed;
   const isResetResendRateLimited = !resetResendRateLimitDecision.allowed;
-  const resetResendRemainingSeconds = Math.max(
-    0,
-    Math.ceil(resetResendRateLimitDecision.remainingMs / 1000),
-  );
+  const hasResetResendCooldown = resetResendRateLimitDecision.remainingMs > 0;
+  const resetResendCountdown = hasResetResendCooldown
+    ? formatAuthRateLimitCountdown(resetResendRateLimitDecision.remainingMs)
+    : '';
   const resetConfirmLabel = isResetConfirmRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(resetConfirmRateLimitDecision.remainingMs / 1000))}s`
+    ? formatAuthRateLimitActionLabel('Try Again', resetConfirmRateLimitDecision.remainingMs)
     : 'Reset Password';
   const resetResendLabel = isResetResendRateLimited
-    ? `Resend in ${Math.max(1, resetResendRemainingSeconds)}s`
+    ? formatAuthRateLimitActionLabel('Resend', resetResendRateLimitDecision.remainingMs)
     : 'Resend Email';
   const styles = useStyles();
 
@@ -115,7 +118,7 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
 
     const rateLimitDecision = await refreshResetConfirmRateLimit();
     if (!rateLimitDecision.allowed) {
-      setErrorMessage(formatResetConfirmRateLimitMessage(rateLimitDecision.remainingMs));
+      setErrorMessage(formatAuthRateLimitMessage('Too many password reset attempts', rateLimitDecision.remainingMs));
       return;
     }
 
@@ -147,7 +150,9 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
         : await recordAuthRateLimitFailure('password_reset_confirm', resetEmail);
       setResetConfirmRateLimitDecision(nextDecision);
       setErrorMessage(
-        nextDecision.allowed ? message : formatResetConfirmRateLimitMessage(nextDecision.remainingMs),
+        nextDecision.allowed
+          ? message
+          : formatAuthRateLimitMessage('Too many password reset attempts', nextDecision.remainingMs),
       );
       trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUBMIT_FAILED', {
         source: 'ResetPasswordScreen',
@@ -251,9 +256,9 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
     if (!rateLimitDecision.allowed) {
       setErrorMessage(null);
       setSuccessMessage(
-        `Check ${resetEmail} for the latest reset email. You can request another one in ${Math.ceil(
-          rateLimitDecision.remainingMs / 1000,
-        )} seconds.`,
+        `Check ${resetEmail} for the latest reset email. You can request another one in ${formatAuthRateLimitCountdown(
+          rateLimitDecision.remainingMs,
+        )}.`,
       );
       return;
     }
@@ -289,7 +294,9 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
         : await recordAuthRateLimitFailure('password_reset_resend', resetEmail);
       setResetResendRateLimitDecision(nextDecision);
       setErrorMessage(
-        nextDecision.allowed ? message : formatResetResendRateLimitMessage(nextDecision.remainingMs),
+        nextDecision.allowed
+          ? message
+          : formatAuthRateLimitMessage('Too many reset email requests', nextDecision.remainingMs),
       );
       trackObservabilityEvent('AUTH_PASSWORD_RESET_EMAIL_RESEND_FAILED', {
         source: 'ResetPasswordScreen',
@@ -354,9 +361,9 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
             variant="secondary"
           />
 
-          {resetResendRemainingSeconds > 0 ? (
+          {hasResetResendCooldown ? (
             <Text style={styles.cooldownText} variant="bodySm">
-              You can request another reset email in {resetResendRemainingSeconds} seconds.
+              You can request another reset email in {resetResendCountdown}.
             </Text>
           ) : null}
         </Card>
@@ -364,14 +371,4 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
       <LoadingOverlay label="Sending..." visible={isResending} />
     </Screen>
   );
-}
-
-function formatResetConfirmRateLimitMessage(remainingMs: number): string {
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  return `Too many password reset attempts. Try again in ${remainingSeconds} seconds.`;
-}
-
-function formatResetResendRateLimitMessage(remainingMs: number): string {
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  return `Too many reset email requests. Try again in ${remainingSeconds} seconds.`;
 }

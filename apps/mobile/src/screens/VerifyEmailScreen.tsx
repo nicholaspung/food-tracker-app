@@ -16,6 +16,9 @@ import {
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import { useQueuedLogoutConfirmation } from '../hooks/useQueuedLogoutConfirmation';
 import {
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitCountdown,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitCooldown,
   recordAuthRateLimitFailure,
@@ -44,10 +47,6 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.secondary,
   },
 }));
-
-function formatResendCooldownLabel(remainingSeconds: number): string {
-  return `Resend in ${remainingSeconds}s`;
-}
 
 function resolveVerificationEmailErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'status' in error) {
@@ -116,15 +115,11 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const styles = useStyles();
   const hasTriggeredInitialSendRef = useRef(false);
   const hasTriggeredTokenConfirmationRef = useRef(false);
-  const resendRemainingSeconds = Math.max(
-    0,
-    Math.ceil(resendRateLimitDecision.remainingMs / 1000),
-  );
   const canResendVerificationEmail =
     isOnline && Boolean(pendingEmail) && resendRateLimitDecision.allowed && !isResending;
   const resendButtonLabel =
-    resendRemainingSeconds > 0
-      ? formatResendCooldownLabel(resendRemainingSeconds)
+    resendRateLimitDecision.remainingMs > 0
+      ? formatAuthRateLimitActionLabel('Resend', resendRateLimitDecision.remainingMs)
       : 'Resend Verification Email';
   const resetToOnboarding = useCallback(() => {
     navigation.reset({
@@ -190,9 +185,9 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     if (!rateLimitDecision.allowed) {
       setErrorMessage(null);
       setSuccessMessage(
-        `Check ${pendingEmail} for the latest verification email. You can request another one in ${Math.ceil(
-          rateLimitDecision.remainingMs / 1000,
-        )} seconds.`,
+        `Check ${pendingEmail} for the latest verification email. You can request another one in ${formatAuthRateLimitCountdown(
+          rateLimitDecision.remainingMs,
+        )}.`,
       );
       return false;
     }
@@ -237,7 +232,11 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
         trigger,
         errorMessage: error instanceof Error ? error.message : String(error),
       });
-      setErrorMessage(resolveVerificationEmailErrorMessage(error));
+      setErrorMessage(
+        nextDecision.allowed
+          ? resolveVerificationEmailErrorMessage(error)
+          : formatAuthRateLimitMessage('Too many verification email requests', nextDecision.remainingMs),
+      );
       return false;
     } finally {
       setIsResending(false);

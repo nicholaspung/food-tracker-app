@@ -10,6 +10,8 @@ import {
 } from '../lib/rememberedLoginEmail';
 import { useAuthRateLimit } from '../hooks/useAuthRateLimit';
 import {
+  formatAuthRateLimitActionLabel,
+  formatAuthRateLimitMessage,
   isAuthRateLimitError,
   recordAuthRateLimitFailure,
   recordAuthRateLimitSuccess,
@@ -91,7 +93,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const signInErrorMessage = localErrorMessage ?? authError;
   const isLoginRateLimited = !loginRateLimitDecision.allowed;
   const loginSubmitLabel = isLoginRateLimited
-    ? `Try Again in ${Math.max(1, Math.ceil(loginRateLimitDecision.remainingMs / 1000))}s`
+    ? formatAuthRateLimitActionLabel('Try Again', loginRateLimitDecision.remainingMs)
     : 'Sign In';
   const shouldShowVerifyEmailAction =
     authError === AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE && Boolean(normalizedEmail);
@@ -100,7 +102,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const handleSignIn = async () => {
     const rateLimitDecision = await refreshLoginRateLimit();
     if (!rateLimitDecision.allowed) {
-      setLocalErrorMessage(formatSignInRateLimitMessage(rateLimitDecision.remainingMs));
+      setLocalErrorMessage(formatAuthRateLimitMessage('Too many sign-in attempts', rateLimitDecision.remainingMs));
       return;
     }
 
@@ -127,7 +129,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
       setLoginRateLimitDecision(nextDecision);
 
       if (!nextDecision.allowed) {
-        setLocalErrorMessage(formatSignInRateLimitMessage(nextDecision.remainingMs));
+        setLocalErrorMessage(formatAuthRateLimitMessage('Too many sign-in attempts', nextDecision.remainingMs));
       }
     }
   };
@@ -301,9 +303,4 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
       <LoadingOverlay label="Signing in..." visible={isSubmitting} />
     </Screen>
   );
-}
-
-function formatSignInRateLimitMessage(remainingMs: number): string {
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  return `Too many sign-in attempts. Try again in ${remainingSeconds} seconds.`;
 }

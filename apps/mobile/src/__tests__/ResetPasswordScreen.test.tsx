@@ -22,13 +22,18 @@ jest.mock('../hooks/useAuthRateLimit', () => ({
   useAuthRateLimit: jest.fn(),
 }));
 
-jest.mock('../lib/authRateLimiter', () => ({
-  isAuthRateLimitError: jest.fn(() => false),
-  recordAuthRateLimitCooldown: jest.fn(),
-  recordAuthRateLimitFailure: jest.fn(),
-  recordAuthRateLimitSuccess: jest.fn(),
-  recordServerAuthRateLimit: jest.fn(),
-}));
+jest.mock('../lib/authRateLimiter', () => {
+  const actual = jest.requireActual('../lib/authRateLimiter');
+
+  return {
+    ...actual,
+    isAuthRateLimitError: jest.fn(() => false),
+    recordAuthRateLimitCooldown: jest.fn(),
+    recordAuthRateLimitFailure: jest.fn(),
+    recordAuthRateLimitSuccess: jest.fn(),
+    recordServerAuthRateLimit: jest.fn(),
+  };
+});
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
