@@ -322,6 +322,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         shareToken,
         restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
         foodItemId: item.foodItemId,
+        sourceListItemId: item.listItemId,
         targetListIds,
       });
       await query.refetch();

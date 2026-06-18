@@ -949,6 +949,7 @@ export async function saveSharedRestaurantListRecommendation(input: {
   shareToken: string;
   restaurantId: string;
   foodItemId: string;
+  sourceListItemId: string;
   targetListIds?: string[];
 }, requestOptions?: FeatureWriteRequestOptions): Promise<void> {
   return trackFeatureMutation('restaurant_list.shared_recommendation.save', async () => {
@@ -957,7 +958,8 @@ export async function saveSharedRestaurantListRecommendation(input: {
     const shareToken = input.shareToken.trim();
     const restaurantId = input.restaurantId.trim();
     const foodItemId = input.foodItemId.trim();
-    if (!shareToken || !restaurantId || !foodItemId) {
+    const sourceListItemId = input.sourceListItemId.trim();
+    if (!shareToken || !restaurantId || !foodItemId || !sourceListItemId) {
       throw new Error('Recommendation is required.');
     }
 
@@ -967,6 +969,7 @@ export async function saveSharedRestaurantListRecommendation(input: {
       body: {
         restaurantId,
         foodItemId,
+        sourceListItemId,
         targetListIds: (input.targetListIds ?? [])
           .map((targetListId) => targetListId.trim())
           .filter((targetListId) => targetListId.length > 0),

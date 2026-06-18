@@ -3,6 +3,7 @@ import {
   getRestaurantListBookmarkState,
   getRestaurantListCandidateRestaurants,
   removeRestaurantFoodItemBookmarkFromList,
+  saveSharedRestaurantListRecommendation,
   saveRestaurantToDefaultList,
   updateRestaurantList,
 } from '../features/store/restaurantListsStore';
@@ -204,6 +205,42 @@ describe('restaurantListsStore.saveRestaurantToDefaultList', () => {
         },
       },
     );
+  });
+});
+
+describe('restaurantListsStore.saveSharedRestaurantListRecommendation', () => {
+  beforeEach(() => {
+    mockedSendApiRequest.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('sends source list item attribution with shared-list saves', async () => {
+    mockedSendApiRequest.mockResolvedValue({ saved: true });
+
+    await expect(
+      saveSharedRestaurantListRecommendation({
+        shareToken: ' share-token ',
+        restaurantId: ' restaurant-1 ',
+        foodItemId: ' food-item-1 ',
+        sourceListItemId: ' source-list-item-1 ',
+        targetListIds: [' target-list-1 ', ''],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/public/restaurant-lists/share-token/bookmarks', {
+      method: 'POST',
+      headers: undefined,
+      body: {
+        restaurantId: 'restaurant-1',
+        foodItemId: 'food-item-1',
+        sourceListItemId: 'source-list-item-1',
+        targetListIds: ['target-list-1'],
+      },
+    });
   });
 });
 

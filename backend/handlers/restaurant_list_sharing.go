@@ -24,9 +24,10 @@ type restaurantListShareLinkResponse struct {
 }
 
 type sharedRestaurantListSaveRecommendationRequest struct {
-	RestaurantID  string   `json:"restaurantId"`
-	FoodItemID    string   `json:"foodItemId"`
-	TargetListIDs []string `json:"targetListIds"`
+	RestaurantID     string   `json:"restaurantId"`
+	FoodItemID       string   `json:"foodItemId"`
+	SourceListItemID string   `json:"sourceListItemId"`
+	TargetListIDs    []string `json:"targetListIds"`
 }
 
 type sharedRestaurantListResponse struct {
@@ -418,7 +419,17 @@ func saveSharedRestaurantListRecommendationTransaction(
 		return apis.NewBadRequestError("foodItemId is required", nil)
 	}
 
-	if !sharedRestaurantListContainsRecommendation(app, listRecord.Id, restaurantID, foodItemID) {
+	sourceListItemRecord, err := findSharedRestaurantListRecommendation(
+		app,
+		listRecord.Id,
+		restaurantID,
+		foodItemID,
+		requestBody.SourceListItemID,
+	)
+	if err != nil {
+		return err
+	}
+	if sourceListItemRecord == nil {
 		return apis.NewNotFoundError("shared recommendation not found", nil)
 	}
 
@@ -439,7 +450,16 @@ func saveSharedRestaurantListRecommendationTransaction(
 	}
 
 	for _, targetListRecord := range targetListRecords {
-		if err := saveSharedRestaurantListRecommendationToTarget(app, authRecord, targetListRecord, restaurantID, foodItemID, foodItemRecord); err != nil {
+		if err := saveSharedRestaurantListRecommendationToTarget(
+			app,
+			authRecord,
+			listRecord,
+			sourceListItemRecord,
+			targetListRecord,
+			restaurantID,
+			foodItemID,
+			foodItemRecord,
+		); err != nil {
 			return err
 		}
 	}
@@ -487,6 +507,8 @@ func resolveSharedRestaurantListSaveTargets(
 func saveSharedRestaurantListRecommendationToTarget(
 	app core.App,
 	authRecord *core.Record,
+	sourceListRecord *core.Record,
+	sourceListItemRecord *core.Record,
 	targetListRecord *core.Record,
 	restaurantID string,
 	foodItemID string,
@@ -525,6 +547,20 @@ func saveSharedRestaurantListRecommendationToTarget(
 		return apis.NewApiError(500, "failed to save shared recommendation", err)
 	}
 
+	if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
+		Action:                 recommendationUsageActionSaved,
+		ActorID:                authRecord.Id,
+		SourceUserID:           strings.TrimSpace(foodItemRecord.GetString("user")),
+		SourceFoodItemID:       foodItemID,
+		SourceRestaurantListID: sourceListRecord.Id,
+		SourceListItemID:       sourceListItemRecord.Id,
+		TargetRestaurantID:     restaurantID,
+		TargetRestaurantListID: targetListRecord.Id,
+		TargetListItemID:       record.Id,
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -543,27 +579,32 @@ func findEnabledSharedRestaurantListRecord(app core.App, shareToken string) (*co
 	return listRecord, nil
 }
 
-func sharedRestaurantListContainsRecommendation(
+func findSharedRestaurantListRecommendation(
 	app core.App,
 	listID string,
 	restaurantID string,
 	foodItemID string,
-) bool {
-	records, err := app.FindRecordsByFilter(
-		"list_items",
-		`list = {:listId} && restaurant = {:restaurantId} && (
-			foodItem = {:foodItemId} ||
-			userFoodItem = {:foodItemId} ||
-			recommendedItems ?= {:foodItemId}
-		) && (moderationStatus = '' || moderationStatus = 'active' || moderationStatus = 'reviewed')`,
-		"",
-		1,
-		0,
-		dbx.Params{
-			"listId":       strings.TrimSpace(listID),
-			"restaurantId": strings.TrimSpace(restaurantID),
-			"foodItemId":   strings.TrimSpace(foodItemID),
-		},
-	)
-	return err == nil && len(records) > 0
+	sourceListItemID string,
+) (*core.Record, error) {
+	trimmedSourceListItemID := strings.TrimSpace(sourceListItemID)
+	if trimmedSourceListItemID == "" {
+		return nil, apis.NewBadRequestError("sourceListItemId is required", nil)
+	}
+
+	record, err := app.FindRecordById("list_items", trimmedSourceListItemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, apis.NewApiError(500, "failed to load shared recommendation", err)
+	}
+
+	if strings.TrimSpace(record.GetString("list")) != strings.TrimSpace(listID) ||
+		strings.TrimSpace(record.GetString("restaurant")) != strings.TrimSpace(restaurantID) ||
+		!restaurantListItemReferencesFoodItem(record, foodItemID) ||
+		!isVisibleModerationStatus(record.GetString("moderationStatus")) {
+		return nil, nil
+	}
+
+	return record, nil
 }

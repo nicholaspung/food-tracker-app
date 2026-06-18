@@ -50,7 +50,7 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 		"rating": 5,
 	})
 	insertVisitPhotoRowRaw(t, server.app, owner.Id, visit.Id, foodItem.Id)
-	createCollectionRecord(t, server.app, "list_items", map[string]any{
+	sourceListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
 		"list":       list.Id,
 		"restaurant": restaurant.Id,
 		"addedBy":    owner.Id,
@@ -238,7 +238,13 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 		http.MethodPost,
 		"/api/public/restaurant-lists/"+sharePayload.ShareToken+"/bookmarks",
 		strangerToken,
-		fmt.Sprintf(`{"restaurantId":"%s","foodItemId":"%s","targetListIds":["%s"]}`, restaurant.Id, foodItem.Id, targetList.Id),
+		fmt.Sprintf(
+			`{"restaurantId":"%s","foodItemId":"%s","sourceListItemId":"%s","targetListIds":["%s"]}`,
+			restaurant.Id,
+			foodItem.Id,
+			sourceListItem.Id,
+			targetList.Id,
+		),
 	)
 	if targetSaveResponse.Code != http.StatusOK {
 		t.Fatalf("expected signed-in viewer to save shared recommendation to target list, got %d: %s", targetSaveResponse.Code, targetSaveResponse.Body.String())
@@ -252,6 +258,50 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 	); count != 1 {
 		t.Fatalf("expected shared save to create one targeted recommendation, got %d", count)
 	}
+	repeatedTargetSaveResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/public/restaurant-lists/"+sharePayload.ShareToken+"/bookmarks",
+		strangerToken,
+		fmt.Sprintf(
+			`{"restaurantId":"%s","foodItemId":"%s","sourceListItemId":"%s","targetListIds":["%s"]}`,
+			restaurant.Id,
+			foodItem.Id,
+			sourceListItem.Id,
+			targetList.Id,
+		),
+	)
+	if repeatedTargetSaveResponse.Code != http.StatusOK {
+		t.Fatalf("expected duplicate shared save to target list to stay idempotent, got %d: %s", repeatedTargetSaveResponse.Code, repeatedTargetSaveResponse.Body.String())
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId} && addedBy = {:userId} && foodItem = {:foodItemId}",
+		map[string]any{"listId": targetList.Id, "userId": stranger.Id, "foodItemId": foodItem.Id},
+	); count != 1 {
+		t.Fatalf("expected duplicate shared save to preserve one targeted recommendation, got %d", count)
+	}
+	targetUsageRecords := findRecommendationUsageRecords(
+		t,
+		server.app,
+		"actor = {:actorId} && targetRestaurantList = {:targetListId}",
+		map[string]any{"actorId": stranger.Id, "targetListId": targetList.Id},
+	)
+	if len(targetUsageRecords) != 1 {
+		t.Fatalf("expected one targeted recommendation usage record after duplicate save, got %d", len(targetUsageRecords))
+	}
+	if targetUsageRecords[0].GetString("sourceFoodItem") != foodItem.Id {
+		t.Fatalf("expected sourceFoodItem=%q, got %q", foodItem.Id, targetUsageRecords[0].GetString("sourceFoodItem"))
+	}
+	if targetUsageRecords[0].GetString("sourceRestaurantList") != list.Id {
+		t.Fatalf("expected sourceRestaurantList=%q, got %q", list.Id, targetUsageRecords[0].GetString("sourceRestaurantList"))
+	}
+	if targetUsageRecords[0].GetString("sourceListItem") != sourceListItem.Id {
+		t.Fatalf("expected sourceListItem=%q, got %q", sourceListItem.Id, targetUsageRecords[0].GetString("sourceListItem"))
+	}
 
 	saveResponse := performJSONRequest(
 		t,
@@ -259,7 +309,12 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 		http.MethodPost,
 		"/api/public/restaurant-lists/"+sharePayload.ShareToken+"/bookmarks",
 		strangerToken,
-		fmt.Sprintf(`{"restaurantId":"%s","foodItemId":"%s"}`, restaurant.Id, foodItem.Id),
+		fmt.Sprintf(
+			`{"restaurantId":"%s","foodItemId":"%s","sourceListItemId":"%s"}`,
+			restaurant.Id,
+			foodItem.Id,
+			sourceListItem.Id,
+		),
 	)
 	if saveResponse.Code != http.StatusOK {
 		t.Fatalf("expected signed-in viewer to save shared recommendation, got %d: %s", saveResponse.Code, saveResponse.Body.String())
@@ -281,6 +336,29 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 		map[string]any{"userId": stranger.Id, "foodItemId": foodItem.Id},
 	); count != 2 {
 		t.Fatalf("expected shared save to create two saved recommendations, got %d", count)
+	}
+	usageRecords := findRecommendationUsageRecords(
+		t,
+		server.app,
+		"actor = {:actorId} && action = 'saved'",
+		map[string]any{"actorId": stranger.Id},
+	)
+	if len(usageRecords) != 2 {
+		t.Fatalf("expected shared saves to record two durable usage rows, got %d", len(usageRecords))
+	}
+	for _, usage := range usageRecords {
+		if usage.GetString("sourceUser") != owner.Id {
+			t.Fatalf("expected sourceUser=%q, got %q", owner.Id, usage.GetString("sourceUser"))
+		}
+		if usage.GetString("sourceFoodItem") != foodItem.Id {
+			t.Fatalf("expected sourceFoodItem=%q, got %q", foodItem.Id, usage.GetString("sourceFoodItem"))
+		}
+		if usage.GetString("sourceRestaurantList") != list.Id {
+			t.Fatalf("expected sourceRestaurantList=%q, got %q", list.Id, usage.GetString("sourceRestaurantList"))
+		}
+		if usage.GetString("sourceListItem") != sourceListItem.Id {
+			t.Fatalf("expected sourceListItem=%q, got %q", sourceListItem.Id, usage.GetString("sourceListItem"))
+		}
 	}
 
 	regenerateResponse := performJSONRequest(
