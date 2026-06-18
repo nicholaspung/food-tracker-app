@@ -321,7 +321,9 @@ export async function saveBookmarkToDefaultListAction({
       bookmark: {
         restaurantId: saveBookmarkTarget.restaurantId,
         foodItemId: saveBookmarkTarget.foodItemId,
-        note: saveBookmarkTarget.sourceNote,
+        ...(saveBookmarkTarget.sourceNote ? { note: saveBookmarkTarget.sourceNote } : {}),
+        sourceListId: deps.listId,
+        sourceListItemId: saveBookmarkTarget.sourceListItemId,
         sourceUserId: list?.userId,
       },
     });

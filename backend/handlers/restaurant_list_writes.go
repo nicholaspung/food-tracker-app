@@ -16,6 +16,8 @@ type restaurantListSaveBookmarkRequest struct {
 	MenuItemID   string  `json:"menuItemId"`
 	Note         *string `json:"note"`
 	SourceUserID string  `json:"sourceUserId"`
+	SourceListID string  `json:"sourceListId"`
+	SourceItemID string  `json:"sourceListItemId"`
 }
 
 type restaurantListLinkVisitRequest struct {
@@ -376,6 +378,16 @@ func saveRestaurantListBookmarkTransaction(
 		if err != nil {
 			return "", err
 		}
+		sourceListID, sourceListItemID, err := resolveRecommendationUsageListSource(
+			app,
+			requestBody,
+			restaurantID,
+			"",
+			menuItemRecord.Id,
+		)
+		if err != nil {
+			return "", err
+		}
 
 		existingItem, err := findRestaurantListItemByMenuItem(app, listRecord.Id, menuItemRecord.Id)
 		if err != nil {
@@ -410,12 +422,36 @@ func saveRestaurantListBookmarkTransaction(
 			return restaurantID, nil
 		}
 
+		if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
+			Action:                 recommendationUsageActionSaved,
+			ActorID:                authRecord.Id,
+			SourceUserID:           recommendationUsageSourceUserFromMenuItem(menuItemRecord),
+			SourceMenuItemID:       menuItemRecord.Id,
+			SourceRestaurantListID: sourceListID,
+			SourceListItemID:       sourceListItemID,
+			TargetRestaurantID:     restaurantID,
+			TargetRestaurantListID: listRecord.Id,
+			TargetListItemID:       record.Id,
+		}); err != nil {
+			return "", err
+		}
+
 		return restaurantID, nil
 	}
 
 	if foodItemID == "" {
 		if !listRecord.GetBool("isDefault") {
 			return "", apis.NewBadRequestError("restaurant-only bookmarks can only be saved to the default Want to Try list", nil)
+		}
+		sourceListID, sourceListItemID, err := resolveRecommendationUsageListSource(
+			app,
+			requestBody,
+			restaurantID,
+			"",
+			"",
+		)
+		if err != nil {
+			return "", err
 		}
 
 		existingItems, err := listRestaurantListGroupRecords(app, listRecord.Id, restaurantID, "position,created")
@@ -459,6 +495,18 @@ func saveRestaurantListBookmarkTransaction(
 			return "", apis.NewApiError(500, "failed to save restaurant to default list", err)
 		}
 
+		if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
+			Action:                 recommendationUsageActionSaved,
+			ActorID:                authRecord.Id,
+			SourceRestaurantListID: sourceListID,
+			SourceListItemID:       sourceListItemID,
+			TargetRestaurantID:     restaurantID,
+			TargetRestaurantListID: listRecord.Id,
+			TargetListItemID:       record.Id,
+		}); err != nil {
+			return "", err
+		}
+
 		return restaurantID, nil
 	}
 
@@ -474,11 +522,22 @@ func saveRestaurantListBookmarkTransaction(
 	if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, false); err != nil {
 		return "", err
 	}
+	sourceListID, sourceListItemID, err := resolveRecommendationUsageListSource(
+		app,
+		requestBody,
+		restaurantID,
+		foodItemID,
+		"",
+	)
+	if err != nil {
+		return "", err
+	}
 
 	sourceUserID := strings.TrimSpace(requestBody.SourceUserID)
 	if sourceUserID != "" && sourceUserID != strings.TrimSpace(foodItemRecord.GetString("user")) {
 		return "", apis.NewBadRequestError("sourceUserId must match the saved food item owner", nil)
 	}
+	recommendationSourceUserID := recommendationUsageSourceUserFromFoodItem(sourceUserID, foodItemRecord)
 
 	existingItem, err := findRestaurantListItemByFoodItem(app, listRecord.Id, foodItemID)
 	if err != nil {
@@ -502,7 +561,7 @@ func saveRestaurantListBookmarkTransaction(
 	record.Set("list", listRecord.Id)
 	record.Set("restaurant", restaurantID)
 	record.Set("addedBy", authRecord.Id)
-	record.Set("sourceUser", emptyStringToNil(sourceUserID))
+	record.Set("sourceUser", emptyStringToNil(recommendationSourceUserID))
 	record.Set("foodItem", foodItemID)
 	record.Set("position", nextPosition)
 	record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
@@ -521,6 +580,20 @@ func saveRestaurantListBookmarkTransaction(
 		}
 
 		return "", apis.NewApiError(500, "failed to save bookmark to restaurant list", err)
+	}
+
+	if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
+		Action:                 recommendationUsageActionSaved,
+		ActorID:                authRecord.Id,
+		SourceUserID:           recommendationSourceUserID,
+		SourceFoodItemID:       foodItemID,
+		SourceRestaurantListID: sourceListID,
+		SourceListItemID:       sourceListItemID,
+		TargetRestaurantID:     restaurantID,
+		TargetRestaurantListID: listRecord.Id,
+		TargetListItemID:       record.Id,
+	}); err != nil {
+		return "", err
 	}
 
 	return restaurantID, nil
@@ -571,6 +644,15 @@ func removeRestaurantListBookmarkTransaction(
 	}
 	if strings.TrimSpace(targetItem.GetString("restaurant")) != restaurantID {
 		return "", apis.NewBadRequestError("bookmark does not belong to this restaurant", nil)
+	}
+
+	usageInput, err := recommendationUsageInputFromListItem(app, recommendationUsageActionRemoved, authRecord, listRecord.Id, targetItem)
+	if err != nil {
+		return "", err
+	}
+
+	if err := recordSavedRecommendationUsageEvent(app, usageInput); err != nil {
+		return "", err
 	}
 
 	if err := app.Delete(targetItem); err != nil {
@@ -885,6 +967,20 @@ func removeRestaurantListSourceRatingTransaction(
 
 	if !isPrimaryFoodItem && !hasRecommendedFoodItem {
 		return restaurantID, nil
+	}
+
+	usageInput, err := recommendationUsageInputForSourceRatingRemoval(
+		app,
+		authRecord,
+		listID,
+		listItemRecord,
+		foodItemID,
+	)
+	if err != nil {
+		return "", err
+	}
+	if err := recordSavedRecommendationUsageEvent(app, usageInput); err != nil {
+		return "", err
 	}
 
 	if isPrimaryFoodItem {

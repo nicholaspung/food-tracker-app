@@ -180,6 +180,7 @@ describe('buildListDetailReadModel', () => {
         foodItemId: 'food_1',
         foodItemName: 'Pancakes',
         foodItemRating: 9,
+        sourceListItemId: 'list_item_1',
         visitedAt: '2025-02-01T00:00:00.000Z',
         sourceNote: 'Great patio',
       },

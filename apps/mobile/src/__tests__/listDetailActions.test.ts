@@ -36,6 +36,7 @@ function buildSaveBookmarkTarget(
     foodItemId: 'food_1',
     foodItemName: 'Noodles',
     foodItemRating: 8,
+    sourceListItemId: 'list_item_1',
     visitedAt: '2026-01-03T00:00:00.000Z',
     sourceNote: 'Try the broth',
     ...overrides,
@@ -197,6 +198,8 @@ describe('listDetailActions', () => {
         restaurantId: 'restaurant_1',
         foodItemId: 'food_1',
         note: 'Try the broth',
+        sourceListId: 'list_1',
+        sourceListItemId: 'list_item_1',
         sourceUserId: 'owner_1',
       },
     });

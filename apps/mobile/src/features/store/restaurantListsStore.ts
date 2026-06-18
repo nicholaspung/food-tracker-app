@@ -1096,6 +1096,8 @@ export async function saveRestaurantFoodItemToList(
       const restaurantId = input.restaurantId.trim();
       const foodItemId = input.foodItemId?.trim() || undefined;
       const menuItemId = input.menuItemId?.trim() || undefined;
+      const sourceListId = input.sourceListId?.trim() || undefined;
+      const sourceListItemId = input.sourceListItemId?.trim() || undefined;
       const sourceUserId = input.sourceUserId?.trim() || undefined;
       const trimmedNote = input.note?.trim() || undefined;
 
@@ -1120,6 +1122,8 @@ export async function saveRestaurantFoodItemToList(
             restaurantId,
             foodItemId,
             menuItemId,
+            sourceListId,
+            sourceListItemId,
             sourceUserId,
             note: trimmedNote,
           },
@@ -1130,6 +1134,7 @@ export async function saveRestaurantFoodItemToList(
     },
     {
       hasSourceUser: Boolean(input.sourceUserId?.trim()),
+      hasSourceList: Boolean(input.sourceListId?.trim()),
       hasNote: Boolean(input.note?.trim()),
     },
   );

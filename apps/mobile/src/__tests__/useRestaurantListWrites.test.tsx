@@ -625,6 +625,8 @@ describe('useRestaurantListWrites', () => {
           restaurantId: 'restaurant_1',
           foodItemId: 'food_item_1',
           note: 'Try the noodles',
+          sourceListId: 'source_list_1',
+          sourceListItemId: 'source_list_item_1',
           sourceUserId: 'source_user_1',
         },
       });
@@ -642,6 +644,8 @@ describe('useRestaurantListWrites', () => {
             restaurantId: 'restaurant_1',
             foodItemId: 'food_item_1',
             note: 'Try the noodles',
+            sourceListId: 'source_list_1',
+            sourceListItemId: 'source_list_item_1',
             sourceUserId: 'source_user_1',
           },
         },
@@ -658,6 +662,8 @@ describe('useRestaurantListWrites', () => {
             restaurantId: 'restaurant_1',
             foodItemId: 'food_item_1',
             note: 'Try the noodles',
+            sourceListId: 'source_list_1',
+            sourceListItemId: 'source_list_item_1',
             sourceUserId: 'source_user_1',
           },
         },
@@ -696,6 +702,8 @@ describe('useRestaurantListWrites', () => {
           restaurantId: 'restaurant_1',
           foodItemId: 'food_item_1',
           note: 'Try the noodles',
+          sourceListId: 'source_list_1',
+          sourceListItemId: 'source_list_item_1',
           sourceUserId: 'source_user_1',
         },
       });
@@ -710,6 +718,8 @@ describe('useRestaurantListWrites', () => {
             restaurantId: 'restaurant_1',
             foodItemId: 'food_item_1',
             note: 'Try the noodles',
+            sourceListId: 'source_list_1',
+            sourceListItemId: 'source_list_item_1',
             sourceUserId: 'source_user_1',
           },
         },
@@ -721,6 +731,8 @@ describe('useRestaurantListWrites', () => {
       restaurantId: 'restaurant_1',
       foodItemId: 'food_item_1',
       note: 'Try the noodles',
+      sourceListId: 'source_list_1',
+      sourceListItemId: 'source_list_item_1',
       sourceUserId: 'source_user_1',
     });
     expect(mockedInvalidateRestaurantListSaveTargetQueries).toHaveBeenCalledWith(

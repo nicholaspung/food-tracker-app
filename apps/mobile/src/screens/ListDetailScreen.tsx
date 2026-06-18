@@ -928,6 +928,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     foodItemId: item.foodItemId,
     foodItemName: item.name,
     foodItemRating: item.rating,
+    sourceListItemId: item.listItemId,
     visitedAt: item.visitedAt,
     sourceNote: item.sourceNote,
   });
@@ -1131,6 +1132,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         bookmark: {
           restaurantId: target.source.restaurantId ?? target.restaurantId,
           foodItemId: target.source.foodItemId,
+          sourceListId: listId,
+          sourceListItemId: target.source.listItemId,
           ...(target.source.sourceUserId ? { sourceUserId: target.source.sourceUserId } : {}),
         },
       });

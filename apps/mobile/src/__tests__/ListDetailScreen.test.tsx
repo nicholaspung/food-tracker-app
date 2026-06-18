@@ -1181,6 +1181,8 @@ describe('ListDetailScreen', () => {
       bookmark: {
         restaurantId: 'restaurant_food_1',
         foodItemId: 'food_item_1',
+        sourceListId: 'list_1',
+        sourceListItemId: 'item_1',
         sourceUserId: 'friend_1',
       },
     });
@@ -1338,6 +1340,8 @@ describe('ListDetailScreen', () => {
       bookmark: {
         restaurantId: 'restaurant_1',
         foodItemId: 'food_item_1',
+        sourceListId: 'list_1',
+        sourceListItemId: 'item_1',
         sourceUserId: 'friend_1',
       },
     });
@@ -1500,6 +1504,8 @@ describe('ListDetailScreen', () => {
       bookmark: {
         restaurantId: 'restaurant_food_1',
         foodItemId: 'food_item_1',
+        sourceListId: 'list_1',
+        sourceListItemId: 'item_1',
         sourceUserId: 'owner_1',
       },
     });

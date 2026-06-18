@@ -94,6 +94,7 @@ export interface SaveBookmarkTarget {
   foodItemId: string;
   foodItemName: string;
   foodItemRating: number;
+  sourceListItemId: string;
   visitedAt?: string;
   sourceNote?: string;
 }
