@@ -589,6 +589,36 @@ func TestVisitCreateEndpointAllowsSourceListItemRestaurantFromAccessibleFriendBo
 	if reloadedVisit.GetString("restaurant") != restaurant.Id {
 		t.Fatalf("expected created visit restaurant=%q, got %q", restaurant.Id, reloadedVisit.GetString("restaurant"))
 	}
+
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": requester.Id})
+	if len(usageRecords) != 2 {
+		t.Fatalf("expected tried and rated-after-try usage records, got %d", len(usageRecords))
+	}
+	kinds := map[string]*core.Record{}
+	for _, usage := range usageRecords {
+		kinds[usage.GetString("kind")] = usage
+		if usage.GetString("sourceUser") != owner.Id {
+			t.Fatalf("expected sourceUser=%q, got %q", owner.Id, usage.GetString("sourceUser"))
+		}
+		if usage.GetString("sourceFoodItem") != foodItem.Id {
+			t.Fatalf("expected sourceFoodItem=%q, got %q", foodItem.Id, usage.GetString("sourceFoodItem"))
+		}
+		if usage.GetString("sourceRestaurantList") != list.Id {
+			t.Fatalf("expected sourceRestaurantList=%q, got %q", list.Id, usage.GetString("sourceRestaurantList"))
+		}
+		if usage.GetString("sourceListItem") != listItem.Id {
+			t.Fatalf("expected sourceListItem=%q, got %q", listItem.Id, usage.GetString("sourceListItem"))
+		}
+		if usage.GetString("targetVisit") != payload.ID {
+			t.Fatalf("expected targetVisit=%q, got %q", payload.ID, usage.GetString("targetVisit"))
+		}
+	}
+	if kinds["tried_recommendation"] == nil || kinds["rated_after_try"] == nil {
+		t.Fatalf("expected tried and rated-after-try usage kinds, got %#v", kinds)
+	}
+	if kinds["rated_after_try"].GetString("targetVisitItem") != payload.Items[0].ID {
+		t.Fatalf("expected rated-after-try targetVisitItem=%q, got %q", payload.Items[0].ID, kinds["rated_after_try"].GetString("targetVisitItem"))
+	}
 }
 
 func TestVisitCreateEndpointRemovesSourceWantToTryRestaurantBookmark(t *testing.T) {
@@ -638,6 +668,20 @@ func TestVisitCreateEndpointRemovesSourceWantToTryRestaurantBookmark(t *testing.
 		map[string]any{"listItemId": listItem.Id},
 	); count != 0 {
 		t.Fatalf("expected source Want to Try restaurant bookmark to be removed, got %d", count)
+	}
+
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": user.Id})
+	if len(usageRecords) != 1 {
+		t.Fatalf("expected one restaurant-only tried usage record, got %d", len(usageRecords))
+	}
+	if usageRecords[0].GetString("kind") != "tried_recommendation" {
+		t.Fatalf("expected tried usage kind, got %q", usageRecords[0].GetString("kind"))
+	}
+	if usageRecords[0].GetString("sourceFoodItem") != "" || usageRecords[0].GetString("sourceMenuItem") != "" {
+		t.Fatalf("expected restaurant-only usage to omit item sources, got food=%q menu=%q", usageRecords[0].GetString("sourceFoodItem"), usageRecords[0].GetString("sourceMenuItem"))
+	}
+	if usageRecords[0].GetString("targetVisit") == "" {
+		t.Fatal("expected restaurant-only tried usage to include targetVisit")
 	}
 }
 
@@ -690,6 +734,281 @@ func TestVisitCreateEndpointRemovesSourceWantToTryMenuItemBookmark(t *testing.T)
 		map[string]any{"listItemId": listItem.Id},
 	); count != 0 {
 		t.Fatalf("expected source Want to Try menu item bookmark to be removed, got %d", count)
+	}
+
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": user.Id})
+	if len(usageRecords) != 2 {
+		t.Fatalf("expected tried and rated-after-try usage records, got %d", len(usageRecords))
+	}
+	kinds := map[string]*core.Record{}
+	for _, usage := range usageRecords {
+		kinds[usage.GetString("kind")] = usage
+		if usage.GetString("sourceMenuItem") != menuItem.Id {
+			t.Fatalf("expected sourceMenuItem=%q, got %q", menuItem.Id, usage.GetString("sourceMenuItem"))
+		}
+		if usage.GetString("targetVisit") == "" {
+			t.Fatal("expected menu item usage to include targetVisit")
+		}
+	}
+	if kinds["tried_recommendation"] == nil || kinds["rated_after_try"] == nil {
+		t.Fatalf("expected tried and rated-after-try usage kinds, got %#v", kinds)
+	}
+	if kinds["rated_after_try"].GetString("targetVisitItem") == "" {
+		t.Fatal("expected rated-after-try usage to include targetVisitItem")
+	}
+}
+
+func TestVisitCreateEndpointReplaysSourceListItemCreateWithoutDuplicateItemsOrUsage(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Replay Cafe")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+	body := `{
+		"restaurantId":"` + restaurant.Id + `",
+		"restaurantName":"Replay Cafe",
+		"sourceListItemId":"` + listItem.Id + `",
+		"visitedAt":"2026-04-05T18:00:00Z",
+		"visibility":"friends",
+		"items":[
+			{"name":"Latte","rating":5}
+		]
+	}`
+
+	firstResponse := performJSONRequest(t, server.mux, http.MethodPost, "/api/visits", token, body)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	var firstPayload visitResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visit payload: %v", err)
+	}
+
+	secondResponse := performJSONRequest(t, server.mux, http.MethodPost, "/api/visits", token, body)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected replay create 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	var secondPayload visitResponsePayload
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse replay visit payload: %v", err)
+	}
+	if secondPayload.ID != firstPayload.ID {
+		t.Fatalf("expected replay to return visit %q, got %q", firstPayload.ID, secondPayload.ID)
+	}
+
+	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": firstPayload.ID}); count != 1 {
+		t.Fatalf("expected replay to avoid duplicate visit items, got %d", count)
+	}
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": user.Id})
+	if len(usageRecords) != 1 {
+		t.Fatalf("expected replay to avoid duplicate usage records, got %d", len(usageRecords))
+	}
+}
+
+func TestVisitCreateEndpointDoesNotReplayLiveSourceListItemCreate(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Live Saved Cafe")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Live Saved Cafe",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Latte","rating":5}
+			]
+		}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	var firstPayload visitResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visit payload: %v", err)
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Live Saved Cafe",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"private",
+			"items":[
+				{"name":"Tea","rating":4}
+			]
+		}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second create 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	var secondPayload visitResponsePayload
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse second visit payload: %v", err)
+	}
+	if secondPayload.ID == firstPayload.ID {
+		t.Fatalf("expected live source list item with different visibility to create a separate visit, got %q", secondPayload.ID)
+	}
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": user.Id}); count != 2 {
+		t.Fatalf("expected two visits for live source list item writes, got %d", count)
+	}
+}
+
+func TestVisitCreateEndpointDoesNotRateAfterTryUnmatchedMenuRecommendation(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Tea Room")
+	menuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Matcha Latte", "public", false)
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       user.Id,
+		"isDefault":  true,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"menuItem":   menuItem.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Tea Room",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Hojicha","rating":4}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": user.Id})
+	if len(usageRecords) != 1 {
+		t.Fatalf("expected only tried usage for unmatched menu recommendation, got %d", len(usageRecords))
+	}
+	if usageRecords[0].GetString("kind") != "tried_recommendation" || usageRecords[0].GetString("targetVisitItem") != "" {
+		t.Fatalf("expected visit-level tried usage only, got kind=%q targetVisitItem=%q", usageRecords[0].GetString("kind"), usageRecords[0].GetString("targetVisitItem"))
+	}
+}
+
+func TestVisitCreateEndpointRatesAfterTryFromRecommendedItemsSource(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	requester, token := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, owner.Id, requester.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Recommended Items Cafe")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+	recommendedItem := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Shared Pancake", 5)
+	secondRecommendedItem := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Shared Waffle", 4)
+	duplicateNameRecommendedItem := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Shared Pancake", 4)
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       requester.Id,
+	})
+	listItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":             list.Id,
+		"restaurant":       restaurant.Id,
+		"addedBy":          requester.Id,
+		"sourceUser":       owner.Id,
+		"recommendedItems": []string{recommendedItem.Id, secondRecommendedItem.Id, duplicateNameRecommendedItem.Id},
+		"position":         1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Recommended Items Cafe",
+			"sourceListItemId":"`+listItem.Id+`",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Shared Pancake","rating":5},
+				{"name":"Shared Waffle","rating":4}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": requester.Id})
+	if len(usageRecords) != 4 {
+		t.Fatalf("expected tried and three rated-after-try usage records, got %d", len(usageRecords))
+	}
+	ratedSourceIDs := map[string]struct{}{}
+	for _, usage := range usageRecords {
+		if usage.GetString("kind") != "rated_after_try" {
+			continue
+		}
+		if usage.GetString("targetVisitItem") == "" {
+			t.Fatal("expected recommendedItems rated-after-try usage to include targetVisitItem")
+		}
+		ratedSourceIDs[usage.GetString("sourceFoodItem")] = struct{}{}
+	}
+	if _, exists := ratedSourceIDs[recommendedItem.Id]; !exists {
+		t.Fatalf("expected rated sourceFoodItem %q, got %#v", recommendedItem.Id, ratedSourceIDs)
+	}
+	if _, exists := ratedSourceIDs[secondRecommendedItem.Id]; !exists {
+		t.Fatalf("expected rated sourceFoodItem %q, got %#v", secondRecommendedItem.Id, ratedSourceIDs)
+	}
+	if _, exists := ratedSourceIDs[duplicateNameRecommendedItem.Id]; !exists {
+		t.Fatalf("expected rated sourceFoodItem %q, got %#v", duplicateNameRecommendedItem.Id, ratedSourceIDs)
 	}
 }
 

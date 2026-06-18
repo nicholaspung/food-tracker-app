@@ -606,17 +606,40 @@ func createVisitTransaction(
 		return result, apis.NewBadRequestError("at least one item is required", nil)
 	}
 
-	restaurantRecord, err := resolveVisitCreateRestaurant(app, authRecord, requestBody)
-	if err != nil {
-		return result, wrapRestaurantResolveError(err)
-	}
-
 	normalizedVisitedAt := normalizeVisitDate(requestBody.VisitedAt)
 	visitLocalDate, err := resolveVisitLocalDate(requestBody.VisitedOn, normalizedVisitedAt)
 	if err != nil {
 		return result, err
 	}
 	normalizedVisibility := normalizeVisitVisibility(requestBody.Visibility)
+
+	trimmedSourceListItemID := strings.TrimSpace(requestBody.SourceListItemID)
+	if trimmedSourceListItemID != "" {
+		sourceListItemRecord, err := app.FindRecordById("list_items", trimmedSourceListItemID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return result, apis.NewApiError(500, "failed to load restaurant list item", err)
+			}
+			if replayResult, found, err := findReplayedRecommendationVisitCreateResult(
+				app,
+				authRecord.Id,
+				trimmedSourceListItemID,
+				strings.TrimSpace(requestBody.RestaurantID),
+				visitLocalDate,
+			); err != nil {
+				return result, err
+			} else if found {
+				return replayResult, nil
+			}
+		} else if strings.TrimSpace(sourceListItemRecord.Id) == "" {
+			return result, apis.NewNotFoundError("list item not found", nil)
+		}
+	}
+
+	restaurantRecord, err := resolveVisitCreateRestaurant(app, authRecord, requestBody)
+	if err != nil {
+		return result, wrapRestaurantResolveError(err)
+	}
 
 	visitRecord, err := findMergeableVisitRecord(
 		app,
@@ -660,6 +683,18 @@ func createVisitTransaction(
 		requestBody.Items,
 		createdItemIDs,
 	)
+
+	if err := recordRecommendationUsageForVisitCreate(
+		app,
+		authRecord,
+		strings.TrimSpace(requestBody.SourceListItemID),
+		restaurantRecord.Id,
+		visitRecord.Id,
+		requestBody.Items,
+		createdItemIDs,
+	); err != nil {
+		return result, err
+	}
 
 	if err := syncRestaurantListBookmarksAfterVisitCreate(
 		app,
