@@ -46,6 +46,7 @@ interface VisitApiItemRecord {
   rating: number;
   description?: string;
   notes?: string;
+  recommendationSource?: VisitRecord['recommendationSource'];
 }
 
 interface VisitApiRecord {
@@ -60,6 +61,7 @@ interface VisitApiRecord {
   userName?: string;
   visibility?: 'friends' | 'private' | 'public';
   moderationStatus?: string;
+  recommendationSource?: VisitRecord['recommendationSource'];
   createdAt: string;
   updatedAt: string;
 }
@@ -96,12 +98,14 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
       rating: item.rating,
       description: item.description?.trim() || undefined,
       notes: item.notes?.trim() || undefined,
+      recommendationSource: item.recommendationSource,
     })),
     source: 'visit',
     userId: record.userId?.trim() || undefined,
     userName: record.userName?.trim() || undefined,
     visibility: normalizeStoredVisibility(record.visibility),
     moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
+    recommendationSource: record.recommendationSource,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

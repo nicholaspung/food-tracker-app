@@ -23,6 +23,13 @@ export interface VisitItem {
   rating: number;
   description?: string;
   notes?: string;
+  recommendationSource?: RecommendationSourceRecord;
+}
+
+export interface RecommendationSourceRecord {
+  kind: 'restaurant' | 'item';
+  sourceUserId?: string;
+  sourceUserName?: string;
 }
 
 export interface VisitRecord {
@@ -38,6 +45,7 @@ export interface VisitRecord {
   userName?: string;
   visibility?: 'friends' | 'private';
   moderationStatus?: ModerationContentStatus;
+  recommendationSource?: RecommendationSourceRecord;
   createdAt: string;
   updatedAt: string;
 }

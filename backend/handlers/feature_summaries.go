@@ -1403,6 +1403,10 @@ func getVisitsPageResponse(
 		acceptedFriendIDs,
 	)
 	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+	recommendationSources, err := buildRecommendationUsageSourceMaps(app, userID, isAdmin, acceptedFriendIDs, visitRecords)
+	if err != nil {
+		return response, err
+	}
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -1433,14 +1437,21 @@ func getVisitsPageResponse(
 			RestaurantLocation:    resolveRestaurantLocation(restaurant),
 			RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 			VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-			Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemsByID, menuItemIDsByRestaurantAndName),
-			Source:                "visit",
-			UserID:                ownerID,
-			UserName:              userName,
-			Visibility:            strings.TrimSpace(visit.GetString("visibility")),
-			ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
-			CreatedAt:             visit.GetString("created"),
-			UpdatedAt:             visit.GetString("updated"),
+			Items: mapHomeFeedVisitItems(
+				entryItems,
+				visit.GetString("restaurant"),
+				menuItemsByID,
+				menuItemIDsByRestaurantAndName,
+				recommendationSources.ByVisitItemID,
+			),
+			Source:               "visit",
+			UserID:               ownerID,
+			UserName:             userName,
+			Visibility:           strings.TrimSpace(visit.GetString("visibility")),
+			ModerationStatus:     strings.TrimSpace(visit.GetString("moderationStatus")),
+			RecommendationSource: recommendationSources.ByVisitID[visit.Id],
+			CreatedAt:            visit.GetString("created"),
+			UpdatedAt:            visit.GetString("updated"),
 		})
 	}
 
@@ -1822,6 +1833,10 @@ func getHomeFeedResponse(
 		acceptedFriendIDs,
 	)
 	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+	recommendationSources, err := buildRecommendationUsageSourceMaps(app, userID, isAdmin, acceptedFriendIDs, visitRecords)
+	if err != nil {
+		return response, err
+	}
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -1874,14 +1889,21 @@ func getHomeFeedResponse(
 					RestaurantLocation:    resolveRestaurantLocation(restaurant),
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-					Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemsByID, menuItemIDsByRestaurantAndName),
-					Source:                "visit",
-					UserID:                visit.GetString("user"),
-					UserName:              resolveHomeFeedUserName(user),
-					Visibility:            strings.TrimSpace(visit.GetString("visibility")),
-					ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
-					CreatedAt:             visit.GetString("created"),
-					UpdatedAt:             visit.GetString("updated"),
+					Items: mapHomeFeedVisitItems(
+						entryItems,
+						visit.GetString("restaurant"),
+						menuItemsByID,
+						menuItemIDsByRestaurantAndName,
+						recommendationSources.ByVisitItemID,
+					),
+					Source:               "visit",
+					UserID:               visit.GetString("user"),
+					UserName:             resolveHomeFeedUserName(user),
+					Visibility:           strings.TrimSpace(visit.GetString("visibility")),
+					ModerationStatus:     strings.TrimSpace(visit.GetString("moderationStatus")),
+					RecommendationSource: recommendationSources.ByVisitID[visit.Id],
+					CreatedAt:            visit.GetString("created"),
+					UpdatedAt:            visit.GetString("updated"),
 				},
 			})
 		case "food-product":
@@ -2079,6 +2101,10 @@ func getHomeFeedMapPointsResponse(
 		acceptedFriendIDs,
 	)
 	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+	recommendationSources, err := buildRecommendationUsageSourceMaps(app, userID, isAdmin, acceptedFriendIDs, visitRecords)
+	if err != nil {
+		return response, err
+	}
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
@@ -2148,14 +2174,21 @@ func getHomeFeedMapPointsResponse(
 					RestaurantLocation:    restaurantLocation,
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
 					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
-					Items:                 mapHomeFeedVisitItems(entryItems, visit.GetString("restaurant"), menuItemsByID, menuItemIDsByRestaurantAndName),
-					Source:                "visit",
-					UserID:                visit.GetString("user"),
-					UserName:              resolveHomeFeedUserName(user),
-					Visibility:            strings.TrimSpace(visit.GetString("visibility")),
-					ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
-					CreatedAt:             visit.GetString("created"),
-					UpdatedAt:             visit.GetString("updated"),
+					Items: mapHomeFeedVisitItems(
+						entryItems,
+						visit.GetString("restaurant"),
+						menuItemsByID,
+						menuItemIDsByRestaurantAndName,
+						recommendationSources.ByVisitItemID,
+					),
+					Source:               "visit",
+					UserID:               visit.GetString("user"),
+					UserName:             resolveHomeFeedUserName(user),
+					Visibility:           strings.TrimSpace(visit.GetString("visibility")),
+					ModerationStatus:     strings.TrimSpace(visit.GetString("moderationStatus")),
+					RecommendationSource: recommendationSources.ByVisitID[visit.Id],
+					CreatedAt:            visit.GetString("created"),
+					UpdatedAt:            visit.GetString("updated"),
 				},
 			})
 		case "food-product":
@@ -2896,17 +2929,19 @@ func mapHomeFeedVisitItems(
 	restaurantID string,
 	menuItemsByID map[string]*core.Record,
 	menuItemIDsByRestaurantAndName map[string]string,
+	recommendationSourcesByVisitItemID map[string]*recommendationUsageSourceResponse,
 ) []visitItemResponse {
 	items := make([]visitItemResponse, 0, len(records))
 	for _, record := range records {
 		items = append(items, visitItemResponse{
-			ID:                 record.Id,
-			MenuItemID:         resolveHomeFeedVisitItemMenuItemID(record, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
-			MenuItemVisibility: resolveHomeFeedVisitItemMenuItemVisibility(record, menuItemsByID),
-			Name:               record.GetString("name"),
-			Rating:             record.GetFloat("rating"),
-			Description:        strings.TrimSpace(record.GetString("description")),
-			Notes:              strings.TrimSpace(record.GetString("notes")),
+			ID:                   record.Id,
+			MenuItemID:           resolveHomeFeedVisitItemMenuItemID(record, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
+			MenuItemVisibility:   resolveHomeFeedVisitItemMenuItemVisibility(record, menuItemsByID),
+			Name:                 record.GetString("name"),
+			Rating:               record.GetFloat("rating"),
+			Description:          strings.TrimSpace(record.GetString("description")),
+			Notes:                strings.TrimSpace(record.GetString("notes")),
+			RecommendationSource: recommendationSourcesByVisitItemID[record.Id],
 		})
 	}
 

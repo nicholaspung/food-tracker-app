@@ -91,7 +91,23 @@ describe('visitsStore.getVisitById', () => {
       id: 'visit-123',
       restaurantName: 'Noodle House',
       visitedAt: '2026-04-05T18:00:00Z',
-      items: [],
+      items: [
+        {
+          id: 'item-1',
+          name: 'Spicy Ramen',
+          rating: 5,
+          recommendationSource: {
+            kind: 'item',
+            sourceUserId: 'friend-1',
+            sourceUserName: 'Mina',
+          },
+        },
+      ],
+      recommendationSource: {
+        kind: 'restaurant',
+        sourceUserId: 'friend-1',
+        sourceUserName: 'Mina',
+      },
       source: 'visit' as const,
       createdAt: '2026-04-05T18:00:00Z',
       updatedAt: '2026-04-05T18:00:00Z',
@@ -101,6 +117,22 @@ describe('visitsStore.getVisitById', () => {
 
     await expect(getVisitById('visit-123', { signal: abortController.signal })).resolves.toMatchObject({
       ...visit,
+      items: [
+        {
+          id: 'item-1',
+          menuItemId: undefined,
+          menuItemVisibility: undefined,
+          name: 'Spicy Ramen',
+          rating: 5,
+          description: undefined,
+          notes: undefined,
+          recommendationSource: {
+            kind: 'item',
+            sourceUserId: 'friend-1',
+            sourceUserName: 'Mina',
+          },
+        },
+      ],
       visibility: 'friends',
     });
 

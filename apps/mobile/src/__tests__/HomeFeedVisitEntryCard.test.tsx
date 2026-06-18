@@ -147,6 +147,20 @@ function createVisitRecord() {
   };
 }
 
+function findViewByTestID(renderer: any, testID: string) {
+  return renderer.root.findAll(
+    (node: { type: unknown; props: { testID?: string } }) =>
+      node.type === 'View' && node.props.testID === testID,
+  );
+}
+
+function findTextByChildren(renderer: any, children: string) {
+  return renderer.root.findAll(
+    (node: { type: unknown; props: { children?: React.ReactNode } }) =>
+      node.type === 'Text' && node.props.children === children,
+  );
+}
+
 describe('HomeFeedVisitEntryCard', () => {
   it('wires long press handlers for visit items when move is enabled', async () => {
     const onItemLongPress = jest.fn();
@@ -252,6 +266,88 @@ describe('HomeFeedVisitEntryCard', () => {
         (node: { type: unknown; props: { testID?: string } }) =>
           node.type === 'Ionicons' && node.props.testID === 'home-feed-visit-item-private-lock-item-1',
       ),
+    ).toHaveLength(0);
+  });
+
+  it('renders item-level recommendation source cues', async () => {
+    let renderer: any = null;
+    const visit = {
+      ...createVisitRecord(),
+      recommendationSource: {
+        kind: 'restaurant' as const,
+        sourceUserName: 'Mina',
+      },
+      items: [
+        {
+          ...createVisitRecord().items[0],
+          recommendationSource: {
+            kind: 'item' as const,
+            sourceUserName: 'Mina',
+          },
+        },
+      ],
+    };
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={visit}
+        />,
+      );
+    });
+
+    expect(
+      findViewByTestID(renderer, 'home-feed-visit-item-recommendation-source-item-1'),
+    ).toHaveLength(1);
+    expect(
+      findViewByTestID(renderer, 'home-feed-visit-recommendation-source'),
+    ).toHaveLength(0);
+    expect(findTextByChildren(renderer, 'Recommended by Mina')).toHaveLength(1);
+  });
+
+  it('renders restaurant-level recommendation source cues when no item source exists', async () => {
+    let renderer: any = null;
+    const visit = {
+      ...createVisitRecord(),
+      recommendationSource: {
+        kind: 'restaurant' as const,
+        sourceUserName: 'Mina',
+      },
+    };
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={visit}
+        />,
+      );
+    });
+
+    expect(
+      findViewByTestID(renderer, 'home-feed-visit-recommendation-source'),
+    ).toHaveLength(1);
+    expect(findTextByChildren(renderer, 'Recommended by Mina')).toHaveLength(1);
+  });
+
+  it('leaves no-source visits unchanged', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeFeedVisitEntryCard
+          getPhotosForItem={() => []}
+          visit={createVisitRecord()}
+        />,
+      );
+    });
+
+    expect(
+      findViewByTestID(renderer, 'home-feed-visit-recommendation-source'),
+    ).toHaveLength(0);
+    expect(
+      findViewByTestID(renderer, 'home-feed-visit-item-recommendation-source-item-1'),
     ).toHaveLength(0);
   });
 

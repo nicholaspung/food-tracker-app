@@ -36,6 +36,17 @@ type recommendationUsageEventInput struct {
 	TargetVisitItemID      string
 }
 
+type recommendationUsageSourceResponse struct {
+	Kind           string `json:"kind"`
+	SourceUserID   string `json:"sourceUserId,omitempty"`
+	SourceUserName string `json:"sourceUserName,omitempty"`
+}
+
+type recommendationUsageSourceMaps struct {
+	ByVisitID     map[string]*recommendationUsageSourceResponse
+	ByVisitItemID map[string]*recommendationUsageSourceResponse
+}
+
 func recordSavedRecommendationUsageEvent(app core.App, input recommendationUsageEventInput) error {
 	input.Kind = recommendationUsageKindSavedRecommendation
 	return recordRecommendationUsageEvent(app, input)
@@ -232,6 +243,106 @@ func findRecommendationUsageVisitItemIDs(app core.App, actorID string, sourceLis
 		itemIDs = appendUniqueTrimmedID(itemIDs, seen, record.GetString("targetVisitItem"))
 	}
 	return itemIDs, nil
+}
+
+func buildRecommendationUsageSourceMaps(
+	app core.App,
+	viewerUserID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+	visitRecords []*core.Record,
+) (recommendationUsageSourceMaps, error) {
+	result := recommendationUsageSourceMaps{
+		ByVisitID:     map[string]*recommendationUsageSourceResponse{},
+		ByVisitItemID: map[string]*recommendationUsageSourceResponse{},
+	}
+
+	ownVisitIDs := make([]string, 0, len(visitRecords))
+	ownVisitIDSet := map[string]struct{}{}
+	trimmedViewerUserID := strings.TrimSpace(viewerUserID)
+	for _, visitRecord := range visitRecords {
+		if visitRecord == nil || strings.TrimSpace(visitRecord.GetString("user")) != trimmedViewerUserID {
+			continue
+		}
+		ownVisitIDs = appendUniqueTrimmedID(ownVisitIDs, ownVisitIDSet, visitRecord.Id)
+	}
+	if len(ownVisitIDs) == 0 {
+		return result, nil
+	}
+
+	usageRecords, err := findRecordsByRelationValues(app, "recommendation_usage", "targetVisit", ownVisitIDs, "created")
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage sources", err)
+	}
+
+	sourceUserIDs := make([]string, 0, len(usageRecords))
+	sourceUserIDSet := map[string]struct{}{}
+	for _, usageRecord := range usageRecords {
+		if !recommendationUsageRecordBelongsToActorVisit(usageRecord, trimmedViewerUserID, ownVisitIDSet) {
+			continue
+		}
+		sourceUserID := strings.TrimSpace(usageRecord.GetString("sourceUser"))
+		if sourceUserID == "" || (!isAdmin && sourceUserID != trimmedViewerUserID && !hasAcceptedFriend(acceptedFriendIDs, sourceUserID)) {
+			continue
+		}
+		sourceUserIDs = appendUniqueTrimmedID(sourceUserIDs, sourceUserIDSet, sourceUserID)
+	}
+
+	userRecords, err := findRecordsByIDs(app, "users", sourceUserIDs)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load recommendation usage source users", err)
+	}
+	usersByID := mapRecordsByID(userRecords)
+
+	for _, usageRecord := range usageRecords {
+		if !recommendationUsageRecordBelongsToActorVisit(usageRecord, trimmedViewerUserID, ownVisitIDSet) {
+			continue
+		}
+
+		source := recommendationUsageSourceFromRecord(usageRecord, trimmedViewerUserID, isAdmin, acceptedFriendIDs, usersByID)
+		switch strings.TrimSpace(usageRecord.GetString("kind")) {
+		case recommendationUsageKindRatedAfterTry:
+			targetVisitItemID := strings.TrimSpace(usageRecord.GetString("targetVisitItem"))
+			if targetVisitItemID != "" && result.ByVisitItemID[targetVisitItemID] == nil {
+				source.Kind = "item"
+				result.ByVisitItemID[targetVisitItemID] = source
+			}
+		case recommendationUsageKindTriedRecommendation:
+			targetVisitID := strings.TrimSpace(usageRecord.GetString("targetVisit"))
+			if targetVisitID != "" && result.ByVisitID[targetVisitID] == nil {
+				source.Kind = "restaurant"
+				result.ByVisitID[targetVisitID] = source
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func recommendationUsageRecordBelongsToActorVisit(record *core.Record, actorID string, visitIDSet map[string]struct{}) bool {
+	if record == nil || strings.TrimSpace(record.GetString("actor")) != strings.TrimSpace(actorID) {
+		return false
+	}
+	_, exists := visitIDSet[strings.TrimSpace(record.GetString("targetVisit"))]
+	return exists
+}
+
+func recommendationUsageSourceFromRecord(
+	record *core.Record,
+	viewerUserID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+	usersByID map[string]*core.Record,
+) *recommendationUsageSourceResponse {
+	source := &recommendationUsageSourceResponse{}
+	sourceUserID := strings.TrimSpace(record.GetString("sourceUser"))
+	if sourceUserID == "" || (!isAdmin && sourceUserID != strings.TrimSpace(viewerUserID) && !hasAcceptedFriend(acceptedFriendIDs, sourceUserID)) {
+		return source
+	}
+
+	source.SourceUserID = sourceUserID
+	source.SourceUserName = resolveHomeFeedUserName(usersByID[sourceUserID])
+	return source
 }
 
 func resolveRecommendationUsageListSource(

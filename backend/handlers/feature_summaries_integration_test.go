@@ -3706,6 +3706,190 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	}
 }
 
+func TestHomeFeedEndpointIncludesActingUserItemRecommendationSource(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	sourceUser, _ := createAuthUser(t, server.app, false, false)
+	sourceUser.Set("name", "Source Friend")
+	if err := server.app.Save(sourceUser); err != nil {
+		t.Fatalf("failed to update source user: %v", err)
+	}
+	createFriendshipRecord(t, server.app, user.Id, sourceUser.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Source Bistro",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-07 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	visitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visit.Id,
+		"user":   user.Id,
+		"name":   "Shared Dumpling",
+		"rating": 5,
+	})
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                 "tried_recommendation",
+		"action":               "tried",
+		"actor":                user.Id,
+		"sourceUser":           sourceUser.Id,
+		"targetRestaurant":     restaurant.Id,
+		"targetRestaurantList": list.Id,
+		"targetVisit":          visit.Id,
+		"actedAt":              "2026-04-07 18:31:00.000Z",
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                 "rated_after_try",
+		"action":               "rated",
+		"actor":                user.Id,
+		"sourceUser":           sourceUser.Id,
+		"targetRestaurant":     restaurant.Id,
+		"targetRestaurantList": list.Id,
+		"targetVisit":          visit.Id,
+		"targetVisitItem":      visitItem.Id,
+		"actedAt":              "2026-04-07 18:32:00.000Z",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=visits",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Visit *struct {
+				RecommendationSource *struct {
+					Kind           string `json:"kind"`
+					SourceUserName string `json:"sourceUserName"`
+				} `json:"recommendationSource"`
+				Items []struct {
+					RecommendationSource *struct {
+						Kind           string `json:"kind"`
+						SourceUserID   string `json:"sourceUserId"`
+						SourceUserName string `json:"sourceUserName"`
+					} `json:"recommendationSource"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Visit == nil || len(payload.Items[0].Visit.Items) != 1 {
+		t.Fatalf("expected one visit with one item, got %#v", payload)
+	}
+	itemSource := payload.Items[0].Visit.Items[0].RecommendationSource
+	if itemSource == nil || itemSource.Kind != "item" || itemSource.SourceUserID != sourceUser.Id || itemSource.SourceUserName != "Source Friend" {
+		t.Fatalf("expected item recommendation source from friend, got %#v", itemSource)
+	}
+	if payload.Items[0].Visit.RecommendationSource == nil || payload.Items[0].Visit.RecommendationSource.Kind != "restaurant" {
+		t.Fatalf("expected visit recommendation source to remain available, got %#v", payload.Items[0].Visit.RecommendationSource)
+	}
+}
+
+func TestHomeFeedEndpointIncludesRestaurantRecommendationSourceWithoutHiddenUserName(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+	stranger.Set("name", "Hidden Source")
+	if err := server.app.Save(stranger); err != nil {
+		t.Fatalf("failed to update source user: %v", err)
+	}
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Restaurant Source Cafe",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-07 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visit.Id,
+		"user":   user.Id,
+		"name":   "Latte",
+		"rating": 4,
+	})
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	createCollectionRecord(t, server.app, "recommendation_usage", map[string]any{
+		"kind":                 "tried_recommendation",
+		"action":               "tried",
+		"actor":                user.Id,
+		"sourceUser":           stranger.Id,
+		"targetRestaurant":     restaurant.Id,
+		"targetRestaurantList": list.Id,
+		"targetVisit":          visit.Id,
+		"actedAt":              "2026-04-07 18:31:00.000Z",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=visits",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Visit *struct {
+				RecommendationSource *struct {
+					Kind           string `json:"kind"`
+					SourceUserID   string `json:"sourceUserId"`
+					SourceUserName string `json:"sourceUserName"`
+				} `json:"recommendationSource"`
+				Items []struct {
+					RecommendationSource *struct{} `json:"recommendationSource"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Visit == nil {
+		t.Fatalf("expected one visit, got %#v", payload)
+	}
+	visitSource := payload.Items[0].Visit.RecommendationSource
+	if visitSource == nil || visitSource.Kind != "restaurant" {
+		t.Fatalf("expected restaurant recommendation source, got %#v", visitSource)
+	}
+	if visitSource.SourceUserID != "" || visitSource.SourceUserName != "" {
+		t.Fatalf("expected inaccessible source user to be hidden, got %#v", visitSource)
+	}
+	if len(payload.Items[0].Visit.Items) != 1 || payload.Items[0].Visit.Items[0].RecommendationSource != nil {
+		t.Fatalf("expected no item source fallback, got %#v", payload.Items[0].Visit.Items)
+	}
+}
+
 func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

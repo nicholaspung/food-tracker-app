@@ -205,7 +205,31 @@ const useStyles = createThemedStyles((theme) => ({
   entryMeta: {
     color: theme.colors.text.muted,
   },
+  recommendationSource: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
+  recommendationSourceText: {
+    color: theme.colors.text.muted,
+  },
 }));
+
+function formatRecommendationSourceLabel(
+  source: VisitRecord['recommendationSource'],
+  fallbackLabel: string,
+): string | null {
+  if (!source) {
+    return null;
+  }
+
+  const sourceUserName = source.sourceUserName?.trim();
+  if (sourceUserName) {
+    return `Recommended by ${sourceUserName}`;
+  }
+
+  return fallbackLabel;
+}
 
 export function HomeFeedVisitEntryCard({
   visit,
@@ -233,6 +257,10 @@ export function HomeFeedVisitEntryCard({
   const hasActions = Boolean(onShareVisit || onEdit || onDelete || onMoreActions);
   const showUnderReviewBadge = !friendName?.trim() && visit.moderationStatus === 'under_review';
   const isPrivateVisit = visit.visibility === 'private';
+  const hasItemRecommendationSource = visit.items.some((item) => Boolean(item.recommendationSource));
+  const visitRecommendationSourceLabel = hasItemRecommendationSource
+    ? null
+    : formatRecommendationSourceLabel(visit.recommendationSource, 'Recommended restaurant');
 
   return (
     <View style={[styles.entryCard, highlighted ? styles.entryCardHighlighted : null]}>
@@ -265,6 +293,15 @@ export function HomeFeedVisitEntryCard({
           </View>
         </View>
       </View>
+
+      {visitRecommendationSourceLabel ? (
+        <View style={styles.recommendationSource} testID="home-feed-visit-recommendation-source">
+          <Ionicons color={theme.colors.text.muted} name="sparkles-outline" size={14} />
+          <Text numberOfLines={1} style={styles.recommendationSourceText} variant="bodySmTight">
+            {visitRecommendationSourceLabel}
+          </Text>
+        </View>
+      ) : null}
 
       {restaurantMetaLabel || hasActions ? (
         <View style={styles.restaurantMetaRow}>
@@ -328,6 +365,10 @@ export function HomeFeedVisitEntryCard({
             const primaryPhoto = itemPhotos[0] ?? null;
             const thumbnailUrl = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
             const isPrivateVisitItem = isPrivateVisit || item.menuItemVisibility === 'private';
+            const itemRecommendationSourceLabel = formatRecommendationSourceLabel(
+              item.recommendationSource,
+              'Recommended item',
+            );
 
             const renderItemRowContent = (pressed = false) => (
               <View style={[styles.foodItemRow, pressed ? styles.foodItemRowPressed : null]}>
@@ -363,6 +404,17 @@ export function HomeFeedVisitEntryCard({
                   <Text numberOfLines={2} style={styles.foodItemName} variant="button">
                     {item.name}
                   </Text>
+                  {itemRecommendationSourceLabel ? (
+                    <View
+                      style={styles.recommendationSource}
+                      testID={`home-feed-visit-item-recommendation-source-${item.id}`}
+                    >
+                      <Ionicons color={theme.colors.text.muted} name="sparkles-outline" size={12} />
+                      <Text numberOfLines={1} style={styles.recommendationSourceText} variant="bodySmTight">
+                        {itemRecommendationSourceLabel}
+                      </Text>
+                    </View>
+                  ) : null}
                   {item.notes ? (
                     <ExpandableText
                       collapsedNumberOfLines={2}

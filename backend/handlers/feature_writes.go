@@ -70,13 +70,14 @@ type convertVisitItemToFoodProductResponse struct {
 }
 
 type visitItemResponse struct {
-	ID                 string  `json:"id"`
-	MenuItemID         string  `json:"menuItemId,omitempty"`
-	MenuItemVisibility string  `json:"menuItemVisibility,omitempty"`
-	Name               string  `json:"name"`
-	Rating             float64 `json:"rating"`
-	Description        string  `json:"description,omitempty"`
-	Notes              string  `json:"notes,omitempty"`
+	ID                   string                             `json:"id"`
+	MenuItemID           string                             `json:"menuItemId,omitempty"`
+	MenuItemVisibility   string                             `json:"menuItemVisibility,omitempty"`
+	Name                 string                             `json:"name"`
+	Rating               float64                            `json:"rating"`
+	Description          string                             `json:"description,omitempty"`
+	Notes                string                             `json:"notes,omitempty"`
+	RecommendationSource *recommendationUsageSourceResponse `json:"recommendationSource,omitempty"`
 }
 
 type moveVisitItemResponse struct {
@@ -85,20 +86,21 @@ type moveVisitItemResponse struct {
 }
 
 type visitResponse struct {
-	ID                    string              `json:"id"`
-	RestaurantID          string              `json:"restaurantId,omitempty"`
-	RestaurantName        string              `json:"restaurantName"`
-	RestaurantLocation    string              `json:"restaurantLocation,omitempty"`
-	RestaurantCuisineType string              `json:"restaurantCuisineType,omitempty"`
-	VisitedAt             string              `json:"visitedAt"`
-	Items                 []visitItemResponse `json:"items"`
-	Source                string              `json:"source"`
-	UserID                string              `json:"userId,omitempty"`
-	UserName              string              `json:"userName,omitempty"`
-	Visibility            string              `json:"visibility,omitempty"`
-	ModerationStatus      string              `json:"moderationStatus,omitempty"`
-	CreatedAt             string              `json:"createdAt"`
-	UpdatedAt             string              `json:"updatedAt"`
+	ID                    string                             `json:"id"`
+	RestaurantID          string                             `json:"restaurantId,omitempty"`
+	RestaurantName        string                             `json:"restaurantName"`
+	RestaurantLocation    string                             `json:"restaurantLocation,omitempty"`
+	RestaurantCuisineType string                             `json:"restaurantCuisineType,omitempty"`
+	VisitedAt             string                             `json:"visitedAt"`
+	Items                 []visitItemResponse                `json:"items"`
+	Source                string                             `json:"source"`
+	UserID                string                             `json:"userId,omitempty"`
+	UserName              string                             `json:"userName,omitempty"`
+	Visibility            string                             `json:"visibility,omitempty"`
+	ModerationStatus      string                             `json:"moderationStatus,omitempty"`
+	RecommendationSource  *recommendationUsageSourceResponse `json:"recommendationSource,omitempty"`
+	CreatedAt             string                             `json:"createdAt"`
+	UpdatedAt             string                             `json:"updatedAt"`
 }
 
 type buildVisitResponseOptions struct {
@@ -2025,6 +2027,16 @@ func buildVisitResponse(
 	if err != nil {
 		return visitResponse{}, err
 	}
+	recommendationSources, err := buildRecommendationUsageSourceMaps(
+		app,
+		viewerUserID,
+		isAdmin,
+		acceptedFriendIDs,
+		[]*core.Record{visitRecord},
+	)
+	if err != nil {
+		return visitResponse{}, err
+	}
 	responseItems := make([]visitItemResponse, 0, len(items))
 	for _, item := range items {
 		if !canAccessFoodItemRecord(item, visitsByID, viewerUserID, isAdmin, acceptedFriendIDs) {
@@ -2037,13 +2049,14 @@ func buildVisitResponse(
 		}
 
 		responseItems = append(responseItems, visitItemResponse{
-			ID:                 item.Id,
-			MenuItemID:         resolveHomeFeedVisitItemMenuItemID(item, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
-			MenuItemVisibility: resolveHomeFeedVisitItemMenuItemVisibility(item, menuItemsByID),
-			Name:               item.GetString("name"),
-			Rating:             item.GetFloat("rating"),
-			Description:        strings.TrimSpace(item.GetString("description")),
-			Notes:              strings.TrimSpace(item.GetString("notes")),
+			ID:                   item.Id,
+			MenuItemID:           resolveHomeFeedVisitItemMenuItemID(item, restaurantID, menuItemsByID, menuItemIDsByRestaurantAndName),
+			MenuItemVisibility:   resolveHomeFeedVisitItemMenuItemVisibility(item, menuItemsByID),
+			Name:                 item.GetString("name"),
+			Rating:               item.GetFloat("rating"),
+			Description:          strings.TrimSpace(item.GetString("description")),
+			Notes:                strings.TrimSpace(item.GetString("notes")),
+			RecommendationSource: recommendationSources.ByVisitItemID[item.Id],
 		})
 	}
 	responseItems = orderVisitResponseItems(responseItems, options.PrioritizedItemIDs)
@@ -2052,16 +2065,17 @@ func buildVisitResponse(
 	}
 
 	response := visitResponse{
-		ID:           visitRecord.Id,
-		RestaurantID: visitRecord.GetString("restaurant"),
-		VisitedAt:    firstNonEmpty(visitRecord.GetString("visitDate"), visitRecord.GetString("created")),
-		Items:        responseItems,
-		Source:       "visit",
-		UserID:       visitRecord.GetString("user"),
-		UserName:     resolveHomeFeedUserName(ownerRecord),
-		Visibility:   visitRecord.GetString("visibility"),
-		CreatedAt:    visitRecord.GetString("created"),
-		UpdatedAt:    visitRecord.GetString("updated"),
+		ID:                   visitRecord.Id,
+		RestaurantID:         visitRecord.GetString("restaurant"),
+		VisitedAt:            firstNonEmpty(visitRecord.GetString("visitDate"), visitRecord.GetString("created")),
+		Items:                responseItems,
+		Source:               "visit",
+		UserID:               visitRecord.GetString("user"),
+		UserName:             resolveHomeFeedUserName(ownerRecord),
+		Visibility:           visitRecord.GetString("visibility"),
+		RecommendationSource: recommendationSources.ByVisitID[visitRecord.Id],
+		CreatedAt:            visitRecord.GetString("created"),
+		UpdatedAt:            visitRecord.GetString("updated"),
 	}
 
 	if moderationStatus := strings.TrimSpace(visitRecord.GetString("moderationStatus")); moderationStatus != "" {
