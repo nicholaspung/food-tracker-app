@@ -8,6 +8,7 @@ import type {
   MutationSendResult,
   MutationTransport,
   QueuedMutation,
+  SyncSnapshot,
 } from '../offline/types';
 
 jest.mock('../observability', () => ({
@@ -37,6 +38,9 @@ function createDeferredPromise<T>() {
 }
 
 class InMemoryQueueStore implements MutationQueueStore {
+  getStatsCallCount = 0;
+  onGetStatsBeforeReturn?: () => Promise<void> | void;
+
   constructor(
     private readonly sharedState: SharedQueueState = { rows: new Map() },
     private readonly onInitialize?: (sharedState: SharedQueueState) => Promise<void> | void,
@@ -186,6 +190,8 @@ class InMemoryQueueStore implements MutationQueueStore {
   }
 
   async getStats(): Promise<MutationQueueStats> {
+    this.getStatsCallCount += 1;
+
     const rows = [...this.sharedState.rows.values()];
     const queueDepth = rows.length;
     const failedRows = rows.filter((mutation) => mutation.status === 'failed');
@@ -196,12 +202,20 @@ class InMemoryQueueStore implements MutationQueueStore {
       .filter((mutation) => mutation.lastError)
       .sort((left, right) => right.updatedAt - left.updatedAt)[0]?.lastError;
 
-    return {
+    const stats = {
       queueDepth,
       failedCount: failedRows.length,
       nextRetryAt: retryRows[0]?.nextRetryAt ?? null,
       lastError: latestError ?? null,
     };
+
+    await this.onGetStatsBeforeReturn?.();
+
+    return stats;
+  }
+
+  resetGetStatsCallCount(): void {
+    this.getStatsCallCount = 0;
   }
 }
 
@@ -605,5 +619,188 @@ describe('MutationReplayService', () => {
 
     expect(service.getSnapshot().queueDepth).toBe(0);
     expect(transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces snapshot refreshes while replaying large successful backlogs', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map(
+        Array.from({ length: 25 }, (_value, index) => {
+          const mutationId = `mut_seeded_${index + 1}`;
+
+          return [
+            mutationId,
+            buildQueuedMutation({
+              id: mutationId,
+              idempotencyKey: `idem_seeded_${index + 1}`,
+              createdAt: 1000 + index,
+              updatedAt: 1000 + index,
+              url: `https://api.example.com/visits/${index + 1}`,
+            }),
+          ];
+        }),
+      ),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    const transport = createTransport([]);
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    store.resetGetStatsCallCount();
+
+    const emittedSnapshots: SyncSnapshot[] = [];
+    service.subscribe((snapshot) => {
+      emittedSnapshots.push(snapshot);
+    });
+
+    await service.replay('foreground');
+
+    expect(transport.send).toHaveBeenCalledTimes(25);
+    expect(service.getSnapshot().queueDepth).toBe(0);
+    expect(store.getStatsCallCount).toBeLessThanOrEqual(6);
+    expect(emittedSnapshots.length - 1).toBeLessThanOrEqual(6);
+  });
+
+  it('preserves the last synced timestamp when a later batched send throws', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map(
+        Array.from({ length: 3 }, (_value, index) => {
+          const mutationId = `mut_seeded_${index + 1}`;
+
+          return [
+            mutationId,
+            buildQueuedMutation({
+              id: mutationId,
+              idempotencyKey: `idem_seeded_${index + 1}`,
+              createdAt: 1000 + index,
+              updatedAt: 1000 + index,
+            }),
+          ];
+        }),
+      ),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    const transport: MutationTransport = {
+      send: jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          retryable: false,
+          statusCode: 200,
+          errorMessage: null,
+        })
+        .mockRejectedValueOnce(new Error('Network transport crashed')),
+    };
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await expect(service.replay('foreground')).rejects.toThrow('Network transport crashed');
+
+    expect(transport.send).toHaveBeenCalledTimes(2);
+    expect(service.getSnapshot().queueDepth).toBe(2);
+    expect(service.getSnapshot().lastSyncedAt).toBe(9000);
+  });
+
+  it('keeps success telemetry queue depth accurate when enqueue refreshes during replay', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_seeded_1',
+          buildQueuedMutation({
+            id: 'mut_seeded_1',
+            idempotencyKey: 'idem_seeded_1',
+            createdAt: 1000,
+            updatedAt: 1000,
+          }),
+        ],
+        [
+          'mut_seeded_2',
+          buildQueuedMutation({
+            id: 'mut_seeded_2',
+            idempotencyKey: 'idem_seeded_2',
+            createdAt: 1001,
+            updatedAt: 1001,
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    let service: MutationReplayService;
+    let didEnqueueDuringReplay = false;
+    const transport: MutationTransport = {
+      send: jest.fn(async () => {
+        if (!didEnqueueDuringReplay) {
+          didEnqueueDuringReplay = true;
+          await service.enqueue({
+            method: 'POST',
+            url: 'https://api.example.com/visits/enqueued-during-replay',
+          });
+        }
+
+        return {
+          ok: true,
+          retryable: false,
+          statusCode: 200,
+          errorMessage: null,
+        };
+      }),
+    };
+    service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.replay('foreground');
+
+    const successDepths = mockedTrackObservabilityEvent.mock.calls
+      .filter(([eventName]) => eventName === 'SYNC_MUTATION_SUCCEEDED')
+      .map(([_eventName, properties]) => properties?.queueDepth);
+
+    expect(transport.send).toHaveBeenCalledTimes(3);
+    expect(successDepths).toEqual([2, 1, 0]);
+    expect(service.getSnapshot().queueDepth).toBe(0);
+  });
+
+  it('includes enqueues that happen while replay start refresh is in flight', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_seeded_1',
+          buildQueuedMutation({
+            id: 'mut_seeded_1',
+            idempotencyKey: 'idem_seeded_1',
+            createdAt: 1000,
+            updatedAt: 1000,
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    const transport = createTransport([]);
+    const service = new MutationReplayService(store, transport, () => 9000);
+    const replayStartStatsStarted = createDeferredPromise<void>();
+    const releaseReplayStartStats = createDeferredPromise<void>();
+
+    await service.start();
+    store.onGetStatsBeforeReturn = async () => {
+      store.onGetStatsBeforeReturn = undefined;
+      replayStartStatsStarted.resolve();
+      await releaseReplayStartStats.promise;
+    };
+
+    const replayPromise = service.replay('foreground');
+    await replayStartStatsStarted.promise;
+
+    await service.enqueue({
+      method: 'POST',
+      url: 'https://api.example.com/visits/enqueued-during-replay-start',
+    });
+    releaseReplayStartStats.resolve();
+    await replayPromise;
+
+    const successDepths = mockedTrackObservabilityEvent.mock.calls
+      .filter(([eventName]) => eventName === 'SYNC_MUTATION_SUCCEEDED')
+      .map(([_eventName, properties]) => properties?.queueDepth);
+
+    expect(transport.send).toHaveBeenCalledTimes(2);
+    expect(successDepths).toEqual([1, 0]);
+    expect(service.getSnapshot().queueDepth).toBe(0);
   });
 });

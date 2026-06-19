@@ -15,6 +15,7 @@ type SyncListener = (snapshot: SyncSnapshot) => void;
 type QueueClearTrigger = 'auth_change' | 'logout';
 
 const OFFLINE_QUEUE_FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const REPLAY_READY_BATCH_SIZE = 10;
 
 const DEFAULT_SNAPSHOT: SyncSnapshot = {
   isInitialized: false,
@@ -31,6 +32,7 @@ export class MutationReplayService {
   private listeners = new Set<SyncListener>();
   private replayPromise: Promise<void> | null = null;
   private activeReplayAbortController: AbortController | null = null;
+  private activeReplayQueueDepthEstimate: number | null = null;
   private snapshot: SyncSnapshot = DEFAULT_SNAPSHOT;
   private started = false;
 
@@ -78,6 +80,9 @@ export class MutationReplayService {
     try {
       const mutation = await this.queueStore.enqueue(input);
       await this.refreshSnapshot();
+      if (this.activeReplayQueueDepthEstimate !== null) {
+        this.activeReplayQueueDepthEstimate += 1;
+      }
       trackObservabilityEvent('MUTATION_ENQUEUED', {
         mutationId: mutation.id,
         method: mutation.method,
@@ -149,12 +154,18 @@ export class MutationReplayService {
   private async runReplay(trigger: ReplayTrigger): Promise<void> {
     const replayAbortController = new AbortController();
     let replayError: unknown = null;
+    let lastSuccessfulReplayAt: number | null = null;
 
     this.activeReplayAbortController = replayAbortController;
+    this.activeReplayQueueDepthEstimate = this.snapshot.queueDepth;
     await this.refreshSnapshot({
       isSyncing: true,
       lastTrigger: trigger,
     });
+    this.activeReplayQueueDepthEstimate = Math.max(
+      this.activeReplayQueueDepthEstimate ?? 0,
+      this.snapshot.queueDepth,
+    );
     trackObservabilityEvent('SYNC_REPLAY_STARTED', {
       failedCount: this.snapshot.failedCount,
       queueDepth: this.snapshot.queueDepth,
@@ -167,101 +178,129 @@ export class MutationReplayService {
           break;
         }
 
-        const readyMutations = await this.queueStore.getReadyMutations(this.now(), 1);
-        const [nextMutation] = readyMutations;
+        const readyMutations = await this.queueStore.getReadyMutations(
+          this.now(),
+          REPLAY_READY_BATCH_SIZE,
+        );
 
-        if (!nextMutation) {
+        if (readyMutations.length === 0) {
           break;
         }
 
-        const nextAttempt = nextMutation.attemptCount + 1;
-        const attemptStartedAt = this.now();
-        await this.queueStore.markInFlight(nextMutation.id, attemptStartedAt);
-        await this.refreshSnapshot({
-          isSyncing: true,
-          lastTrigger: trigger,
-        });
+        let successfulMutationsSinceRefresh = 0;
+        let shouldContinueReplay = true;
 
-        if (replayAbortController.signal.aborted) {
-          break;
-        }
+        for (const nextMutation of readyMutations) {
+          if (replayAbortController.signal.aborted) {
+            break;
+          }
 
-        const sendResult = await this.transport.send(nextMutation, {
-          signal: replayAbortController.signal,
-        });
+          const nextAttempt = nextMutation.attemptCount + 1;
+          const attemptStartedAt = this.now();
+          await this.queueStore.markInFlight(nextMutation.id, attemptStartedAt);
 
-        if (sendResult.cancelled) {
-          break;
-        }
+          if (replayAbortController.signal.aborted) {
+            break;
+          }
 
-        const resolvedAt = this.now();
+          const sendResult = await this.transport.send(nextMutation, {
+            signal: replayAbortController.signal,
+          });
 
-        if (sendResult.ok) {
-          await this.queueStore.remove(nextMutation.id);
+          if (sendResult.cancelled) {
+            shouldContinueReplay = false;
+            break;
+          }
+
+          const resolvedAt = this.now();
+
+          if (sendResult.ok) {
+            await this.queueStore.remove(nextMutation.id);
+            lastSuccessfulReplayAt = resolvedAt;
+            successfulMutationsSinceRefresh += 1;
+            if (this.activeReplayQueueDepthEstimate !== null) {
+              this.activeReplayQueueDepthEstimate = Math.max(
+                0,
+                this.activeReplayQueueDepthEstimate - 1,
+              );
+            }
+            const remainingQueueDepth =
+              this.activeReplayQueueDepthEstimate ??
+              Math.max(0, this.snapshot.queueDepth - successfulMutationsSinceRefresh);
+            trackObservabilityEvent('SYNC_MUTATION_SUCCEEDED', {
+              attempt: nextAttempt,
+              maxAttempts: nextMutation.maxAttempts,
+              mutationId: nextMutation.id,
+              mutationTarget: resolveMutationTarget(nextMutation.url),
+              operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              queueDepth: remainingQueueDepth,
+              statusCode: sendResult.statusCode,
+              trigger,
+            });
+            trackProductEvent('quality.offline_write_replayed', {
+              attempt: nextAttempt,
+              mutationTarget: resolveMutationTarget(nextMutation.url),
+              operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              queueDepth: remainingQueueDepth,
+              statusCode: sendResult.statusCode,
+              trigger,
+            });
+            continue;
+          }
+
+          const fallbackStatus = sendResult.statusCode ? `HTTP ${sendResult.statusCode}` : 'Request failed';
+          const errorMessage = sendResult.errorMessage ?? fallbackStatus;
+          const shouldStopRetrying = !sendResult.retryable || nextAttempt >= nextMutation.maxAttempts;
+
+          if (shouldStopRetrying) {
+            await this.queueStore.markTerminalFailure(nextMutation.id, errorMessage, resolvedAt);
+          } else {
+            const nextRetryAt = resolvedAt + computeRetryDelayMs(nextAttempt);
+            await this.queueStore.markRetryableFailure(
+              nextMutation.id,
+              errorMessage,
+              nextRetryAt,
+              resolvedAt,
+            );
+          }
+
           await this.refreshSnapshot({
             isSyncing: true,
-            lastSyncedAt: resolvedAt,
+            ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
             lastTrigger: trigger,
           });
-          trackObservabilityEvent('SYNC_MUTATION_SUCCEEDED', {
-            attempt: nextAttempt,
-            maxAttempts: nextMutation.maxAttempts,
-            mutationId: nextMutation.id,
-            mutationTarget: resolveMutationTarget(nextMutation.url),
-            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
-            queueDepth: this.snapshot.queueDepth,
-            statusCode: sendResult.statusCode,
-            trigger,
-          });
-          trackProductEvent('quality.offline_write_replayed', {
-            attempt: nextAttempt,
-            mutationTarget: resolveMutationTarget(nextMutation.url),
-            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
-            queueDepth: this.snapshot.queueDepth,
-            statusCode: sendResult.statusCode,
-            trigger,
-          });
-          continue;
-        }
-
-        const fallbackStatus = sendResult.statusCode ? `HTTP ${sendResult.statusCode}` : 'Request failed';
-        const errorMessage = sendResult.errorMessage ?? fallbackStatus;
-        const shouldStopRetrying = !sendResult.retryable || nextAttempt >= nextMutation.maxAttempts;
-
-        if (shouldStopRetrying) {
-          await this.queueStore.markTerminalFailure(nextMutation.id, errorMessage, resolvedAt);
-        } else {
-          const nextRetryAt = resolvedAt + computeRetryDelayMs(nextAttempt);
-          await this.queueStore.markRetryableFailure(
-            nextMutation.id,
-            errorMessage,
-            nextRetryAt,
-            resolvedAt,
+          successfulMutationsSinceRefresh = 0;
+          trackObservabilityEvent(
+            shouldStopRetrying ? 'SYNC_MUTATION_FAILED_TERMINAL' : 'SYNC_MUTATION_FAILED_RETRYABLE',
+            {
+              attempt: nextAttempt,
+              maxAttempts: nextMutation.maxAttempts,
+              mutationId: nextMutation.id,
+              mutationTarget: resolveMutationTarget(nextMutation.url),
+              operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              queueDepth: this.snapshot.queueDepth,
+              trigger,
+              ...buildSafeTelemetryErrorProperties({
+                retryable: sendResult.retryable,
+                sourceOperation: resolveOperationNameFromQueuedMutation(nextMutation),
+                statusCode: sendResult.statusCode,
+                unsafeErrorMessage: errorMessage,
+              }),
+            },
           );
         }
 
-        await this.refreshSnapshot({
-          isSyncing: true,
-          lastTrigger: trigger,
-        });
-        trackObservabilityEvent(
-          shouldStopRetrying ? 'SYNC_MUTATION_FAILED_TERMINAL' : 'SYNC_MUTATION_FAILED_RETRYABLE',
-          {
-            attempt: nextAttempt,
-            maxAttempts: nextMutation.maxAttempts,
-            mutationId: nextMutation.id,
-            mutationTarget: resolveMutationTarget(nextMutation.url),
-            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
-            queueDepth: this.snapshot.queueDepth,
-            trigger,
-            ...buildSafeTelemetryErrorProperties({
-              retryable: sendResult.retryable,
-              sourceOperation: resolveOperationNameFromQueuedMutation(nextMutation),
-              statusCode: sendResult.statusCode,
-              unsafeErrorMessage: errorMessage,
-            }),
-          },
-        );
+        if (successfulMutationsSinceRefresh > 0) {
+          await this.refreshSnapshot({
+            isSyncing: true,
+            ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
+            lastTrigger: trigger,
+          });
+        }
+
+        if (!shouldContinueReplay) {
+          break;
+        }
       }
     } catch (error) {
       replayError = error;
@@ -273,6 +312,7 @@ export class MutationReplayService {
 
       await this.refreshSnapshot({
         isSyncing: false,
+        ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
         lastTrigger: trigger,
       });
       trackObservabilityEvent('SYNC_REPLAY_COMPLETED', {
@@ -282,6 +322,7 @@ export class MutationReplayService {
         queueDepth: this.snapshot.queueDepth,
         trigger,
       });
+      this.activeReplayQueueDepthEstimate = null;
     }
   }
 
