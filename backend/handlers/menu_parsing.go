@@ -28,9 +28,10 @@ import (
 )
 
 const (
-	geminiMenuModel         = "gemini-2.5-flash"
+	geminiDefaultModel      = "gemini-2.5-flash"
 	gemini31FlashLiteModel  = "gemini-3.1-flash-lite"
 	gemini3FlashModel       = "gemini-3-flash-preview"
+	geminiMenuModel         = gemini3FlashModel
 	geminiMenuFallbackModel = ""
 	storedMenuImageMaxEdge  = 2048
 	storedMenuImageQuality  = 80
@@ -95,13 +96,13 @@ func recordAIProcessingFailure(e *core.RequestEvent, input aiProcessingFailureIn
 	}
 	model := input.Model
 	if model == "" {
-		model = geminiMenuModel
+		model = defaultGeminiModelForUseCase(input.UseCase)
 	}
 
 	lib.TrackLLMGeneration(userID, lib.LLMGenerationProperties{
 		Provider:       "gemini",
 		Model:          model,
-		PrimaryModel:   geminiMenuModel,
+		PrimaryModel:   model,
 		FallbackModel:  geminiMenuFallbackModel,
 		AttemptCount:   len(input.Attempts),
 		FallbackUsed:   geminiFallbackUsed(input.Attempts),
@@ -126,11 +127,12 @@ func trackGeminiGenerationAttempts(
 	useCase string,
 	attempts []geminiGenerationAttempt,
 ) {
+	primaryModel := geminiPrimaryModel(attempts)
 	for index, attempt := range attempts {
 		lib.TrackLLMGenerationAttempt(userID, lib.LLMGenerationAttemptProperties{
 			Provider:          "gemini",
 			Model:             attempt.Model,
-			PrimaryModel:      geminiMenuModel,
+			PrimaryModel:      primaryModel,
 			FallbackModel:     geminiMenuFallbackModel,
 			UseCase:           useCase,
 			RequestID:         requestID,
@@ -145,6 +147,22 @@ func trackGeminiGenerationAttempts(
 			ErrorMessage:      attempt.Error,
 		})
 	}
+}
+
+func defaultGeminiModelForUseCase(useCase string) string {
+	if useCase == "menu_parsing" {
+		return geminiMenuModel
+	}
+
+	return geminiDefaultModel
+}
+
+func geminiPrimaryModel(attempts []geminiGenerationAttempt) string {
+	if len(attempts) > 0 && strings.TrimSpace(attempts[0].Model) != "" {
+		return attempts[0].Model
+	}
+
+	return geminiDefaultModel
 }
 
 func geminiFallbackUsed(attempts []geminiGenerationAttempt) bool {
@@ -272,8 +290,8 @@ func geminiGenerationModels(selectedModel string) []string {
 		return []string{selectedModel}
 	}
 
-	models := []string{geminiMenuModel}
-	if geminiMenuFallbackModel != "" && geminiMenuFallbackModel != geminiMenuModel {
+	models := []string{geminiDefaultModel}
+	if geminiMenuFallbackModel != "" && geminiMenuFallbackModel != geminiDefaultModel {
 		models = append(models, geminiMenuFallbackModel)
 	}
 	return models
@@ -289,7 +307,7 @@ func resolveAdminDebugGeminiModel(e *core.RequestEvent, isAdmin bool) (string, e
 	}
 
 	switch selectedModel {
-	case geminiMenuModel, gemini31FlashLiteModel, gemini3FlashModel:
+	case geminiDefaultModel, gemini31FlashLiteModel, gemini3FlashModel:
 		return selectedModel, nil
 	default:
 		return "", apis.NewBadRequestError("unsupported Gemini model", nil)
@@ -493,8 +511,12 @@ If the picture is a menu, can you help me generate a CSV table of menu item and 
 menu_item,price
 Example menu name,18.99
 		Only output the CSV table or the JSON format, no need to explain what's happening`
+		menuModel := geminiMenuModel
+		if selectedModel != "" {
+			menuModel = selectedModel
+		}
 		generationOptions := geminiGenerationOptions{
-			Model: selectedModel,
+			Model: menuModel,
 		}
 		if selectedRestaurantName != "" {
 			generationOptions.ResponseMIMEType = "application/json"
@@ -529,7 +551,7 @@ Rules:
 - Confidence must be high, medium, low, or unknown.`
 		}
 
-		// Generate content. If the low-cost model stalls, fall back to the standard Flash model.
+		// Generate content with the production menu scan model, or an admin debug override.
 		generationResult := generateGeminiContentWithFallbackOptions(ctx, client, prompt, imagePart, generationOptions)
 		resp := generationResult.Response
 		err = generationResult.Err
@@ -776,7 +798,7 @@ Rules:
 		lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
 			Provider:       "gemini",
 			Model:          resolvedModel,
-			PrimaryModel:   geminiMenuModel,
+			PrimaryModel:   geminiPrimaryModel(generationResult.Attempts),
 			FallbackModel:  geminiMenuFallbackModel,
 			AttemptCount:   len(generationResult.Attempts),
 			FallbackUsed:   geminiFallbackUsed(generationResult.Attempts),
@@ -1156,7 +1178,7 @@ Rules:
 		lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
 			Provider:       "gemini",
 			Model:          resolvedModel,
-			PrimaryModel:   geminiMenuModel,
+			PrimaryModel:   geminiPrimaryModel(generationResult.Attempts),
 			FallbackModel:  geminiMenuFallbackModel,
 			AttemptCount:   len(generationResult.Attempts),
 			FallbackUsed:   geminiFallbackUsed(generationResult.Attempts),
@@ -1556,7 +1578,7 @@ Analyze the image now and respond with JSON only.`
 		lib.TrackLLMGeneration(authRecord.Id, lib.LLMGenerationProperties{
 			Provider:       "gemini",
 			Model:          resolvedModel,
-			PrimaryModel:   geminiMenuModel,
+			PrimaryModel:   geminiPrimaryModel(generationResult.Attempts),
 			FallbackModel:  geminiMenuFallbackModel,
 			AttemptCount:   len(generationResult.Attempts),
 			FallbackUsed:   geminiFallbackUsed(generationResult.Attempts),
@@ -1594,7 +1616,7 @@ func buildGeminiDebugData(
 		candidatesCount = len(resp.Candidates)
 	}
 	if strings.TrimSpace(modelName) == "" {
-		modelName = geminiMenuModel
+		modelName = geminiDefaultModel
 	}
 
 	debugData := map[string]any{

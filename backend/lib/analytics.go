@@ -271,9 +271,17 @@ func TrackLLMGenerationAttempt(userID string, props LLMGenerationAttemptProperti
 
 // estimateCost estimates the cost of an LLM generation based on model and tokens
 func estimateCost(model string, promptTokens, outputTokens int) float64 {
-	// Gemini pricing (as of 2025-01)
+	// Gemini pricing (as of 2026-06)
 	// https://ai.google.dev/pricing
 	switch model {
+	case "gemini-3.1-flash-lite":
+		inputCost := float64(promptTokens) * 0.25 / 1000000
+		outputCost := float64(outputTokens) * 1.50 / 1000000
+		return inputCost + outputCost
+	case "gemini-3-flash-preview":
+		inputCost := float64(promptTokens) * 0.50 / 1000000
+		outputCost := float64(outputTokens) * 3.00 / 1000000
+		return inputCost + outputCost
 	case "gemini-2.5-flash-lite", "gemini-2.0-flash-lite":
 		// Free tier (first 1M requests/day)
 		// Paid tier: $0.025 per 1M input tokens, $0.10 per 1M output tokens
