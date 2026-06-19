@@ -29,6 +29,8 @@ import (
 
 const (
 	geminiMenuModel         = "gemini-2.5-flash"
+	gemini31FlashLiteModel  = "gemini-3.1-flash-lite"
+	gemini3FlashModel       = "gemini-3-flash-preview"
 	geminiMenuFallbackModel = ""
 	storedMenuImageMaxEdge  = 2048
 	storedMenuImageQuality  = 80
@@ -79,6 +81,7 @@ type geminiGenerationResult struct {
 type geminiGenerationOptions struct {
 	ResponseMIMEType string
 	MaxOutputTokens  int32
+	Model            string
 }
 
 type savedMenuImageResult struct {
@@ -201,7 +204,7 @@ func generateGeminiContentWithFallbackOptions(
 	imagePart genai.Part,
 	options geminiGenerationOptions,
 ) geminiGenerationResult {
-	models := geminiGenerationModels()
+	models := geminiGenerationModels(options.Model)
 	attempts := make([]geminiGenerationAttempt, 0, len(models))
 	var lastErr error
 	var lastResp *genai.GenerateContentResponse
@@ -263,12 +266,34 @@ func generateGeminiContentWithFallbackOptions(
 	}
 }
 
-func geminiGenerationModels() []string {
+func geminiGenerationModels(selectedModel string) []string {
+	selectedModel = strings.TrimSpace(selectedModel)
+	if selectedModel != "" {
+		return []string{selectedModel}
+	}
+
 	models := []string{geminiMenuModel}
 	if geminiMenuFallbackModel != "" && geminiMenuFallbackModel != geminiMenuModel {
 		models = append(models, geminiMenuFallbackModel)
 	}
 	return models
+}
+
+func resolveAdminDebugGeminiModel(e *core.RequestEvent, isAdmin bool) (string, error) {
+	selectedModel := strings.TrimSpace(e.Request.FormValue("model"))
+	if selectedModel == "" {
+		return "", nil
+	}
+	if !isAdmin {
+		return "", apis.NewForbiddenError("admin model override is not allowed", nil)
+	}
+
+	switch selectedModel {
+	case geminiMenuModel, gemini31FlashLiteModel, gemini3FlashModel:
+		return selectedModel, nil
+	default:
+		return "", apis.NewBadRequestError("unsupported Gemini model", nil)
+	}
 }
 
 func extractGeminiResponseText(resp *genai.GenerateContentResponse) string {
@@ -394,6 +419,10 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, app core.App) {
 		if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
 			return apis.NewBadRequestError("failed to parse multipart form", err)
 		}
+		selectedModel, err := resolveAdminDebugGeminiModel(e, isAdmin)
+		if err != nil {
+			return err
+		}
 		selectedRestaurantName := strings.TrimSpace(e.Request.FormValue("restaurantName"))
 		selectedRestaurantID := strings.TrimSpace(e.Request.FormValue("restaurantId"))
 
@@ -464,7 +493,9 @@ If the picture is a menu, can you help me generate a CSV table of menu item and 
 menu_item,price
 Example menu name,18.99
 		Only output the CSV table or the JSON format, no need to explain what's happening`
-		generationOptions := geminiGenerationOptions{}
+		generationOptions := geminiGenerationOptions{
+			Model: selectedModel,
+		}
 		if selectedRestaurantName != "" {
 			generationOptions.ResponseMIMEType = "application/json"
 			selectedRestaurantNameJSON, _ := json.Marshal(selectedRestaurantName)
@@ -829,6 +860,10 @@ Rules:
 		if err := e.Request.ParseMultipartForm(10 << 20); err != nil {
 			return apis.NewBadRequestError("failed to parse multipart form", err)
 		}
+		selectedModel, err := resolveAdminDebugGeminiModel(e, isAdmin)
+		if err != nil {
+			return err
+		}
 
 		file, header, err := e.Request.FormFile("image")
 		if err != nil {
@@ -885,6 +920,7 @@ Rules:
 		generationResult := generateGeminiContentWithFallbackOptions(ctx, client, prompt, imagePart, geminiGenerationOptions{
 			ResponseMIMEType: "application/json",
 			MaxOutputTokens:  4096,
+			Model:            selectedModel,
 		})
 		resp := generationResult.Response
 		err = generationResult.Err
@@ -1204,6 +1240,10 @@ Rules:
 		if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
 			return apis.NewBadRequestError("failed to parse multipart form", err)
 		}
+		selectedModel, err := resolveAdminDebugGeminiModel(e, isAdmin)
+		if err != nil {
+			return err
+		}
 
 		// Get the uploaded file
 		file, header, err := e.Request.FormFile("image")
@@ -1331,6 +1371,7 @@ Analyze the image now and respond with JSON only.`
 		generationResult := generateGeminiContentWithFallbackOptions(ctx, client, prompt, imagePart, geminiGenerationOptions{
 			ResponseMIMEType: "application/json",
 			MaxOutputTokens:  8192,
+			Model:            selectedModel,
 		})
 		resp := generationResult.Response
 		err = generationResult.Err

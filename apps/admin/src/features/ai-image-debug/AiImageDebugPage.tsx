@@ -7,6 +7,7 @@ import {
   runReceiptScanDebug,
   runStorefrontDebug,
   type AiImageDebugApiError,
+  type AiImageDebugModel,
   type AiImageDebugMode,
   type AiImageDebugRunMetadata,
   type MenuScanDebugResponse,
@@ -67,6 +68,14 @@ const modeOptions: Array<{ label: string; value: AiImageDebugMode }> = [
   { label: 'Scan Receipt', value: 'receipt-scan' },
 ];
 
+const defaultDebugModel: AiImageDebugModel = 'gemini-2.5-flash';
+
+const modelOptions: Array<{ label: string; value: AiImageDebugModel }> = [
+  { label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+  { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite' },
+  { label: 'Gemini 3 Flash', value: 'gemini-3-flash-preview' },
+];
+
 const receiptLogStatusOptions: Array<{ label: string; value: ReceiptScanDebugLogStatus | 'all' }> =
   [
     { label: 'All statuses', value: 'all' },
@@ -112,6 +121,10 @@ function MetadataGrid({ metadata }: { metadata: AiImageDebugRunMetadata }) {
       <div className="ai-debug-metadata-item">
         <span className="inventory-secondary-text">Endpoint</span>
         <strong className="mono-text">{metadata.endpoint}</strong>
+      </div>
+      <div className="ai-debug-metadata-item">
+        <span className="inventory-secondary-text">Model</span>
+        <strong className="mono-text">{metadata.model}</strong>
       </div>
       <div className="ai-debug-metadata-item">
         <span className="inventory-secondary-text">HTTP status</span>
@@ -649,6 +662,7 @@ export function AiImageDebugPage() {
   const [file, setFile] = useState<File | null>(null);
   const [restaurantId, setRestaurantId] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
+  const [model, setModel] = useState<AiImageDebugModel>(defaultDebugModel);
   const [fileError, setFileError] = useState<string | null>(null);
   const [result, setResult] = useState<DebugResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -688,6 +702,7 @@ export function AiImageDebugPage() {
     setResult(null);
     setRestaurantId('');
     setRestaurantName('');
+    setModel(defaultDebugModel);
   };
 
   const runDebug = async () => {
@@ -704,12 +719,13 @@ export function AiImageDebugPage() {
     try {
       const response =
         mode === 'storefront'
-          ? await runStorefrontDebug({ file, requestId })
+          ? await runStorefrontDebug({ file, requestId, model })
           : mode === 'receipt-scan'
-            ? await runReceiptScanDebug({ file, requestId })
+            ? await runReceiptScanDebug({ file, requestId, model })
             : await runMenuScanDebug({
                 file,
                 requestId,
+                model,
                 restaurantId,
                 restaurantName,
               });
@@ -717,6 +733,7 @@ export function AiImageDebugPage() {
       const metadata: AiImageDebugRunMetadata = {
         requestId,
         endpoint,
+        model,
         status: 200,
         durationMs: Math.round(performance.now() - startedAt),
         fileName: file.name,
@@ -758,6 +775,7 @@ export function AiImageDebugPage() {
       const metadata: AiImageDebugRunMetadata = {
         requestId,
         endpoint,
+        model,
         status: apiError?.status ?? null,
         durationMs: Math.round(performance.now() - startedAt),
         fileName: file.name,
@@ -840,6 +858,23 @@ export function AiImageDebugPage() {
                   type="file"
                 />
                 {fileError ? <span className="ai-debug-inline-error">{fileError}</span> : null}
+              </div>
+
+              <div className="field">
+                <label htmlFor="ai-image-debug-model">Model</label>
+                <select
+                  className="input"
+                  disabled={isRunning}
+                  id="ai-image-debug-model"
+                  onChange={(event) => setModel(event.target.value as AiImageDebugModel)}
+                  value={model}
+                >
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {mode === 'menu-scan' ? (

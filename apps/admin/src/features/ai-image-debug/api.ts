@@ -2,6 +2,10 @@ import { pb } from '@/lib/pocketbase';
 import type { AdminUser } from '@/features/auth/types';
 
 export type AiImageDebugMode = 'storefront' | 'menu-scan' | 'receipt-scan';
+export type AiImageDebugModel =
+  | 'gemini-2.5-flash'
+  | 'gemini-3.1-flash-lite'
+  | 'gemini-3-flash-preview';
 export type ReceiptScanDebugLogStatus =
   | 'success'
   | 'failed'
@@ -13,6 +17,7 @@ export type ReceiptScanDebugLogStatus =
 export interface AiImageDebugRunMetadata {
   requestId: string;
   endpoint: '/api/find-restaurant-name' | '/api/parse-menu' | '/api/parse-receipt';
+  model: AiImageDebugModel;
   status: number | null;
   durationMs: number;
   fileName: string;
@@ -109,6 +114,7 @@ export interface AiImageDebugApiError extends Error {
 interface StorefrontDebugInput {
   file: File;
   requestId: string;
+  model: AiImageDebugModel;
 }
 
 interface MenuScanDebugInput extends StorefrontDebugInput {
@@ -120,6 +126,10 @@ function buildImageFormData(file: File) {
   const formData = new FormData();
   formData.append('image', file, file.name);
   return formData;
+}
+
+function appendDebugModel(formData: FormData, model: AiImageDebugModel) {
+  formData.append('model', model);
 }
 
 function readErrorStatus(error: unknown) {
@@ -216,6 +226,7 @@ function toAiImageDebugApiError(error: unknown, fallbackMessage: string): AiImag
 
 export async function runStorefrontDebug(input: StorefrontDebugInput) {
   const formData = buildImageFormData(input.file);
+  appendDebugModel(formData, input.model);
 
   try {
     return await pb.send<StorefrontDebugResponse>('/api/find-restaurant-name', {
@@ -232,6 +243,7 @@ export async function runStorefrontDebug(input: StorefrontDebugInput) {
 
 export async function runMenuScanDebug(input: MenuScanDebugInput) {
   const formData = buildImageFormData(input.file);
+  appendDebugModel(formData, input.model);
 
   if (input.restaurantId?.trim()) {
     formData.append('restaurantId', input.restaurantId.trim());
@@ -255,6 +267,7 @@ export async function runMenuScanDebug(input: MenuScanDebugInput) {
 
 export async function runReceiptScanDebug(input: StorefrontDebugInput) {
   const formData = buildImageFormData(input.file);
+  appendDebugModel(formData, input.model);
 
   try {
     return await pb.send<ReceiptScanDebugResponse>('/api/parse-receipt', {
