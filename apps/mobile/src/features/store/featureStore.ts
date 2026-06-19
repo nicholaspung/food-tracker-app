@@ -327,9 +327,8 @@ export interface RestaurantListDetailRecord {
   creatorGuideUsageProof?: RestaurantListCreatorGuideUsageProofRecord;
 }
 
-export interface RestaurantListCandidateRestaurantsResult {
+export interface RestaurantListCandidateRestaurantsResult extends PaginatedResult<RestaurantListVisitedRestaurantCandidate> {
   list: RestaurantListRecord | null;
-  items: RestaurantListVisitedRestaurantCandidate[];
 }
 
 export interface PaginatedResult<T> {
@@ -666,7 +665,6 @@ export {
   getOrCreateRestaurantListShareLink,
   getRestaurantListCandidateRestaurants,
   getSharedRestaurantList,
-  listRestaurantListCandidateFoodItemsPhotos,
   listRestaurantListCandidateFoodItemPhotos,
   getRestaurantListDetail,
   getRestaurantListById,

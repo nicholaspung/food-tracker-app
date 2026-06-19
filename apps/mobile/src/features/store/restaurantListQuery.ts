@@ -43,6 +43,8 @@ export const restaurantListQueryKeys = {
     ['feature', 'restaurantListCandidateRestaurants', listId] as const,
   candidateRestaurants: (listId: string, searchQuery: string) =>
     ['feature', 'restaurantListCandidateRestaurants', listId, searchQuery] as const,
+  candidateRestaurantPages: (listId: string, searchQuery: string) =>
+    ['feature', 'restaurantListCandidateRestaurants', listId, searchQuery, 'pages'] as const,
   candidateFoodItemPhotosRoot: ['feature', 'restaurantListCandidateFoodItemPhotos'] as const,
   candidateFoodItemPhotos: (foodItemId: string) =>
     ['feature', 'restaurantListCandidateFoodItemPhotos', foodItemId] as const,

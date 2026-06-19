@@ -66,6 +66,13 @@ describe('restaurantListQuery', () => {
       'paginatedInfinite',
       'pizza',
     ]);
+    expect(restaurantListQueryKeys.candidateRestaurantPages('list_1', 'ramen')).toEqual([
+      'feature',
+      'restaurantListCandidateRestaurants',
+      'list_1',
+      'ramen',
+      'pages',
+    ]);
   });
 
   it('normalizes batched candidate food item photo keys deterministically', () => {

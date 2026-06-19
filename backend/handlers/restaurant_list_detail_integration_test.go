@@ -1264,6 +1264,158 @@ func TestRestaurantListCandidateRestaurantsEndpointSearchesRestaurantAndFoodItem
 	}
 }
 
+func TestRestaurantListCandidateRestaurantsEndpointPaginatesAndClampsPageSize(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	newerRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Newer Match",
+		"location":   "San Jose, CA",
+		"visibility": "public",
+	})
+	olderRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Older Match",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Place",
+		"location":   "Berkeley, CA",
+		"visibility": "public",
+	})
+
+	newerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": newerRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-08 18:30:00.000Z",
+		"visibility": "private",
+	})
+	olderVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": olderRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "private",
+	})
+	otherVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "private",
+	})
+
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  newerVisit.Id,
+		"user":   user.Id,
+		"name":   "Shoyu Ramen",
+		"notes":  "special broth",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  olderVisit.Id,
+		"user":   user.Id,
+		"name":   "Tonkotsu",
+		"notes":  "special broth",
+		"rating": 4,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  otherVisit.Id,
+		"user":   user.Id,
+		"name":   "Burger",
+		"rating": 3,
+	})
+
+	firstPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants?search=special&page=1&pageSize=1", list.Id),
+		token,
+		"",
+	)
+	if firstPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected first page 200 OK, got %d: %s", firstPageResponse.Code, firstPageResponse.Body.String())
+	}
+
+	var firstPagePayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(firstPageResponse.Body.Bytes(), &firstPagePayload); err != nil {
+		t.Fatalf("failed to parse first page response JSON: %v; body=%s", err, firstPageResponse.Body.String())
+	}
+	if firstPagePayload.Page != 1 || firstPagePayload.PageSize != 1 || firstPagePayload.TotalItems != 2 || firstPagePayload.TotalPages != 2 || !firstPagePayload.HasNextPage {
+		t.Fatalf("expected first page metadata, got %#v", firstPagePayload)
+	}
+	if len(firstPagePayload.Items) != 1 || firstPagePayload.Items[0].ID != newerRestaurant.Id {
+		t.Fatalf("expected newer matching restaurant on first page, got %#v", firstPagePayload.Items)
+	}
+
+	secondPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants?search=special&page=2&pageSize=1", list.Id),
+		token,
+		"",
+	)
+	if secondPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected second page 200 OK, got %d: %s", secondPageResponse.Code, secondPageResponse.Body.String())
+	}
+
+	var secondPagePayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(secondPageResponse.Body.Bytes(), &secondPagePayload); err != nil {
+		t.Fatalf("failed to parse second page response JSON: %v; body=%s", err, secondPageResponse.Body.String())
+	}
+	if secondPagePayload.Page != 2 || secondPagePayload.PageSize != 1 || secondPagePayload.TotalItems != 2 || secondPagePayload.TotalPages != 2 || secondPagePayload.HasNextPage {
+		t.Fatalf("expected second page metadata, got %#v", secondPagePayload)
+	}
+	if len(secondPagePayload.Items) != 1 || secondPagePayload.Items[0].ID != olderRestaurant.Id {
+		t.Fatalf("expected older matching restaurant on second page, got %#v", secondPagePayload.Items)
+	}
+
+	clampedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants?pageSize=999", list.Id),
+		token,
+		"",
+	)
+	if clampedResponse.Code != http.StatusOK {
+		t.Fatalf("expected clamped page 200 OK, got %d: %s", clampedResponse.Code, clampedResponse.Body.String())
+	}
+
+	var clampedPayload struct {
+		PageSize int `json:"pageSize"`
+	}
+	if err := json.Unmarshal(clampedResponse.Body.Bytes(), &clampedPayload); err != nil {
+		t.Fatalf("failed to parse clamped response JSON: %v; body=%s", err, clampedResponse.Body.String())
+	}
+	if clampedPayload.PageSize != 50 {
+		t.Fatalf("expected pageSize to clamp to 50, got %#v", clampedPayload)
+	}
+}
+
 func TestRestaurantListCandidateRestaurantsEndpointRequiresListOwnership(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	owner, _ := createAuthUser(t, server.app, false, false)

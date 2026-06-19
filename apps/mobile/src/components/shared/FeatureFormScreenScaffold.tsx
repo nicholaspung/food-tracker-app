@@ -23,6 +23,7 @@ export interface FeatureFormScreenScaffoldProps {
   keyboardAware?: boolean;
   scrollViewRef?: RefObject<KeyboardAwareScrollViewRef | null>;
   scrollViewProps?: Omit<ScrollViewProps, 'ref' | 'contentContainerStyle' | 'style'>;
+  bodyScrollable?: boolean;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
   primaryAction?: StickyActionFooterAction;
@@ -55,6 +56,12 @@ const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
   },
+  bodyStaticContent: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
 }));
 
 /**
@@ -74,6 +81,7 @@ export function FeatureFormScreenScaffold({
   keyboardAware = true,
   scrollViewRef,
   scrollViewProps,
+  bodyScrollable = true,
   bodyStyle,
   children,
   primaryAction,
@@ -110,25 +118,39 @@ export function FeatureFormScreenScaffold({
       )}
       {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       <View style={styles.bodyContainer}>
-        <KeyboardAwareScrollView
-          automaticallyAdjustKeyboardInsets={false}
-          bottomOffset={keyboardAware && primaryAction ? footerHeight + theme.spacing.sm : 0}
-          contentContainerStyle={[
-            styles.bodyContent,
-            {
-              paddingBottom: theme.spacing.sm,
-            },
-            bodyStyle,
-          ]}
-          enabled={keyboardAware}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          keyboardShouldPersistTaps="handled"
-          {...scrollViewProps}
-          ref={resolvedScrollViewRef}
-          style={styles.bodyScroll}
-        >
-          {children}
-        </KeyboardAwareScrollView>
+        {bodyScrollable ? (
+          <KeyboardAwareScrollView
+            automaticallyAdjustKeyboardInsets={false}
+            bottomOffset={keyboardAware && primaryAction ? footerHeight + theme.spacing.sm : 0}
+            contentContainerStyle={[
+              styles.bodyContent,
+              {
+                paddingBottom: theme.spacing.sm,
+              },
+              bodyStyle,
+            ]}
+            enabled={keyboardAware}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            {...scrollViewProps}
+            ref={resolvedScrollViewRef}
+            style={styles.bodyScroll}
+          >
+            {children}
+          </KeyboardAwareScrollView>
+        ) : (
+          <View
+            style={[
+              styles.bodyStaticContent,
+              {
+                paddingBottom: theme.spacing.sm,
+              },
+              bodyStyle,
+            ]}
+          >
+            {children}
+          </View>
+        )}
 
         {primaryAction ? (
           <StickyActionFooter

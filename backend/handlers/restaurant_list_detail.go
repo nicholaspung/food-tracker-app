@@ -209,8 +209,13 @@ type restaurantListVisitedRestaurantsPageResponse struct {
 }
 
 type restaurantListCandidateRestaurantsResponse struct {
-	List  restaurantListDetailListResponse                   `json:"list"`
-	Items []restaurantListVisitedRestaurantCandidateResponse `json:"items"`
+	List        restaurantListDetailListResponse                   `json:"list"`
+	Items       []restaurantListVisitedRestaurantCandidateResponse `json:"items"`
+	Page        int                                                `json:"page"`
+	PageSize    int                                                `json:"pageSize"`
+	TotalItems  int                                                `json:"totalItems"`
+	TotalPages  int                                                `json:"totalPages"`
+	HasNextPage bool                                               `json:"hasNextPage"`
 }
 
 type restaurantListVisitedRestaurantCandidateRow struct {
@@ -352,10 +357,20 @@ func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.Ap
 			return apis.NewBadRequestError("listId is required", nil)
 		}
 
+		page, pageSize, parseErr := parseRestaurantListDetailPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if parseErr != nil {
+			return apis.NewBadRequestError(parseErr.Error(), nil)
+		}
+
 		response, err := getRestaurantListCandidateRestaurantsResponse(
 			app,
 			e.Auth.Id,
 			listID,
+			page,
+			pageSize,
 			e.Request.URL.Query().Get("search"),
 		)
 		if err != nil {
@@ -1468,10 +1483,14 @@ func getRestaurantListCandidateRestaurantsResponse(
 	app core.App,
 	userID string,
 	listID string,
+	page int,
+	pageSize int,
 	search string,
 ) (restaurantListCandidateRestaurantsResponse, error) {
 	response := restaurantListCandidateRestaurantsResponse{
-		Items: []restaurantListVisitedRestaurantCandidateResponse{},
+		Items:    []restaurantListVisitedRestaurantCandidateResponse{},
+		Page:     page,
+		PageSize: pageSize,
 	}
 
 	listRecord, err := app.FindRecordById("restaurant_lists", listID)
@@ -1485,13 +1504,18 @@ func getRestaurantListCandidateRestaurantsResponse(
 		return response, errRestaurantListDetailNotFound
 	}
 
-	pageResponse, err := getRestaurantListVisitedRestaurantsPageResponse(app, userID, listID, 1, 0, search)
+	pageResponse, err := getRestaurantListVisitedRestaurantsPageResponse(app, userID, listID, page, pageSize, search)
 	if err != nil {
 		return response, err
 	}
 
 	response.List = buildRestaurantListDetailListResponse(listRecord)
 	response.Items = pageResponse.Items
+	response.Page = pageResponse.Page
+	response.PageSize = pageResponse.PageSize
+	response.TotalItems = pageResponse.TotalItems
+	response.TotalPages = pageResponse.TotalPages
+	response.HasNextPage = pageResponse.HasNextPage
 
 	return response, nil
 }

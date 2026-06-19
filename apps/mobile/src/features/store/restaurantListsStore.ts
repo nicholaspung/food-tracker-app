@@ -234,6 +234,11 @@ export interface RestaurantListShareLinkRecord {
 interface RestaurantListCandidateRestaurantsApiResponse {
   list: RestaurantListDetailApiListRecord;
   items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 interface RestaurantListVisitedRestaurantCandidateApiRecord {
@@ -305,6 +310,14 @@ function normalizeRestaurantVisibility(value: unknown): 'private' | 'friends' | 
 function normalizeOptionalCount(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return undefined;
+  }
+
+  return Math.floor(value);
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+    return fallback;
   }
 
   return Math.floor(value);
@@ -472,6 +485,11 @@ function createEmptyRestaurantListCandidateRestaurants(): RestaurantListCandidat
   return {
     list: null,
     items: [],
+    page: 1,
+    pageSize: 0,
+    totalItems: 0,
+    totalPages: 0,
+    hasNextPage: false,
   };
 }
 
@@ -614,7 +632,7 @@ function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): Visi
   };
 }
 
-export async function listRestaurantListCandidateFoodItemsPhotos(
+async function listRestaurantListCandidateFoodItemsPhotos(
   foodItemIds: string[],
   options?: ReadRequestOptions,
 ): Promise<Record<string, VisitPhotoRecord[]>> {
@@ -864,7 +882,7 @@ export async function getSharedRestaurantList(
 export async function getRestaurantListCandidateRestaurants(
   listId: string,
   search?: string,
-  options?: ReadRequestOptions,
+  options?: PaginatedReadRequestOptions,
 ): Promise<RestaurantListCandidateRestaurantsResult> {
   if (!pb.authStore.record?.id) {
     return createEmptyRestaurantListCandidateRestaurants();
@@ -879,6 +897,12 @@ export async function getRestaurantListCandidateRestaurants(
   const trimmedSearch = search?.trim();
   if (trimmedSearch) {
     query.set('search', trimmedSearch);
+  }
+  if (options?.page) {
+    query.set('page', String(options.page));
+  }
+  if (options?.pageSize) {
+    query.set('pageSize', String(options.pageSize));
   }
 
   const querySuffix = query.toString() ? `?${query.toString()}` : '';
@@ -895,6 +919,11 @@ export async function getRestaurantListCandidateRestaurants(
     return {
       list: mapRestaurantListDetailApiListRecord(response.list),
       items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord),
+      page: normalizePositiveInteger(response.page, options?.page ?? 1),
+      pageSize: normalizeOptionalCount(response.pageSize) ?? options?.pageSize ?? 0,
+      totalItems: normalizeOptionalCount(response.totalItems) ?? response.items?.length ?? 0,
+      totalPages: normalizeOptionalCount(response.totalPages) ?? 0,
+      hasNextPage: response.hasNextPage === true,
     };
   } catch (error) {
     if (isNotFoundError(error)) {

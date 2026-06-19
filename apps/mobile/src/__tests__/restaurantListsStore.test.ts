@@ -618,4 +618,59 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
 
     expect(mockedListCollectionRecords).not.toHaveBeenCalled();
   });
+
+  it('requests and maps paginated candidate restaurants', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValue({
+      list: {
+        id: 'list-1',
+        name: 'Favorites',
+        visibility: 'friends',
+        userId: 'user-1',
+        createdAt: '2026-05-01T18:00:00.000Z',
+        updatedAt: '2026-05-02T18:00:00.000Z',
+      },
+      items: [
+        {
+          id: 'restaurant-1',
+          name: 'Noodle House',
+          itemCount: 1,
+          foodItems: [],
+        },
+      ],
+      page: 2,
+      pageSize: 20,
+      totalItems: 41,
+      totalPages: 3,
+      hasNextPage: true,
+    });
+
+    await expect(
+      getRestaurantListCandidateRestaurants('list-1', ' ramen ', {
+        page: 2,
+        pageSize: 20,
+        signal: abortController.signal,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          id: 'restaurant-1',
+          name: 'Noodle House',
+        },
+      ],
+      page: 2,
+      pageSize: 20,
+      totalItems: 41,
+      totalPages: 3,
+      hasNextPage: true,
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurant-lists/list-1/candidate-restaurants?search=ramen&page=2&pageSize=20',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
+  });
 });
