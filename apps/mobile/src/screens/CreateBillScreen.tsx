@@ -1,10 +1,11 @@
-import { Ionicons } from '../ui/AppIcon';
+import { Ionicons, type AppIconName } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
   ConfirmDestructiveModal,
+  FeatureActionCard,
   FeatureFormScreenScaffold,
   PageErrorToast,
   SegmentedControl,
@@ -86,6 +87,35 @@ const CUSTOM_BILL_STEP_INDEX: Record<CreateBillWizardStep, number> = {
   items: 3,
   review: 4,
 };
+const SPLIT_MODE_CHOICES: {
+  value: CreateBillSplitMode;
+  title: string;
+  description: string;
+  iconName: AppIconName;
+  iconTone: 'info' | 'success' | 'warning';
+}[] = [
+  {
+    value: 'custom',
+    title: 'Custom Split',
+    description: 'Itemize the bill, then assign individual items, tax, tip, and fees to the right people.',
+    iconName: 'receipt-outline',
+    iconTone: 'info',
+  },
+  {
+    value: 'equal',
+    title: 'Equal Split',
+    description: 'Enter one total and split it evenly across everyone.',
+    iconName: 'people-outline',
+    iconTone: 'success',
+  },
+  {
+    value: 'manual',
+    title: 'Manual Split',
+    description: 'Enter one total, then type exactly how much each person owes.',
+    iconName: 'create-outline',
+    iconTone: 'warning',
+  },
+];
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -107,6 +137,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   splitControl: {
     alignSelf: 'flex-start',
+  },
+  splitModeChoices: {
+    gap: theme.spacing.sm,
   },
   itemSplitTypeRow: {
     gap: theme.spacing.xs,
@@ -656,6 +689,14 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       splitMode,
     ],
   );
+  const handleSplitModeChoicePress = useCallback(
+    (nextSplitMode: CreateBillSplitMode) => {
+      setErrorMessage(null);
+      handleSplitModeChange(nextSplitMode);
+      setCreateStep(nextSplitMode === 'custom' ? 'source' : 'details');
+    },
+    [handleSplitModeChange],
+  );
 
   useEffect(() => {
     if (!isEditMode) {
@@ -1005,7 +1046,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const currentCreateStepIndex = isCustomSplitMode
     ? CUSTOM_BILL_STEP_INDEX[createStep]
     : BASIC_BILL_STEP_INDEX[createStep];
-  const createHeaderProgress = !isEditMode ? (
+  const createHeaderProgress = !isEditMode && createStep !== 'splitType' ? (
     <StepProgressBar compact currentStep={currentCreateStepIndex} steps={createSteps} />
   ) : null;
   const hasUnsavedChanges = useMemo(() => {
@@ -1287,6 +1328,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     void handleCreateBill();
   };
 
+  const isSplitTypeChoiceStep = !isEditMode && createStep === 'splitType';
   const createPrimaryAction = isEditMode
     ? {
         label: primaryActionLabel,
@@ -1295,6 +1337,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         },
         disabled: isCreating || (isEditMode && (!isEditHydrated || !billQuery.data)),
       }
+    : isSplitTypeChoiceStep
+      ? undefined
     : {
         label:
           createStep === 'review'
@@ -1317,20 +1361,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         disabled: isCreating,
         variant: 'secondary' as const,
       }
-    : createStep === 'splitType'
-      ? {
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-              return;
-            }
-            navigation.navigate('Bills');
-          },
-          disabled: isCreating,
-          variant: 'secondary' as const,
-        }
+    : isSplitTypeChoiceStep
+      ? undefined
       : {
           label: 'Back',
           onPress: handleCreateBackPress,
@@ -1363,32 +1395,32 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       testID={isEditMode ? 'edit-bill-screen' : 'create-bill-screen'}
       title={screenTitle}
     >
-      {!isEditMode && createStep === 'splitType' ? (
-        <Card style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons color={theme.colors.text.secondary} name="options-outline" size={16} />
-            <Text style={styles.sectionTitle} variant="titleSm">Split Type</Text>
-          </View>
-          <SegmentedControl
-            getOptionTestID={(value) => `bill-split-mode-${value}`}
-            onChange={(value: CreateBillSplitMode) => {
-              handleSplitModeChange(value);
-            }}
-            options={[
-              { label: 'Equal', value: 'equal' },
-              { label: 'Custom', value: 'custom' },
-              { label: 'Manual', value: 'manual' },
-            ]}
-            value={splitMode}
-          />
-          <Text style={styles.sectionHint} variant="bodySmCompact">
-            {isEqualSplitMode
-              ? 'Use one total bill amount and split it evenly across participants.'
-              : isCustomSplitMode
-                ? 'Use itemized entries with tax, tip, fees, and custom per-item assignment.'
-                : 'Set one total bill amount, then manually assign each participant\'s owed amount.'}
-          </Text>
-        </Card>
+      {isSplitTypeChoiceStep ? (
+        <View style={styles.splitModeChoices}>
+          {SPLIT_MODE_CHOICES.map((choice) => {
+            const iconBackground =
+              choice.iconTone === 'success'
+                ? theme.colors.fill.success
+                : choice.iconTone === 'warning'
+                  ? theme.colors.fill.warning
+                  : theme.colors.fill.info;
+
+            return (
+              <FeatureActionCard
+                description={choice.description}
+                iconBackground={iconBackground}
+                iconColor={theme.colors.text.inverse}
+                iconName={choice.iconName}
+                key={choice.value}
+                onPress={() => {
+                  handleSplitModeChoicePress(choice.value);
+                }}
+                testID={`bill-split-mode-${choice.value}`}
+                title={choice.title}
+              />
+            );
+          })}
+        </View>
       ) : null}
 
       {!isEditMode && createStep === 'source' ? (

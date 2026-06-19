@@ -40,6 +40,9 @@ const mockTheme = {
     fill: {
       brand: 'brand-fill',
       danger: 'danger-fill',
+      info: 'info-fill',
+      success: 'success-fill',
+      warning: 'warning-fill',
     },
     status: {
       infoBg: 'info-background',
@@ -55,6 +58,7 @@ const mockTheme = {
       primary: 'primary-text',
       secondary: 'secondary-text',
       success: 'success-text',
+      warning: 'warning-text',
     },
   },
   radii: {
@@ -118,6 +122,7 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FeatureActionCard: (props: Record<string, unknown>) => mockReact.createElement('FeatureActionCard', props),
   OptionList: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('OptionList', props, children),
@@ -558,9 +563,9 @@ describe('CreateBillScreen', () => {
       (node: any) => node.props.testID === 'bill-friends-picker-trigger',
     );
     if (!pickerTrigger) {
-      const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+      const equalSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-equal');
       await act(async () => {
-        scaffold.props.primaryAction.onPress();
+        equalSplitCard.props.onPress();
       });
       pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
     }
@@ -587,28 +592,18 @@ describe('CreateBillScreen', () => {
   }
 
   async function switchToCustomSplitMode(renderer: TestRenderer) {
-    const splitModeControl = renderer.root.findAllByType('SegmentedControl').find(
-      (node: any) => node.props.value === 'equal',
-    );
-    if (!splitModeControl) {
-      throw new Error('Could not find split mode control.');
-    }
+    const customSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-custom');
 
     await act(async () => {
-      splitModeControl.props.onChange('custom');
+      customSplitCard.props.onPress();
     });
   }
 
   async function switchToManualSplitMode(renderer: TestRenderer) {
-    const splitModeControl = renderer.root.findAllByType('SegmentedControl').find(
-      (node: any) => node.props.value === 'equal',
-    );
-    if (!splitModeControl) {
-      throw new Error('Could not find split mode control.');
-    }
+    const manualSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-manual');
 
     await act(async () => {
-      splitModeControl.props.onChange('manual');
+      manualSplitCard.props.onPress();
     });
   }
 
@@ -616,10 +611,6 @@ describe('CreateBillScreen', () => {
     await switchToCustomSplitMode(renderer);
 
     let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
-    await act(async () => {
-      scaffold.props.primaryAction.onPress();
-    });
-
     const manualItemsButton = findByTestId(renderer, 'Button', 'bill-source-manual-items-button');
     await act(async () => {
       manualItemsButton.props.onPress();
@@ -667,6 +658,39 @@ describe('CreateBillScreen', () => {
     await addTypedParticipant(renderer, 'Alex');
 
     expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe('Alex');
+  });
+
+  it('shows split mode choice cards in custom, equal, manual order', async () => {
+    const renderer = await renderScreen();
+
+    const splitModeCards = renderer.root.findAllByType('FeatureActionCard').filter(
+      (node: any) => typeof node.props.testID === 'string' && node.props.testID.startsWith('bill-split-mode-'),
+    );
+
+    expect(splitModeCards.map((node: any) => node.props.testID)).toEqual([
+      'bill-split-mode-custom',
+      'bill-split-mode-equal',
+      'bill-split-mode-manual',
+    ]);
+    expect(splitModeCards.map((node: any) => node.props.description)).toEqual([
+      'Itemize the bill, then assign individual items, tax, tip, and fees to the right people.',
+      'Enter one total and split it evenly across everyone.',
+      'Enter one total, then type exactly how much each person owes.',
+    ]);
+    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    expect(scaffold.props.headerBottomContent).toBeNull();
+    expect(scaffold.props.primaryAction).toBeUndefined();
+  });
+
+  it('advances to the next step when a split mode card is pressed', async () => {
+    const renderer = await renderScreen();
+    const customSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-custom');
+
+    await act(async () => {
+      customSplitCard.props.onPress();
+    });
+
+    expect(hasExactText(renderer, 'Custom Split Source')).toBe(true);
   });
 
   it('submits a typed participant in the bill payload', async () => {
@@ -791,9 +815,9 @@ describe('CreateBillScreen', () => {
   it('filters non-numeric characters from bill total input', async () => {
     const renderer = await renderScreen();
 
-    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    const equalSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-equal');
     await act(async () => {
-      scaffold.props.primaryAction.onPress();
+      equalSplitCard.props.onPress();
     });
 
     const totalInput = findByTestId(renderer, 'Input', 'bill-total-bill-price-input');

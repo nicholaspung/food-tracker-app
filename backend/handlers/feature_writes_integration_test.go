@@ -2764,6 +2764,77 @@ func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.
 	assertBillSummaryContains(nonFriendToken, "non-friend", 30)
 }
 
+func TestBillUpdateEndpointMakesAddedUserParticipantVisibleInBillSummary(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+	addedParticipant, addedParticipantToken := createAuthUser(t, server.app, false, true)
+
+	bill := seedBillRecord(t, server.app, creator.Id, "Edited Dinner")
+	creatorParticipant := seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, creator.GetString("name"), 1, "paid")
+	customParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Guest", 23, "pending")
+	item := seedBillItemRecord(t, server.app, bill.Id, "Original Split", 24, []string{creatorParticipant.Id, customParticipant.Id}, "simple", nil)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/bills/"+bill.Id,
+		creatorToken,
+		`{
+			"title":"Edited Dinner",
+			"totalAmount":48,
+			"tax":0,
+			"tip":0,
+			"fees":0,
+			"extrasSplitMode":"equal",
+			"participants":[
+				{"id":"`+creatorParticipant.Id+`","name":"Creator","userId":"`+creator.Id+`","amountOwed":1,"paidStatus":"paid"},
+				{"id":"`+customParticipant.Id+`","name":"Guest","amountOwed":23,"paidStatus":"pending"},
+				{"id":"temp_added_participant","name":"Added Friend","userId":"`+addedParticipant.Id+`","amountOwed":24,"paidStatus":"pending"}
+			],
+			"items":[
+				{
+					"id":"`+item.Id+`",
+					"itemName":"Updated Split",
+					"price":48,
+					"assignedToParticipantIds":["`+creatorParticipant.Id+`","`+customParticipant.Id+`","temp_added_participant"],
+					"splitMode":"simple"
+				}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	summaryResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/bills/summary", addedParticipantToken, "")
+	if summaryResponse.Code != http.StatusOK {
+		t.Fatalf("expected added participant summary 200, got %d: %s", summaryResponse.Code, summaryResponse.Body.String())
+	}
+
+	var summaries []struct {
+		ID     string  `json:"id"`
+		YouOwe float64 `json:"youOwe"`
+	}
+	if err := json.Unmarshal(summaryResponse.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("failed to parse added participant summary: %v; body=%s", err, summaryResponse.Body.String())
+	}
+
+	for _, summary := range summaries {
+		if summary.ID == bill.Id {
+			if summary.YouOwe != 24 {
+				t.Fatalf("expected added participant youOwe=24, got %v", summary.YouOwe)
+			}
+			return
+		}
+	}
+
+	t.Fatalf("expected added participant summary to include edited bill %s, got %#v", bill.Id, summaries)
+}
+
 func TestBillUpdateEndpointRequiresCreatorAndRollsBackOnInvalidNestedItem(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	creator, creatorToken := createAuthUser(t, server.app, false, true)

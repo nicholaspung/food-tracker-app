@@ -1760,6 +1760,109 @@ func TestAdminMonthlyFriendsActivityTestEndpointReturnsDiagnosticsWhenNoMatch(t 
 	}
 }
 
+func TestAdminBillOwedNotificationTestEndpointSendsToAddedUsersWithoutBill(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	firstRecipient, _ := createAuthUser(t, server.app, false, false)
+	secondRecipient, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, firstRecipient.Id, "first-device", "ExponentPushToken[first]", true)
+	createNotificationDeviceRecord(t, server.app, secondRecipient.Id, "second-device", "ExponentPushToken[second]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/notifications/bill-owed/test",
+		adminToken,
+		`{"userIds":["`+firstRecipient.Id+`","`+secondRecipient.Id+`"]}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected admin bill notification test to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := parseJSONResponse[map[string]any](t, response.Body.Bytes())
+	billID, ok := payload["billId"].(string)
+	if !ok || !strings.HasPrefix(billID, "admin-test-bill-") {
+		t.Fatalf("expected synthetic bill id, got %#v", payload)
+	}
+	if len(sender.calls) != 2 {
+		t.Fatalf("expected test notification for each added user, got %#v", sender.calls)
+	}
+	for _, call := range sender.calls {
+		if call.payload.Data["notificationType"] != "bill_owed" ||
+			call.payload.Data["route"] != "Bills" ||
+			call.payload.Data["billId"] != billID {
+			t.Fatalf("unexpected bill notification payload: %#v", call.payload)
+		}
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, firstRecipient.Id, "bill_owed", "sent", 1)
+	assertNotificationDeliveryLogWithSignal(t, server.app, secondRecipient.Id, "bill_owed", "sent", 1)
+
+	bills, err := server.app.FindRecordsByFilter("bills", "", "", 1, 0)
+	if err != nil {
+		t.Fatalf("failed to inspect bills: %v", err)
+	}
+	if len(bills) != 0 {
+		t.Fatalf("expected admin notification test not to create a bill, got %d bill record(s)", len(bills))
+	}
+}
+
+func TestAdminTastingInviteNotificationTestEndpointSendsWithoutSession(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, invitee.Id, "invitee-device", "ExponentPushToken[invitee]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/notifications/tasting-invite/test",
+		adminToken,
+		`{"userId":"`+invitee.Id+`"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected admin tasting invite notification test to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := parseJSONResponse[map[string]any](t, response.Body.Bytes())
+	sessionID, ok := payload["sessionId"].(string)
+	if !ok || !strings.HasPrefix(sessionID, "admin-test-session-") {
+		t.Fatalf("expected synthetic session id, got %#v", payload)
+	}
+	if payload["status"] != "sent" || payload["userId"] != invitee.Id {
+		t.Fatalf("unexpected tasting invite test response: %#v", payload)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected one tasting invite test notification, got %#v", sender.calls)
+	}
+	if sender.calls[0].token != "ExponentPushToken[invitee]" ||
+		sender.calls[0].payload.Data["notificationType"] != "tasting_invite" ||
+		sender.calls[0].payload.Data["route"] != "TastingSessions" ||
+		sender.calls[0].payload.Data["sessionId"] != sessionID {
+		t.Fatalf("unexpected tasting invite payload: %#v", sender.calls[0])
+	}
+	assertNotificationDeliveryLogWithSignal(t, server.app, invitee.Id, "tasting_invite", "sent", 1)
+
+	sessions, err := server.app.FindRecordsByFilter("tasting_sessions", "", "", 1, 0)
+	if err != nil {
+		t.Fatalf("failed to inspect tasting sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected admin notification test not to create a tasting session, got %d session record(s)", len(sessions))
+	}
+}
+
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{

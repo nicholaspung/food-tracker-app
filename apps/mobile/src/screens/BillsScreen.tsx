@@ -18,6 +18,10 @@ import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import type { BillListSummary } from '../features/store/featureStore';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { formatCurrency } from '../features/bills/billCalculations';
+import {
+  filterBillSummaries,
+  type BillListFilter,
+} from '../features/bills/billListFilters';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -25,7 +29,6 @@ import { createThemedStyles } from '../theme';
 import { Card, Text } from '../ui';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
-type BillFilter = 'you_owe' | 'you_are_owed' | 'settled';
 
 const BILL_PENDING_OPERATION_NAMES = ['bill.create'] as const;
 
@@ -99,7 +102,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
 
-  const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
+  const [activeFilter, setActiveFilter] = useState<BillListFilter>('active');
   const consumedNotificationRouteKeyRef = useRef<string | null>(null);
   const styles = useStyles();
   const refetchBills = billsQuery.refetch;
@@ -127,25 +130,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
   }, [navigation, route.params?.billId, route.params?.refreshSignal]);
 
   const filteredBills = useMemo(() => {
-    const bills = billsQuery.data ?? [];
-
-    if (activeFilter === 'settled') {
-      return bills.filter((bill) => bill.status === 'settled');
-    }
-
-    if (activeFilter === 'you_owe') {
-      return bills.filter((bill) => {
-        return bill.status !== 'settled' && bill.youOwe > 0;
-      });
-    }
-
-    if (activeFilter === 'you_are_owed') {
-      return bills.filter((bill) => {
-        return bill.status !== 'settled' && bill.youAreOwed > 0;
-      });
-    }
-
-    return bills;
+    return filterBillSummaries(billsQuery.data ?? [], activeFilter);
   }, [activeFilter, billsQuery.data]);
   const activeBillTotal = useMemo(() => {
     return filteredBills.reduce((sum, bill) => {
@@ -262,6 +247,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
             setActiveFilter(nextFilter);
           }}
           options={[
+            { label: 'Active', value: 'active' },
             { label: 'You Owe', value: 'you_owe' },
             { label: "You're Owed", value: 'you_are_owed' },
             { label: 'Settled', value: 'settled' },
@@ -305,7 +291,11 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
         analyticsSource="BillsScreen"
         blockingErrorMessage="Could not load bills."
         emptyDescription={
-          activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
+          activeFilter === 'active'
+            ? 'No active bills right now.'
+            : activeFilter === 'you_owe'
+              ? 'No unpaid bills right now.'
+              : 'No bills found for this filter.'
         }
         emptyTitle="No matching bills"
         hasBlockingError={browseState.hasBlockingError}
