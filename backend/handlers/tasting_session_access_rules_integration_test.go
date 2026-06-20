@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -132,6 +133,159 @@ func TestTastingSessionInviteListRuleRequiresLeader(t *testing.T) {
 		"",
 	)
 	requireListItemCount(t, strangerInvites.Code, strangerInvites.Body.Bytes(), 0)
+}
+
+func TestTastingSessionRawCollectionRulesDenyInviteOnlyUsers(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	pendingInvitee, pendingInviteeToken := createAuthUser(t, server.app, false, false)
+	dismissedInvitee, dismissedInviteeToken := createAuthUser(t, server.app, false, false)
+	revokedInvitee, revokedInviteeToken := createAuthUser(t, server.app, false, false)
+	expiredInvitee, expiredInviteeToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Invite Rule Counter",
+		"location":    "San Francisco, CA",
+		"cuisineType": "Japanese",
+		"createdBy":   leader.Id,
+		"visibility":  "friends",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Invite Rule Bite",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+	activeSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":            "Active Invite Rules",
+		"leader":          leader.Id,
+		"status":          "lobby",
+		"join_expires_at": time.Now().UTC().Add(time.Hour),
+		"invite_code":     "RULE01",
+	})
+	expiredSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":            "Expired Invite Rules",
+		"leader":          leader.Id,
+		"status":          "lobby",
+		"join_expires_at": time.Now().UTC().Add(-time.Hour),
+		"invite_code":     "RULE02",
+	})
+	leaderParticipant := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": activeSession.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	participantRecord := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": activeSession.Id,
+		"user":    participant.Id,
+		"role":    "participant",
+	})
+	restaurantSuggestion := createCollectionRecord(t, server.app, "tasting_session_restaurants", map[string]any{
+		"session":                  activeSession.Id,
+		"restaurant":               restaurant.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	item := createCollectionRecord(t, server.app, "tasting_session_items", map[string]any{
+		"session":                  activeSession.Id,
+		"restaurant_suggestion":    restaurantSuggestion.Id,
+		"menu_item":                menuItem.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
+		"session":               activeSession.Id,
+		"restaurant_suggestion": restaurantSuggestion.Id,
+		"item":                  item.Id,
+		"participant":           participantRecord.Id,
+		"user":                  participant.Id,
+		"rating":                4,
+		"note":                  "Participant note",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      activeSession.Id,
+		"invited_user": pendingInvitee.Id,
+		"status":       "pending",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      activeSession.Id,
+		"invited_user": dismissedInvitee.Id,
+		"status":       "dismissed",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      activeSession.Id,
+		"invited_user": revokedInvitee.Id,
+		"status":       "revoked",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      expiredSession.Id,
+		"invited_user": expiredInvitee.Id,
+		"status":       "pending",
+	})
+
+	previewResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+activeSession.Id,
+		pendingInviteeToken,
+		"",
+	)
+	if previewResponse.Code != http.StatusOK {
+		t.Fatalf("expected pending invitee custom preview to remain available, got %d: %s", previewResponse.Code, previewResponse.Body.String())
+	}
+
+	rawCollectionPaths := []string{
+		"/api/collections/tasting_sessions/records",
+		"/api/collections/tasting_session_participants/records",
+		"/api/collections/tasting_session_invites/records",
+		"/api/collections/tasting_session_restaurants/records",
+		"/api/collections/tasting_session_items/records",
+		"/api/collections/tasting_session_ratings/records",
+	}
+	inviteOnlyTokens := map[string]string{
+		"pending":   pendingInviteeToken,
+		"dismissed": dismissedInviteeToken,
+		"revoked":   revokedInviteeToken,
+		"expired":   expiredInviteeToken,
+	}
+	for inviteStatus, token := range inviteOnlyTokens {
+		for _, path := range rawCollectionPaths {
+			response := performJSONRequest(t, server.mux, http.MethodGet, path, token, "")
+			requireListItemCount(t, response.Code, response.Body.Bytes(), 0)
+		}
+		t.Logf("verified raw tasting collection reads are hidden for %s invite-only user", inviteStatus)
+	}
+
+	expectedParticipantCounts := map[string]int{
+		"/api/collections/tasting_sessions/records":             1,
+		"/api/collections/tasting_session_participants/records": 2,
+		"/api/collections/tasting_session_invites/records":      0,
+		"/api/collections/tasting_session_restaurants/records":  1,
+		"/api/collections/tasting_session_items/records":        1,
+		"/api/collections/tasting_session_ratings/records":      1,
+	}
+	for path, expectedCount := range expectedParticipantCounts {
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, participantToken, "")
+		requireListItemCount(t, response.Code, response.Body.Bytes(), expectedCount)
+	}
+
+	expectedLeaderCounts := map[string]int{
+		"/api/collections/tasting_sessions/records":             2,
+		"/api/collections/tasting_session_participants/records": 2,
+		"/api/collections/tasting_session_invites/records":      4,
+		"/api/collections/tasting_session_restaurants/records":  1,
+		"/api/collections/tasting_session_items/records":        1,
+		"/api/collections/tasting_session_ratings/records":      1,
+	}
+	for path, expectedCount := range expectedLeaderCounts {
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, leaderToken, "")
+		requireListItemCount(t, response.Code, response.Body.Bytes(), expectedCount)
+	}
 }
 
 func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {

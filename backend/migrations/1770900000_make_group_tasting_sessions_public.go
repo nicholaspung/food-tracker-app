@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	tastingSessionPublicReadRule       = "@request.auth.id != '' && (leader = @request.auth.id || tasting_session_participants_via_session.user ?= @request.auth.id || tasting_session_invites_via_session.invited_user ?= @request.auth.id)"
+	tastingSessionPublicReadRule       = "@request.auth.id != '' && (leader = @request.auth.id || tasting_session_participants_via_session.user ?= @request.auth.id)"
 	tastingSessionPublicCreateRule     = "@request.auth.id != '' && leader = @request.auth.id"
-	tastingSessionScopedPublicReadRule = "@request.auth.id != '' && (session.leader = @request.auth.id || session.tasting_session_participants_via_session.user ?= @request.auth.id || session.tasting_session_invites_via_session.invited_user ?= @request.auth.id)"
-	tastingInvitePublicReadRule        = "@request.auth.id != '' && (session.leader = @request.auth.id || invited_user = @request.auth.id)"
+	tastingSessionScopedPublicReadRule = "@request.auth.id != '' && (session.leader = @request.auth.id || session.tasting_session_participants_via_session.user ?= @request.auth.id)"
+	tastingInvitePublicReadRule        = "@request.auth.id != '' && session.leader = @request.auth.id"
 	tastingLeaderScopedPublicReadRule  = "@request.auth.id != '' && session.leader = @request.auth.id"
 )
 
