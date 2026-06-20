@@ -364,7 +364,9 @@ function findByTestId(renderer: TestRenderer, type: string, testID: string) {
 
 function findOptionRowByTitle(renderer: TestRenderer, title: string) {
   const match = renderer.root.findAllByType('OptionListRow').find(
-    (node: any) => node.props.title === title && node.props.rightAccessory,
+    (node: any) =>
+      node.props.title === title &&
+      typeof node.props.rightAccessory?.props?.onPress === 'function',
   );
   if (!match) {
     throw new Error(`Could not find OptionListRow with title "${title}".`);
@@ -393,6 +395,39 @@ function findPressableByText(renderer: TestRenderer, value: string) {
   }
 
   return match;
+}
+
+function findParticipantPickerTabs(renderer: TestRenderer) {
+  const match = renderer.root.findAllByType('SegmentedControl').find((node: any) =>
+    node.props.options?.some((option: { value?: unknown }) => option.value === 'manual'),
+  );
+  if (!match) {
+    throw new Error('Could not find participant picker tabs.');
+  }
+
+  return match;
+}
+
+function hasDescendantByTestId(node: any, testID: string): boolean {
+  if (node.props?.testID === testID) {
+    return true;
+  }
+
+  return node.children.some((child: any) =>
+    typeof child === 'string' || typeof child === 'number'
+      ? false
+      : hasDescendantByTestId(child, testID),
+  );
+}
+
+function findSelectedParticipantRowLabels(renderer: TestRenderer): string[] {
+  return renderer.root
+    .findAllByType('OptionListRow')
+    .filter((node: any) =>
+      typeof node.props.testID === 'string' &&
+      node.props.testID.startsWith('bill-selected-participant-row-'),
+    )
+    .map((node: any) => node.props.title);
 }
 
 function getTextContent(node: any): string {
@@ -574,6 +609,11 @@ describe('CreateBillScreen', () => {
       pickerTrigger.props.onPress();
     });
 
+    const participantPickerTabs = findParticipantPickerTabs(renderer);
+    await act(async () => {
+      participantPickerTabs.props.onChange('manual');
+    });
+
     const customParticipantInput = findByTestId(renderer, 'Input', 'bill-custom-participant-input');
     await act(async () => {
       customParticipantInput.props.onChangeText(name);
@@ -657,7 +697,43 @@ describe('CreateBillScreen', () => {
 
     await addTypedParticipant(renderer, 'Alex');
 
-    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe('Alex');
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe(
+      'Edit participants',
+    );
+    expect(findSelectedParticipantRowLabels(renderer)).toEqual(['Alex']);
+  });
+
+  it('keeps friend search outside the scrollable friend list', async () => {
+    friendsItems = [
+      {
+        createdAt: '2026-04-20T00:00:00.000Z',
+        email: 'alex@example.com',
+        id: 'friendship_user_2',
+        name: 'Friend Alex',
+        status: 'friend',
+        userId: 'user-2',
+      },
+    ];
+    mockedUseInfiniteQuery.mockImplementation(() => buildInfiniteQueryResult(friendsItems));
+    const renderer = await renderScreen();
+
+    const equalSplitCard = findByTestId(renderer, 'FeatureActionCard', 'bill-split-mode-equal');
+    await act(async () => {
+      equalSplitCard.props.onPress();
+    });
+    const pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
+    await act(async () => {
+      pickerTrigger.props.onPress();
+    });
+
+    expect(findByTestId(renderer, 'Input', 'bill-friends-search-input')).toBeTruthy();
+    const friendListScroll = renderer.root
+      .findAllByType('ScrollView')
+      .find((node: any) => hasDescendantByTestId(node, 'bill-friends-option-0'));
+
+    expect(friendListScroll).toBeTruthy();
+    expect(friendListScroll.props.style).toEqual(expect.objectContaining({ height: 240 }));
+    expect(hasDescendantByTestId(friendListScroll, 'bill-friends-search-input')).toBe(false);
   });
 
   it('shows split mode choice cards in custom, equal, manual order', async () => {
@@ -772,8 +848,9 @@ describe('CreateBillScreen', () => {
 
     expect(findByTestId(renderer, 'Input', 'bill-name-input').props.value).toBe('Ramen House');
     expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe(
-      'Friend Alex, Session Jamie',
+      'Edit participants',
     );
+    expect(findSelectedParticipantRowLabels(renderer)).toEqual(['Friend Alex', 'Session Jamie']);
 
     let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
     await act(async () => {
@@ -909,14 +986,29 @@ describe('CreateBillScreen', () => {
     const renderer = await renderScreen();
 
     await addTypedParticipant(renderer, 'Alex');
-    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe('Alex');
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe(
+      'Edit participants',
+    );
+    expect(findSelectedParticipantRowLabels(renderer)).toEqual(['Alex']);
 
     const pickerTrigger = findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger');
     await act(async () => {
       pickerTrigger.props.onPress();
     });
 
+    const participantPickerTabs = findParticipantPickerTabs(renderer);
+    await act(async () => {
+      participantPickerTabs.props.onChange('manual');
+    });
+
     const typedParticipantRow = findOptionRowByTitle(renderer, 'Alex');
+    expect(typedParticipantRow.props.subtitle).toBeUndefined();
+    const typedPeopleScroll = renderer.root
+      .findAllByType('ScrollView')
+      .find((node: any) => hasDescendantByTestId(node, 'bill-custom-participant-row-0'));
+    expect(typedPeopleScroll).toBeTruthy();
+    expect(typedPeopleScroll.props.style).toEqual(expect.objectContaining({ height: 160 }));
+
     await act(async () => {
       typedParticipantRow.props.rightAccessory.props.onPress();
     });
@@ -926,7 +1018,10 @@ describe('CreateBillScreen', () => {
       participantPickerModal.props.primaryAction.onPress();
     });
 
-    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).not.toBe('Alex');
+    expect(findByTestId(renderer, 'OptionListRow', 'bill-friends-picker-trigger').props.title).toBe(
+      'Add friends or type a name',
+    );
+    expect(findSelectedParticipantRowLabels(renderer)).toEqual([]);
   });
 
   it('shows custom bill item disclosure on the left and toggles row accessibility state', async () => {

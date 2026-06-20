@@ -66,9 +66,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.md,
   },
-  filterCard: {
-    padding: theme.spacing.xs,
-  },
   totalCard: {
     gap: theme.spacing.xxs,
   },
@@ -102,7 +99,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
 
-  const [activeFilter, setActiveFilter] = useState<BillListFilter>('active');
+  const [activeFilter, setActiveFilter] = useState<BillListFilter>('you_owe');
   const consumedNotificationRouteKeyRef = useRef<string | null>(null);
   const styles = useStyles();
   const refetchBills = billsQuery.refetch;
@@ -236,25 +233,22 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
 
   const billsListHeader = (
     <View style={styles.listHeader}>
-      <Card style={styles.filterCard}>
-        <SegmentedControl
-          getOptionTestID={(value) => `bills-filter-${value}`}
-          onChange={(nextFilter) => {
-            trackObservabilityEvent('BILLS_FILTER_CHANGED', {
-              source: 'BillsScreen',
-              filter: nextFilter,
-            });
-            setActiveFilter(nextFilter);
-          }}
-          options={[
-            { label: 'Active', value: 'active' },
-            { label: 'You Owe', value: 'you_owe' },
-            { label: "You're Owed", value: 'you_are_owed' },
-            { label: 'Settled', value: 'settled' },
-          ]}
-          value={activeFilter}
-        />
-      </Card>
+      <SegmentedControl
+        getOptionTestID={(value) => `bills-filter-${value}`}
+        onChange={(nextFilter) => {
+          trackObservabilityEvent('BILLS_FILTER_CHANGED', {
+            source: 'BillsScreen',
+            filter: nextFilter,
+          });
+          setActiveFilter(nextFilter);
+        }}
+        options={[
+          { label: 'You Owe', value: 'you_owe' },
+          { label: "You're Owed", value: 'you_are_owed' },
+          { label: 'Settled', value: 'settled' },
+        ]}
+        value={activeFilter}
+      />
 
       {showActiveBillTotal ? (
         <Card style={styles.totalCard} testID={`bills-total-${activeFilter}`}>
@@ -291,11 +285,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
         analyticsSource="BillsScreen"
         blockingErrorMessage="Could not load bills."
         emptyDescription={
-          activeFilter === 'active'
-            ? 'No active bills right now.'
-            : activeFilter === 'you_owe'
-              ? 'No unpaid bills right now.'
-              : 'No bills found for this filter.'
+          activeFilter === 'you_owe' ? 'No unpaid bills right now.' : 'No bills found for this filter.'
         }
         emptyTitle="No matching bills"
         hasBlockingError={browseState.hasBlockingError}

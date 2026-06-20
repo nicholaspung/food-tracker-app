@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "../../ui/AppIcon";
 import { Pressable, ScrollView, View } from "react-native";
 
-import { OptionList, OptionListRow, Skeleton } from "../../components/shared";
+import {
+  OptionList,
+  OptionListRow,
+  SegmentedControl,
+  StatusPill,
+  type SegmentedControlOption,
+  type StatusPillTone,
+  Skeleton,
+} from "../../components/shared";
 import { createEntityId, type FriendRecord } from "../../features";
 import {
   isSyntheticFriendEmail,
@@ -19,6 +27,13 @@ interface BillParticipantPickerSelection {
 }
 
 type BillParticipantPickerMode = "billParticipants" | "friendInvites";
+type BillParticipantPickerTab = "friends" | "manual";
+
+const PARTICIPANT_PICKER_TAB_OPTIONS: readonly SegmentedControlOption<BillParticipantPickerTab>[] =
+  [
+    { label: "Friends", value: "friends" },
+    { label: "Type Name", value: "manual" },
+  ];
 
 const EMPTY_CUSTOM_PARTICIPANTS: DraftCustomParticipant[] = [];
 
@@ -99,10 +114,16 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
   modalListScroll: {
-    maxHeight: 280,
+    height: 240,
+  },
+  modalTabContent: {
+    gap: theme.spacing.sm,
   },
   participantGroupLabel: {
     color: theme.colors.text.secondary,
+  },
+  typedPeopleListScroll: {
+    height: 160,
   },
   removeCustomParticipantButton: {
     alignItems: "center",
@@ -209,6 +230,8 @@ export function BillParticipantPickerSection({
   >(allowCustomParticipants ? customParticipants : []);
   const [draftSelectedFriendIds, setDraftSelectedFriendIds] =
     useState<string[]>(selectedFriendIds);
+  const [activePickerTab, setActivePickerTab] =
+    useState<BillParticipantPickerTab>("friends");
   const effectiveCustomParticipants = useMemo(
     () =>
       allowCustomParticipants ? customParticipants : EMPTY_CUSTOM_PARTICIPANTS,
@@ -225,6 +248,21 @@ export function BillParticipantPickerSection({
     selectedFriendIds.length + effectiveCustomParticipants.length;
   const draftSelectedParticipantsCount =
     draftSelectedFriendIds.length + effectiveDraftCustomParticipants.length;
+  const participantPickerTabOptions = useMemo<
+    readonly SegmentedControlOption<BillParticipantPickerTab>[]
+  >(
+    () => [
+      {
+        ...PARTICIPANT_PICKER_TAB_OPTIONS[0],
+        badgeCount: draftSelectedFriendIds.length,
+      },
+      {
+        ...PARTICIPANT_PICKER_TAB_OPTIONS[1],
+        badgeCount: effectiveDraftCustomParticipants.length,
+      },
+    ],
+    [draftSelectedFriendIds.length, effectiveDraftCustomParticipants.length],
+  );
   const formatSelectedCount =
     selectedCountLabel ??
     ((count: number) =>
@@ -238,6 +276,27 @@ export function BillParticipantPickerSection({
       ),
     [effectiveCustomParticipants, emptySelectionLabel, selectedFriends],
   );
+  const selectedParticipantRows = useMemo(
+    () => [
+      ...selectedFriends.map((friend) => ({
+        id: `friend:${friend.id}`,
+        label: normalizeFriendName(friend),
+        statusLabel: "Friend",
+        statusTone: "info" as StatusPillTone,
+      })),
+      ...effectiveCustomParticipants.map((participant, index) => ({
+        id: participant.id,
+        label: formatCustomParticipantName(participant, index),
+        statusLabel: participant.userId
+          ? "Existing participant"
+          : "Added by name",
+        statusTone: "muted" as StatusPillTone,
+      })),
+    ],
+    [effectiveCustomParticipants, selectedFriends],
+  );
+  const pickerTriggerTitle =
+    selectedParticipantsCount > 0 ? "Edit participants" : selectedParticipantsLabel;
   useEffect(() => {
     if (!isPickerVisible) {
       return;
@@ -248,6 +307,7 @@ export function BillParticipantPickerSection({
       allowCustomParticipants ? customParticipants : [],
     );
     setDraftCustomParticipantName("");
+    setActivePickerTab("friends");
   }, [
     allowCustomParticipants,
     customParticipants,
@@ -333,10 +393,11 @@ export function BillParticipantPickerSection({
               allowCustomParticipants ? customParticipants : [],
             );
             setDraftCustomParticipantName("");
+            setActivePickerTab("friends");
             setIsPickerVisible(true);
           }}
           testID={pickerTriggerTestID}
-          title={selectedParticipantsLabel}
+          title={pickerTriggerTitle}
           titleStyle={
             selectedParticipantsCount === 0
               ? styles.triggerPlaceholder
@@ -344,6 +405,28 @@ export function BillParticipantPickerSection({
           }
         />
       </OptionList>
+
+      {selectedParticipantRows.length > 0 ? (
+        <OptionList>
+          {selectedParticipantRows.map((participant, index) => (
+            <OptionListRow
+              chevron={false}
+              iconColor={theme.colors.text.info}
+              iconName="person-outline"
+              isLast={index === selectedParticipantRows.length - 1}
+              key={participant.id}
+              rightAccessory={
+                <StatusPill
+                  label={participant.statusLabel}
+                  tone={participant.statusTone}
+                />
+              }
+              testID={`bill-selected-participant-row-${index}`}
+              title={participant.label}
+            />
+          ))}
+        </OptionList>
+      ) : null}
 
       {isLoading ? (
         <View style={styles.loadingRow}>
@@ -399,85 +482,60 @@ export function BillParticipantPickerSection({
       >
         <View style={styles.modalBody}>
           {allowCustomParticipants ? (
-            <View style={styles.customParticipantComposer}>
-              <Text
-                style={styles.participantGroupLabel}
-                variant="bodySmCompact"
-              >
-                Type a name
-              </Text>
-              <View style={styles.customParticipantInputRow}>
-                <Input
-                  containerStyle={styles.customParticipantInput}
-                  onChangeText={setDraftCustomParticipantName}
-                  onSubmitEditing={() => {
-                    handleAddDraftCustomParticipant();
-                  }}
-                  placeholder="Alex"
-                  testID="bill-custom-participant-input"
-                  value={draftCustomParticipantName}
-                />
-                <Pressable
-                  accessibilityLabel="Add Person"
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: isAddCustomParticipantDisabled }}
-                  disabled={isAddCustomParticipantDisabled}
-                  onPress={handleAddDraftCustomParticipant}
-                  style={({ pressed }) => [
-                    styles.customParticipantAddButton,
-                    isAddCustomParticipantDisabled
-                      ? styles.customParticipantAddButtonDisabled
-                      : null,
-                    pressed && !isAddCustomParticipantDisabled
-                      ? { opacity: 0.8 }
-                      : null,
-                  ]}
-                  testID="bill-custom-participant-add-button"
+            <SegmentedControl
+              getOptionTestID={(value) => `bill-participant-tab-${value}`}
+              onChange={setActivePickerTab}
+              options={participantPickerTabOptions}
+              value={activePickerTab}
+            />
+          ) : null}
+
+          {activePickerTab === "manual" && allowCustomParticipants ? (
+            <View style={styles.modalTabContent}>
+              <View style={styles.customParticipantComposer}>
+                <Text
+                  style={styles.participantGroupLabel}
+                  variant="bodySmCompact"
                 >
-                  <Ionicons color={theme.colors.text.inverse} name="add" size={22} />
-                </Pressable>
+                  Type a name
+                </Text>
+                <View style={styles.customParticipantInputRow}>
+                  <Input
+                    containerStyle={styles.customParticipantInput}
+                    onChangeText={setDraftCustomParticipantName}
+                    onSubmitEditing={() => {
+                      handleAddDraftCustomParticipant();
+                    }}
+                    placeholder="Alex"
+                    testID="bill-custom-participant-input"
+                    value={draftCustomParticipantName}
+                  />
+                  <Pressable
+                    accessibilityLabel="Add Person"
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: isAddCustomParticipantDisabled }}
+                    disabled={isAddCustomParticipantDisabled}
+                    onPress={handleAddDraftCustomParticipant}
+                    style={({ pressed }) => [
+                      styles.customParticipantAddButton,
+                      isAddCustomParticipantDisabled
+                        ? styles.customParticipantAddButtonDisabled
+                        : null,
+                      pressed && !isAddCustomParticipantDisabled
+                        ? { opacity: 0.8 }
+                        : null,
+                    ]}
+                    testID="bill-custom-participant-add-button"
+                  >
+                    <Ionicons color={theme.colors.text.inverse} name="add" size={22} />
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionHint} variant="bodySmCompact">
+                  Use this for people without an account or outside your friend
+                  list.
+                </Text>
               </View>
-              <Text style={styles.sectionHint} variant="bodySmCompact">
-                Use this for people without an account or outside your friend
-                list.
-              </Text>
-            </View>
-          ) : null}
 
-          {isLoading ? (
-            <View style={styles.loadingRow}>
-              <Skeleton height={20} />
-              <Skeleton height={20} />
-              <Skeleton height={20} />
-            </View>
-          ) : null}
-
-          {!isLoading && hasBlockingFriendsError ? (
-            <>
-              <Text style={styles.sectionHint} variant="bodySmCompact">
-                Could not load your friend list right now.
-              </Text>
-              <Button
-                label="Retry"
-                onPress={onRetry}
-                style={styles.loadMoreButton}
-                variant="secondary"
-              />
-            </>
-          ) : null}
-
-          {!isLoading &&
-          !hasBlockingFriendsError &&
-          normalizedFriendSearchQuery.length === 0 &&
-          totalAcceptedFriends === 0 ? (
-            <Text style={styles.sectionHint} variant="bodySmCompact">
-              {emptyFriendsText}
-            </Text>
-          ) : null}
-
-          {effectiveDraftCustomParticipants.length > 0 ||
-          shouldShowFriendsPickerGroup ? (
-            <>
               {allowCustomParticipants &&
               effectiveDraftCustomParticipants.length > 0 ? (
                 <>
@@ -487,80 +545,111 @@ export function BillParticipantPickerSection({
                   >
                     Typed People
                   </Text>
-                  <OptionList>
-                    {effectiveDraftCustomParticipants.map(
-                      (participant, index) => (
-                        <OptionListRow
-                          isLast={
-                            index ===
-                            effectiveDraftCustomParticipants.length - 1
-                          }
-                          key={participant.id}
-                          rightAccessory={
-                            <Pressable
-                              accessibilityLabel={`Remove ${formatCustomParticipantName(
-                                participant,
-                                index,
-                              )}`}
-                              accessibilityRole="button"
-                              hitSlop={12}
-                              onPress={() => {
-                                handleRemoveDraftCustomParticipant(
-                                  participant.id,
-                                );
-                              }}
-                              style={({ pressed }) => [
-                                styles.removeCustomParticipantButton,
-                                pressed
-                                  ? styles.removeCustomParticipantButtonPressed
-                                  : null,
-                              ]}
-                              testID={`bill-custom-participant-remove-${index}`}
-                            >
-                              <Ionicons
-                                color={theme.colors.text.danger}
-                                name="trash-outline"
-                                size={18}
-                              />
-                            </Pressable>
-                          }
-                          subtitle={
-                            participant.userId
-                              ? "Existing participant outside your friend list"
-                              : "Added by name"
-                          }
-                          title={formatCustomParticipantName(
-                            participant,
-                            index,
-                          )}
-                        />
-                      ),
-                    )}
-                  </OptionList>
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    style={styles.typedPeopleListScroll}
+                  >
+                    <OptionList>
+                      {effectiveDraftCustomParticipants.map(
+                        (participant, index) => (
+                          <OptionListRow
+                            isLast={
+                              index ===
+                              effectiveDraftCustomParticipants.length - 1
+                            }
+                            key={participant.id}
+                            rightAccessory={
+                              <Pressable
+                                accessibilityLabel={`Remove ${formatCustomParticipantName(
+                                  participant,
+                                  index,
+                                )}`}
+                                accessibilityRole="button"
+                                hitSlop={12}
+                                onPress={() => {
+                                  handleRemoveDraftCustomParticipant(
+                                    participant.id,
+                                  );
+                                }}
+                                style={({ pressed }) => [
+                                  styles.removeCustomParticipantButton,
+                                  pressed
+                                    ? styles.removeCustomParticipantButtonPressed
+                                    : null,
+                                ]}
+                                testID={`bill-custom-participant-remove-${index}`}
+                              >
+                                <Ionicons
+                                  color={theme.colors.text.danger}
+                                  name="close"
+                                  size={18}
+                                />
+                              </Pressable>
+                            }
+                            testID={`bill-custom-participant-row-${index}`}
+                            title={formatCustomParticipantName(
+                              participant,
+                              index,
+                            )}
+                          />
+                        ),
+                      )}
+                    </OptionList>
+                  </ScrollView>
                 </>
+              ) : null}
+            </View>
+          ) : null}
+
+          {activePickerTab === "friends" ? (
+            <View style={styles.modalTabContent}>
+              {isLoading ? (
+                <View style={styles.loadingRow}>
+                  <Skeleton height={20} />
+                  <Skeleton height={20} />
+                  <Skeleton height={20} />
+                </View>
+              ) : null}
+
+              {!isLoading && hasBlockingFriendsError ? (
+                <>
+                  <Text style={styles.sectionHint} variant="bodySmCompact">
+                    Could not load your friend list right now.
+                  </Text>
+                  <Button
+                    label="Retry"
+                    onPress={onRetry}
+                    style={styles.loadMoreButton}
+                    variant="secondary"
+                  />
+                </>
+              ) : null}
+
+              {!isLoading &&
+              !hasBlockingFriendsError &&
+              normalizedFriendSearchQuery.length === 0 &&
+              totalAcceptedFriends === 0 ? (
+                <Text style={styles.sectionHint} variant="bodySmCompact">
+                  {emptyFriendsText}
+                </Text>
               ) : null}
 
               {shouldShowFriendsPickerGroup ? (
                 <>
-                  <Text
-                    style={styles.participantGroupLabel}
-                    variant="bodySmCompact"
-                  >
-                    Friends
-                  </Text>
+                  <Input
+                    containerStyle={styles.friendSearchInput}
+                    onChangeText={onChangeFriendSearchQuery}
+                    placeholder="Search friends"
+                    testID="bill-friends-search-input"
+                    value={friendSearchQuery}
+                  />
                   <ScrollView
                     nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
                     style={styles.modalListScroll}
                   >
                     <View style={styles.modalListContent}>
-                      <Input
-                        containerStyle={styles.friendSearchInput}
-                        onChangeText={onChangeFriendSearchQuery}
-                        placeholder="Search friends"
-                        testID="bill-friends-search-input"
-                        value={friendSearchQuery}
-                      />
                       {normalizedFriendSearchQuery.length > 0 &&
                       visibleFriends.length === 0 ? (
                         <Text style={styles.sectionHint} variant="bodySmCompact">
@@ -615,10 +704,13 @@ export function BillParticipantPickerSection({
                   </ScrollView>
                 </>
               ) : null}
-            </>
+            </View>
           ) : null}
 
-          {!isLoading && !hasBlockingFriendsError && showLoadMore ? (
+          {activePickerTab === "friends" &&
+          !isLoading &&
+          !hasBlockingFriendsError &&
+          showLoadMore ? (
             <Button
               label={
                 isFetchingNextPage ? "Loading more..." : "Load more friends"
