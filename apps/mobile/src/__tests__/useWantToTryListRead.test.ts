@@ -60,14 +60,36 @@ describe('useWantToTryListRead', () => {
     }));
   });
 
-  it('forwards AbortSignals through both query functions', async () => {
+  it('loads every default-list detail page with AbortSignals', async () => {
     mockedUseQuery
       .mockReturnValueOnce({ data: { id: 'list_1' } } as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: { items: [] } } as ReturnType<typeof useQuery>);
     mockedGetDefaultRestaurantList.mockResolvedValue({ id: 'list_1' } as Awaited<ReturnType<typeof getDefaultRestaurantList>>);
-    mockedGetRestaurantListDetail.mockResolvedValue(
-      { items: [] } as unknown as Awaited<ReturnType<typeof getRestaurantListDetail>>,
-    );
+    mockedGetRestaurantListDetail
+      .mockResolvedValueOnce({
+        bookmarkState: { savedListIdsByBookmarkLookupId: { lookup_1: ['list_1'] } },
+        hasNextPage: true,
+        items: [{ restaurantId: 'restaurant_1' }],
+        list: { id: 'list_1' },
+        page: 1,
+        pageSize: 50,
+        photoPreviews: [{ id: 'photo_1' }],
+        totalItems: 51,
+        totalPages: 2,
+        viewerLists: [{ id: 'viewer_list_1' }],
+      } as unknown as Awaited<ReturnType<typeof getRestaurantListDetail>>)
+      .mockResolvedValueOnce({
+        bookmarkState: { savedListIdsByBookmarkLookupId: { lookup_2: ['list_1'] } },
+        hasNextPage: false,
+        items: [{ restaurantId: 'restaurant_51' }],
+        list: { id: 'list_1' },
+        page: 2,
+        pageSize: 50,
+        photoPreviews: [{ id: 'photo_2' }],
+        totalItems: 51,
+        totalPages: 2,
+        viewerLists: [],
+      } as unknown as Awaited<ReturnType<typeof getRestaurantListDetail>>);
     const abortController = new AbortController();
 
     useWantToTryListRead();
@@ -79,9 +101,35 @@ describe('useWantToTryListRead', () => {
       queryFn: (input: { signal: AbortSignal }) => Promise<unknown>;
     };
     await defaultListOptions.queryFn({ signal: abortController.signal });
-    await detailOptions.queryFn({ signal: abortController.signal });
+    const detail = await detailOptions.queryFn({ signal: abortController.signal });
 
     expect(mockedGetDefaultRestaurantList).toHaveBeenCalledWith({ signal: abortController.signal });
-    expect(mockedGetRestaurantListDetail).toHaveBeenCalledWith('list_1', { signal: abortController.signal });
+    expect(mockedGetRestaurantListDetail).toHaveBeenNthCalledWith(1, 'list_1', {
+      page: 1,
+      pageSize: 50,
+      signal: abortController.signal,
+    });
+    expect(mockedGetRestaurantListDetail).toHaveBeenNthCalledWith(2, 'list_1', {
+      page: 2,
+      pageSize: 50,
+      signal: abortController.signal,
+    });
+    expect(detail).toMatchObject({
+      bookmarkState: {
+        savedListIdsByBookmarkLookupId: {
+          lookup_1: ['list_1'],
+          lookup_2: ['list_1'],
+        },
+      },
+      items: [
+        { restaurantId: 'restaurant_1' },
+        { restaurantId: 'restaurant_51' },
+      ],
+      photoPreviews: [
+        { id: 'photo_1' },
+        { id: 'photo_2' },
+      ],
+      viewerLists: [{ id: 'viewer_list_1' }],
+    });
   });
 });
