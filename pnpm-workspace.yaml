@@ -8,6 +8,14 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
   unrs-resolver: true
+overrides:
+  "@babel/core@<=7.29.0": 7.29.7
+  brace-expansion@5: 5.0.6
+  js-yaml@<=4.1.1: 4.2.0
+  "shell-quote@>=1.1.0 <=1.8.3": 1.8.4
+  "uuid@<11.1.1": 11.1.1
+  ws@7: 7.5.11
+  ws@8: 8.21.0
 minimumReleaseAgeExclude:
   - "@expo/cli@56.1.15"
   - "@expo/log-box@56.0.13"

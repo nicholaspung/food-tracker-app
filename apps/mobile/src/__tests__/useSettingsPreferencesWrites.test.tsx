@@ -25,6 +25,22 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
 
 jest.mock('../features/store/settingsQuery', () => ({
   invalidateSettingsQueries: jest.fn(),
+  mapUserSettings: jest.fn((record) => ({
+    visitVisibility: record.defaultVisitVisibility === 'private' ? 'private' : 'friends',
+    restaurantVisibility: record.defaultRestaurantVisibility === 'friends' ? 'friends' : 'private',
+    listVisibility: record.defaultListVisibility === 'private' ? 'private' : 'friends',
+    homeFeedMode: record.defaultHomeFeedMode === 'friends' ? 'friends' : 'mine',
+    homeFeedTypeFilter:
+      record.defaultHomeFeedTypeFilter === 'all' || record.defaultHomeFeedTypeFilter === 'food-products'
+        ? record.defaultHomeFeedTypeFilter
+        : 'visits',
+    homeFeedSort: record.defaultHomeFeedSort === 'tracked' ? 'tracked' : 'created',
+    notificationPreferences: {
+      notificationBillsEnabled: record.bill_owed_enabled === true,
+      notificationMonthlyFriendsActivityEnabled: record.monthly_friends_activity_enabled === true,
+      notificationTastingInvitesEnabled: record.tasting_invites_enabled === true,
+    },
+  })),
   settingsQueryKeys: {
     detail: (userId: string) => ['feature', 'settings', userId],
   },
