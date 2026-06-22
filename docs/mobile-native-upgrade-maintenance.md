@@ -48,6 +48,35 @@ Result:
 - Manual `simctl launch` succeeded.
 - Simulator logs showed the JavaScript bundle loading and no native SQLite/offline queue initialization errors.
 
+## Expo Notifications Push Token Cancellation Patch
+
+Decision: keep the `expo-notifications@56.0.18` patch until upstream treats React Native canceled fetches as non-failures in `updateDevicePushTokenAsync`.
+
+Why:
+
+- The active patch is registered in `pnpm-workspace.yaml` and `pnpm-lock.yaml` as `patches/expo-notifications@56.0.18.patch`.
+- The patch only changes `updateDevicePushTokenAsync` to stop retrying when the caller's `AbortSignal` is already aborted or React Native throws `"Fetch request has been canceled"` instead of an `AbortError`.
+- Without the patch, aborting an in-flight server registration update can be logged as a warning and scheduled for retry even though a newer registration request is expected to replace it.
+- As of 2026-06-22, the published `expo-notifications@56.0.18` tarball is still the npm `latest` and `next` version, and its clean `src/utils/updateDevicePushTokenAsync.ts` plus `build/utils/updateDevicePushTokenAsync.js` only check `error?.name === "AbortError"`.
+
+Verification before removal:
+
+```sh
+pnpm view expo-notifications version dist-tags --json
+tmpdir=$(mktemp -d)
+(cd "$tmpdir" && npm pack expo-notifications@<candidate-version> --silent && tar -xzf expo-notifications-*.tgz)
+rg -n "signal\\.aborted|Fetch request has been canceled|AbortError" "$tmpdir/package/src/utils/updateDevicePushTokenAsync.ts" "$tmpdir/package/build/utils/updateDevicePushTokenAsync.js"
+pnpm --filter @food-tracker/mobile test -- notificationInteraction
+pnpm --filter @food-tracker/mobile exec expo install --check
+pnpm mobile:doctor
+```
+
+The `notificationInteraction` test suite covers app-level notification device registration and retry behavior around Expo push-token failures. For a candidate package removal, also verify the native registration path in a development build with notification permission granted by signing in, forcing a push-token registration refresh, then backgrounding/foregrounding or signing out during the request so the stale registration update is aborted. The app should complete the replacement registration path without logging `Fetch request has been canceled` as a warning or retrying the aborted update.
+
+Removal condition:
+
+- Remove `patches/expo-notifications@56.0.18.patch` and the matching `patchedDependencies` entries only after a compatible Expo SDK notification package includes equivalent cancellation handling in both TypeScript source and built JavaScript output, and the verification commands above pass.
+
 ## When Adding A Native Workaround
 
 1. Reproduce the native failure with the smallest command possible.
