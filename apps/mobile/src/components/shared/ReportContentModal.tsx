@@ -172,6 +172,7 @@ export function ReportContentModal({
         <OptionList>
           <OptionListRow
             accessibilityLabel="Select report reason"
+            accessibilityState={{ expanded: isReasonMenuOpen }}
             chevron={isReasonMenuOpen ? 'up' : 'down'}
             onPress={() => {
               setIsReasonMenuOpen((current) => !current);
@@ -194,6 +195,8 @@ export function ReportContentModal({
                   return (
                     <Pressable
                       accessibilityLabel={`Report reason ${option.label}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                       key={option.value}
                       onPress={() => {
                         onChangeReasonCode(option.value);
