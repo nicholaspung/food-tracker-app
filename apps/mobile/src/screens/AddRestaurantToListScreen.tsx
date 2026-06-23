@@ -6,9 +6,10 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
-  CachedRemoteImage,
-  EmptyState,
-  FeatureFormScreenScaffold,
+	  CachedRemoteImage,
+	  EmptyState,
+	  ErrorState,
+	  FeatureFormScreenScaffold,
   PhotoViewerModal,
   RatingPill,
   Skeleton,
@@ -333,10 +334,10 @@ export function AddRestaurantToListScreen({
       ),
     getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.page + 1 : undefined,
   });
-  const loadedCandidateRestaurants = useMemo(() => {
-    return restaurantsQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  }, [restaurantsQuery.data?.pages]);
-  const hasLoadedCandidateRestaurants = loadedCandidateRestaurants.length > 0;
+	  const loadedCandidateRestaurants = useMemo(() => {
+	    return restaurantsQuery.data?.pages.flatMap((page) => page.items);
+	  }, [restaurantsQuery.data?.pages]);
+	  const hasLoadedCandidateRestaurants = (loadedCandidateRestaurants?.length ?? 0) > 0;
   const isInitialCandidateLoading =
     restaurantsQuery.isLoading && !hasLoadedCandidateRestaurants;
   const handleFetchNextCandidatePage = () => {
@@ -820,14 +821,12 @@ export function AddRestaurantToListScreen({
           title="Could not update list"
         />
 
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={
-            hasBlockingVisitedRestaurantsError
-              ? "Could not load your visited restaurants."
-              : restaurantsState.hasRefreshError
-                ? "Could not refresh your visited restaurants. Showing saved data."
-                : null
+	        <PageErrorToast
+	          actionLabel="Retry"
+	          errorMessage={
+	            restaurantsState.hasRefreshError
+	                ? "Could not refresh your visited restaurants. Showing saved data."
+	                : null
           }
           onAction={() => {
             void restaurantsQuery.refetch();
@@ -854,7 +853,18 @@ export function AddRestaurantToListScreen({
               </View>
             ) : null}
 
-            {!isInitialCandidateLoading && !hasBlockingVisitedRestaurantsError ? (
+	            {hasBlockingVisitedRestaurantsError ? (
+	              <ErrorState
+	                description="Could not load your visited restaurants."
+	                onRetry={() => {
+	                  void restaurantsQuery.refetch();
+	                }}
+	                retryLabel="Retry"
+	                title="Restaurants unavailable"
+	              />
+	            ) : null}
+
+	            {!isInitialCandidateLoading && !hasBlockingVisitedRestaurantsError ? (
               <FlatList
                 contentContainerStyle={styles.restaurantListContent}
                 data={visitedRestaurants}
