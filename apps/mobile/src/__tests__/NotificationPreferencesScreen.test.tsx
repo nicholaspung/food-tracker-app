@@ -12,7 +12,7 @@ const mockRegisterCurrentRemoteNotificationDevice = jest.fn();
 const mockRequestRemoteNotificationPermission = jest.fn();
 const mockOpenSettings = jest.fn();
 const mockAppStateListeners: ((state: string) => void)[] = [];
-const mockSettingsData = {
+const buildMockSettingsData = () => ({
   homeFeedMode: 'mine',
   homeFeedSort: 'created',
   homeFeedTypeFilter: 'visits',
@@ -24,7 +24,8 @@ const mockSettingsData = {
   },
   restaurantVisibility: 'private',
   visitVisibility: 'friends',
-};
+});
+let mockSettingsData = buildMockSettingsData();
 
 const mockTheme = {
   colors: {
@@ -163,13 +164,11 @@ describe('NotificationPreferencesScreen', () => {
     mockSetQueryData.mockReset();
     mockGetRemoteNotificationPermissionStatus.mockReset();
     mockRegisterCurrentRemoteNotificationDevice.mockReset();
-    mockRequestRemoteNotificationPermission.mockReset();
-    mockOpenSettings.mockReset();
-    (Linking as unknown as { openSettings: typeof mockOpenSettings }).openSettings = mockOpenSettings;
-    mockAppStateListeners.length = 0;
-    mockSettingsData.notificationPreferences.notificationBillsEnabled = true;
-    mockSettingsData.notificationPreferences.notificationMonthlyFriendsActivityEnabled = true;
-    mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = true;
+	    mockRequestRemoteNotificationPermission.mockReset();
+	    mockOpenSettings.mockReset();
+	    (Linking as unknown as { openSettings: typeof mockOpenSettings }).openSettings = mockOpenSettings;
+	    mockAppStateListeners.length = 0;
+	    mockSettingsData = buildMockSettingsData();
     mockGetRemoteNotificationPermissionStatus.mockResolvedValue('granted');
     mockRegisterCurrentRemoteNotificationDevice.mockResolvedValue(true);
     mockRequestRemoteNotificationPermission.mockResolvedValue('granted');
@@ -427,7 +426,7 @@ describe('NotificationPreferencesScreen', () => {
     expect(renderer.root.findByProps({ testID: 'system-notification-permission-granted' })).toBeTruthy();
   });
 
-  it('allows notification categories to be turned off when OS permission is denied', async () => {
+	  it('allows notification categories to be turned off when OS permission is denied', async () => {
     mockGetRemoteNotificationPermissionStatus.mockResolvedValue('denied');
     let renderer: any = null;
 
@@ -462,9 +461,78 @@ describe('NotificationPreferencesScreen', () => {
         }),
       }),
     );
-  });
+	  });
 
-  it.each(['denied', 'undetermined', 'unavailable', 'failed'] as const)(
+	  it('does not overwrite unsaved notification preferences when settings refetch', async () => {
+	    let renderer: any = null;
+	    const renderScreen = () => (
+	      <NotificationPreferencesScreen
+	        navigation={{ navigate: jest.fn() } as never}
+	        route={{ key: 'NotificationPreferences-route', name: 'NotificationPreferences' } as never}
+	      />
+	    );
+
+	    await act(async () => {
+	      renderer = create(renderScreen());
+	      await Promise.resolve();
+	    });
+
+	    await act(async () => {
+	      renderer.root.findByProps({ testID: 'notification-preferences-bills-toggle' }).props.onValueChange(false);
+	      await Promise.resolve();
+	    });
+
+	    mockSettingsData = buildMockSettingsData();
+
+	    await act(async () => {
+	      renderer.update(renderScreen());
+	      await Promise.resolve();
+	    });
+
+	    expect(renderer.root.findByProps({ testID: 'notification-preferences-bills-toggle' }).props.value).toBe(false);
+	  });
+
+	  it('hydrates refetched notification preferences after reverted edits match the current settings', async () => {
+	    let renderer: any = null;
+	    const renderScreen = () => (
+	      <NotificationPreferencesScreen
+	        navigation={{ navigate: jest.fn() } as never}
+	        route={{ key: 'NotificationPreferences-route', name: 'NotificationPreferences' } as never}
+	      />
+	    );
+
+	    await act(async () => {
+	      renderer = create(renderScreen());
+	      await Promise.resolve();
+	    });
+
+	    await act(async () => {
+	      renderer.root.findByProps({ testID: 'notification-preferences-bills-toggle' }).props.onValueChange(false);
+	      await Promise.resolve();
+	    });
+
+	    await act(async () => {
+	      renderer.root.findByProps({ testID: 'notification-preferences-bills-toggle' }).props.onValueChange(true);
+	      await Promise.resolve();
+	    });
+
+	    mockSettingsData = {
+	      ...buildMockSettingsData(),
+	      notificationPreferences: {
+	        ...buildMockSettingsData().notificationPreferences,
+	        notificationBillsEnabled: false,
+	      },
+	    };
+
+	    await act(async () => {
+	      renderer.update(renderScreen());
+	      await Promise.resolve();
+	    });
+
+	    expect(renderer.root.findByProps({ testID: 'notification-preferences-bills-toggle' }).props.value).toBe(false);
+	  });
+
+	  it.each(['denied', 'undetermined', 'unavailable', 'failed'] as const)(
     'blocks disabled notification categories from being turned on when system permission is %s',
     async (permissionStatus) => {
       mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = false;

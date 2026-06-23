@@ -187,10 +187,11 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const settingsWrites = useSettingsPreferencesWrites();
-  const [notificationTastingInvitesEnabled, setNotificationTastingInvitesEnabled] = useState(true);
-  const [notificationBillsEnabled, setNotificationBillsEnabled] = useState(true);
-  const [notificationMonthlyFriendsActivityEnabled, setNotificationMonthlyFriendsActivityEnabled] = useState(true);
-  const [remoteNotificationPermissionStatus, setRemoteNotificationPermissionStatus] =
+	  const [notificationTastingInvitesEnabled, setNotificationTastingInvitesEnabled] = useState(true);
+	  const [notificationBillsEnabled, setNotificationBillsEnabled] = useState(true);
+	  const [notificationMonthlyFriendsActivityEnabled, setNotificationMonthlyFriendsActivityEnabled] = useState(true);
+	  const [isFormDirty, setIsFormDirty] = useState(false);
+	  const [remoteNotificationPermissionStatus, setRemoteNotificationPermissionStatus] =
     useState<RemoteNotificationPermissionStatus>('undetermined');
   const [isCheckingNotificationPermission, setIsCheckingNotificationPermission] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -234,23 +235,9 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
     };
   }, [refreshNotificationPermissionStatus]);
 
-  useEffect(() => {
-    if (!settingsQuery.data) {
-      return;
-    }
-
-    setNotificationTastingInvitesEnabled(
-      settingsQuery.data.notificationPreferences.notificationTastingInvitesEnabled,
-    );
-    setNotificationBillsEnabled(settingsQuery.data.notificationPreferences.notificationBillsEnabled);
-    setNotificationMonthlyFriendsActivityEnabled(
-      settingsQuery.data.notificationPreferences.notificationMonthlyFriendsActivityEnabled,
-    );
-  }, [settingsQuery.data]);
-
-  const hasPendingChanges = useMemo(() => {
-    if (!settingsQuery.data) {
-      return false;
+	  const hasPendingChanges = useMemo(() => {
+	    if (!settingsQuery.data) {
+	      return false;
     }
 
     return (
@@ -263,9 +250,24 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
   }, [
     notificationBillsEnabled,
     notificationMonthlyFriendsActivityEnabled,
-    notificationTastingInvitesEnabled,
-    settingsQuery.data,
-  ]);
+	    notificationTastingInvitesEnabled,
+	    settingsQuery.data,
+	  ]);
+
+	  useEffect(() => {
+	    if (!settingsQuery.data || (isFormDirty && hasPendingChanges)) {
+	      return;
+	    }
+
+	    setNotificationTastingInvitesEnabled(
+	      settingsQuery.data.notificationPreferences.notificationTastingInvitesEnabled,
+	    );
+	    setNotificationBillsEnabled(settingsQuery.data.notificationPreferences.notificationBillsEnabled);
+	    setNotificationMonthlyFriendsActivityEnabled(
+	      settingsQuery.data.notificationPreferences.notificationMonthlyFriendsActivityEnabled,
+	    );
+	    setIsFormDirty(false);
+	  }, [hasPendingChanges, isFormDirty, settingsQuery.data]);
 
   const canOptInToNotificationPreferences =
     remoteNotificationPermissionStatus === 'granted' && !isCheckingNotificationPermission;
@@ -308,11 +310,12 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
         source: 'NotificationPreferencesScreen',
         queued: saveResult.status === 'queued',
       });
-      setSuccessMessage(
-        saveResult.status === 'queued'
-          ? 'Notification preferences saved offline and will sync when you reconnect.'
-          : 'Notification preferences saved successfully.',
-      );
+	      setSuccessMessage(
+	        saveResult.status === 'queued'
+	          ? 'Notification preferences saved offline and will sync when you reconnect.'
+	          : 'Notification preferences saved successfully.',
+	      );
+	      setIsFormDirty(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update notification preferences.';
       setErrorMessage(message);
@@ -340,13 +343,14 @@ export function NotificationPreferencesScreen({ navigation }: NotificationPrefer
       return;
     }
 
-    trackObservabilityEvent('SETTINGS_NOTIFICATION_PREFERENCE_CHANGED', {
+	    trackObservabilityEvent('SETTINGS_NOTIFICATION_PREFERENCE_CHANGED', {
       source: 'NotificationPreferencesScreen',
       preferenceName,
       nextValue,
-    });
-    setValue(nextValue);
-  };
+	    });
+	    setValue(nextValue);
+	    setIsFormDirty((current) => current || nextValue !== currentValue);
+	  };
 
   const handleSystemNotificationPermissionAction = async () => {
     setErrorMessage(null);

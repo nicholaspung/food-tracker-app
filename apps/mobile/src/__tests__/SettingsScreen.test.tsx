@@ -7,7 +7,7 @@ const mockReact = React;
 const mockSetPreference = jest.fn();
 const mockSaveSettings = jest.fn();
 const mockSetQueryData = jest.fn();
-const mockSettingsData = {
+const buildMockSettingsData = () => ({
   homeFeedMode: 'mine',
   homeFeedSort: 'created',
   homeFeedTypeFilter: 'visits',
@@ -19,7 +19,8 @@ const mockSettingsData = {
   },
   restaurantVisibility: 'private',
   visitVisibility: 'friends',
-};
+});
+let mockSettingsData = buildMockSettingsData();
 
 const mockTheme = {
   colors: {
@@ -196,13 +197,11 @@ jest.mock('../ui', () => ({
 }));
 
 describe('SettingsScreen', () => {
-  beforeEach(() => {
-    mockSetPreference.mockClear();
-    mockSaveSettings.mockClear();
-    mockSetQueryData.mockClear();
-    mockSettingsData.notificationPreferences.notificationBillsEnabled = true;
-    mockSettingsData.notificationPreferences.notificationMonthlyFriendsActivityEnabled = true;
-    mockSettingsData.notificationPreferences.notificationTastingInvitesEnabled = true;
+	  beforeEach(() => {
+	    mockSetPreference.mockClear();
+	    mockSaveSettings.mockClear();
+	    mockSetQueryData.mockClear();
+	    mockSettingsData = buildMockSettingsData();
     mockSaveSettings.mockResolvedValue({
       result: {
         defaultHomeFeedMode: 'friends',
@@ -243,7 +242,7 @@ describe('SettingsScreen', () => {
     expect(mockSaveSettings).not.toHaveBeenCalled();
   });
 
-  it('renders home feed default controls and saves changed defaults', async () => {
+	  it('renders home feed default controls and saves changed defaults', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -295,6 +294,69 @@ describe('SettingsScreen', () => {
       userId: 'user-1',
       visitVisibility: 'friends',
     });
-  });
+	  });
 
-});
+	  it('does not overwrite unsaved defaults when settings refetch', async () => {
+	    let renderer: any = null;
+	    const renderScreen = () => (
+	      <SettingsScreen
+	        navigation={{ navigate: jest.fn() } as never}
+	        route={{ key: 'Settings-route', name: 'Settings' } as never}
+	      />
+	    );
+
+	    await act(async () => {
+	      renderer = create(renderScreen());
+	    });
+
+	    await act(async () => {
+	      renderer.root.findByProps({ testID: 'settings-home-feed-mode-friends' }).props.onPress();
+	    });
+
+	    mockSettingsData = {
+	      ...buildMockSettingsData(),
+	      homeFeedMode: 'mine',
+	      homeFeedSort: 'tracked',
+	    };
+
+	    await act(async () => {
+	      renderer.update(renderScreen());
+	    });
+
+	    const segmentedControls = renderer.root.findAllByType('SegmentedControl');
+	    expect(segmentedControls[1].props.value).toBe('friends');
+	    expect(segmentedControls[3].props.value).toBe('created');
+	  });
+
+	  it('hydrates refetched defaults after reverted edits match the current settings', async () => {
+	    let renderer: any = null;
+	    const renderScreen = () => (
+	      <SettingsScreen
+	        navigation={{ navigate: jest.fn() } as never}
+	        route={{ key: 'Settings-route', name: 'Settings' } as never}
+	      />
+	    );
+
+	    await act(async () => {
+	      renderer = create(renderScreen());
+	    });
+
+	    await act(async () => {
+	      renderer.root.findByProps({ testID: 'settings-home-feed-mode-friends' }).props.onPress();
+	      renderer.root.findByProps({ testID: 'settings-home-feed-mode-mine' }).props.onPress();
+	    });
+
+	    mockSettingsData = {
+	      ...buildMockSettingsData(),
+	      homeFeedMode: 'friends',
+	    };
+
+	    await act(async () => {
+	      renderer.update(renderScreen());
+	    });
+
+	    const segmentedControls = renderer.root.findAllByType('SegmentedControl');
+	    expect(segmentedControls[1].props.value).toBe('friends');
+	  });
+
+	});

@@ -74,29 +74,17 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [listVisibility, setListVisibility] = useState<ListVisibility>('friends');
   const [homeFeedMode, setHomeFeedMode] = useState<HomeFeedDefaultMode>('mine');
   const [homeFeedTypeFilter, setHomeFeedTypeFilter] = useState<HomeFeedDefaultTypeFilter>('visits');
-  const [homeFeedSort, setHomeFeedSort] = useState<HomeFeedDefaultSort>('created');
-  const [isSaving, setIsSaving] = useState(false);
+	  const [homeFeedSort, setHomeFeedSort] = useState<HomeFeedDefaultSort>('created');
+	  const [isFormDirty, setIsFormDirty] = useState(false);
+	  const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const settingsQuery = useSettingsDetailRead(user?.id);
 
-  useEffect(() => {
-    if (!settingsQuery.data) {
-      return;
-    }
-
-    setVisitVisibility(settingsQuery.data.visitVisibility);
-    setRestaurantVisibility(settingsQuery.data.restaurantVisibility);
-    setListVisibility(settingsQuery.data.listVisibility);
-    setHomeFeedMode(settingsQuery.data.homeFeedMode);
-    setHomeFeedTypeFilter(settingsQuery.data.homeFeedTypeFilter);
-    setHomeFeedSort(settingsQuery.data.homeFeedSort);
-  }, [settingsQuery.data]);
-
-  const hasPendingChanges = useMemo(() => {
-    if (!settingsQuery.data) {
-      return false;
+	  const hasPendingChanges = useMemo(() => {
+	    if (!settingsQuery.data) {
+	      return false;
     }
 
     return (
@@ -113,9 +101,23 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     homeFeedTypeFilter,
     listVisibility,
     restaurantVisibility,
-    settingsQuery.data,
-    visitVisibility,
-  ]);
+	    settingsQuery.data,
+	    visitVisibility,
+	  ]);
+
+	  useEffect(() => {
+	    if (!settingsQuery.data || (isFormDirty && hasPendingChanges)) {
+	      return;
+	    }
+
+	    setVisitVisibility(settingsQuery.data.visitVisibility);
+	    setRestaurantVisibility(settingsQuery.data.restaurantVisibility);
+	    setListVisibility(settingsQuery.data.listVisibility);
+	    setHomeFeedMode(settingsQuery.data.homeFeedMode);
+	    setHomeFeedTypeFilter(settingsQuery.data.homeFeedTypeFilter);
+	    setHomeFeedSort(settingsQuery.data.homeFeedSort);
+	    setIsFormDirty(false);
+	  }, [hasPendingChanges, isFormDirty, settingsQuery.data]);
 
   const handleSaveSettings = async () => {
     if (!user?.id) {
@@ -158,7 +160,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         },
       });
 
-      if (saveResult.status === 'queued') {
+	      if (saveResult.status === 'queued') {
         trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
           source: 'SettingsScreen',
           visitVisibility,
@@ -168,10 +170,11 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
           homeFeedTypeFilter,
           homeFeedSort,
           queued: true,
-        });
-        setSuccessMessage('Settings saved offline and will sync when you reconnect.');
-        return;
-      }
+	        });
+	        setIsFormDirty(false);
+	        setSuccessMessage('Settings saved offline and will sync when you reconnect.');
+	        return;
+	      }
 
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
         source: 'SettingsScreen',
@@ -182,8 +185,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         homeFeedTypeFilter,
         homeFeedSort,
         queued: false,
-      });
-      setSuccessMessage('Settings saved successfully.');
+	      });
+	      setIsFormDirty(false);
+	      setSuccessMessage('Settings saved successfully.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update settings.';
       setErrorMessage(message);
@@ -205,8 +209,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: visitVisibility,
       nextValue: value,
     });
-    setVisitVisibility(value);
-  };
+	    setVisitVisibility(value);
+	    setIsFormDirty((current) => current || value !== visitVisibility);
+	  };
 
   const handleSelectRestaurantVisibility = (value: RestaurantVisibility) => {
     setErrorMessage(null);
@@ -216,8 +221,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: restaurantVisibility,
       nextValue: value,
     });
-    setRestaurantVisibility(value);
-  };
+	    setRestaurantVisibility(value);
+	    setIsFormDirty((current) => current || value !== restaurantVisibility);
+	  };
 
   const handleSelectListVisibility = (value: ListVisibility) => {
     setErrorMessage(null);
@@ -227,8 +233,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: listVisibility,
       nextValue: value,
     });
-    setListVisibility(value);
-  };
+	    setListVisibility(value);
+	    setIsFormDirty((current) => current || value !== listVisibility);
+	  };
 
   const handleSelectHomeFeedMode = (value: HomeFeedDefaultMode) => {
     setErrorMessage(null);
@@ -238,8 +245,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: homeFeedMode,
       nextValue: value,
     });
-    setHomeFeedMode(value);
-  };
+	    setHomeFeedMode(value);
+	    setIsFormDirty((current) => current || value !== homeFeedMode);
+	  };
 
   const handleSelectHomeFeedTypeFilter = (value: HomeFeedDefaultTypeFilter) => {
     setErrorMessage(null);
@@ -249,8 +257,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: homeFeedTypeFilter,
       nextValue: value,
     });
-    setHomeFeedTypeFilter(value);
-  };
+	    setHomeFeedTypeFilter(value);
+	    setIsFormDirty((current) => current || value !== homeFeedTypeFilter);
+	  };
 
   const handleSelectHomeFeedSort = (value: HomeFeedDefaultSort) => {
     setErrorMessage(null);
@@ -260,8 +269,9 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       previousValue: homeFeedSort,
       nextValue: value,
     });
-    setHomeFeedSort(value);
-  };
+	    setHomeFeedSort(value);
+	    setIsFormDirty((current) => current || value !== homeFeedSort);
+	  };
 
   const handleSelectAppearance = (value: ThemePreference) => {
     trackObservabilityEvent('SETTINGS_APPEARANCE_CHANGED', {
