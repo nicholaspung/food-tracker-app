@@ -250,6 +250,57 @@ describe('VisitShareCustomizationScreen', () => {
     expect(findTextMatches(shareCanvas(), expectedVisitDate)).toHaveLength(0);
   });
 
+  it('announces selected state for customization chips', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitShareCustomizationScreen
+          navigation={{
+            goBack: jest.fn(),
+          } as never}
+          route={{
+            params: buildRouteParams(),
+          } as never}
+        />,
+      );
+    });
+
+    const modernChip = renderer.root.findByProps({ accessibilityLabel: 'Overlay style Modern' });
+    const rusticChip = renderer.root.findByProps({ accessibilityLabel: 'Overlay style Rustic' });
+    const dishChip = renderer.root.findByProps({ accessibilityLabel: 'Show Dish Name on photos' });
+    const ratingChip = renderer.root.findByProps({ accessibilityLabel: 'Show Rating on photos' });
+    const restaurantChip = renderer.root.findByProps({ accessibilityLabel: 'Show Restaurant in footer' });
+    const dateChip = renderer.root.findByProps({ accessibilityLabel: 'Show Date in footer' });
+
+    expect(modernChip.props.accessibilityRole).toBe('button');
+    expect(modernChip.props.accessibilityState).toEqual({ selected: true });
+    expect(rusticChip.props.accessibilityState).toEqual({ selected: false });
+    expect(dishChip.props.accessibilityState).toEqual({ selected: true });
+    expect(ratingChip.props.accessibilityState).toEqual({ selected: true });
+    expect(restaurantChip.props.accessibilityState).toEqual({ selected: true });
+    expect(dateChip.props.accessibilityState).toEqual({ selected: true });
+
+    await act(async () => {
+      rusticChip.props.onPress();
+      dishChip.props.onPress();
+      restaurantChip.props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Overlay style Modern' }).props.accessibilityState).toEqual({
+      selected: false,
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Overlay style Rustic' }).props.accessibilityState).toEqual({
+      selected: true,
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Show Dish Name on photos' }).props.accessibilityState).toEqual({
+      selected: false,
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Show Restaurant in footer' }).props.accessibilityState).toEqual({
+      selected: false,
+    });
+  });
+
   it('shrinks the footer reservation when footer metadata rows are hidden', async () => {
     let renderer: any = null;
 

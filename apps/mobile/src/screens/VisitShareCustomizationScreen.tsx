@@ -757,11 +757,14 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
           <View style={styles.chipRow}>
             {(['modern', 'rustic', 'minimal', 'neon'] as const).map((option) => {
               const isActive = shareTheme === option;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    setShareTheme(option);
+	              return (
+	                <Pressable
+	                  accessibilityLabel={`Overlay style ${option[0].toUpperCase() + option.slice(1)}`}
+	                  accessibilityRole="button"
+	                  accessibilityState={{ selected: isActive }}
+	                  key={option}
+	                  onPress={() => {
+	                    setShareTheme(option);
                   }}
                   style={[styles.chipButton, isActive && styles.chipButtonActive]}
                 >
@@ -786,11 +789,14 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
             {[
               { key: 'dish' as const, label: 'Dish Name', active: showDishNames, setValue: setShowDishNames },
               { key: 'rating' as const, label: 'Rating', active: showRating, setValue: setShowRating },
-            ].map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => {
-                  option.setValue((previous) => !previous);
+	            ].map((option) => (
+	              <Pressable
+	                accessibilityLabel={`Show ${option.label} on photos`}
+	                accessibilityRole="button"
+	                accessibilityState={{ selected: option.active }}
+	                key={option.key}
+	                onPress={() => {
+	                  option.setValue((previous) => !previous);
                 }}
                 style={[styles.chipButton, option.active && styles.chipButtonActive]}
               >
@@ -812,10 +818,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
             {[
               { key: 'restaurant' as const, label: 'Restaurant', active: showRestaurantName, setValue: setShowRestaurantName },
               { key: 'date' as const, label: 'Date', active: showDate, setValue: setShowDate },
-            ].map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => {
+	            ].map((option) => (
+	              <Pressable
+	                accessibilityLabel={`Show ${option.label} in footer`}
+	                accessibilityRole="button"
+	                accessibilityState={{ selected: option.active }}
+	                key={option.key}
+	                onPress={() => {
                   option.setValue((previous) => !previous);
                 }}
                 style={[styles.chipButton, option.active && styles.chipButtonActive]}
