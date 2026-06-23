@@ -1,7 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
+import type { DraftBillItem, DraftParticipant } from '../features/bills/billDraft';
 import { BillDraftItemEditor } from '../screens/createBill/BillDraftItemEditor';
+import type { BillDraftItemEditorController } from '../screens/createBill/useCreateBillItemCompositionController';
 
 const mockReact = React;
 const theme = {
@@ -94,8 +96,13 @@ jest.mock('../components/shared', () => ({
   SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
 }));
 
-function buildController() {
-  const item = {
+type BuildControllerOverrides = Partial<BillDraftItemEditorController> & {
+  item?: Partial<DraftBillItem>;
+};
+
+function buildController(overrides: BuildControllerOverrides = {}): BillDraftItemEditorController {
+  const { item: itemOverrides, ...controllerOverrides } = overrides;
+  const item: DraftBillItem = {
     advancedSplitType: 'percentage' as const,
     advancedSplits: [],
     assignedParticipantIds: [],
@@ -103,13 +110,13 @@ function buildController() {
     name: 'Fries',
     price: '6.00',
     splitMode: 'simple' as const,
+    ...itemOverrides,
   };
 
   return {
     draftItemName: '',
     draftItemPrice: '',
     expandedItemIds: [],
-    items: [item],
     addItem: jest.fn(),
     buildItemSplitSummary: jest.fn(() => 'No one assigned'),
     getAdvancedItemBalanceFact: jest.fn(() => null),
@@ -125,8 +132,15 @@ function buildController() {
     updateAdvancedSplitType: jest.fn(),
     updateAdvancedSplitValue: jest.fn(),
     updateItemSplitMode: jest.fn(),
+    ...controllerOverrides,
+    items: [item],
   };
 }
+
+const participants: DraftParticipant[] = [
+  { id: 'participant-1', isCurrentUser: true, name: 'Alex' },
+  { id: 'participant-2', isCurrentUser: false, name: 'Blair' },
+];
 
 describe('BillDraftItemEditor', () => {
   it('exposes item remove controls as 44 by 44 buttons', async () => {
@@ -153,5 +167,70 @@ describe('BillDraftItemEditor', () => {
     removeButton.props.onPress();
 
     expect(onRemoveItemRequest).toHaveBeenCalledWith(controller.items[0]);
+  });
+
+  it('announces simple split participant assignment state', async () => {
+    const controller = buildController({
+      expandedItemIds: ['item-1'],
+      isSimpleItemParticipantAssigned: jest.fn((_item, participantId) => participantId === 'participant-1'),
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <BillDraftItemEditor
+          controller={controller}
+          onRemoveItemRequest={jest.fn()}
+          participants={participants}
+        />,
+      );
+    });
+
+    const assignedChip = renderer.root.findByProps({ accessibilityLabel: 'Alex shares this item' });
+    const unassignedChip = renderer.root.findByProps({ accessibilityLabel: 'Blair shares this item' });
+
+    expect(assignedChip.props.accessibilityRole).toBe('button');
+    expect(assignedChip.props.accessibilityState).toEqual({ selected: true });
+    expect(assignedChip.props.accessibilityHint).toBe('Removes Alex from this item split');
+    expect(unassignedChip.props.accessibilityState).toEqual({ selected: false });
+    expect(unassignedChip.props.accessibilityHint).toBe('Adds Blair to this item split');
+  });
+
+  it('announces complex split participant inclusion state', async () => {
+    const controller = buildController({
+      expandedItemIds: ['item-1'],
+      item: {
+        advancedSplits: [
+          {
+            amountLocked: false,
+            amountValue: '',
+            participantId: 'participant-2',
+            percentageLocked: false,
+            percentageValue: '',
+          },
+        ],
+        splitMode: 'advanced',
+      },
+    });
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <BillDraftItemEditor
+          controller={controller}
+          onRemoveItemRequest={jest.fn()}
+          participants={participants}
+        />,
+      );
+    });
+
+    const excludedChip = renderer.root.findByProps({ accessibilityLabel: 'Alex included in complex split' });
+    const includedChip = renderer.root.findByProps({ accessibilityLabel: 'Blair included in complex split' });
+
+    expect(excludedChip.props.accessibilityRole).toBe('button');
+    expect(excludedChip.props.accessibilityState).toEqual({ selected: false });
+    expect(excludedChip.props.accessibilityHint).toBe('Adds Alex to the complex split');
+    expect(includedChip.props.accessibilityState).toEqual({ selected: true });
+    expect(includedChip.props.accessibilityHint).toBe('Removes Blair from the complex split');
   });
 });

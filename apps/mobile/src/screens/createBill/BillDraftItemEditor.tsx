@@ -307,12 +307,19 @@ export function BillDraftItemEditor({
                         <View style={styles.assignmentChipWrap}>
                           {participants.map((participant) => {
                             const isAssigned = isSimpleItemParticipantAssigned(item, participant.id);
-                            return (
-                              <Pressable
-                                accessibilityRole="button"
-                                key={participant.id}
-                                onPress={() => {
-                                  toggleSimpleItemParticipant(item.id, participant.id);
+	                            return (
+	                              <Pressable
+	                                accessibilityHint={
+	                                  isAssigned
+	                                    ? `Removes ${participant.name} from this item split`
+	                                    : `Adds ${participant.name} to this item split`
+	                                }
+	                                accessibilityLabel={`${participant.name} shares this item`}
+	                                accessibilityRole="button"
+	                                accessibilityState={{ selected: isAssigned }}
+	                                key={participant.id}
+	                                onPress={() => {
+	                                  toggleSimpleItemParticipant(item.id, participant.id);
                                 }}
                                 style={[
                                   styles.assignmentChip,
@@ -358,12 +365,19 @@ export function BillDraftItemEditor({
                             const isInSplit = item.advancedSplits.some(
                               (split) => split.participantId === participant.id,
                             );
-                            return (
-                              <Pressable
-                                accessibilityRole="button"
-                                key={participant.id}
-                                onPress={() => {
-                                  toggleAdvancedItemParticipant(item.id, participant.id);
+	                            return (
+	                              <Pressable
+	                                accessibilityHint={
+	                                  isInSplit
+	                                    ? `Removes ${participant.name} from the complex split`
+	                                    : `Adds ${participant.name} to the complex split`
+	                                }
+	                                accessibilityLabel={`${participant.name} included in complex split`}
+	                                accessibilityRole="button"
+	                                accessibilityState={{ selected: isInSplit }}
+	                                key={participant.id}
+	                                onPress={() => {
+	                                  toggleAdvancedItemParticipant(item.id, participant.id);
                                 }}
                                 style={[
                                   styles.assignmentChip,
