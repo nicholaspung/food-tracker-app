@@ -7,9 +7,10 @@ import * as Clipboard from 'expo-clipboard';
 
 import { FriendListItemCard } from '../components/friends';
 import {
-  ConfirmDestructiveModal,
-  EmptyState,
-  FeatureListFooter,
+	  ConfirmDestructiveModal,
+	  EmptyState,
+	  ErrorState,
+	  FeatureListFooter,
   HeaderAccessoryButton,
   ScreenContentSection,
   SegmentedControl,
@@ -774,16 +775,20 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       );
     }
 
-    if (browseState.hasBlockingError) {
-      return (
-        <View style={styles.body}>
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FriendsScreen"
-            description="Could not load friendship data."
-            title="Friends unavailable"
-          />
-        </View>
+	    if (browseState.hasBlockingError) {
+	      return (
+	        <View style={styles.body}>
+	          <ErrorState
+	            analyticsProps={buildBrowseAnalyticsPayload()}
+	            analyticsSource="FriendsScreen"
+	            description="Could not load friendship data."
+	            onRetry={() => {
+	              void friendsQuery.refetch();
+	            }}
+	            retryLabel="Retry"
+	            title="Friends unavailable"
+	          />
+	        </View>
       );
     }
 

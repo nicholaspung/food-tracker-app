@@ -151,6 +151,7 @@ jest.mock('../components/friends', () => ({
 jest.mock('../components/shared', () => ({
   ConfirmDestructiveModal: (props: Record<string, unknown>) => mockReact.createElement('ConfirmDestructiveModal', props),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
+  ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   HeaderAccessoryButton: (props: Record<string, unknown>) => mockReact.createElement('HeaderAccessoryButton', props),
   ScreenContentSection: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
@@ -533,5 +534,38 @@ describe('FriendsScreen', () => {
         (toast: any) => toast.props.errorMessage === 'Could not refresh friendship data. Showing saved data.',
       ),
     ).toBe(true);
+  });
+
+  it('renders retryable error state when friends fail before cached data exists', async () => {
+    const refetch = jest.fn();
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: undefined,
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isError: true,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: false,
+      refetch,
+    } as never);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = renderFriendsScreen();
+    });
+
+    expect(renderer.root.findAllByType('EmptyState')).toHaveLength(0);
+
+    const errorState = renderer.root.findByType('ErrorState');
+
+    expect(errorState.props.title).toBe('Friends unavailable');
+    expect(errorState.props.description).toBe('Could not load friendship data.');
+    expect(errorState.props.retryLabel).toBe('Retry');
+
+    errorState.props.onRetry();
+
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });
