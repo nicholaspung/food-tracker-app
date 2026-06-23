@@ -159,7 +159,7 @@ describe('VisitMenuItemOptionRow', () => {
     ).toHaveLength(0);
   });
 
-  it('renders friend eaten count badges only when friends have history', async () => {
+	  it('renders friend eaten count badges only when friends have history', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -207,9 +207,57 @@ describe('VisitMenuItemOptionRow', () => {
           node.props.children === 'Had 1 time' || node.props.children === 'Had 3 times',
       ),
     ).toHaveLength(0);
-  });
+	  });
 
-  it('expands and collapses long descriptions without triggering the row selection handler', async () => {
+	  it('announces selected state for the row and select button', async () => {
+	    let renderer: any = null;
+
+	    await act(async () => {
+	      renderer = create(
+	        <VisitMenuItemOptionRow
+	          name="Iced Latte"
+	          onPress={jest.fn()}
+	          optionTestID="menu-item-option"
+	          selectButtonTestID="menu-item-select"
+	          selected
+	        />,
+	      );
+	    });
+
+	    const row = renderer.root.findByProps({ testID: 'menu-item-option' });
+	    const selectButton = renderer.root.findByProps({ testID: 'menu-item-select' });
+
+	    expect(row.props.accessibilityLabel).toBe('Iced Latte');
+	    expect(row.props.accessibilityRole).toBe('button');
+	    expect(row.props.accessibilityState).toEqual({ selected: true });
+	    expect(row.props.accessibilityHint).toBe('Deselects Iced Latte');
+	    expect(selectButton.props.accessibilityLabel).toBe('Deselect Iced Latte');
+	    expect(selectButton.props.accessibilityState).toEqual({ selected: true });
+
+	    await act(async () => {
+	      renderer.update(
+	        <VisitMenuItemOptionRow
+	          name="Iced Latte"
+	          onPress={jest.fn()}
+	          optionTestID="menu-item-option"
+	          selectButtonTestID="menu-item-select"
+	          selected={false}
+	        />,
+	      );
+	    });
+
+	    expect(renderer.root.findByProps({ testID: 'menu-item-option' }).props.accessibilityState).toEqual({
+	      selected: false,
+	    });
+	    expect(renderer.root.findByProps({ testID: 'menu-item-option' }).props.accessibilityHint).toBe(
+	      'Selects Iced Latte',
+	    );
+	    expect(renderer.root.findByProps({ testID: 'menu-item-select' }).props.accessibilityLabel).toBe(
+	      'Select Iced Latte',
+	    );
+	  });
+
+	  it('expands and collapses long descriptions without triggering the row selection handler', async () => {
     const onPress = jest.fn();
     let renderer: any = null;
 

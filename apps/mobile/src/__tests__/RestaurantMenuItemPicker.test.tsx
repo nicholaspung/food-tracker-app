@@ -243,38 +243,48 @@ describe("RestaurantMenuItemPicker", () => {
     expect(onToggleCrossLocationItem).toHaveBeenCalledWith(crossLocationItem);
   });
 
-  it("marks selected cross-location suggestions with the selected row style", () => {
+	  it("marks selected cross-location suggestions with the selected row style", () => {
     const renderer = renderPicker({
       crossLocationItems: [crossLocationItem],
       isCrossLocationItemSelected: () => true,
     });
 
-    expect(
-      renderer.root.findByProps({
-        testID: "create-visit-cross-location-item-option-0",
-      }).props.style,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          backgroundColor: "success-background",
+	    const row = renderer.root.findByProps({
+	      testID: "create-visit-cross-location-item-option-0",
+	    });
+
+	    expect(row.props.accessibilityLabel).toBe("Coconut Yogurt");
+	    expect(row.props.accessibilityRole).toBe("button");
+	    expect(row.props.accessibilityState).toEqual({
+	      disabled: false,
+	      selected: true,
+	    });
+	    expect(row.props.style).toEqual(
+	      expect.arrayContaining([
+	        expect.objectContaining({
+	          backgroundColor: "success-background",
           borderColor: "success-border",
         }),
       ]),
     );
   });
 
-  it("disables cross-location rows when cross-location selection is disabled", () => {
+	  it("disables cross-location rows when cross-location selection is disabled", () => {
     const renderer = renderPicker({
       crossLocationDisabled: true,
       crossLocationItems: [crossLocationItem],
     });
 
-    expect(
-      renderer.root.findByProps({
-        testID: "create-visit-cross-location-item-option-0",
-      }).props.disabled,
-    ).toBe(true);
-  });
+	    const row = renderer.root.findByProps({
+	      testID: "create-visit-cross-location-item-option-0",
+	    });
+
+	    expect(row.props.disabled).toBe(true);
+	    expect(row.props.accessibilityState).toEqual({
+	      disabled: true,
+	      selected: false,
+	    });
+	  });
 
   it("keeps related-location shortcuts selectable when history copying is disabled", () => {
     const renderer = renderPicker({

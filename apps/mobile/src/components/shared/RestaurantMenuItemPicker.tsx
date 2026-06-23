@@ -608,10 +608,15 @@ export function RestaurantMenuItemPicker<
                   const sourceRestaurantCount = item.sourceRestaurantCount ?? 0;
                   const orderCount = item.orderCount ?? 0;
 
-                  return (
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={rowDisabled}
+	                  return (
+	                    <Pressable
+	                      accessibilityLabel={item.name}
+	                      accessibilityRole="button"
+	                      accessibilityState={{
+	                        disabled: rowDisabled,
+	                        selected,
+	                      }}
+	                      disabled={rowDisabled}
                       key={item.id}
                       onPress={() => onToggleCrossLocationItem?.(item)}
                       style={[

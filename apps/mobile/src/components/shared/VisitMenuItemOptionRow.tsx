@@ -163,7 +163,15 @@ export function VisitMenuItemOptionRow({
         compactActions ? styles.containerCompact : null,
       ]}
     >
-      <Pressable onPress={onPress} style={styles.mainButton} testID={optionTestID}>
+      <Pressable
+        accessibilityHint={selected ? `Deselects ${name}` : `Selects ${name}`}
+        accessibilityLabel={name}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        onPress={onPress}
+        style={styles.mainButton}
+        testID={optionTestID}
+      >
         <View style={styles.headerRow}>
           <View style={styles.nameWrap}>
             <Text variant="label">{name}</Text>
@@ -220,10 +228,13 @@ export function VisitMenuItemOptionRow({
           compactActions ? styles.actionsColumnCompact : null,
         ]}
       >
-        <Pressable
-          accessibilityRole="button"
-          hitSlop={12}
-          onPress={onPress}
+	        <Pressable
+	          accessibilityHint={selected ? `Deselects ${name}` : `Selects ${name}`}
+	          accessibilityLabel={`${selected ? 'Deselect' : 'Select'} ${name}`}
+	          accessibilityRole="button"
+	          accessibilityState={{ selected }}
+	          hitSlop={12}
+	          onPress={onPress}
           style={styles.selectButton}
           testID={selectButtonTestID}
         >
