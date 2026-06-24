@@ -14,6 +14,7 @@ import {
   type DraftPhotoAsset,
   type RestaurantPhotoForm,
 } from './shared';
+import type { PhotoProcessingDraftSnapshot } from '../../features/photoProcessing/photoProcessingDraft';
 
 export function usePhotoProcessingDraftState() {
   const [photos, setPhotos] = useState<DraftPhotoAsset[]>([]);
@@ -177,6 +178,28 @@ export function usePhotoProcessingDraftState() {
     });
   }, []);
 
+  const applyDraftSnapshot = useCallback(
+    (
+      snapshot: Pick<
+        PhotoProcessingDraftSnapshot,
+        | 'currentPhotoIndex'
+        | 'foodProductForms'
+        | 'locationMetadataHintDismissedByPhotoId'
+        | 'photos'
+        | 'restaurantForms'
+      >,
+    ) => {
+      setPhotos(snapshot.photos);
+      setCurrentPhotoIndex(snapshot.currentPhotoIndex);
+      setRestaurantForms(snapshot.restaurantForms);
+      setFoodProductForms(snapshot.foodProductForms);
+      setLocationMetadataHintDismissedByPhotoId(
+        snapshot.locationMetadataHintDismissedByPhotoId,
+      );
+    },
+    [],
+  );
+
   const replacePhotos = useCallback((nextPhotos: DraftPhotoAsset[]) => {
     setPhotos(nextPhotos);
     setCurrentPhotoIndex(0);
@@ -202,6 +225,7 @@ export function usePhotoProcessingDraftState() {
 
   return {
     appendAssets,
+    applyDraftSnapshot,
     currentPhoto,
     currentPhotoIndex,
     currentFoodProductForm,

@@ -72,7 +72,6 @@ import { formatFriendCount, formatVisitCount } from './createVisit/shared';
 import { PhotoProcessingReviewStep } from './photoProcessing/PhotoProcessingReviewStep';
 import {
   buildDefaultRestaurantForm,
-  buildDefaultRestaurantPhotoGroups,
   collapseRestaurantOptionsToSelection,
   formatCoordinatesForDisplay,
   FREE_MONTHLY_PHOTO_LIMIT,
@@ -86,10 +85,22 @@ import {
   type MenuItemMode,
   type PhotoProcessingScreenProps,
   type ProcessType,
-  type RestaurantPhotoGroup,
   type RestaurantPhotoForm,
   type ScanSource,
 } from './photoProcessing/shared';
+import {
+  areRestaurantPhotoGroupsEqual,
+  buildPhotoProcessingDraftSnapshot,
+  initializeRestaurantPhotoGrouping,
+  movePhotoToRestaurantGroup as movePhotoToRestaurantGroupTransition,
+  reconcileRestaurantPhotoGroupsWithPhotos,
+  removePhotoFromPhotoProcessingDraft,
+  replaceRestaurantGroupPhoto as replaceRestaurantGroupPhotoTransition,
+  resolveSelectedRestaurantPhotoGroupId,
+  splitPhotoToRestaurantGroup as splitPhotoToRestaurantGroupTransition,
+  type PhotoProcessingDraftSnapshot,
+} from '../features/photoProcessing/photoProcessingDraft';
+import type { RestaurantPhotoGroup } from '../features/photoProcessing/photoProcessingTypes';
 import {
   cleanupHydratedNotePhotos,
   hydrateDraftPhotosFromNote,
@@ -415,6 +426,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [processType, setProcessType] = useState<ProcessType | null>(null);
   const {
     appendAssets,
+    applyDraftSnapshot,
     currentPhoto: indexedCurrentPhoto,
     currentPhotoIndex,
     currentFoodProductForm,
@@ -423,7 +435,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     locationMetadataHintDismissedByPhotoId,
     photos,
     foodProductForms,
-    removePhoto,
     replacePhotos,
     resetDraftState,
     resetProcessingForms,
@@ -437,6 +448,27 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [restaurantPhotoGroups, setRestaurantPhotoGroups] = useState<RestaurantPhotoGroup[]>([]);
   const [selectedRestaurantPhotoGroupId, setSelectedRestaurantPhotoGroupId] =
     useState<string | null>(null);
+  const photoProcessingDraftSnapshot: PhotoProcessingDraftSnapshot = useMemo(
+    () =>
+      buildPhotoProcessingDraftSnapshot({
+        currentPhotoIndex,
+        foodProductForms,
+        locationMetadataHintDismissedByPhotoId,
+        photos,
+        restaurantForms,
+        restaurantPhotoGroups,
+        selectedRestaurantPhotoGroupId,
+      }),
+    [
+      currentPhotoIndex,
+      foodProductForms,
+      locationMetadataHintDismissedByPhotoId,
+      photos,
+      restaurantForms,
+      restaurantPhotoGroups,
+      selectedRestaurantPhotoGroupId,
+    ],
+  );
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
     resolveDefaultFoodProductVisibility(),
   );
@@ -600,34 +632,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const isBlockingNotePhotoLoad = isNoteDrivenFlow && noteDetailQuery.isLoading && !noteDetailQuery.data;
   const hasBlockingNotePhotoError = isNoteDrivenFlow && noteDetailQuery.isError && !noteDetailQuery.data;
 
-  const normalizeRestaurantPhotoGroups = useCallback((groups: RestaurantPhotoGroup[]) => {
-    const usedGroupIds = new Set<string>();
-    const usedPhotoIds = new Set<string>();
-
-    return groups
-      .map((group) => {
-        let nextGroupId = group.id;
-        if (usedGroupIds.has(nextGroupId)) {
-          nextGroupId = `${group.id}-${usedGroupIds.size}`;
-        }
-        usedGroupIds.add(nextGroupId);
-
-        const nextPhotoIds = group.photoIds.filter((photoId) => {
-          if (usedPhotoIds.has(photoId)) {
-            return false;
-          }
-          usedPhotoIds.add(photoId);
-          return true;
-        });
-
-        return {
-          id: nextGroupId,
-          photoIds: nextPhotoIds,
-        };
-      })
-      .filter((group) => group.photoIds.length > 0);
-  }, []);
-
   useEffect(() => {
     if (!sourceNoteId) {
       return undefined;
@@ -670,23 +674,35 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       return;
     }
 
-    const photoIds = new Set(photos.map((photo) => photo.id));
-    setRestaurantPhotoGroups((current) =>
-      normalizeRestaurantPhotoGroups(
-        current.map((group) => ({
-          ...group,
-          photoIds: group.photoIds.filter((photoId) => photoIds.has(photoId)),
-        })),
-      ),
-    );
-  }, [normalizeRestaurantPhotoGroups, photos, restaurantPhotoGroups.length]);
+    const reconciled = reconcileRestaurantPhotoGroupsWithPhotos({
+      photos,
+      restaurantPhotoGroups,
+      selectedRestaurantPhotoGroupId,
+    });
+    if (
+      !areRestaurantPhotoGroupsEqual(
+        restaurantPhotoGroups,
+        reconciled.restaurantPhotoGroups,
+      )
+    ) {
+      setRestaurantPhotoGroups(reconciled.restaurantPhotoGroups);
+    }
+    if (selectedRestaurantPhotoGroupId !== reconciled.selectedRestaurantPhotoGroupId) {
+      setSelectedRestaurantPhotoGroupId(reconciled.selectedRestaurantPhotoGroupId);
+    }
+  }, [photos, restaurantPhotoGroups, selectedRestaurantPhotoGroupId]);
 
   useEffect(() => {
     if (
       selectedRestaurantPhotoGroupId &&
       !restaurantPhotoGroups.some((group) => group.id === selectedRestaurantPhotoGroupId)
     ) {
-      setSelectedRestaurantPhotoGroupId(restaurantPhotoGroups[0]?.id ?? null);
+      setSelectedRestaurantPhotoGroupId(
+        resolveSelectedRestaurantPhotoGroupId(
+          restaurantPhotoGroups,
+          selectedRestaurantPhotoGroupId,
+        ),
+      );
     }
   }, [restaurantPhotoGroups, selectedRestaurantPhotoGroupId]);
 
@@ -783,128 +799,78 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   }, [resetRestaurantSelectionFlow]);
 
   const initializeRestaurantPhotoGroups = useCallback(() => {
-    const nextGroups = normalizeRestaurantPhotoGroups(buildDefaultRestaurantPhotoGroups(photos));
-    setRestaurantPhotoGroups(nextGroups);
-    setSelectedRestaurantPhotoGroupId(nextGroups[0]?.id ?? null);
-    setRestaurantForms({});
-    setCurrentPhotoIndex(0);
-  }, [normalizeRestaurantPhotoGroups, photos, setCurrentPhotoIndex, setRestaurantForms]);
+    const nextGrouping = initializeRestaurantPhotoGrouping(photos);
+    setRestaurantPhotoGroups(nextGrouping.restaurantPhotoGroups);
+    setSelectedRestaurantPhotoGroupId(nextGrouping.selectedRestaurantPhotoGroupId);
+    setRestaurantForms(nextGrouping.restaurantForms);
+    setCurrentPhotoIndex(nextGrouping.currentPhotoIndex);
+  }, [photos, setCurrentPhotoIndex, setRestaurantForms]);
 
   const handleRemovePhoto = useCallback(
     (photoId: string) => {
-      removePhoto(photoId);
-      setRestaurantPhotoGroups((current) =>
-        normalizeRestaurantPhotoGroups(
-          current.map((group) => ({
-            ...group,
-            photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
-          })),
-        ),
-      );
+      const nextDraft = removePhotoFromPhotoProcessingDraft({
+        photoId,
+        snapshot: photoProcessingDraftSnapshot,
+      });
+      applyDraftSnapshot(nextDraft);
+      setRestaurantPhotoGroups(nextDraft.restaurantPhotoGroups);
+      setSelectedRestaurantPhotoGroupId(nextDraft.selectedRestaurantPhotoGroupId);
     },
-    [normalizeRestaurantPhotoGroups, removePhoto],
+    [applyDraftSnapshot, photoProcessingDraftSnapshot],
   );
 
   const movePhotoToRestaurantGroup = useCallback(
     (photoId: string, targetGroupId: string) => {
-      const targetGroup = restaurantPhotoGroups.find((group) => group.id === targetGroupId);
-      if (!targetGroup || targetGroup.photoIds.includes(photoId)) {
+      const result = movePhotoToRestaurantGroupTransition({
+        maxPhotosPerRestaurantItem: effectiveMaxPhotosPerRestaurantItem,
+        photoId,
+        restaurantPhotoGroups,
+        targetGroupId,
+      });
+
+      if (result.status === 'limit_reached') {
+        setErrorMessage(result.message);
         return;
       }
 
-      if (
-        effectiveMaxPhotosPerRestaurantItem !== null &&
-        targetGroup.photoIds.length >= effectiveMaxPhotosPerRestaurantItem
-      ) {
-        setErrorMessage(
-          effectiveMaxPhotosPerRestaurantItem === 1
-            ? 'Free users can keep one photo per menu item. Keep this photo as its own item, or replace the selected item photo.'
-            : `You can group up to ${effectiveMaxPhotosPerRestaurantItem} photos per menu item.`,
-        );
-        return;
+      if (result.status === 'changed') {
+        setErrorMessage(null);
+        setRestaurantPhotoGroups(result.restaurantPhotoGroups);
+        setSelectedRestaurantPhotoGroupId(result.selectedRestaurantPhotoGroupId);
       }
-
-      setErrorMessage(null);
-      setRestaurantPhotoGroups((current) =>
-        normalizeRestaurantPhotoGroups(
-          current.map((group) => {
-            const withoutPhoto = group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId);
-            if (group.id !== targetGroupId) {
-              return {
-                ...group,
-                photoIds: withoutPhoto,
-              };
-            }
-
-            return {
-              ...group,
-              photoIds: [...withoutPhoto, photoId],
-            };
-          }),
-        ),
-      );
-      setSelectedRestaurantPhotoGroupId(targetGroupId);
     },
-    [effectiveMaxPhotosPerRestaurantItem, normalizeRestaurantPhotoGroups, restaurantPhotoGroups],
+    [effectiveMaxPhotosPerRestaurantItem, restaurantPhotoGroups],
   );
 
   const replaceRestaurantGroupPhoto = useCallback(
     (photoId: string, targetGroupId: string) => {
-      const targetGroup = restaurantPhotoGroups.find((group) => group.id === targetGroupId);
-      if (!targetGroup || targetGroup.photoIds.includes(photoId)) {
-        return;
-      }
-
-      setErrorMessage(null);
-      const replacedPhotoIds = targetGroup.photoIds;
-      setRestaurantPhotoGroups((current) => {
-        const nextGroups = current
-          .map((group) => ({
-            ...group,
-            photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
-          }))
-          .filter((group) => group.photoIds.length > 0 && group.id !== targetGroupId);
-
-        return normalizeRestaurantPhotoGroups([
-          ...nextGroups,
-          {
-            id: targetGroupId,
-            photoIds: [photoId],
-          },
-          ...replacedPhotoIds
-            .filter((replacedPhotoId) => replacedPhotoId !== photoId)
-            .map((replacedPhotoId) => ({
-              id: `restaurant-photo-group-${replacedPhotoId}`,
-              photoIds: [replacedPhotoId],
-            })),
-        ]);
+      const result = replaceRestaurantGroupPhotoTransition({
+        photoId,
+        restaurantPhotoGroups,
+        targetGroupId,
       });
-      setSelectedRestaurantPhotoGroupId(targetGroupId);
+
+      if (result.status === 'changed') {
+        setErrorMessage(null);
+        setRestaurantPhotoGroups(result.restaurantPhotoGroups);
+        setSelectedRestaurantPhotoGroupId(result.selectedRestaurantPhotoGroupId);
+      }
     },
-    [normalizeRestaurantPhotoGroups, restaurantPhotoGroups],
+    [restaurantPhotoGroups],
   );
 
   const splitPhotoToRestaurantGroup = useCallback((photoId: string) => {
-    const nextGroupId = `restaurant-photo-group-${photoId}`;
-    setErrorMessage(null);
-    setRestaurantPhotoGroups((current) => {
-      if (current.some((group) => group.id === nextGroupId && group.photoIds.includes(photoId))) {
-        return current;
-      }
-
-      return normalizeRestaurantPhotoGroups([
-        ...current.map((group) => ({
-          ...group,
-          photoIds: group.photoIds.filter((groupPhotoId) => groupPhotoId !== photoId),
-        })),
-        {
-          id: nextGroupId,
-          photoIds: [photoId],
-        },
-      ]);
+    const result = splitPhotoToRestaurantGroupTransition({
+      photoId,
+      restaurantPhotoGroups,
     });
-    setSelectedRestaurantPhotoGroupId(nextGroupId);
-  }, [normalizeRestaurantPhotoGroups]);
+
+    if (result.status === 'changed') {
+      setErrorMessage(null);
+      setRestaurantPhotoGroups(result.restaurantPhotoGroups);
+      setSelectedRestaurantPhotoGroupId(result.selectedRestaurantPhotoGroupId);
+    }
+  }, [restaurantPhotoGroups]);
 
   const beginStandardProcessFlow = useCallback(
     (nextProcessType: ProcessType) => {
@@ -1121,10 +1087,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     reviewVisitCards,
   } = usePhotoProcessingReviewData({
     currentUserId,
-    photos,
-    foodProductForms,
-    restaurantPhotoGroups,
-    restaurantForms,
+    draftSnapshot: photoProcessingDraftSnapshot,
     userName: user?.name?.trim() || undefined,
     visitVisibility,
   });
@@ -1192,15 +1155,19 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       onSubmitSucceeded: () => {
         hasCompletedFlowRef.current = true;
       },
-      photos,
+      photos: photoProcessingDraftSnapshot.photos,
       processUnitCount:
-        processType === 'restaurant' ? restaurantPhotoGroups.length : photos.length,
+        processType === 'restaurant'
+          ? photoProcessingDraftSnapshot.restaurantPhotoGroups.length
+          : photoProcessingDraftSnapshot.photos.length,
       processType,
       queryClient,
-      foodProductForms,
+      foodProductForms: photoProcessingDraftSnapshot.foodProductForms,
       restaurantPhotoGroups:
-        processType === 'restaurant' ? restaurantPhotoGroups : undefined,
-      restaurantForms,
+        processType === 'restaurant'
+          ? photoProcessingDraftSnapshot.restaurantPhotoGroups
+          : undefined,
+      restaurantForms: photoProcessingDraftSnapshot.restaurantForms,
       setErrorMessage,
       setStep,
       sourceNoteId,

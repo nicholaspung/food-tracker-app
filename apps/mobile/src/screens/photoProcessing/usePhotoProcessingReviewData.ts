@@ -15,19 +15,35 @@ import {
   type ReviewVisitCardData,
 } from './shared';
 import type { FoodProductFormValues } from '../../lib/foodProductForm';
+import type { PhotoProcessingDraftSnapshot } from '../../features/photoProcessing/photoProcessingDraft';
 
-interface UsePhotoProcessingReviewDataParams {
+interface UsePhotoProcessingReviewDataBaseParams {
   currentUserId: string | null;
-  photos: DraftPhotoAsset[];
-  foodProductForms: Record<string, FoodProductFormValues>;
-  restaurantPhotoGroups?: RestaurantPhotoGroup[];
-  restaurantForms: Record<string, RestaurantPhotoForm>;
   userName?: string;
   visitVisibility: 'friends' | 'private';
 }
 
+type UsePhotoProcessingReviewDataParams = UsePhotoProcessingReviewDataBaseParams &
+  (
+    | {
+        draftSnapshot: PhotoProcessingDraftSnapshot;
+        foodProductForms?: never;
+        photos?: never;
+        restaurantForms?: never;
+        restaurantPhotoGroups?: never;
+      }
+    | {
+        draftSnapshot?: undefined;
+        foodProductForms: Record<string, FoodProductFormValues>;
+        photos: DraftPhotoAsset[];
+        restaurantForms: Record<string, RestaurantPhotoForm>;
+        restaurantPhotoGroups?: RestaurantPhotoGroup[];
+      }
+  );
+
 export function usePhotoProcessingReviewData({
   currentUserId,
+  draftSnapshot,
   photos,
   foodProductForms,
   restaurantPhotoGroups,
@@ -36,13 +52,29 @@ export function usePhotoProcessingReviewData({
   visitVisibility,
 }: UsePhotoProcessingReviewDataParams) {
   const restaurantReviewGroups = useMemo(
-    () => buildRestaurantReviewGroups(photos, restaurantForms, restaurantPhotoGroups),
-    [photos, restaurantForms, restaurantPhotoGroups],
+    () =>
+      buildRestaurantReviewGroups(
+        draftSnapshot?.photos ?? photos ?? [],
+        draftSnapshot?.restaurantForms ?? restaurantForms ?? {},
+        draftSnapshot?.restaurantPhotoGroups ?? restaurantPhotoGroups,
+      ),
+    [
+      draftSnapshot?.photos,
+      draftSnapshot?.restaurantForms,
+      draftSnapshot?.restaurantPhotoGroups,
+      photos,
+      restaurantForms,
+      restaurantPhotoGroups,
+    ],
   );
 
   const foodProductReviewEntries = useMemo<FoodProductReviewEntry[]>(
-    () => buildFoodProductReviewEntries(photos, foodProductForms),
-    [photos, foodProductForms],
+    () =>
+      buildFoodProductReviewEntries(
+        draftSnapshot?.photos ?? photos ?? [],
+        draftSnapshot?.foodProductForms ?? foodProductForms ?? {},
+      ),
+    [draftSnapshot?.foodProductForms, draftSnapshot?.photos, foodProductForms, photos],
   );
 
   const reviewFoodProductCards = useMemo<ReviewFoodProductCardData[]>(() => {

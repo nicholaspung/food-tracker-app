@@ -391,15 +391,6 @@ export function buildDefaultRestaurantForm(
   };
 }
 
-export function buildDefaultRestaurantPhotoGroups(
-  photos: DraftPhotoAsset[],
-): RestaurantPhotoGroup[] {
-  return photos.map((photo) => ({
-    id: `restaurant-photo-group-${photo.id}`,
-    photoIds: [photo.id],
-  }));
-}
-
 export function formatDraftPhotoMetadataLabel(photo: DraftPhotoAsset): string {
   return formatDisplayDate(photo.metadataDate, {
     fallback: 'Date unavailable',
