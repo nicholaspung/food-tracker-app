@@ -2,6 +2,7 @@ import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegi
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
+  createFriendSuggestionAcceptance,
   inviteFriend,
   markFriendInviteAccepted,
   removeFriend,
@@ -10,6 +11,7 @@ import {
 export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'friend.accept',
+    'friend.suggestion.accept',
     'friend.remove',
     'friend.request.send',
     'friend.request.reject',
@@ -17,6 +19,7 @@ export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistr
   ] as const,
   replayAdapters: {
     'friend.accept': replayFriendAccept,
+    'friend.suggestion.accept': replayFriendSuggestionAccept,
     'friend.remove': replayFriendRemove,
     'friend.request.send': replayFriendRequestSend,
     'friend.request.reject': replayFriendRequestReject,
@@ -30,6 +33,15 @@ async function replayFriendAccept(
 ): Promise<void> {
   const friendAcceptPayload = payload as FeatureOutboxOperationPayloadMap['friend.accept'];
   await markFriendInviteAccepted(friendAcceptPayload.friendId, requestOptions);
+}
+
+async function replayFriendSuggestionAccept(
+  payload: unknown,
+  requestOptions: FeatureWriteRequestOptions,
+): Promise<void> {
+  const friendSuggestionAcceptPayload =
+    payload as FeatureOutboxOperationPayloadMap['friend.suggestion.accept'];
+  await createFriendSuggestionAcceptance(friendSuggestionAcceptPayload, requestOptions);
 }
 
 async function replayFriendRemove(

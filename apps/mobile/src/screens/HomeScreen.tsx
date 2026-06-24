@@ -1267,11 +1267,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       return;
     }
 
-    if (!isOnline) {
-      setFriendSuggestionErrorMessage('Connect to the internet to add this friend.');
-      return;
-    }
-
     setFriendSuggestionErrorMessage(null);
     setIsApplyingFriendSuggestion(true);
     trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_STARTED', {
@@ -1302,7 +1297,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     } finally {
       setIsApplyingFriendSuggestion(false);
     }
-  }, [friendSuggestion, friendWrites, isOnline]);
+  }, [friendSuggestion, friendWrites]);
 
   const renderStandardFeedEntry = useCallback(
     ({

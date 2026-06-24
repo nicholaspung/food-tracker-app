@@ -324,9 +324,12 @@ describe('useFriendWrites', () => {
     });
   });
 
-  it('accepts friend suggestions with write telemetry and friend feed invalidation', async () => {
+  it('accepts friend suggestions through the friend outbox seam', async () => {
     const trackWriteTelemetry = jest.fn().mockResolvedValue(undefined);
-    const writeFeature = jest.fn();
+    const writeFeature = jest.fn(async ({ execute }) => ({
+      result: await execute(),
+      status: 'completed' as const,
+    }));
     mockedUseWriteTelemetry.mockReturnValue(trackWriteTelemetry);
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(
       writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
@@ -335,13 +338,52 @@ describe('useFriendWrites', () => {
 
     await hook.acceptFriendSuggestion({ inviterId: 'user_inviter' });
 
-    expect(trackWriteTelemetry).toHaveBeenCalledWith('friend.suggestion.accept');
+    expect(trackWriteTelemetry).not.toHaveBeenCalledWith('friend.suggestion.accept');
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'friend.suggestion.accept',
+        offline: {
+          strategy: 'outbox',
+          payload: { inviterId: 'user_inviter' },
+        },
+      }),
+    );
     expect(mockedCreateFriendSuggestionAcceptance).toHaveBeenCalledWith({
       inviterId: 'user_inviter',
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: friendsQueryKeys.root });
     expect(mockedInvalidateHomeFeedQueries).toHaveBeenCalledWith(queryClient);
-    expect(writeFeature).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues friend suggestion acceptance and keeps feed caches fresh', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+
+    await hook.acceptFriendSuggestion({ inviterId: 'user_inviter' });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'friend.suggestion.accept',
+        offline: {
+          strategy: 'outbox',
+          payload: { inviterId: 'user_inviter' },
+        },
+      }),
+    );
+    expect(mockedCreateFriendSuggestionAcceptance).not.toHaveBeenCalled();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: friendsQueryKeys.root });
+    expect(mockedInvalidateHomeFeedQueries).toHaveBeenCalledWith(queryClient);
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({
+      analyticsSource: 'HomeScreen',
+      subject: 'Friend action',
+    });
 
     await act(async () => {
       renderer.unmount();

@@ -212,6 +212,16 @@ describe('queuedFeatureWrites', () => {
           'X-Mobile-Write-Operation': 'friend.request.send',
         },
       }),
+      createQueuedMutation({
+        id: 'mut_friend_suggestion',
+        url: 'local://feature/friend.suggestion.accept',
+        body: JSON.stringify({
+          inviterId: 'user_inviter',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'friend.suggestion.accept',
+        },
+      }),
     ];
 
     const parsed = parseQueuedFeatureWrites(queuedDomainMutations);
@@ -224,6 +234,7 @@ describe('queuedFeatureWrites', () => {
       'bill.create',
       'feedback.create',
       'friend.request.send',
+      'friend.suggestion.accept',
     ]);
     expect(parsed.map((write) => write.payload)).toEqual(
       queuedDomainMutations.map((mutation) => parseQueuedMutationBody(mutation)),
@@ -242,6 +253,7 @@ describe('queuedFeatureWrites', () => {
       { id: 'mut_bill', bodyStoredForReplay: true },
       { id: 'mut_feedback', bodyStoredForReplay: true },
       { id: 'mut_friend', bodyStoredForReplay: true },
+      { id: 'mut_friend_suggestion', bodyStoredForReplay: true },
     ]);
   });
 });

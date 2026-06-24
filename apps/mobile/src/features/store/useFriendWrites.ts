@@ -148,17 +148,33 @@ async function acceptFriendRequestWithOfflineSupport({
 async function acceptFriendSuggestionWithWriteTelemetry({
   inviterId,
   queryClient,
-  trackWriteTelemetry,
+  writeFeature,
 }: AcceptFriendSuggestionWriteInput & {
   queryClient: QueryClient;
-  trackWriteTelemetry: (operationName: string) => Promise<void>;
-}): Promise<void> {
-  await trackWriteTelemetry('friend.suggestion.accept');
-  await createFriendSuggestionAcceptance({ inviterId });
+  writeFeature: OfflineAwareFeatureWrite;
+}): Promise<OfflineAwareFeatureWriteResult<void>> {
+  const result = await writeFeature({
+    operationName: 'friend.suggestion.accept',
+    offline: {
+      strategy: 'outbox',
+      payload: { inviterId },
+    },
+    execute: () => createFriendSuggestionAcceptance({ inviterId }),
+  });
+
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root }),
     invalidateHomeFeedQueries(queryClient),
   ]);
+
+  if (result.status === 'queued') {
+    showQueuedOfflineAlert({
+      analyticsSource: 'HomeScreen',
+      subject: 'Friend action',
+    });
+  }
+
+  return result;
 }
 
 async function removeFriendWithOfflineSupport({
@@ -225,13 +241,13 @@ export function useFriendWrites() {
   );
 
   const acceptFriendSuggestion = useCallback(
-    async (input: AcceptFriendSuggestionWriteInput): Promise<void> =>
+    async (input: AcceptFriendSuggestionWriteInput): Promise<OfflineAwareFeatureWriteResult<void>> =>
       acceptFriendSuggestionWithWriteTelemetry({
         ...input,
         queryClient,
-        trackWriteTelemetry,
+        writeFeature,
       }),
-    [queryClient, trackWriteTelemetry],
+    [queryClient, writeFeature],
   );
 
   const removeFriend = useCallback(

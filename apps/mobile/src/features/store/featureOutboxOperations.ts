@@ -124,6 +124,10 @@ interface FriendAcceptOperationPayload {
   friendId: string;
 }
 
+interface FriendSuggestionAcceptOperationPayload {
+  inviterId: string;
+}
+
 interface FriendRemoveOperationPayload {
   friendId: string;
 }
@@ -194,6 +198,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'feedback.create': CreateFeedbackInput;
   'feedback.message.send': SendFeedbackMessageInput;
   'friend.accept': FriendAcceptOperationPayload;
+  'friend.suggestion.accept': FriendSuggestionAcceptOperationPayload;
   'friend.remove': FriendRemoveOperationPayload;
   'friend.request.send': InviteFriendInput;
   'friend.request.reject': FriendRemoveOperationPayload;

@@ -691,6 +691,7 @@ export {
 } from './notesStore';
 
 export {
+  createFriendSuggestionAcceptance,
   getFriendsCountSummary,
   inviteFriend,
   listFriendsPage,

@@ -18,6 +18,7 @@ import {
 import {
   convertVisitItemToFoodProduct,
   createFeedback,
+  createFriendSuggestionAcceptance,
   createFoodProduct,
   createRestaurantList,
   createVisit,
@@ -42,6 +43,7 @@ jest.mock('../features/store/featureStore', () => ({
   createBill: jest.fn(),
   createDefaultRestaurantList: jest.fn(),
   createFeedback: jest.fn(),
+  createFriendSuggestionAcceptance: jest.fn(),
   createFoodProduct: jest.fn(),
   convertVisitItemToFoodProduct: jest.fn(),
   createNote: jest.fn(),
@@ -104,6 +106,8 @@ const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>
 const mockedCreateFoodProduct = createFoodProduct as jest.MockedFunction<typeof createFoodProduct>;
 const mockedCreateRestaurantList = createRestaurantList as jest.MockedFunction<typeof createRestaurantList>;
 const mockedCreateFeedback = createFeedback as jest.MockedFunction<typeof createFeedback>;
+const mockedCreateFriendSuggestionAcceptance =
+  createFriendSuggestionAcceptance as jest.MockedFunction<typeof createFriendSuggestionAcceptance>;
 const mockedInviteFriend = inviteFriend as jest.MockedFunction<typeof inviteFriend>;
 const mockedCreateTastingSession = createTastingSession as jest.MockedFunction<typeof createTastingSession>;
 const mockedJoinTastingSession = joinTastingSession as jest.MockedFunction<typeof joinTastingSession>;
@@ -157,6 +161,7 @@ describe('featureOutboxOperations', () => {
     mockedCreateFoodProduct.mockReset();
     mockedCreateRestaurantList.mockReset();
     mockedCreateFeedback.mockReset();
+    mockedCreateFriendSuggestionAcceptance.mockReset();
     mockedInviteFriend.mockReset();
     mockedCreateTastingSession.mockReset();
     mockedJoinTastingSession.mockReset();
@@ -496,6 +501,34 @@ describe('featureOutboxOperations', () => {
       {
         headers: {
           'X-Mobile-Write-Operation': 'friend.request.send',
+          'Idempotency-Key': 'idem_123',
+          'X-Idempotency-Key': 'idem_123',
+        },
+      },
+    );
+  });
+
+  it('replays friend suggestion acceptance through the adapter registry', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/friend.suggestion.accept',
+        body: JSON.stringify({
+          inviterId: 'user_inviter',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'friend.suggestion.accept',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedCreateFriendSuggestionAcceptance).toHaveBeenCalledWith(
+      {
+        inviterId: 'user_inviter',
+      },
+      {
+        headers: {
+          'X-Mobile-Write-Operation': 'friend.suggestion.accept',
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
         },

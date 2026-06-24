@@ -378,6 +378,7 @@ const mockedHomeFeedQueryKeys = jest.requireMock('../features').homeFeedQueryKey
 const mockedHomeFeedMapQueryKeys = jest.requireMock('../features').homeFeedMapQueryKeys as {
   points: jest.Mock;
 };
+const mockedUseFriendWrites = jest.requireMock('../features').useFriendWrites as jest.Mock;
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   if (!style || typeof style !== 'object') {
@@ -565,6 +566,10 @@ describe('HomeScreen', () => {
     } as never);
     mockedUseWriteTelemetry.mockReset();
     mockedUseWriteTelemetry.mockReturnValue(jest.fn());
+    mockedUseFriendWrites.mockReset();
+    mockedUseFriendWrites.mockReturnValue({
+      acceptFriendSuggestion: jest.fn(),
+    });
     mockedTrackObservabilityEvent.mockReset();
     mockedGetPendingFriendSuggestion.mockReset();
     mockedGetPendingFriendSuggestion.mockResolvedValue(null);
@@ -824,6 +829,57 @@ describe('HomeScreen', () => {
       'created',
       '',
     ]);
+  });
+
+  it('queues pending friend suggestion acceptance while offline', async () => {
+    const acceptFriendSuggestion = jest.fn().mockResolvedValue({ status: 'queued' });
+    let renderer: any = null;
+
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as never);
+    mockedUseFriendWrites.mockReturnValue({
+      acceptFriendSuggestion,
+    });
+    mockedGetPendingFriendSuggestion.mockResolvedValue({
+      createdAt: 1_000,
+      expiresAt: 2_000,
+      invitedUserId: 'user-1',
+      inviterDisplayName: 'Sam',
+      inviterId: 'user-inviter',
+    });
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const addFriendButton = renderer.root.findAllByType('Pressable').find((pressable: any) =>
+      pressable.findAllByType('Text').some((text: any) => text.children.includes('Add Friend')),
+    );
+
+    expect(addFriendButton).toBeDefined();
+
+    await act(async () => {
+      addFriendButton.props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(acceptFriendSuggestion).toHaveBeenCalledWith({ inviterId: 'user-inviter' });
+    expect(mockedClearPendingFriendSuggestion).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findAllByType('PageErrorToast')).toHaveLength(0);
   });
 
   afterEach(() => {

@@ -206,7 +206,10 @@ export async function inviteFriend(
   });
 }
 
-export async function createFriendSuggestionAcceptance(input: { inviterId: string }): Promise<void> {
+export async function createFriendSuggestionAcceptance(
+  input: { inviterId: string },
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('friend.suggestion.accept', async () => {
     const inviterId = input.inviterId.trim();
 
@@ -216,6 +219,7 @@ export async function createFriendSuggestionAcceptance(input: { inviterId: strin
 
     await sendApiRequest('/api/friends/suggestions/accept', {
       method: 'POST',
+      headers: resolveFeatureWriteHeaders(requestOptions),
       body: {
         inviterId,
       },
