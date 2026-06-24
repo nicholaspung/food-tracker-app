@@ -799,7 +799,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
         cancelLabel="Keep Session"
         confirmLabel="Delete Session"
         confirmLoadingLabel="Deleting..."
-        description={`Delete "${availableSession.name}"? This removes the lobby, invites, participants, suggestions, and ratings.`}
+        description={`Delete "${availableSession.name}"? This removes the lobby, invites, participants, tasting plan, and ratings.`}
         disabled={isDeletingSession}
         loading={isDeletingSession}
         onCancel={() => {
