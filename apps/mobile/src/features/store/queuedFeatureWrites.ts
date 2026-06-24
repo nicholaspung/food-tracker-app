@@ -58,19 +58,31 @@ export function parseQueuedFeatureWrite(
     return null;
   }
 
-  if (!isDisplayableQueuedFeaturePayload(operationName, payload)) {
+  const displayPayload = decodeQueuedFeatureWriteDisplayPayload(operationName, payload);
+  if (!displayPayload) {
     return null;
   }
 
   return {
     id: mutation.id,
     operationName,
-    payload: payload as FeatureOutboxOperationPayload<typeof operationName>,
+    payload: displayPayload,
     status: mutation.status,
     createdAt: mutation.createdAt,
     idempotencyKey: mutation.idempotencyKey,
     lastError: mutation.lastError,
   };
+}
+
+function decodeQueuedFeatureWriteDisplayPayload<TName extends FeatureOutboxOperationName>(
+  operationName: TName,
+  payload: object,
+): FeatureOutboxOperationPayload<TName> | null {
+  if (!isDisplayableQueuedFeaturePayload(operationName, payload)) {
+    return null;
+  }
+
+  return payload as FeatureOutboxOperationPayload<TName>;
 }
 
 function isDisplayableQueuedFeaturePayload(

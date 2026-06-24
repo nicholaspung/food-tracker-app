@@ -1,4 +1,8 @@
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import {
+  createFeatureOutboxPayloadDecoder,
+  terminalInvalidPayload,
+} from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -17,6 +21,24 @@ export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistr
     'friend.request.reject',
     'friend.request.cancel',
   ] as const,
+  payloadDecoders: {
+    'friend.accept': createFeatureOutboxPayloadDecoder('friend.accept', [
+      { key: 'friendId', type: 'string' },
+    ]),
+    'friend.suggestion.accept': createFeatureOutboxPayloadDecoder('friend.suggestion.accept', [
+      { key: 'inviterId', type: 'string' },
+    ]),
+    'friend.remove': createFeatureOutboxPayloadDecoder('friend.remove', [
+      { key: 'friendId', type: 'string' },
+    ]),
+    'friend.request.send': decodeFriendRequestSendPayload,
+    'friend.request.reject': createFeatureOutboxPayloadDecoder('friend.request.reject', [
+      { key: 'friendId', type: 'string' },
+    ]),
+    'friend.request.cancel': createFeatureOutboxPayloadDecoder('friend.request.cancel', [
+      { key: 'friendId', type: 'string' },
+    ]),
+  },
   replayAdapters: {
     'friend.accept': replayFriendAccept,
     'friend.suggestion.accept': replayFriendSuggestionAccept,
@@ -28,49 +50,65 @@ export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistr
 });
 
 async function replayFriendAccept(
-  payload: unknown,
+  friendAcceptPayload: FeatureOutboxOperationPayloadMap['friend.accept'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const friendAcceptPayload = payload as FeatureOutboxOperationPayloadMap['friend.accept'];
   await markFriendInviteAccepted(friendAcceptPayload.friendId, requestOptions);
 }
 
 async function replayFriendSuggestionAccept(
-  payload: unknown,
+  friendSuggestionAcceptPayload: FeatureOutboxOperationPayloadMap['friend.suggestion.accept'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const friendSuggestionAcceptPayload =
-    payload as FeatureOutboxOperationPayloadMap['friend.suggestion.accept'];
   await createFriendSuggestionAcceptance(friendSuggestionAcceptPayload, requestOptions);
 }
 
 async function replayFriendRemove(
-  payload: unknown,
+  friendRemovePayload: FeatureOutboxOperationPayloadMap['friend.remove'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const friendRemovePayload = payload as FeatureOutboxOperationPayloadMap['friend.remove'];
   await removeFriend(friendRemovePayload.friendId, requestOptions);
 }
 
 async function replayFriendRequestSend(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['friend.request.send'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await inviteFriend(payload as FeatureOutboxOperationPayloadMap['friend.request.send'], requestOptions);
+  await inviteFriend(payload, requestOptions);
 }
 
 async function replayFriendRequestReject(
-  payload: unknown,
+  friendRejectPayload: FeatureOutboxOperationPayloadMap['friend.request.reject'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const friendRejectPayload = payload as FeatureOutboxOperationPayloadMap['friend.request.reject'];
   await removeFriend(friendRejectPayload.friendId, requestOptions);
 }
 
 async function replayFriendRequestCancel(
-  payload: unknown,
+  friendCancelPayload: FeatureOutboxOperationPayloadMap['friend.request.cancel'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const friendCancelPayload = payload as FeatureOutboxOperationPayloadMap['friend.request.cancel'];
   await removeFriend(friendCancelPayload.friendId, requestOptions);
+}
+
+function decodeFriendRequestSendPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    return terminalInvalidPayload('friend.request.send', 'payload must be an object');
+  }
+
+  const code = typeof payload.code === 'string' ? payload.code : payload.friendCode;
+  if (typeof code !== 'string' || code.trim() === '') {
+    return terminalInvalidPayload('friend.request.send', 'code is required');
+  }
+
+  return {
+    status: 'ok' as const,
+    payload: {
+      code,
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

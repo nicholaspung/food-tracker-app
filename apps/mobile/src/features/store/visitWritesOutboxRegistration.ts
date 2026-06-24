@@ -1,4 +1,5 @@
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -15,6 +16,23 @@ export const VISIT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistra
     'visit.delete',
     'visit.item.convert-to-food-product',
   ] as const,
+  payloadDecoders: {
+    'visit.create': createFeatureOutboxPayloadDecoder('visit.create', [
+      { key: 'restaurantName', type: 'string' },
+      { key: 'items', type: 'array' },
+    ]),
+    'visit.update': createFeatureOutboxPayloadDecoder('visit.update', [
+      { key: 'visitId', type: 'string' },
+      { key: 'updates', type: 'record' },
+    ]),
+    'visit.delete': createFeatureOutboxPayloadDecoder('visit.delete', [
+      { key: 'visitId', type: 'string' },
+    ]),
+    'visit.item.convert-to-food-product': createFeatureOutboxPayloadDecoder(
+      'visit.item.convert-to-food-product',
+      [{ key: 'itemId', type: 'string' }],
+    ),
+  },
   replayAdapters: {
     'visit.create': replayVisitCreate,
     'visit.update': replayVisitUpdate,
@@ -24,34 +42,29 @@ export const VISIT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistra
 });
 
 async function replayVisitCreate(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['visit.create'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await createVisit(payload as FeatureOutboxOperationPayloadMap['visit.create'], requestOptions);
+  await createVisit(payload, requestOptions);
 }
 
 async function replayVisitUpdate(
-  payload: unknown,
+  visitUpdatePayload: FeatureOutboxOperationPayloadMap['visit.update'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const visitUpdatePayload = payload as FeatureOutboxOperationPayloadMap['visit.update'];
   await updateVisit(visitUpdatePayload.visitId, visitUpdatePayload.updates, requestOptions);
 }
 
 async function replayVisitDelete(
-  payload: unknown,
+  visitDeletePayload: FeatureOutboxOperationPayloadMap['visit.delete'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const visitDeletePayload = payload as FeatureOutboxOperationPayloadMap['visit.delete'];
   await deleteVisit(visitDeletePayload.visitId, requestOptions);
 }
 
 async function replayVisitItemConvertToFoodProduct(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['visit.item.convert-to-food-product'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await convertVisitItemToFoodProduct(
-    payload as FeatureOutboxOperationPayloadMap['visit.item.convert-to-food-product'],
-    requestOptions,
-  );
+  await convertVisitItemToFoodProduct(payload, requestOptions);
 }

@@ -1,6 +1,7 @@
 import type { RecordModel } from 'pocketbase';
 
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -15,16 +16,26 @@ import {
 
 export const SETTINGS_PREFERENCES_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: ['settings.visibility.save'] as const,
+  payloadDecoders: {
+    'settings.visibility.save': createFeatureOutboxPayloadDecoder('settings.visibility.save', [
+      { key: 'userId', type: 'string' },
+      { key: 'defaultVisitVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+      { key: 'defaultRestaurantVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+      { key: 'defaultListVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+      { key: 'tasting_invites_enabled', type: 'boolean' },
+      { key: 'bill_owed_enabled', type: 'boolean' },
+      { key: 'monthly_friends_activity_enabled', type: 'boolean' },
+    ]),
+  },
   replayAdapters: {
     'settings.visibility.save': replaySettingsPreferencesSave,
   },
 });
 
 async function replaySettingsPreferencesSave(
-  payload: unknown,
+  settingsPayload: FeatureOutboxOperationPayloadMap['settings.visibility.save'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const settingsPayload = payload as FeatureOutboxOperationPayloadMap['settings.visibility.save'];
   const homeFeedDefaultsUpdate = buildHomeFeedDefaultsUpdate(
     mapHomeFeedDefaultsFromRecord(settingsPayload),
   );

@@ -1,4 +1,5 @@
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -13,6 +14,26 @@ export const TASTING_SESSION_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'tasting-session.join',
     'tasting-session.status.update',
   ] as const,
+  payloadDecoders: {
+    'tasting-session.create': createFeatureOutboxPayloadDecoder('tasting-session.create', [
+      { key: 'name', type: 'string' },
+      { key: 'joinDurationMinutes', type: 'number' },
+    ]),
+    'tasting-session.join': createFeatureOutboxPayloadDecoder('tasting-session.join', [
+      { key: 'inviteCode', type: 'string' },
+    ]),
+    'tasting-session.status.update': createFeatureOutboxPayloadDecoder(
+      'tasting-session.status.update',
+      [
+        { key: 'sessionId', type: 'string' },
+        {
+          key: 'status',
+          type: 'string',
+          allowedValues: ['lobby', 'planning', 'tasting', 'completed', 'adding_items', 'rating'],
+        },
+      ],
+    ),
+  },
   replayAdapters: {
     'tasting-session.create': replayTastingSessionCreate,
     'tasting-session.join': replayTastingSessionJoin,
@@ -21,29 +42,22 @@ export const TASTING_SESSION_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
 });
 
 async function replayTastingSessionCreate(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['tasting-session.create'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await createTastingSession(
-    payload as FeatureOutboxOperationPayloadMap['tasting-session.create'],
-    requestOptions,
-  );
+  await createTastingSession(payload, requestOptions);
 }
 
 async function replayTastingSessionJoin(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['tasting-session.join'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await joinTastingSession(
-    payload as FeatureOutboxOperationPayloadMap['tasting-session.join'],
-    requestOptions,
-  );
+  await joinTastingSession(payload, requestOptions);
 }
 
 async function replayTastingSessionStatusUpdate(
-  payload: unknown,
+  statusPayload: FeatureOutboxOperationPayloadMap['tasting-session.status.update'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const statusPayload = payload as FeatureOutboxOperationPayloadMap['tasting-session.status.update'];
   await setTastingSessionStatus(statusPayload.sessionId, statusPayload.status, requestOptions);
 }

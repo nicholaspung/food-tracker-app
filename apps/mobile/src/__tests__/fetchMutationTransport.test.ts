@@ -88,4 +88,27 @@ describe('createFetchMutationTransport', () => {
     expect(result.retryable).toBe(false);
     expect(result.statusCode).toBeNull();
   });
+
+  it('marks invalid local feature outbox payloads as non-retryable terminal failures', async () => {
+    const transport = createFetchMutationTransport({
+      fetchImplementation: jest.fn() as unknown as typeof fetch,
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({
+        url: 'local://feature/visit.create',
+        body: JSON.stringify({
+          restaurantName: 'Noodle House',
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'visit.create',
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.retryable).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.errorMessage).toBe('Invalid payload for visit.create: items is required.');
+  });
 });

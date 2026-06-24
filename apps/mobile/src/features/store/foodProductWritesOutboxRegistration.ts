@@ -1,4 +1,5 @@
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -13,6 +14,19 @@ export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainR
     'food-product.update',
     'food-product.delete',
   ] as const,
+  payloadDecoders: {
+    'food-product.create': createFeatureOutboxPayloadDecoder('food-product.create', [
+      { key: 'itemName', type: 'string' },
+      { key: 'rating', type: 'number' },
+    ]),
+    'food-product.update': createFeatureOutboxPayloadDecoder('food-product.update', [
+      { key: 'foodProductId', type: 'string' },
+      { key: 'updates', type: 'record' },
+    ]),
+    'food-product.delete': createFeatureOutboxPayloadDecoder('food-product.delete', [
+      { key: 'foodProductId', type: 'string' },
+    ]),
+  },
   replayAdapters: {
     'food-product.create': replayFoodProductCreate,
     'food-product.update': replayFoodProductUpdate,
@@ -21,17 +35,16 @@ export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainR
 });
 
 async function replayFoodProductCreate(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['food-product.create'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await createFoodProduct(payload as FeatureOutboxOperationPayloadMap['food-product.create'], requestOptions);
+  await createFoodProduct(payload, requestOptions);
 }
 
 async function replayFoodProductUpdate(
-  payload: unknown,
+  foodProductUpdatePayload: FeatureOutboxOperationPayloadMap['food-product.update'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const foodProductUpdatePayload = payload as FeatureOutboxOperationPayloadMap['food-product.update'];
   await updateFoodProduct(
     foodProductUpdatePayload.foodProductId,
     foodProductUpdatePayload.updates,
@@ -40,9 +53,8 @@ async function replayFoodProductUpdate(
 }
 
 async function replayFoodProductDelete(
-  payload: unknown,
+  foodProductDeletePayload: FeatureOutboxOperationPayloadMap['food-product.delete'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const foodProductDeletePayload = payload as FeatureOutboxOperationPayloadMap['food-product.delete'];
   await deleteFoodProduct(foodProductDeletePayload.foodProductId, requestOptions);
 }

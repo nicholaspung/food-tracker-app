@@ -154,13 +154,22 @@ async function trySendLocalFeatureMutation(
   }
 
   try {
-    const wasHandled = await replayFeatureOutboxMutation(mutation);
-    if (!wasHandled) {
+    const replayResult = await replayFeatureOutboxMutation(mutation);
+    if (replayResult.status === 'unhandled') {
       return {
         ok: false,
         retryable: false,
         statusCode: null,
         errorMessage: 'Unknown local feature mutation.',
+      };
+    }
+
+    if (replayResult.status === 'terminalInvalidPayload') {
+      return {
+        ok: false,
+        retryable: false,
+        statusCode: null,
+        errorMessage: replayResult.message,
       };
     }
 

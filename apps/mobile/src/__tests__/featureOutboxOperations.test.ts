@@ -195,7 +195,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateVisit).toHaveBeenCalledWith(
       {
         restaurantName: 'Noodle House',
@@ -265,7 +265,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateVisit).toHaveBeenCalledWith(
       input,
       expect.objectContaining({
@@ -295,7 +295,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedConvertVisitItemToFoodProduct).toHaveBeenCalledWith(
       {
         itemId: 'item-1',
@@ -336,7 +336,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateVisit).toHaveBeenCalledWith(
       'visit-1',
       {
@@ -376,7 +376,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateFoodProduct).toHaveBeenCalledWith(
       {
         itemName: 'Chili Crisp',
@@ -408,7 +408,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedMarkNoteUsed).toHaveBeenCalledWith(
       {
         noteId: 'note-1',
@@ -439,7 +439,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateRestaurantList).toHaveBeenCalledWith(
       {
         name: 'Date Night',
@@ -467,7 +467,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateFeedback).toHaveBeenCalledWith(
       offlineFeedbackCreatePayload,
       {
@@ -493,10 +493,10 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedInviteFriend).toHaveBeenCalledWith(
       {
-        friendCode: 'ABCD1234',
+        code: 'ABCD1234',
       },
       {
         headers: {
@@ -521,7 +521,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateFriendSuggestionAcceptance).toHaveBeenCalledWith(
       {
         inviterId: 'user_inviter',
@@ -544,6 +544,91 @@ describe('featureOutboxOperations', () => {
     expect(parseFeatureOutboxOperationName('local://feature/unknown.write')).toBeNull();
   });
 
+  it.each([
+    [
+      'settings.visibility.save',
+      { userId: 'user_1' },
+      'Invalid payload for settings.visibility.save: defaultVisitVisibility is required.',
+    ],
+    [
+      'onboarding.more-card.dismiss',
+      { userId: 'user_1' },
+      'Invalid payload for onboarding.more-card.dismiss: cardId is required.',
+    ],
+    [
+      'visit.create',
+      { restaurantName: 'Noodle House' },
+      'Invalid payload for visit.create: items is required.',
+    ],
+    [
+      'food-product.update',
+      { foodProductId: 'food-product-1' },
+      'Invalid payload for food-product.update: updates is required.',
+    ],
+    [
+      'note.mark-used',
+      { usedAt: '2026-04-23T18:00:00.000Z' },
+      'Invalid payload for note.mark-used: noteId is required.',
+    ],
+    [
+      'list.restaurant.reorder',
+      { listId: 'list-1', restaurantId: 'restaurant-1', direction: 'sideways' },
+      'Invalid payload for list.restaurant.reorder: direction must be one of up, down.',
+    ],
+    [
+      'bill.status.toggle',
+      { billId: 'bill_1', status: 'archived' },
+      'Invalid payload for bill.status.toggle: status must be one of open, settled.',
+    ],
+    [
+      'feedback.message.send',
+      { feedbackId: 'feedback-1' },
+      'Invalid payload for feedback.message.send: message is required.',
+    ],
+    [
+      'friend.request.send',
+      { friendCode: '' },
+      'Invalid payload for friend.request.send: code is required.',
+    ],
+    [
+      'tasting-session.join',
+      { inviteCode: '' },
+      'Invalid payload for tasting-session.join: inviteCode must be a string.',
+    ],
+  ])('returns terminal invalid payload for malformed %s writes', async (operationName, payload, message) => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: `local://feature/${operationName}`,
+        body: JSON.stringify(payload),
+        headers: {
+          'X-Mobile-Write-Operation': operationName,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message,
+    });
+  });
+
+  it('returns terminal invalid payload for malformed JSON before decoding empty-payload writes', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/list.default.create',
+        body: '{bad-json',
+        headers: {
+          'X-Mobile-Write-Operation': 'list.default.create',
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message: 'Invalid payload for list.default.create: payload must be valid JSON.',
+    });
+  });
+
   it('replays tasting session writes through the domain registration', async () => {
     mockedCreateTastingSession.mockResolvedValue({
       id: 'session_1',
@@ -558,7 +643,8 @@ describe('featureOutboxOperations', () => {
       createQueuedMutation({
         url: 'local://feature/tasting-session.create',
         body: JSON.stringify({
-          title: 'Team tasting',
+          name: 'Team tasting',
+          joinDurationMinutes: 60,
         }),
         headers: {
           'X-Mobile-Write-Operation': 'tasting-session.create',
@@ -566,10 +652,11 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateTastingSession).toHaveBeenCalledWith(
       {
-        title: 'Team tasting',
+        name: 'Team tasting',
+        joinDurationMinutes: 60,
       },
       {
         headers: {
@@ -621,7 +708,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedCreateBill).toHaveBeenCalledWith(payload, {
       headers: {
         'X-Mobile-Write-Operation': 'bill.create',
@@ -665,7 +752,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateBill).toHaveBeenCalledWith(
       'bill_1',
       {
@@ -697,7 +784,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedDeleteBill).toHaveBeenCalledWith('bill_1', {
       headers: {
         'X-Mobile-Write-Operation': 'bill.delete',
@@ -738,7 +825,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateBill).toHaveBeenCalledWith(
       'bill_1',
       {
@@ -786,7 +873,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedMarkBillParticipantPaid).toHaveBeenCalledWith(
       'bill_1',
       'participant_1',
@@ -830,7 +917,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -910,7 +997,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -969,7 +1056,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1025,7 +1112,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1086,7 +1173,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: 'replayed' });
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',

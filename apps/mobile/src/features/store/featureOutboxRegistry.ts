@@ -3,6 +3,7 @@ import type {
   FeatureOutboxDomainRegistration,
   FeatureOutboxReplayAdapter,
 } from './featureOutboxDomainRegistration';
+import type { FeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import { FEEDBACK_WRITE_OUTBOX_REGISTRATION } from './feedbackWritesOutboxRegistration';
 import { FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION } from './foodProductWritesOutboxRegistration';
@@ -36,4 +37,11 @@ export const FEATURE_OUTBOX_REPLAY_ADAPTERS: Partial<
 > = Object.assign(
   {},
   ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map((registration) => registration.replayAdapters),
+);
+
+export const FEATURE_OUTBOX_PAYLOAD_DECODERS: Partial<
+  Record<FeatureOutboxOperationName, FeatureOutboxPayloadDecoder<FeatureOutboxOperationName>>
+> = Object.assign(
+  {},
+  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map((registration) => registration.payloadDecoders),
 );

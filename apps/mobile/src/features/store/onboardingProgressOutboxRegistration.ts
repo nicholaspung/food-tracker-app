@@ -1,6 +1,7 @@
 import type { RecordModel } from 'pocketbase';
 
 import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
@@ -21,6 +22,25 @@ export const ONBOARDING_PROGRESS_OUTBOX_REGISTRATION = createFeatureOutboxDomain
     'onboarding.more-card.dismiss',
     'onboarding.add-card.dismiss',
   ] as const,
+  payloadDecoders: {
+    'onboarding.main.complete': createFeatureOutboxPayloadDecoder('onboarding.main.complete', [
+      { key: 'userId', type: 'string' },
+    ]),
+    'onboarding.more-card.dismiss': createFeatureOutboxPayloadDecoder(
+      'onboarding.more-card.dismiss',
+      [
+        { key: 'userId', type: 'string' },
+        { key: 'cardId', type: 'string' },
+      ],
+    ),
+    'onboarding.add-card.dismiss': createFeatureOutboxPayloadDecoder(
+      'onboarding.add-card.dismiss',
+      [
+        { key: 'userId', type: 'string' },
+        { key: 'cardId', type: 'string' },
+      ],
+    ),
+  },
   replayAdapters: {
     'onboarding.main.complete': replayMainOnboardingComplete,
     'onboarding.more-card.dismiss': replayMoreOnboardingCardDismiss,
@@ -29,10 +49,9 @@ export const ONBOARDING_PROGRESS_OUTBOX_REGISTRATION = createFeatureOutboxDomain
 });
 
 async function replayMainOnboardingComplete(
-  payload: unknown,
+  onboardingPayload: FeatureOutboxOperationPayloadMap['onboarding.main.complete'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const onboardingPayload = payload as FeatureOutboxOperationPayloadMap['onboarding.main.complete'];
   const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
     'users',
     onboardingPayload.userId,
@@ -57,10 +76,9 @@ async function replayMainOnboardingComplete(
 }
 
 async function replayMoreOnboardingCardDismiss(
-  payload: unknown,
+  onboardingPayload: FeatureOutboxOperationPayloadMap['onboarding.more-card.dismiss'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const onboardingPayload = payload as FeatureOutboxOperationPayloadMap['onboarding.more-card.dismiss'];
   const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
     'users',
     onboardingPayload.userId,
@@ -85,10 +103,9 @@ async function replayMoreOnboardingCardDismiss(
 }
 
 async function replayAddOnboardingCardDismiss(
-  payload: unknown,
+  onboardingPayload: FeatureOutboxOperationPayloadMap['onboarding.add-card.dismiss'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const onboardingPayload = payload as FeatureOutboxOperationPayloadMap['onboarding.add-card.dismiss'];
   const currentRecord = await getCollectionRecord<RecordModel & { mobileOnboardingState?: unknown }>(
     'users',
     onboardingPayload.userId,

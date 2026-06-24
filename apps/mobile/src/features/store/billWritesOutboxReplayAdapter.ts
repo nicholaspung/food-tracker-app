@@ -3,7 +3,11 @@ import type {
   FeatureOutboxOperationPayloadMap,
 } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import {
+  createFeatureOutboxDomainRegistration,
+  type FeatureOutboxReplayAdapterMap,
+} from './featureOutboxDomainRegistration';
+import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import {
   createBill,
   deleteBill,
@@ -18,19 +22,14 @@ type BillWriteOutboxOperationName =
   | 'bill.status.toggle'
   | 'bill.participant.toggle-paid';
 
-type BillWriteOutboxReplayAdapter = (
-  payload: unknown,
-  requestOptions: FeatureWriteRequestOptions,
-) => Promise<void>;
-
 const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
   'bill.create': replayBillCreate,
   'bill.update': replayBillUpdate,
   'bill.delete': replayBillDelete,
   'bill.status.toggle': replayBillStatusToggle,
   'bill.participant.toggle-paid': replayBillParticipantTogglePaid,
-} satisfies Partial<Record<FeatureOutboxOperationName, BillWriteOutboxReplayAdapter>> &
-  Record<BillWriteOutboxOperationName, BillWriteOutboxReplayAdapter>;
+} satisfies Partial<FeatureOutboxReplayAdapterMap<FeatureOutboxOperationName>> &
+  FeatureOutboxReplayAdapterMap<BillWriteOutboxOperationName>;
 
 export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -40,37 +39,61 @@ export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistrat
     'bill.status.toggle',
     'bill.participant.toggle-paid',
   ] as const,
+  payloadDecoders: {
+    'bill.create': createFeatureOutboxPayloadDecoder('bill.create', [
+      { key: 'title', type: 'string' },
+      { key: 'restaurantName', type: 'string' },
+      { key: 'items', type: 'array' },
+      { key: 'participants', type: 'array' },
+    ]),
+    'bill.update': createFeatureOutboxPayloadDecoder('bill.update', [
+      { key: 'billId', type: 'string' },
+      { key: 'updates', type: 'record' },
+    ]),
+    'bill.delete': createFeatureOutboxPayloadDecoder('bill.delete', [
+      { key: 'billId', type: 'string' },
+    ]),
+    'bill.status.toggle': createFeatureOutboxPayloadDecoder('bill.status.toggle', [
+      { key: 'billId', type: 'string' },
+      { key: 'status', type: 'string', allowedValues: ['open', 'settled'] },
+    ]),
+    'bill.participant.toggle-paid': createFeatureOutboxPayloadDecoder(
+      'bill.participant.toggle-paid',
+      [
+        { key: 'billId', type: 'string' },
+        { key: 'participantId', type: 'string' },
+        { key: 'paidStatus', type: 'string', allowedValues: ['pending', 'paid'] },
+      ],
+    ),
+  },
   replayAdapters: BILL_WRITE_OUTBOX_REPLAY_ADAPTERS,
 });
 
 async function replayBillCreate(
-  payload: unknown,
+  payload: FeatureOutboxOperationPayloadMap['bill.create'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  await createBill(payload as FeatureOutboxOperationPayloadMap['bill.create'], requestOptions);
+  await createBill(payload, requestOptions);
 }
 
 async function replayBillUpdate(
-  payload: unknown,
+  billPayload: FeatureOutboxOperationPayloadMap['bill.update'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const billPayload = payload as FeatureOutboxOperationPayloadMap['bill.update'];
   await updateBill(billPayload.billId, billPayload.updates, requestOptions);
 }
 
 async function replayBillDelete(
-  payload: unknown,
+  billPayload: FeatureOutboxOperationPayloadMap['bill.delete'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const billPayload = payload as FeatureOutboxOperationPayloadMap['bill.delete'];
   await deleteBill(billPayload.billId, requestOptions);
 }
 
 async function replayBillStatusToggle(
-  payload: unknown,
+  billPayload: FeatureOutboxOperationPayloadMap['bill.status.toggle'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const billPayload = payload as FeatureOutboxOperationPayloadMap['bill.status.toggle'];
   await updateBill(
     billPayload.billId,
     {
@@ -81,10 +104,9 @@ async function replayBillStatusToggle(
 }
 
 async function replayBillParticipantTogglePaid(
-  payload: unknown,
+  billPayload: FeatureOutboxOperationPayloadMap['bill.participant.toggle-paid'],
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
-  const billPayload = payload as FeatureOutboxOperationPayloadMap['bill.participant.toggle-paid'];
   await markBillParticipantPaid(
     billPayload.billId,
     billPayload.participantId,

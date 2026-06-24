@@ -1,6 +1,9 @@
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
-import { replayRegisteredFeatureOutboxOperation } from './featureOutboxReplayAdapters';
+import {
+  replayRegisteredFeatureOutboxOperation,
+  type FeatureOutboxReplayResult,
+} from './featureOutboxReplayAdapters';
 import { FEATURE_OUTBOX_OPERATION_NAMES } from './featureOutboxRegistry';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import type { HomeFeedDefaultsRecord } from './homeFeedPreferences';
@@ -331,31 +334,55 @@ export function updateBillParticipantPaidStatusApiMutationInput(
   };
 }
 
-export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Promise<boolean> {
+export async function replayFeatureOutboxMutation(
+  mutation: QueuedMutation,
+): Promise<FeatureOutboxReplayResult> {
   const operationName = parseFeatureOutboxOperationName(mutation.url);
   if (!operationName) {
-    return false;
+    return { status: 'unhandled' };
   }
 
-  const payload = parseMutationPayload(mutation.body);
+  const parsedPayload = parseMutationPayload(operationName, mutation.body);
+  if (parsedPayload.status === 'terminalInvalidPayload') {
+    return parsedPayload;
+  }
+
   const requestOptions = createReplayFeatureWriteRequestOptions(mutation);
 
-  return replayRegisteredFeatureOutboxOperation(
-    operationName,
-    payload,
-    requestOptions,
-  );
+  return replayRegisteredFeatureOutboxOperation(operationName, parsedPayload.payload, requestOptions);
 }
 
-function parseMutationPayload(value: string | null): unknown {
+type ParsedMutationPayload =
+  | {
+      status: 'ok';
+      payload: unknown;
+    }
+  | {
+      status: 'terminalInvalidPayload';
+      message: string;
+    };
+
+function parseMutationPayload(
+  operationName: FeatureOutboxOperationName,
+  value: string | null,
+): ParsedMutationPayload {
   if (!value) {
-    return {};
+    return {
+      status: 'ok',
+      payload: {},
+    };
   }
 
   try {
-    return JSON.parse(value);
+    return {
+      status: 'ok',
+      payload: JSON.parse(value),
+    };
   } catch {
-    return {};
+    return {
+      status: 'terminalInvalidPayload',
+      message: `Invalid payload for ${operationName}: payload must be valid JSON.`,
+    };
   }
 }
 
