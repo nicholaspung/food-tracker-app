@@ -133,7 +133,7 @@ Use this release-specific summary for version `1.1.0` submissions:
 Yummy Recs 1.1.0 updates the mobile runtime to Expo SDK 56 / React Native 0.85 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
 
 Reviewer-visible changes:
-- Push notifications are now supported for visit reminders, bill reminders, and monthly friend activity. Notification preferences are available from Settings > Notifications and are opt-in based on system permission.
+- Visit reminders are one-time local device notifications. Bills, bill payment reminders, and monthly friend activity use remote device notifications where applicable. Settings > Notifications manages saved notification preferences separately from the current device's system notification permission.
 - The default saved list is now presented as Want to Try. Users can save restaurants and menu items, see friend overlap, filter friend matches, and remove Want to Try bookmarks.
 - Bills now refresh more reliably after notification taps, focus changes, reconnects, and detail navigation.
 - Tasting sessions include improved reminder/deep-link behavior, an exit flow, and clearer delete/trash confirmations.
