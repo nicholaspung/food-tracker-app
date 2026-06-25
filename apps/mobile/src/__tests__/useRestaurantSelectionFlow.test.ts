@@ -452,6 +452,49 @@ describe('useRestaurantSelectionFlow', () => {
       expect(getLatestResult().isUsingCurrentLocation).toBe(true);
     });
 
+  it('stages current phone location as the expanded search location without running Places search', async () => {
+    mockedListRestaurantSuggestions.mockResolvedValue(restaurants);
+    const queryClient = createQueryClient();
+    let latestResult: ReturnType<typeof useRestaurantSelectionFlow> | null = null;
+
+    function RestaurantSelectionHarness() {
+      latestResult = useRestaurantSelectionFlow({
+        isOnline: true,
+        menuItemsEnabled: false,
+        savedRestaurantsEnabled: true,
+        selectedRestaurantId: null,
+        usage: {
+          enforceQuota: false,
+          isFreeTier: false,
+          placesQueriesRemaining: null,
+        },
+      });
+      return null;
+    }
+
+    function getLatestResult(): ReturnType<typeof useRestaurantSelectionFlow> {
+      if (!latestResult) {
+        throw new Error('Restaurant selection hook did not render.');
+      }
+
+      return latestResult;
+    }
+
+    await act(async () => {
+      renderWithQueryClient(queryClient, React.createElement(RestaurantSelectionHarness));
+    });
+    await flushPromises();
+
+    await act(async () => {
+      getLatestResult().selectCurrentLocationForSearch();
+    });
+
+    expect(getLatestResult().manualLocation).toBe('Current location');
+    expect(getLatestResult().isUsingCurrentLocation).toBe(true);
+    expect(mockCaptureLocation).not.toHaveBeenCalled();
+    expect(mockedSearchAndCacheRestaurantsByText).not.toHaveBeenCalled();
+  });
+
     it('auto-captures reference location once when enabled and sorts saved restaurants by distance', async () => {
     const distantRestaurant = {
       ...restaurants[0],

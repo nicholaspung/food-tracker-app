@@ -4,6 +4,8 @@ import {
   Image,
   Keyboard,
   Linking,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   ScrollView,
   View,
@@ -16,6 +18,7 @@ import {
   ErrorState,
   FeatureActionCard,
   FeatureFormScreenScaffold,
+  FocusedRestaurantSearchHeader,
   LinkedNoteCard,
   LightweightStatusCard,
   LoadingState,
@@ -486,9 +489,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [groupingPhotoViewerVisible, setGroupingPhotoViewerVisible] = useState(false);
   const [groupingPhotoViewerUrls, setGroupingPhotoViewerUrls] = useState<string[]>([]);
   const [groupingPhotoViewerInitialIndex, setGroupingPhotoViewerInitialIndex] = useState(0);
+  const [isRestaurantSearchFocused, setIsRestaurantSearchFocused] = useState(false);
+  const [focusedLocationOptionsDismissSignal, setFocusedLocationOptionsDismissSignal] = useState(0);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const processStepScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
+  const processStepScrollOffsetYRef = useRef(0);
+  const processStepRestoreScrollYRef = useRef<number | null>(null);
+  const shouldResetFocusedRestaurantSearchScrollRef = useRef(false);
   const hasTrackedFlowOpenRef = useRef(false);
   const hasTrackedFlowExitRef = useRef(false);
   const hasCompletedFlowRef = useRef(false);
@@ -603,6 +611,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const allDisplayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
   const expandedSearchLabel = restaurantSearch.expandedLabel;
   const isGettingLocation = restaurantSearch.isGettingLocation;
+  const isUsingCurrentLocation = restaurantSearch.isUsingCurrentLocation;
   const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
   const isSearchExpanded = restaurantSearch.isExpanded;
   const isSearchingNearbyRestaurants = restaurantSearch.isSearchingNearby;
@@ -612,7 +621,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const manualLocation = restaurantSearch.manualLocation;
   const menuItemsQuery = menuItems.query;
   const savedEmptyDescription = savedSuggestions.emptyDescription;
-  const savedEmptyTitle = savedSuggestions.emptyTitle;
   const savedRestaurantsErrorMessage = savedSuggestions.errorMessage;
   const savedRestaurantsLoading = savedSuggestions.isLoading;
   const savedRestaurantsTitle = savedSuggestions.title;
@@ -929,6 +937,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     processStepScrollViewRef.current?.scrollTo({
       y: 0,
       animated: false,
+    });
+  }, []);
+  const scrollProcessStepToOffset = useCallback((offsetY: number) => {
+    requestAnimationFrame(() => {
+      processStepScrollViewRef.current?.scrollTo({
+        y: offsetY,
+        animated: false,
+      });
     });
   }, []);
 
@@ -1331,6 +1347,101 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     }
   };
 
+  const shouldShowFocusedRestaurantSearch =
+    isRestaurantSearchFocused && processType === 'restaurant' && step === 'process';
+  const openFocusedRestaurantSearch = useCallback(() => {
+    processStepRestoreScrollYRef.current = processStepScrollOffsetYRef.current;
+    shouldResetFocusedRestaurantSearchScrollRef.current = true;
+    setIsRestaurantSearchFocused(true);
+  }, []);
+  const closeFocusedRestaurantSearch = useCallback(() => {
+    if (isRestaurantSearchFocused && processStepRestoreScrollYRef.current === null) {
+      processStepRestoreScrollYRef.current = processStepScrollOffsetYRef.current;
+    }
+
+    setIsRestaurantSearchFocused(false);
+  }, [isRestaurantSearchFocused]);
+  const handleProcessStepScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (shouldShowFocusedRestaurantSearch) {
+        return;
+      }
+
+      processStepScrollOffsetYRef.current = event.nativeEvent.contentOffset.y;
+    },
+    [shouldShowFocusedRestaurantSearch],
+  );
+  const dismissFocusedLocationOptions = useCallback(() => {
+    if (!shouldShowFocusedRestaurantSearch) {
+      return;
+    }
+
+    setFocusedLocationOptionsDismissSignal((currentSignal) => currentSignal + 1);
+  }, [shouldShowFocusedRestaurantSearch]);
+  const resetFocusedRestaurantSearchScrollToTop = useCallback(() => {
+    if (!shouldShowFocusedRestaurantSearch || !shouldResetFocusedRestaurantSearchScrollRef.current) {
+      return;
+    }
+
+    shouldResetFocusedRestaurantSearchScrollRef.current = false;
+    scrollProcessStepToOffset(0);
+  }, [scrollProcessStepToOffset, shouldShowFocusedRestaurantSearch]);
+  useEffect(() => {
+    if (shouldShowFocusedRestaurantSearch) {
+      scrollProcessStepToOffset(0);
+      return;
+    }
+
+    if (processType !== 'restaurant' || step !== 'process') {
+      processStepRestoreScrollYRef.current = null;
+      return;
+    }
+
+    const restoreOffsetY = processStepRestoreScrollYRef.current;
+    if (restoreOffsetY === null) {
+      return;
+    }
+
+    processStepRestoreScrollYRef.current = null;
+    scrollProcessStepToOffset(restoreOffsetY);
+  }, [processType, scrollProcessStepToOffset, shouldShowFocusedRestaurantSearch, step]);
+  const focusedRestaurantSearchHeader = (
+    <FocusedRestaurantSearchHeader
+      currentLocationDisabled={
+        !isOnline ||
+        isGettingLocation ||
+        isSearchingNearbyRestaurants ||
+        (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+      }
+      currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+      isUsingCurrentLocation={isUsingCurrentLocation}
+      locationOptionsDismissSignal={focusedLocationOptionsDismissSignal}
+      manualLocation={manualLocation}
+      onBackPress={() => {
+        closeFocusedRestaurantSearch();
+      }}
+      onManualLocationChange={(value) => {
+        setManualLocation(value);
+        dismissCurrentPhotoLocationHint();
+      }}
+      onSearchPress={() => {
+        void handleSearchByText(false);
+      }}
+      onSearchQueryChange={(value) => {
+        setRestaurantSearchQuery(value);
+        dismissCurrentPhotoLocationHint();
+      }}
+      onUseCurrentLocationPress={() => {
+        void handleSearchNearby();
+      }}
+      searchButtonDisabled={searchButtonDisabled}
+      searchButtonLabel={expandedSearchLabel}
+      searchButtonLoading={isSearchingRestaurants}
+      searchQuery={restaurantSearchQuery}
+      testID="process-photos-focused-restaurant-search-header"
+    />
+  );
+
   const clearSelectedRestaurant = () => {
     updateCurrentRestaurantForm({
       restaurantId: '',
@@ -1353,6 +1464,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const handleSelectRestaurant = (restaurant: RestaurantRecord) => {
     if (currentRestaurantForm?.restaurantId === restaurant.id) {
       clearSelectedRestaurant();
+      closeFocusedRestaurantSearch();
       return;
     }
 
@@ -1379,6 +1491,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     setEditingMenuItemName('');
     setErrorMessage(null);
     clearSearchErrorMessage();
+    closeFocusedRestaurantSearch();
   };
 
   const clearSelectedMenuItem = () => {
@@ -2256,14 +2369,150 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       : null;
     const showLocationMetadataHint =
       Boolean(captureCoordinatesLabel) && !locationMetadataHintDismissedByPhotoId[currentPhoto.id];
+    const renderRestaurantSearchSection = (hideSearchCard = false) => {
+      const shouldShowRestaurantOptions = hideSearchCard || Boolean(selectedRestaurant);
+
+      return (
+        <VisitRestaurantSearchSection
+          connectivityWarningMessage={
+            !isOnline ? 'Google Places search requires internet connection.' : null
+          }
+          currentLocationDisabled={
+            !isOnline ||
+            isGettingLocation ||
+            isSearchingNearbyRestaurants ||
+            (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+          }
+          currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+          headerAccessory={
+            hideSearchCard ? undefined : (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setIsSearchExpanded((currentValue) => !currentValue);
+                }}
+                style={styles.searchHeaderButton}
+                testID="process-photos-search-toggle"
+              >
+                <Text tone="secondary" variant="bodySm">
+                  {isSearchExpanded ? 'Collapse' : 'Expand'}
+                </Text>
+                <Ionicons
+                  color={theme.colors.text.secondary}
+                  name={isSearchExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                  size={14}
+                />
+              </Pressable>
+            )
+          }
+          hideSearchCard={hideSearchCard}
+          locationMetadataHintText={
+            !hideSearchCard && showLocationMetadataHint
+              ? `Using screenshot location metadata: ${captureCoordinatesLabel}. Nearby saved restaurants are shown first.`
+              : null
+          }
+          locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+          manualLocation={manualLocation}
+          onClearSearchResults={clearRestaurantSearchState}
+          onManualLocationChange={(value) => {
+            setManualLocation(value);
+            dismissCurrentPhotoLocationHint();
+          }}
+          onOpenLocationSettings={() => {
+            void Linking.openSettings();
+          }}
+          onRetrySavedResults={() => {
+            void triggerSavedRestaurantsRefetch();
+          }}
+          onSearchPress={() => {
+            void handleSearchByText(!hideSearchCard);
+          }}
+          onSearchQueryChange={(value) => {
+            setRestaurantSearchQuery(value);
+            dismissCurrentPhotoLocationHint();
+          }}
+          onSearchQueryFocus={
+            hideSearchCard
+              ? undefined
+              : () => {
+                  openFocusedRestaurantSearch();
+                }
+          }
+          onUseCurrentLocationPress={() => {
+            void handleSearchNearby();
+          }}
+          quotaWarningMessage={
+            isOnline && isPlacesQuotaReached
+              ? shouldEnforceUsageLimitsClientSide
+                ? 'Monthly food place search limit reached.'
+                : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
+              : null
+          }
+          savedOptions={
+            shouldShowRestaurantOptions
+              ? collapsedRestaurantOptions.savedRestaurants.map((restaurant) =>
+                  buildRestaurantSearchOption(restaurant, 'saved'),
+                )
+              : []
+          }
+          savedEmptyDescription={
+            shouldShowRestaurantOptions
+              ? savedEmptyDescription
+              : 'Tap the place name field to search and choose a restaurant.'
+          }
+          savedResultsErrorMessage={shouldShowRestaurantOptions ? savedRestaurantsErrorMessage : null}
+          savedResultsLoading={shouldShowRestaurantOptions ? savedRestaurantsLoading : false}
+          savedResultsTitle={
+            selectedRestaurant
+              ? 'Selected restaurant'
+              : shouldShowRestaurantOptions
+                ? savedRestaurantsTitle
+                : 'Restaurant'
+          }
+          searchButtonDisabled={searchButtonDisabled}
+          searchButtonLabel={hideSearchCard || isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+          searchButtonLoading={isSearchingRestaurants}
+          searchErrorMessage={searchErrorMessage}
+          searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
+          searchQuery={restaurantSearchQuery}
+          searchResultsOptions={collapsedRestaurantOptions.searchRestaurants.map((restaurant) =>
+            buildRestaurantSearchOption(restaurant, 'search'),
+          )}
+          searchResultsTitle={selectedRestaurant ? 'Selected restaurant' : undefined}
+          showSearchResults={shouldShowRestaurantOptions && showNearbyPlaces}
+          upgradePromptDescription={
+            shouldShowPlacesUpgradePrompt
+              ? isPlacesQuotaReached
+                ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                : `Only ${placesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+              : null
+          }
+          upgradePromptTitle={
+            shouldShowPlacesUpgradePrompt
+              ? isPlacesQuotaReached
+                ? 'Free limit reached'
+                : 'You are close to your free limit'
+              : null
+          }
+        />
+      );
+    };
 
     return (
       <FeatureFormScreenScaffold
-        key={`process-photo-${processType}-${currentPhoto.id}`}
+        key={`process-photo-${processType}-${currentPhoto.id}-${
+          shouldShowFocusedRestaurantSearch ? 'restaurant-search' : 'form'
+        }`}
+        customHeader={shouldShowFocusedRestaurantSearch ? focusedRestaurantSearchHeader : undefined}
         headerBottomCompact
-        headerBottomContent={progressHeaderContent}
+        headerBottomContent={shouldShowFocusedRestaurantSearch ? undefined : progressHeaderContent}
         keyboardAware
         onBackPress={() => {
+          if (shouldShowFocusedRestaurantSearch) {
+            closeFocusedRestaurantSearch();
+            return;
+          }
+
           if (currentPhotoIndex > 0) {
             goToProcessPhoto(currentPhotoIndex - 1);
             return;
@@ -2272,32 +2521,43 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           setStep(processType === 'restaurant' ? 'group' : 'upload');
           setErrorMessage(null);
         }}
-        primaryAction={{
-          label: isLastPhoto ? 'Review' : processType === 'restaurant' ? 'Next Item' : 'Next Photo',
-          onPress: handleProcessNext,
-        }}
+        primaryAction={
+          shouldShowFocusedRestaurantSearch
+            ? undefined
+            : {
+                label: isLastPhoto ? 'Review' : processType === 'restaurant' ? 'Next Item' : 'Next Photo',
+                onPress: handleProcessNext,
+              }
+        }
         scrollViewProps={{
           contentOffset: { x: 0, y: 0 },
+          onContentSizeChange: resetFocusedRestaurantSearchScrollToTop,
+          onScroll: handleProcessStepScroll,
+          scrollEventThrottle: 16,
         }}
         scrollViewRef={processStepScrollViewRef}
-        secondaryAction={{
-          label:
-            currentPhotoIndex > 0
-              ? 'Previous'
-              : processType === 'restaurant'
-                ? 'Back to Group'
-                : 'Back to Upload',
-          onPress: () => {
-            if (currentPhotoIndex > 0) {
-              goToProcessPhoto(currentPhotoIndex - 1);
-              return;
-            }
-            Keyboard.dismiss();
-            setStep(processType === 'restaurant' ? 'group' : 'upload');
-            setErrorMessage(null);
-          },
-          variant: 'secondary',
-        }}
+        secondaryAction={
+          shouldShowFocusedRestaurantSearch
+            ? undefined
+            : {
+                label:
+                  currentPhotoIndex > 0
+                    ? 'Previous'
+                    : processType === 'restaurant'
+                      ? 'Back to Group'
+                      : 'Back to Upload',
+                onPress: () => {
+                  if (currentPhotoIndex > 0) {
+                    goToProcessPhoto(currentPhotoIndex - 1);
+                    return;
+                  }
+                  Keyboard.dismiss();
+                  setStep(processType === 'restaurant' ? 'group' : 'upload');
+                  setErrorMessage(null);
+                },
+                variant: 'secondary',
+              }
+        }
         subtitle={
           processType === 'restaurant'
             ? `Item ${currentPhotoIndex + 1} of ${processUnitCount}`
@@ -2305,6 +2565,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         }
         title={processType === 'restaurant' ? 'Process Saved Photos' : 'Food Product'}
       >
+        {shouldShowFocusedRestaurantSearch ? (
+          <View onTouchStart={dismissFocusedLocationOptions}>
+            {renderRestaurantSearchSection(true)}
+          </View>
+        ) : (
+          <>
         <PageErrorToast
           actionLabel={errorActionLabel}
           analyticsProps={buildFlowAnalyticsPayload()}
@@ -2372,105 +2638,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
               visibilityValue={visitVisibility}
             />
 
-            <VisitRestaurantSearchSection
-              connectivityWarningMessage={
-                !isOnline ? 'Google Places search requires internet connection.' : null
-              }
-              currentLocationDisabled={
-                !isOnline ||
-                isGettingLocation ||
-                isSearchingNearbyRestaurants ||
-                (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
-              }
-              currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
-              headerAccessory={
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    setIsSearchExpanded((currentValue) => !currentValue);
-                  }}
-                  style={styles.searchHeaderButton}
-                  testID="process-photos-search-toggle"
-                >
-                  <Text tone="secondary" variant="bodySm">
-                    {isSearchExpanded ? 'Collapse' : 'Expand'}
-                  </Text>
-                  <Ionicons
-                    color={theme.colors.text.secondary}
-                    name={isSearchExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
-                    size={14}
-                  />
-                </Pressable>
-              }
-              locationMetadataHintText={
-                showLocationMetadataHint
-                  ? `Using screenshot location metadata: ${captureCoordinatesLabel}. Nearby saved restaurants are shown first.`
-                  : null
-              }
-              locationPermissionNeedsSettings={locationPermissionNeedsSettings}
-              manualLocation={manualLocation}
-              onClearSearchResults={clearRestaurantSearchState}
-              onManualLocationChange={(value) => {
-                setManualLocation(value);
-                dismissCurrentPhotoLocationHint();
-              }}
-              onOpenLocationSettings={() => {
-                void Linking.openSettings();
-              }}
-              onRetrySavedResults={() => {
-                void triggerSavedRestaurantsRefetch();
-              }}
-              onSearchPress={() => {
-                void handleSearchByText(true);
-              }}
-              onSearchQueryChange={(value) => {
-                setRestaurantSearchQuery(value);
-                dismissCurrentPhotoLocationHint();
-              }}
-              onUseCurrentLocationPress={() => {
-                void handleSearchNearby();
-              }}
-              quotaWarningMessage={
-                isOnline && isPlacesQuotaReached
-                  ? shouldEnforceUsageLimitsClientSide
-                    ? 'Monthly food place search limit reached.'
-                    : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
-                  : null
-              }
-              savedOptions={collapsedRestaurantOptions.savedRestaurants.map((restaurant) =>
-                buildRestaurantSearchOption(restaurant, 'saved'),
-              )}
-              savedEmptyDescription={savedEmptyDescription}
-              savedEmptyTitle={savedEmptyTitle}
-              savedResultsErrorMessage={savedRestaurantsErrorMessage}
-              savedResultsLoading={savedRestaurantsLoading}
-              savedResultsTitle={selectedRestaurant ? 'Selected restaurant' : savedRestaurantsTitle}
-              searchButtonDisabled={searchButtonDisabled}
-              searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
-              searchButtonLoading={isSearchingRestaurants}
-              searchErrorMessage={searchErrorMessage}
-              searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
-              searchQuery={restaurantSearchQuery}
-              searchResultsOptions={collapsedRestaurantOptions.searchRestaurants.map((restaurant) =>
-                buildRestaurantSearchOption(restaurant, 'search'),
-              )}
-              searchResultsTitle={selectedRestaurant ? 'Selected restaurant' : undefined}
-              showSearchResults={showNearbyPlaces}
-              upgradePromptDescription={
-                shouldShowPlacesUpgradePrompt
-                  ? isPlacesQuotaReached
-                    ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
-                    : `Only ${placesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
-                  : null
-              }
-              upgradePromptTitle={
-                shouldShowPlacesUpgradePrompt
-                  ? isPlacesQuotaReached
-                    ? 'Free limit reached'
-                    : 'You are close to your free limit'
-                  : null
-              }
-            />
+            {renderRestaurantSearchSection(false)}
 
             {selectedRestaurant ? (
               <Card style={styles.sectionCard}>
@@ -2685,6 +2853,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           }
           visible={isPhotoViewerVisible}
         />
+          </>
+        )}
       </FeatureFormScreenScaffold>
     );
   }

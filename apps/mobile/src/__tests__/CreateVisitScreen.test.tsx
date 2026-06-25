@@ -156,6 +156,8 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FocusedRestaurantSearchHeader: (props: Record<string, unknown>) =>
+    mockReact.createElement('FocusedRestaurantSearchHeader', props),
   LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   OptionList: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
@@ -168,6 +170,10 @@ jest.mock('../components/shared', () => ({
   VisitMenuItemOptionRow: (props: Record<string, unknown>) => mockReact.createElement('VisitMenuItemOptionRow', props),
   VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantOptionTrailing', props),
+  VisitRestaurantSearchHeaderToggle: (props: Record<string, unknown>) =>
+    mockReact.createElement('VisitRestaurantSearchHeaderToggle', props),
+  VisitRestaurantSearchOptionDescription: (props: Record<string, unknown>) =>
+    mockReact.createElement('VisitRestaurantSearchOptionDescription', props),
   VisitRestaurantSearchSection: (props: Record<string, unknown>) =>
     mockReact.createElement('VisitRestaurantSearchSection', props),
 }));
@@ -498,6 +504,7 @@ describe('CreateVisitScreen', () => {
         manualLocation: '',
         nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         query: '',
+        selectCurrentLocation: jest.fn(),
         searchButtonDisabled: false,
         searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         searchErrorMessage: null,
@@ -538,6 +545,54 @@ describe('CreateVisitScreen', () => {
       isSubmitting: false,
       submitVisit: jest.fn(),
     } as ReturnType<typeof useCreateVisitSubmission>);
+  });
+
+  it('preselects current location when expanding restaurant search', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: {} } as never}
+        />,
+      );
+    });
+
+    const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
+    const toggle = searchSection.props.headerAccessory;
+    const selectionFlow = mockedUseRestaurantSelectionFlow.mock.results[0]
+      .value as ReturnType<typeof useCreateVisitRestaurantSelectionFlow>;
+
+    await act(async () => {
+      toggle.props.onPress();
+    });
+
+    expect(selectionFlow.search.setExpanded).toHaveBeenCalledWith(true);
+    expect(selectionFlow.search.selectCurrentLocation).toHaveBeenCalledTimes(1);
+  });
+
+  it('preselects current location when focusing place search into the full search view', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: {} } as never}
+        />,
+      );
+    });
+
+    const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
+    const selectionFlow = mockedUseRestaurantSelectionFlow.mock.results[0]
+      .value as ReturnType<typeof useCreateVisitRestaurantSelectionFlow>;
+
+    await act(async () => {
+      searchSection.props.onSearchQueryFocus();
+    });
+
+    expect(selectionFlow.search.selectCurrentLocation).toHaveBeenCalledTimes(1);
   });
 
   it('uses compact row actions only for user-created menu items and preserves selection wiring', async () => {

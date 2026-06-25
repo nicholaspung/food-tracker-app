@@ -115,6 +115,7 @@ interface UseRestaurantSelectionFlowResult {
   savedRestaurantsErrorMessage: string | null;
   savedRestaurantsLoading: boolean;
   savedRestaurantsTitle: string;
+  selectCurrentLocationForSearch: () => void;
   searchButtonDisabled: boolean;
   searchByText: (options?: {
     collapseAfterSearch?: boolean;
@@ -169,6 +170,7 @@ interface RestaurantSelectionSearchActions {
   ) => Promise<NearbyRestaurantSearchResult>;
   query: string;
   referenceCoords: VisitRestaurantReferenceCoords | null;
+  selectCurrentLocation: () => void;
   searchByText: (options?: {
     collapseAfterSearch?: boolean;
     queryOverride?: string;
@@ -440,6 +442,15 @@ export function useRestaurantSelectionFlow({
     setSearchErrorMessage(null);
     resetLocationPermissionNeedsSettings();
   }, [resetLocationPermissionNeedsSettings]);
+
+  const selectCurrentLocationForSearch = useCallback(() => {
+    setManualLocation(CURRENT_PHONE_LOCATION_LABEL);
+    setIsUsingCurrentLocation(true);
+    if (gpsReferenceCoords) {
+      setReferenceCoords(gpsReferenceCoords);
+    }
+    resetLocationPermissionNeedsSettings();
+  }, [gpsReferenceCoords, resetLocationPermissionNeedsSettings]);
 
   useEffect(() => {
     if (
@@ -773,6 +784,7 @@ export function useRestaurantSelectionFlow({
     savedRestaurantsErrorMessage,
     savedRestaurantsLoading,
     savedRestaurantsTitle,
+    selectCurrentLocationForSearch,
     searchButtonDisabled: searchUi.isSearchDisabled,
     searchByText,
     searchCurrentLocationByText,
@@ -831,6 +843,7 @@ function buildRestaurantSelectionConceptInterfaces(
       nearbyAt: flow.searchNearbyAt,
       query: flow.searchQuery,
       referenceCoords: flow.referenceCoords,
+      selectCurrentLocation: flow.selectCurrentLocationForSearch,
       searchByText: flow.searchByText,
       searchButtonDisabled: flow.searchButtonDisabled,
       searchCurrentLocationByText: flow.searchCurrentLocationByText,

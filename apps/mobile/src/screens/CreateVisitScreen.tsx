@@ -103,8 +103,31 @@ type CreateVisitExitMethod =
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
 
+const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
+const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
+
 function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
   return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
+}
+
+function isCurrentLocationSearchSelection({
+  isUsingCurrentLocation,
+  manualLocation,
+}: {
+  isUsingCurrentLocation: boolean;
+  manualLocation: string;
+}): boolean {
+  return (
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
+  );
+}
+
+function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
+  return restaurant.isGooglePlace !== true;
 }
 
 function resolveCreateVisitEntrySource(options: {
@@ -581,7 +604,10 @@ export function CreateVisitScreen({
   const clearSearchErrorMessage = restaurantSearch.clearErrorMessage;
   const compactSearchLabel = restaurantSearch.compactLabel;
   const displayedNearbyRestaurants = restaurantSearch.displayedNearbyRestaurants;
-  const displayedSavedRestaurants = savedSuggestions.displayedSavedRestaurants;
+  const displayedSavedRestaurants = useMemo(
+    () => savedSuggestions.displayedSavedRestaurants.filter(isUserAddedRestaurantOption),
+    [savedSuggestions.displayedSavedRestaurants],
+  );
   const expandedSearchLabel = restaurantSearch.expandedLabel;
   const isGettingLocation = restaurantSearch.isGettingLocation;
   const isPlacesQuotaReached = quotaDisplay.isPlacesQuotaReached;
@@ -633,6 +659,7 @@ export function CreateVisitScreen({
   const runRestaurantSearchByText = restaurantSearch.searchByText;
   const searchErrorMessage = restaurantSearch.searchErrorMessage;
   const restaurantSearchQuery = restaurantSearch.query;
+  const selectCurrentLocationForSearch = restaurantSearch.selectCurrentLocation;
   const setIsSearchExpanded = restaurantSearch.setExpanded;
   const setManualLocation = restaurantSearch.setManualLocation;
   const setRestaurantSearchQuery = restaurantSearch.setQuery;
@@ -1217,7 +1244,7 @@ export function CreateVisitScreen({
     }
   };
 
-  const handleSearchCurrentLocationByText = async () => {
+  const handleSearchCurrentLocationByText = async (collapseAfterSearch = false) => {
     const trimmedQuery = restaurantSearchQuery.trim();
     if (isOnline && !(isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)) {
       trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_STARTED", {
@@ -1246,6 +1273,9 @@ export function CreateVisitScreen({
         resultCount: result.results.length,
         source: "CreateVisitScreen",
       });
+      if (collapseAfterSearch) {
+        setIsSearchExpanded(false);
+      }
       setTimeout(() => {
         scrollToRestaurantList();
       }, 60);
@@ -1272,6 +1302,15 @@ export function CreateVisitScreen({
         source: "CreateVisitScreen",
       });
     }
+  };
+
+  const handleRestaurantSearchPress = async (collapseAfterSearch = false) => {
+    if (isCurrentLocationSearchSelection({ isUsingCurrentLocation, manualLocation })) {
+      await handleSearchCurrentLocationByText(collapseAfterSearch);
+      return;
+    }
+
+    await handleSearchByText(collapseAfterSearch);
   };
 
   const handleVisitDateChange = (value: string) => {
@@ -1747,6 +1786,19 @@ export function CreateVisitScreen({
 
     setFocusedLocationOptionsDismissSignal((currentSignal) => currentSignal + 1);
   }, [isRestaurantSearchFocused]);
+  const handleToggleRestaurantSearchExpanded = () => {
+    const shouldExpand = !isSearchExpanded;
+    setIsSearchExpanded(shouldExpand);
+    if (shouldExpand && !manualLocation.trim()) {
+      selectCurrentLocationForSearch();
+    }
+  };
+  const handleRestaurantSearchQueryFocus = () => {
+    setIsRestaurantSearchFocused(true);
+    if (!manualLocation.trim()) {
+      selectCurrentLocationForSearch();
+    }
+  };
   const focusedRestaurantSearchHeader = (
     <FocusedRestaurantSearchHeader
       currentLocationDisabled={
@@ -1764,7 +1816,7 @@ export function CreateVisitScreen({
       }}
       onManualLocationChange={setManualLocation}
       onSearchPress={() => {
-        void handleSearchByText(false);
+        void handleRestaurantSearchPress(false);
       }}
       onSearchQueryChange={setRestaurantSearchQuery}
       onUseCurrentLocationPress={() => {
@@ -2320,9 +2372,7 @@ export function CreateVisitScreen({
             headerAccessory={
               <VisitRestaurantSearchHeaderToggle
                 expanded={isSearchExpanded}
-                onPress={() => {
-                  setIsSearchExpanded((currentValue) => !currentValue);
-                }}
+                onPress={handleToggleRestaurantSearchExpanded}
                 testID="create-visit-search-toggle"
               />
             }
@@ -2343,12 +2393,10 @@ export function CreateVisitScreen({
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
             }}
             onSearchPress={() => {
-              void handleSearchByText(true);
+              void handleRestaurantSearchPress(true);
             }}
             onSearchQueryChange={setRestaurantSearchQuery}
-            onSearchQueryFocus={() => {
-              setIsRestaurantSearchFocused(true);
-            }}
+            onSearchQueryFocus={handleRestaurantSearchQueryFocus}
             onSearchResultsLayout={(event) => {
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
             }}
