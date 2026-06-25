@@ -1,5 +1,5 @@
 import type { RestaurantListDetailPhotoPreviewRecord } from '../../features';
-import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../../lib/photoUrls';
+import { buildPhotoThumbnailUrl, buildPhotoViewerUrl } from '../../lib/photoUrls';
 import type {
   GroupedBookmarkedItem,
   OwnerDisplayItem,
@@ -45,7 +45,7 @@ function appendPhotoEntries(
     entriesById.set(photo.id, {
       id: photo.id,
       previewUrl: buildPhotoThumbnailUrl(photo),
-      url: buildPhotoFileUrl(photo),
+      url: buildPhotoViewerUrl(photo),
       ownerLabel,
     });
   }

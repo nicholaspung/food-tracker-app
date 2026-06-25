@@ -5,6 +5,7 @@ import {
   FlatList,
   type ImageErrorEventData,
   type ImageLoadEventData,
+  type ImageResizeMode,
   type ImageStyle,
   Modal as RNModal,
   type NativeSyntheticEvent,
@@ -35,6 +36,8 @@ import { Text } from '../../ui';
 import { CachedRemoteImage } from './CachedRemoteImage';
 
 const SHOULD_USE_NATIVE_ANIMATION_DRIVER = Platform.OS !== 'web';
+const PHOTO_VIEWER_CLOSE_BUTTON_SIZE = 36;
+const PHOTO_VIEWER_NAV_BUTTON_SIZE = 40;
 
 export interface PhotoViewerModalProps {
   visible: boolean;
@@ -66,9 +69,9 @@ const useStyles = createThemedStyles((
     alignItems: 'center',
     backgroundColor: viewerControlBackground,
     borderRadius: theme.radii.pill,
-    height: 36,
+    height: PHOTO_VIEWER_CLOSE_BUTTON_SIZE,
     justifyContent: 'center',
-    width: 36,
+    width: PHOTO_VIEWER_CLOSE_BUTTON_SIZE,
   },
   list: {
     flex: 1,
@@ -85,9 +88,9 @@ const useStyles = createThemedStyles((
     alignItems: 'center',
     backgroundColor: viewerControlBackground,
     borderRadius: theme.radii.pill,
-    height: 40,
+    height: PHOTO_VIEWER_NAV_BUTTON_SIZE,
     justifyContent: 'center',
-    width: 40,
+    width: PHOTO_VIEWER_NAV_BUTTON_SIZE,
   },
   navButtonDisabled: {
     opacity: 0.35,
@@ -108,7 +111,6 @@ const useStyles = createThemedStyles((
 
 const slideStyles = StyleSheet.create({
   image: {
-    resizeMode: 'contain',
     ...StyleSheet.absoluteFill,
   },
   slide: {
@@ -141,6 +143,7 @@ interface PhotoViewerSlideProps {
   onRequestClose: () => void;
   onZoomActiveChange: (isZoomActive: boolean) => void;
   previewUri?: string;
+  height: number;
   uri: string;
   visible: boolean;
   width: number;
@@ -157,6 +160,7 @@ interface ZoomablePhotoContainerProps {
 interface ViewerImageProps {
   onError: (event: NativeSyntheticEvent<ImageErrorEventData>) => void;
   onLoad: (event: NativeSyntheticEvent<ImageLoadEventData>) => void;
+  resizeMode: ImageResizeMode;
   style: StyleProp<Animated.WithAnimatedValue<ImageStyle>>;
   testID: string;
   uri: string;
@@ -165,6 +169,7 @@ interface ViewerImageProps {
 function ViewerImage({
   onError,
   onLoad,
+  resizeMode,
   style,
   testID,
   uri,
@@ -173,6 +178,7 @@ function ViewerImage({
     <Animated.Image
       onError={onError}
       onLoad={onLoad}
+      resizeMode={resizeMode}
       source={buildCachedImageSource(uri)}
       style={style}
       testID={testID}
@@ -450,6 +456,7 @@ function PhotoViewerSlide({
   onRequestClose,
   onZoomActiveChange,
   previewUri,
+  height,
   uri,
   visible,
   width,
@@ -501,7 +508,7 @@ function PhotoViewerSlide({
   }, [fullImageOpacity, shouldShowPreview]);
 
   return (
-    <View style={[slideStyles.slide, { width }]}>
+    <View style={[slideStyles.slide, { height, width }]}>
       <ZoomablePhotoContainer
         isCurrent={isCurrent}
         onRequestClose={onRequestClose}
@@ -512,6 +519,7 @@ function PhotoViewerSlide({
           {shouldShowPreview && previewUri && !isFullImageLoaded ? (
             <CachedRemoteImage
               uri={previewUri}
+              resizeMode="contain"
               style={slideStyles.image}
               testID="photo-viewer-preview-image"
             />
@@ -519,6 +527,7 @@ function PhotoViewerSlide({
           <ViewerImage
             onError={handleFullImageError}
             onLoad={handleFullImageLoad}
+            resizeMode="contain"
             style={[slideStyles.image, { opacity: fullImageOpacity }]}
             testID="photo-viewer-full-image"
             uri={uri}
@@ -540,7 +549,7 @@ export function PhotoViewerModal({
   const theme = useTheme();
   const viewerPalette = getPhotoViewerPalette(theme);
   const insets = useSafeAreaInsets();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const listRef = useRef<FlatList<string>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [zoomedPhotoIndex, setZoomedPhotoIndex] = useState<number | null>(null);
@@ -550,9 +559,20 @@ export function PhotoViewerModal({
   const hasNextPhoto = currentIndex < urls.length - 1;
   const isCurrentPhotoZoomed = zoomedPhotoIndex === currentIndex;
   const currentOwnerLabel = ownerLabels?.[currentIndex]?.trim() || null;
+  const topPadding = Math.max(theme.spacing.sm, insets.top + theme.spacing.xs);
+  const bottomPadding = Math.max(theme.spacing.lg, insets.bottom + theme.spacing.sm);
+  const photoFrameHeight = Math.max(
+    1,
+    viewportHeight -
+      topPadding -
+      PHOTO_VIEWER_CLOSE_BUTTON_SIZE -
+      theme.spacing.sm -
+      PHOTO_VIEWER_NAV_BUTTON_SIZE -
+      bottomPadding,
+  );
   const styles = useStyles(
-    Math.max(theme.spacing.sm, insets.top + theme.spacing.xs),
-    Math.max(theme.spacing.lg, insets.bottom + theme.spacing.sm),
+    topPadding,
+    bottomPadding,
     viewerPalette.background,
     viewerPalette.controlBackground,
     viewerPalette.text,
@@ -668,6 +688,7 @@ export function PhotoViewerModal({
                   handleSlideZoomActiveChange(index, isZoomActive);
                 }}
                 previewUri={previewUrls?.[index]}
+                height={photoFrameHeight}
                 uri={item}
                 visible={visible}
                 width={viewportWidth}

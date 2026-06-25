@@ -112,6 +112,7 @@ jest.mock('../lib/pendingAuthRedirect', () => ({
 jest.mock('../lib/photoUrls', () => ({
   buildPhotoFileUrl: jest.fn(() => 'photo-url'),
   buildPhotoThumbnailUrl: jest.fn(() => 'photo-thumbnail-url'),
+  buildPhotoViewerUrl: jest.fn(() => 'photo-viewer-url'),
 }));
 
 jest.mock('../observability/productAnalytics', () => ({

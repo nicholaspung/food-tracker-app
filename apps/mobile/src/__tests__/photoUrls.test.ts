@@ -1,7 +1,10 @@
+import { Platform } from 'react-native';
+
 import {
   buildPhotoFileUrl,
   buildPhotoPreviewUrls,
   buildPhotoThumbnailUrl,
+  buildPhotoViewerUrl,
   buildPhotoViewerState,
   buildPhotoViewerUrls,
 } from '../lib/photoUrls';
@@ -17,8 +20,21 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
 const mockedBuildPocketBaseFileUrl = jest.mocked(buildPocketBaseFileUrl);
 
 describe('photoUrls', () => {
+  const originalPlatformOS = Platform.OS;
+
   beforeEach(() => {
     mockedBuildPocketBaseFileUrl.mockClear();
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: originalPlatformOS,
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: originalPlatformOS,
+    });
   });
 
   it('builds remote file URLs with the visit photo default collection', () => {
@@ -54,6 +70,28 @@ describe('photoUrls', () => {
       'visit_photos/photo-1/one.jpg?thumb=100x100',
       'visit_photos/photo-2/two.jpg?thumb=100x100',
     ]);
+  });
+
+  it('uses a large generated thumbnail for remote web viewer URLs', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'web',
+    });
+
+    expect(buildPhotoViewerUrl({ id: 'photo-1', photo: 'iphone.heic' })).toBe(
+      'visit_photos/photo-1/iphone.heic?thumb=1600x1600f',
+    );
+  });
+
+  it('keeps local viewer URIs unchanged on web', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'web',
+    });
+
+    expect(buildPhotoViewerUrl({ id: 'local-1', photo: 'local.heic', uri: 'file://local.heic' })).toBe(
+      'file://local.heic',
+    );
   });
 
   it('bounds viewer initial index and supports photo ids', () => {

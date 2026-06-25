@@ -1,4 +1,8 @@
+import { Platform } from 'react-native';
+
 import { buildPocketBaseFileUrl } from '../features/store/pocketbaseGateway';
+
+const WEB_PHOTO_VIEWER_THUMB_SIZE = '1600x1600f';
 
 export interface PhotoFileReference {
   id: string;
@@ -49,11 +53,22 @@ export function buildPhotoThumbnailUrl(
   return buildPhotoFileUrl(photo, { ...options, thumb: '100x100' });
 }
 
+export function buildPhotoViewerUrl(
+  photo: PhotoFileReference,
+  options?: Omit<PhotoUrlBuildOptions, 'thumb'>,
+): string {
+  if (Platform.OS === 'web' && !photo.uri?.trim()) {
+    return buildPhotoFileUrl(photo, { ...options, thumb: WEB_PHOTO_VIEWER_THUMB_SIZE });
+  }
+
+  return buildPhotoFileUrl(photo, options);
+}
+
 export function buildPhotoViewerUrls(
   photos: readonly PhotoFileReference[],
   options?: PhotoUrlBuildOptions,
 ): string[] {
-  return photos.map((photo) => buildPhotoFileUrl(photo, options));
+  return photos.map((photo) => buildPhotoViewerUrl(photo, options));
 }
 
 export function buildPhotoPreviewUrls(

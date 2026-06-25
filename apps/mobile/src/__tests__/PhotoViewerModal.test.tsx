@@ -248,6 +248,17 @@ function findImageByTestID(renderer: any, testID: string) {
   );
 }
 
+function styleHasResizeMode(style: unknown): boolean {
+  const styles = Array.isArray(style) ? style : [style];
+
+  return styles.some(
+    (styleEntry) =>
+      Boolean(styleEntry) &&
+      typeof styleEntry === 'object' &&
+      'resizeMode' in styleEntry,
+  );
+}
+
 describe('PhotoViewerModal', () => {
   beforeEach(() => {
     const { Image } = jest.requireMock('react-native') as {
@@ -301,6 +312,29 @@ describe('PhotoViewerModal', () => {
 
     expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
     expect(extractOpacity(renderer.root.findByProps({ testID: 'photo-viewer-full-image' }))).toBe(1);
+  });
+
+  it('passes resizeMode as an image prop instead of deprecated web style', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://photo']}
+          urls={['full://photo']}
+          visible
+        />,
+      );
+    });
+
+    const previewImage = findImageByTestID(renderer, 'photo-viewer-preview-image');
+    const fullImage = findImageByTestID(renderer, 'photo-viewer-full-image');
+
+    expect(previewImage.props.resizeMode).toBe('contain');
+    expect(fullImage.props.resizeMode).toBe('contain');
+    expect(styleHasResizeMode(previewImage.props.style)).toBe(false);
+    expect(styleHasResizeMode(fullImage.props.style)).toBe(false);
   });
 
   it('shows a previously loaded full image immediately even when a preview uri exists', async () => {
@@ -548,6 +582,39 @@ describe('PhotoViewerModal', () => {
       height: '100%',
       width: '100%',
     }));
+  });
+
+  it('sets an explicit slide height so web FlatList items do not collapse', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          urls={['full://one']}
+          visible
+        />,
+      );
+    });
+
+    const slide = renderer.root.find(
+      (node: any) => {
+        if (node.type !== 'View' || !Array.isArray(node.props.style)) {
+          return false;
+        }
+
+        return node.props.style.some(
+          (style: unknown) =>
+            style !== null &&
+            typeof style === 'object' &&
+            'height' in style &&
+            (style as { height?: number }).height === 516 &&
+            (style as { width?: number }).width === 320,
+        );
+      },
+    );
+
+    expect(slide).toBeTruthy();
   });
 
   it('leaves horizontal swipes to the photo pager while unzoomed', async () => {

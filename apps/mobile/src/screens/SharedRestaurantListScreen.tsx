@@ -26,7 +26,7 @@ import type {
   RestaurantListItemRecord,
   SharedRestaurantListPhotoPreviewRecord,
 } from '../features';
-import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
+import { buildPhotoThumbnailUrl, buildPhotoViewerUrl } from '../lib/photoUrls';
 import { savePendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import { env } from '../config/env';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -187,7 +187,7 @@ function buildSharedPhotoEntries(
       entriesById.set(photo.id, {
         id: photo.id,
         previewUrl: buildPhotoThumbnailUrl(photo),
-        url: buildPhotoFileUrl(photo),
+        url: buildPhotoViewerUrl(photo),
         ownerLabel: 'Shared list',
       });
     }
