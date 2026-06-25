@@ -283,11 +283,26 @@ async function syncRestaurantListMembershipCaches(
   });
 }
 
+async function syncRestaurantListTargetContentCaches(
+  queryClient: QueryClient,
+  targetListIds: string[],
+): Promise<void> {
+  await Promise.all(
+    Array.from(new Set(targetListIds))
+      .filter((listId) => listId.length > 0)
+      .map((listId) => invalidateRestaurantListContentQueries(queryClient, listId)),
+  );
+}
+
 async function syncRestaurantListSaveTargetCaches(
   queryClient: QueryClient,
   sourceListId: string,
+  targetListIds: string[] = [],
 ): Promise<void> {
-  await invalidateRestaurantListSaveTargetQueries(queryClient, sourceListId);
+  await Promise.all([
+    invalidateRestaurantListSaveTargetQueries(queryClient, sourceListId),
+    syncRestaurantListTargetContentCaches(queryClient, targetListIds),
+  ]);
 }
 
 export function useRestaurantListWrites() {
@@ -462,7 +477,7 @@ export function useRestaurantListWrites() {
         }
       }
 
-      await syncRestaurantListSaveTargetCaches(queryClient, sourceListId);
+      await syncRestaurantListSaveTargetCaches(queryClient, sourceListId, listIds);
 
       if (queued) {
         patchQueuedDefaultListBookmark(
@@ -513,6 +528,12 @@ export function useRestaurantListWrites() {
         },
         fallbackErrorMessage: 'Could not save bookmark to Want to Try.',
         onQueued: () => patchQueuedDefaultListBookmark(queryClient, defaultListId, optimisticDefaultListBookmark),
+        onSuccess: (savedItemsByList) => {
+          const savedListIds = savedItemsByList
+            .flatMap((savedItems) => savedItems.map((savedItem) => savedItem.listId))
+            .filter((savedListId) => savedListId.length > 0);
+          return syncRestaurantListTargetContentCaches(queryClient, savedListIds);
+        },
         onSettledInvalidate: () => syncRestaurantListSaveTargetCaches(queryClient, sourceListId),
         queuedToast: 'Want to Try bookmark',
       });
@@ -545,6 +566,10 @@ export function useRestaurantListWrites() {
                 }
               : undefined,
           ),
+        onSuccess: (savedItems) => {
+          const savedListIds = savedItems.map((savedItem) => savedItem.listId).filter((listId) => listId.length > 0);
+          return syncRestaurantListTargetContentCaches(queryClient, savedListIds);
+        },
         onSettledInvalidate: () => syncRestaurantListSaveTargetCaches(queryClient, sourceListId),
         queuedToast: 'Want to Try restaurant',
       });

@@ -140,10 +140,11 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 			UserID    string `json:"userId"`
 		} `json:"list"`
 		Items []struct {
-			RestaurantName  string `json:"restaurantName"`
-			SourceUserID    string `json:"sourceUserId"`
-			SourceUserName  string `json:"sourceUserName"`
-			BookmarkedItems []struct {
+			RestaurantName       string `json:"restaurantName"`
+			RestaurantVisibility string `json:"restaurantVisibility"`
+			SourceUserID         string `json:"sourceUserId"`
+			SourceUserName       string `json:"sourceUserName"`
+			BookmarkedItems      []struct {
 				Name           string  `json:"name"`
 				Rating         float64 `json:"rating"`
 				SourceUserID   string  `json:"sourceUserId"`
@@ -174,6 +175,9 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 	}
 	if len(publicPayload.Items) != 1 || publicPayload.Items[0].RestaurantName != "Shared Ramen" {
 		t.Fatalf("unexpected public items: %#v", publicPayload.Items)
+	}
+	if publicPayload.Items[0].RestaurantVisibility != "public" {
+		t.Fatalf("expected public restaurant visibility metadata, got %#v", publicPayload.Items[0])
 	}
 	if publicPayload.Page != 1 || publicPayload.PageSize != 20 || publicPayload.TotalItems != 1 || publicPayload.TotalPages != 1 || publicPayload.HasNextPage {
 		t.Fatalf("unexpected public pagination metadata: %#v", publicPayload)
@@ -416,5 +420,116 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 	)
 	if disabledResponse.Code == http.StatusOK {
 		t.Fatalf("expected disabled token to be unavailable, got %d: %s", disabledResponse.Code, disabledResponse.Body.String())
+	}
+}
+
+func TestSharedRestaurantListPrivateRestaurantCannotBeSaved(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	viewer, viewerToken := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Hidden Ramen",
+		"location":   "San Francisco, CA",
+		"visibility": "private",
+	})
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Private Recs",
+		"user":       owner.Id,
+		"visibility": "private",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       owner.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	foodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visit.Id,
+		"user":   owner.Id,
+		"name":   "Secret Miso",
+		"rating": 5,
+	})
+	sourceListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    owner.Id,
+		"sourceUser": owner.Id,
+		"foodItem":   foodItem.Id,
+		"position":   1,
+	})
+
+	shareResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurant-lists/"+list.Id+"/share-link",
+		ownerToken,
+		"",
+	)
+	if shareResponse.Code != http.StatusOK {
+		t.Fatalf("expected share response 200, got %d: %s", shareResponse.Code, shareResponse.Body.String())
+	}
+
+	var sharePayload struct {
+		ShareToken string `json:"shareToken"`
+	}
+	if err := json.Unmarshal(shareResponse.Body.Bytes(), &sharePayload); err != nil {
+		t.Fatalf("failed to parse share payload: %v", err)
+	}
+
+	publicResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/public/restaurant-lists/"+sharePayload.ShareToken,
+		viewerToken,
+		"",
+	)
+	if publicResponse.Code != http.StatusOK {
+		t.Fatalf("expected public response 200, got %d: %s", publicResponse.Code, publicResponse.Body.String())
+	}
+
+	var publicPayload struct {
+		Items []struct {
+			RestaurantVisibility string `json:"restaurantVisibility"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(publicResponse.Body.Bytes(), &publicPayload); err != nil {
+		t.Fatalf("failed to parse public payload: %v; body=%s", err, publicResponse.Body.String())
+	}
+	if len(publicPayload.Items) != 1 || publicPayload.Items[0].RestaurantVisibility != "private" {
+		t.Fatalf("expected private restaurant visibility metadata, got %#v", publicPayload.Items)
+	}
+
+	saveResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/public/restaurant-lists/"+sharePayload.ShareToken+"/bookmarks",
+		viewerToken,
+		fmt.Sprintf(
+			`{"restaurantId":"%s","foodItemId":"%s","sourceListItemId":"%s"}`,
+			restaurant.Id,
+			foodItem.Id,
+			sourceListItem.Id,
+		),
+	)
+	if saveResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected private restaurant save to be forbidden, got %d: %s", saveResponse.Code, saveResponse.Body.String())
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"addedBy = {:userId} && foodItem = {:foodItemId}",
+		map[string]any{"userId": viewer.Id, "foodItemId": foodItem.Id},
+	); count != 0 {
+		t.Fatalf("expected private restaurant save to create no recommendations, got %d", count)
 	}
 }

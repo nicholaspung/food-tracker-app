@@ -232,6 +232,50 @@ describe('buildListDetailReadModel', () => {
     });
   });
 
+  it('deduplicates viewer rows by normalized menu item name', () => {
+    const detail = buildDetail();
+    const alphaItem = detail.items.find((item) => item.restaurantId === 'restaurant_1');
+
+    if (!alphaItem) {
+      throw new Error('Expected Alpha Cafe fixture row');
+    }
+
+    alphaItem.bookmarkedItems = [
+      ...alphaItem.bookmarkedItems,
+      {
+        id: 'food_1_repeat',
+        listItemId: 'list_item_1',
+        name: ' pancakes ',
+        rating: 8,
+        visitedAt: '2025-05-01T00:00:00.000Z',
+        sourceUserId: 'friend_2',
+        sourceUserName: 'Ari',
+        userFoodItemId: 'user_food_1_repeat',
+        userFoodItemRating: 9,
+      },
+    ];
+    detail.bookmarkState.savedListIdsByBookmarkLookupId.food_1_repeat = ['saved_list'];
+    detail.bookmarkState.savedListIdsByBookmarkLookupId.user_food_1_repeat = ['personal_list'];
+
+    const model = buildModel({
+      detail,
+      userId: 'viewer_1',
+    });
+
+    expect(model.restaurantRows[0]?.bookmarkedItems).toHaveLength(1);
+    expect(model.restaurantRows[0]?.bookmarkedItems[0]).toMatchObject({
+      name: 'Pancakes',
+      isSaved: true,
+    });
+    expect(model.restaurantRows[0]?.bookmarkedItems[0]?.bookmarkLookupIds.sort()).toEqual([
+      'food_1',
+      'food_1_repeat',
+      'user_food_1',
+      'user_food_1_repeat',
+    ]);
+    expect(model.mapGroups[0]?.summary).toBe('1. 1 recommended item');
+  });
+
   it('surfaces empty-list facts', () => {
     const model = buildModel({
       detail: buildDetail({

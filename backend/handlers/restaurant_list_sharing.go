@@ -72,6 +72,7 @@ type sharedRestaurantListItemRecord struct {
 	RestaurantLocation    string                                     `json:"restaurantLocation,omitempty"`
 	RestaurantCity        string                                     `json:"restaurantCity,omitempty"`
 	RestaurantCuisineType string                                     `json:"restaurantCuisineType,omitempty"`
+	RestaurantVisibility  string                                     `json:"restaurantVisibility,omitempty"`
 	Latitude              *float64                                   `json:"latitude,omitempty"`
 	Longitude             *float64                                   `json:"longitude,omitempty"`
 	Position              int                                        `json:"position"`
@@ -340,6 +341,7 @@ func getSharedRestaurantListResponse(
 			RestaurantLocation:    item.RestaurantLocation,
 			RestaurantCity:        item.RestaurantCity,
 			RestaurantCuisineType: item.RestaurantCuisineType,
+			RestaurantVisibility:  item.RestaurantVisibility,
 			Latitude:              item.Latitude,
 			Longitude:             item.Longitude,
 			Position:              item.Position,
@@ -440,8 +442,12 @@ func saveSharedRestaurantListRecommendationTransaction(
 	if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, false); err != nil {
 		return err
 	}
-	if _, err := findRestaurantRecord(app, restaurantID); err != nil {
+	restaurantRecord, err := findRestaurantRecord(app, restaurantID)
+	if err != nil {
 		return err
+	}
+	if normalizeRestaurantVisibilityForListDetail(restaurantRecord) == "private" {
+		return apis.NewForbiddenError("private restaurants cannot be saved from shared links", nil)
 	}
 
 	targetListRecords, err := resolveSharedRestaurantListSaveTargets(app, authRecord, requestBody.TargetListIDs)

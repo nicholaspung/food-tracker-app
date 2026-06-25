@@ -5,6 +5,37 @@ import type {
   OwnerUserRating,
 } from './listDetailTypes';
 
+export function buildViewerDisplayItems(items: GroupedBookmarkedItem[]): GroupedBookmarkedItem[] {
+  const rows = new Map<string, GroupedBookmarkedItem>();
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (!item) {
+      continue;
+    }
+
+    const normalizedKey = normalizeMenuItemKey(item.name);
+    const existing = rows.get(normalizedKey);
+
+    if (!existing) {
+      rows.set(normalizedKey, {
+        ...item,
+        key: normalizedKey || item.key,
+      });
+      continue;
+    }
+
+    rows.set(normalizedKey, {
+      ...existing,
+      bookmarkLookupIds: Array.from(
+        new Set([...existing.bookmarkLookupIds, ...item.bookmarkLookupIds]),
+      ),
+    });
+  }
+
+  return Array.from(rows.values());
+}
+
 export function buildOwnerDisplayItems(items: GroupedBookmarkedItem[]): OwnerDisplayItem[] {
   const rows = new Map<string, OwnerDisplayItem>();
 

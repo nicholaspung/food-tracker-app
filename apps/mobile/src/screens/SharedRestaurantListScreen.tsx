@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Platform, Pressable, View } from 'react-native';
@@ -13,6 +13,7 @@ import {
 } from '../components/shared';
 import {
   getSharedRestaurantList,
+  invalidateRestaurantListContentQueries,
   restaurantListQueryKeys,
   saveSharedRestaurantListRecommendation,
 } from '../features';
@@ -38,6 +39,7 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 import { buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
+import { buildViewerDisplayItems } from './listDetail/listDetailDisplayItems';
 import type { GroupedBookmarkedItem, OwnerItemPhotoEntry } from './listDetail/listDetailTypes';
 
 type SharedRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'SharedRestaurantList'>;
@@ -49,6 +51,7 @@ interface GroupedSharedRestaurant {
   restaurantLocation?: string;
   restaurantCity?: string;
   restaurantCuisineType?: string;
+  restaurantVisibility?: 'private' | 'friends' | 'public';
   notes: string[];
   firstPosition: number;
   items: GroupedBookmarkedItem[];
@@ -56,7 +59,24 @@ interface GroupedSharedRestaurant {
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
+    flex: 1,
     gap: theme.spacing.md,
+  },
+  screenBody: {
+    flex: 1,
+    paddingBottom: 0,
+    paddingTop: 0,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+  },
+  listItemSeparator: {
+    height: theme.spacing.sm,
   },
   guestHeader: {
     backgroundColor: theme.colors.background.surface,
@@ -108,6 +128,7 @@ function groupSharedListItems(items: RestaurantListItemRecord[]): GroupedSharedR
         restaurantLocation: item.restaurantLocation,
         restaurantCity: item.restaurantCity,
         restaurantCuisineType: item.restaurantCuisineType,
+        restaurantVisibility: item.restaurantVisibility,
         notes: [],
         firstPosition: item.position,
         items: [],
@@ -118,6 +139,7 @@ function groupSharedListItems(items: RestaurantListItemRecord[]): GroupedSharedR
     group.restaurantLocation = item.restaurantLocation;
     group.restaurantCity = item.restaurantCity;
     group.restaurantCuisineType = item.restaurantCuisineType;
+    group.restaurantVisibility = item.restaurantVisibility;
 
     if (item.note && !group.notes.includes(item.note)) {
       group.notes.push(item.note);
@@ -127,7 +149,12 @@ function groupSharedListItems(items: RestaurantListItemRecord[]): GroupedSharedR
     groups.set(item.restaurantId, group);
   }
 
-  return Array.from(groups.values()).sort((left, right) => left.firstPosition - right.firstPosition);
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      items: buildViewerDisplayItems(group.items),
+    }))
+    .sort((left, right) => left.firstPosition - right.firstPosition);
 }
 
 function groupSharedPhotosByFoodItemId(
@@ -172,8 +199,12 @@ function buildSharedPhotoEntries(
 export function SharedRestaurantListScreen({ navigation, route }: SharedRestaurantListScreenProps) {
   const { shareToken } = route.params;
   const { status } = useAuth();
+  const queryClient = useQueryClient();
   const styles = useStyles();
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [locallySavedDefaultBookmarkLookupIds, setLocallySavedDefaultBookmarkLookupIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
   const [marketingLinkErrorMessage, setMarketingLinkErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
@@ -304,11 +335,11 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
 
   const isItemSavedToDefaultList = (item: GroupedBookmarkedItem) => {
     const defaultListId = defaultList?.id;
-    if (!defaultListId) {
-      return false;
-    }
     return item.bookmarkLookupIds.some((bookmarkLookupId) =>
-      savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId),
+      locallySavedDefaultBookmarkLookupIds.has(bookmarkLookupId) ||
+      (defaultListId
+        ? savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId) === true
+        : savedListIdsByBookmarkLookupId.has(bookmarkLookupId)),
     );
   };
 
@@ -316,7 +347,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     group: GroupedSharedRestaurant,
     item: GroupedBookmarkedItem,
   ) => {
-    if (isSavingBookmark || isItemSavedToDefaultList(item)) {
+    if (isSavingBookmark || group.restaurantVisibility === 'private' || isItemSavedToDefaultList(item)) {
       return;
     }
 
@@ -337,7 +368,17 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         sourceListItemId: resolveSharedRecommendationSourceListItemId(recommendationSource),
         targetListIds,
       });
-      await query.refetch();
+      setLocallySavedDefaultBookmarkLookupIds((current) => {
+        const next = new Set(current);
+        for (const bookmarkLookupId of item.bookmarkLookupIds) {
+          next.add(bookmarkLookupId);
+        }
+        return next;
+      });
+      await Promise.all([
+        query.refetch(),
+        ...targetListIds.map((targetListId) => invalidateRestaurantListContentQueries(queryClient, targetListId)),
+      ]);
       trackProductEvent('social.recommendation_saved', {
         source: 'SharedRestaurantListScreen',
         entryMethod: 'quick_default',
@@ -365,9 +406,11 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
 
   const list = loadedSharedList?.list ?? null;
   const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
+  const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
+  const descriptionLabel = list?.description?.trim();
   const subtitle = list
-    ? `${list.ownerName ? `${list.ownerName}'s list · ` : ''}${restaurantCount} ${
-        restaurantCount === 1 ? 'restaurant' : 'restaurants'
+    ? `${list.ownerName ? `${list.ownerName}'s list · ` : ''}${countLabel}${
+        descriptionLabel ? `\n${descriptionLabel}` : ''
       }`
     : undefined;
   const guestHeader = !isAuthenticated ? (
@@ -401,6 +444,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       scroll={false}
       screenBackgroundTone="surface"
       onBackPress={handleBack}
+      bodyStyle={styles.screenBody}
       primaryAction={
         !isAuthenticated
           ? {
@@ -449,15 +493,16 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
           />
         ) : (
           <>
-            {list.description ? <Text tone="secondary">{list.description}</Text> : null}
-
             <PageErrorToast errorMessage={downloadErrorMessage} title="Could not open download link" />
             <PageErrorToast errorMessage={marketingLinkErrorMessage} title="Could not open website" />
             <PageErrorToast errorMessage={saveErrorMessage} title="Could not save recommendation" />
 
             <FlatList
+              contentContainerStyle={styles.listContent}
               data={groupedRestaurants}
+              style={styles.list}
               testID="shared-list-rows"
+              ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
               keyExtractor={(group) => group.restaurantId}
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={
@@ -476,12 +521,15 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                 const primaryMetaLabel = group.restaurantCity || group.restaurantCuisineType || 'Location not set';
                 const secondaryMetaLabel =
                   group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null;
+                const isRestaurantLocked = group.restaurantVisibility === 'private';
 
                 return (
                   <ListDetailRestaurantRecommendationGroupCard
                     groupIndex={groupIndex}
+                    isLocked={isRestaurantLocked}
                     items={group.items}
                     key={group.restaurantId}
+                    lockTestID={`shared-list-locked-restaurant-${group.restaurantId}`}
                     mode="viewer"
                     notes={group.notes}
                     primaryMetaLabel={primaryMetaLabel}
@@ -490,7 +538,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
 
                       return (
                         <ListDetailBookmarkedItemRow
-                          canSave={isAuthenticated}
+                          canSave={isAuthenticated && !isRestaurantLocked}
                           groupIndex={groupIndex}
                           isSaved={isItemSavedToDefaultList(item)}
                           item={item}

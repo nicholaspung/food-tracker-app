@@ -609,7 +609,7 @@ describe('useRestaurantListWrites', () => {
     });
   });
 
-  it('queues bookmark saves for each target list and invalidates save target caches once', async () => {
+  it('queues bookmark saves for each target list and invalidates source and target caches', async () => {
     const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(
       writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
@@ -674,6 +674,8 @@ describe('useRestaurantListWrites', () => {
       queryClient,
       'source_list_1',
     );
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'target_list_1');
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'target_list_2');
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Bookmark save');
     expect(result).toEqual({ status: 'queued' });
 
@@ -683,7 +685,7 @@ describe('useRestaurantListWrites', () => {
   });
 
   it('creates the default list online before saving a quick bookmark when no default exists', async () => {
-    const savedItems = [{ id: 'saved_item_1' }];
+    const savedItems = [{ id: 'saved_item_1', listId: 'default_list_1' }];
     mockedSaveRestaurantFoodItemToList.mockResolvedValue(savedItems as never);
     const writeFeature = jest.fn(async ({ execute }) => ({
       result: await execute(),
@@ -739,6 +741,7 @@ describe('useRestaurantListWrites', () => {
       queryClient,
       'source_list_1',
     );
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'default_list_1');
     expect(result).toEqual({ status: 'completed', result: [savedItems] });
 
     await act(async () => {
@@ -792,7 +795,7 @@ describe('useRestaurantListWrites', () => {
   });
 
   it('queues a restaurant-only save to the default Want to Try list', async () => {
-    const savedItems = [{ id: 'saved_restaurant_1' }];
+    const savedItems = [{ id: 'saved_restaurant_1', listId: 'default_list_1' }];
     mockedSaveRestaurantToDefaultList.mockResolvedValue(savedItems as never);
     const writeFeature = jest.fn(async ({ execute }) => ({
       result: await execute(),
@@ -834,6 +837,7 @@ describe('useRestaurantListWrites', () => {
       queryClient,
       'source_list_1',
     );
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'default_list_1');
     expect(result).toEqual({ status: 'completed', result: savedItems });
 
     await act(async () => {

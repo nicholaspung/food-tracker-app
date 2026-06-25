@@ -240,7 +240,7 @@ jest.mock('../components/shared', () => ({
     visible,
     ...props
   }: Record<string, unknown> & { children?: React.ReactNode; visible?: boolean }) =>
-    visible ? mockReact.createElement('ConfirmDestructiveModal', props, children) : null,
+    mockReact.createElement('ConfirmDestructiveModal', { visible, ...props }, children),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   ExpandableText: jest.requireActual('../components/shared/ExpandableText').ExpandableText,
@@ -1502,6 +1502,8 @@ describe('ListDetailScreen', () => {
       renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
     });
 
+    expect(renderer.root.findByType(ListDetailBookmarkedItemRow).props.isSaved).toBe(false);
+
     await act(async () => {
       const bookmarkRow = renderer.root.findByType(ListDetailBookmarkedItemRow);
       bookmarkRow.props.onSave(bookmarkRow.props.item);
@@ -1521,6 +1523,54 @@ describe('ListDetailScreen', () => {
       },
     });
     expect(restaurantListWrites.saveBookmarkToLists).not.toHaveBeenCalled();
+    expect(renderer.root.findByType(ListDetailBookmarkedItemRow).props.isSaved).toBe(true);
+  });
+
+  it('shows persisted friend list bookmarks from bookmark state after reload', async () => {
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          bookmarkState: {
+            savedListIdsByBookmarkLookupId: {
+              food_item_1: ['default_list'],
+            },
+          },
+          viewerLists: [],
+          items: [
+            buildListItem({
+              bookmarkedItems: [
+                {
+                  id: 'food_item_1',
+                  listItemId: 'item_1',
+                  name: 'Spicy Ramen',
+                  rating: 5,
+                  restaurantId: 'restaurant_food_1',
+                  sourceUserId: 'owner_1',
+                  sourceUserName: 'Owner',
+                  visitedAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const bookmarkRow = renderer.root.findByType(ListDetailBookmarkedItemRow);
+    expect(bookmarkRow.props.isSaved).toBe(true);
+
+    await act(async () => {
+      bookmarkRow.props.onSave(bookmarkRow.props.item);
+      await Promise.resolve();
+    });
+
+    expect(restaurantListWrites.saveBookmarkToDefaultList).not.toHaveBeenCalled();
   });
 
   it('renders the default Want to Try detail as restaurant bookmarks without item rating cards', async () => {
@@ -1692,7 +1742,7 @@ describe('ListDetailScreen', () => {
       renderer.root.findByProps({ testID: 'delete-restaurant-bookmark-0' }).props.onPress();
     });
 
-    const modal = renderer.root.findByType('ConfirmDestructiveModal');
+    const modal = renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' });
     expect(modal.props.title).toBe('Remove Restaurant?');
     expect(modal.props.confirmLabel).toBe('Remove Restaurant');
 
@@ -1833,10 +1883,21 @@ describe('ListDetailScreen', () => {
       renderer.root.findByProps({ testID: 'remove-want-to-try-menu-item-menu_item_bookmark_1' }).props.onPress();
     });
 
+    const modal = renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' });
+    expect(modal.props.title).toBe('Remove Menu Item?');
+    expect(modal.props.confirmLabel).toBe('Remove Menu Item');
+
     await act(async () => {
-      await renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onConfirm();
+      await modal.props.onConfirm();
     });
 
+    expect(renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props).toEqual(
+      expect.objectContaining({
+        confirmLabel: 'Remove Menu Item',
+        title: 'Remove Menu Item?',
+        visible: false,
+      }),
+    );
     expect(restaurantListWrites.removeBookmarkFromDefaultList).toHaveBeenCalledWith({
       bookmark: {
         restaurantId: 'restaurant_1',

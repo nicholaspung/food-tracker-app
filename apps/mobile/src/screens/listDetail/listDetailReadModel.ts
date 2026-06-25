@@ -1,7 +1,7 @@
 import type { RestaurantMapGroup } from '../../components/maps';
 import type { RestaurantListDetailRecord, RestaurantListRecord } from '../../features';
 import { buildBookmarkLookupIds, formatFullDateLabel, formatMonthYearLabel } from './listDetailFormatters';
-import { buildOwnerDisplayItems } from './listDetailDisplayItems';
+import { buildOwnerDisplayItems, buildViewerDisplayItems } from './listDetailDisplayItems';
 import {
   buildBookmarkedItemPhotoEntries,
   buildOwnerItemPhotoEntries,
@@ -255,7 +255,7 @@ function buildMapGroups(
             photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
           };
         })
-      : group.items.map((item) => {
+      : buildViewerDisplayItems(group.items).map((item) => {
           const photoEntries = buildBookmarkedItemPhotoEntries(item, photosByFoodItemId);
           const primaryPhoto = photoEntries[0] ?? null;
           const sourceUserDisplayName = item.sourceUserName?.trim() || (item.sourceUserId ? 'Friend' : undefined);
@@ -339,6 +339,7 @@ export function buildListDetailReadModel({
     const secondaryMetaLabel = group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null;
     const isRestaurantLocked = group.restaurantVisibility === 'private';
     const ownerDisplayItems = isOwner ? buildOwnerDisplayItems(group.items) : [];
+    const viewerDisplayItems = isOwner ? group.items : buildViewerDisplayItems(group.items);
 
     return {
       group,
@@ -351,7 +352,7 @@ export function buildListDetailReadModel({
         ...item,
         photoEntries: buildOwnerItemPhotoEntries(item, photosByFoodItemId),
       })),
-      bookmarkedItems: group.items.map((item) => ({
+      bookmarkedItems: viewerDisplayItems.map((item) => ({
         ...item,
         isSaved: item.bookmarkLookupIds.some((bookmarkLookupId) => savedBookmarkLookupIds.has(bookmarkLookupId)),
         photoEntries: buildBookmarkedItemPhotoEntries(item, photosByFoodItemId),
