@@ -178,13 +178,14 @@ jobs:
               echo "Native-affecting mobile files changed, so this push will not publish an OTA update."
               echo "No EAS build was started. Run this workflow manually with force_preview_build=true when a new binary is intended."
             } >&2
-            exit 1
+            exit 0
           else
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
             echo "publish_reason=push_default_ota" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Verify mobile preview app config
+        if: steps.release_type.outputs.publish_mode == 'ota' || steps.release_type.outputs.publish_mode == 'build'
         working-directory: apps/mobile
         run: pnpm exec expo config --json | node ../../scripts/assert-mobile-preview-config.mjs
 
