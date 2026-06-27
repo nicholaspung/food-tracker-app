@@ -47,6 +47,8 @@ jest.mock('../components/shared', () => ({
   FeatureDetailScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
+  FocusedRestaurantSearchHeader: (props: Record<string, unknown>) =>
+    mockReact.createElement('FocusedRestaurantSearchHeader', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   RestaurantMenuItemPicker: (props: Record<string, unknown>) =>
     mockReact.createElement('RestaurantMenuItemPicker', props),
@@ -208,6 +210,17 @@ const savedRestaurant = {
     userVisitCount: 2,
   },
 };
+const googleBackedSavedRestaurant = {
+  distance: null,
+  restaurant: {
+    cuisineType: 'Ramen',
+    id: 'restaurant-google',
+    isGooglePlace: true,
+    location: 'Los Angeles, CA',
+    name: 'Google Ramen',
+    userVisitCount: 1,
+  },
+};
 
 const planningSession: TastingSessionRecord = {
   id: 'session-1',
@@ -296,13 +309,16 @@ function buildRestaurantSelectionFlowResult(
       isGettingLocation: false,
       isSearchingNearby: false,
       isSearchingText: false,
+      isUsingCurrentLocation: false,
       locationPermissionNeedsSettings: false,
       manualLocation: '',
       nearby: mockSearchNearby,
       query: 'ramen',
+      searchCurrentLocationByText: jest.fn().mockResolvedValue({ results: [], status: 'success' }),
       searchButtonDisabled: false,
       searchByText: mockSearchByText,
       searchErrorMessage: null,
+      selectCurrentLocation: jest.fn(),
       setExpanded: mockSetIsSearchExpanded,
       setManualLocation: mockSetManualLocation,
       setQuery: mockSetSearchQuery,
@@ -433,6 +449,72 @@ describe('TastingSessionPlanningScreen', () => {
     expect(
       renderer.root.findAllByType('Input').some((node: any) => node.props.label === 'Restaurant name'),
     ).toBe(false);
+  });
+
+  it('shows only user-created saved restaurants before search while keeping API search results', () => {
+    mockedUseRestaurantSelectionFlow.mockReturnValue(buildRestaurantSelectionFlowResult({
+      savedSuggestions: {
+        ...buildRestaurantSelectionFlowResult().savedSuggestions,
+        displayedSavedRestaurants: [savedRestaurant, googleBackedSavedRestaurant],
+      },
+      search: {
+        ...buildRestaurantSelectionFlowResult().search,
+        displayedNearbyRestaurants: [googleBackedSavedRestaurant],
+        showNearbyPlaces: true,
+      },
+    }));
+
+    const renderer = renderScreen();
+    const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
+
+    expect(searchSection.props.savedOptions.map((option: any) => option.title)).toEqual(['Corner Ramen']);
+    expect(searchSection.props.searchResultsOptions.map((option: any) => option.title)).toEqual(['Google Ramen']);
+  });
+
+  it('opens focused restaurant search with current location staged when the place input focuses', async () => {
+    const selectCurrentLocation = jest.fn();
+    const selectionFlow = buildRestaurantSelectionFlowResult({
+      search: {
+        ...buildRestaurantSelectionFlowResult().search,
+        isExpanded: false,
+        manualLocation: '',
+        selectCurrentLocation,
+      },
+    });
+    mockedUseRestaurantSelectionFlow.mockReturnValue(selectionFlow);
+
+    const renderer = renderScreen();
+    const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
+
+    await act(async () => {
+      searchSection.props.onSearchQueryFocus();
+    });
+
+    const scaffold = renderer.root.findByType('FeatureDetailScreenScaffold');
+    expect(selectCurrentLocation).toHaveBeenCalledTimes(1);
+    expect(scaffold.props.customHeader.props.testID).toBe('tasting-planning-focused-restaurant-search-header');
+    expect(renderer.root.findByType('VisitRestaurantSearchSection').props.hideSearchCard).toBe(true);
+  });
+
+  it('runs the current-location text search when the staged location token is selected', async () => {
+    const searchCurrentLocationByText = jest.fn().mockResolvedValue({ results: [], status: 'success' });
+    mockedUseRestaurantSelectionFlow.mockReturnValue(buildRestaurantSelectionFlowResult({
+      search: {
+        ...buildRestaurantSelectionFlowResult().search,
+        isUsingCurrentLocation: true,
+        manualLocation: 'Current location',
+        searchCurrentLocationByText,
+      },
+    }));
+
+    const renderer = renderScreen();
+
+    await act(async () => {
+      renderer.root.findByType('VisitRestaurantSearchSection').props.onSearchPress();
+    });
+
+    expect(searchCurrentLocationByText).toHaveBeenCalledTimes(1);
+    expect(mockSearchByText).not.toHaveBeenCalled();
   });
 
   it('adds a saved restaurant immediately with the restaurant id', async () => {

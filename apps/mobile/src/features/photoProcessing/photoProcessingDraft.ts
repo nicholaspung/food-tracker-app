@@ -48,7 +48,7 @@ export function buildPhotoProcessingDraftSnapshot(
   return snapshot;
 }
 
-export function buildDefaultRestaurantPhotoGroups(
+function buildDefaultRestaurantPhotoGroups(
   photos: DraftPhotoAsset[],
 ): RestaurantPhotoGroup[] {
   return photos.map((photo) => ({

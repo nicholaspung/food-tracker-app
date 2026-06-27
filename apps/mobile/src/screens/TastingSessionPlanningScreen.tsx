@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   FeatureDetailScreenScaffold,
+  FocusedRestaurantSearchHeader,
   PageErrorToast,
   RestaurantMenuItemPicker,
   StepProgressBar,
@@ -36,6 +37,29 @@ import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLi
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
+
+const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
+const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
+
+function isCurrentLocationSearchSelection({
+  isUsingCurrentLocation,
+  manualLocation,
+}: {
+  isUsingCurrentLocation: boolean;
+  manualLocation: string;
+}): boolean {
+  return (
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
+  );
+}
+
+function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
+  return restaurant.isGooglePlace !== true;
+}
 
 const useStyles = createThemedStyles((theme) => ({
   headerDescription: {
@@ -139,6 +163,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [isMissingItemsDialogVisible, setIsMissingItemsDialogVisible] = useState(false);
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(true);
   const [isMenuSummaryExpanded, setIsMenuSummaryExpanded] = useState(true);
+  const [isRestaurantSearchFocused, setIsRestaurantSearchFocused] = useState(false);
+  const [focusedLocationOptionsDismissSignal, setFocusedLocationOptionsDismissSignal] = useState(0);
   const [pendingRemoveRestaurantId, setPendingRemoveRestaurantId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
@@ -221,6 +247,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const isSearchExpanded = search.isExpanded;
   const isSearchingNearbyRestaurants = search.isSearchingNearby;
   const isSearchingRestaurants = search.isSearchingText;
+  const isUsingCurrentLocation = search.isUsingCurrentLocation;
   const locationPermissionNeedsSettings = search.locationPermissionNeedsSettings;
   const manualLocation = search.manualLocation;
   const flowPlacesQueriesRemaining = quotaDisplay.placesQueriesRemaining;
@@ -231,15 +258,20 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const savedRestaurantsTitle = savedSuggestions.title;
   const searchButtonDisabled = search.searchButtonDisabled;
   const searchByText = search.searchByText;
+  const searchCurrentLocationByText = search.searchCurrentLocationByText;
   const searchErrorMessage = search.searchErrorMessage;
-  const searchNearby = search.nearby;
   const searchQuery = search.query;
+  const selectCurrentLocationForSearch = search.selectCurrentLocation;
   const setIsSearchExpanded = search.setExpanded;
   const setManualLocation = search.setManualLocation;
   const setSearchQuery = search.setQuery;
   const shouldShowPlacesUpgradePrompt = quotaDisplay.shouldShowPlacesUpgradePrompt;
   const showNearbyPlaces = search.showNearbyPlaces;
   const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
+  const filteredDisplayedSavedRestaurants = useMemo(
+    () => displayedSavedRestaurants.filter(isUserAddedRestaurantOption),
+    [displayedSavedRestaurants],
+  );
 
   const {
     menuItemsQuery,
@@ -329,6 +361,42 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       return addResult;
     });
     setAddingRestaurantId(null);
+  };
+
+  const handleSearchCurrentLocationByText = async () => {
+    await searchCurrentLocationByText();
+  };
+
+  const handleRestaurantSearchPress = async () => {
+    if (isCurrentLocationSearchSelection({ isUsingCurrentLocation, manualLocation })) {
+      await handleSearchCurrentLocationByText();
+      return;
+    }
+
+    await searchByText();
+  };
+
+  const dismissFocusedLocationOptions = useCallback(() => {
+    if (!isRestaurantSearchFocused) {
+      return;
+    }
+
+    setFocusedLocationOptionsDismissSignal((currentSignal) => currentSignal + 1);
+  }, [isRestaurantSearchFocused]);
+
+  const handleToggleRestaurantSearchExpanded = () => {
+    const shouldExpand = !isSearchExpanded;
+    setIsSearchExpanded(shouldExpand);
+    if (shouldExpand && !manualLocation.trim()) {
+      selectCurrentLocationForSearch();
+    }
+  };
+
+  const handleRestaurantSearchQueryFocus = () => {
+    setIsRestaurantSearchFocused(true);
+    if (!manualLocation.trim()) {
+      selectCurrentLocationForSearch();
+    }
   };
 
   const handleRemoveRestaurant = async (restaurantSuggestionId: string) => {
@@ -440,6 +508,36 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     </View>
   ) : (
     'Waiting for the leader to choose restaurants and menu items for the tasting plan.'
+  );
+  const focusedRestaurantSearchHeader = (
+    <FocusedRestaurantSearchHeader
+      currentLocationDisabled={
+        !isOnline ||
+        isGettingLocation ||
+        isSearchingNearbyRestaurants ||
+        (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+      }
+      currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+      isUsingCurrentLocation={isUsingCurrentLocation}
+      locationOptionsDismissSignal={focusedLocationOptionsDismissSignal}
+      manualLocation={manualLocation}
+      onBackPress={() => {
+        setIsRestaurantSearchFocused(false);
+      }}
+      onManualLocationChange={setManualLocation}
+      onSearchPress={() => {
+        void handleRestaurantSearchPress();
+      }}
+      onSearchQueryChange={setSearchQuery}
+      onUseCurrentLocationPress={() => {
+        void handleSearchCurrentLocationByText();
+      }}
+      searchButtonDisabled={searchButtonDisabled}
+      searchButtonLabel={expandedSearchLabel}
+      searchButtonLoading={isSearchingRestaurants}
+      searchQuery={searchQuery}
+      testID="tasting-planning-focused-restaurant-search-header"
+    />
   );
 
   const summaryCard = phase === 'restaurants' ? (
@@ -561,17 +659,27 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     >
       {(availableSession) => (
         <FeatureDetailScreenScaffold
+          customHeader={isRestaurantSearchFocused ? focusedRestaurantSearchHeader : undefined}
           headerBottomCompact
           headerBottomContent={
-            <StepProgressBar
-              compact
-              currentStep={lifecycle.step.currentStep}
-              steps={TASTING_SESSION_LIFECYCLE_STEPS}
-            />
+            isRestaurantSearchFocused ? undefined : (
+              <StepProgressBar
+                compact
+                currentStep={lifecycle.step.currentStep}
+                steps={TASTING_SESSION_LIFECYCLE_STEPS}
+              />
+            )
           }
           headerScrollMode="fixed"
           stickyHeaderIndices={isLeader ? [0] : undefined}
-          onBackPress={() => navigation.navigate('TastingSessions')}
+          onBackPress={() => {
+            if (isRestaurantSearchFocused) {
+              setIsRestaurantSearchFocused(false);
+              return;
+            }
+
+            navigation.navigate('TastingSessions');
+          }}
           rightAccessory={
             isLeader ? (
               <Pressable
@@ -592,7 +700,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             ) : undefined
           }
           primaryAction={
-            isLeader
+            isRestaurantSearchFocused
+              ? undefined
+              : isLeader
               ? phase === 'restaurants'
                 ? {
                     disabled: selectedRestaurants.length === 0,
@@ -609,7 +719,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
               : undefined
           }
           secondaryAction={
-            isLeader && phase === 'items'
+            isRestaurantSearchFocused
+              ? undefined
+              : isLeader && phase === 'items'
               ? {
                   label: 'Back',
                   onPress: () => {
@@ -621,7 +733,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
           subtitle={headerDescription}
           title={availableSession.name}
         >
-          {summaryCard}
+          {isRestaurantSearchFocused ? null : summaryCard}
           {lifecycle.onlineOnly.warningMessage ? (
             <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
           ) : onlineActions.message ? (
@@ -630,7 +742,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
           <PageErrorToast errorMessage={errorMessage} title="Planning failed" />
 
       {isLeader && phase === 'restaurants' ? (
-        <>
+        <View onTouchStart={isRestaurantSearchFocused ? dismissFocusedLocationOptions : undefined}>
           <VisitRestaurantSearchSection
             connectivityWarningMessage={!isOnline ? 'Restaurant search requires internet connection.' : null}
             currentLocationDisabled={
@@ -643,13 +755,13 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             headerAccessory={
               <VisitRestaurantSearchHeaderToggle
                 expanded={isSearchExpanded}
-                onPress={() => {
-                  setIsSearchExpanded((current) => !current);
-                }}
+                onPress={handleToggleRestaurantSearchExpanded}
                 testID="tasting-planning-search-toggle"
               />
             }
+            hideSearchCard={isRestaurantSearchFocused}
             isSearchResultsLoading={isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation}
+            isUsingCurrentLocation={isUsingCurrentLocation}
             locationPermissionNeedsSettings={locationPermissionNeedsSettings}
             manualLocation={manualLocation}
             onClearSearchResults={() => {
@@ -663,11 +775,12 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
               void triggerSavedRestaurantsRefetch();
             }}
             onSearchPress={() => {
-              void searchByText();
+              void handleRestaurantSearchPress();
             }}
             onSearchQueryChange={setSearchQuery}
+            onSearchQueryFocus={handleRestaurantSearchQueryFocus}
             onUseCurrentLocationPress={() => {
-              void searchNearby();
+              void handleSearchCurrentLocationByText();
             }}
             quotaWarningMessage={
               isOnline && isPlacesQuotaReached
@@ -678,14 +791,14 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
             }
             savedEmptyDescription={savedEmptyDescription}
             savedEmptyTitle={savedEmptyTitle}
-            savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
+            savedOptions={filteredDisplayedSavedRestaurants.map((restaurant, index) =>
               buildRestaurantOption(restaurant, index, 'saved'),
             )}
             savedResultsErrorMessage={savedRestaurantsErrorMessage}
             savedResultsLoading={savedRestaurantsLoading}
             savedResultsTitle={savedRestaurantsTitle}
             searchButtonDisabled={searchButtonDisabled}
-            searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+            searchButtonLabel={isRestaurantSearchFocused || isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
             searchButtonLoading={isSearchingRestaurants}
             searchErrorMessage={searchErrorMessage}
             searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
@@ -709,7 +822,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 : null
             }
           />
-        </>
+        </View>
       ) : null}
 
       {isLeader && phase === 'items' ? (

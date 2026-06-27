@@ -547,6 +547,102 @@ describe('CreateVisitScreen', () => {
     } as ReturnType<typeof useCreateVisitSubmission>);
   });
 
+  it('shows only user-created saved restaurants before search while preserving API search results', async () => {
+    mockedUseRestaurantSelectionFlow.mockReturnValue({
+      menuItems: {
+        loadedRestaurantRecords: [],
+        query: {
+          data: [editableMenuItem, nonEditableMenuItem],
+          isError: false,
+          isLoading: false,
+          refetch: jest.fn(),
+        },
+      },
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: null,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      savedSuggestions: {
+        displayedSavedRestaurants: [
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-manual',
+              isGooglePlace: false,
+              name: 'Manual Noodle House',
+            },
+          },
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-google-saved',
+              isGooglePlace: true,
+              name: 'Google Saved Ramen',
+            },
+          },
+        ],
+        emptyDescription: 'No saved restaurants',
+        emptyTitle: 'No saved restaurants',
+        errorMessage: null,
+        isLoading: false,
+        refetch: jest.fn(),
+        title: 'Saved restaurants',
+      },
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: jest.fn(),
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-google-result',
+              isGooglePlace: true,
+              name: 'Google Result Ramen',
+            },
+          },
+        ],
+        expandedLabel: 'Search nearby',
+        isExpanded: false,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: '',
+        nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        query: '',
+        selectCurrentLocation: jest.fn(),
+        searchButtonDisabled: false,
+        searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchErrorMessage: null,
+        setExpanded: jest.fn(),
+        setManualLocation: jest.fn(),
+        setQuery: jest.fn(),
+        showNearbyPlaces: true,
+      },
+    } as unknown as ReturnType<typeof useCreateVisitRestaurantSelectionFlow>);
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: {} } as never}
+        />,
+      );
+    });
+
+    const searchSection = renderer.root.findByType('VisitRestaurantSearchSection');
+
+    expect(searchSection.props.savedOptions.map((option: any) => option.title)).toEqual([
+      'Manual Noodle House',
+    ]);
+    expect(searchSection.props.searchResultsOptions.map((option: any) => option.title)).toEqual([
+      'Google Result Ramen',
+    ]);
+  });
+
   it('preselects current location when expanding restaurant search', async () => {
     let renderer: any = null;
 

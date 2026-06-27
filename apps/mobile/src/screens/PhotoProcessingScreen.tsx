@@ -120,6 +120,29 @@ type PhotoProcessingExitMethod =
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
 
+const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
+const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
+
+function isCurrentLocationSearchSelection({
+  isUsingCurrentLocation,
+  manualLocation,
+}: {
+  isUsingCurrentLocation: boolean;
+  manualLocation: string;
+}): boolean {
+  return (
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
+  );
+}
+
+function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
+  return restaurant.isGooglePlace !== true;
+}
+
 const useStyles = createThemedStyles((theme) => ({
   choiceContent: {
     backgroundColor: theme.colors.background.muted,
@@ -625,10 +648,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const savedRestaurantsLoading = savedSuggestions.isLoading;
   const savedRestaurantsTitle = savedSuggestions.title;
   const searchButtonDisabled = restaurantSearch.searchButtonDisabled;
+  const runCurrentLocationRestaurantSearch = restaurantSearch.searchCurrentLocationByText;
   const runRestaurantSearchByText = restaurantSearch.searchByText;
   const searchErrorMessage = restaurantSearch.searchErrorMessage;
-  const runNearbyRestaurantSearch = restaurantSearch.nearby;
   const restaurantSearchQuery = restaurantSearch.query;
+  const selectCurrentLocationForSearch = restaurantSearch.selectCurrentLocation;
   const setIsSearchExpanded = restaurantSearch.setExpanded;
   const setManualLocation = restaurantSearch.setManualLocation;
   const setRestaurantSearchQuery = restaurantSearch.setQuery;
@@ -991,7 +1015,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   }, []);
 
   const displayedSavedRestaurants = useMemo(() => {
-    return allDisplayedSavedRestaurants.slice(0, 12);
+    return allDisplayedSavedRestaurants.filter(isUserAddedRestaurantOption).slice(0, 12);
   }, [allDisplayedSavedRestaurants]);
 
   const displayedNearbyRestaurants = useMemo(() => {
@@ -1250,6 +1274,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   );
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
+    if (isCurrentLocationSearchSelection({ isUsingCurrentLocation, manualLocation })) {
+      await handleSearchCurrentLocationByText();
+      return;
+    }
+
     dismissCurrentPhotoLocationHint();
     const result = await runRestaurantSearchByText({
       collapseAfterSearch,
@@ -1299,9 +1328,9 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     }
   };
 
-  const handleSearchNearby = async () => {
+  const handleSearchCurrentLocationByText = async () => {
     dismissCurrentPhotoLocationHint();
-    const result = await runNearbyRestaurantSearch();
+    const result = await runCurrentLocationRestaurantSearch();
 
     if (result.status === 'quota_reached') {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
@@ -1353,7 +1382,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     processStepRestoreScrollYRef.current = processStepScrollOffsetYRef.current;
     shouldResetFocusedRestaurantSearchScrollRef.current = true;
     setIsRestaurantSearchFocused(true);
-  }, []);
+    if (!manualLocation.trim()) {
+      selectCurrentLocationForSearch();
+    }
+  }, [manualLocation, selectCurrentLocationForSearch]);
   const closeFocusedRestaurantSearch = useCallback(() => {
     if (isRestaurantSearchFocused && processStepRestoreScrollYRef.current === null) {
       processStepRestoreScrollYRef.current = processStepScrollOffsetYRef.current;
@@ -1432,7 +1464,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         dismissCurrentPhotoLocationHint();
       }}
       onUseCurrentLocationPress={() => {
-        void handleSearchNearby();
+        void handleSearchCurrentLocationByText();
       }}
       searchButtonDisabled={searchButtonDisabled}
       searchButtonLabel={expandedSearchLabel}
@@ -2389,7 +2421,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
-                  setIsSearchExpanded((currentValue) => !currentValue);
+                  const shouldExpand = !isSearchExpanded;
+                  setIsSearchExpanded(shouldExpand);
+                  if (shouldExpand && !manualLocation.trim()) {
+                    selectCurrentLocationForSearch();
+                  }
                 }}
                 style={styles.searchHeaderButton}
                 testID="process-photos-search-toggle"
@@ -2407,8 +2443,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           }
           hideSearchCard={hideSearchCard}
           locationMetadataHintText={
-            !hideSearchCard && showLocationMetadataHint
-              ? `Using screenshot location metadata: ${captureCoordinatesLabel}. Nearby saved restaurants are shown first.`
+            showLocationMetadataHint && captureCoordinatesLabel
+              ? `Using this photo's saved location (${captureCoordinatesLabel}) to prioritize nearby restaurants.`
               : null
           }
           locationPermissionNeedsSettings={locationPermissionNeedsSettings}
@@ -2439,7 +2475,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 }
           }
           onUseCurrentLocationPress={() => {
-            void handleSearchNearby();
+            void handleSearchCurrentLocationByText();
           }}
           quotaWarningMessage={
             isOnline && isPlacesQuotaReached

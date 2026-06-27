@@ -114,6 +114,8 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FocusedRestaurantSearchHeader: (props: Record<string, unknown>) =>
+    mockReact.createElement('FocusedRestaurantSearchHeader', props),
   IconActionCard: (props: Record<string, unknown>) => mockReact.createElement('IconActionCard', props),
   LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
   LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
@@ -319,6 +321,8 @@ const mockedUsePhotoProcessingSubmission = usePhotoProcessingSubmission as jest.
   typeof usePhotoProcessingSubmission
 >;
 
+const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+
 function collectText(node: { children?: unknown[]; props?: { children?: unknown } } | string): string {
   if (typeof node === 'string') {
     return node;
@@ -368,6 +372,17 @@ async function renderPhotoProcessingScreen(routeParams: Record<string, unknown> 
 }
 
 describe('PhotoProcessingScreen', () => {
+  beforeAll(() => {
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    }) as typeof requestAnimationFrame;
+  });
+
+  afterAll(() => {
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  });
+
   beforeEach(() => {
     mockedUseQuery.mockReturnValue({
       data: null,
@@ -441,9 +456,11 @@ describe('PhotoProcessingScreen', () => {
         manualLocation: '',
         nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         query: '',
+        searchCurrentLocationByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         searchButtonDisabled: false,
         searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         searchErrorMessage: null,
+        selectCurrentLocation: jest.fn(),
         setExpanded: jest.fn(),
         setManualLocation: jest.fn(),
         setQuery: jest.fn(),
@@ -826,9 +843,11 @@ describe('PhotoProcessingScreen', () => {
         manualLocation: '',
         nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         query: '',
+        searchCurrentLocationByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         searchButtonDisabled: false,
         searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
         searchErrorMessage: null,
+        selectCurrentLocation: jest.fn(),
         setExpanded: jest.fn(),
         setManualLocation: jest.fn(),
         setQuery: jest.fn(),
@@ -908,5 +927,164 @@ describe('PhotoProcessingScreen', () => {
     expect(menuItemRow.props.friendEatenCount).toBe(2);
     expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('You: 4 visits');
     expect(collectText(restaurantSection.props.savedOptions[0].description)).toContain('Friends: 2 friends');
+  });
+
+  it('shows only user-created saved restaurants before search while preserving API search results', async () => {
+    const selectCurrentLocation = jest.fn();
+    mockedUseRestaurantSelectionFlow.mockReturnValue({
+      menuItems: {
+        loadedRestaurantRecords: [],
+        query: {
+          data: [],
+          isError: false,
+          isLoading: false,
+        },
+      },
+      quotaDisplay: {
+        isPlacesQuotaReached: false,
+        placesQueriesRemaining: null,
+        shouldShowPlacesUpgradePrompt: false,
+      },
+      reset: jest.fn(),
+      savedSuggestions: {
+        displayedSavedRestaurants: [
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-manual',
+              isGooglePlace: false,
+              name: 'Manual Noodle House',
+            },
+          },
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-google-saved',
+              isGooglePlace: true,
+              name: 'Google Saved Ramen',
+            },
+          },
+        ],
+        emptyDescription: 'No saved restaurants',
+        emptyTitle: 'No saved restaurants',
+        errorMessage: null,
+        isLoading: false,
+        refetch: jest.fn(),
+        title: 'Saved restaurants',
+      },
+      search: {
+        clearErrorMessage: jest.fn(),
+        clearPlacesState: jest.fn(),
+        compactLabel: 'Search',
+        displayedNearbyRestaurants: [
+          {
+            distance: null,
+            restaurant: {
+              id: 'restaurant-google-result',
+              isGooglePlace: true,
+              name: 'Google Result Ramen',
+            },
+          },
+        ],
+        expandedLabel: 'Search nearby',
+        isExpanded: false,
+        isGettingLocation: false,
+        isSearchingNearby: false,
+        isSearchingText: false,
+        locationPermissionNeedsSettings: false,
+        manualLocation: '',
+        nearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        query: '',
+        searchCurrentLocationByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchButtonDisabled: false,
+        searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+        searchErrorMessage: null,
+        selectCurrentLocation,
+        setExpanded: jest.fn(),
+        setManualLocation: jest.fn(),
+        setQuery: jest.fn(),
+        showNearbyPlaces: true,
+      },
+    } as unknown as ReturnType<typeof usePhotoProcessingRestaurantSelectionFlow>);
+    mockedUsePhotoProcessingDraftState.mockReturnValue({
+      appendAssets: jest.fn(),
+      currentPhoto: {
+        id: 'photo-1',
+        name: 'first.jpg',
+        uri: 'file:///first.jpg',
+      },
+      currentPhotoIndex: 0,
+      currentFoodProductForm: null,
+      currentRestaurantForm: {
+        date: '2026-04-18',
+        description: '',
+        menuItemId: '',
+        menuItemName: '',
+        notes: '',
+        rating: 3,
+        restaurantId: '',
+        restaurantName: '',
+      },
+      dismissCurrentPhotoLocationHint: jest.fn(),
+      locationMetadataHintDismissedByPhotoId: {},
+      photos: [
+        {
+          id: 'photo-1',
+          name: 'first.jpg',
+          uri: 'file:///first.jpg',
+        },
+      ],
+      foodProductForms: {},
+      removePhoto: jest.fn(),
+      replacePhotos: jest.fn(),
+      resetDraftState: jest.fn(),
+      resetProcessingForms: jest.fn(),
+      restaurantForms: {
+        'restaurant-photo-group-photo-1': {
+          date: '2026-04-18',
+          description: '',
+          menuItemId: '',
+          menuItemName: '',
+          notes: '',
+          rating: 3,
+          restaurantId: '',
+          restaurantName: '',
+        },
+      },
+      setCurrentPhotoIndex: jest.fn(),
+      setFoodProductForms: jest.fn(),
+      setRestaurantForms: jest.fn(),
+      updateCurrentFoodProductForm: jest.fn(),
+      updateCurrentRestaurantForm: jest.fn(),
+    } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
+
+    const renderer = await renderPhotoProcessingScreen();
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[0].props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('VisitRestaurantSearchSection').props.onSearchQueryFocus();
+    });
+
+    const restaurantSection = renderer.root.findByType('VisitRestaurantSearchSection');
+
+    expect(selectCurrentLocation).toHaveBeenCalledTimes(1);
+    expect(restaurantSection.props.hideSearchCard).toBe(true);
+    expect(restaurantSection.props.savedOptions.map((option: any) => option.title)).toEqual([
+      'Manual Noodle House',
+    ]);
+    expect(restaurantSection.props.searchResultsOptions.map((option: any) => option.title)).toEqual([
+      'Google Result Ramen',
+    ]);
   });
 });
