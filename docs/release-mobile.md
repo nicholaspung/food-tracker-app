@@ -127,10 +127,10 @@ pnpm run mobile:build:ios:production:submit:no-bump
 
 ### App Review Notes Template
 
-Use this release-specific summary for version `1.1.0` submissions:
+Use this release-specific summary for version `1.1.2` submissions:
 
 ```text
-Yummy Recs 1.1.0 updates the mobile runtime to Expo SDK 56 / React Native 0.85 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
+Yummy Recs 1.1.2 updates the mobile runtime to Expo SDK 56 / React Native 0.85 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
 
 Reviewer-visible changes:
 - Visit reminders are one-time local device notifications. Bills, bill payment reminders, and monthly friend activity use remote device notifications where applicable. Settings > Notifications manages saved notification preferences separately from the current device's system notification permission.
