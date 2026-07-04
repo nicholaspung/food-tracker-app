@@ -166,7 +166,7 @@ function getDeleteListItemModalCopy(item: PendingDeleteListItem | null): {
     case 'restaurant-bookmark':
       return {
         cancelLabel: 'Keep',
-        confirmLabel: 'Remove',
+        confirmLabel: 'Remove Restaurant',
         confirmLoadingLabel: 'Removing...',
         description: `Remove "${item.restaurantName}" from your Want to Try list?`,
         title: 'Remove Restaurant?',
@@ -174,7 +174,7 @@ function getDeleteListItemModalCopy(item: PendingDeleteListItem | null): {
     case 'menu-bookmark':
       return {
         cancelLabel: 'Keep',
-        confirmLabel: 'Remove',
+        confirmLabel: 'Remove Menu Item',
         confirmLoadingLabel: 'Removing...',
         description: `Remove "${item.itemName}" from your Want to Try list?`,
         title: 'Remove Menu Item?',

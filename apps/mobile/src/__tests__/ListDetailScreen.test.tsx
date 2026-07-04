@@ -13,7 +13,6 @@ import {
   useRestaurantListWrites,
 } from '../features';
 import type { RestaurantListDetailRecord } from '../features/store/featureStore';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import type { RestaurantListItemRecord, RestaurantListRecord } from '../features/models';
 import { trackObservabilityEvent } from '../observability';
@@ -175,10 +174,6 @@ jest.mock('../features/store/pocketbaseGateway', () => ({
   buildPocketBaseFileUrl: jest.fn(() => 'photo-url'),
 }));
 
-jest.mock('../features/store/useFeatureOutboxQueue', () => ({
-  useFeatureOutboxQueue: jest.fn(),
-}));
-
 jest.mock('../features/store/useWriteTelemetry', () => ({
   useWriteTelemetry: jest.fn(),
 }));
@@ -331,7 +326,6 @@ const mockedRegenerateRestaurantListShareLink = regenerateRestaurantListShareLin
   typeof regenerateRestaurantListShareLink
 >;
 const mockedUseRestaurantListWrites = useRestaurantListWrites as jest.MockedFunction<typeof useRestaurantListWrites>;
-const mockedUseFeatureOutboxQueue = useFeatureOutboxQueue as jest.MockedFunction<typeof useFeatureOutboxQueue>;
 const mockedUseWriteTelemetry = useWriteTelemetry as jest.MockedFunction<typeof useWriteTelemetry>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent
@@ -601,7 +595,6 @@ describe('ListDetailScreen', () => {
       status: 'completed',
     });
     mockedUseRestaurantListWrites.mockReturnValue(restaurantListWrites);
-    mockedUseFeatureOutboxQueue.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseWriteTelemetry.mockReturnValue(jest.fn().mockResolvedValue(undefined));
     mockedUseAuth.mockReturnValue({
       user: {
