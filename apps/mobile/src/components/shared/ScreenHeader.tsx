@@ -33,6 +33,7 @@ const useStyles = createThemedStyles((theme, isCompact: boolean) => ({
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.sm,
+    minHeight: 44,
   },
   backButton: {
     alignItems: 'center',
@@ -79,6 +80,7 @@ export function ScreenHeader({
           <Pressable
             accessibilityLabel={backAccessibilityLabel}
             accessibilityRole="button"
+            hitSlop={6}
             onPress={onBackPress}
             style={styles.backButton}
             testID="screen-back-button"
