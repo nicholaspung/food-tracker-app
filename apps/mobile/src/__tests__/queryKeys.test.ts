@@ -90,6 +90,20 @@ describe('mobile feature query keys', () => {
     expect(isRestaurantMenuItemsQueryKey(menuItemsQueryKeys.restaurant('restaurant_1'))).toBe(true);
     expect(isTastingSessionsListQueryKey(tastingSessionsQueryKeys.root)).toBe(true);
     expect(isTastingSessionDetailQueryKey(tastingSessionsQueryKeys.detail('session_1'))).toBe(true);
+    expect(
+      tastingSessionsQueryKeys.resultPhotos(' session_1 ', [
+        'food_2',
+        ' food_1 ',
+        'food_2',
+        '',
+      ]),
+    ).toEqual([
+      'feature',
+      'tasting-sessions',
+      'session_1',
+      'result-photos',
+      ['food_1', 'food_2'],
+    ]);
     expect(getCachedTastingSessionDetail(queryClient, 'session_1')?.name).toBe('Coffee');
   });
 

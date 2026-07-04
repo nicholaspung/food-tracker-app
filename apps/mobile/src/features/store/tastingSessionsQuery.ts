@@ -6,7 +6,27 @@ export const tastingSessionsQueryKeys = {
   root: ['feature', 'tasting-sessions'] as const,
   detail: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim()] as const,
   friends: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim(), 'friends'] as const,
+  resultPhotos: (sessionId: string, generatedFoodItemIds: readonly string[]) =>
+    [
+      'feature',
+      'tasting-sessions',
+      sessionId.trim(),
+      'result-photos',
+      normalizeTastingSessionResultPhotoIds(generatedFoodItemIds),
+    ] as const,
 };
+
+function normalizeTastingSessionResultPhotoIds(
+  generatedFoodItemIds: readonly string[],
+): string[] {
+  return Array.from(
+    new Set(
+      generatedFoodItemIds
+        .map((foodItemId) => foodItemId.trim())
+        .filter((foodItemId) => foodItemId.length > 0),
+    ),
+  ).sort();
+}
 
 export function isTastingSessionsListQueryKey(queryKey: QueryKey): boolean {
   return (

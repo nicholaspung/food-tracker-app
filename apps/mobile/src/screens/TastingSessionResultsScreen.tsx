@@ -12,6 +12,7 @@ import {
   type RecordPhotoEntry,
 } from '../components/shared';
 import { listVisitItemPhotos, type TastingItemRatingRecord, type TastingSessionRecord } from '../features';
+import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { formatStoredCalendarDateLabel } from '../lib/dateFormatting';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -116,11 +117,16 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
       ),
     );
   }, [session]);
+  const resultPhotosQueryKey = useMemo(
+    () => tastingSessionsQueryKeys.resultPhotos(sessionId, generatedFoodItemIds),
+    [generatedFoodItemIds, sessionId],
+  );
+  const resultPhotoFoodItemIds = resultPhotosQueryKey[4];
 
   const photosQuery = useQuery({
-    enabled: generatedFoodItemIds.length > 0,
-    queryFn: ({ signal }) => listVisitItemPhotos(generatedFoodItemIds, { signal }),
-    queryKey: ['feature', 'tastingSessions', sessionId, 'resultPhotos', generatedFoodItemIds],
+    enabled: resultPhotoFoodItemIds.length > 0,
+    queryFn: ({ signal }) => listVisitItemPhotos([...resultPhotoFoodItemIds], { signal }),
+    queryKey: resultPhotosQueryKey,
   });
 
   const photosByFoodItemId = useMemo(() => photosQuery.data ?? {}, [photosQuery.data]);
