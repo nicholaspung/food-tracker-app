@@ -43,4 +43,4 @@ minimumReleaseAgeExclude:
   - expo-video@56.1.4
   - jest-expo@56.0.5
 patchedDependencies:
-  expo-notifications@56.0.18: patches/expo-notifications@56.0.18.patch
+  expo-notifications@56.0.19: patches/expo-notifications@56.0.19.patch
