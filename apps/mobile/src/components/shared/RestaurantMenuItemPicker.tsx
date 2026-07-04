@@ -339,6 +339,25 @@ export function RestaurantMenuItemPicker<
     : isReviewSubmitted
       ? "Review requested"
       : "Menu incorrect?";
+  const scanDisabledReason = scanDisabled
+    ? isOnline
+      ? "Select a restaurant before scanning a menu."
+      : "Menu scanning requires a connection."
+    : null;
+  const addManualDisabledReason = addManualDisabled
+    ? isOnline
+      ? "Select a restaurant before adding a menu item."
+      : "Adding manual menu items requires a connection."
+    : null;
+  const reviewDisabledReason = isReviewDisabled
+    ? isReviewSubmitted
+      ? "Menu review has already been requested."
+      : hasPendingMenuReview
+        ? "A menu review is already pending."
+        : !isOnline
+          ? "Requesting a menu review requires a connection."
+          : "Select a restaurant before requesting a menu review."
+    : null;
   const crossLocationSections = [
     {
       key: "relatedLocationSuggestion",
@@ -371,7 +390,9 @@ export function RestaurantMenuItemPicker<
       >
         <View style={styles.quickActionsPrimaryRow}>
           <Pressable
+            accessibilityHint={scanDisabledReason ?? undefined}
             accessibilityRole="button"
+            accessibilityState={{ disabled: scanDisabled }}
             disabled={scanDisabled}
             onPress={onScanMenuPhoto}
             style={[
@@ -386,7 +407,7 @@ export function RestaurantMenuItemPicker<
               name={isOnline ? "camera-outline" : "cloud-offline-outline"}
               size={16}
             />
-            <Text>{isOnline ? "Scan Menu Photo" : "Scan Menu (Offline)"}</Text>
+            <Text>Scan Menu Photo</Text>
           </Pressable>
           <Pressable
             accessibilityLabel="Show item entry tip"
@@ -403,6 +424,11 @@ export function RestaurantMenuItemPicker<
             />
           </Pressable>
         </View>
+        {scanDisabledReason ? (
+          <Text tone="secondary" variant="bodySm">
+            {scanDisabledReason}
+          </Text>
+        ) : null}
 
         {isTipVisible ? (
           <Pressable
@@ -445,7 +471,9 @@ export function RestaurantMenuItemPicker<
         ) : null}
 
         <Pressable
+          accessibilityHint={addManualDisabledReason ?? undefined}
           accessibilityRole="button"
+          accessibilityState={{ disabled: addManualDisabled }}
           disabled={addManualDisabled}
           onPress={onAddManual}
           style={[
@@ -461,6 +489,11 @@ export function RestaurantMenuItemPicker<
           />
           <Text>{addManualLabel}</Text>
         </Pressable>
+        {addManualDisabledReason ? (
+          <Text tone="secondary" variant="bodySm">
+            {addManualDisabledReason}
+          </Text>
+        ) : null}
       </Card>
 
       <Card style={styles.listCard}>
@@ -468,7 +501,9 @@ export function RestaurantMenuItemPicker<
           <View style={styles.menuItemsHeaderLeft}>
             <Text tone="secondary">{label}</Text>
             <Pressable
+              accessibilityHint={reviewDisabledReason ?? undefined}
               accessibilityRole="button"
+              accessibilityState={{ disabled: isReviewDisabled }}
               disabled={isReviewDisabled}
               onPress={onRequestMenuReview}
               style={[
@@ -513,6 +548,11 @@ export function RestaurantMenuItemPicker<
             </Text>
           ) : null}
         </View>
+        {reviewDisabledReason ? (
+          <Text tone="secondary" variant="bodySm">
+            {reviewDisabledReason}
+          </Text>
+        ) : null}
         <Input
           containerStyle={styles.menuSearchInput}
           onChangeText={onSearchQueryChange}

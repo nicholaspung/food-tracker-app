@@ -227,6 +227,97 @@ describe("RestaurantMenuItemPicker", () => {
     ).toBeTruthy();
   });
 
+  it("marks offline quick actions disabled and explains that connection is required", () => {
+    const renderer = renderPicker({
+      addManualDisabled: true,
+      isOnline: false,
+      isReviewDisabled: true,
+      scanDisabled: true,
+    });
+
+    const scanButton = renderer.root.findByProps({
+      testID: "create-visit-scan-menu-photo-button",
+    });
+    const addManualButton = renderer.root.findByProps({
+      testID: "create-visit-add-menu-item-button",
+    });
+    const text = renderer.root.findAllByType("Text").map(collectText).join(" ");
+
+    expect(scanButton.props.accessibilityState).toEqual({ disabled: true });
+    expect(scanButton.props.accessibilityHint).toBe(
+      "Menu scanning requires a connection.",
+    );
+    expect(addManualButton.props.accessibilityState).toEqual({
+      disabled: true,
+    });
+    expect(addManualButton.props.accessibilityHint).toBe(
+      "Adding manual menu items requires a connection.",
+    );
+    expect(text).toContain("Scan Menu Photo");
+    expect(text).not.toContain("Scan Menu (Offline)");
+    expect(text).toContain("Menu scanning requires a connection.");
+    expect(text).toContain("Adding manual menu items requires a connection.");
+    expect(text).toContain("Requesting a menu review requires a connection.");
+  });
+
+  it("explains selected-restaurant and submitted-review disabled reasons", () => {
+    const renderer = renderPicker({
+      addManualDisabled: true,
+      isReviewDisabled: true,
+      isReviewSubmitted: true,
+      scanDisabled: true,
+    });
+
+    const scanButton = renderer.root.findByProps({
+      testID: "create-visit-scan-menu-photo-button",
+    });
+    const addManualButton = renderer.root.findByProps({
+      testID: "create-visit-add-menu-item-button",
+    });
+    const text = renderer.root.findAllByType("Text").map(collectText).join(" ");
+
+    expect(scanButton.props.accessibilityHint).toBe(
+      "Select a restaurant before scanning a menu.",
+    );
+    expect(addManualButton.props.accessibilityHint).toBe(
+      "Select a restaurant before adding a menu item.",
+    );
+    expect(text).toContain("Select a restaurant before scanning a menu.");
+    expect(text).toContain("Select a restaurant before adding a menu item.");
+    expect(text).toContain("Menu review has already been requested.");
+  });
+
+  it("explains pending menu review disabled state", () => {
+    const renderer = renderPicker({
+      hasPendingMenuReview: true,
+      isReviewDisabled: true,
+    });
+
+    const text = renderer.root.findAllByType("Text").map(collectText).join(" ");
+
+    expect(text).toContain("A menu review is already pending.");
+  });
+
+  it("keeps submitted and pending review reasons ahead of offline copy", () => {
+    const submittedRenderer = renderPicker({
+      isOnline: false,
+      isReviewDisabled: true,
+      isReviewSubmitted: true,
+    });
+    const pendingRenderer = renderPicker({
+      hasPendingMenuReview: true,
+      isOnline: false,
+      isReviewDisabled: true,
+    });
+
+    expect(
+      submittedRenderer.root.findAllByType("Text").map(collectText).join(" "),
+    ).toContain("Menu review has already been requested.");
+    expect(
+      pendingRenderer.root.findAllByType("Text").map(collectText).join(" "),
+    ).toContain("A menu review is already pending.");
+  });
+
   it("calls the cross-location toggle handler when a suggestion is pressed", () => {
     const onToggleCrossLocationItem = jest.fn();
     const renderer = renderPicker({
