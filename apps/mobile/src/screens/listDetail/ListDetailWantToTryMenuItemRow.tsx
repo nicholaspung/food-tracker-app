@@ -5,6 +5,8 @@ import { createThemedStyles, useTheme } from '../../theme';
 import { ListItem, Text } from '../../ui';
 import type { OwnerDisplayItem } from './listDetailTypes';
 
+const MIN_TOUCH_TARGET_SIZE = 44;
+
 interface ListDetailWantToTryMenuItemRowProps {
   canCreateVisitFromRestaurant: boolean;
   canDelete: boolean;
@@ -50,9 +52,9 @@ const useStyles = createThemedStyles((theme) => ({
   deleteButton: {
     alignItems: 'center',
     borderRadius: theme.radii.sm,
-    height: 28,
+    height: MIN_TOUCH_TARGET_SIZE,
     justifyContent: 'center',
-    width: 28,
+    width: MIN_TOUCH_TARGET_SIZE,
   },
   deleteButtonPressed: {
     backgroundColor: theme.colors.status.dangerBg,

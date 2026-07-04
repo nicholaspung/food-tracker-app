@@ -14,6 +14,8 @@ import type {
   PendingDeleteListItem,
 } from './listDetailTypes';
 
+const MIN_TOUCH_TARGET_SIZE = 44;
+
 interface ListDetailOwnerItemCardProps {
   canCreateVisitFromRestaurant: boolean;
   groupIndex: number;
@@ -51,9 +53,9 @@ const useStyles = createThemedStyles((theme) => ({
   deleteButton: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
-    height: 24,
+    height: MIN_TOUCH_TARGET_SIZE,
     justifyContent: 'center',
-    width: 24,
+    width: MIN_TOUCH_TARGET_SIZE,
   },
   deleteButtonPressed: {
     backgroundColor: theme.colors.status.dangerBg,
