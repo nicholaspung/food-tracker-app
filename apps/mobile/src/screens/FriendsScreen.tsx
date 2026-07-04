@@ -44,9 +44,9 @@ import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { formatDisplayDate } from '../lib/dateFormatting';
 import { FriendCodePanel } from './friends/FriendCodePanel';
 import { FriendsPendingRequestsSection } from './friends/FriendsPendingRequestsSection';
-import { formatDate } from './friends/friendsFormatters';
 import {
   FRIEND_ACTION_BY_OPERATION,
   type FriendRemoveOperationName,
@@ -579,7 +579,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           <FriendListItemCard
             iconColor={theme.colors.text.info}
             iconName="people-outline"
-            meta={`Friends since ${formatDate(friend.createdAt)}`}
+            meta={`Friends since ${formatDisplayDate(friend.createdAt, {
+              fallback: 'Unknown date',
+            })}`}
             name={friend.name}
             tone="info"
             rightContent={
@@ -611,7 +613,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           <FriendListItemCard
             iconColor={theme.colors.text.warning}
             iconName="person-add-outline"
-            meta={`Sent ${formatDate(friend.createdAt)}`}
+            meta={`Sent ${formatDisplayDate(friend.createdAt, {
+              fallback: 'Unknown date',
+            })}`}
             name={friend.name}
             tone="warning"
             rightContent={
@@ -658,7 +662,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         <FriendListItemCard
           iconColor={theme.colors.text.secondary}
           iconName="time-outline"
-          meta={`Sent ${formatDate(friend.createdAt)}`}
+          meta={`Sent ${formatDisplayDate(friend.createdAt, {
+            fallback: 'Unknown date',
+          })}`}
           name={friend.name}
           tone="muted"
           rightContent={
