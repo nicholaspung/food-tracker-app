@@ -50,6 +50,8 @@ interface HomeFeedVisitEntryCardProps {
   renderItemBookmark?: (item: VisitRecord['items'][number]) => ReactNode;
 }
 
+const COMPACT_ACTION_TARGET_SIZE = 44;
+
 const useStyles = createThemedStyles((theme) => ({
   entryCard: {
     backgroundColor: theme.colors.background.surface,
@@ -133,9 +135,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.default,
     borderRadius: 8,
     borderWidth: 1,
-    height: 30,
+    height: COMPACT_ACTION_TARGET_SIZE,
     justifyContent: 'center',
-    width: 30,
+    width: COMPACT_ACTION_TARGET_SIZE,
   },
   compactActionDanger: {
     borderColor: theme.colors.border.danger,
@@ -317,6 +319,7 @@ export function HomeFeedVisitEntryCard({
               {onShareVisit ? (
                 <Pressable
                   accessibilityLabel="Share visit"
+                  accessibilityRole="button"
                   onPress={onShareVisit}
                   style={styles.compactActionButton}
                 >
@@ -326,6 +329,7 @@ export function HomeFeedVisitEntryCard({
               {onEdit ? (
                 <Pressable
                   accessibilityLabel="Edit visit"
+                  accessibilityRole="button"
                   onPress={onEdit}
                   style={styles.compactActionButton}
                   testID={editTestID}
@@ -336,6 +340,7 @@ export function HomeFeedVisitEntryCard({
               {onDelete ? (
                 <Pressable
                   accessibilityLabel="Delete visit"
+                  accessibilityRole="button"
                   onPress={onDelete}
                   style={[styles.compactActionButton, styles.compactActionDanger]}
                   testID={deleteTestID}
@@ -346,6 +351,7 @@ export function HomeFeedVisitEntryCard({
               {onMoreActions ? (
                 <Pressable
                   accessibilityLabel={moreActionsAccessibilityLabel ?? 'More actions'}
+                  accessibilityRole="button"
                   onPress={onMoreActions}
                   style={styles.compactActionButton}
                   testID={moreActionsTestID}
@@ -446,6 +452,7 @@ export function HomeFeedVisitEntryCard({
                       {primaryPhoto && onSharePhoto ? (
                         <Pressable
                           accessibilityLabel={`Share ${item.name}`}
+                          accessibilityRole="button"
                           onPress={() => {
                             onSharePhoto({
                               itemName: item.name,

@@ -33,6 +33,8 @@ interface HomeFoodProductEntryCardProps {
   showUnderReviewBadge?: boolean;
 }
 
+const COMPACT_ACTION_TARGET_SIZE = 44;
+
 function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
 }
@@ -121,9 +123,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.default,
     borderRadius: 8,
     borderWidth: 1,
-    height: 30,
+    height: COMPACT_ACTION_TARGET_SIZE,
     justifyContent: 'center',
-    width: 30,
+    width: COMPACT_ACTION_TARGET_SIZE,
   },
   compactActionDanger: {
     borderColor: theme.colors.border.danger,
@@ -276,13 +278,19 @@ export function HomeFoodProductEntryCard({
           {showActions ? (
             <View style={styles.compactActions}>
               {onEdit ? (
-                <Pressable accessibilityLabel="Edit food product" onPress={onEdit} style={styles.compactActionButton}>
+                <Pressable
+                  accessibilityLabel="Edit food product"
+                  accessibilityRole="button"
+                  onPress={onEdit}
+                  style={styles.compactActionButton}
+                >
                   <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
                 </Pressable>
               ) : null}
               {onDelete ? (
                 <Pressable
                   accessibilityLabel="Delete food product"
+                  accessibilityRole="button"
                   onPress={onDelete}
                   style={[styles.compactActionButton, styles.compactActionDanger]}
                 >
@@ -292,6 +300,7 @@ export function HomeFoodProductEntryCard({
               {onMoreActions ? (
                 <Pressable
                   accessibilityLabel={moreActionsAccessibilityLabel ?? 'More actions'}
+                  accessibilityRole="button"
                   onPress={onMoreActions}
                   style={styles.compactActionButton}
                 >
@@ -361,6 +370,7 @@ export function HomeFoodProductEntryCard({
           {primaryPhoto && onSharePhoto ? (
             <Pressable
               accessibilityLabel={`Share ${resolvedFoodProduct.itemName}`}
+              accessibilityRole="button"
               onPress={() => {
                 onSharePhoto({
                   itemName: resolvedFoodProduct.itemName,
