@@ -23,8 +23,7 @@ import {
   useMonthlyUsage,
   useTastingPlanMenuCatalog,
   useTastingPlanPlanningState,
-  useTastingPlanWrites,
-  useTastingSessionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
@@ -147,8 +146,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const theme = useTheme();
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
-  const tastingPlanWrites = useTastingPlanWrites();
-  const tastingSessionWrites = useTastingSessionWrites();
+  const tastingLifecycleWrites = useTastingSessionLifecycleWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
@@ -293,7 +291,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     setIsTipPopoverVisible(false);
   }, [activeRestaurant?.restaurantId]);
 
-  const runAction = async (action: () => Promise<{ message: string; status: 'blocked' } | { status: 'completed' }>) => {
+  const runAction = async (
+    action: () => Promise<{ message: string; status: 'blocked' } | { status: 'completed' } | { status: 'queued' }>,
+  ) => {
     try {
       setErrorMessage(null);
       const result = await action();
@@ -307,7 +307,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
   const handleStartTasting = async () => {
     await runAction(async () => {
-      const startResult = await tastingPlanWrites.startTasting({ isOnline, sessionId });
+      const startResult = await tastingLifecycleWrites.startTasting({ sessionId });
       if (startResult.status === 'completed') {
         navigation.replace('TastingSessionTasting', { sessionId: startResult.result.id });
       }
@@ -328,7 +328,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     try {
       setErrorMessage(null);
       setIsDeletingSession(true);
-      const deleteResult = await tastingSessionWrites.deleteSession({ isOnline, sessionId });
+      const deleteResult = await tastingLifecycleWrites.deleteSession({ sessionId });
       if (deleteResult.status === 'blocked') {
         setErrorMessage(deleteResult.message);
         return;
@@ -349,8 +349,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
     setAddingRestaurantId(restaurant.id);
     await runAction(async () => {
-      const addResult = await tastingPlanWrites.addRestaurant({
-        isOnline,
+      const addResult = await tastingLifecycleWrites.addRestaurant({
         restaurant,
         sessionId,
       });
@@ -401,8 +400,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
   const handleRemoveRestaurant = async (restaurantSuggestionId: string) => {
     await runAction(async () => {
-      const removeResult = await tastingPlanWrites.removeRestaurant({
-        isOnline,
+      const removeResult = await tastingLifecycleWrites.removeRestaurant({
         restaurantSuggestionId,
         sessionId,
       });
@@ -423,8 +421,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
 
     if (existingSuggestion?.status === 'approved') {
       await runAction(() =>
-        tastingPlanWrites.removeMenuItem({
-          isOnline,
+        tastingLifecycleWrites.removeMenuItem({
           itemSuggestionId: existingSuggestion.id,
           sessionId,
         }),
@@ -433,9 +430,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     }
 
     await runAction(() =>
-      tastingPlanWrites.addMenuItem({
+      tastingLifecycleWrites.addMenuItem({
         existingSuggestionId: existingSuggestion?.id,
-        isOnline,
         menuItem,
         restaurantSuggestionId: activeRestaurant.id,
         sessionId,

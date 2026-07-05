@@ -1,20 +1,19 @@
-import { useCallback } from 'react';
-import { type QueryClient, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import type {
   RestaurantRecord,
   TastingSessionRecord,
 } from '../models';
 import type { MenuItemRecord } from './featureStore';
+import type { FeatureOutboxOperationName } from './featureOutboxOperations';
+import type { OfflineOutboxFeatureWriteOptions } from './useOfflineAwareFeatureWrite';
 import {
-  setTastingMenuItemSuggestionStatus,
-  setTastingRestaurantSuggestionStatus,
-  startTastingSession,
-  suggestTastingMenuItem,
-  suggestTastingRestaurant,
-} from './tastingSessionsApiStore';
-import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
-import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
+  blockedTastingSessionLifecycleWrite,
+  createTastingSessionLifecycleWriteActions,
+  TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES,
+  type TastingSessionLifecycleWriteResult,
+} from './useTastingSessionLifecycleWrites';
 
 interface OnlineOnlyTastingPlanWriteInput {
   isOnline: boolean;
@@ -39,156 +38,114 @@ interface RemoveTastingPlanMenuItemInput extends OnlineOnlyTastingPlanWriteInput
   itemSuggestionId: string;
 }
 
-type TastingPlanWriteResult<T> =
-  | {
-      result: T;
-      status: 'completed';
-    }
-  | {
-      message: string;
-      status: 'blocked';
-    };
+type TastingPlanWriteResult<T> = Exclude<
+  TastingSessionLifecycleWriteResult<T>,
+  { status: 'queued' }
+>;
 
-function blocked(message = 'Planning actions require a connection.'): TastingPlanWriteResult<never> {
+async function executeReplaySafeWriteOnline<TName extends FeatureOutboxOperationName, TResult>(
+  options: OfflineOutboxFeatureWriteOptions<TName, TResult>,
+): Promise<{ result: TResult; status: 'completed' }> {
   return {
-    message,
-    status: 'blocked',
+    result: await options.execute(),
+    status: 'completed',
   };
 }
 
-async function refreshTastingPlan(
-  queryClient: QueryClient,
-  sessionId: string,
-): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) }),
-    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
-  ]);
+function asCompatibilityResult<T>(
+  result: Promise<TastingSessionLifecycleWriteResult<T>>,
+): Promise<TastingPlanWriteResult<T>> {
+  return result as Promise<TastingPlanWriteResult<T>>;
+}
+
+function blockedCompatibilityResult<T>(message: string): TastingPlanWriteResult<T> {
+  return blockedTastingSessionLifecycleWrite(message) as TastingPlanWriteResult<T>;
 }
 
 export function useTastingPlanWrites() {
   const queryClient = useQueryClient();
+  const uploadedPhotoKeysRef = useRef<Set<string>>(new Set());
 
-  const addRestaurant = useCallback(
-    async ({
-      isOnline,
-      restaurant,
-      sessionId,
-    }: AddTastingPlanRestaurantInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked();
-      }
-
-      const session = await suggestTastingRestaurant(sessionId, {
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-      });
-      await refreshTastingPlan(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
+  const createActions = useCallback(
+    (isOnline: boolean) =>
+      createTastingSessionLifecycleWriteActions({
+        isOnline,
+        queryClient,
+        uploadedPhotoKeysRef,
+        writeReplaySafe: executeReplaySafeWriteOnline,
+      }),
     [queryClient],
   );
 
-  const removeRestaurant = useCallback(
-    async ({
-      isOnline,
-      restaurantSuggestionId,
-      sessionId,
-    }: RemoveTastingPlanRestaurantInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked();
-      }
+  const blockIfOffline = useCallback(
+    <T>(isOnline: boolean): TastingPlanWriteResult<T> | null =>
+      isOnline
+        ? null
+        : blockedCompatibilityResult(TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.planning),
+    [],
+  );
 
-      const session = await setTastingRestaurantSuggestionStatus(
-        sessionId,
+  return useMemo(
+    () => ({
+      addMenuItem: ({
+        existingSuggestionId,
+        isOnline,
+        menuItem,
         restaurantSuggestionId,
-        'rejected',
-      );
-      await refreshTastingPlan(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
+        sessionId,
+      }: AddTastingPlanMenuItemInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(isOnline);
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).addMenuItem({
+              existingSuggestionId,
+              menuItem,
+              restaurantSuggestionId,
+              sessionId,
+            }));
+      },
+      addRestaurant: ({
+        isOnline,
+        restaurant,
+        sessionId,
+      }: AddTastingPlanRestaurantInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(isOnline);
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).addRestaurant({ restaurant, sessionId }));
+      },
+      removeMenuItem: ({
+        isOnline,
+        itemSuggestionId,
+        sessionId,
+      }: RemoveTastingPlanMenuItemInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(isOnline);
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).removeMenuItem({ itemSuggestionId, sessionId }));
+      },
+      removeRestaurant: ({
+        isOnline,
+        restaurantSuggestionId,
+        sessionId,
+      }: RemoveTastingPlanRestaurantInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(isOnline);
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).removeRestaurant({ restaurantSuggestionId, sessionId }));
+      },
+      startTasting: ({
+        isOnline,
+        sessionId,
+      }: OnlineOnlyTastingPlanWriteInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(isOnline);
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).startTasting({ sessionId }));
+      },
+    }),
+    [blockIfOffline, createActions],
   );
-
-  const addMenuItem = useCallback(
-    async ({
-      existingSuggestionId,
-      isOnline,
-      menuItem,
-      restaurantSuggestionId,
-      sessionId,
-    }: AddTastingPlanMenuItemInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked();
-      }
-
-      const session = existingSuggestionId
-        ? await setTastingMenuItemSuggestionStatus(sessionId, existingSuggestionId, 'approved')
-        : await suggestTastingMenuItem(sessionId, restaurantSuggestionId, {
-            menuItemId: menuItem.id,
-            name: menuItem.name,
-          });
-      await refreshTastingPlan(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const removeMenuItem = useCallback(
-    async ({
-      isOnline,
-      itemSuggestionId,
-      sessionId,
-    }: RemoveTastingPlanMenuItemInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked();
-      }
-
-      const session = await setTastingMenuItemSuggestionStatus(sessionId, itemSuggestionId, 'rejected');
-      await refreshTastingPlan(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const startTasting = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: OnlineOnlyTastingPlanWriteInput): Promise<TastingPlanWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked();
-      }
-
-      const session = await startTastingSession(sessionId);
-      await refreshTastingPlan(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  return {
-    addMenuItem,
-    addRestaurant,
-    removeMenuItem,
-    removeRestaurant,
-    startTasting,
-  };
 }
 
 export type TastingPlanWrites = ReturnType<typeof useTastingPlanWrites>;

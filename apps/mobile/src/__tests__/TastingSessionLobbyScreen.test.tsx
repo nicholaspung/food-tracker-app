@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { useTastingSessionWrites, type TastingSessionRecord } from '../features';
+import { useTastingSessionLifecycleWrites, type TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionLobbyScreen } from '../screens/TastingSessionLobbyScreen';
@@ -49,7 +49,7 @@ jest.mock('../features', () => ({
     detail: (sessionId: string) => ['feature', 'tasting-sessions', sessionId],
     root: ['feature', 'tasting-sessions'],
   },
-  useTastingSessionWrites: jest.fn(),
+  useTastingSessionLifecycleWrites: jest.fn(),
 }));
 
 jest.mock('../providers/AuthProvider', () => ({
@@ -116,8 +116,8 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, children),
 }));
 
-const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<
-  typeof useTastingSessionWrites
+const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
+  typeof useTastingSessionLifecycleWrites
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
@@ -281,7 +281,7 @@ describe('TastingSessionLobbyScreen', () => {
       invalidateQueries,
       setQueryData,
     } as unknown as ReturnType<typeof useQueryClient>);
-    mockedUseTastingSessionWrites.mockReturnValue({
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
       acceptInvite: jest.fn(),
       createSession: jest.fn(),
       deleteSession,
@@ -292,7 +292,7 @@ describe('TastingSessionLobbyScreen', () => {
       removeParticipant: jest.fn(),
       reopenInviteWindow,
       resendInvite,
-    } as unknown as ReturnType<typeof useTastingSessionWrites>);
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
     reopenInviteWindow.mockResolvedValue({
       result: buildSession('2099-01-01T00:00:00.000Z'),
       status: 'completed',
@@ -348,7 +348,6 @@ describe('TastingSessionLobbyScreen', () => {
     });
 
     expect(reopenInviteWindow).toHaveBeenCalledWith({
-      isOnline: true,
       joinDurationMinutes: 120,
       sessionId: 'session_1',
     });
@@ -422,7 +421,6 @@ describe('TastingSessionLobbyScreen', () => {
     });
 
     expect(deleteSession).toHaveBeenCalledWith({
-      isOnline: true,
       sessionId: 'session_1',
     });
     expect(navigation.navigate).toHaveBeenCalledWith('TastingSessions');
@@ -467,7 +465,6 @@ describe('TastingSessionLobbyScreen', () => {
     });
 
     expect(leaveSession).toHaveBeenCalledWith({
-      isOnline: true,
       sessionId: 'session_1',
     });
     expect(navigation.navigate).toHaveBeenCalledWith('TastingSessions');
@@ -507,7 +504,6 @@ describe('TastingSessionLobbyScreen', () => {
 
     expect(resendInvite).toHaveBeenCalledWith({
       inviteId: 'invite_1',
-      isOnline: true,
       sessionId: 'session_1',
     });
   });
@@ -522,7 +518,6 @@ describe('TastingSessionLobbyScreen', () => {
 
     expect(resendInvite).toHaveBeenCalledWith({
       inviteId: 'invite_1',
-      isOnline: true,
       sessionId: 'session_1',
     });
   });

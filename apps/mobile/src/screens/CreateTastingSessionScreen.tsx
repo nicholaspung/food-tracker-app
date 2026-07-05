@@ -4,7 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
 import {
   type FriendRecord,
-  useTastingSessionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import { useAcceptedFriendPickerState } from '../hooks/useAcceptedFriendPickerState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -21,7 +21,7 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const userId = user?.id ?? null;
-  const tastingSessionWrites = useTastingSessionWrites();
+  const tastingSessionWrites = useTastingSessionLifecycleWrites();
   const [name, setName] = useState('');
   const [duration, setDuration] = useState<number>(60);
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
@@ -50,12 +50,14 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
         .filter((userId): userId is string => Boolean(userId?.trim()));
       const createResult = await tastingSessionWrites.createSession({
         invitedUserIds,
-        isOnline,
         joinDurationMinutes: duration,
         name,
       });
       if (createResult.status === 'blocked') {
         setErrorMessage(createResult.message);
+        return;
+      }
+      if (createResult.status === 'queued') {
         return;
       }
       navigateToTastingSession(navigation, createResult.result);

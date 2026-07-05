@@ -4,8 +4,7 @@ import { act, create } from 'react-test-renderer';
 import {
   type TastingSessionRecord,
   useTastingPlanMenuCatalog,
-  useTastingPlanWrites,
-  useTastingSessionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useAuth } from '../providers/AuthProvider';
@@ -95,8 +94,7 @@ jest.mock('../features', () => {
     })),
     useTastingPlanMenuCatalog: jest.fn(),
     useTastingPlanPlanningState: planningState.useTastingPlanPlanningState,
-    useTastingPlanWrites: jest.fn(),
-    useTastingSessionWrites: jest.fn(),
+    useTastingSessionLifecycleWrites: jest.fn(),
   };
 });
 
@@ -186,8 +184,9 @@ jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () =
   useTastingSessionLifecycleReadState: jest.fn(),
 }));
 
-const mockedUseTastingPlanWrites = useTastingPlanWrites as jest.MockedFunction<typeof useTastingPlanWrites>;
-const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<typeof useTastingSessionWrites>;
+const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
+  typeof useTastingSessionLifecycleWrites
+>;
 const mockedUseTastingPlanMenuCatalog = useTastingPlanMenuCatalog as jest.MockedFunction<
   typeof useTastingPlanMenuCatalog
 >;
@@ -391,16 +390,14 @@ describe('TastingSessionPlanningScreen', () => {
     mockStartTasting.mockResolvedValue({ result: sessionWithRestaurant, status: 'completed' });
     mockDeleteSession.mockReset();
     mockDeleteSession.mockResolvedValue({ result: { success: true }, status: 'completed' });
-    mockedUseTastingPlanWrites.mockReturnValue({
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
       addMenuItem: mockAddMenuItem,
       addRestaurant: mockAddRestaurant,
+      deleteSession: mockDeleteSession,
       removeMenuItem: mockRemoveMenuItem,
       removeRestaurant: mockRemoveRestaurant,
       startTasting: mockStartTasting,
-    } as unknown as ReturnType<typeof useTastingPlanWrites>);
-    mockedUseTastingSessionWrites.mockReturnValue({
-      deleteSession: mockDeleteSession,
-    } as unknown as ReturnType<typeof useTastingSessionWrites>);
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
     mockedUseAuth.mockReturnValue({
       actualUser: { isAdmin: false },
       user: {
@@ -528,7 +525,6 @@ describe('TastingSessionPlanningScreen', () => {
     expect(searchSection.props.footerContent).toBeUndefined();
 
     expect(mockAddRestaurant).toHaveBeenCalledWith({
-      isOnline: true,
       restaurant: savedRestaurant.restaurant,
       sessionId: 'session-1',
     });
@@ -629,7 +625,6 @@ describe('TastingSessionPlanningScreen', () => {
 
     expect(mockAddMenuItem).toHaveBeenCalledWith({
       existingSuggestionId: undefined,
-      isOnline: true,
       menuItem: {
         id: 'menu-item-2',
         name: 'Tonkotsu Ramen',
@@ -666,7 +661,6 @@ describe('TastingSessionPlanningScreen', () => {
     });
 
     expect(mockStartTasting).toHaveBeenCalledWith({
-      isOnline: true,
       sessionId: 'session-1',
     });
     expect(mockReplace).toHaveBeenCalledWith('TastingSessionTasting', {
@@ -697,7 +691,6 @@ describe('TastingSessionPlanningScreen', () => {
     });
 
     expect(mockDeleteSession).toHaveBeenCalledWith({
-      isOnline: true,
       sessionId: 'session-1',
     });
     expect(mockNavigate).toHaveBeenCalledWith('TastingSessions');

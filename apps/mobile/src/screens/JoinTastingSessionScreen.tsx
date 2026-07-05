@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { useTastingSessionWrites } from '../features';
+import { useTastingSessionLifecycleWrites } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { Card, Input, Text } from '../ui';
@@ -12,7 +12,7 @@ type JoinTastingSessionScreenProps = NativeStackScreenProps<RootStackParamList, 
 
 export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScreenProps) {
   const { isOnline } = useConnectivity();
-  const tastingSessionWrites = useTastingSessionWrites();
+  const tastingSessionWrites = useTastingSessionLifecycleWrites();
   const [inviteCode, setInviteCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const normalizedInviteCode = inviteCode.trim().toUpperCase();
@@ -20,9 +20,12 @@ export function JoinTastingSessionScreen({ navigation }: JoinTastingSessionScree
   const handleJoin = async () => {
     try {
       setErrorMessage(null);
-      const joinResult = await tastingSessionWrites.joinSession({ inviteCode: normalizedInviteCode, isOnline });
+      const joinResult = await tastingSessionWrites.joinSession({ inviteCode: normalizedInviteCode });
       if (joinResult.status === 'blocked') {
         setErrorMessage(joinResult.message);
+        return;
+      }
+      if (joinResult.status === 'queued') {
         return;
       }
       navigateToTastingSession(navigation, joinResult.result);

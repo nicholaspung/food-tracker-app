@@ -13,7 +13,7 @@ import {
 import {
   type TastingInviteRecord,
   type TastingParticipantRecord,
-  useTastingSessionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -122,7 +122,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const theme = useTheme();
   const { sessionId } = route.params;
   const { user } = useAuth();
-  const tastingSessionWrites = useTastingSessionWrites();
+  const tastingSessionWrites = useTastingSessionLifecycleWrites();
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
     screen: 'lobby',
@@ -202,9 +202,12 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
 
   const handleLock = async () => {
     try {
-      const lockResult = await tastingSessionWrites.lockLobby({ isOnline, sessionId });
+      const lockResult = await tastingSessionWrites.lockLobby({ sessionId });
       if (lockResult.status === 'blocked') {
         setErrorMessage(lockResult.message);
+        return;
+      }
+      if (lockResult.status === 'queued') {
         return;
       }
       navigation.replace('TastingSessionPlanning', { sessionId: lockResult.result.id });
@@ -218,7 +221,6 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       setErrorMessage(null);
       setIsReopeningInviteWindow(true);
       const reopenResult = await tastingSessionWrites.reopenInviteWindow({
-        isOnline,
         joinDurationMinutes: reopenDuration,
         sessionId,
       });
@@ -240,7 +242,6 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     }
     try {
       const removeResult = await tastingSessionWrites.removeParticipant({
-        isOnline,
         participantId: pendingKick.id,
         sessionId,
       });
@@ -258,7 +259,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     try {
       setErrorMessage(null);
       setIsDeletingSession(true);
-      const deleteResult = await tastingSessionWrites.deleteSession({ isOnline, sessionId });
+      const deleteResult = await tastingSessionWrites.deleteSession({ sessionId });
       if (deleteResult.status === 'blocked') {
         setErrorMessage(deleteResult.message);
         return;
@@ -276,7 +277,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
     try {
       setErrorMessage(null);
       setIsLeavingSession(true);
-      const leaveResult = await tastingSessionWrites.leaveSession({ isOnline, sessionId });
+      const leaveResult = await tastingSessionWrites.leaveSession({ sessionId });
       if (leaveResult.status === 'blocked') {
         setErrorMessage(leaveResult.message);
         return;
@@ -295,7 +296,6 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       setErrorMessage(null);
       const resendResult = await tastingSessionWrites.resendInvite({
         inviteId: invite.id,
-        isOnline,
         sessionId,
       });
       if (resendResult.status === 'blocked') {

@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { type QueryClient, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import type { TastingSessionRecord } from '../models';
 import type {
@@ -7,20 +7,14 @@ import type {
   JoinTastingSessionInput,
   ReopenTastingInviteWindowInput,
 } from './featureStore';
+import type { OfflineOutboxFeatureWriteOptions } from './useOfflineAwareFeatureWrite';
+import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import {
-  acceptTastingInvite,
-  createTastingSession,
-  deleteTastingSession,
-  dismissTastingInvite,
-  joinTastingSession,
-  kickTastingParticipant,
-  leaveTastingSession,
-  lockTastingSessionMembership,
-  reopenTastingInviteWindow,
-  resendTastingInvite,
-} from './tastingSessionsApiStore';
-import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
-import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
+  blockedTastingSessionLifecycleWrite,
+  createTastingSessionLifecycleWriteActions,
+  TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES,
+  type TastingSessionLifecycleWriteResult,
+} from './useTastingSessionLifecycleWrites';
 
 interface OnlineOnlyTastingWriteInput {
   isOnline: boolean;
@@ -40,270 +34,177 @@ interface ResendTastingInviteInput extends TastingSessionIdInput {
 
 interface ReopenTastingInviteWindowWriteInput extends TastingSessionIdInput, ReopenTastingInviteWindowInput {}
 
-type TastingSessionWriteResult<T> =
-  | {
-      result: T;
-      status: 'completed';
-    }
-  | {
-      message: string;
-      status: 'blocked';
-    };
+type TastingSessionWriteResult<T> = Exclude<
+  TastingSessionLifecycleWriteResult<T>,
+  { status: 'queued' }
+>;
 
-async function invalidateTastingSessionList(queryClient: QueryClient): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root }),
-    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
-  ]);
-}
-
-async function invalidateTastingSessionDetail(
-  queryClient: QueryClient,
-  sessionId: string,
-): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
-}
-
-async function invalidateTastingSessionLifecycleQueries(
-  queryClient: QueryClient,
-  sessionId: string,
-): Promise<void> {
-  await Promise.all([
-    invalidateTastingSessionList(queryClient),
-    invalidateTastingSessionDetail(queryClient, sessionId),
-  ]);
-}
-
-async function removeDeletedTastingSessionFromCache(
-  queryClient: QueryClient,
-  sessionId: string,
-): Promise<void> {
-  await queryClient.cancelQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
-  queryClient.setQueryData<TastingSessionRecord[] | undefined>(
-    tastingSessionsQueryKeys.root,
-    (cachedSessions) => cachedSessions?.filter((session) => session.id !== sessionId),
-  );
-  queryClient.setQueryData(tastingSessionsQueryKeys.detail(sessionId), null);
-  await invalidateTastingSessionList(queryClient);
-}
-
-function blocked(message: string): TastingSessionWriteResult<never> {
+async function executeReplaySafeWriteOnline<TName extends FeatureOutboxOperationName, TResult>(
+  options: OfflineOutboxFeatureWriteOptions<TName, TResult>,
+): Promise<{ result: TResult; status: 'completed' }> {
   return {
-    message,
-    status: 'blocked',
+    result: await options.execute(),
+    status: 'completed',
   };
+}
+
+function asCompatibilityResult<T>(
+  result: Promise<TastingSessionLifecycleWriteResult<T>>,
+): Promise<TastingSessionWriteResult<T>> {
+  return result as Promise<TastingSessionWriteResult<T>>;
+}
+
+function blockedCompatibilityResult<T>(message: string): TastingSessionWriteResult<T> {
+  return blockedTastingSessionLifecycleWrite(message) as TastingSessionWriteResult<T>;
 }
 
 export function useTastingSessionWrites() {
   const queryClient = useQueryClient();
+  const uploadedPhotoKeysRef = useRef<Set<string>>(new Set());
 
-  const createSession = useCallback(
-    async (
-      input: CreateTastingSessionInput & OnlineOnlyTastingWriteInput,
-    ): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!input.isOnline) {
-        return blocked('Connect to the internet to create a group tasting.');
-      }
-
-      const session = await createTastingSession({
-        invitedUserIds: input.invitedUserIds,
-        joinDurationMinutes: input.joinDurationMinutes,
-        name: input.name,
-      });
-      await invalidateTastingSessionList(queryClient);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
+  const createActions = useCallback(
+    (isOnline: boolean) =>
+      createTastingSessionLifecycleWriteActions({
+        isOnline,
+        queryClient,
+        uploadedPhotoKeysRef,
+        writeReplaySafe: executeReplaySafeWriteOnline,
+      }),
     [queryClient],
   );
 
-  const joinSession = useCallback(
-    async (
-      input: JoinTastingSessionInput & OnlineOnlyTastingWriteInput,
-    ): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!input.isOnline) {
-        return blocked('Connect to the internet to join a group tasting.');
-      }
-
-      const session = await joinTastingSession({ inviteCode: input.inviteCode });
-      await invalidateTastingSessionList(queryClient);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
+  const blockIfOffline = useCallback(
+    <T>(isOnline: boolean, message: string): TastingSessionWriteResult<T> | null =>
+      isOnline ? null : blockedCompatibilityResult(message),
+    [],
   );
 
-  const acceptInvite = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to join a tasting session.');
-      }
-
-      const session = await acceptTastingInvite(sessionId);
-      await invalidateTastingSessionList(queryClient);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
+  return useMemo(
+    () => ({
+      acceptInvite: ({
+        isOnline,
+        sessionId,
+      }: TastingSessionIdInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.acceptInvite,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).acceptInvite({ sessionId }));
+      },
+      createSession: (
+        input: CreateTastingSessionInput & OnlineOnlyTastingWriteInput,
+      ): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          input.isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.createSession,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(input.isOnline).createSession(input));
+      },
+      deleteSession: ({
+        isOnline,
+        sessionId,
+      }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
+        const blocked = blockIfOffline<{ success: boolean }>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.deleteSession,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).deleteSession({ sessionId }));
+      },
+      dismissInvite: ({
+        isOnline,
+        sessionId,
+      }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
+        const blocked = blockIfOffline<{ success: boolean }>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.dismissInvite,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).dismissInvite({ sessionId }));
+      },
+      joinSession: (
+        input: JoinTastingSessionInput & OnlineOnlyTastingWriteInput,
+      ): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          input.isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.joinSession,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(input.isOnline).joinSession(input));
+      },
+      leaveSession: ({
+        isOnline,
+        sessionId,
+      }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
+        const blocked = blockIfOffline<{ success: boolean }>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.leaveSession,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).leaveSession({ sessionId }));
+      },
+      lockLobby: ({
+        isOnline,
+        sessionId,
+      }: TastingSessionIdInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.lockLobby,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).lockLobby({ sessionId }));
+      },
+      removeParticipant: ({
+        isOnline,
+        participantId,
+        sessionId,
+      }: RemoveTastingParticipantInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.removeParticipant,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).removeParticipant({ participantId, sessionId }));
+      },
+      reopenInviteWindow: ({
+        isOnline,
+        joinDurationMinutes,
+        sessionId,
+      }: ReopenTastingInviteWindowWriteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.reopenInviteWindow,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).reopenInviteWindow({ joinDurationMinutes, sessionId }));
+      },
+      resendInvite: ({
+        inviteId,
+        isOnline,
+        sessionId,
+      }: ResendTastingInviteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
+        const blocked = blockIfOffline<TastingSessionRecord>(
+          isOnline,
+          TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES.resendInvite,
+        );
+        return blocked
+          ? Promise.resolve(blocked)
+          : asCompatibilityResult(createActions(isOnline).resendInvite({ inviteId, sessionId }));
+      },
+    }),
+    [blockIfOffline, createActions],
   );
-
-  const dismissInvite = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to dismiss this invite.');
-      }
-
-      const result = await dismissTastingInvite(sessionId);
-      await invalidateTastingSessionList(queryClient);
-      return {
-        result,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const deleteSession = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to delete this tasting session.');
-      }
-
-      const result = await deleteTastingSession(sessionId);
-      await removeDeletedTastingSessionFromCache(queryClient, sessionId);
-      return {
-        result,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const leaveSession = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<{ success: boolean }>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to leave this tasting session.');
-      }
-
-      const result = await leaveTastingSession(sessionId);
-      await removeDeletedTastingSessionFromCache(queryClient, sessionId);
-      return {
-        result,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const resendInvite = useCallback(
-    async ({
-      inviteId,
-      isOnline,
-      sessionId,
-    }: ResendTastingInviteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to resend this invite.');
-      }
-
-      const session = await resendTastingInvite(sessionId, inviteId);
-      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const reopenInviteWindow = useCallback(
-    async ({
-      isOnline,
-      joinDurationMinutes,
-      sessionId,
-    }: ReopenTastingInviteWindowWriteInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to reopen the invite window.');
-      }
-
-      const session = await reopenTastingInviteWindow(sessionId, { joinDurationMinutes });
-      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const lockLobby = useCallback(
-    async ({
-      isOnline,
-      sessionId,
-    }: TastingSessionIdInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to lock the group.');
-      }
-
-      const session = await lockTastingSessionMembership(sessionId);
-      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  const removeParticipant = useCallback(
-    async ({
-      isOnline,
-      participantId,
-      sessionId,
-    }: RemoveTastingParticipantInput): Promise<TastingSessionWriteResult<TastingSessionRecord>> => {
-      if (!isOnline) {
-        return blocked('Connect to the internet to remove a participant.');
-      }
-
-      const session = await kickTastingParticipant(sessionId, participantId);
-      await invalidateTastingSessionLifecycleQueries(queryClient, sessionId);
-      return {
-        result: session,
-        status: 'completed',
-      };
-    },
-    [queryClient],
-  );
-
-  return {
-    acceptInvite,
-    createSession,
-    deleteSession,
-    dismissInvite,
-    joinSession,
-    leaveSession,
-    lockLobby,
-    reopenInviteWindow,
-    removeParticipant,
-    resendInvite,
-  };
 }
 
 export type TastingSessionWrites = ReturnType<typeof useTastingSessionWrites>;

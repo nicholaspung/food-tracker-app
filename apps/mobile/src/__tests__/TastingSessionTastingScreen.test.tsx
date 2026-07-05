@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { useTastingRatingSubmissionWrites } from '../features';
+import { useTastingSessionLifecycleWrites } from '../features';
 import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -66,7 +66,7 @@ jest.mock('../features', () => ({
     (remaining: number) =>
       `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
   ),
-  useTastingRatingSubmissionWrites: jest.fn(),
+  useTastingSessionLifecycleWrites: jest.fn(),
   useMonthlyUsage: jest.fn(() => ({
     snapshot: {
       limits: {
@@ -157,8 +157,9 @@ jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () =
   useTastingSessionLifecycleReadState: jest.fn(),
 }));
 
-const mockedUseTastingRatingSubmissionWrites =
-  useTastingRatingSubmissionWrites as jest.MockedFunction<typeof useTastingRatingSubmissionWrites>;
+const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
+  typeof useTastingSessionLifecycleWrites
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
@@ -282,10 +283,10 @@ describe('TastingSessionTastingScreen', () => {
       result: tastingSession,
       status: 'completed',
     });
-    mockedUseTastingRatingSubmissionWrites.mockReturnValue({
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
       completeTasting: mockCompleteTasting,
       submitRatingDraft: mockSubmitRatingDraft,
-    } as unknown as ReturnType<typeof useTastingRatingSubmissionWrites>);
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
   });
 
   it('submits the visible approved tasting items and advances to review', async () => {
@@ -318,7 +319,6 @@ describe('TastingSessionTastingScreen', () => {
           rating: 3,
         },
       },
-      isOnline: true,
       sessionId: 'session-1',
     });
     expect(renderer!.root.findAllByProps({ title: 'Review Your Ratings' }).length).toBeGreaterThan(0);

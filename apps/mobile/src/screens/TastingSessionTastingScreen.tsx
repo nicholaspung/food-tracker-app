@@ -21,7 +21,7 @@ import {
   type TastingRatingDraft,
   type TastingRatingDraftPhoto,
   useMonthlyUsage,
-  useTastingRatingSubmissionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
@@ -136,7 +136,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const styles = useStyles();
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
-  const tastingRatingWrites = useTastingRatingSubmissionWrites();
+  const tastingLifecycleWrites = useTastingSessionLifecycleWrites();
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
     screen: 'tasting',
@@ -466,15 +466,17 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
       const draftByItemId = Object.fromEntries(
         approvedItems.map((item) => [item.id, resolveDraft(item)]),
       );
-      const submitResult = await tastingRatingWrites.submitRatingDraft({
+      const submitResult = await tastingLifecycleWrites.submitRatingDraft({
         approvedRestaurants,
         currentUserId: user?.id,
         draftByItemId,
-        isOnline,
         sessionId,
       });
       if (submitResult.status === 'blocked') {
         setErrorMessage(submitResult.message);
+        return;
+      }
+      if (submitResult.status === 'queued') {
         return;
       }
       const submittedParticipant = submitResult.result.participants.find(
@@ -493,9 +495,12 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     try {
       setErrorMessage(null);
       setIsCompletingTasting(true);
-      const completeResult = await tastingRatingWrites.completeTasting({ isOnline, sessionId });
+      const completeResult = await tastingLifecycleWrites.completeTasting({ sessionId });
       if (completeResult.status === 'blocked') {
         setErrorMessage(completeResult.message);
+        return;
+      }
+      if (completeResult.status === 'queued') {
         return;
       }
       navigation.replace('TastingSessionResults', { sessionId: completeResult.result.id });

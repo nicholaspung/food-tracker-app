@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useTastingSessionWrites } from '../features';
+import { useTastingSessionLifecycleWrites } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateTastingSessionScreen } from '../screens/CreateTastingSessionScreen';
@@ -116,7 +116,7 @@ jest.mock('../features', () => ({
   tastingSessionsQueryKeys: {
     root: ['feature', 'tasting-sessions'],
   },
-  useTastingSessionWrites: jest.fn(),
+  useTastingSessionLifecycleWrites: jest.fn(),
 }));
 
 jest.mock('../hooks/useDebouncedValue', () => ({
@@ -156,8 +156,8 @@ jest.mock('../ui', () => ({
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
-const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<
-  typeof useTastingSessionWrites
+const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
+  typeof useTastingSessionLifecycleWrites
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
@@ -270,8 +270,8 @@ describe('CreateTastingSessionScreen', () => {
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
 
-    mockedUseTastingSessionWrites.mockReset();
-    mockedUseTastingSessionWrites.mockReturnValue({
+    mockedUseTastingSessionLifecycleWrites.mockReset();
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
       acceptInvite: jest.fn(),
       createSession: jest.fn().mockResolvedValue({
         result: {
@@ -301,7 +301,7 @@ describe('CreateTastingSessionScreen', () => {
       reopenInviteWindow: jest.fn(),
       removeParticipant: jest.fn(),
       resendInvite: jest.fn(),
-    } as unknown as ReturnType<typeof useTastingSessionWrites>);
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
 
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
@@ -401,11 +401,10 @@ describe('CreateTastingSessionScreen', () => {
     });
     await flushMicrotasks();
 
-    const tastingSessionWrites = mockedUseTastingSessionWrites.mock.results[0]?.value;
+    const tastingSessionWrites = mockedUseTastingSessionLifecycleWrites.mock.results[0]?.value;
     expect(tastingSessionWrites.createSession).toHaveBeenCalledTimes(1);
     expect(tastingSessionWrites.createSession).toHaveBeenCalledWith({
       invitedUserIds: ['user-friend-1', 'user-friend-2'],
-      isOnline: true,
       joinDurationMinutes: 60,
       name: 'Friday ramen tasting',
     });
