@@ -88,6 +88,8 @@ export function useFeatureBrowse<
   const totalItems = getTotalItemsFromData?.(query.data, items) ?? items.length;
   const resolvedResultCount = resultCount ?? items.length;
   const hasCachedData = getHasCachedData(query.data);
+  const shouldHydrateQueuedWrites =
+    pendingQueuedWriteOperationNames !== undefined || toPendingRow !== undefined;
   const browseState = resolveFeatureBrowseState({
     emptyWhen,
     enabled,
@@ -102,6 +104,8 @@ export function useFeatureBrowse<
   const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(query.isRefetching);
   const { queuedWrites, refreshQueuedWrites } = useQueuedFeatureWrites(
     pendingQueuedWriteOperationNames ?? (EMPTY_OPERATION_NAMES as readonly TOperationName[]),
+    100,
+    { enabled: shouldHydrateQueuedWrites },
   );
   const pendingRows = useMemo(() => {
     if (!toPendingRow) {
@@ -133,7 +137,9 @@ export function useFeatureBrowse<
           resultCountAfter,
           deltaCount: resultCountAfter - resultCountBefore,
         }));
-        await refreshQueuedWrites();
+        if (shouldHydrateQueuedWrites) {
+          await refreshQueuedWrites();
+        }
       } catch (error) {
         trackObservabilityEvent(`${refreshEventPrefix}_FAILED`, buildAnalyticsPayload({
           resultCountBefore,
@@ -150,6 +156,7 @@ export function useFeatureBrowse<
     refreshQueuedWrites,
     resolvedResultCount,
     runPullRefresh,
+    shouldHydrateQueuedWrites,
   ]);
 
   const onEndReached = useCallback(async () => {

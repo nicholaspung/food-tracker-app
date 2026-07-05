@@ -74,6 +74,32 @@ describe('useFeatureBrowse', () => {
     });
   }
 
+  function NoQueuedWritesHarness({ data }: { data?: string[] }) {
+    latestHook = useFeatureBrowse<string[], string, 'note.create'>({
+      analyticsSource: 'TestScreen',
+      buildAnalyticsPayload: (overrides = {}) => ({
+        source: 'TestScreen',
+        resultCount: data?.length ?? 0,
+        ...overrides,
+      }),
+      getItemsFromData: (queryData) => queryData ?? [],
+      query: {
+        data,
+        isError: false,
+        isFetching: false,
+        isLoading: false,
+        isRefetching: false,
+        isSuccess: true,
+        refetch,
+      },
+      refreshEventPrefix: 'TEST_REFRESH',
+    });
+
+    return React.createElement('HookState', {
+      showEmpty: latestHook.showEmpty,
+    });
+  }
+
   beforeEach(() => {
     latestHook = null;
     refetch.mockReset();
@@ -146,6 +172,34 @@ describe('useFeatureBrowse', () => {
       deltaCount: 2,
     });
     expect(refreshQueuedWrites).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables queued write hydration when no queued row config is provided', async () => {
+    await act(async () => {
+      create(React.createElement(NoQueuedWritesHarness, { data: ['one'] }));
+    });
+
+    expect(mockedUseQueuedFeatureWrites).toHaveBeenCalledWith([], 100, { enabled: false });
+    expect(latestHook?.pendingRows).toEqual([]);
+  });
+
+  it('does not refresh queued writes during no-op browse refreshes', async () => {
+    const refreshQueuedWrites = jest.fn().mockResolvedValue(undefined);
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites: [],
+      refreshQueuedWrites,
+    });
+    refetch.mockResolvedValue({ data: ['one', 'two'] });
+
+    await act(async () => {
+      create(React.createElement(NoQueuedWritesHarness, { data: ['one'] }));
+    });
+
+    await act(async () => {
+      await latestHook?.onRefresh();
+    });
+
+    expect(refreshQueuedWrites).not.toHaveBeenCalled();
   });
 
   it('maps pending queued writes into display rows', async () => {
