@@ -2,7 +2,6 @@ import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import type { ComponentProps } from 'react';
-import { useMemo } from 'react';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
@@ -16,13 +15,9 @@ import {
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import {
-  billsQueryKeys,
+  getMoreFeatureSignalSummary,
   isMoreOnboardingCardDismissed,
-  listBillSummaries,
-  listTastingSessions,
-  summarizeBillOwedNotificationSignal,
-  summarizeTastingSessionNotificationSignal,
-  tastingSessionsQueryKeys,
+  moreFeatureSignalQueryKeys,
   type NotificationSignalIndicator,
 } from '../features';
 import { trackObservabilityEvent } from '../observability';
@@ -217,29 +212,14 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
   const [expandedTips, setExpandedTips] = useState(false);
-  const tastingSessionsQuery = useQuery({
-    queryKey: tastingSessionsQueryKeys.root,
-    queryFn: ({ signal }) => listTastingSessions({ signal }),
+  const featureSignalQuery = useQuery({
+    queryKey: moreFeatureSignalQueryKeys.summary,
+    queryFn: ({ signal }) => getMoreFeatureSignalSummary({ signal }),
     enabled: Boolean(user?.id),
   });
-  const billsQuery = useQuery({
-    queryKey: billsQueryKeys.root,
-    queryFn: ({ signal }) => listBillSummaries({ signal }),
-    enabled: Boolean(user?.id),
-  });
-  const tastingSessionSignalSummary = useMemo(
-    () =>
-      summarizeTastingSessionNotificationSignal({
-        sessions: tastingSessionsQuery.data ?? [],
-        userId: user?.id,
-      }),
-    [tastingSessionsQuery.data, user?.id],
-  );
-  const tastingSessionSignalIndicator = tastingSessionSignalSummary.indicator;
-  const billOwedSignalIndicator = useMemo(
-    () => summarizeBillOwedNotificationSignal(billsQuery.data ?? []).indicator,
-    [billsQuery.data],
-  );
+  const tastingSessionSignalIndicator =
+    featureSignalQuery.data?.tastingSessions.indicator ?? { kind: 'none' };
+  const billOwedSignalIndicator = featureSignalQuery.data?.bills.indicator ?? { kind: 'none' };
 
   const sectionColors = {
     cardBorder: theme.colors.border.subtle,

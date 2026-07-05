@@ -13,6 +13,7 @@ import {
   suggestTastingMenuItem,
   suggestTastingRestaurant,
 } from './tastingSessionsApiStore';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 
 interface OnlineOnlyTastingPlanWriteInput {
@@ -59,7 +60,10 @@ async function refreshTastingPlan(
   queryClient: QueryClient,
   sessionId: string,
 ): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+  ]);
 }
 
 export function useTastingPlanWrites() {

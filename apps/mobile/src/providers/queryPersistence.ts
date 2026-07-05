@@ -7,6 +7,7 @@ import { isBillDetailQueryKey } from '../features/store/billsQuery';
 import { isFeedbackListQueryKey, isFeedbackMessagesQueryKey } from '../features/store/feedbackQuery';
 import { isFriendsSummaryQueryKey, isPaginatedFriendsQueryKey } from '../features/store/friendsQuery';
 import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
+import { moreFeatureSignalQueryKeys } from '../features/store/moreFeatureSignalsQuery';
 import { isNotesSummaryQueryKey, isPaginatedNotesQueryKey } from '../features/store/notesQuery';
 import { isProfileQueryKey } from '../features/store/profileQuery';
 import { isTastingSessionsListQueryKey } from '../features/store/tastingSessionsQuery';
@@ -101,6 +102,8 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return isProfileQueryKey(queryKey);
     case 'tasting-sessions':
       return isTastingSessionsListQueryKey(queryKey);
+    case 'moreFeatureSignals':
+      return queryKey.length === moreFeatureSignalQueryKeys.summary.length;
     case 'feedback':
       return isPaginatedFeedbackListQuery(queryKey) || isFeedbackSummaryQuery(queryKey);
     case 'feedback-messages':

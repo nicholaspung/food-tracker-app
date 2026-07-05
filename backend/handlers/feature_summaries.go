@@ -146,6 +146,38 @@ type billListSummaryResponse struct {
 	UpdatedAt                    string  `json:"updatedAt"`
 }
 
+type notificationSignalIndicatorResponse struct {
+	Kind  string `json:"kind"`
+	Count int    `json:"count,omitempty"`
+}
+
+type tastingSessionNotificationSignalSummaryResponse struct {
+	Indicator                   notificationSignalIndicatorResponse `json:"indicator"`
+	PendingInviteCount          int                                 `json:"pendingInviteCount"`
+	HasLeaderInviteAction       bool                                `json:"hasLeaderInviteAction"`
+	HasActiveParticipantSession bool                                `json:"hasActiveParticipantSession"`
+}
+
+type billOwedNotificationSignalSummaryResponse struct {
+	Indicator           notificationSignalIndicatorResponse `json:"indicator"`
+	ActiveOwedBillCount int                                 `json:"activeOwedBillCount"`
+}
+
+type moreFeatureSignalSummaryResponse struct {
+	TastingSessions tastingSessionNotificationSignalSummaryResponse `json:"tastingSessions"`
+	Bills           billOwedNotificationSignalSummaryResponse       `json:"bills"`
+}
+
+type moreTastingSignalRow struct {
+	PendingInviteCount          int `db:"pendingInviteCount"`
+	HasLeaderInviteAction       int `db:"hasLeaderInviteAction"`
+	HasActiveParticipantSession int `db:"hasActiveParticipantSession"`
+}
+
+type moreBillSignalRow struct {
+	ActiveOwedBillCount int `db:"activeOwedBillCount"`
+}
+
 type restaurantVisitStatsRequest struct {
 	RestaurantIDs []string `json:"restaurantIds"`
 }
@@ -506,6 +538,20 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			log.Printf("Failed to load feedback summary for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load feedback summary", err)
+		}
+
+		return e.JSON(200, summary)
+	})
+
+	se.Router.GET("/api/more/feature-signals", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		summary, err := getMoreFeatureSignalSummary(app, e.Auth.Id)
+		if err != nil {
+			log.Printf("Failed to load more feature signals for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load more feature signals", err)
 		}
 
 		return e.JSON(200, summary)
@@ -997,6 +1043,127 @@ func getFeedbackSummary(app core.App, userID string) (feedbackSummaryResponse, e
 		One(&summary)
 
 	return summary, err
+}
+
+func buildCountNotificationIndicator(count int) notificationSignalIndicatorResponse {
+	if count <= 0 {
+		return notificationSignalIndicatorResponse{Kind: "none"}
+	}
+
+	return notificationSignalIndicatorResponse{Kind: "count", Count: count}
+}
+
+func buildTastingNotificationSignalSummary(row moreTastingSignalRow) tastingSessionNotificationSignalSummaryResponse {
+	if row.PendingInviteCount > 0 {
+		return tastingSessionNotificationSignalSummaryResponse{
+			Indicator:                   buildCountNotificationIndicator(row.PendingInviteCount),
+			PendingInviteCount:          row.PendingInviteCount,
+			HasLeaderInviteAction:       row.HasLeaderInviteAction != 0,
+			HasActiveParticipantSession: row.HasActiveParticipantSession != 0,
+		}
+	}
+
+	if row.HasLeaderInviteAction != 0 || row.HasActiveParticipantSession != 0 {
+		return tastingSessionNotificationSignalSummaryResponse{
+			Indicator:                   notificationSignalIndicatorResponse{Kind: "dot"},
+			PendingInviteCount:          0,
+			HasLeaderInviteAction:       row.HasLeaderInviteAction != 0,
+			HasActiveParticipantSession: row.HasActiveParticipantSession != 0,
+		}
+	}
+
+	return tastingSessionNotificationSignalSummaryResponse{
+		Indicator: notificationSignalIndicatorResponse{Kind: "none"},
+	}
+}
+
+func getMoreFeatureSignalSummary(app core.App, userID string) (moreFeatureSignalSummaryResponse, error) {
+	tastingSignal, err := getMoreTastingSessionSignalSummary(app, userID)
+	if err != nil {
+		return moreFeatureSignalSummaryResponse{}, err
+	}
+
+	billSignal, err := getMoreBillOwedSignalSummary(app, userID)
+	if err != nil {
+		return moreFeatureSignalSummaryResponse{}, err
+	}
+
+	return moreFeatureSignalSummaryResponse{
+		TastingSessions: tastingSignal,
+		Bills:           billSignal,
+	}, nil
+}
+
+func getMoreTastingSessionSignalSummary(app core.App, userID string) (tastingSessionNotificationSignalSummaryResponse, error) {
+	row := moreTastingSignalRow{}
+	err := app.DB().NewQuery(`
+		SELECT
+			(
+				SELECT COUNT(*)
+				FROM tasting_session_invites invites
+				INNER JOIN tasting_sessions sessions ON sessions.id = invites.session
+				WHERE invites.invited_user = {:userId}
+					AND invites.status = 'pending'
+					AND sessions.status = 'lobby'
+					AND sessions.join_expires_at > {:now}
+			) AS [[pendingInviteCount]],
+			CASE
+				WHEN EXISTS (
+					SELECT 1
+				FROM tasting_sessions sessions
+				WHERE sessions.leader = {:userId}
+					AND COALESCE(sessions.status, '') != 'completed'
+					AND sessions.join_expires_at > {:now}
+			) THEN 1
+			ELSE 0
+		END AS [[hasLeaderInviteAction]],
+			CASE
+				WHEN EXISTS (
+					SELECT 1
+					FROM tasting_sessions sessions
+					INNER JOIN tasting_session_participants participants
+						ON participants.session = sessions.id
+						AND participants.user = {:userId}
+					WHERE COALESCE(sessions.status, '') != 'completed'
+						AND COALESCE(sessions.leader, '') != {:userId}
+				) THEN 1
+				ELSE 0
+			END AS [[hasActiveParticipantSession]]
+	`).
+		Bind(dbx.Params{
+			"now":    time.Now().UTC(),
+			"userId": userID,
+		}).
+		One(&row)
+	if err != nil {
+		return tastingSessionNotificationSignalSummaryResponse{}, err
+	}
+
+	return buildTastingNotificationSignalSummary(row), nil
+}
+
+func getMoreBillOwedSignalSummary(app core.App, userID string) (billOwedNotificationSignalSummaryResponse, error) {
+	row := moreBillSignalRow{}
+	err := app.DB().NewQuery(`
+		SELECT COUNT(DISTINCT bills.id) AS [[activeOwedBillCount]]
+		FROM bills
+		INNER JOIN bill_participants participants
+			ON participants.bill = bills.id
+			AND participants.user = {:userId}
+		WHERE COALESCE(bills.status, '') != 'settled'
+			AND participants.paid_status = 'pending'
+			AND participants.amount_owed > 0
+	`).
+		Bind(dbx.Params{"userId": userID}).
+		One(&row)
+	if err != nil {
+		return billOwedNotificationSignalSummaryResponse{}, err
+	}
+
+	return billOwedNotificationSignalSummaryResponse{
+		Indicator:           buildCountNotificationIndicator(row.ActiveOwedBillCount),
+		ActiveOwedBillCount: row.ActiveOwedBillCount,
+	}, nil
 }
 
 func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse, error) {

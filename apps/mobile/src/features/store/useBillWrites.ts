@@ -16,6 +16,7 @@ import {
   updateBillApiMutationInput,
   updateBillParticipantPaidStatusApiMutationInput,
 } from './featureOutboxOperations';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
 import {
   type OfflineAwareFeatureWriteResult,
 } from './useOfflineAwareFeatureWrite';
@@ -42,7 +43,10 @@ interface UpdateBillParticipantPaidStatusWriteInput {
 }
 
 async function invalidateBillList(queryClient: QueryClient): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: billsQueryKeys.root });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: billsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+  ]);
 }
 
 async function syncSavedBillCaches(

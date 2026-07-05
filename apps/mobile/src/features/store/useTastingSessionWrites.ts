@@ -19,6 +19,7 @@ import {
   reopenTastingInviteWindow,
   resendTastingInvite,
 } from './tastingSessionsApiStore';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 
 interface OnlineOnlyTastingWriteInput {
@@ -50,7 +51,10 @@ type TastingSessionWriteResult<T> =
     };
 
 async function invalidateTastingSessionList(queryClient: QueryClient): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+  ]);
 }
 
 async function invalidateTastingSessionDetail(

@@ -7,6 +7,7 @@ import { billsQueryKeys } from '../features/store/billsQuery';
 import { feedbackQueryKeys } from '../features/store/feedbackQuery';
 import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
+import { moreFeatureSignalQueryKeys } from '../features/store/moreFeatureSignalsQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
@@ -224,6 +225,18 @@ describe('React Query persistence', () => {
         updatedAt: '2026-05-20T11:00:00.000Z',
       },
     ]);
+    sourceClient.setQueryData(moreFeatureSignalQueryKeys.summary, {
+      bills: {
+        activeOwedBillCount: 1,
+        indicator: { count: 1, kind: 'count' },
+      },
+      tastingSessions: {
+        hasActiveParticipantSession: false,
+        hasLeaderInviteAction: true,
+        indicator: { kind: 'dot' },
+        pendingInviteCount: 0,
+      },
+    });
     sourceClient.setQueryData(billsQueryKeys.detail('bill-1'), {
       id: 'bill-1',
       title: 'Persisted bill',
@@ -336,6 +349,9 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(tastingSessionsQueryKeys.root)).toEqual(
       sourceClient.getQueryData(tastingSessionsQueryKeys.root),
+    );
+    expect(restoredClient.getQueryData(moreFeatureSignalQueryKeys.summary)).toEqual(
+      sourceClient.getQueryData(moreFeatureSignalQueryKeys.summary),
     );
     expect(restoredClient.getQueryData(billsQueryKeys.detail('bill-1'))).toEqual(
       sourceClient.getQueryData(billsQueryKeys.detail('bill-1')),

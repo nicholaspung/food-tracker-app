@@ -1,5 +1,7 @@
+import { pb } from '../../lib/pocketbase';
 import type { TastingSessionRecord } from '../models';
 import type { BillListSummary } from './featureStore';
+import { sendApiRequest } from './pocketbaseGateway';
 
 export type NotificationSignalIndicator =
   | { kind: 'none' }
@@ -16,6 +18,15 @@ export interface TastingSessionNotificationSignalSummary {
 export interface BillOwedNotificationSignalSummary {
   indicator: NotificationSignalIndicator;
   activeOwedBillCount: number;
+}
+
+export interface MoreFeatureSignalSummary {
+  bills: BillOwedNotificationSignalSummary;
+  tastingSessions: TastingSessionNotificationSignalSummary;
+}
+
+interface ReadRequestOptions {
+  signal?: AbortSignal;
 }
 
 interface TastingSessionNotificationSignalInput {
@@ -118,4 +129,66 @@ export function summarizeBillOwedNotificationSignal(
     activeOwedBillCount,
     indicator: { count: activeOwedBillCount, kind: 'count' },
   };
+}
+
+function normalizeCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor(value));
+}
+
+function normalizeIndicator(indicator: unknown): NotificationSignalIndicator {
+  if (!indicator || typeof indicator !== 'object') {
+    return { kind: 'none' };
+  }
+
+  const candidate = indicator as Partial<NotificationSignalIndicator>;
+  if (candidate.kind === 'dot') {
+    return { kind: 'dot' };
+  }
+
+  if (candidate.kind === 'count') {
+    const count = normalizeCount((candidate as { count?: unknown }).count);
+    return count > 0 ? { count, kind: 'count' } : { kind: 'none' };
+  }
+
+  return { kind: 'none' };
+}
+
+function normalizeMoreFeatureSignalSummary(value: Partial<MoreFeatureSignalSummary>): MoreFeatureSignalSummary {
+  const bills = value.bills ?? NO_BILL_OWED_SIGNAL;
+  const tastingSessions = value.tastingSessions ?? NO_TASTING_SIGNAL;
+
+  return {
+    bills: {
+      activeOwedBillCount: normalizeCount(bills.activeOwedBillCount),
+      indicator: normalizeIndicator(bills.indicator),
+    },
+    tastingSessions: {
+      hasActiveParticipantSession: tastingSessions.hasActiveParticipantSession === true,
+      hasLeaderInviteAction: tastingSessions.hasLeaderInviteAction === true,
+      indicator: normalizeIndicator(tastingSessions.indicator),
+      pendingInviteCount: normalizeCount(tastingSessions.pendingInviteCount),
+    },
+  };
+}
+
+export async function getMoreFeatureSignalSummary(
+  options?: ReadRequestOptions,
+): Promise<MoreFeatureSignalSummary> {
+  if (!pb.authStore.record?.id) {
+    return {
+      bills: NO_BILL_OWED_SIGNAL,
+      tastingSessions: NO_TASTING_SIGNAL,
+    };
+  }
+
+  const response = await sendApiRequest<Partial<MoreFeatureSignalSummary>>('/api/more/feature-signals', {
+    method: 'GET',
+    signal: options?.signal,
+  });
+
+  return normalizeMoreFeatureSignalSummary(response);
 }

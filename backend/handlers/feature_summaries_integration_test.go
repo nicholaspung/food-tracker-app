@@ -1030,6 +1030,310 @@ func TestBillsSummaryEndpoint(t *testing.T) {
 	}
 }
 
+func TestMoreFeatureSignalsEndpointReturnsCountOnlyIndicators(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	leader, _ := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+
+	leaderSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Invite night",
+		"leader":             user.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(30 * time.Minute),
+		"invite_code":        "ABC123",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": leaderSession.Id,
+		"user":    user.Id,
+		"role":    "leader",
+	})
+
+	inviteSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Pending invite",
+		"leader":             leader.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(30 * time.Minute),
+		"invite_code":        "XYZ789",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": inviteSession.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      inviteSession.Id,
+		"invited_user": user.Id,
+		"status":       "pending",
+	})
+
+	expiredInviteSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Expired invite",
+		"leader":             leader.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(-30 * time.Minute),
+		"invite_code":        "OLD123",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      expiredInviteSession.Id,
+		"invited_user": user.Id,
+		"status":       "pending",
+	})
+
+	owedBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      leader.Id,
+		"bill_name":         "Dinner",
+		"total_amount":      30,
+		"tax":               0,
+		"tip":               0,
+		"fees":              0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             owedBill.Id,
+		"user":             user.Id,
+		"participant_name": "Alex",
+		"amount_owed":      12,
+		"paid_status":      "pending",
+	})
+
+	settledBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      leader.Id,
+		"bill_name":         "Settled",
+		"total_amount":      10,
+		"tax":               0,
+		"tip":               0,
+		"fees":              0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "settled",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             settledBill.Id,
+		"user":             user.Id,
+		"participant_name": "Alex",
+		"amount_owed":      10,
+		"paid_status":      "pending",
+	})
+
+	otherBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      otherUser.Id,
+		"bill_name":         "Private",
+		"total_amount":      10,
+		"tax":               0,
+		"tip":               0,
+		"fees":              0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             otherBill.Id,
+		"user":             otherUser.Id,
+		"participant_name": "Other",
+		"amount_owed":      10,
+		"paid_status":      "pending",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/more/feature-signals", token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		TastingSessions struct {
+			Indicator struct {
+				Kind  string `json:"kind"`
+				Count int    `json:"count"`
+			} `json:"indicator"`
+			PendingInviteCount          int  `json:"pendingInviteCount"`
+			HasLeaderInviteAction       bool `json:"hasLeaderInviteAction"`
+			HasActiveParticipantSession bool `json:"hasActiveParticipantSession"`
+		} `json:"tastingSessions"`
+		Bills struct {
+			Indicator struct {
+				Kind  string `json:"kind"`
+				Count int    `json:"count"`
+			} `json:"indicator"`
+			ActiveOwedBillCount int `json:"activeOwedBillCount"`
+		} `json:"bills"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.TastingSessions.Indicator.Kind != "count" ||
+		payload.TastingSessions.Indicator.Count != 1 ||
+		payload.TastingSessions.PendingInviteCount != 1 ||
+		!payload.TastingSessions.HasLeaderInviteAction ||
+		payload.TastingSessions.HasActiveParticipantSession {
+		t.Fatalf("unexpected tasting signal summary: %#v", payload.TastingSessions)
+	}
+
+	if payload.Bills.Indicator.Kind != "count" ||
+		payload.Bills.Indicator.Count != 1 ||
+		payload.Bills.ActiveOwedBillCount != 1 {
+		t.Fatalf("unexpected bill signal summary: %#v", payload.Bills)
+	}
+}
+
+func TestMoreFeatureSignalsEndpointReturnsDotForActiveParticipantAndIgnoresExpiredLeaderInvite(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	leader, _ := createAuthUser(t, server.app, false, false)
+
+	expiredLeaderSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Expired leader invite",
+		"leader":             user.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(-30 * time.Minute),
+		"invite_code":        "OLD123",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": expiredLeaderSession.Id,
+		"user":    user.Id,
+		"role":    "leader",
+	})
+
+	participantSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Active participant",
+		"leader":             leader.Id,
+		"status":             "planning",
+		"join_expires_at":    time.Now().UTC().Add(-30 * time.Minute),
+		"invite_code":        "",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": participantSession.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": participantSession.Id,
+		"user":    user.Id,
+		"role":    "participant",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/more/feature-signals", token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		TastingSessions struct {
+			Indicator struct {
+				Kind string `json:"kind"`
+			} `json:"indicator"`
+			PendingInviteCount          int  `json:"pendingInviteCount"`
+			HasLeaderInviteAction       bool `json:"hasLeaderInviteAction"`
+			HasActiveParticipantSession bool `json:"hasActiveParticipantSession"`
+		} `json:"tastingSessions"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.TastingSessions.Indicator.Kind != "dot" ||
+		payload.TastingSessions.PendingInviteCount != 0 ||
+		payload.TastingSessions.HasLeaderInviteAction ||
+		!payload.TastingSessions.HasActiveParticipantSession {
+		t.Fatalf("unexpected tasting signal summary: %#v", payload.TastingSessions)
+	}
+}
+
+func TestMoreFeatureSignalsEndpointReturnsNoneWhenNoSignalsExist(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	leader, _ := createAuthUser(t, server.app, false, false)
+
+	completedSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Completed",
+		"leader":             leader.Id,
+		"status":             "completed",
+		"join_expires_at":    time.Now().UTC().Add(30 * time.Minute),
+		"invite_code":        "DONE12",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": completedSession.Id,
+		"user":    user.Id,
+		"role":    "participant",
+	})
+
+	paidBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      leader.Id,
+		"bill_name":         "Paid bill",
+		"total_amount":      10,
+		"tax":               0,
+		"tip":               0,
+		"fees":              0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             paidBill.Id,
+		"user":             user.Id,
+		"participant_name": "Alex",
+		"amount_owed":      10,
+		"paid_status":      "paid",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/more/feature-signals", token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		TastingSessions struct {
+			Indicator struct {
+				Kind string `json:"kind"`
+			} `json:"indicator"`
+			PendingInviteCount          int  `json:"pendingInviteCount"`
+			HasLeaderInviteAction       bool `json:"hasLeaderInviteAction"`
+			HasActiveParticipantSession bool `json:"hasActiveParticipantSession"`
+		} `json:"tastingSessions"`
+		Bills struct {
+			Indicator struct {
+				Kind string `json:"kind"`
+			} `json:"indicator"`
+			ActiveOwedBillCount int `json:"activeOwedBillCount"`
+		} `json:"bills"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.TastingSessions.Indicator.Kind != "none" ||
+		payload.TastingSessions.PendingInviteCount != 0 ||
+		payload.TastingSessions.HasLeaderInviteAction ||
+		payload.TastingSessions.HasActiveParticipantSession {
+		t.Fatalf("unexpected tasting signal summary: %#v", payload.TastingSessions)
+	}
+
+	if payload.Bills.Indicator.Kind != "none" || payload.Bills.ActiveOwedBillCount != 0 {
+		t.Fatalf("unexpected bill signal summary: %#v", payload.Bills)
+	}
+}
+
 func TestBillDetailEndpointReturnsNestedDataAndParticipantDisplayMetadata(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	owner, ownerToken := createAuthUser(t, server.app, false, false)

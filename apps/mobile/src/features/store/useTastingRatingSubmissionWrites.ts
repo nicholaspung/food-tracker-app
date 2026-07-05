@@ -10,6 +10,7 @@ import {
   completeTastingSession,
   submitTastingRatings,
 } from './tastingSessionsApiStore';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 import { syncVisitMutationCaches } from './visitsQuery';
@@ -63,7 +64,10 @@ async function refreshTastingSession(
   queryClient: QueryClient,
   sessionId: string,
 ): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+  ]);
 }
 
 function buildTastingRatingSubmissionPayload({

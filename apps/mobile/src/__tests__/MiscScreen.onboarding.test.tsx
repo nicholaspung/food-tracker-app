@@ -3,7 +3,6 @@ import { act, create } from 'react-test-renderer';
 import { useQuery } from '@tanstack/react-query';
 
 import { MiscScreen } from '../screens/MiscScreen';
-import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 
 const mockReact = React;
@@ -38,18 +37,10 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
-  billsQueryKeys: {
-    root: ['feature', 'bills'],
-  },
+  getMoreFeatureSignalSummary: jest.fn(),
   isMoreOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.moreCards?.[cardId]?.dismissedAt)),
-  listBillSummaries: jest.fn(),
-  listTastingSessions: jest.fn(),
-  summarizeBillOwedNotificationSignal:
-    jest.requireActual('../features/store/notificationSignalSummary').summarizeBillOwedNotificationSignal,
-  summarizeTastingSessionNotificationSignal:
-    jest.requireActual('../features/store/notificationSignalSummary').summarizeTastingSessionNotificationSignal,
-  tastingSessionsQueryKeys: {
-    root: ['feature', 'tasting-sessions'],
+  moreFeatureSignalQueryKeys: {
+    summary: ['feature', 'moreFeatureSignals'],
   },
 }));
 
@@ -147,24 +138,25 @@ jest.mock('../ui', () => ({
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 
-function buildTastingSession(overrides: Partial<TastingSessionRecord> = {}): TastingSessionRecord {
+function buildMoreFeatureSignalSummary(
+  overrides: {
+    billIndicator?: { kind: 'none' } | { kind: 'dot' } | { kind: 'count'; count: number };
+    tastingIndicator?: { kind: 'none' } | { kind: 'dot' } | { kind: 'count'; count: number };
+  } = {},
+) {
   return {
-    createdAt: '2026-05-20T11:00:00.000Z',
-    id: 'session_1',
-    inviteCode: '',
-    invites: [],
-    joinedCount: 1,
-    joinExpiresAt: '2099-01-01T00:00:00.000Z',
-    leaderUserId: 'leader_1',
-    maxApprovedItems: 8,
-    maxParticipants: 8,
-    maxRestaurants: 3,
-    name: 'Ramen night',
-    participants: [],
-    restaurants: [],
-    status: 'lobby',
-    updatedAt: '2026-05-20T11:00:00.000Z',
-    ...overrides,
+    bills: {
+      activeOwedBillCount:
+        overrides.billIndicator?.kind === 'count' ? overrides.billIndicator.count : 0,
+      indicator: overrides.billIndicator ?? { kind: 'none' },
+    },
+    tastingSessions: {
+      hasActiveParticipantSession: overrides.tastingIndicator?.kind === 'dot',
+      hasLeaderInviteAction: overrides.tastingIndicator?.kind === 'dot',
+      indicator: overrides.tastingIndicator ?? { kind: 'none' },
+      pendingInviteCount:
+        overrides.tastingIndicator?.kind === 'count' ? overrides.tastingIndicator.count : 0,
+    },
   };
 }
 
@@ -192,8 +184,8 @@ function findFeatureRow(renderer: any, testID: string): any {
 describe('MiscScreen More feature onboarding routing', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
-    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
-      data: Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions' ? [] : [],
+    mockedUseQuery.mockImplementation(() => ({
+      data: buildMoreFeatureSignalSummary(),
       isError: false,
       isLoading: false,
     }) as unknown as ReturnType<typeof useQuery>);
@@ -229,24 +221,20 @@ describe('MiscScreen More feature onboarding routing', () => {
     expect(mockNavigate).toHaveBeenCalledWith('TastingSessions');
   });
 
+  it('uses the lightweight More feature signal query for indicators', async () => {
+    await renderMiscScreen();
+
+    expect(mockedUseQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        queryKey: ['feature', 'moreFeatureSignals'],
+      }),
+    );
+  });
+
   it('shows a count-dot on Group Tastings for cached pending tasting invites', async () => {
-    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
-      data:
-        Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions'
-          ? [
-              buildTastingSession({
-                invites: [
-                  {
-                    createdAt: '2026-05-20T11:00:00.000Z',
-                    id: 'invite_1',
-                    invitedUserId: 'user_1',
-                    invitedUserName: 'Pat',
-                    status: 'pending',
-                  },
-                ],
-              }),
-            ]
-          : [],
+    mockedUseQuery.mockImplementation(() => ({
+      data: buildMoreFeatureSignalSummary({ tastingIndicator: { count: 1, kind: 'count' } }),
       isError: true,
       isLoading: false,
     }) as unknown as ReturnType<typeof useQuery>);
@@ -258,17 +246,8 @@ describe('MiscScreen More feature onboarding routing', () => {
   });
 
   it('shows a plain dot on Group Tastings for leader-owned sessions with invite signal', async () => {
-    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
-      data:
-        Array.isArray(queryKey) && queryKey[1] === 'tasting-sessions'
-          ? [
-              buildTastingSession({
-                inviteCode: 'ABC123',
-                joinExpiresAt: '2000-01-01T00:00:00.000Z',
-                leaderUserId: 'user_1',
-              }),
-            ]
-          : [],
+    mockedUseQuery.mockImplementation(() => ({
+      data: buildMoreFeatureSignalSummary({ tastingIndicator: { kind: 'dot' } }),
       isError: false,
       isLoading: false,
     }) as unknown as ReturnType<typeof useQuery>);
@@ -286,36 +265,8 @@ describe('MiscScreen More feature onboarding routing', () => {
   });
 
   it('shows a count-dot on Split a Bill when the user owes on active bills', async () => {
-    mockedUseQuery.mockImplementation(({ queryKey }: any) => ({
-      data:
-        Array.isArray(queryKey) && queryKey[1] === 'bills'
-          ? [
-              {
-                createdAt: '2026-05-20T11:00:00.000Z',
-                id: 'bill_1',
-                isCreator: false,
-                participantCount: 2,
-                pendingOtherParticipantCount: 0,
-                status: 'open',
-                title: 'Dinner',
-                updatedAt: '2026-05-20T11:00:00.000Z',
-                youAreOwed: 0,
-                youOwe: 12.5,
-              },
-              {
-                createdAt: '2026-05-20T11:00:00.000Z',
-                id: 'bill_2',
-                isCreator: false,
-                participantCount: 2,
-                pendingOtherParticipantCount: 0,
-                status: 'settled',
-                title: 'Settled',
-                updatedAt: '2026-05-20T11:00:00.000Z',
-                youAreOwed: 0,
-                youOwe: 8,
-              },
-            ]
-          : [],
+    mockedUseQuery.mockImplementation(() => ({
+      data: buildMoreFeatureSignalSummary({ billIndicator: { count: 1, kind: 'count' } }),
       isError: false,
       isLoading: false,
     }) as unknown as ReturnType<typeof useQuery>);

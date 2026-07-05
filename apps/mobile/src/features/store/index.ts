@@ -12,6 +12,7 @@ export * from './applyQueuedFeatureWritePatch';
 export * from './aiImageObservability';
 export * from './menuParsingGateway';
 export * from './menuItemsQuery';
+export * from './moreFeatureSignalsQuery';
 export * from './notesCache';
 export * from './notesQuery';
 export * from './notificationSignalSummary';
