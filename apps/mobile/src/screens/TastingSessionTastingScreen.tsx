@@ -16,6 +16,7 @@ import {
   VisitItemRatingCard,
 } from '../components/shared';
 import {
+  formatFreeMonthlyPhotoLimitStatus,
   type TastingMenuItemRecord,
   type TastingRatingDraft,
   type TastingRatingDraftPhoto,
@@ -110,10 +111,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xxs,
   },
 }));
-
-function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
-  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
-}
 
 function renderTastingSessionFormFallbackScaffold({
   children,

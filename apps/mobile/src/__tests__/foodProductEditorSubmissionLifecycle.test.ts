@@ -30,6 +30,11 @@ jest.mock('../observability/productAnalytics', () => ({
 }));
 
 jest.mock('../features/store', () => ({
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT: 100,
+  formatFreeMonthlyPhotoLimitStatus: jest.fn(
+    (remaining: number) =>
+      `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
+  ),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
   parseLimitExceededError: jest.fn(() => null),
 }));

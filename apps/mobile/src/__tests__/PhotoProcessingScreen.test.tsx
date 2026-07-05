@@ -162,6 +162,10 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
+  formatFreeMonthlyPhotoLimitStatus: jest.fn(
+    (remaining: number) =>
+      `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
+  ),
   getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
   getNoteDetail: jest.fn(),
   useMenuItemCatalogWrites: jest.fn(),

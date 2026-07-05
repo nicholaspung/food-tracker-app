@@ -40,6 +40,7 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
+  formatFreeMonthlyPhotoLimitStatus,
   getNoteDetail,
   getAuthenticatedUserIdOrNull,
   type MenuItemRecord,
@@ -1143,7 +1144,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     Boolean(monthlyUsage.snapshot) &&
     estimatedFreeMonthlyPhotoRemaining <= 0;
   const photoQuotaStatusMessage = shouldHidePhotoSourceActions
-    ? `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${estimatedFreeMonthlyPhotoRemaining}.`
+    ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotoRemaining)
     : null;
   const monthlyPhotoSelectionLimit =
     monthlyUsage.snapshot && isDisplayFreeUser
@@ -1652,9 +1653,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           source: 'PhotoProcessingScreen',
           used: estimatedFreeMonthlyPhotoTotal,
         });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${estimatedFreeMonthlyPhotoRemaining}.`,
-        );
+        setErrorMessage(formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotoRemaining));
         return;
       }
 

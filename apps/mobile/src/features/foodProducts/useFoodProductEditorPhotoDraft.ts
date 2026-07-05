@@ -24,6 +24,10 @@ import {
   type TrackingEntryProperties,
 } from '../../observability/productAnalytics';
 import type { VisitPhotoUploadInput } from '../store/featureStore';
+import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
+} from '../store/usageLimitCopy';
 import type { MonthlyUsageSnapshot } from '../store/usageLimitsGateway';
 
 export type FoodProductEditorPhotoSource = PhotoPickerPermissionSource;
@@ -71,12 +75,6 @@ export interface FoodProductEditorPhotoDraftController {
   openViewer: () => void;
   pickPhoto: (source: FoodProductEditorPhotoSource) => Promise<void>;
   removePhoto: () => void;
-}
-
-const FREE_MONTHLY_PHOTO_LIMIT = 100;
-
-export function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
-  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
 }
 
 async function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): Promise<VisitPhotoUploadInput | null> {

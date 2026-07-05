@@ -17,6 +17,8 @@ import {
   PhotoViewerModal,
 } from '../components/shared';
 import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
   formatLimitExceededMessage,
   getNoteDetail,
   parseLimitExceededError,
@@ -70,16 +72,11 @@ type NoteDraftPhotoAsset = {
 } & Partial<ImagePicker.ImagePickerAsset>;
 
 const CONTENT_MAX_LENGTH = 2000;
-const FREE_MONTHLY_PHOTO_LIMIT = 100;
 const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
 
 function formatPhotoPerNoteLimitMessage(limit: number): string {
   return `You can add up to ${limit} photo${limit === 1 ? '' : 's'} per note.`;
-}
-
-function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
-  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -683,9 +680,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           source: 'NoteEditorScreen',
           used: monthlyUsage.snapshot.usage.photoUploads,
         });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
-        );
+        setErrorMessage(formatFreeMonthlyPhotoLimitStatus(remaining));
         return;
       }
     }

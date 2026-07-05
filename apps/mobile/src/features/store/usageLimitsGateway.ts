@@ -3,6 +3,10 @@ import { sendApiRequest } from './pocketbaseGateway';
 export type UserTier = 'admin' | 'subscriber' | 'free';
 export type LimitValue = number | null;
 export type UsagePreviewTier = UserTier;
+export {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
+} from './usageLimitCopy';
 
 export interface MonthlyUsageSnapshot {
   monthKey: string;

@@ -14,6 +14,8 @@ import {
 } from '../../observability/productAnalytics';
 import type { FoodProductRecord } from '../models';
 import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
   formatLimitExceededMessage,
   parseLimitExceededError,
   type CreateFoodProductInput,
@@ -21,9 +23,6 @@ import {
   type VisitPhotoUploadInput,
 } from '../store';
 import type { OfflineAwareFeatureWriteResult } from '../store/useOfflineAwareFeatureWrite';
-import { formatFreeMonthlyPhotoLimitStatus } from './useFoodProductEditorPhotoDraft';
-
-const FREE_MONTHLY_PHOTO_LIMIT = 100;
 
 export type FoodProductEditorSubmissionDestination =
   | {

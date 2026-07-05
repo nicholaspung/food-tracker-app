@@ -29,6 +29,7 @@ import {
 } from '../components/shared';
 import {
   createMenuReviewRequest,
+  formatFreeMonthlyPhotoLimitStatus,
   getAuthenticatedUserIdOrNull,
   getNoteDetail,
   getVisitById,
@@ -104,10 +105,6 @@ type CreateVisitExitMethod =
 const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
 const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
 const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
-
-function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
-  return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
-}
 
 function isCurrentLocationSearchSelection({
   isUsingCurrentLocation,

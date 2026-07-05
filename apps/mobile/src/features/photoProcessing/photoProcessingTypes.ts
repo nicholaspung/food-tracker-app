@@ -31,4 +31,6 @@ export interface RestaurantPhotoGroup {
   photoIds: string[];
 }
 
-export const FREE_MONTHLY_PHOTO_LIMIT = 100;
+export {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+} from '../store/usageLimitCopy';

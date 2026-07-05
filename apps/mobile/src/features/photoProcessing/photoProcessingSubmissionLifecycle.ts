@@ -16,8 +16,9 @@ import type {
   RestaurantPhotoGroup,
   RestaurantPhotoForm,
 } from './photoProcessingTypes';
-import { FREE_MONTHLY_PHOTO_LIMIT } from './photoProcessingTypes';
 import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
   formatLimitExceededMessage,
   homeFeedMapQueryKeys,
   homeFeedQueryKeys,
@@ -114,7 +115,7 @@ function enforceClientPhotoQuota(input: SubmitProcessedPhotosInput): PhotoProces
   });
 
   return {
-    errorMessage: `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+    errorMessage: formatFreeMonthlyPhotoLimitStatus(remaining),
     status: 'blocked',
   };
 }

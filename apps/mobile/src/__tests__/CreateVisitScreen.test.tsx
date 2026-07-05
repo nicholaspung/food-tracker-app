@@ -197,6 +197,11 @@ jest.mock('../components/shared', () => ({
 jest.mock('../features', () => ({
   convertVisitItemToFoodProduct: jest.fn(),
   createMenuReviewRequest: jest.fn(),
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT: 100,
+  formatFreeMonthlyPhotoLimitStatus: jest.fn(
+    (remaining: number) =>
+      `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
+  ),
   getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
   getNoteDetail: jest.fn(),
   getVisitById: jest.fn(),

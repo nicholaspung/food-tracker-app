@@ -1,4 +1,9 @@
-import { formatLimitExceededMessage, parseLimitExceededError } from '../features/store/usageLimitsGateway';
+import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
+  formatLimitExceededMessage,
+  parseLimitExceededError,
+} from '../features/store/usageLimitsGateway';
 
 describe('usageLimitsGateway helpers', () => {
   it('parses limit payload from nested error data', () => {
@@ -70,5 +75,12 @@ describe('usageLimitsGateway helpers', () => {
 
     expect(payload).not.toBeNull();
     expect(formatLimitExceededMessage(payload!)).toBe('Storefront read limit reached for this month (25).');
+  });
+
+  it('formats the free monthly photo remaining estimate from the shared limit', () => {
+    expect(FREE_MONTHLY_PHOTO_UPLOAD_LIMIT).toBe(100);
+    expect(formatFreeMonthlyPhotoLimitStatus(0)).toBe(
+      'Free users can upload up to 100 photos per month. Remaining estimate: 0.',
+    );
   });
 });

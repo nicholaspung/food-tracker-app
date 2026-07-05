@@ -25,6 +25,11 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(({ recordId, filename }) => `https://files.example/${recordId}/${filename}`),
   createNote: jest.fn(),
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT: 100,
+  formatFreeMonthlyPhotoLimitStatus: jest.fn(
+    (remaining: number) =>
+      `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
+  ),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
   getNoteDetail: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),

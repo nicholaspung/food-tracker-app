@@ -8,6 +8,8 @@ import {
   type TrackingEntryProperties,
 } from '../../observability/productAnalytics';
 import {
+  FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_VISIT_PHOTO_LIMIT,
+  formatFreeMonthlyPhotoLimitStatus,
   formatLimitExceededMessage,
   parseLimitExceededError,
   type CreateVisitInput,
@@ -18,8 +20,6 @@ import {
 import type { VisitRecord } from '../models';
 import type { RecommendationSourceHandoff } from '../recommendationSourceHandoff';
 import type { OfflineAwareFeatureWriteResult } from '../store/useOfflineAwareFeatureWrite';
-
-const FREE_MONTHLY_VISIT_PHOTO_LIMIT = 100;
 
 export type CreateVisitSubmissionDestination = {
   name: 'Home';
@@ -298,7 +298,7 @@ function enforceClientPhotoQuota(
   });
 
   return {
-    errorMessage: `Free users can upload up to ${FREE_MONTHLY_VISIT_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+    errorMessage: formatFreeMonthlyPhotoLimitStatus(remaining),
     status: 'blocked',
   };
 }
