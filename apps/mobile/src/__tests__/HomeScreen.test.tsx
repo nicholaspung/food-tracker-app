@@ -415,6 +415,7 @@ function mockHomeFeedQuery({
   hasNextPage = false,
   isError = false,
   items = [],
+  pages,
   photoPreviews = [],
   refetch = jest.fn(),
 }: {
@@ -422,22 +423,22 @@ function mockHomeFeedQuery({
   hasNextPage?: boolean;
   isError?: boolean;
   items?: unknown[];
+  pages?: unknown[][];
   photoPreviews?: unknown[];
   refetch?: jest.Mock;
 } = {}) {
+  const resolvedPages = pages ?? [items];
   mockedUseInfiniteQuery.mockReturnValue({
     data: {
-      pageParams: [undefined],
-      pages: [
-        {
-          cursor: hasNextPage ? { page: 2 } : undefined,
-          hasNextPage,
-          items,
-          photoPreviews,
-          totalFoodProducts: items.filter((item: any) => item.source === 'food_product').length,
-          totalVisits: items.filter((item: any) => item.source === 'visit').length,
-        },
-      ],
+      pageParams: resolvedPages.map((_, index) => (index === 0 ? undefined : { page: index + 1 })),
+      pages: resolvedPages.map((pageItems, index) => ({
+        cursor: index === resolvedPages.length - 1 && hasNextPage ? { page: index + 2 } : undefined,
+        hasNextPage: index === resolvedPages.length - 1 ? hasNextPage : true,
+        items: pageItems,
+        photoPreviews: index === 0 ? photoPreviews : [],
+        totalFoodProducts: pageItems.filter((item: any) => item.source === 'food_product').length,
+        totalVisits: pageItems.filter((item: any) => item.source === 'visit').length,
+      })),
     },
     fetchNextPage,
     hasNextPage,
@@ -1426,6 +1427,391 @@ describe('HomeScreen', () => {
       ],
       { signal: undefined },
     );
+  });
+
+  it('hydrates newly loaded friend-feed bookmark targets without resending resolved targets', async () => {
+    mockedGetRestaurantListBookmarkState.mockResolvedValue({ savedTargetsByBookmarkKey: {} });
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+    });
+
+    const firstPageItems = [
+      {
+        eventAt: '2026-04-18T09:00:00.000Z',
+        source: 'visit',
+        visit: {
+          id: 'visit-friend-1',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Friend Bistro',
+          visitedAt: '2026-04-18T09:00:00.000Z',
+          items: [
+            {
+              id: 'food-item-1',
+              name: 'Friend Noodles',
+              rating: 9,
+            },
+          ],
+          source: 'visit',
+          userId: 'friend-user',
+          userName: 'Friend',
+          createdAt: '2026-04-18T09:00:00.000Z',
+          updatedAt: '2026-04-18T09:05:00.000Z',
+        },
+      },
+    ];
+    const secondPageItems = [
+      {
+        eventAt: '2026-04-19T09:00:00.000Z',
+        source: 'visit',
+        visit: {
+          id: 'visit-friend-2',
+          restaurantId: 'restaurant-2',
+          restaurantName: 'Second Bistro',
+          visitedAt: '2026-04-19T09:00:00.000Z',
+          items: [
+            {
+              id: 'food-item-2',
+              name: 'Second Dumplings',
+              rating: 8,
+            },
+          ],
+          source: 'visit',
+          userId: 'friend-user',
+          userName: 'Friend',
+          createdAt: '2026-04-19T09:00:00.000Z',
+          updatedAt: '2026-04-19T09:05:00.000Z',
+        },
+      },
+    ];
+    const navigation = {
+      navigate: jest.fn(),
+      push: jest.fn(),
+      setParams: jest.fn(),
+    } as never;
+    const route = {
+      key: 'home',
+      name: 'Home',
+    } as never;
+    const renderHome = () => <HomeScreen navigation={navigation} route={route} />;
+    let renderer: any = null;
+
+    mockHomeFeedQuery({ pages: [firstPageItems] });
+    await act(async () => {
+      renderer = create(renderHome());
+      await Promise.resolve();
+    });
+
+    let bookmarkStateQueryOptions = mockedUseQuery.mock.calls
+      .map(([options]) => options as any)
+      .filter((options) => (
+        options.enabled === true &&
+        Array.isArray(options.queryKey) &&
+        options.queryKey[1] === 'restaurantListBookmarkState'
+      ));
+    let latestBookmarkStateQueryOptions =
+      bookmarkStateQueryOptions[bookmarkStateQueryOptions.length - 1];
+    await latestBookmarkStateQueryOptions?.queryFn({ signal: undefined });
+    expect(mockedGetRestaurantListBookmarkState).toHaveBeenLastCalledWith(
+      'default-list',
+      [
+        {
+          bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+          foodItemId: 'food-item-1',
+          restaurantId: 'restaurant-1',
+        },
+      ],
+      { signal: undefined },
+    );
+
+    mockedGetRestaurantListBookmarkState.mockClear();
+    mockedUseQuery.mockClear();
+    mockHomeFeedQuery({ pages: [firstPageItems, secondPageItems] });
+
+    await act(async () => {
+      renderer.update(renderHome());
+      await Promise.resolve();
+    });
+
+    bookmarkStateQueryOptions = mockedUseQuery.mock.calls
+      .map(([options]) => options as any)
+      .filter((options) => (
+        options.enabled === true &&
+        Array.isArray(options.queryKey) &&
+        options.queryKey[1] === 'restaurantListBookmarkState'
+      ));
+    latestBookmarkStateQueryOptions =
+      bookmarkStateQueryOptions[bookmarkStateQueryOptions.length - 1];
+
+    expect(latestBookmarkStateQueryOptions?.queryKey).toEqual([
+      'feature',
+      'restaurantListBookmarkState',
+      'default-list',
+      'restaurant-item:restaurant-2:second dumplings',
+    ]);
+    await latestBookmarkStateQueryOptions?.queryFn({ signal: undefined });
+    expect(mockedGetRestaurantListBookmarkState).toHaveBeenCalledWith(
+      'default-list',
+      [
+        {
+          bookmarkKey: 'restaurant-item:restaurant-2:second dumplings',
+          foodItemId: 'food-item-2',
+          restaurantId: 'restaurant-2',
+        },
+      ],
+      { signal: undefined },
+    );
+  });
+
+  it('rehydrates friend-feed bookmark targets when the default Want to Try list changes', async () => {
+    mockedGetRestaurantListBookmarkState.mockResolvedValue({ savedTargetsByBookmarkKey: {} });
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+
+    const feedItems = [
+      {
+        eventAt: '2026-04-18T09:00:00.000Z',
+        source: 'visit',
+        visit: {
+          id: 'visit-friend',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Friend Bistro',
+          visitedAt: '2026-04-18T09:00:00.000Z',
+          items: [
+            {
+              id: 'food-item-1',
+              name: 'Friend Noodles',
+              rating: 9,
+            },
+          ],
+          source: 'visit',
+          userId: 'friend-user',
+          userName: 'Friend',
+          createdAt: '2026-04-18T09:00:00.000Z',
+          updatedAt: '2026-04-18T09:05:00.000Z',
+        },
+      },
+    ];
+    const navigation = {
+      navigate: jest.fn(),
+      push: jest.fn(),
+      setParams: jest.fn(),
+    } as never;
+    const route = {
+      key: 'home',
+      name: 'Home',
+    } as never;
+    const renderHome = () => <HomeScreen navigation={navigation} route={route} />;
+    let renderer: any = null;
+
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list-a',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+    });
+    mockHomeFeedQuery({ items: feedItems });
+
+    await act(async () => {
+      renderer = create(renderHome());
+      await Promise.resolve();
+    });
+
+    let bookmarkStateQueryOptions = mockedUseQuery.mock.calls
+      .map(([options]) => options as any)
+      .filter((options) => (
+        options.enabled === true &&
+        Array.isArray(options.queryKey) &&
+        options.queryKey[1] === 'restaurantListBookmarkState'
+      ));
+    let latestBookmarkStateQueryOptions =
+      bookmarkStateQueryOptions[bookmarkStateQueryOptions.length - 1];
+    await latestBookmarkStateQueryOptions?.queryFn({ signal: undefined });
+    expect(mockedGetRestaurantListBookmarkState).toHaveBeenLastCalledWith(
+      'default-list-a',
+      [
+        {
+          bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+          foodItemId: 'food-item-1',
+          restaurantId: 'restaurant-1',
+        },
+      ],
+      { signal: undefined },
+    );
+
+    mockedGetRestaurantListBookmarkState.mockClear();
+    mockedUseQuery.mockClear();
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list-b',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+    });
+
+    await act(async () => {
+      renderer.update(renderHome());
+      await Promise.resolve();
+    });
+
+    bookmarkStateQueryOptions = mockedUseQuery.mock.calls
+      .map(([options]) => options as any)
+      .filter((options) => (
+        options.enabled === true &&
+        Array.isArray(options.queryKey) &&
+        options.queryKey[1] === 'restaurantListBookmarkState'
+      ));
+    latestBookmarkStateQueryOptions =
+      bookmarkStateQueryOptions[bookmarkStateQueryOptions.length - 1];
+
+    expect(latestBookmarkStateQueryOptions?.queryKey).toEqual([
+      'feature',
+      'restaurantListBookmarkState',
+      'default-list-b',
+      'restaurant-item:restaurant-1:friend noodles',
+    ]);
+    await latestBookmarkStateQueryOptions?.queryFn({ signal: undefined });
+    expect(mockedGetRestaurantListBookmarkState).toHaveBeenCalledWith(
+      'default-list-b',
+      [
+        {
+          bookmarkKey: 'restaurant-item:restaurant-1:friend noodles',
+          foodItemId: 'food-item-1',
+          restaurantId: 'restaurant-1',
+        },
+      ],
+      { signal: undefined },
+    );
+  });
+
+  it('does not carry optimistic friend-feed bookmark state across default list changes', async () => {
+    const saveBookmarkToDefaultList = jest.fn().mockResolvedValue({ status: 'completed' });
+    mockedGetRestaurantListBookmarkState.mockResolvedValue({ savedTargetsByBookmarkKey: {} });
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockedUseRestaurantListWrites.mockReturnValue({
+      removeBookmarkFromDefaultList: jest.fn(),
+      saveBookmarkToDefaultList,
+    } as never);
+
+    const feedItems = [
+      {
+        eventAt: '2026-04-18T09:00:00.000Z',
+        source: 'visit',
+        visit: {
+          id: 'visit-friend',
+          restaurantId: 'restaurant-1',
+          restaurantName: 'Friend Bistro',
+          visitedAt: '2026-04-18T09:00:00.000Z',
+          items: [
+            {
+              id: 'food-item-1',
+              name: 'Friend Noodles',
+              notes: 'Order this.',
+              rating: 9,
+            },
+          ],
+          source: 'visit',
+          userId: 'friend-user',
+          userName: 'Friend',
+          createdAt: '2026-04-18T09:00:00.000Z',
+          updatedAt: '2026-04-18T09:05:00.000Z',
+        },
+      },
+    ];
+    const navigation = {
+      navigate: jest.fn(),
+      push: jest.fn(),
+      setParams: jest.fn(),
+    } as never;
+    const route = {
+      key: 'home',
+      name: 'Home',
+    } as never;
+    const renderHome = () => <HomeScreen navigation={navigation} route={route} />;
+    let renderer: any = null;
+
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list-a',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+    });
+    mockHomeFeedQuery({ items: feedItems });
+
+    await act(async () => {
+      renderer = create(renderHome());
+      await Promise.resolve();
+    });
+
+    let visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    let bookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Friend Noodles',
+      notes: 'Order this.',
+      rating: 9,
+    });
+    expect(bookmarkElement.props.saved).toBe(false);
+
+    await act(async () => {
+      await bookmarkElement.props.onPress();
+    });
+
+    visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    bookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Friend Noodles',
+      notes: 'Order this.',
+      rating: 9,
+    });
+    expect(bookmarkElement.props.saved).toBe(true);
+
+    mockHomeAuxiliaryQueries({
+      defaultList: {
+        id: 'default-list-b',
+        isDefault: true,
+        name: 'Want to Try',
+      },
+    });
+
+    await act(async () => {
+      renderer.update(renderHome());
+      await Promise.resolve();
+    });
+
+    visitCard = renderer.root.findByType('HomeFeedVisitEntryCard');
+    bookmarkElement = visitCard.props.renderItemBookmark({
+      id: 'food-item-1',
+      name: 'Friend Noodles',
+      notes: 'Order this.',
+      rating: 9,
+    });
+    expect(bookmarkElement.props.saved).toBe(false);
   });
 
   it('saves a friend feed recommendation to the default Want to Try list', async () => {

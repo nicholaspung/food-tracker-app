@@ -285,6 +285,22 @@ interface FriendFeedBookmarkTarget {
   restaurantId: string;
 }
 
+interface FriendFeedBookmarkHydrationState {
+  fetchedTargets: Map<string, FriendFeedBookmarkTarget>;
+  hydratedKeys: Set<string>;
+  listId: string | null;
+}
+
+interface FriendFeedBookmarkLocalState {
+  listId: string | null;
+  removedItemIds: Set<string>;
+  savedItemIds: Set<string>;
+  savedTargets: Map<string, FriendFeedBookmarkTarget>;
+}
+
+const EMPTY_FRIEND_FEED_BOOKMARK_TARGETS = new Map<string, FriendFeedBookmarkTarget>();
+const EMPTY_FRIEND_FEED_BOOKMARK_KEYS = new Set<string>();
+
 function normalizeFriendFeedBookmarkName(value: string | undefined): string {
   return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
 }
@@ -342,11 +358,18 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [pendingFocusVisitId, setPendingFocusVisitId] = useState<string | null>(null);
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
-  const [locallySavedFriendFeedItemIds, setLocallySavedFriendFeedItemIds] = useState<Set<string>>(new Set());
-  const [locallySavedFriendFeedBookmarkTargets, setLocallySavedFriendFeedBookmarkTargets] = useState<
-    Map<string, FriendFeedBookmarkTarget>
-  >(new Map());
-  const [locallyRemovedFriendFeedItemIds, setLocallyRemovedFriendFeedItemIds] = useState<Set<string>>(new Set());
+  const [friendFeedBookmarkLocalState, setFriendFeedBookmarkLocalState] = useState<FriendFeedBookmarkLocalState>({
+    listId: null,
+    removedItemIds: EMPTY_FRIEND_FEED_BOOKMARK_KEYS,
+    savedItemIds: EMPTY_FRIEND_FEED_BOOKMARK_KEYS,
+    savedTargets: EMPTY_FRIEND_FEED_BOOKMARK_TARGETS,
+  });
+  const [friendFeedBookmarkHydrationState, setFriendFeedBookmarkHydrationState] =
+    useState<FriendFeedBookmarkHydrationState>({
+      fetchedTargets: EMPTY_FRIEND_FEED_BOOKMARK_TARGETS,
+      hydratedKeys: EMPTY_FRIEND_FEED_BOOKMARK_KEYS,
+      listId: null,
+    });
   const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
   const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
@@ -587,35 +610,127 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
     return targets;
   }, [feedMode, loadedFeed]);
-  const friendFeedBookmarkKeys = useMemo(
-    () => friendFeedBookmarkTargets.map((target) => target.bookmarkKey),
-    [friendFeedBookmarkTargets],
+  const hydratedFriendFeedBookmarkKeys =
+    friendFeedBookmarkHydrationState.listId === defaultListId
+      ? friendFeedBookmarkHydrationState.hydratedKeys
+      : EMPTY_FRIEND_FEED_BOOKMARK_KEYS;
+  const fetchedFriendFeedBookmarkTargets =
+    friendFeedBookmarkHydrationState.listId === defaultListId
+      ? friendFeedBookmarkHydrationState.fetchedTargets
+      : EMPTY_FRIEND_FEED_BOOKMARK_TARGETS;
+  const locallySavedFriendFeedItemIds =
+    friendFeedBookmarkLocalState.listId === defaultListId
+      ? friendFeedBookmarkLocalState.savedItemIds
+      : EMPTY_FRIEND_FEED_BOOKMARK_KEYS;
+  const locallySavedFriendFeedBookmarkTargets =
+    friendFeedBookmarkLocalState.listId === defaultListId
+      ? friendFeedBookmarkLocalState.savedTargets
+      : EMPTY_FRIEND_FEED_BOOKMARK_TARGETS;
+  const locallyRemovedFriendFeedItemIds =
+    friendFeedBookmarkLocalState.listId === defaultListId
+      ? friendFeedBookmarkLocalState.removedItemIds
+      : EMPTY_FRIEND_FEED_BOOKMARK_KEYS;
+  const pendingFriendFeedBookmarkTargets = useMemo(
+    () => friendFeedBookmarkTargets.filter((target) => !hydratedFriendFeedBookmarkKeys.has(target.bookmarkKey)),
+    [friendFeedBookmarkTargets, hydratedFriendFeedBookmarkKeys],
+  );
+  const pendingFriendFeedBookmarkKeys = useMemo(
+    () => pendingFriendFeedBookmarkTargets.map((target) => target.bookmarkKey),
+    [pendingFriendFeedBookmarkTargets],
   );
   const friendFeedBookmarkStateQuery = useQuery({
-    enabled: feedMode === 'friends' && Boolean(defaultListId) && friendFeedBookmarkTargets.length > 0,
+    enabled: feedMode === 'friends' && Boolean(defaultListId) && pendingFriendFeedBookmarkTargets.length > 0,
     queryKey: defaultListId
-      ? restaurantListQueryKeys.bookmarkState(defaultListId, friendFeedBookmarkKeys)
+      ? restaurantListQueryKeys.bookmarkState(defaultListId, pendingFriendFeedBookmarkKeys)
       : restaurantListQueryKeys.bookmarkState('__default_list_pending__', []),
     queryFn: ({ signal }): Promise<RestaurantListBookmarkStateRecord> | RestaurantListBookmarkStateRecord =>
       defaultListId
-        ? getRestaurantListBookmarkState(defaultListId, friendFeedBookmarkTargets, { signal })
+        ? getRestaurantListBookmarkState(defaultListId, pendingFriendFeedBookmarkTargets, { signal })
         : { savedTargetsByBookmarkKey: {} },
   });
-  const savedFriendFeedBookmarkTargets = useMemo(() => {
-    const targets = new Map(locallySavedFriendFeedBookmarkTargets);
-    const savedTargets = friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey ?? {};
+  useEffect(() => {
+    if (feedMode !== 'friends' || !defaultListId) {
+      setFriendFeedBookmarkHydrationState((current) => (
+        current.listId === null &&
+        current.hydratedKeys.size === 0 &&
+        current.fetchedTargets.size === 0
+          ? current
+          : {
+              fetchedTargets: EMPTY_FRIEND_FEED_BOOKMARK_TARGETS,
+              hydratedKeys: EMPTY_FRIEND_FEED_BOOKMARK_KEYS,
+              listId: null,
+            }
+      ));
+    }
+  }, [defaultListId, feedMode]);
 
-    for (const savedTarget of Object.values(savedTargets)) {
-      if (!savedTarget) {
-        continue;
+  useEffect(() => {
+    const savedTargets = friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey;
+    if (
+      feedMode !== 'friends' ||
+      !defaultListId ||
+      pendingFriendFeedBookmarkTargets.length === 0 ||
+      !savedTargets
+    ) {
+      return;
+    }
+
+    setFriendFeedBookmarkHydrationState((current) => {
+      let didChange = false;
+      const previousHydratedKeys = current.listId === defaultListId
+        ? current.hydratedKeys
+        : EMPTY_FRIEND_FEED_BOOKMARK_KEYS;
+      const previousFetchedTargets = current.listId === defaultListId
+        ? current.fetchedTargets
+        : EMPTY_FRIEND_FEED_BOOKMARK_TARGETS;
+      const hydratedKeys = new Set(previousHydratedKeys);
+      for (const target of pendingFriendFeedBookmarkTargets) {
+        if (!hydratedKeys.has(target.bookmarkKey)) {
+          hydratedKeys.add(target.bookmarkKey);
+          didChange = true;
+        }
+      }
+      const fetchedTargets = new Map(previousFetchedTargets);
+      for (const savedTarget of Object.values(savedTargets)) {
+        if (!savedTarget) {
+          continue;
+        }
+
+        const nextTarget = savedTarget.menuItemId
+          ? { menuItemId: savedTarget.menuItemId, restaurantId: savedTarget.restaurantId }
+          : { foodItemId: savedTarget.foodItemId, restaurantId: savedTarget.restaurantId };
+        const currentTarget = fetchedTargets.get(savedTarget.bookmarkKey);
+        if (
+          currentTarget?.restaurantId === nextTarget.restaurantId &&
+          currentTarget.foodItemId === nextTarget.foodItemId &&
+          currentTarget.menuItemId === nextTarget.menuItemId
+        ) {
+          continue;
+        }
+
+        fetchedTargets.set(savedTarget.bookmarkKey, nextTarget);
+        didChange = true;
+      }
+      if (!didChange && current.listId === defaultListId) {
+        return current;
       }
 
-      targets.set(savedTarget.bookmarkKey, {
-        restaurantId: savedTarget.restaurantId,
-        ...(savedTarget.menuItemId
-          ? { menuItemId: savedTarget.menuItemId }
-          : { foodItemId: savedTarget.foodItemId }),
-      });
+      return {
+        fetchedTargets,
+        hydratedKeys,
+        listId: defaultListId,
+      };
+    });
+  }, [
+    defaultListId,
+    feedMode,
+    friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey,
+    pendingFriendFeedBookmarkTargets,
+  ]);
+  const savedFriendFeedBookmarkTargets = useMemo(() => {
+    const targets = new Map(fetchedFriendFeedBookmarkTargets);
+    for (const [bookmarkKey, target] of locallySavedFriendFeedBookmarkTargets) {
+      targets.set(bookmarkKey, target);
     }
 
     for (const bookmarkKey of locallyRemovedFriendFeedItemIds) {
@@ -623,7 +738,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
     return targets;
   }, [
-    friendFeedBookmarkStateQuery.data?.savedTargetsByBookmarkKey,
+    fetchedFriendFeedBookmarkTargets,
     locallyRemovedFriendFeedItemIds,
     locallySavedFriendFeedBookmarkTargets,
   ]);
@@ -1063,16 +1178,24 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
       setBookmarkErrorMessage(null);
       setIsBookmarkSubmitting(true);
-      setLocallySavedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
-      setLocallySavedFriendFeedBookmarkTargets((current) => {
-        const next = new Map(current);
-        next.set(bookmarkKey, menuItemId ? { restaurantId, menuItemId } : { foodItemId, restaurantId });
-        return next;
-      });
-      setLocallyRemovedFriendFeedItemIds((current) => {
-        const next = new Set(current);
-        next.delete(bookmarkKey);
-        return next;
+      setFriendFeedBookmarkLocalState((current) => {
+        const listId = defaultListId ?? null;
+        const savedItemIds = current.listId === listId ? new Set(current.savedItemIds) : new Set<string>();
+        const savedTargets = current.listId === listId
+          ? new Map(current.savedTargets)
+          : new Map<string, FriendFeedBookmarkTarget>();
+        const removedItemIds = current.listId === listId ? new Set(current.removedItemIds) : new Set<string>();
+
+        savedItemIds.add(bookmarkKey);
+        savedTargets.set(bookmarkKey, menuItemId ? { restaurantId, menuItemId } : { foodItemId, restaurantId });
+        removedItemIds.delete(bookmarkKey);
+
+        return {
+          listId,
+          removedItemIds,
+          savedItemIds,
+          savedTargets,
+        };
       });
 
       try {
@@ -1107,15 +1230,22 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           targetListCount: 1,
         });
       } catch (error) {
-        setLocallySavedFriendFeedItemIds((current) => {
-          const next = new Set(current);
-          next.delete(bookmarkKey);
-          return next;
-        });
-        setLocallySavedFriendFeedBookmarkTargets((current) => {
-          const next = new Map(current);
-          next.delete(bookmarkKey);
-          return next;
+        setFriendFeedBookmarkLocalState((current) => {
+          const listId = defaultListId ?? null;
+          if (current.listId !== listId) {
+            return current;
+          }
+
+          const savedItemIds = new Set(current.savedItemIds);
+          const savedTargets = new Map(current.savedTargets);
+          savedItemIds.delete(bookmarkKey);
+          savedTargets.delete(bookmarkKey);
+
+          return {
+            ...current,
+            savedItemIds,
+            savedTargets,
+          };
         });
         setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not save bookmark.');
       } finally {
@@ -1153,11 +1283,24 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
       setBookmarkErrorMessage(null);
       setIsBookmarkSubmitting(true);
-      setLocallyRemovedFriendFeedItemIds((current) => new Set(current).add(bookmarkKey));
-      setLocallySavedFriendFeedItemIds((current) => {
-        const next = new Set(current);
-        next.delete(bookmarkKey);
-        return next;
+      setFriendFeedBookmarkLocalState((current) => {
+        const listId = defaultListId;
+        const savedItemIds = current.listId === listId ? new Set(current.savedItemIds) : new Set<string>();
+        const savedTargets = current.listId === listId
+          ? new Map(current.savedTargets)
+          : new Map<string, FriendFeedBookmarkTarget>();
+        const removedItemIds = current.listId === listId ? new Set(current.removedItemIds) : new Set<string>();
+
+        removedItemIds.add(bookmarkKey);
+        savedItemIds.delete(bookmarkKey);
+        savedTargets.delete(bookmarkKey);
+
+        return {
+          listId,
+          removedItemIds,
+          savedItemIds,
+          savedTargets,
+        };
       });
 
       try {
@@ -1181,10 +1324,18 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           status: result.status,
         });
       } catch (error) {
-        setLocallyRemovedFriendFeedItemIds((current) => {
-          const next = new Set(current);
-          next.delete(bookmarkKey);
-          return next;
+        setFriendFeedBookmarkLocalState((current) => {
+          if (current.listId !== defaultListId) {
+            return current;
+          }
+
+          const removedItemIds = new Set(current.removedItemIds);
+          removedItemIds.delete(bookmarkKey);
+
+          return {
+            ...current,
+            removedItemIds,
+          };
         });
         setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not remove bookmark.');
       } finally {
