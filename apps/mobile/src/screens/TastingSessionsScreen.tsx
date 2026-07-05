@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, SectionList, View } from 'react-native';
 import { Ionicons } from '../ui/AppIcon';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   BackHeaderScreenScaffold,
   EmptyState,
   ErrorState,
+  FeatureListFooter,
   HeaderAccessoryButton,
   LoadingState,
   OptionList,
@@ -17,9 +18,9 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
-  listTastingSessions,
+  listTastingSessionSummariesPage,
   tastingSessionsQueryKeys,
-  type TastingSessionRecord,
+  type TastingSessionListSummary,
   useTastingSessionWrites,
 } from '../features';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
@@ -40,7 +41,14 @@ import {
 
 type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessions'>;
 
-const EMPTY_SESSIONS: TastingSessionRecord[] = [];
+const EMPTY_SESSIONS: TastingSessionListSummary[] = [];
+const TASTING_SESSION_LIST_PAGE_SIZE = 20;
+
+type TastingSessionListSection = {
+  key: 'active' | 'completed';
+  title: string;
+  data: TastingSessionListSummary[];
+};
 
 const useStyles = createThemedStyles((theme) => ({
   actions: {
@@ -53,10 +61,25 @@ const useStyles = createThemedStyles((theme) => ({
   section: {
     gap: theme.spacing.sm,
   },
+  screenBody: {
+    flex: 1,
+    paddingBottom: 0,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
   sectionHeader: {
     alignItems: 'center',
+    backgroundColor: theme.colors.background.app,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingTop: theme.spacing.xs,
   },
   joinBanner: {
     alignItems: 'center',
@@ -103,12 +126,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function getSessionSortTime(session: TastingSessionRecord): number {
+function getSessionSortTime(session: TastingSessionListSummary): number {
   const timestamp = Date.parse(session.updatedAt || session.createdAt);
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function sortSessionsNewestFirst(sessions: TastingSessionRecord[]): TastingSessionRecord[] {
+function sortSessionsNewestFirst(sessions: TastingSessionListSummary[]): TastingSessionListSummary[] {
   return [...sessions].sort((firstSession, secondSession) => {
     const timeDifference = getSessionSortTime(secondSession) - getSessionSortTime(firstSession);
     if (timeDifference !== 0) {
@@ -118,39 +141,40 @@ function sortSessionsNewestFirst(sessions: TastingSessionRecord[]): TastingSessi
   });
 }
 
-function isCurrentUserParticipant(session: TastingSessionRecord, userId: string | undefined): boolean {
-  return Boolean(userId && session.participants.some((participant) => participant.userId === userId));
+function isCurrentUserParticipant(session: TastingSessionListSummary, userId: string | undefined): boolean {
+  return Boolean(userId && session.viewerParticipant);
 }
 
-function hasCurrentUserRevokedInvite(session: TastingSessionRecord, userId: string | undefined): boolean {
+function hasCurrentUserRevokedInvite(session: TastingSessionListSummary, userId: string | undefined): boolean {
   return Boolean(
     userId &&
       session.leaderUserId !== userId &&
-      session.invites.some((invite) => invite.invitedUserId === userId && invite.status === 'revoked'),
+      session.viewerInvite?.invitedUserId === userId &&
+      session.viewerInvite.status === 'revoked',
   );
 }
 
-function isExpiredInviteOnlySession(session: TastingSessionRecord, userId: string | undefined): boolean {
+function isExpiredInviteOnlySession(session: TastingSessionListSummary, userId: string | undefined): boolean {
   if (!userId || session.leaderUserId === userId || isCurrentUserParticipant(session, userId)) {
     return false;
   }
 
-  return session.invites.some(
-    (invite) =>
-      invite.invitedUserId === userId &&
-      getTastingInviteDisplayStatus(invite, session) === 'expired',
+  return (
+    session.viewerInvite?.invitedUserId === userId &&
+    getTastingInviteDisplayStatus(session.viewerInvite, session) === 'expired'
   );
 }
 
-function hasOpenPendingInvite(session: TastingSessionRecord, userId: string | undefined): boolean {
+function hasOpenPendingInvite(session: TastingSessionListSummary, userId: string | undefined): boolean {
   return Boolean(
     userId &&
       isTastingInviteWindowOpen(session.joinExpiresAt) &&
-      session.invites.some((invite) => invite.invitedUserId === userId && invite.status === 'pending'),
+      session.viewerInvite?.invitedUserId === userId &&
+      session.viewerInvite.status === 'pending',
   );
 }
 
-function isVisibleActiveSession(session: TastingSessionRecord, userId: string | undefined): boolean {
+function isVisibleActiveSession(session: TastingSessionListSummary, userId: string | undefined): boolean {
   if (session.status === 'completed') {
     return false;
   }
@@ -163,7 +187,7 @@ function isVisibleActiveSession(session: TastingSessionRecord, userId: string | 
   return session.leaderUserId === userId || isCurrentUserParticipant(session, userId) || hasOpenPendingInvite(session, userId);
 }
 
-function isVisibleCompletedSession(session: TastingSessionRecord, userId: string | undefined): boolean {
+function isVisibleCompletedSession(session: TastingSessionListSummary, userId: string | undefined): boolean {
   if (session.status !== 'completed' || !userId) {
     return false;
   }
@@ -180,26 +204,68 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
   const { user } = useAuth();
   const tastingSessionWrites = useTastingSessionWrites();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const sessionsQuery = useQuery({
-    queryKey: tastingSessionsQueryKeys.root,
-    queryFn: ({ signal }) => listTastingSessions({ signal }),
+  const activeSessionsQuery = useInfiniteQuery({
+    queryKey: tastingSessionsQueryKeys.summaries('active'),
+    queryFn: ({ pageParam, signal }) =>
+      listTastingSessionSummariesPage({
+        filter: 'active',
+        page: pageParam,
+        pageSize: TASTING_SESSION_LIST_PAGE_SIZE,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     enabled: Boolean(user?.id && isOnline),
     refetchOnMount: 'always',
     refetchOnReconnect: 'always',
     staleTime: 0,
   });
-  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(sessionsQuery.isRefetching);
-  const refetchSessions = sessionsQuery.refetch;
+  const completedSessionsQuery = useInfiniteQuery({
+    queryKey: tastingSessionsQueryKeys.summaries('completed'),
+    queryFn: ({ pageParam, signal }) =>
+      listTastingSessionSummariesPage({
+        filter: 'completed',
+        page: pageParam,
+        pageSize: TASTING_SESSION_LIST_PAGE_SIZE,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    enabled: Boolean(user?.id && isOnline),
+    refetchOnMount: 'always',
+    refetchOnReconnect: 'always',
+    staleTime: 0,
+  });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(
+    activeSessionsQuery.isRefetching || completedSessionsQuery.isRefetching,
+  );
+  const refetchSessions = useCallback(async () => {
+    await Promise.all([activeSessionsQuery.refetch(), completedSessionsQuery.refetch()]);
+  }, [activeSessionsQuery, completedSessionsQuery]);
   const handleRefresh = useCallback(async () => {
     await runPullRefresh(async () => {
       await refetchSessions();
     });
   }, [refetchSessions, runPullRefresh]);
 
-  const hasResolvedSessions = sessionsQuery.data !== undefined;
-  const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
-  const showOfflineUnavailable = !isOnline && !hasResolvedSessions && !sessionsQuery.isLoading;
-  const showEmptySessions = !sessionsQuery.isLoading && sessions.length === 0 && !showOfflineUnavailable;
+  const activeLoadedSessions = useMemo(
+    () => activeSessionsQuery.data?.pages.flatMap((page) => page.items) ?? EMPTY_SESSIONS,
+    [activeSessionsQuery.data],
+  );
+  const completedLoadedSessions = useMemo(
+    () => completedSessionsQuery.data?.pages.flatMap((page) => page.items) ?? EMPTY_SESSIONS,
+    [completedSessionsQuery.data],
+  );
+  const hasResolvedSessions =
+    activeSessionsQuery.data !== undefined || completedSessionsQuery.data !== undefined;
+  const isLoadingSessions = activeSessionsQuery.isLoading || completedSessionsQuery.isLoading;
+  const hasAnyQueryError = activeSessionsQuery.isError || completedSessionsQuery.isError;
+  const sessions = useMemo(
+    () => [...activeLoadedSessions, ...completedLoadedSessions],
+    [activeLoadedSessions, completedLoadedSessions],
+  );
+  const showOfflineUnavailable = !isOnline && !hasResolvedSessions && !isLoadingSessions;
+  const showEmptySessions = !isLoadingSessions && sessions.length === 0 && !showOfflineUnavailable && !hasAnyQueryError;
   useEffect(() => {
     if (!route.params?.errorMessage) {
       return;
@@ -220,9 +286,10 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
 
   const pendingInviteSessions = useMemo(
     () =>
-      sessions.filter((session) =>
-        session.invites.some((invite) => invite.invitedUserId === user?.id && invite.status === 'pending'),
-      ),
+      sessions.filter((session) => {
+        const viewerInvite = session.viewerInvite;
+        return Boolean(viewerInvite && viewerInvite.invitedUserId === user?.id && viewerInvite.status === 'pending');
+      }),
     [sessions, user?.id],
   );
   const activePendingInviteSession = useMemo(
@@ -235,20 +302,46 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
   );
   const hasExpiredPendingInvite = Boolean(expiredPendingInviteSession);
   const activeSessions = useMemo(
-    () => sortSessionsNewestFirst(sessions.filter((session) => isVisibleActiveSession(session, user?.id))),
-    [sessions, user?.id],
+    () => sortSessionsNewestFirst(activeLoadedSessions.filter((session) => isVisibleActiveSession(session, user?.id))),
+    [activeLoadedSessions, user?.id],
   );
   const completedSessions = useMemo(
-    () => sortSessionsNewestFirst(sessions.filter((session) => isVisibleCompletedSession(session, user?.id))),
-    [sessions, user?.id],
+    () =>
+      sortSessionsNewestFirst(
+        completedLoadedSessions.filter((session) => isVisibleCompletedSession(session, user?.id)),
+      ),
+    [completedLoadedSessions, user?.id],
   );
+  const listSections = useMemo<TastingSessionListSection[]>(() => {
+    const sections: TastingSessionListSection[] = [];
+    if (activeSessions.length > 0) {
+      sections.push({ key: 'active', title: 'Active', data: activeSessions });
+    }
+    if (completedSessions.length > 0) {
+      sections.push({ key: 'completed', title: 'Completed', data: completedSessions });
+    }
+    return sections;
+  }, [activeSessions, completedSessions]);
+  const canLoadMoreSessions = Boolean(activeSessionsQuery.hasNextPage || completedSessionsQuery.hasNextPage);
+  const isFetchingNextSessionsPage = Boolean(
+    activeSessionsQuery.isFetchingNextPage || completedSessionsQuery.isFetchingNextPage,
+  );
+  const handleLoadMore = useCallback(async () => {
+    if (activeSessionsQuery.hasNextPage) {
+      await activeSessionsQuery.fetchNextPage();
+      return;
+    }
+    if (completedSessionsQuery.hasNextPage) {
+      await completedSessionsQuery.fetchNextPage();
+    }
+  }, [activeSessionsQuery, completedSessionsQuery]);
   const joinBannerDescription = activePendingInviteSession
     ? `${activePendingInviteSession.name}. ${isOnline ? 'Tap to join.' : 'Connect to the internet to join.'}`
     : hasExpiredPendingInvite
       ? 'An invite expired. Enter a new code or wait for the leader to reopen the window.'
     : 'Enter an invite code to join a shared tasting session.';
 
-  const handleAcceptInvite = async (session: TastingSessionRecord) => {
+  const handleAcceptInvite = useCallback(async (session: TastingSessionListSummary) => {
     try {
       setErrorMessage(null);
       const acceptResult = await tastingSessionWrites.acceptInvite({
@@ -263,9 +356,9 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not join session.');
     }
-  };
+  }, [isOnline, navigation, tastingSessionWrites]);
 
-  const handleDismissInvite = async (session: TastingSessionRecord) => {
+  const handleDismissInvite = useCallback(async (session: TastingSessionListSummary) => {
     try {
       setErrorMessage(null);
       const dismissResult = await tastingSessionWrites.dismissInvite({
@@ -278,52 +371,99 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not dismiss invite.');
     }
-  };
+  }, [isOnline, tastingSessionWrites]);
 
-  if (sessionsQuery.isError && sessions.length === 0) {
-    return (
-      <BackHeaderScreenScaffold
-        headerScrollMode="fixed"
-        onBackPress={() => navigation.navigate('Misc')}
-        onRefresh={handleRefresh}
-        refreshing={isPullRefreshing}
-        rightAccessory={
-          <HeaderAccessoryButton
-            label="Create"
-            onPress={() => navigation.navigate('CreateTastingSession')}
-            testID="create-tasting-session-header-button"
+  const renderSessionItem = useCallback(
+    ({ item: session, section }: { item: TastingSessionListSummary; section: TastingSessionListSection }) => {
+      const isLast = session.id === section.data[section.data.length - 1]?.id;
+      const viewerInvite = session.viewerInvite;
+      const pendingInvite =
+        section.key === 'active' &&
+        viewerInvite &&
+        viewerInvite.invitedUserId === user?.id &&
+        viewerInvite.status === 'pending'
+          ? viewerInvite
+          : null;
+      const pendingInviteDisplayStatus = pendingInvite
+        ? getTastingInviteDisplayStatus(pendingInvite, session)
+        : null;
+
+      return (
+        <OptionList>
+          <OptionListRow
+            isLast={!pendingInvite}
+            onPress={() => {
+              if (section.key === 'completed') {
+                navigation.navigate('TastingSessionResults', { sessionId: session.id });
+                return;
+              }
+              navigateToTastingSession(navigation, session);
+            }}
+            rightAccessory={
+              <StatusPill
+                label={formatTastingSessionStatusLabel(session.status)}
+                tone={resolveTastingSessionStatusTone(session.status)}
+              />
+            }
+            subtitle={
+              section.key === 'completed'
+                ? formatCompletedTastingSessionSubtitle(session)
+                : `${session.joinedCount}/${session.maxParticipants} joined`
+            }
+            title={session.name}
           />
-        }
-        subtitle="Create, join, and run group tastings."
-        title="Group Tastings"
-      >
-        <ErrorState
-          description="Could not load group tastings."
-          onRetry={() => {
-            void sessionsQuery.refetch();
-          }}
-          title="Sessions unavailable"
-        />
-      </BackHeaderScreenScaffold>
-    );
-  }
+          {pendingInvite ? (
+            <OptionListInlineBody withBottomDivider={!isLast}>
+              <View style={styles.actions}>
+                {pendingInviteDisplayStatus === 'expired' ? (
+                  <StatusPill label="Expired" tone="muted" />
+                ) : (
+                  <Button
+                    disabled={!isOnline}
+                    label="Join Invite"
+                    onPress={() => void handleAcceptInvite(session)}
+                    style={styles.action}
+                  />
+                )}
+                <Button
+                  disabled={!isOnline}
+                  label="Dismiss"
+                  onPress={() => void handleDismissInvite(session)}
+                  style={styles.action}
+                  variant="secondary"
+                />
+              </View>
+            </OptionListInlineBody>
+          ) : null}
+        </OptionList>
+      );
+    },
+    [handleAcceptInvite, handleDismissInvite, isOnline, navigation, styles.action, styles.actions, user?.id],
+  );
 
-  return (
-    <BackHeaderScreenScaffold
-      headerScrollMode="fixed"
-      onBackPress={() => navigation.navigate('Misc')}
-      onRefresh={handleRefresh}
-      refreshing={isPullRefreshing}
-      rightAccessory={
-        <HeaderAccessoryButton
-          label="Create"
-          onPress={() => navigation.navigate('CreateTastingSession')}
-          testID="create-tasting-session-header-button"
-        />
-      }
-      subtitle="Create, join, and run group tastings."
-      title="Group Tastings"
-    >
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: TastingSessionListSection }) => (
+      <View style={styles.sectionHeader}>
+        <Text variant="titleMd">{section.title}</Text>
+        <Text tone="muted" variant="label">
+          {formatTastingSessionCount(section.data.length, 'session', 'sessions')}
+        </Text>
+      </View>
+    ),
+    [styles.sectionHeader],
+  );
+
+  const listFooter = canLoadMoreSessions ? (
+    <FeatureListFooter
+      isFetchingNextPage={isFetchingNextSessionsPage}
+      label="Load more sessions"
+      onLoadMore={handleLoadMore}
+      testID="tasting-sessions-load-more-button"
+    />
+  ) : null;
+
+  const listHeader = (
+    <>
       {!isOnline ? <Text tone="warning">Offline mode shows saved sessions. Actions require a connection.</Text> : null}
 
       {expiredPendingInviteSession && !activePendingInviteSession ? (
@@ -391,9 +531,9 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
       <PageErrorToast errorMessage={errorMessage} title="Tasting action failed" />
       <PageErrorToast
         actionLabel="Retry"
-        errorMessage={sessionsQuery.isError && sessions.length > 0 ? 'Could not refresh sessions. Showing saved data.' : null}
+        errorMessage={hasAnyQueryError && sessions.length > 0 ? 'Could not refresh sessions. Showing saved data.' : null}
         onAction={() => {
-          void sessionsQuery.refetch();
+          void refetchSessions();
         }}
         title="Sessions may be stale"
       />
@@ -405,100 +545,77 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
         />
       ) : null}
 
-      {sessionsQuery.isLoading && sessions.length === 0 ? <LoadingState label="Loading group tastings..." /> : null}
+      {isLoadingSessions && sessions.length === 0 ? <LoadingState label="Loading group tastings..." /> : null}
 
       {showEmptySessions ? (
         <EmptyState description="No sessions yet." title="No group tastings" />
       ) : null}
+    </>
+  );
 
-      {activeSessions.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text variant="titleMd">Active</Text>
-            <Text tone="muted" variant="label">
-              {formatTastingSessionCount(activeSessions.length, 'session', 'sessions')}
-            </Text>
-          </View>
-          <OptionList>
-            {activeSessions.map((session) => {
-              const pendingInvite = session.invites.find(
-                (invite) => invite.invitedUserId === user?.id && invite.status === 'pending',
-              );
-              const pendingInviteDisplayStatus = pendingInvite
-                ? getTastingInviteDisplayStatus(pendingInvite, session)
-                : null;
-              const isLast = session.id === activeSessions[activeSessions.length - 1]?.id;
-              return (
-                <View key={session.id}>
-                  <OptionListRow
-                    isLast={isLast && !pendingInvite}
-                    onPress={() => navigateToTastingSession(navigation, session)}
-                    rightAccessory={
-                      <StatusPill
-                        label={formatTastingSessionStatusLabel(session.status)}
-                        tone={resolveTastingSessionStatusTone(session.status)}
-                      />
-                    }
-                    subtitle={`${session.joinedCount}/${session.maxParticipants} joined`}
-                    title={session.name}
-                  />
-                  {pendingInvite ? (
-                    <OptionListInlineBody withBottomDivider={!isLast}>
-                      <View style={styles.actions}>
-                        {pendingInviteDisplayStatus === 'expired' ? (
-                          <StatusPill label="Expired" tone="muted" />
-                        ) : (
-                          <Button
-                            disabled={!isOnline}
-                            label="Join Invite"
-                            onPress={() => void handleAcceptInvite(session)}
-                            style={styles.action}
-                          />
-                        )}
-                        <Button
-                          disabled={!isOnline}
-                          label="Dismiss"
-                          onPress={() => void handleDismissInvite(session)}
-                          style={styles.action}
-                          variant="secondary"
-                        />
-                      </View>
-                    </OptionListInlineBody>
-                  ) : null}
-                </View>
-              );
-            })}
-          </OptionList>
-        </View>
-      ) : null}
+  if (hasAnyQueryError && sessions.length === 0) {
+    return (
+      <BackHeaderScreenScaffold
+        bodyStyle={styles.screenBody}
+        headerScrollMode="fixed"
+        onBackPress={() => navigation.navigate('Misc')}
+        onRefresh={handleRefresh}
+        refreshing={isPullRefreshing}
+        rightAccessory={
+          <HeaderAccessoryButton
+            label="Create"
+            onPress={() => navigation.navigate('CreateTastingSession')}
+            testID="create-tasting-session-header-button"
+          />
+        }
+        subtitle="Create, join, and run group tastings."
+        title="Group Tastings"
+      >
+        <ErrorState
+          description="Could not load group tastings."
+          onRetry={() => {
+            void refetchSessions();
+          }}
+          title="Sessions unavailable"
+        />
+      </BackHeaderScreenScaffold>
+    );
+  }
 
-      {completedSessions.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text variant="titleMd">Completed</Text>
-            <Text tone="muted" variant="label">
-              {formatTastingSessionCount(completedSessions.length, 'session', 'sessions')}
-            </Text>
-          </View>
-          <OptionList>
-            {completedSessions.map((session, index) => (
-              <OptionListRow
-                isLast={index === completedSessions.length - 1}
-                key={session.id}
-                onPress={() => navigation.navigate('TastingSessionResults', { sessionId: session.id })}
-                rightAccessory={
-                  <StatusPill
-                    label={formatTastingSessionStatusLabel(session.status)}
-                    tone={resolveTastingSessionStatusTone(session.status)}
-                  />
-                }
-                subtitle={formatCompletedTastingSessionSubtitle(session)}
-                title={session.name}
-              />
-            ))}
-          </OptionList>
-        </View>
-      ) : null}
+  return (
+    <BackHeaderScreenScaffold
+      bodyStyle={styles.screenBody}
+      onBackPress={() => navigation.navigate('Misc')}
+      refreshing={isPullRefreshing}
+      rightAccessory={
+        <HeaderAccessoryButton
+          label="Create"
+          onPress={() => navigation.navigate('CreateTastingSession')}
+          testID="create-tasting-session-header-button"
+        />
+      }
+      scroll={false}
+      screenBackgroundTone="surface"
+      subtitle="Create, join, and run group tastings."
+      title="Group Tastings"
+    >
+      <SectionList
+        contentContainerStyle={styles.listContent}
+        initialNumToRender={10}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        ListFooterComponent={listFooter}
+        ListHeaderComponent={listHeader}
+        maxToRenderPerBatch={10}
+        onRefresh={handleRefresh}
+        refreshing={isPullRefreshing}
+        removeClippedSubviews
+        renderItem={renderSessionItem}
+        renderSectionHeader={renderSectionHeader}
+        sections={isLoadingSessions && sessions.length === 0 ? [] : listSections}
+        style={styles.list}
+        windowSize={7}
+      />
     </BackHeaderScreenScaffold>
   );
 }

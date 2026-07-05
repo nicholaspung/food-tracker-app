@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,28 +16,30 @@ import (
 )
 
 const (
-	tastingInviteCodeLength          = 6
-	maxTastingInviteCodeSaveAttempts = 16
-	maxTastingSessionNameLength      = 200
-	maxTastingRestaurantNameLength   = 200
-	maxTastingItemNameLength         = 300
-	maxTastingNoteLength             = 500
-	tastingSessionStatusLobby        = "lobby"
-	tastingSessionStatusPlanning     = "planning"
-	tastingSessionStatusTasting      = "tasting"
-	tastingSessionStatusCompleted    = "completed"
-	tastingSuggestionStatusPending   = "pending"
-	tastingSuggestionStatusApproved  = "approved"
-	tastingSuggestionStatusRejected  = "rejected"
-	tastingInviteStatusPending       = "pending"
-	tastingInviteStatusAccepted      = "accepted"
-	tastingInviteStatusDismissed     = "dismissed"
-	tastingInviteStatusRevoked       = "revoked"
-	tastingRoleLeader                = "leader"
-	tastingRoleParticipant           = "participant"
-	defaultTastingMaxParticipants    = 12
-	defaultTastingMaxRestaurants     = 5
-	defaultTastingMaxApprovedItems   = 30
+	tastingInviteCodeLength           = 6
+	maxTastingInviteCodeSaveAttempts  = 16
+	maxTastingSessionNameLength       = 200
+	maxTastingRestaurantNameLength    = 200
+	maxTastingItemNameLength          = 300
+	maxTastingNoteLength              = 500
+	tastingSessionStatusLobby         = "lobby"
+	tastingSessionStatusPlanning      = "planning"
+	tastingSessionStatusTasting       = "tasting"
+	tastingSessionStatusCompleted     = "completed"
+	tastingSuggestionStatusPending    = "pending"
+	tastingSuggestionStatusApproved   = "approved"
+	tastingSuggestionStatusRejected   = "rejected"
+	tastingInviteStatusPending        = "pending"
+	tastingInviteStatusAccepted       = "accepted"
+	tastingInviteStatusDismissed      = "dismissed"
+	tastingInviteStatusRevoked        = "revoked"
+	tastingRoleLeader                 = "leader"
+	tastingRoleParticipant            = "participant"
+	defaultTastingMaxParticipants     = 12
+	defaultTastingMaxRestaurants      = 5
+	defaultTastingMaxApprovedItems    = 30
+	defaultTastingSessionListPageSize = 20
+	maxTastingSessionListPageSize     = 50
 )
 
 type tastingSessionCreateRequest struct {
@@ -150,6 +153,61 @@ type tastingSessionResponse struct {
 	UpdatedAt        string                       `json:"updatedAt"`
 }
 
+type tastingSessionListInviteSummaryResponse struct {
+	ID              string `json:"id"`
+	InvitedUserID   string `json:"invitedUserId"`
+	InvitedUserName string `json:"invitedUserName"`
+	Status          string `json:"status"`
+	CreatedAt       string `json:"createdAt"`
+}
+
+type tastingSessionListSummaryResponse struct {
+	ID                      string                                   `json:"id"`
+	Name                    string                                   `json:"name"`
+	LeaderUserID            string                                   `json:"leaderUserId"`
+	Status                  string                                   `json:"status"`
+	JoinExpiresAt           string                                   `json:"joinExpiresAt"`
+	JoinedCount             int                                      `json:"joinedCount"`
+	MaxParticipants         int                                      `json:"maxParticipants"`
+	MaxRestaurants          int                                      `json:"maxRestaurants"`
+	MaxApprovedItems        int                                      `json:"maxApprovedItems"`
+	ApprovedRestaurantCount int                                      `json:"approvedRestaurantCount"`
+	ApprovedItemCount       int                                      `json:"approvedItemCount"`
+	ViewerParticipant       bool                                     `json:"viewerParticipant"`
+	ViewerInvite            *tastingSessionListInviteSummaryResponse `json:"viewerInvite,omitempty"`
+	CreatedAt               string                                   `json:"createdAt"`
+	UpdatedAt               string                                   `json:"updatedAt"`
+}
+
+type tastingSessionListPageResponse struct {
+	Items       []tastingSessionListSummaryResponse `json:"items"`
+	Page        int                                 `json:"page"`
+	PageSize    int                                 `json:"pageSize"`
+	TotalItems  int                                 `json:"totalItems"`
+	TotalPages  int                                 `json:"totalPages"`
+	HasNextPage bool                                `json:"hasNextPage"`
+}
+
+type tastingSessionListSummaryRow struct {
+	ID                      string `db:"id"`
+	Name                    string `db:"name"`
+	LeaderUserID            string `db:"leaderUserId"`
+	Status                  string `db:"status"`
+	JoinExpiresAt           string `db:"joinExpiresAt"`
+	JoinedCount             int    `db:"joinedCount"`
+	MaxParticipants         int    `db:"maxParticipants"`
+	MaxRestaurants          int    `db:"maxRestaurants"`
+	MaxApprovedItems        int    `db:"maxApprovedItems"`
+	ApprovedRestaurantCount int    `db:"approvedRestaurantCount"`
+	ApprovedItemCount       int    `db:"approvedItemCount"`
+	ViewerParticipant       int    `db:"viewerParticipant"`
+	ViewerInviteID          string `db:"viewerInviteId"`
+	ViewerInviteStatus      string `db:"viewerInviteStatus"`
+	ViewerInviteCreatedAt   string `db:"viewerInviteCreatedAt"`
+	CreatedAt               string `db:"createdAt"`
+	UpdatedAt               string `db:"updatedAt"`
+}
+
 func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.GET("/api/tasting-sessions", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
@@ -169,6 +227,33 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to build tasting session", buildErr)
 			}
 			response = append(response, sessionResponse)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/tasting-sessions/summary-page", func(e *core.RequestEvent) error {
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+
+		filter, filterErr := normalizeTastingSessionListFilter(e.Request.URL.Query().Get("filter"))
+		if filterErr != nil {
+			return apis.NewBadRequestError(filterErr.Error(), nil)
+		}
+
+		page, pageSize, parseErr := parseTastingSessionListPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if parseErr != nil {
+			return apis.NewBadRequestError(parseErr.Error(), nil)
+		}
+
+		response, responseErr := getTastingSessionListPageResponse(app, authRecord.Id, filter, page, pageSize)
+		if responseErr != nil {
+			return apis.NewApiError(500, "failed to load tasting session summaries", responseErr)
 		}
 
 		return e.JSON(200, response)
@@ -865,6 +950,271 @@ func mapTastingLoadError(err error) error {
 		return apis.NewNotFoundError("session not found", nil)
 	}
 	return apis.NewApiError(500, "failed to load tasting session", err)
+}
+
+func normalizeTastingSessionListFilter(filterRaw string) (string, error) {
+	switch strings.TrimSpace(filterRaw) {
+	case "", "active":
+		return "active", nil
+	case "completed":
+		return "completed", nil
+	default:
+		return "", fmt.Errorf("invalid tasting session filter")
+	}
+}
+
+func parseTastingSessionListPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultTastingSessionListPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+		if parsedPageSize > maxTastingSessionListPageSize {
+			pageSize = maxTastingSessionListPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
+func tastingSessionListFilterSQL(filter string) string {
+	if filter == "completed" {
+		return "COALESCE(sessions.status, '') = 'completed'"
+	}
+	return "COALESCE(sessions.status, '') != 'completed'"
+}
+
+func tastingSessionListAccessSQL(filter string) string {
+	if filter == "completed" {
+		return `
+			(
+				sessions.leader = {:userId}
+				OR EXISTS (
+					SELECT 1
+					FROM tasting_session_participants current_user_participants
+					WHERE current_user_participants.session = sessions.id
+						AND current_user_participants.user = {:userId}
+				)
+			)
+		`
+	}
+
+	return `
+		(
+			sessions.leader = {:userId}
+			OR EXISTS (
+				SELECT 1
+				FROM tasting_session_participants current_user_participants
+				WHERE current_user_participants.session = sessions.id
+					AND current_user_participants.user = {:userId}
+			)
+			OR (
+				COALESCE(sessions.status, '') = 'lobby'
+				AND sessions.join_expires_at > {:now}
+				AND EXISTS (
+					SELECT 1
+					FROM tasting_session_invites current_user_invites
+					WHERE current_user_invites.session = sessions.id
+						AND current_user_invites.invited_user = {:userId}
+						AND current_user_invites.status = 'pending'
+				)
+			)
+		)
+	`
+}
+
+func tastingSessionListSummaryCTE(filter string) string {
+	return fmt.Sprintf(`
+		WITH visible_sessions AS (
+			SELECT
+				sessions.id,
+				sessions.name,
+				sessions.leader,
+				sessions.status,
+				sessions.join_expires_at,
+				sessions.max_participants,
+				sessions.max_restaurants,
+				sessions.max_approved_items,
+				sessions.created,
+				sessions.updated
+			FROM tasting_sessions sessions
+			WHERE %s
+				AND %s
+				AND NOT (
+					sessions.leader != {:userId}
+					AND EXISTS (
+						SELECT 1
+						FROM tasting_session_invites revoked_invites
+						WHERE revoked_invites.session = sessions.id
+							AND revoked_invites.invited_user = {:userId}
+							AND revoked_invites.status = 'revoked'
+					)
+				)
+		),
+		session_summaries AS (
+			SELECT
+				visible_sessions.id AS [[id]],
+				visible_sessions.name AS [[name]],
+				visible_sessions.leader AS [[leaderUserId]],
+				visible_sessions.status AS [[status]],
+				visible_sessions.join_expires_at AS [[joinExpiresAt]],
+				COUNT(DISTINCT participants.id) AS [[joinedCount]],
+				COALESCE(visible_sessions.max_participants, 0) AS [[maxParticipants]],
+				COALESCE(visible_sessions.max_restaurants, 0) AS [[maxRestaurants]],
+				COALESCE(visible_sessions.max_approved_items, 0) AS [[maxApprovedItems]],
+				COUNT(DISTINCT CASE WHEN restaurants.status = 'approved' THEN restaurants.id END) AS [[approvedRestaurantCount]],
+				COUNT(DISTINCT CASE WHEN restaurants.status = 'approved' AND items.status = 'approved' THEN items.id END) AS [[approvedItemCount]],
+				MAX(CASE WHEN participants.user = {:userId} THEN 1 ELSE 0 END) AS [[viewerParticipant]],
+				COALESCE(MAX(viewer_invites.id), '') AS [[viewerInviteId]],
+				COALESCE(MAX(viewer_invites.status), '') AS [[viewerInviteStatus]],
+				COALESCE(MAX(viewer_invites.created), '') AS [[viewerInviteCreatedAt]],
+				visible_sessions.created AS [[createdAt]],
+				visible_sessions.updated AS [[updatedAt]]
+			FROM visible_sessions
+			LEFT JOIN tasting_session_participants participants
+				ON participants.session = visible_sessions.id
+			LEFT JOIN tasting_session_invites viewer_invites
+				ON viewer_invites.session = visible_sessions.id
+				AND viewer_invites.invited_user = {:userId}
+			LEFT JOIN tasting_session_restaurants restaurants
+				ON restaurants.session = visible_sessions.id
+			LEFT JOIN tasting_session_items items
+				ON items.session = visible_sessions.id
+				AND items.restaurant_suggestion = restaurants.id
+			GROUP BY
+				visible_sessions.id,
+				visible_sessions.name,
+				visible_sessions.leader,
+				visible_sessions.status,
+				visible_sessions.join_expires_at,
+				visible_sessions.max_participants,
+				visible_sessions.max_restaurants,
+				visible_sessions.max_approved_items,
+				visible_sessions.created,
+				visible_sessions.updated
+		)
+	`, tastingSessionListFilterSQL(filter), tastingSessionListAccessSQL(filter))
+}
+
+func getTastingSessionListPageResponse(
+	app core.App,
+	userID string,
+	filter string,
+	page int,
+	pageSize int,
+) (tastingSessionListPageResponse, error) {
+	var totalItems int
+	countQuery := fmt.Sprintf(`
+		%s
+		SELECT COUNT(*)
+		FROM session_summaries
+	`, tastingSessionListSummaryCTE(filter))
+	if err := app.DB().NewQuery(countQuery).
+		Bind(dbx.Params{
+			"now":    time.Now().UTC(),
+			"userId": strings.TrimSpace(userID),
+		}).
+		Row(&totalItems); err != nil {
+		return tastingSessionListPageResponse{}, err
+	}
+
+	rows := []tastingSessionListSummaryRow{}
+	rowsQuery := fmt.Sprintf(`
+		%s
+		SELECT
+			id AS [[id]],
+			name AS [[name]],
+			leaderUserId AS [[leaderUserId]],
+			status AS [[status]],
+			joinExpiresAt AS [[joinExpiresAt]],
+			joinedCount AS [[joinedCount]],
+			maxParticipants AS [[maxParticipants]],
+			maxRestaurants AS [[maxRestaurants]],
+			maxApprovedItems AS [[maxApprovedItems]],
+			approvedRestaurantCount AS [[approvedRestaurantCount]],
+			approvedItemCount AS [[approvedItemCount]],
+			viewerParticipant AS [[viewerParticipant]],
+			viewerInviteId AS [[viewerInviteId]],
+			viewerInviteStatus AS [[viewerInviteStatus]],
+			viewerInviteCreatedAt AS [[viewerInviteCreatedAt]],
+			createdAt AS [[createdAt]],
+			updatedAt AS [[updatedAt]]
+		FROM session_summaries
+		ORDER BY updatedAt DESC, createdAt DESC, id DESC
+		LIMIT {:limit} OFFSET {:offset}
+	`, tastingSessionListSummaryCTE(filter))
+	if err := app.DB().NewQuery(rowsQuery).
+		Bind(dbx.Params{
+			"limit":  pageSize,
+			"now":    time.Now().UTC(),
+			"offset": (page - 1) * pageSize,
+			"userId": strings.TrimSpace(userID),
+		}).
+		All(&rows); err != nil {
+		return tastingSessionListPageResponse{}, err
+	}
+
+	totalPages := 0
+	if totalItems > 0 {
+		totalPages = (totalItems + pageSize - 1) / pageSize
+	}
+
+	items := make([]tastingSessionListSummaryResponse, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, mapTastingSessionListSummaryRow(row, userID))
+	}
+
+	return tastingSessionListPageResponse{
+		Items:       items,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalItems:  totalItems,
+		TotalPages:  totalPages,
+		HasNextPage: totalPages > 0 && page < totalPages,
+	}, nil
+}
+
+func mapTastingSessionListSummaryRow(row tastingSessionListSummaryRow, viewerUserID string) tastingSessionListSummaryResponse {
+	var viewerInvite *tastingSessionListInviteSummaryResponse
+	if strings.TrimSpace(row.ViewerInviteID) != "" {
+		viewerInvite = &tastingSessionListInviteSummaryResponse{
+			ID:              strings.TrimSpace(row.ViewerInviteID),
+			InvitedUserID:   strings.TrimSpace(viewerUserID),
+			InvitedUserName: "",
+			Status:          strings.TrimSpace(row.ViewerInviteStatus),
+			CreatedAt:       row.ViewerInviteCreatedAt,
+		}
+	}
+
+	return tastingSessionListSummaryResponse{
+		ID:                      strings.TrimSpace(row.ID),
+		Name:                    strings.TrimSpace(row.Name),
+		LeaderUserID:            strings.TrimSpace(row.LeaderUserID),
+		Status:                  strings.TrimSpace(row.Status),
+		JoinExpiresAt:           row.JoinExpiresAt,
+		JoinedCount:             row.JoinedCount,
+		MaxParticipants:         row.MaxParticipants,
+		MaxRestaurants:          row.MaxRestaurants,
+		MaxApprovedItems:        row.MaxApprovedItems,
+		ApprovedRestaurantCount: row.ApprovedRestaurantCount,
+		ApprovedItemCount:       row.ApprovedItemCount,
+		ViewerParticipant:       row.ViewerParticipant != 0,
+		ViewerInvite:            viewerInvite,
+		CreatedAt:               row.CreatedAt,
+		UpdatedAt:               row.UpdatedAt,
+	}
 }
 
 func listAccessibleTastingSessions(app core.App, userID string) ([]*core.Record, error) {

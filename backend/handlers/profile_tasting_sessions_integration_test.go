@@ -216,6 +216,156 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 	}
 }
 
+func TestTastingSessionSummaryPageReturnsBoundedListRows(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterTastingSessionHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	leader, _ := createAuthUser(t, server.app, false, false)
+
+	activeSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Active tasting",
+		"leader":             user.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(30 * time.Minute),
+		"invite_code":        "ACT123",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": activeSession.Id,
+		"user":    user.Id,
+		"role":    "leader",
+	})
+
+	expiredInviteSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Expired invite",
+		"leader":             leader.Id,
+		"status":             "lobby",
+		"join_expires_at":    time.Now().UTC().Add(-30 * time.Minute),
+		"invite_code":        "EXP123",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      expiredInviteSession.Id,
+		"invited_user": user.Id,
+		"status":       "pending",
+	})
+
+	completedSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":               "Completed tasting",
+		"leader":             leader.Id,
+		"status":             "completed",
+		"join_expires_at":    time.Now().UTC().Add(30 * time.Minute),
+		"invite_code":        "DONE12",
+		"max_participants":   8,
+		"max_restaurants":    3,
+		"max_approved_items": 12,
+	})
+	leaderParticipant := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": completedSession.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": completedSession.Id,
+		"user":    user.Id,
+		"role":    "participant",
+	})
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Summary Ramen",
+		"location":   "San Francisco",
+		"user":       leader.Id,
+		"visibility": "private",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":       "Shoyu",
+		"restaurant": restaurant.Id,
+		"visibility": "private",
+	})
+	restaurantSuggestion := createCollectionRecord(t, server.app, "tasting_session_restaurants", map[string]any{
+		"session":                  completedSession.Id,
+		"restaurant":               restaurant.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_items", map[string]any{
+		"session":                  completedSession.Id,
+		"restaurant_suggestion":    restaurantSuggestion.Id,
+		"menu_item":                menuItem.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+
+	activeResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/summary-page?filter=active&page=1&pageSize=1",
+		token,
+		"",
+	)
+	if activeResponse.Code != http.StatusOK {
+		t.Fatalf("expected active summary page to succeed, got %d: %s", activeResponse.Code, activeResponse.Body.String())
+	}
+
+	var activePayload struct {
+		Items       []map[string]any `json:"items"`
+		Page        int              `json:"page"`
+		PageSize    int              `json:"pageSize"`
+		TotalItems  int              `json:"totalItems"`
+		HasNextPage bool             `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(activeResponse.Body.Bytes(), &activePayload); err != nil {
+		t.Fatalf("failed to parse active summary response JSON: %v; body=%s", err, activeResponse.Body.String())
+	}
+	if activePayload.TotalItems != 1 || activePayload.Page != 1 || activePayload.PageSize != 1 || activePayload.HasNextPage {
+		t.Fatalf("unexpected active summary pagination: %#v", activePayload)
+	}
+	if len(activePayload.Items) != 1 || activePayload.Items[0]["id"] != activeSession.Id {
+		t.Fatalf("expected only the active leader session, got %#v", activePayload.Items)
+	}
+	if _, ok := activePayload.Items[0]["restaurants"]; ok {
+		t.Fatalf("expected summary row to omit full restaurant details: %#v", activePayload.Items[0])
+	}
+
+	completedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/summary-page?filter=completed&page=1&pageSize=1",
+		token,
+		"",
+	)
+	if completedResponse.Code != http.StatusOK {
+		t.Fatalf("expected completed summary page to succeed, got %d: %s", completedResponse.Code, completedResponse.Body.String())
+	}
+
+	var completedPayload struct {
+		Items []struct {
+			ID                      string `json:"id"`
+			JoinedCount             int    `json:"joinedCount"`
+			ApprovedRestaurantCount int    `json:"approvedRestaurantCount"`
+			ApprovedItemCount       int    `json:"approvedItemCount"`
+			ViewerParticipant       bool   `json:"viewerParticipant"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(completedResponse.Body.Bytes(), &completedPayload); err != nil {
+		t.Fatalf("failed to parse completed summary response JSON: %v; body=%s", err, completedResponse.Body.String())
+	}
+	if len(completedPayload.Items) != 1 ||
+		completedPayload.TotalItems != 1 ||
+		completedPayload.Items[0].ID != completedSession.Id ||
+		completedPayload.Items[0].JoinedCount != 2 ||
+		completedPayload.Items[0].ApprovedRestaurantCount != 1 ||
+		completedPayload.Items[0].ApprovedItemCount != 1 ||
+		!completedPayload.Items[0].ViewerParticipant {
+		t.Fatalf("unexpected completed summary payload: %#v", completedPayload)
+	}
+}
+
 func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)

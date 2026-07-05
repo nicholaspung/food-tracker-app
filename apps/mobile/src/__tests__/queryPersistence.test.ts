@@ -206,25 +206,36 @@ describe('React Query persistence', () => {
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
-    sourceClient.setQueryData(tastingSessionsQueryKeys.root, [
-      {
-        createdAt: '2026-05-20T11:00:00.000Z',
-        id: 'session_1',
-        inviteCode: 'ABC123',
-        invites: [],
-        joinedCount: 1,
-        joinExpiresAt: '2099-01-01T00:00:00.000Z',
-        leaderUserId: 'user-1',
-        maxApprovedItems: 8,
-        maxParticipants: 8,
-        maxRestaurants: 3,
-        name: 'Ramen night',
-        participants: [],
-        restaurants: [],
-        status: 'lobby',
-        updatedAt: '2026-05-20T11:00:00.000Z',
-      },
-    ]);
+    sourceClient.setQueryData(tastingSessionsQueryKeys.summaries('active'), {
+      pages: [
+        {
+          items: [
+            {
+              approvedItemCount: 0,
+              approvedRestaurantCount: 0,
+              createdAt: '2026-05-20T11:00:00.000Z',
+              id: 'session_1',
+              joinedCount: 1,
+              joinExpiresAt: '2099-01-01T00:00:00.000Z',
+              leaderUserId: 'user-1',
+              maxApprovedItems: 8,
+              maxParticipants: 8,
+              maxRestaurants: 3,
+              name: 'Ramen night',
+              status: 'lobby',
+              updatedAt: '2026-05-20T11:00:00.000Z',
+              viewerParticipant: true,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
     sourceClient.setQueryData(moreFeatureSignalQueryKeys.summary, {
       bills: {
         activeOwedBillCount: 1,
@@ -383,8 +394,8 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
     );
-    expect(restoredClient.getQueryData(tastingSessionsQueryKeys.root)).toEqual(
-      sourceClient.getQueryData(tastingSessionsQueryKeys.root),
+    expect(restoredClient.getQueryData(tastingSessionsQueryKeys.summaries('active'))).toEqual(
+      sourceClient.getQueryData(tastingSessionsQueryKeys.summaries('active')),
     );
     expect(restoredClient.getQueryData(moreFeatureSignalQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(moreFeatureSignalQueryKeys.summary),

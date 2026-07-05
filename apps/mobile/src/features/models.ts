@@ -301,6 +301,24 @@ export interface TastingInviteRecord {
   createdAt: string;
 }
 
+export interface TastingSessionListSummary {
+  id: string;
+  name: string;
+  leaderUserId: string;
+  status: TastingSessionStatus;
+  joinExpiresAt: string;
+  joinedCount: number;
+  maxParticipants: number;
+  maxRestaurants: number;
+  maxApprovedItems: number;
+  approvedRestaurantCount: number;
+  approvedItemCount: number;
+  viewerParticipant: boolean;
+  viewerInvite?: TastingInviteRecord;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TastingItemRatingRecord {
   id: string;
   participantId: string;

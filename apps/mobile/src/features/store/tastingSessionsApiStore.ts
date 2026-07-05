@@ -1,7 +1,14 @@
-import type { TastingSessionRecord, TastingSessionStatus, TastingSuggestionStatus } from '../models';
+import type {
+  TastingInviteRecord,
+  TastingSessionListSummary,
+  TastingSessionRecord,
+  TastingSessionStatus,
+  TastingSuggestionStatus,
+} from '../models';
 import type {
   CreateTastingSessionInput,
   JoinTastingSessionInput,
+  PaginatedResult,
   ReopenTastingInviteWindowInput,
   SubmitTastingRatingsInput,
   SuggestTastingMenuItemInput,
@@ -34,19 +41,109 @@ export interface SubmitTastingRatingInput {
   note?: string;
 }
 
+export type TastingSessionListFilter = 'active' | 'completed';
+export type TastingSessionListPage = PaginatedResult<TastingSessionListSummary>;
+
+export interface ListTastingSessionSummariesPageInput {
+  filter?: TastingSessionListFilter;
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
 interface ReadRequestOptions {
   signal?: AbortSignal;
+}
+
+interface TastingSessionListSummaryApiResponseItem {
+  id: string;
+  name: string;
+  leaderUserId: string;
+  status: TastingSessionStatus;
+  joinExpiresAt?: string;
+  joinedCount?: number;
+  maxParticipants?: number;
+  maxRestaurants?: number;
+  maxApprovedItems?: number;
+  approvedRestaurantCount?: number;
+  approvedItemCount?: number;
+  viewerParticipant?: boolean;
+  viewerInvite?: TastingInviteRecord;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface TastingSessionListPageApiResponse {
+  items?: TastingSessionListSummaryApiResponseItem[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value.trim());
 }
 
-export async function listTastingSessions(options?: ReadRequestOptions): Promise<TastingSessionRecord[]> {
-  return sendApiRequest<TastingSessionRecord[]>('/api/tasting-sessions', {
-    method: 'GET',
-    signal: options?.signal,
-  });
+function parseCount(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor(value));
+}
+
+function mapTastingSessionListSummaryApiItem(
+  item: TastingSessionListSummaryApiResponseItem,
+): TastingSessionListSummary {
+  return {
+    id: item.id,
+    name: item.name,
+    leaderUserId: item.leaderUserId,
+    status: item.status,
+    joinExpiresAt: typeof item.joinExpiresAt === 'string' ? item.joinExpiresAt : '',
+    joinedCount: parseCount(item.joinedCount),
+    maxParticipants: parseCount(item.maxParticipants),
+    maxRestaurants: parseCount(item.maxRestaurants),
+    maxApprovedItems: parseCount(item.maxApprovedItems),
+    approvedRestaurantCount: parseCount(item.approvedRestaurantCount),
+    approvedItemCount: parseCount(item.approvedItemCount),
+    viewerParticipant: item.viewerParticipant === true,
+    viewerInvite: item.viewerInvite,
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : '',
+    updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : '',
+  };
+}
+
+export async function listTastingSessionSummariesPage(
+  input: ListTastingSessionSummariesPageInput = {},
+): Promise<TastingSessionListPage> {
+  const query = new URLSearchParams();
+  query.set('filter', input.filter ?? 'active');
+  if (input.page) {
+    query.set('page', String(input.page));
+  }
+  if (input.pageSize) {
+    query.set('pageSize', String(input.pageSize));
+  }
+
+  const response = await sendApiRequest<TastingSessionListPageApiResponse>(
+    `/api/tasting-sessions/summary-page?${query.toString()}`,
+    {
+      method: 'GET',
+      signal: input.signal,
+    },
+  );
+
+  return {
+    items: (response.items ?? []).map(mapTastingSessionListSummaryApiItem),
+    page: response.page ?? input.page ?? 1,
+    pageSize: response.pageSize ?? input.pageSize ?? 20,
+    totalItems: parseCount(response.totalItems),
+    totalPages: parseCount(response.totalPages),
+    hasNextPage: response.hasNextPage === true,
+  };
 }
 
 export async function getTastingSessionById(

@@ -1,8 +1,8 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 
-import { useTastingSessionWrites, type TastingSessionRecord } from '../features';
+import { useTastingSessionWrites, type TastingSessionListSummary } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -11,7 +11,7 @@ import { TastingSessionsScreen } from '../screens/TastingSessionsScreen';
 const mockReact = React;
 
 jest.mock('@tanstack/react-query', () => ({
-  useQuery: jest.fn(),
+  useInfiniteQuery: jest.fn(),
 }));
 
 jest.mock('react-native', () => {
@@ -19,6 +19,37 @@ jest.mock('react-native', () => {
   return {
     Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
       React.createElement('Pressable', props, children),
+    SectionList: ({
+      ListFooterComponent,
+      ListHeaderComponent,
+      renderItem,
+      renderSectionHeader,
+      sections = [],
+      ...props
+    }: Record<string, any>) => {
+      const children = sections.flatMap((section: any) => [
+        renderSectionHeader
+          ? React.cloneElement(renderSectionHeader({ section }), { key: `${section.key}-header` })
+          : null,
+        ...section.data.map((item: any, index: number) => {
+          const element = renderItem?.({
+            index,
+            item,
+            section,
+            separators: {},
+          });
+          return element ? React.cloneElement(element, { key: item.id }) : null;
+        }),
+      ]);
+
+      return React.createElement(
+        'SectionList',
+        props,
+        ListHeaderComponent,
+        children,
+        ListFooterComponent,
+      );
+    },
     StyleSheet: {
       create: <T,>(value: T) => value,
     },
@@ -46,9 +77,10 @@ jest.mock('../components/shared', () => ({
 }));
 
 jest.mock('../features', () => ({
-  listTastingSessions: jest.fn(),
+  listTastingSessionSummariesPage: jest.fn(),
   tastingSessionsQueryKeys: {
     root: ['feature', 'tasting-sessions'],
+    summaries: (filter: string) => ['feature', 'tasting-sessions', 'summaries', filter],
   },
   useTastingSessionWrites: jest.fn(),
 }));
@@ -117,7 +149,7 @@ jest.mock('../ui', () => ({
     mockReact.createElement('Text', props, children),
 }));
 
-const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<
   typeof useTastingSessionWrites
 >;
@@ -128,21 +160,12 @@ const acceptInvite = jest.fn();
 const dismissInvite = jest.fn();
 type TestRenderer = ReturnType<typeof create> & { root: any };
 
-function buildSession(joinExpiresAt: string): TastingSessionRecord {
+function buildSession(joinExpiresAt: string): TastingSessionListSummary {
   return {
+    approvedItemCount: 0,
+    approvedRestaurantCount: 0,
     createdAt: '2026-05-20T11:00:00.000Z',
-    createdByUserId: 'leader_1',
     id: `session_${joinExpiresAt}`,
-    inviteCode: 'ABC123',
-    invites: [
-      {
-        createdAt: '2026-05-20T11:00:00.000Z',
-        id: 'invite_1',
-        invitedUserId: 'user_1',
-        invitedUserName: 'Pat',
-        status: 'pending',
-      },
-    ],
     joinExpiresAt,
     joinedCount: 1,
     leaderUserId: 'leader_1',
@@ -150,122 +173,75 @@ function buildSession(joinExpiresAt: string): TastingSessionRecord {
     maxParticipants: 8,
     maxRestaurants: 3,
     name: 'Ramen night',
-    participants: [],
-    restaurants: [],
     status: 'lobby',
     updatedAt: '2026-05-20T11:00:00.000Z',
+    viewerInvite: {
+      createdAt: '2026-05-20T11:00:00.000Z',
+      id: 'invite_1',
+      invitedUserId: 'user_1',
+      invitedUserName: 'Pat',
+      status: 'pending',
+    },
+    viewerParticipant: false,
   };
 }
 
-function buildInviteOnlySessionWithoutInvite(): TastingSessionRecord {
+function buildInviteOnlySessionWithoutInvite(): TastingSessionListSummary {
   return {
     ...buildSession('2000-01-01T00:00:00.000Z'),
     id: 'session_without_invite',
-    invites: [],
+    viewerInvite: undefined,
   };
 }
 
-function buildRevokedSessionWithStaleParticipant(): TastingSessionRecord {
+function buildRevokedSessionWithStaleParticipant(): TastingSessionListSummary {
   return {
     ...buildSession('2099-01-01T00:00:00.000Z'),
     id: 'session_revoked_stale_participant',
-    invites: [
-      {
-        createdAt: '2026-05-20T11:00:00.000Z',
-        id: 'invite_revoked',
-        invitedUserId: 'user_1',
-        invitedUserName: 'Pat',
-        status: 'revoked',
-      },
-    ],
     joinedCount: 2,
-    participants: [
-      {
-        id: 'participant_stale',
-        joinedAt: '2026-05-20T11:00:00.000Z',
-        name: 'Pat',
-        role: 'participant',
-        userId: 'user_1',
-      },
-    ],
+    viewerInvite: {
+      createdAt: '2026-05-20T11:00:00.000Z',
+      id: 'invite_revoked',
+      invitedUserId: 'user_1',
+      invitedUserName: 'Pat',
+      status: 'revoked',
+    },
+    viewerParticipant: true,
   };
 }
 
-function buildCompletedSession(): TastingSessionRecord {
+function buildCompletedSession(): TastingSessionListSummary {
   return {
     ...buildSession('2026-05-20T12:00:00.000Z'),
+    approvedItemCount: 1,
+    approvedRestaurantCount: 1,
     id: 'session_completed',
-    invites: [],
     joinedCount: 2,
     leaderUserId: 'user_1',
     name: 'Completed tasting',
-    participants: [
-      {
-        id: 'participant_1',
-        joinedAt: '2026-05-20T11:00:00.000Z',
-        name: 'Pat',
-        role: 'leader',
-        userId: 'user_1',
-      },
-      {
-        id: 'participant_2',
-        joinedAt: '2026-05-20T11:05:00.000Z',
-        name: 'Sam',
-        role: 'participant',
-        userId: 'user_2',
-      },
-    ],
-    restaurants: [
-      {
-        createdAt: '2026-05-20T11:10:00.000Z',
-        id: 'restaurant_1',
-        items: [
-          {
-            createdAt: '2026-05-20T11:15:00.000Z',
-            id: 'item_1',
-            menuItemId: 'menu_item_1',
-            name: 'Tonkotsu',
-            ratings: [],
-            restaurantSuggestionId: 'restaurant_1',
-            status: 'approved',
-            suggestedByParticipantId: 'participant_1',
-          },
-        ],
-        restaurantId: 'restaurant_record_1',
-        restaurantName: 'Ramen Place',
-        status: 'approved',
-        suggestedByParticipantId: 'participant_1',
-      },
-    ],
     status: 'completed',
     updatedAt: '2026-05-22T16:30:00.000Z',
+    viewerInvite: undefined,
+    viewerParticipant: true,
   };
 }
 
-function buildUserOwnedSession(overrides: Partial<TastingSessionRecord> = {}): TastingSessionRecord {
+function buildUserOwnedSession(overrides: Partial<TastingSessionListSummary> = {}): TastingSessionListSummary {
   return {
     ...buildSession('2099-01-01T00:00:00.000Z'),
     id: 'session_owned',
-    invites: [],
     joinedCount: 1,
     leaderUserId: 'user_1',
     name: 'Owned tasting',
-    participants: [
-      {
-        id: 'participant_1',
-        joinedAt: '2026-05-20T11:00:00.000Z',
-        name: 'Pat',
-        role: 'leader',
-        userId: 'user_1',
-      },
-    ],
     updatedAt: '2026-05-20T11:00:00.000Z',
+    viewerInvite: undefined,
+    viewerParticipant: true,
     ...overrides,
   };
 }
 
 function renderScreen(
-  sessions: TastingSessionRecord[] | undefined,
+  sessions: TastingSessionListSummary[] | undefined,
   routeParams?: RootStackParamList['TastingSessions'],
 ) {
   const navigation = {
@@ -273,14 +249,40 @@ function renderScreen(
     setParams: jest.fn(),
   };
   const refetch = jest.fn(async () => ({ data: sessions }));
+  const fetchNextPage = jest.fn(async () => ({ data: sessions }));
 
-  mockedUseQuery.mockReturnValue({
-    data: sessions,
-    isError: false,
-    isLoading: false,
-    isRefetching: false,
-    refetch,
-  } as unknown as ReturnType<typeof useQuery>);
+  mockedUseInfiniteQuery.mockImplementation((options: any) => {
+    const filter = options.queryKey[3] as 'active' | 'completed';
+    const filteredSessions =
+      sessions?.filter((session) =>
+        filter === 'active' ? session.status !== 'completed' : session.status === 'completed',
+      ) ?? [];
+    return {
+      data:
+        sessions === undefined
+          ? undefined
+          : {
+              pageParams: [1],
+              pages: [
+                {
+                  hasNextPage: false,
+                  items: filteredSessions,
+                  page: 1,
+                  pageSize: 20,
+                  totalItems: filteredSessions.length,
+                  totalPages: filteredSessions.length > 0 ? 1 : 0,
+                },
+              ],
+            },
+      fetchNextPage,
+      hasNextPage: false,
+      isError: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      refetch,
+    } as unknown as ReturnType<typeof useInfiniteQuery>;
+  });
 
   let renderer: TestRenderer;
   act(() => {
@@ -375,13 +377,13 @@ describe('TastingSessionsScreen', () => {
     expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
   });
 
-  it('renders all active sessions in one list container', () => {
+  it('renders active sessions in the virtualized list', () => {
     const { renderer } = renderScreen([
       buildUserOwnedSession({ id: 'session_lobby', name: 'Lobby tasting', status: 'lobby' }),
       buildUserOwnedSession({ id: 'session_planning', name: 'Planning tasting', status: 'planning' }),
     ]);
 
-    expect(renderer.root.findAllByType('OptionList')).toHaveLength(1);
+    expect(renderer.root.findAllByType('SectionList')).toHaveLength(1);
     expect(renderer.root.findAllByType('OptionListRow').map((node: any) => node.props.title)).toEqual([
       'Planning tasting',
       'Lobby tasting',
@@ -403,26 +405,26 @@ describe('TastingSessionsScreen', () => {
 
   it('refreshes group tastings from the screen scaffold pull action', async () => {
     const { refetch, renderer } = renderScreen([]);
-    const scaffold = renderer.root.findByType('BackHeaderScreenScaffold');
+    const list = renderer.root.findByType('SectionList');
 
     await act(async () => {
-      await scaffold.props.onRefresh();
+      await list.props.onRefresh();
     });
 
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes group tastings when notification navigation requests fresh data', () => {
     const { navigation, refetch } = renderScreen([], { refreshSignal: 123 });
 
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledTimes(2);
     expect(navigation.setParams).toHaveBeenCalledWith({ refreshSignal: undefined });
   });
 
   it('revalidates group tastings on mount without interval polling', () => {
     renderScreen([buildCompletedSession()]);
 
-    const queryOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
+    const queryOptions = mockedUseInfiniteQuery.mock.calls[0]?.[0] as unknown as {
       enabled: boolean;
       refetchInterval?: unknown;
       refetchOnMount: string;
@@ -444,11 +446,10 @@ describe('TastingSessionsScreen', () => {
 
     renderScreen([]);
 
-    const queryOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
-      enabled: boolean;
-    };
+    const queryOptions = mockedUseInfiniteQuery.mock.calls.map((call) => call[0] as { enabled: boolean });
 
-    expect(queryOptions.enabled).toBe(false);
+    expect(queryOptions).toHaveLength(2);
+    expect(queryOptions.every((options) => options.enabled === false)).toBe(true);
   });
 
   it('shows an offline unavailable state instead of the normal empty state when no sessions are cached', () => {

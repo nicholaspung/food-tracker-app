@@ -1,4 +1,9 @@
-import type { TastingInviteRecord, TastingSessionRecord, TastingSessionStatus } from '../../features';
+import type {
+  TastingInviteRecord,
+  TastingSessionListSummary,
+  TastingSessionRecord,
+  TastingSessionStatus,
+} from '../../features';
 import { formatStoredCalendarDateLabel } from '../../lib/dateFormatting';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -69,6 +74,14 @@ export function formatTastingSessionCount(value: number, singular: string, plura
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
+function formatCompletedTastingSessionListSummary(session: TastingSessionListSummary): string {
+  return [
+    formatTastingSessionCount(session.approvedRestaurantCount, 'restaurant', 'restaurants'),
+    formatTastingSessionCount(session.approvedItemCount, 'item', 'items'),
+    formatTastingSessionCount(session.joinedCount, 'taster', 'tasters'),
+  ].join(', ');
+}
+
 export function formatCompletedTastingSessionSummary(session: TastingSessionRecord): string {
   return [
     formatTastingSessionCount(getApprovedTastingRestaurantCount(session), 'restaurant', 'restaurants'),
@@ -77,12 +90,18 @@ export function formatCompletedTastingSessionSummary(session: TastingSessionReco
   ].join(', ');
 }
 
-export function formatCompletedTastingSessionSubtitle(session: TastingSessionRecord): string {
+export function formatCompletedTastingSessionSubtitle(
+  session: TastingSessionRecord | TastingSessionListSummary,
+): string {
   const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
     fallback: 'Unknown date',
     locale: 'en-US',
   });
-  return `${sessionDate} - ${formatCompletedTastingSessionSummary(session)}`;
+  const summary =
+    'approvedRestaurantCount' in session
+      ? formatCompletedTastingSessionListSummary(session)
+      : formatCompletedTastingSessionSummary(session);
+  return `${sessionDate} - ${summary}`;
 }
 
 export function resolveTastingSessionStatusTone(status: TastingSessionStatus): 'info' | 'warning' | 'success' {
@@ -99,7 +118,10 @@ export function resolveTastingSessionStatusTone(status: TastingSessionStatus): '
   }
 }
 
-export function navigateToTastingSession(navigation: TastingNavigation, session: TastingSessionRecord) {
+export function navigateToTastingSession(
+  navigation: TastingNavigation,
+  session: Pick<TastingSessionRecord, 'id' | 'status'>,
+) {
   if (session.status === 'lobby' || session.status === 'adding_items') {
     navigation.navigate('TastingSessionLobby', { sessionId: session.id });
     return;

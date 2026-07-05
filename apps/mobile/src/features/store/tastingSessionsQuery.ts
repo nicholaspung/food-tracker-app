@@ -1,9 +1,15 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { TastingSessionRecord } from '../models';
+import type { TastingSessionListFilter } from './tastingSessionsApiStore';
+
+const TASTING_SESSION_LIST_FILTERS: readonly TastingSessionListFilter[] = ['active', 'completed'];
 
 export const tastingSessionsQueryKeys = {
   root: ['feature', 'tasting-sessions'] as const,
+  summariesRoot: ['feature', 'tasting-sessions', 'summaries'] as const,
+  summaries: (filter: TastingSessionListFilter) =>
+    ['feature', 'tasting-sessions', 'summaries', filter] as const,
   detail: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim()] as const,
   friends: (sessionId: string) => ['feature', 'tasting-sessions', sessionId.trim(), 'friends'] as const,
   resultPhotos: (sessionId: string, generatedFoodItemIds: readonly string[]) =>
@@ -29,10 +35,17 @@ function normalizeTastingSessionResultPhotoIds(
 }
 
 export function isTastingSessionsListQueryKey(queryKey: QueryKey): boolean {
+  return isPaginatedTastingSessionSummariesQueryKey(queryKey);
+}
+
+function isPaginatedTastingSessionSummariesQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    queryKey.length === tastingSessionsQueryKeys.root.length &&
-    tastingSessionsQueryKeys.root.every((segment, index) => queryKey[index] === segment)
+    queryKey.length === 4 &&
+    queryKey[0] === tastingSessionsQueryKeys.root[0] &&
+    queryKey[1] === tastingSessionsQueryKeys.root[1] &&
+    queryKey[2] === 'summaries' &&
+    TASTING_SESSION_LIST_FILTERS.includes(queryKey[3] as TastingSessionListFilter)
   );
 }
 

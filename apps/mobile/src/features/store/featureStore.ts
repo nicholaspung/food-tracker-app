@@ -627,7 +627,7 @@ export {
 export { getProfile, updateProfile } from './profileApiStore';
 export {
   getTastingSessionById,
-  listTastingSessions,
+  listTastingSessionSummariesPage,
 } from './tastingSessionsApiStore';
 export {
   deleteAccount,
