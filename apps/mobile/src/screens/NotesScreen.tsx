@@ -52,6 +52,7 @@ type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
 type NotesInfiniteData = InfiniteData<NoteOverviewPage, unknown>;
 
 const NOTE_PENDING_OPERATION_NAMES = ['note.create'] as const;
+const NOTE_BROWSE_PROJECTION_TARGETS = ['notes'] as const;
 
 function getNotesFromData(data: NotesInfiniteData | undefined): NoteOverviewItemRecord[] {
   return data?.pages.flatMap((page) => page.items) ?? [];
@@ -521,6 +522,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     getTotalItemsFromData: useCallback(() => notes.length, [notes.length]),
     loadMoreEventPrefix: 'NOTES_LOAD_MORE',
     pendingQueuedWriteOperationNames: NOTE_PENDING_OPERATION_NAMES,
+    queuedWriteBrowseProjectionTargets: NOTE_BROWSE_PROJECTION_TARGETS,
     query: browseQuery,
     refreshEventPrefix: 'NOTES_REFRESH',
     resultCount: notes.length,

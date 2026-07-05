@@ -2,11 +2,16 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
+import { useQueuedFeatureWriteBrowseProjection } from '../features/store/queuedFeatureWriteBrowseProjection';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { trackObservabilityEvent } from '../observability';
 
 jest.mock('../features/store/useQueuedFeatureWrites', () => ({
   useQueuedFeatureWrites: jest.fn(),
+}));
+
+jest.mock('../features/store/queuedFeatureWriteBrowseProjection', () => ({
+  useQueuedFeatureWriteBrowseProjection: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
@@ -16,6 +21,10 @@ jest.mock('../observability', () => ({
 const mockedUseQueuedFeatureWrites = useQueuedFeatureWrites as jest.MockedFunction<
   typeof useQueuedFeatureWrites
 >;
+const mockedUseQueuedFeatureWriteBrowseProjection =
+  useQueuedFeatureWriteBrowseProjection as jest.MockedFunction<
+    typeof useQueuedFeatureWriteBrowseProjection
+  >;
 
 type HookState = ReturnType<typeof useFeatureBrowse<string[], string, 'note.create'>>;
 
@@ -29,12 +38,14 @@ describe('useFeatureBrowse', () => {
     isFetching = false,
     isLoading = false,
     isSuccess = true,
+    projectQueuedWrites = false,
   }: {
     data?: string[];
     isError?: boolean;
     isFetching?: boolean;
     isLoading?: boolean;
     isSuccess?: boolean;
+    projectQueuedWrites?: boolean;
   }) {
     latestHook = useFeatureBrowse<string[], string, 'note.create'>({
       analyticsSource: 'TestScreen',
@@ -45,6 +56,7 @@ describe('useFeatureBrowse', () => {
       }),
       getItemsFromData: (queryData) => queryData ?? [],
       pendingQueuedWriteOperationNames: ['note.create'],
+      queuedWriteBrowseProjectionTargets: projectQueuedWrites ? ['notes'] : undefined,
       query: {
         data,
         isError,
@@ -104,6 +116,7 @@ describe('useFeatureBrowse', () => {
     latestHook = null;
     refetch.mockReset();
     (trackObservabilityEvent as jest.Mock).mockReset();
+    mockedUseQueuedFeatureWriteBrowseProjection.mockReset();
     mockedUseQueuedFeatureWrites.mockReturnValue({
       queuedWrites: [],
       refreshQueuedWrites: jest.fn().mockResolvedValue(undefined),
@@ -180,6 +193,11 @@ describe('useFeatureBrowse', () => {
     });
 
     expect(mockedUseQueuedFeatureWrites).toHaveBeenCalledWith([], 100, { enabled: false });
+    expect(mockedUseQueuedFeatureWriteBrowseProjection).toHaveBeenCalledWith(
+      [],
+      [],
+      { enabled: false },
+    );
     expect(latestHook?.pendingRows).toEqual([]);
   });
 
@@ -233,5 +251,33 @@ describe('useFeatureBrowse', () => {
         title: 'Queued note',
       },
     ]);
+  });
+
+  it('opts into queued write browse projection only when targets are provided', async () => {
+    const queuedWrites = [
+      {
+        id: 'queued_1',
+        operationName: 'note.create',
+        payload: { content: 'Saved offline' },
+        status: 'pending',
+        createdAt: 123,
+        idempotencyKey: 'idem_1',
+        lastError: null,
+      },
+    ] as ReturnType<typeof useQueuedFeatureWrites<'note.create'>>['queuedWrites'];
+    mockedUseQueuedFeatureWrites.mockReturnValue({
+      queuedWrites,
+      refreshQueuedWrites: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await act(async () => {
+      create(React.createElement(Harness, { data: ['one'], projectQueuedWrites: true }));
+    });
+
+    expect(mockedUseQueuedFeatureWriteBrowseProjection).toHaveBeenCalledWith(
+      queuedWrites,
+      ['notes'],
+      { enabled: true },
+    );
   });
 });

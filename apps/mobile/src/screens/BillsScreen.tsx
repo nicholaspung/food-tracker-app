@@ -32,6 +32,7 @@ import { Card, Text } from '../ui';
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
 
 const BILL_PENDING_OPERATION_NAMES = ['bill.create'] as const;
+const BILL_BROWSE_PROJECTION_TARGETS = ['bills'] as const;
 
 function formatBillListCreatedDate(createdAt: string): string {
   const dateLabel = formatDisplayDate(createdAt, {
@@ -183,6 +184,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     ),
     loadMoreEventPrefix: 'BILLS_LOAD_MORE',
     pendingQueuedWriteOperationNames: BILL_PENDING_OPERATION_NAMES,
+    queuedWriteBrowseProjectionTargets: BILL_BROWSE_PROJECTION_TARGETS,
     query: billsQuery,
     refreshEventPrefix: 'BILLS_REFRESH',
     resultCount: visibleBills.length,

@@ -6,6 +6,10 @@ import { trackObservabilityEvent } from '../../observability';
 import { resolveFeatureBrowseState } from './featureBrowseState';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import type { QueuedFeatureWrite } from './queuedFeatureWrites';
+import {
+  useQueuedFeatureWriteBrowseProjection,
+  type QueuedFeatureWriteBrowseProjectionTarget,
+} from './queuedFeatureWriteBrowseProjection';
 import { useQueuedFeatureWrites } from './useQueuedFeatureWrites';
 
 type BrowseAnalyticsPayload = Record<string, string | number | boolean | null>;
@@ -51,6 +55,7 @@ export interface UseFeatureBrowseOptions<
   getTotalItemsFromData?: (data: TData | undefined, items: readonly TItem[]) => number;
   loadMoreEventPrefix?: string;
   pendingQueuedWriteOperationNames?: readonly TOperationName[];
+  queuedWriteBrowseProjectionTargets?: readonly QueuedFeatureWriteBrowseProjectionTarget[];
   query: BrowseQueryResult<TData>;
   refreshEventPrefix: string;
   resultCount?: number;
@@ -79,6 +84,7 @@ export function useFeatureBrowse<
   getTotalItemsFromData,
   loadMoreEventPrefix,
   pendingQueuedWriteOperationNames,
+  queuedWriteBrowseProjectionTargets,
   query,
   refreshEventPrefix,
   resultCount,
@@ -106,6 +112,11 @@ export function useFeatureBrowse<
     pendingQueuedWriteOperationNames ?? (EMPTY_OPERATION_NAMES as readonly TOperationName[]),
     100,
     { enabled: shouldHydrateQueuedWrites },
+  );
+  useQueuedFeatureWriteBrowseProjection(
+    queuedWrites,
+    queuedWriteBrowseProjectionTargets ?? [],
+    { enabled: shouldHydrateQueuedWrites && Boolean(queuedWriteBrowseProjectionTargets?.length) },
   );
   const pendingRows = useMemo(() => {
     if (!toPendingRow) {

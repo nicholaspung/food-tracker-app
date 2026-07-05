@@ -8,7 +8,7 @@ export * from './homeFeedQuery';
 export * from './homeFeedMapQuery';
 export * from './homeFeedPagination';
 export * from './homeFeedPreferences';
-export * from './applyQueuedFeatureWritePatch';
+export * from './queuedFeatureWriteBrowseProjection';
 export * from './aiImageObservability';
 export * from './menuParsingGateway';
 export * from './menuItemsQuery';

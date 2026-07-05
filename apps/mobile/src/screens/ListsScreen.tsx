@@ -189,6 +189,7 @@ const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
 ];
 const LIST_SEARCH_DEBOUNCE_MS = 300;
 const LIST_PENDING_OPERATION_NAMES = ['list.create'] as const;
+const LIST_BROWSE_PROJECTION_TARGETS = ['restaurant-lists'] as const;
 
 function getListCoverImageUrl(list: RestaurantListRecord): string | null {
   if (!list.coverImage) {
@@ -350,6 +351,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     getTotalItemsFromData: getRestaurantListsTotalFromInfiniteData,
     loadMoreEventPrefix: 'LISTS_LOAD_MORE',
     pendingQueuedWriteOperationNames: LIST_PENDING_OPERATION_NAMES,
+    queuedWriteBrowseProjectionTargets: LIST_BROWSE_PROJECTION_TARGETS,
     query: myListsQuery,
     refreshEventPrefix: 'LISTS_REFRESH',
     toPendingRow: useCallback((write: QueuedFeatureWrite<'list.create'>) => {

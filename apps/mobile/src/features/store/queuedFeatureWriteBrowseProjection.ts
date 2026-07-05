@@ -1,4 +1,5 @@
-import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueryClient, type InfiniteData, type QueryClient, type QueryKey } from '@tanstack/react-query';
 
 import type {
   BillListSummary,
@@ -20,6 +21,12 @@ type AnyRecord = { id: string } & Record<string, unknown>;
 type AnyPaginatedData = InfiniteData<PaginatedResult<AnyRecord>, unknown>;
 
 const QUEUED_RECORD_PREFIX = 'queued:';
+
+export type QueuedFeatureWriteBrowseProjectionTarget =
+  | 'bills'
+  | 'home-feed'
+  | 'notes'
+  | 'restaurant-lists';
 
 function createQueuedId(write: QueuedFeatureWrite): string {
   return `${QUEUED_RECORD_PREFIX}${write.operationName}:${write.idempotencyKey}`;
@@ -267,10 +274,68 @@ function createPendingFoodProduct(write: QueuedFeatureWrite<'food-product.create
   };
 }
 
-function patchBillsList(queryClient: QueryClient, queuedIds: Set<string>, queuedWrites: readonly QueuedFeatureWrite[]): void {
-  const pendingBills = queuedWrites
-    .filter((write): write is QueuedFeatureWrite<'bill.create'> => write.operationName === 'bill.create')
-    .map(createPendingBillSummary);
+function projectQueuedNotes(
+  queryClient: QueryClient,
+  queuedWrites: readonly QueuedFeatureWrite[],
+): void {
+  const noteWrites = queuedWrites.filter(
+    (write): write is QueuedFeatureWrite<'note.create'> => write.operationName === 'note.create',
+  );
+  const pendingNotes = noteWrites.map(createPendingNote);
+  const queuedIds = getQueuedIdSet(noteWrites);
+
+  patchPaginatedQueries(
+    queryClient,
+    notesQueryKeys.root,
+    queuedIds,
+    pendingNotes as unknown as AnyRecord[],
+    (queryKey, item) => {
+      if (!Array.isArray(queryKey) || queryKey[3] === 'used') {
+        return false;
+      }
+      return matchesTextSearch(getNotesSearchQueryFromQueryKey(queryKey), [
+        item.title as string,
+        item.content as string,
+        item.locationText as string | undefined,
+      ]);
+    },
+    isPaginatedNotesQueryKey,
+  );
+}
+
+function projectQueuedRestaurantLists(
+  queryClient: QueryClient,
+  queuedWrites: readonly QueuedFeatureWrite[],
+): void {
+  const listWrites = queuedWrites.filter(
+    (write): write is QueuedFeatureWrite<'list.create'> => write.operationName === 'list.create',
+  );
+  const pendingLists = listWrites.map(createPendingRestaurantList);
+  const queuedIds = getQueuedIdSet(listWrites);
+
+  patchPaginatedQueries(
+    queryClient,
+    restaurantListQueryKeys.scope('my'),
+    queuedIds,
+    pendingLists as unknown as AnyRecord[],
+    (queryKey, item) =>
+      matchesTextSearch(getSearchQueryFromTrailingQueryKeySegment(queryKey), [
+        item.name as string,
+        item.description as string | undefined,
+      ]),
+    isRestaurantListPaginatedQueryKey,
+  );
+}
+
+function projectQueuedBills(
+  queryClient: QueryClient,
+  queuedWrites: readonly QueuedFeatureWrite[],
+): void {
+  const billWrites = queuedWrites.filter(
+    (write): write is QueuedFeatureWrite<'bill.create'> => write.operationName === 'bill.create',
+  );
+  const pendingBills = billWrites.map(createPendingBillSummary);
+  const queuedIds = getQueuedIdSet(billWrites);
 
   patchPaginatedQueries(
     queryClient,
@@ -282,13 +347,19 @@ function patchBillsList(queryClient: QueryClient, queuedIds: Set<string>, queued
   );
 }
 
-function patchHomeFeed(queryClient: QueryClient, queuedIds: Set<string>, queuedWrites: readonly QueuedFeatureWrite[]): void {
-  const pendingVisits = queuedWrites
-    .filter((write): write is QueuedFeatureWrite<'visit.create'> => write.operationName === 'visit.create')
-    .map(createPendingVisit);
-  const pendingFoodProducts = queuedWrites
-    .filter((write): write is QueuedFeatureWrite<'food-product.create'> => write.operationName === 'food-product.create')
-    .map(createPendingFoodProduct);
+function projectQueuedHomeFeed(
+  queryClient: QueryClient,
+  queuedWrites: readonly QueuedFeatureWrite[],
+): void {
+  const visitWrites = queuedWrites.filter(
+    (write): write is QueuedFeatureWrite<'visit.create'> => write.operationName === 'visit.create',
+  );
+  const foodProductWrites = queuedWrites.filter(
+    (write): write is QueuedFeatureWrite<'food-product.create'> =>
+      write.operationName === 'food-product.create',
+  );
+  const pendingVisits = visitWrites.map(createPendingVisit);
+  const pendingFoodProducts = foodProductWrites.map(createPendingFoodProduct);
   const pendingItems = [
     ...pendingVisits.map((visit) => ({
       id: visit.id,
@@ -303,6 +374,7 @@ function patchHomeFeed(queryClient: QueryClient, queuedIds: Set<string>, queuedW
       foodProduct,
     })),
   ] as unknown as AnyRecord[];
+  const queuedIds = getQueuedIdSet([...visitWrites, ...foodProductWrites]);
 
   const queries = queryClient.getQueriesData<InfiniteData<{ items: AnyRecord[] }, unknown>>({
     queryKey: homeFeedQueryKeys.root,
@@ -369,47 +441,41 @@ function patchHomeFeed(queryClient: QueryClient, queuedIds: Set<string>, queuedW
   }
 }
 
-export function applyQueuedFeatureWritePatch(
+export function applyQueuedFeatureWriteBrowseProjection(
   queryClient: QueryClient,
   queuedWrites: readonly QueuedFeatureWrite[],
+  targets: readonly QueuedFeatureWriteBrowseProjectionTarget[],
 ): void {
-  const queuedIds = getQueuedIdSet(queuedWrites);
-  const pendingNotes = queuedWrites
-    .filter((write): write is QueuedFeatureWrite<'note.create'> => write.operationName === 'note.create')
-    .map(createPendingNote);
-  const pendingLists = queuedWrites
-    .filter((write): write is QueuedFeatureWrite<'list.create'> => write.operationName === 'list.create')
-    .map(createPendingRestaurantList);
+  const targetSet = new Set(targets);
 
-  patchPaginatedQueries(
-    queryClient,
-    notesQueryKeys.root,
-    queuedIds,
-    pendingNotes as unknown as AnyRecord[],
-    (queryKey, item) => {
-      if (!Array.isArray(queryKey) || queryKey[3] === 'used') {
-        return false;
-      }
-      return matchesTextSearch(getNotesSearchQueryFromQueryKey(queryKey), [
-        item.title as string,
-        item.content as string,
-        item.locationText as string | undefined,
-      ]);
-    },
-    isPaginatedNotesQueryKey,
-  );
-  patchPaginatedQueries(
-    queryClient,
-    restaurantListQueryKeys.scope('my'),
-    queuedIds,
-    pendingLists as unknown as AnyRecord[],
-    (queryKey, item) =>
-      matchesTextSearch(getSearchQueryFromTrailingQueryKeySegment(queryKey), [
-        item.name as string,
-        item.description as string | undefined,
-      ]),
-    isRestaurantListPaginatedQueryKey,
-  );
-  patchBillsList(queryClient, queuedIds, queuedWrites);
-  patchHomeFeed(queryClient, queuedIds, queuedWrites);
+  if (targetSet.has('notes')) {
+    projectQueuedNotes(queryClient, queuedWrites);
+  }
+  if (targetSet.has('restaurant-lists')) {
+    projectQueuedRestaurantLists(queryClient, queuedWrites);
+  }
+  if (targetSet.has('bills')) {
+    projectQueuedBills(queryClient, queuedWrites);
+  }
+  if (targetSet.has('home-feed')) {
+    projectQueuedHomeFeed(queryClient, queuedWrites);
+  }
+}
+
+export function useQueuedFeatureWriteBrowseProjection(
+  queuedWrites: readonly QueuedFeatureWrite[],
+  targets: readonly QueuedFeatureWriteBrowseProjectionTarget[],
+  options: { enabled?: boolean } = {},
+): void {
+  const enabled = options.enabled ?? true;
+  const queryClient = useQueryClient();
+  const targetsKey = targets.join('|');
+
+  useEffect(() => {
+    if (!enabled || targets.length === 0) {
+      return;
+    }
+
+    applyQueuedFeatureWriteBrowseProjection(queryClient, queuedWrites, targets);
+  }, [enabled, queryClient, queuedWrites, targets, targetsKey]);
 }

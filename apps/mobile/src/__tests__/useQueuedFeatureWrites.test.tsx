@@ -1,37 +1,51 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
-import { useQueryClient } from '@tanstack/react-query';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 import { useSync } from '../providers/SyncProvider';
-import { applyQueuedFeatureWritePatch } from '../features/store/applyQueuedFeatureWritePatch';
+import { parseQueuedFeatureWrites } from '../features/store/queuedFeatureWrites';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
-
-jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: jest.fn(),
-}));
 
 jest.mock('../providers/SyncProvider', () => ({
   useSync: jest.fn(),
 }));
 
-jest.mock('../features/store/applyQueuedFeatureWritePatch', () => ({
-  applyQueuedFeatureWritePatch: jest.fn(),
-}));
-
-const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseSync = useSync as jest.MockedFunction<typeof useSync>;
-const mockedApplyQueuedFeatureWritePatch =
-  applyQueuedFeatureWritePatch as jest.MockedFunction<typeof applyQueuedFeatureWritePatch>;
 
 describe('useQueuedFeatureWrites', () => {
   const getQueuedMutations = jest.fn();
-  const queryClient = {};
+  const queuedNoteMutation = {
+    id: 'queue-1',
+    url: 'local://feature/note.create',
+    method: 'POST',
+    headers: {
+      'X-Mobile-Write-Operation': 'note.create',
+    },
+    body: JSON.stringify({
+      content: 'Queued note',
+      title: 'Draft',
+    }),
+    status: 'pending',
+    createdAt: Date.parse('2026-04-29T12:00:00.000Z'),
+    idempotencyKey: 'idem-1',
+    attemptCount: 0,
+    lastError: null,
+    lastAttemptAt: null,
+    maxAttempts: 5,
+    nextRetryAt: 0,
+    updatedAt: Date.parse('2026-04-29T12:00:00.000Z'),
+  } as const;
   let latestHook: ReturnType<typeof useQueuedFeatureWrites<'note.create'>> | null = null;
-  let latestRefreshQueuedWrites: (() => Promise<void>) | null = null;
+  let renderer: ReactTestRenderer | null = null;
 
   function Harness({ enabled }: { enabled?: boolean }) {
     latestHook = useQueuedFeatureWrites<'note.create'>(['note.create'], 100, { enabled });
-    latestRefreshQueuedWrites = latestHook.refreshQueuedWrites;
+    return React.createElement('HookState', {
+      queuedWrites: latestHook.queuedWrites.length,
+    });
+  }
+
+  function EnabledHarness() {
+    latestHook = useQueuedFeatureWrites<'note.create'>(['note.create']);
     return React.createElement('HookState', {
       queuedWrites: latestHook.queuedWrites.length,
     });
@@ -39,10 +53,8 @@ describe('useQueuedFeatureWrites', () => {
 
   beforeEach(() => {
     latestHook = null;
-    latestRefreshQueuedWrites = null;
+    renderer = null;
     getQueuedMutations.mockReset();
-    mockedApplyQueuedFeatureWritePatch.mockReset();
-    mockedUseQueryClient.mockReturnValue(queryClient as ReturnType<typeof useQueryClient>);
     mockedUseSync.mockReturnValue({
       failedCount: 0,
       getQueuedMutations,
@@ -51,21 +63,37 @@ describe('useQueuedFeatureWrites', () => {
     } as unknown as ReturnType<typeof useSync>);
   });
 
-  it('does not read queued mutations or patch query caches when disabled', async () => {
+  afterEach(async () => {
     await act(async () => {
-      create(React.createElement(Harness, { enabled: false }));
+      renderer?.unmount();
+    });
+  });
+
+  it('does not read queued mutations when disabled', async () => {
+    await act(async () => {
+      renderer = create(React.createElement(Harness, { enabled: false }));
     });
 
     await act(async () => {
-      if (!latestRefreshQueuedWrites) {
+      if (!latestHook) {
         throw new Error('Expected refreshQueuedWrites to be available');
       }
 
-      await latestRefreshQueuedWrites();
+      await latestHook.refreshQueuedWrites();
     });
 
     expect(latestHook?.queuedWrites).toEqual([]);
     expect(getQueuedMutations).not.toHaveBeenCalled();
-    expect(mockedApplyQueuedFeatureWritePatch).not.toHaveBeenCalled();
+  });
+
+  it('renders enabled without requiring a query client or projecting browse caches', async () => {
+    expect(parseQueuedFeatureWrites([queuedNoteMutation])).toHaveLength(1);
+    getQueuedMutations.mockResolvedValue([queuedNoteMutation]);
+
+    await act(async () => {
+      renderer = create(React.createElement(EnabledHarness));
+    });
+
+    expect(latestHook?.queuedWrites).toEqual([]);
   });
 });

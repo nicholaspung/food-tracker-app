@@ -49,6 +49,7 @@ import {
 } from '../features/store/restaurantListsStore';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import { useQueuedFeatureWriteBrowseProjection } from '../features/store/queuedFeatureWriteBrowseProjection';
 import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
 import {
   clearPendingFriendSuggestion,
@@ -95,6 +96,9 @@ type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 type HomeFeedRecord = HomeFeedPageResult['items'][number];
 type HomeFeedInfiniteData = InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>;
+
+const HOME_FEED_PENDING_OPERATION_NAMES = ['visit.create', 'food-product.create'] as const;
+const HOME_FEED_BROWSE_PROJECTION_TARGETS = ['home-feed'] as const;
 
 const useStyles = createThemedStyles((theme) => {
   const feedGap = theme.spacing.sm;
@@ -330,10 +334,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const queryClient = useQueryClient();
   const friendWrites = useFriendWrites();
   const restaurantListWrites = useRestaurantListWrites();
-  const { queuedWrites: pendingHomeCreateWrites } = useQueuedFeatureWrites([
-    'visit.create',
-    'food-product.create',
-  ]);
+  const { queuedWrites: pendingHomeCreateWrites } = useQueuedFeatureWrites(HOME_FEED_PENDING_OPERATION_NAMES);
+  useQueuedFeatureWriteBrowseProjection(
+    pendingHomeCreateWrites,
+    HOME_FEED_BROWSE_PROJECTION_TARGETS,
+  );
   const { isOnline } = useConnectivity();
   const initialHomeFeedDefaults = useMemo(() => mapHomeFeedDefaultsFromRecord(user), [user]);
   const [feedMode, setFeedMode] = useState<FeedMode>(initialHomeFeedDefaults.homeFeedMode);

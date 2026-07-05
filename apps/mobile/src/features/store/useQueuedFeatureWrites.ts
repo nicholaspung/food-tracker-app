@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { logger } from '../../lib/logger';
 import { useSync } from '../../providers/SyncProvider';
-import { applyQueuedFeatureWritePatch } from './applyQueuedFeatureWritePatch';
 import {
   filterQueuedFeatureWrites,
   parseQueuedFeatureWrites,
@@ -21,7 +19,6 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
 } {
   const enabled = options.enabled ?? true;
   const { failedCount, getQueuedMutations, isSyncing, queueDepth } = useSync();
-  const queryClient = useQueryClient();
   const [allQueuedWrites, setAllQueuedWrites] = useState<QueuedFeatureWrite[]>([]);
 
   const refreshQueuedWrites = useCallback(async () => {
@@ -32,13 +29,12 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
     try {
       const queuedMutations = await getQueuedMutations(limit);
       const parsedQueuedWrites = parseQueuedFeatureWrites(queuedMutations);
-      applyQueuedFeatureWritePatch(queryClient, parsedQueuedWrites);
       setAllQueuedWrites(parsedQueuedWrites);
     } catch (error) {
       logger.warn('[useQueuedFeatureWrites] Failed to load queued feature writes:', error);
       setAllQueuedWrites([]);
     }
-  }, [enabled, getQueuedMutations, limit, queryClient]);
+  }, [enabled, getQueuedMutations, limit]);
 
   useEffect(() => {
     if (!enabled) {
