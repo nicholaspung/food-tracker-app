@@ -6,7 +6,7 @@ import type {
   FriendRecord,
 } from '../models';
 import type { ReceiptScanDraftResult } from '../store/receiptParsingGateway';
-import type { CreateBillInput, UpdateBillInput } from '../store/featureStore';
+import type { CreateBillInput, UpdateBillInput } from '../store/billTypes';
 import { formatCurrency } from './billCalculations';
 
 export type CreateBillSplitMode = 'equal' | 'custom' | 'manual';

@@ -7,7 +7,7 @@ import {
   createVisit,
   deleteVisit,
   updateVisit,
-} from './featureStore';
+} from './visitsStore';
 
 export const VISIT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [

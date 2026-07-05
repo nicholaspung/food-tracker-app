@@ -14,9 +14,9 @@ import type {
 } from './onboardingStore';
 import type { BillParticipantRecord, BillRecord } from '../models';
 import type { TastingSessionStatus } from '../models';
+import type { CreateBillInput, UpdateBillInput } from './billTypes';
 import {
   type AddRestaurantVisitRatingsToListInput,
-  type CreateBillInput,
   type CreateFeedbackInput,
   type CreateNoteInput,
   type CreateFoodProductInput,
@@ -34,7 +34,6 @@ import {
   type UpdateFoodProductInput,
   type UpdateRestaurantListInput,
   type UpdateVisitInput,
-  type UpdateBillInput,
   type UpdateNoteInput,
 } from './featureStore';
 import type {

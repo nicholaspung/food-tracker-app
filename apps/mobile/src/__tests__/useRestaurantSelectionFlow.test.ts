@@ -9,7 +9,7 @@ import {
   listMenuItemsForRestaurant,
   listRestaurantSuggestions,
   searchRestaurantsPage,
-} from '../features/store/featureStore';
+} from '../features/store/restaurantsStore';
 import {
   useRestaurantSelectionFlow,
   useSavedRestaurantSuggestions,
@@ -26,7 +26,7 @@ jest.mock('../features', () => ({
   parseLimitExceededError: jest.fn(),
 }));
 
-jest.mock('../features/store/featureStore', () => ({
+jest.mock('../features/store/restaurantsStore', () => ({
   listMenuItemsForRestaurant: jest.fn(),
   listRestaurantSuggestions: jest.fn(),
   searchRestaurantsPage: jest.fn(),

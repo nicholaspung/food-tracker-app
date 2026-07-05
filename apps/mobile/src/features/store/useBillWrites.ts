@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 
 import type { BillParticipantRecord, BillRecord } from '../models';
-import type { CreateBillInput, UpdateBillInput } from './featureStore';
+import type { CreateBillInput, UpdateBillInput } from './billTypes';
 import {
   createBill,
   deleteBill,

@@ -1,6 +1,6 @@
 import { pb } from '../../lib/pocketbase';
 import type { TastingSessionRecord } from '../models';
-import type { BillListSummary } from './featureStore';
+import type { BillListSummary } from './billTypes';
 import { sendApiRequest } from './pocketbaseGateway';
 
 export type NotificationSignalIndicator =

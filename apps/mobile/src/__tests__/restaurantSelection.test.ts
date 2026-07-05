@@ -17,10 +17,10 @@ import {
 import {
   listMenuItemsForRestaurant,
   listRestaurantSuggestions,
-} from '../features/store/featureStore';
+} from '../features/store/restaurantsStore';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 
-jest.mock('../features/store/featureStore', () => ({
+jest.mock('../features/store/restaurantsStore', () => ({
   listMenuItemsForRestaurant: jest.fn(),
   listRestaurantSuggestions: jest.fn(),
   searchRestaurantsPage: jest.fn(),

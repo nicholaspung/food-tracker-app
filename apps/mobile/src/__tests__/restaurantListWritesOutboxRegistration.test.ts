@@ -1,10 +1,10 @@
 import {
   createDefaultRestaurantList,
   saveRestaurantFoodItemToList,
-} from '../features/store/featureStore';
+} from '../features/store/restaurantListsStore';
 import { RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION } from '../features/store/restaurantListWritesOutboxRegistration';
 
-jest.mock('../features/store/featureStore', () => ({
+jest.mock('../features/store/restaurantListsStore', () => ({
   addRestaurantVisitRatingsToList: jest.fn(),
   createDefaultRestaurantList: jest.fn(),
   createRestaurantList: jest.fn(),

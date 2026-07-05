@@ -17,7 +17,7 @@ import {
   saveRestaurantFoodItemToList,
   saveRestaurantToDefaultList,
   updateRestaurantList,
-} from './featureStore';
+} from './restaurantListsStore';
 
 export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [

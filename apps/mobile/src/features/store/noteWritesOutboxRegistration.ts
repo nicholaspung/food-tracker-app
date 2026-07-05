@@ -7,7 +7,7 @@ import {
   deleteNote,
   markNoteUsed,
   updateNote,
-} from './featureStore';
+} from './notesStore';
 
 export const NOTE_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [

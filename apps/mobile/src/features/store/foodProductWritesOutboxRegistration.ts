@@ -6,7 +6,7 @@ import {
   createFoodProduct,
   deleteFoodProduct,
   updateFoodProduct,
-} from './featureStore';
+} from './foodProductsStore';
 
 export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [

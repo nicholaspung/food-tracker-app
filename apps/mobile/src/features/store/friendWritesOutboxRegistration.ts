@@ -10,7 +10,7 @@ import {
   inviteFriend,
   markFriendInviteAccepted,
   removeFriend,
-} from './featureStore';
+} from './friendsStore';
 
 export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [

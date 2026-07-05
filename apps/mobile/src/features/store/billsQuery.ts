@@ -1,7 +1,7 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { BillRecord } from '../models';
-import type { BillListPage, BillListSummary, ListBillSummariesPageInput } from './featureStore';
+import type { BillListPage, BillListSummary, ListBillSummariesPageInput } from './billTypes';
 
 type BillListFilter = NonNullable<ListBillSummariesPageInput['filter']>;
 

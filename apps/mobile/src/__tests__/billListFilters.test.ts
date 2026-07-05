@@ -2,7 +2,7 @@ import {
   filterBillSummaries,
   type BillListFilter,
 } from '../features/bills/billListFilters';
-import type { BillListSummary } from '../features/store/featureStore';
+import type { BillListSummary } from '../features/store/billTypes';
 
 function buildBillSummary(
   id: string,

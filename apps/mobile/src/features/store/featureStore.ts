@@ -1,7 +1,4 @@
 import type {
-  BillItemRecord,
-  BillParticipantRecord,
-  BillRecord,
   ContentReportReasonCode,
   FeedbackRecord,
   NoteRecord,
@@ -10,6 +7,17 @@ import type {
   RestaurantListRecord,
   VisitRecord,
 } from '../models';
+import type { PaginatedResult, PaginationInput } from './sharedTypes';
+
+export type {
+  BillListPage,
+  BillListPageSummary,
+  BillListSummary,
+  CreateBillInput,
+  ListBillSummariesPageInput,
+  UpdateBillInput,
+} from './billTypes';
+export type { PaginatedResult } from './sharedTypes';
 
 export interface CreateVisitInput {
   restaurantId?: string;
@@ -286,28 +294,6 @@ export interface FeedbackCountSummary {
   activeCount: number;
 }
 
-export interface BillListSummary {
-  id: string;
-  title: string;
-  status: BillRecord['status'];
-  participantCount: number;
-  pendingOtherParticipantCount: number;
-  youOwe: number;
-  youAreOwed: number;
-  isCreator: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface BillListPageSummary {
-  billCount: number;
-  totalAmount: number;
-}
-
-export interface BillListPage extends PaginatedResult<BillListSummary> {
-  summary: BillListPageSummary;
-}
-
 export interface RestaurantListDetailBookmarkState {
   savedListIdsByBookmarkLookupId: Record<string, string[]>;
 }
@@ -340,15 +326,6 @@ export interface RestaurantListCandidateRestaurantsResult extends PaginatedResul
   list: RestaurantListRecord | null;
 }
 
-export interface PaginatedResult<T> {
-  items: T[];
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-  hasNextPage: boolean;
-}
-
 export interface NoteOverviewPage {
   items: NoteOverviewItemRecord[];
   summary?: NoteCountSummary;
@@ -364,19 +341,9 @@ export interface NoteDetailRecord {
   photos: NotePhotoRecord[];
 }
 
-interface PaginationInput {
-  page?: number;
-  pageSize?: number;
-  signal?: AbortSignal;
-}
-
 export interface ListNotesPageInput extends PaginationInput {
   status?: 'all' | NoteRecord['status'];
   search?: string;
-}
-
-export interface ListBillSummariesPageInput extends PaginationInput {
-  filter?: 'you_owe' | 'you_are_owed' | 'settled';
 }
 
 export interface ListVisitsPageInput extends PaginationInput {
@@ -594,140 +561,3 @@ export interface SubmitTastingRatingsInput {
     }[];
   }[];
 }
-
-export interface CreateBillInput {
-  title: string;
-  restaurantName: string;
-  createdByUserId: string;
-  items: BillItemRecord[];
-  participants: BillParticipantRecord[];
-  totalAmount?: number;
-  tax: number;
-  tip: number;
-  fees: number;
-  extrasSplitMode: BillRecord['extrasSplitMode'];
-}
-
-export interface UpdateBillInput {
-  title?: string;
-  restaurantName?: string;
-  items?: BillItemRecord[];
-  participants?: BillParticipantRecord[];
-  totalAmount?: number;
-  tax?: number;
-  tip?: number;
-  fees?: number;
-  extrasSplitMode?: BillRecord['extrasSplitMode'];
-  status?: BillRecord['status'];
-}
-
-export {
-  createEntityId,
-} from './featureStoreRuntime';
-export { getProfile, updateProfile } from './profileApiStore';
-export {
-  getTastingSessionById,
-  listTastingSessionSummariesPage,
-} from './tastingSessionsApiStore';
-export {
-  deleteAccount,
-  generateInviteCodes,
-  listInviteCodes,
-  lockInviteCode,
-  reportContent,
-} from './accountStore';
-export {
-  MAIN_ONBOARDING_VERSION,
-  isAddOnboardingCardDismissed,
-  isMoreOnboardingCardDismissed,
-  type CompleteMainOnboardingInput,
-  type DismissAddOnboardingCardInput,
-  type DismissMoreOnboardingCardInput,
-} from './onboardingStore';
-export {
-  createFoodProduct,
-  deleteFoodProduct,
-  getFoodProductById,
-  listFoodProductCategorySuggestions,
-  listFoodProductPhotos,
-  updateFoodProduct,
-} from './foodProductsStore';
-export {
-  listMenuItemsForRestaurant,
-  listRestaurantSuggestions,
-  searchRestaurantsPage,
-  upsertRestaurantRecord,
-} from './restaurantsStore';
-// eslint-disable-next-line import/no-unresolved
-export {
-  createVisit,
-  convertVisitItemToFoodProduct,
-  deleteVisit,
-  getVisitById,
-  listVisitsPage,
-  listVisitItemPhotos,
-  updateVisit,
-} from './visitsStore';
-
-export {
-  addRestaurantVisitRatingsToList,
-  createDefaultRestaurantList,
-  createRestaurantList,
-  deleteRestaurantList,
-  disableRestaurantListShareLink,
-  getOrCreateRestaurantListShareLink,
-  getRestaurantListCandidateRestaurants,
-  getSharedRestaurantList,
-  listRestaurantListCandidateFoodItemPhotos,
-  getRestaurantListDetail,
-  getRestaurantListById,
-  listRestaurantListsPage,
-  moveRestaurantListRestaurant,
-  regenerateRestaurantListShareLink,
-  removeRestaurantFoodItemBookmarkFromList,
-  removeRestaurantListSourceRating,
-  removeRestaurantListUserRating,
-  saveRestaurantFoodItemToList,
-  saveRestaurantToDefaultList,
-  saveSharedRestaurantListRecommendation,
-  updateRestaurantList,
-} from './restaurantListsStore';
-
-export {
-  createNote,
-  deleteNote,
-  getNoteDetail,
-  listNotePhotosForNote,
-  listNotesOverviewPage,
-  markNoteUsed,
-  updateNote,
-} from './notesStore';
-
-export {
-  createFriendSuggestionAcceptance,
-  getFriendsCountSummary,
-  inviteFriend,
-  listFriendsPage,
-  markFriendInviteAccepted,
-  removeFriend,
-  subscribeToFriendshipChanges,
-} from './friendsStore';
-
-export {
-  createFeedback,
-  getFeedbackCountSummary,
-  getFeedbackThreadDetail,
-  listFeedbackMessagesPage,
-  listFeedbackPage,
-  markFeedbackAsRead,
-  sendFeedbackMessage,
-} from './feedbackStore';
-
-export type { FeedbackThreadDetailResult } from './feedbackStore';
-
-export {
-  createBill,
-  getBillById,
-  listBillSummariesPage,
-  updateBill,
-} from './billsStore';

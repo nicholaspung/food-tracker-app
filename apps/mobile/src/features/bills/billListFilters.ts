@@ -1,4 +1,4 @@
-import type { BillListSummary } from '../store/featureStore';
+import type { BillListSummary } from '../store/billTypes';
 
 export type BillListFilter = 'you_owe' | 'you_are_owed' | 'settled';
 

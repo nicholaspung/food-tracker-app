@@ -1,6 +1,6 @@
 import { trackObservabilityEvent } from '../../observability';
 import type { BillRecord } from '../models';
-import type { CreateBillInput, UpdateBillInput } from '../store/featureStore';
+import type { CreateBillInput, UpdateBillInput } from '../store/billTypes';
 import type { OfflineAwareFeatureWriteResult } from '../store/useOfflineAwareFeatureWrite';
 import {
   billDraftFacade,

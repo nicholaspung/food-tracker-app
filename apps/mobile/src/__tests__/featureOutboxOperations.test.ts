@@ -16,16 +16,26 @@ import {
   updateBill,
 } from '../features/store/billsStore';
 import {
-  convertVisitItemToFoodProduct,
   createFeedback,
-  createFriendSuggestionAcceptance,
+} from '../features/store/feedbackStore';
+import {
   createFoodProduct,
-  createRestaurantList,
-  createVisit,
+} from '../features/store/foodProductsStore';
+import {
+  createFriendSuggestionAcceptance,
   inviteFriend,
+} from '../features/store/friendsStore';
+import {
   markNoteUsed,
+} from '../features/store/notesStore';
+import {
+  createRestaurantList,
+} from '../features/store/restaurantListsStore';
+import {
+  convertVisitItemToFoodProduct,
+  createVisit,
   updateVisit,
-} from '../features/store/featureStore';
+} from '../features/store/visitsStore';
 import {
   createTastingSession,
   joinTastingSession,
@@ -38,36 +48,47 @@ const offlineFeedbackCreatePayload: CreateFeedbackInput = {
   description: 'Offline draft feedback with details',
 };
 
-jest.mock('../features/store/featureStore', () => ({
-  addRestaurantVisitRatingsToList: jest.fn(),
-  createBill: jest.fn(),
-  createDefaultRestaurantList: jest.fn(),
+jest.mock('../features/store/feedbackStore', () => ({
   createFeedback: jest.fn(),
-  createFriendSuggestionAcceptance: jest.fn(),
+  sendFeedbackMessage: jest.fn(),
+}));
+
+jest.mock('../features/store/foodProductsStore', () => ({
   createFoodProduct: jest.fn(),
-  convertVisitItemToFoodProduct: jest.fn(),
-  createNote: jest.fn(),
-  createRestaurantList: jest.fn(),
-  createVisit: jest.fn(),
-  deleteBill: jest.fn(),
   deleteFoodProduct: jest.fn(),
-  deleteNote: jest.fn(),
-  deleteRestaurantList: jest.fn(),
-  deleteVisit: jest.fn(),
+  updateFoodProduct: jest.fn(),
+}));
+
+jest.mock('../features/store/friendsStore', () => ({
+  createFriendSuggestionAcceptance: jest.fn(),
   inviteFriend: jest.fn(),
-  markBillParticipantPaid: jest.fn(),
   markFriendInviteAccepted: jest.fn(),
-  markNoteUsed: jest.fn(),
-  moveRestaurantListRestaurant: jest.fn(),
   removeFriend: jest.fn(),
+}));
+
+jest.mock('../features/store/notesStore', () => ({
+  createNote: jest.fn(),
+  deleteNote: jest.fn(),
+  markNoteUsed: jest.fn(),
+  updateNote: jest.fn(),
+}));
+
+jest.mock('../features/store/restaurantListsStore', () => ({
+  addRestaurantVisitRatingsToList: jest.fn(),
+  createDefaultRestaurantList: jest.fn(),
+  createRestaurantList: jest.fn(),
+  deleteRestaurantList: jest.fn(),
+  moveRestaurantListRestaurant: jest.fn(),
   removeRestaurantListSourceRating: jest.fn(),
   removeRestaurantListUserRating: jest.fn(),
   saveRestaurantFoodItemToList: jest.fn(),
-  sendFeedbackMessage: jest.fn(),
-  updateBill: jest.fn(),
-  updateFoodProduct: jest.fn(),
-  updateNote: jest.fn(),
   updateRestaurantList: jest.fn(),
+}));
+
+jest.mock('../features/store/visitsStore', () => ({
+  convertVisitItemToFoodProduct: jest.fn(),
+  createVisit: jest.fn(),
+  deleteVisit: jest.fn(),
   updateVisit: jest.fn(),
 }));
 

@@ -2,7 +2,7 @@ import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegi
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
-import { createFeedback, sendFeedbackMessage } from './featureStore';
+import { createFeedback, sendFeedbackMessage } from './feedbackStore';
 
 export const FEEDBACK_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: ['feedback.create', 'feedback.message.send'] as const,

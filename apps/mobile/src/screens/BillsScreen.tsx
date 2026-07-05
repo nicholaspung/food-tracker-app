@@ -17,7 +17,7 @@ import {
 import { listBillSummariesPage } from '../features';
 import { billsQueryKeys } from '../features/store/billsQuery';
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
-import type { BillListPage, BillListSummary } from '../features/store/featureStore';
+import type { BillListPage, BillListSummary } from '../features/store/billTypes';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { formatCurrency } from '../features/bills/billCalculations';
 import {

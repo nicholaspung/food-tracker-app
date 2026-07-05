@@ -4,12 +4,14 @@ import { useQueryClient, type InfiniteData, type QueryClient, type QueryKey } fr
 import type {
   BillListSummary,
   CreateBillInput,
+} from './billTypes';
+import type {
   CreateFoodProductInput,
   CreateNoteInput,
   CreateRestaurantListInput,
   CreateVisitInput,
-  PaginatedResult,
 } from './featureStore';
+import type { PaginatedResult } from './sharedTypes';
 import { billsQueryKeys, isPaginatedBillsQueryKey } from './billsQuery';
 import { homeFeedQueryKeys, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
 import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';

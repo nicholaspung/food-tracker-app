@@ -3,12 +3,14 @@ import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  createBill,
   createEntityId,
   getBillById,
   getTastingSessionById,
-  updateBill,
 } from '../features';
+import {
+  createBill,
+  updateBill,
+} from '../features/store/billsStore';
 import { useBillWrites } from '../features/store/useBillWrites';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -156,6 +158,11 @@ jest.mock('../features', () => ({
 
 jest.mock('../features/store/useBillWrites', () => ({
   useBillWrites: jest.fn(),
+}));
+
+jest.mock('../features/store/billsStore', () => ({
+  createBill: jest.fn(),
+  updateBill: jest.fn(),
 }));
 
 jest.mock('../hooks/useDebouncedValue', () => ({

@@ -2,11 +2,13 @@ import type { QueryClient, QueryFunctionContext } from '@tanstack/react-query';
 
 import type { RestaurantRecord } from '../models';
 import {
+  type MenuItemRecord,
+} from '../store/featureStore';
+import {
   listMenuItemsForRestaurant,
   listRestaurantSuggestions,
   searchRestaurantsPage,
-  type MenuItemRecord,
-} from '../store/featureStore';
+} from '../store/restaurantsStore';
 import { restaurantsQueryKeys } from '../store/restaurantsQuery';
 import {
   formatLimitExceededMessage,

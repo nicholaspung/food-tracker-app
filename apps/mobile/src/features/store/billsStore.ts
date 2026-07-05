@@ -6,7 +6,7 @@ import type {
   CreateBillInput,
   ListBillSummariesPageInput,
   UpdateBillInput,
-} from './featureStore';
+} from './billTypes';
 import {
   type FeatureWriteRequestOptions,
   isNotFoundError,
@@ -20,7 +20,7 @@ export type {
   CreateBillInput,
   ListBillSummariesPageInput,
   UpdateBillInput,
-} from './featureStore';
+} from './billTypes';
 
 interface ReadRequestOptions {
   signal?: AbortSignal;
