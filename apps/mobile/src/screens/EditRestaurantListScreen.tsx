@@ -5,11 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 
 import {
   EmptyState,
-  ErrorState,
   FeatureFormScreenScaffold,
+  FeatureFormReadStateScaffold,
   PageErrorToast,
   RestaurantListEditorFormFields,
-  Skeleton,
 } from '../components/shared';
 import {
   getRestaurantListById,
@@ -141,73 +140,76 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
 
   if (listQuery.isLoading) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBack}
-        primaryAction={{
-          label: 'Save List',
-          disabled: true,
-          onPress: () => {},
+      <FeatureFormReadStateScaffold
+        scaffold={{
+          onBackPress: handleBack,
+          primaryAction: {
+            label: 'Save List',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: handleBack,
+          },
+          title: 'Edit List',
         }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBack,
-        }}
-        title="Edit List"
-      >
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-      </FeatureFormScreenScaffold>
+        state="loading"
+      />
     );
   }
 
   if (listQuery.isError) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBack}
-        primaryAction={{
-          label: 'Save List',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBack,
-        }}
-        title="Edit List"
-      >
-        <ErrorState
-          description="Could not load list details."
-          onRetry={() => {
+      <FeatureFormReadStateScaffold
+        error={{
+          description: 'Could not load list details.',
+          onRetry: () => {
             void listQuery.refetch();
-          }}
-          title="List unavailable"
-        />
-      </FeatureFormScreenScaffold>
+          },
+          title: 'List unavailable',
+        }}
+        scaffold={{
+          onBackPress: handleBack,
+          primaryAction: {
+            label: 'Save List',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: handleBack,
+          },
+          title: 'Edit List',
+        }}
+        state="error"
+      />
     );
   }
 
   if (!listQuery.data) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBack}
-        primaryAction={{
-          label: 'Save List',
-          disabled: true,
-          onPress: () => {},
+      <FeatureFormReadStateScaffold
+        empty={{
+          actionLabel: 'Back to List',
+          onAction: handleBack,
+          title: 'List not found',
         }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBack,
+        scaffold={{
+          onBackPress: handleBack,
+          primaryAction: {
+            label: 'Save List',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: handleBack,
+          },
+          title: 'Edit List',
         }}
-        title="Edit List"
-      >
-        <EmptyState
-          actionLabel="Back to List"
-          onAction={handleBack}
-          title="List not found"
-        />
-      </FeatureFormScreenScaffold>
+        state="empty"
+      />
     );
   }
 

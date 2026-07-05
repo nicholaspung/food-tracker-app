@@ -7,15 +7,14 @@ import { Linking, Modal, Pressable, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
-  EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
+  FeatureFormReadStateScaffold,
   LightweightStatusCard,
   OFFLINE_USAGE_WARNING_MESSAGE,
   PhotoInputField,
   type PhotoInputFieldAttachment,
   PhotoViewerModal,
-  Skeleton,
 } from '../components/shared';
 import {
   formatLimitExceededMessage,
@@ -830,107 +829,111 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
   if (isEditing && noteDetailQuery.isLoading) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          closeEditor();
-        }}
-        primaryAction={{
-          label: 'Save Changes',
-          onPress: () => undefined,
-          disabled: true,
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
+      <FeatureFormReadStateScaffold
+        loading={{ skeletonHeights: [84, 180, 180] }}
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
             closeEditor();
           },
-          disabled: true,
+          primaryAction: {
+            label: 'Save Changes',
+            onPress: () => undefined,
+            disabled: true,
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              closeEditor();
+            },
+            disabled: true,
+          },
+          subtitle: 'Update your saved note details.',
+          title: 'Edit Note',
         }}
-        subtitle="Update your saved note details."
-        title="Edit Note"
-      >
-        <Skeleton height={84} />
-        <Skeleton height={180} />
-        <Skeleton height={180} />
-      </FeatureFormScreenScaffold>
+        state="loading"
+      />
     );
   }
 
   if (isEditing && noteDetailQuery.isError) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          closeEditor();
-        }}
-        primaryAction={{
-          label: 'Retry',
-          onPress: () => {
+      <FeatureFormReadStateScaffold
+        error={{
+          analyticsProps: buildEditorAnalyticsPayload(),
+          analyticsSource: 'NoteEditorScreen',
+          description: 'Could not load note.',
+          onRetry: () => {
             void noteDetailQuery.refetch();
           },
+          title: 'Note unavailable',
         }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
             closeEditor();
           },
-          variant: 'secondary',
+          primaryAction: {
+            label: 'Retry',
+            onPress: () => {
+              void noteDetailQuery.refetch();
+            },
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              closeEditor();
+            },
+            variant: 'secondary',
+          },
+          subtitle: 'Could not load this note.',
+          title: 'Edit Note',
         }}
-        subtitle="Could not load this note."
-        title="Edit Note"
-      >
-        <ErrorState
-          analyticsProps={buildEditorAnalyticsPayload()}
-          analyticsSource="NoteEditorScreen"
-          description="Could not load note."
-          onRetry={() => {
-            void noteDetailQuery.refetch();
-          }}
-          title="Note unavailable"
-        />
-      </FeatureFormScreenScaffold>
+        state="error"
+      />
     );
   }
 
   if (isEditing && !noteDetailQuery.data?.note) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          closeEditor();
-        }}
-        primaryAction={{
-          label: 'Back to Notes',
-          onPress: () => {
+      <FeatureFormReadStateScaffold
+        empty={{
+          actionLabel: 'Back to Notes',
+          analyticsProps: buildEditorAnalyticsPayload(),
+          analyticsSource: 'NoteEditorScreen',
+          onAction: () => {
             exitMethodRef.current = 'programmatic_navigation';
             navigation.navigate('Notes');
           },
+          title: 'Note not found',
         }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
             closeEditor();
           },
-          variant: 'secondary',
+          primaryAction: {
+            label: 'Back to Notes',
+            onPress: () => {
+              exitMethodRef.current = 'programmatic_navigation';
+              navigation.navigate('Notes');
+            },
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              closeEditor();
+            },
+            variant: 'secondary',
+          },
+          subtitle: 'This note no longer exists.',
+          title: 'Edit Note',
         }}
-        subtitle="This note no longer exists."
-        title="Edit Note"
-      >
-        <EmptyState
-          actionLabel="Back to Notes"
-          analyticsProps={buildEditorAnalyticsPayload()}
-          analyticsSource="NoteEditorScreen"
-          onAction={() => {
-            exitMethodRef.current = 'programmatic_navigation';
-            navigation.navigate('Notes');
-          }}
-          title="Note not found"
-        />
-      </FeatureFormScreenScaffold>
+        state="empty"
+      />
     );
   }
 

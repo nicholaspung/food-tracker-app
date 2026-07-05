@@ -116,6 +116,24 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FeatureFormReadStateScaffold: ({
+    empty,
+    error,
+    loading,
+    scaffold,
+    state,
+  }: Record<string, any>) => {
+    const content =
+      state === 'loading'
+        ? (loading?.skeletonHeights ?? [20, 20, 20]).map((height: number, index: number) =>
+            mockReact.createElement('Skeleton', { height, key: index }),
+          )
+        : state === 'error'
+          ? mockReact.createElement('ErrorState', error)
+          : mockReact.createElement('EmptyState', { title: 'Not found', ...empty });
+
+    return mockReact.createElement('FeatureFormScreenScaffold', scaffold, content);
+  },
   LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
     mockReact.createElement(
       'LightweightStatusCard',

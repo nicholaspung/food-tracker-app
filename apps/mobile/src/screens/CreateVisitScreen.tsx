@@ -11,12 +11,10 @@ import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controlle
 
 import {
   ConfirmDestructiveModal,
-  EmptyState,
-  ErrorState,
   FeatureFormScreenScaffold,
+  FeatureFormReadStateScaffold,
   FocusedRestaurantSearchHeader,
   LinkedNoteCard,
-  LoadingState,
   OptionList,
   OptionListRow,
   PageErrorToast,
@@ -2088,91 +2086,97 @@ export function CreateVisitScreen({
   if (isEditMode && hydratedEditVisitId !== editVisitId) {
     if (editVisitQuery.isError) {
       return (
-        <FeatureFormScreenScaffold
-          keyboardAware
-          onBackPress={handleBackPress}
-          primaryAction={{
-            label: "Retry",
-            onPress: () => {
-              void editVisitQuery.refetch();
-            },
-          }}
-          secondaryAction={{
-            label: "Cancel",
-            onPress: handleBackPress,
-          }}
-          subtitle="We couldn't load this visit."
-          title="Edit Restaurant Visit"
-        >
-          <ErrorState
-            analyticsProps={{
+        <FeatureFormReadStateScaffold
+          error={{
+            analyticsProps: {
               entrySource: entrySourceRef.current,
               mode: 'edit',
-            }}
-            analyticsSource="CreateVisitScreen"
-            description="Could not load visit details."
-            onRetry={() => {
+            },
+            analyticsSource: 'CreateVisitScreen',
+            description: 'Could not load visit details.',
+            onRetry: () => {
               void editVisitQuery.refetch();
-            }}
-            title="Visit unavailable"
-          />
-        </FeatureFormScreenScaffold>
+            },
+            title: 'Visit unavailable',
+          }}
+          scaffold={{
+            keyboardAware: true,
+            onBackPress: handleBackPress,
+            primaryAction: {
+              label: "Retry",
+              onPress: () => {
+                void editVisitQuery.refetch();
+              },
+            },
+            secondaryAction: {
+              label: "Cancel",
+              onPress: handleBackPress,
+            },
+            subtitle: "We couldn't load this visit.",
+            title: "Edit Restaurant Visit",
+          }}
+          state="error"
+        />
       );
     }
 
     if (!editVisitQuery.isLoading && !editVisitQuery.data) {
       return (
-        <FeatureFormScreenScaffold
-          keyboardAware
-          onBackPress={handleBackPress}
-          primaryAction={{
-            label: "Back to Home",
-            onPress: () => {
-              navigation.navigate("Home");
-            },
-          }}
-          secondaryAction={{
-            label: "Cancel",
-            onPress: handleBackPress,
-          }}
-          subtitle="This visit could not be found."
-          title="Edit Restaurant Visit"
-        >
-          <EmptyState
-            actionLabel="Back to Home"
-            analyticsProps={{
+        <FeatureFormReadStateScaffold
+          empty={{
+            actionLabel: 'Back to Home',
+            analyticsProps: {
               entrySource: entrySourceRef.current,
               mode: 'edit',
-            }}
-            analyticsSource="CreateVisitScreen"
-            onAction={() => {
+            },
+            analyticsSource: 'CreateVisitScreen',
+            onAction: () => {
               exitMethodRef.current = 'programmatic_navigation';
               navigation.navigate("Home");
-            }}
-            title="Visit not found"
-          />
-        </FeatureFormScreenScaffold>
+            },
+            title: 'Visit not found',
+          }}
+          scaffold={{
+            keyboardAware: true,
+            onBackPress: handleBackPress,
+            primaryAction: {
+              label: "Back to Home",
+              onPress: () => {
+                navigation.navigate("Home");
+              },
+            },
+            secondaryAction: {
+              label: "Cancel",
+              onPress: handleBackPress,
+            },
+            subtitle: "This visit could not be found.",
+            title: "Edit Restaurant Visit",
+          }}
+          state="empty"
+        />
       );
     }
 
     return (
-      <FeatureFormScreenScaffold
-        keyboardAware
-        onBackPress={handleBackPress}
-        primaryAction={{
-          label: "Loading",
-          disabled: true,
-          onPress: () => {},
+      <FeatureFormReadStateScaffold
+        loading={{ label: "Loading visit..." }}
+        scaffold={{
+          keyboardAware: true,
+          onBackPress: handleBackPress,
+          primaryAction: {
+            label: "Loading",
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: "Cancel",
+            onPress: handleBackPress,
+          },
+          subtitle: "Loading your visit details.",
+          title: "Edit Restaurant Visit",
         }}
-        secondaryAction={{
-          label: "Cancel",
-          onPress: handleBackPress,
-        }}
-        subtitle="Loading your visit details."
-        title="Edit Restaurant Visit"
-      >
-        <LoadingState label="Loading visit..." />
-      </FeatureFormScreenScaffold>
+        state="loading"
+      />
     );
   }
 

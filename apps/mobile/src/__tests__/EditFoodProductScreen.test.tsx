@@ -113,6 +113,24 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FeatureFormReadStateScaffold: ({
+    empty,
+    error,
+    loading,
+    scaffold,
+    state,
+  }: Record<string, any>) => {
+    const content =
+      state === 'loading'
+        ? (loading?.skeletonHeights ?? [20, 20, 20]).map((height: number, index: number) =>
+            mockReact.createElement('Skeleton', { height, key: index }),
+          )
+        : state === 'error'
+          ? mockReact.createElement('ErrorState', error)
+          : mockReact.createElement('EmptyState', { title: 'Not found', ...empty });
+
+    return mockReact.createElement('FeatureFormScreenScaffold', scaffold, content);
+  },
   LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
     mockReact.createElement(
       'LightweightStatusCard',
@@ -313,6 +331,105 @@ describe('EditFoodProductScreen', () => {
     expect(renderer.root.findByType('PhotoViewerModal').props).toMatchObject({
       previewUrls: ['pb://photo-1/iced-coffee.jpg?thumb=100x100'],
       urls: ['pb://photo-1/iced-coffee.jpg'],
+    });
+  });
+
+  it('renders shared read states before the editable food product form is available', async () => {
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
+        return buildQueryResult({
+          data: null,
+          isLoading: true,
+        });
+      }
+
+      return buildQueryResult({ data: [] });
+    });
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.disabled).toBe(true);
+    expect(renderer.root.findAllByType('Skeleton')).toHaveLength(4);
+
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
+        return buildQueryResult({
+          data: null,
+          isError: true,
+        });
+      }
+
+      return buildQueryResult({ data: [] });
+    });
+
+    await act(async () => {
+      renderer.update(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('ErrorState').props).toMatchObject({
+      description: 'Could not load food product.',
+      title: 'Food product unavailable',
+    });
+
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
+        return buildQueryResult({
+          data: null,
+        });
+      }
+
+      return buildQueryResult({ data: [] });
+    });
+
+    await act(async () => {
+      renderer.update(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('EmptyState').props).toMatchObject({
+      actionLabel: 'Back to Home',
+      title: 'Food product not found',
     });
   });
 

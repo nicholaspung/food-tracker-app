@@ -4,16 +4,14 @@ import { Linking, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
-  EmptyState,
-  ErrorState,
   FeatureFormScreenScaffold,
+  FeatureFormReadStateScaffold,
   LightweightStatusCard,
   OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
   PhotoInputField,
   PhotoViewerModal,
   FoodProductFormFields,
-  Skeleton,
 } from '../components/shared';
 import {
   getFoodProductById,
@@ -302,101 +300,104 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
 
   if (foodProductQuery.isLoading) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          handleBackPress();
-        }}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
+      <FeatureFormReadStateScaffold
+        loading={{ skeletonHeights: [20, 20, 20, 20] }}
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
             handleBackPress();
           },
+          primaryAction: {
+            label: 'Save Changes',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              handleBackPress();
+            },
+          },
+          title: 'Edit Food Product',
         }}
-        title="Edit Food Product"
-      >
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-      </FeatureFormScreenScaffold>
+        state="loading"
+      />
     );
   }
 
   if (foodProductQuery.isError) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          handleBackPress();
+      <FeatureFormReadStateScaffold
+        error={{
+          analyticsProps: buildEditorAnalyticsPayload(),
+          analyticsSource: 'EditFoodProductScreen',
+          description: 'Could not load food product.',
+          onRetry: () => {
+            void foodProductQuery.refetch();
+          },
+          title: 'Food product unavailable',
         }}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
             handleBackPress();
           },
+          primaryAction: {
+            label: 'Save Changes',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              handleBackPress();
+            },
+          },
+          subtitle: 'Update the saved details for this food product.',
+          title: 'Edit Food Product',
         }}
-        subtitle="Update the saved details for this food product."
-        title="Edit Food Product"
-      >
-        <ErrorState
-          analyticsProps={buildEditorAnalyticsPayload()}
-          analyticsSource="EditFoodProductScreen"
-          description="Could not load food product."
-          onRetry={() => {
-            void foodProductQuery.refetch();
-          }}
-          title="Food product unavailable"
-        />
-      </FeatureFormScreenScaffold>
+        state="error"
+      />
     );
   }
 
   if (!foodProductQuery.data) {
     return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => {
-          exitMethodRef.current = 'header_back';
-          handleBackPress();
-        }}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: () => {
-            exitMethodRef.current = 'secondary_cancel';
-            handleBackPress();
-          },
-        }}
-        subtitle="Update the saved details for this food product."
-        title="Edit Food Product"
-      >
-        <EmptyState
-          actionLabel="Back to Home"
-          analyticsProps={buildEditorAnalyticsPayload()}
-          analyticsSource="EditFoodProductScreen"
-          onAction={() => {
+      <FeatureFormReadStateScaffold
+        empty={{
+          actionLabel: 'Back to Home',
+          analyticsProps: buildEditorAnalyticsPayload(),
+          analyticsSource: 'EditFoodProductScreen',
+          onAction: () => {
             exitMethodRef.current = 'programmatic_navigation';
             navigation.navigate('Home');
-          }}
-          title="Food product not found"
-        />
-      </FeatureFormScreenScaffold>
+          },
+          title: 'Food product not found',
+        }}
+        scaffold={{
+          onBackPress: () => {
+            exitMethodRef.current = 'header_back';
+            handleBackPress();
+          },
+          primaryAction: {
+            label: 'Save Changes',
+            disabled: true,
+            onPress: () => {},
+          },
+          secondaryAction: {
+            label: 'Cancel',
+            onPress: () => {
+              exitMethodRef.current = 'secondary_cancel';
+              handleBackPress();
+            },
+          },
+          subtitle: 'Update the saved details for this food product.',
+          title: 'Edit Food Product',
+        }}
+        state="empty"
+      />
     );
   }
 

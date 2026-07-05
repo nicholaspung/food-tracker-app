@@ -156,6 +156,22 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FeatureFormReadStateScaffold: ({
+    empty,
+    error,
+    loading,
+    scaffold,
+    state,
+  }: Record<string, any>) => {
+    const content =
+      state === 'loading'
+        ? mockReact.createElement('LoadingState', loading)
+        : state === 'error'
+          ? mockReact.createElement('ErrorState', error)
+          : mockReact.createElement('EmptyState', { title: 'Not found', ...empty });
+
+    return mockReact.createElement('FeatureFormScreenScaffold', scaffold, content);
+  },
   FocusedRestaurantSearchHeader: (props: Record<string, unknown>) =>
     mockReact.createElement('FocusedRestaurantSearchHeader', props),
   LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
