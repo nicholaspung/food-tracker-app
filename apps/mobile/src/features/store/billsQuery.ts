@@ -1,18 +1,28 @@
-import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { BillRecord } from '../models';
-import type { BillListSummary } from './featureStore';
+import type { BillListPage, BillListSummary, ListBillSummariesPageInput } from './featureStore';
+
+type BillListFilter = NonNullable<ListBillSummariesPageInput['filter']>;
 
 export const billsQueryKeys = {
   root: ['feature', 'bills'] as const,
+  paginated: (filter: BillListFilter) => ['feature', 'bills', 'paginated', filter] as const,
   detail: (billId: string) => ['feature', 'bill', billId.trim()] as const,
 };
 
 export function isBillsListQueryKey(queryKey: QueryKey): boolean {
+  return isPaginatedBillsQueryKey(queryKey);
+}
+
+export function isPaginatedBillsQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    queryKey.length === billsQueryKeys.root.length &&
-    billsQueryKeys.root.every((segment, index) => queryKey[index] === segment)
+    queryKey.length === 4 &&
+    queryKey[0] === billsQueryKeys.root[0] &&
+    queryKey[1] === billsQueryKeys.root[1] &&
+    queryKey[2] === 'paginated' &&
+    (queryKey[3] === 'you_owe' || queryKey[3] === 'you_are_owed' || queryKey[3] === 'settled')
   );
 }
 
@@ -38,8 +48,9 @@ export function getCachedBillListSummary(
 
   return (
     queryClient
-      .getQueryData<BillListSummary[]>(billsQueryKeys.root)
-      ?.find((summary) => summary.id === trimmedBillId) ?? null
+      .getQueriesData<InfiniteData<BillListPage, unknown>>({ queryKey: billsQueryKeys.root })
+      .flatMap(([, data]) => data?.pages.flatMap((page) => page.items) ?? [])
+      .find((summary) => summary.id === trimmedBillId) ?? null
   );
 }
 

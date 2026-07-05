@@ -3,7 +3,7 @@ import type { PersistedClient } from '@tanstack/query-persist-client-core';
 import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstack/react-query';
 
 import type { FeedbackMessageRecord, FeedbackRecord } from '../features/models';
-import { isBillDetailQueryKey } from '../features/store/billsQuery';
+import { isBillDetailQueryKey, isPaginatedBillsQueryKey } from '../features/store/billsQuery';
 import { isFeedbackListQueryKey, isFeedbackMessagesQueryKey } from '../features/store/feedbackQuery';
 import { isFriendsSummaryQueryKey, isPaginatedFriendsQueryKey } from '../features/store/friendsQuery';
 import { isPaginatedHomeFeedQueryKey } from '../features/store/homeFeedQuery';
@@ -81,7 +81,7 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
     case 'foodProducts':
       return queryKey.length === 2;
     case 'bills':
-      return queryKey.length === 2;
+      return isPaginatedBillsQueryKey(queryKey);
     case 'bill':
       return isBillDetailQueryKey(queryKey);
     case 'visitPhotos':

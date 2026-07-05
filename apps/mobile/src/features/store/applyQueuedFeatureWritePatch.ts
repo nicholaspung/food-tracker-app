@@ -9,7 +9,7 @@ import type {
   CreateVisitInput,
   PaginatedResult,
 } from './featureStore';
-import { billsQueryKeys } from './billsQuery';
+import { billsQueryKeys, isPaginatedBillsQueryKey } from './billsQuery';
 import { homeFeedQueryKeys, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
 import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
 import { restaurantListQueryKeys } from './restaurantListQuery';
@@ -272,17 +272,14 @@ function patchBillsList(queryClient: QueryClient, queuedIds: Set<string>, queued
     .filter((write): write is QueuedFeatureWrite<'bill.create'> => write.operationName === 'bill.create')
     .map(createPendingBillSummary);
 
-  queryClient.setQueryData<BillListSummary[] | undefined>(billsQueryKeys.root, (currentData) => {
-    const nonStaleBills = (currentData ?? []).filter(
-      (bill) => !isQueuedRecordId(bill.id) || queuedIds.has(bill.id),
-    );
-    const existingIds = new Set(nonStaleBills.map((bill) => bill.id));
-    const newPendingBills = pendingBills.filter((bill) => !existingIds.has(bill.id));
-    if (newPendingBills.length === 0 && nonStaleBills.length === (currentData ?? []).length) {
-      return currentData;
-    }
-    return [...newPendingBills, ...nonStaleBills];
-  });
+  patchPaginatedQueries(
+    queryClient,
+    billsQueryKeys.root,
+    queuedIds,
+    pendingBills as unknown as AnyRecord[],
+    () => true,
+    isPaginatedBillsQueryKey,
+  );
 }
 
 function patchHomeFeed(queryClient: QueryClient, queuedIds: Set<string>, queuedWrites: readonly QueuedFeatureWrite[]): void {

@@ -1028,6 +1028,62 @@ func TestBillsSummaryEndpoint(t *testing.T) {
 		!summary.isCreator {
 		t.Fatalf("unexpected settled bill summary: %#v", summary)
 	}
+
+	pageResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/bills/summary-page?filter=you_owe&page=1&pageSize=1", token, "")
+	if pageResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for paginated summary, got %d: %s", pageResponse.Code, pageResponse.Body.String())
+	}
+
+	var pagePayload struct {
+		Items []struct {
+			ID     string  `json:"id"`
+			YouOwe float64 `json:"youOwe"`
+		} `json:"items"`
+		Summary struct {
+			BillCount   int     `json:"billCount"`
+			TotalAmount float64 `json:"totalAmount"`
+		} `json:"summary"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(pageResponse.Body.Bytes(), &pagePayload); err != nil {
+		t.Fatalf("failed to parse paginated response JSON: %v; body=%s", err, pageResponse.Body.String())
+	}
+	if len(pagePayload.Items) != 1 ||
+		pagePayload.Summary.BillCount != 2 ||
+		pagePayload.Summary.TotalAmount != 21.0 ||
+		pagePayload.TotalItems != 2 ||
+		pagePayload.TotalPages != 2 ||
+		!pagePayload.HasNextPage {
+		t.Fatalf("unexpected you_owe page payload: %#v", pagePayload)
+	}
+
+	owedResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/bills/summary-page?filter=you_are_owed", token, "")
+	if owedResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for owed summary, got %d: %s", owedResponse.Code, owedResponse.Body.String())
+	}
+	var owedPayload struct {
+		Items []struct {
+			ID         string  `json:"id"`
+			YouAreOwed float64 `json:"youAreOwed"`
+		} `json:"items"`
+		Summary struct {
+			BillCount   int     `json:"billCount"`
+			TotalAmount float64 `json:"totalAmount"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(owedResponse.Body.Bytes(), &owedPayload); err != nil {
+		t.Fatalf("failed to parse owed response JSON: %v; body=%s", err, owedResponse.Body.String())
+	}
+	if len(owedPayload.Items) != 1 ||
+		owedPayload.Items[0].ID != createdBill.Id ||
+		owedPayload.Summary.BillCount != 1 ||
+		owedPayload.Summary.TotalAmount != 18.0 {
+		t.Fatalf("unexpected you_are_owed page payload: %#v", owedPayload)
+	}
 }
 
 func TestMoreFeatureSignalsEndpointReturnsCountOnlyIndicators(t *testing.T) {

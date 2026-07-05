@@ -237,6 +237,42 @@ describe('React Query persistence', () => {
         pendingInviteCount: 0,
       },
     });
+    sourceClient.setQueryData(billsQueryKeys.paginated('you_owe'), {
+      pages: [
+        {
+          items: [
+            {
+              id: 'bill-summary-1',
+              title: 'Bounded bill summary',
+              status: 'open',
+              participantCount: 2,
+              pendingOtherParticipantCount: 0,
+              youOwe: 12,
+              youAreOwed: 0,
+              isCreator: false,
+              createdAt: '2026-02-12T00:00:00.000Z',
+              updatedAt: '2026-02-12T00:00:00.000Z',
+            },
+          ],
+          summary: {
+            billCount: 1,
+            totalAmount: 12,
+          },
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
+    sourceClient.setQueryData(billsQueryKeys.root, [
+      {
+        id: 'legacy-bill-summary',
+        title: 'Legacy unpaginated bill summary',
+      },
+    ]);
     sourceClient.setQueryData(billsQueryKeys.detail('bill-1'), {
       id: 'bill-1',
       title: 'Persisted bill',
@@ -353,9 +389,13 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(moreFeatureSignalQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(moreFeatureSignalQueryKeys.summary),
     );
+    expect(restoredClient.getQueryData(billsQueryKeys.paginated('you_owe'))).toEqual(
+      sourceClient.getQueryData(billsQueryKeys.paginated('you_owe')),
+    );
     expect(restoredClient.getQueryData(billsQueryKeys.detail('bill-1'))).toEqual(
       sourceClient.getQueryData(billsQueryKeys.detail('bill-1')),
     );
+    expect(restoredClient.getQueryData(billsQueryKeys.root)).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'quickTracks'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback'])).toBeUndefined();

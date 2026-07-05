@@ -299,6 +299,15 @@ export interface BillListSummary {
   updatedAt: string;
 }
 
+export interface BillListPageSummary {
+  billCount: number;
+  totalAmount: number;
+}
+
+export interface BillListPage extends PaginatedResult<BillListSummary> {
+  summary: BillListPageSummary;
+}
+
 export interface RestaurantListDetailBookmarkState {
   savedListIdsByBookmarkLookupId: Record<string, string[]>;
 }
@@ -364,6 +373,10 @@ interface PaginationInput {
 export interface ListNotesPageInput extends PaginationInput {
   status?: 'all' | NoteRecord['status'];
   search?: string;
+}
+
+export interface ListBillSummariesPageInput extends PaginationInput {
+  filter?: 'you_owe' | 'you_are_owed' | 'settled';
 }
 
 export interface ListVisitsPageInput extends PaginationInput {
@@ -715,6 +728,6 @@ export type { FeedbackThreadDetailResult } from './feedbackStore';
 export {
   createBill,
   getBillById,
-  listBillSummaries,
+  listBillSummariesPage,
   updateBill,
 } from './billsStore';

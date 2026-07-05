@@ -140,7 +140,20 @@ describe('applyQueuedFeatureWritePatch', () => {
       ],
       pageParams: [1],
     });
-    queryClient.setQueryData(billsQueryKeys.root, []);
+    queryClient.setQueryData(billsQueryKeys.root, [{ id: 'legacy-bill', title: 'Legacy bill' }]);
+    queryClient.setQueryData(billsQueryKeys.paginated('you_owe'), {
+      pages: [
+        {
+          items: [],
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 0,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
 
     applyQueuedFeatureWritePatch(queryClient, [
       buildQueuedWrite({
@@ -169,15 +182,20 @@ describe('applyQueuedFeatureWritePatch', () => {
     const listData = queryClient.getQueryData<{
       pages: { items: { id: string; name: string }[] }[];
     }>(restaurantListQueryKeys.paginated('my', ''));
-    const billData = queryClient.getQueryData<{ id: string; title: string }[]>(billsQueryKeys.root);
+    const legacyBillData = queryClient.getQueryData<{ id: string; title: string }[]>(billsQueryKeys.root);
+    const billData = queryClient.getQueryData<{
+      pages: { items: { id: string; title: string }[]; totalItems: number }[];
+    }>(billsQueryKeys.paginated('you_owe'));
 
     expect(listData?.pages[0]?.items[0]).toMatchObject({
       id: 'queued:list.create:idem-list.create',
       name: 'Queued list',
     });
-    expect(billData?.[0]).toMatchObject({
+    expect(legacyBillData).toEqual([{ id: 'legacy-bill', title: 'Legacy bill' }]);
+    expect(billData?.pages[0]?.items[0]).toMatchObject({
       id: 'queued:bill.create:idem-bill.create',
       title: 'Queued bill',
     });
+    expect(billData?.pages[0]?.totalItems).toBe(1);
   });
 });

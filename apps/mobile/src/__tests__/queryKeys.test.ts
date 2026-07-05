@@ -41,25 +41,47 @@ describe('mobile feature query keys', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     } as const;
 
-    queryClient.setQueryData(billsQueryKeys.root, [
-      {
-        id: 'bill_1',
-        title: 'Dinner',
-        status: 'active',
-        participantCount: 2,
-        pendingOtherParticipantCount: 1,
-        youOwe: 0,
-        youAreOwed: 6.5,
-        isCreator: true,
-        createdAt: billDetail.createdAt,
-        updatedAt: billDetail.updatedAt,
-      },
-    ]);
+    queryClient.setQueryData(billsQueryKeys.paginated('you_are_owed'), {
+      pages: [
+        {
+          items: [
+            {
+              id: 'bill_1',
+              title: 'Dinner',
+              status: 'active',
+              participantCount: 2,
+              pendingOtherParticipantCount: 1,
+              youOwe: 0,
+              youAreOwed: 6.5,
+              isCreator: true,
+              createdAt: billDetail.createdAt,
+              updatedAt: billDetail.updatedAt,
+            },
+          ],
+          summary: {
+            billCount: 1,
+            totalAmount: 6.5,
+          },
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
     queryClient.setQueryData(billsQueryKeys.detail('bill_1'), billDetail);
 
     expect(billsQueryKeys.root).toEqual(['feature', 'bills']);
+    expect(billsQueryKeys.paginated('you_are_owed')).toEqual([
+      'feature',
+      'bills',
+      'paginated',
+      'you_are_owed',
+    ]);
     expect(billsQueryKeys.detail('bill_1')).toEqual(['feature', 'bill', 'bill_1']);
-    expect(isBillsListQueryKey(billsQueryKeys.root)).toBe(true);
+    expect(isBillsListQueryKey(billsQueryKeys.paginated('you_are_owed'))).toBe(true);
     expect(isBillDetailQueryKey(billsQueryKeys.detail('bill_1'))).toBe(true);
     expect(getCachedBillListSummary(queryClient, 'bill_1')?.title).toBe('Dinner');
     expect(getCachedBillDetail(queryClient, 'bill_1')?.id).toBe('bill_1');

@@ -1,10 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { InfiniteData } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, View, type ListRenderItem } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
+  FeatureListFooter,
   HeaderAccessoryButton,
   OptionListRow,
   PendingQueuedWriteRow,
@@ -12,14 +14,13 @@ import {
   SegmentedControl,
   StatusPill,
 } from '../components/shared';
-import { listBillSummaries } from '../features';
+import { listBillSummariesPage } from '../features';
 import { billsQueryKeys } from '../features/store/billsQuery';
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
-import type { BillListSummary } from '../features/store/featureStore';
+import type { BillListPage, BillListSummary } from '../features/store/featureStore';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { formatCurrency } from '../features/bills/billCalculations';
 import {
-  filterBillSummaries,
   type BillListFilter,
 } from '../features/bills/billListFilters';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -94,12 +95,19 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function BillsScreen({ navigation, route }: BillsScreenProps) {
-  const billsQuery = useQuery({
-    queryKey: billsQueryKeys.root,
-    queryFn: ({ signal }) => listBillSummaries({ signal }),
+  const [activeFilter, setActiveFilter] = useState<BillListFilter>('you_owe');
+  const billsQuery = useInfiniteQuery({
+    queryKey: billsQueryKeys.paginated(activeFilter),
+    queryFn: ({ pageParam, signal }) =>
+      listBillSummariesPage({
+        filter: activeFilter,
+        page: typeof pageParam === 'number' ? pageParam : 1,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
-  const [activeFilter, setActiveFilter] = useState<BillListFilter>('you_owe');
   const consumedNotificationRouteKeyRef = useRef<string | null>(null);
   const styles = useStyles();
   const refetchBills = billsQuery.refetch;
@@ -126,50 +134,58 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     navigation.navigate('BillDetail', { billId });
   }, [navigation, route.params?.billId, route.params?.refreshSignal]);
 
-  const filteredBills = useMemo(() => {
-    return filterBillSummaries(billsQuery.data ?? [], activeFilter);
-  }, [activeFilter, billsQuery.data]);
-  const activeBillTotal = useMemo(() => {
-    return filteredBills.reduce((sum, bill) => {
-      if (activeFilter === 'you_owe') {
-        return sum + bill.youOwe;
-      }
-
-      if (activeFilter === 'you_are_owed') {
-        return sum + bill.youAreOwed;
-      }
-
-      return sum;
-    }, 0);
-  }, [activeFilter, filteredBills]);
+  const visibleBills = useMemo(
+    () => billsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [billsQuery.data],
+  );
+  const activeBillSummary = billsQuery.data?.pages[0]?.summary ?? {
+    billCount: 0,
+    totalAmount: 0,
+  };
+  const activeBillTotal = activeBillSummary.totalAmount;
   const showActiveBillTotal = activeFilter === 'you_owe' || activeFilter === 'you_are_owed';
   const activeBillTotalTitle = activeFilter === 'you_owe' ? 'You owe' : "You're owed";
   const activeBillTotalDescription =
     activeFilter === 'you_owe'
-      ? `Across ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`
-      : `From ${filteredBills.length} active bill${filteredBills.length === 1 ? '' : 's'}`;
+      ? `Across ${activeBillSummary.billCount} active bill${activeBillSummary.billCount === 1 ? '' : 's'}`
+      : `From ${activeBillSummary.billCount} active bill${activeBillSummary.billCount === 1 ? '' : 's'}`;
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
       source: 'BillsScreen',
       activeFilter,
-      resultCount: filteredBills.length,
+      resultCount: visibleBills.length,
       ...overrides,
     }),
-    [activeFilter, filteredBills.length],
+    [activeFilter, visibleBills.length],
   );
-  const browseState = useFeatureBrowse<BillListSummary[], BillListSummary, 'bill.create'>({
+  const browseState = useFeatureBrowse<
+    InfiniteData<BillListPage, unknown>,
+    BillListSummary,
+    'bill.create'
+  >({
     analyticsSource: 'BillsScreen',
     buildAnalyticsPayload: buildBrowseAnalyticsPayload,
-    emptyWhen: () => filteredBills.length === 0,
-    getItemsFromData: useCallback((data: BillListSummary[] | undefined) => data ?? [], []),
-    getResultCountFromData: useCallback(
-      (data: BillListSummary[] | undefined, fallbackCount: number) => data?.length ?? fallbackCount,
+    emptyWhen: () => visibleBills.length === 0,
+    getItemsFromData: useCallback(
+      (data: InfiniteData<BillListPage, unknown> | undefined) =>
+        data?.pages.flatMap((page) => page.items) ?? [],
       [],
     ),
+    getResultCountFromData: useCallback(
+      (data: InfiniteData<BillListPage, unknown> | undefined, fallbackCount: number) =>
+        data?.pages.reduce((count, page) => count + page.items.length, 0) ?? fallbackCount,
+      [],
+    ),
+    getTotalItemsFromData: useCallback(
+      (data: InfiniteData<BillListPage, unknown> | undefined, items: readonly BillListSummary[]) =>
+        data?.pages[0]?.totalItems ?? items.length,
+      [],
+    ),
+    loadMoreEventPrefix: 'BILLS_LOAD_MORE',
     pendingQueuedWriteOperationNames: BILL_PENDING_OPERATION_NAMES,
     query: billsQuery,
     refreshEventPrefix: 'BILLS_REFRESH',
-    resultCount: filteredBills.length,
+    resultCount: visibleBills.length,
     toPendingRow: useCallback((write: QueuedFeatureWrite<'bill.create'>) => {
       const payload = write.payload as { title?: string; participants?: unknown[] };
       const participantCount = Array.isArray(payload.participants) ? payload.participants.length : 0;
@@ -206,7 +222,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
 
       return (
         <OptionListRow
-          isLast={index === filteredBills.length - 1}
+          isLast={index === visibleBills.length - 1}
           onPress={() => {
             trackObservabilityEvent('BILL_OPENED', {
               source: 'BillsScreen',
@@ -220,7 +236,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
           style={[
             styles.billRow,
             index === 0 ? styles.billRowFirst : null,
-            index === filteredBills.length - 1 ? styles.billRowLast : null,
+            index === visibleBills.length - 1 ? styles.billRowLast : null,
           ]}
           subtitle={summaryLabel}
           testID={`bills-row-${activeFilter}-${index}`}
@@ -228,7 +244,7 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
         />
       );
     },
-    [activeFilter, filteredBills.length, navigation, styles],
+    [activeFilter, navigation, styles, visibleBills.length],
   );
 
   const billsListHeader = (
@@ -295,11 +311,20 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
           void billsQuery.refetch();
         }}
         refreshErrorMessage="Could not refresh bills. Showing saved data."
-        showEmpty={filteredBills.length === 0}
+        showEmpty={visibleBills.length === 0}
         title="Bills unavailable"
       />
     </View>
   );
+
+  const billsListFooter =
+    !browseState.isLoading && !browseState.hasBlockingError && visibleBills.length > 0 && browseState.hasNextPage ? (
+      <FeatureListFooter
+        isFetchingNextPage={browseState.isFetchingNextPage}
+        label="Load more bills"
+        onLoadMore={browseState.onEndReached}
+      />
+    ) : null;
 
   return (
     <BackHeaderScreenScaffold
@@ -333,9 +358,10 @@ export function BillsScreen({ navigation, route }: BillsScreenProps) {
     >
       <FlatList
         contentContainerStyle={styles.listContent}
-        data={browseState.isLoading || browseState.hasBlockingError ? [] : filteredBills}
+        data={browseState.isLoading || browseState.hasBlockingError ? [] : visibleBills}
         initialNumToRender={10}
         keyExtractor={(bill) => bill.id}
+        ListFooterComponent={billsListFooter}
         ListHeaderComponent={billsListHeader}
         maxToRenderPerBatch={10}
         onRefresh={browseState.onRefresh}

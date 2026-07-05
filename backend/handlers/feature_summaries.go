@@ -54,6 +54,8 @@ const defaultNotesPageSize = 20
 const maxNotesPageSize = 50
 const defaultVisitsPageSize = 20
 const maxVisitsPageSize = 50
+const defaultBillsPageSize = 20
+const maxBillsPageSize = 50
 const usedNotesRetentionDays = 30
 
 type noteSummaryResponse struct {
@@ -144,6 +146,21 @@ type billListSummaryResponse struct {
 	IsCreator                    bool    `json:"isCreator"`
 	CreatedAt                    string  `json:"createdAt"`
 	UpdatedAt                    string  `json:"updatedAt"`
+}
+
+type billListPageSummaryResponse struct {
+	BillCount   int     `db:"billCount" json:"billCount"`
+	TotalAmount float64 `db:"totalAmount" json:"totalAmount"`
+}
+
+type billListPageResponse struct {
+	Items       []billListSummaryResponse   `json:"items"`
+	Summary     billListPageSummaryResponse `json:"summary"`
+	Page        int                         `json:"page"`
+	PageSize    int                         `json:"pageSize"`
+	TotalItems  int                         `json:"totalItems"`
+	TotalPages  int                         `json:"totalPages"`
+	HasNextPage bool                        `json:"hasNextPage"`
 }
 
 type notificationSignalIndicatorResponse struct {
@@ -569,6 +586,33 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, summary)
+	})
+
+	se.Router.GET("/api/bills/summary-page", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		filter, err := normalizeBillsSummaryFilter(e.Request.URL.Query().Get("filter"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page, pageSize, err := parseBillsPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getBillListPageResponse(app, e.Auth.Id, page, pageSize, filter)
+		if err != nil {
+			log.Printf("Failed to load paginated bills summary for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load bills summary page", err)
+		}
+
+		return e.JSON(200, response)
 	})
 
 	se.Router.GET("/api/bills/{billId}", func(e *core.RequestEvent) error {
@@ -1166,6 +1210,180 @@ func getMoreBillOwedSignalSummary(app core.App, userID string) (billOwedNotifica
 	}, nil
 }
 
+func billListFilterSQL(filter string) (condition string, amountExpression string) {
+	switch filter {
+	case "you_are_owed":
+		return "status != 'settled' AND youAreOwed > 0", "youAreOwed"
+	case "settled":
+		return "status = 'settled'", "0"
+	default:
+		return "status != 'settled' AND youOwe > 0", "youOwe"
+	}
+}
+
+func billListSummaryCTE() string {
+	return `
+		WITH accessible_bills AS (
+			SELECT DISTINCT
+				bills.id,
+				bills.bill_name,
+				bills.status,
+				bills.creator_user,
+				bills.created,
+				bills.updated
+			FROM bills
+			LEFT JOIN bill_participants current_user_participants
+				ON current_user_participants.bill = bills.id
+				AND current_user_participants.user = {:userId}
+			WHERE bills.creator_user = {:userId}
+				OR current_user_participants.id IS NOT NULL
+		),
+		bill_summaries AS (
+			SELECT
+				accessible_bills.id AS [[id]],
+				accessible_bills.bill_name AS [[title]],
+				CASE
+					WHEN accessible_bills.status = 'settled' THEN 'settled'
+					ELSE 'open'
+				END AS [[status]],
+				COUNT(participants.id) AS [[participantCount]],
+				COALESCE(
+					SUM(
+						CASE
+							WHEN participants.paid_status = 'pending' AND COALESCE(participants.user, '') != {:userId} THEN 1
+							ELSE 0
+						END
+					),
+					0
+				) AS [[pendingOtherParticipantCount]],
+				COALESCE(
+					MAX(
+						CASE
+							WHEN participants.user = {:userId} AND participants.paid_status = 'pending' THEN participants.amount_owed
+							ELSE 0
+						END
+					),
+					0
+				) AS [[youOwe]],
+				COALESCE(
+					SUM(
+						CASE
+							WHEN accessible_bills.creator_user = {:userId}
+								AND participants.paid_status = 'pending'
+								AND COALESCE(participants.user, '') != {:userId}
+							THEN participants.amount_owed
+							ELSE 0
+						END
+					),
+					0
+				) AS [[youAreOwed]],
+				CASE
+					WHEN accessible_bills.creator_user = {:userId} THEN 1
+					ELSE 0
+				END AS [[isCreator]],
+				accessible_bills.created AS [[createdAt]],
+				accessible_bills.updated AS [[updatedAt]]
+			FROM accessible_bills
+			LEFT JOIN bill_participants participants ON participants.bill = accessible_bills.id
+			GROUP BY
+				accessible_bills.id,
+				accessible_bills.bill_name,
+				accessible_bills.status,
+				accessible_bills.creator_user,
+				accessible_bills.created,
+				accessible_bills.updated
+		)
+	`
+}
+
+func getBillListPageResponse(
+	app core.App,
+	userID string,
+	page int,
+	pageSize int,
+	filter string,
+) (billListPageResponse, error) {
+	filterCondition, amountExpression := billListFilterSQL(filter)
+	summary := billListPageSummaryResponse{}
+	summaryQuery := fmt.Sprintf(`
+		%s
+		SELECT
+			COUNT(*) AS [[billCount]],
+			COALESCE(SUM(%s), 0) AS [[totalAmount]]
+		FROM bill_summaries
+		WHERE %s
+	`, billListSummaryCTE(), amountExpression, filterCondition)
+	if err := app.DB().NewQuery(summaryQuery).
+		Bind(dbx.Params{"userId": userID}).
+		One(&summary); err != nil {
+		return billListPageResponse{}, err
+	}
+
+	rows := []billListSummaryRow{}
+	rowsQuery := fmt.Sprintf(`
+		%s
+		SELECT
+			id AS [[id]],
+			title AS [[title]],
+			status AS [[status]],
+			participantCount AS [[participantCount]],
+			pendingOtherParticipantCount AS [[pendingOtherParticipantCount]],
+			youOwe AS [[youOwe]],
+			youAreOwed AS [[youAreOwed]],
+			isCreator AS [[isCreator]],
+			createdAt AS [[createdAt]],
+			updatedAt AS [[updatedAt]]
+		FROM bill_summaries
+		WHERE %s
+		ORDER BY createdAt DESC
+		LIMIT {:limit} OFFSET {:offset}
+	`, billListSummaryCTE(), filterCondition)
+	if err := app.DB().NewQuery(rowsQuery).
+		Bind(dbx.Params{
+			"limit":  pageSize,
+			"offset": (page - 1) * pageSize,
+			"userId": userID,
+		}).
+		All(&rows); err != nil {
+		return billListPageResponse{}, err
+	}
+
+	totalPages := 0
+	if summary.BillCount > 0 {
+		totalPages = (summary.BillCount + pageSize - 1) / pageSize
+	}
+
+	items := make([]billListSummaryResponse, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, mapBillListSummaryRow(row))
+	}
+
+	return billListPageResponse{
+		Items:       items,
+		Summary:     summary,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalItems:  summary.BillCount,
+		TotalPages:  totalPages,
+		HasNextPage: page < totalPages,
+	}, nil
+}
+
+func mapBillListSummaryRow(row billListSummaryRow) billListSummaryResponse {
+	return billListSummaryResponse{
+		ID:                           row.ID,
+		Title:                        row.Title,
+		Status:                       row.Status,
+		ParticipantCount:             row.ParticipantCount,
+		PendingOtherParticipantCount: row.PendingOtherParticipantCount,
+		YouOwe:                       row.YouOwe,
+		YouAreOwed:                   row.YouAreOwed,
+		IsCreator:                    row.IsCreator != 0,
+		CreatedAt:                    row.CreatedAt,
+		UpdatedAt:                    row.UpdatedAt,
+	}
+}
+
 func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse, error) {
 	rows := []billListSummaryRow{}
 	err := app.DB().NewQuery(`
@@ -1247,18 +1465,7 @@ func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse,
 
 	result := make([]billListSummaryResponse, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, billListSummaryResponse{
-			ID:                           row.ID,
-			Title:                        row.Title,
-			Status:                       row.Status,
-			ParticipantCount:             row.ParticipantCount,
-			PendingOtherParticipantCount: row.PendingOtherParticipantCount,
-			YouOwe:                       row.YouOwe,
-			YouAreOwed:                   row.YouAreOwed,
-			IsCreator:                    row.IsCreator != 0,
-			CreatedAt:                    row.CreatedAt,
-			UpdatedAt:                    row.UpdatedAt,
-		})
+		result = append(result, mapBillListSummaryRow(row))
 	}
 
 	return result, nil
@@ -1371,6 +1578,46 @@ func parseVisitsPagination(pageRaw string, pageSizeRaw string) (int, int, error)
 
 		if parsedPageSize > maxVisitsPageSize {
 			pageSize = maxVisitsPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
+func normalizeBillsSummaryFilter(filterRaw string) (string, error) {
+	switch strings.TrimSpace(filterRaw) {
+	case "", "you_owe":
+		return "you_owe", nil
+	case "you_are_owed":
+		return "you_are_owed", nil
+	case "settled":
+		return "settled", nil
+	default:
+		return "", fmt.Errorf("invalid bill filter")
+	}
+}
+
+func parseBillsPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultBillsPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxBillsPageSize {
+			pageSize = maxBillsPageSize
 		} else {
 			pageSize = parsedPageSize
 		}

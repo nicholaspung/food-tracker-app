@@ -1,8 +1,10 @@
 import { pb } from '../../lib/pocketbase';
 import type { BillItemRecord, BillParticipantRecord, BillRecord } from '../models';
 import type {
+  BillListPage,
   BillListSummary,
   CreateBillInput,
+  ListBillSummariesPageInput,
   UpdateBillInput,
 } from './featureStore';
 import {
@@ -16,6 +18,7 @@ import { sendApiRequest } from './pocketbaseGateway';
 export type {
   BillListSummary,
   CreateBillInput,
+  ListBillSummariesPageInput,
   UpdateBillInput,
 } from './featureStore';
 
@@ -79,6 +82,19 @@ interface BillListSummaryApiResponseItem {
   isCreator?: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface BillListPageApiResponse {
+  items?: BillListSummaryApiResponseItem[];
+  summary?: {
+    billCount?: number;
+    totalAmount?: number;
+  };
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 function parseCount(value: unknown): number {
@@ -207,17 +223,53 @@ function mapBillListSummaryApiItem(item: BillListSummaryApiResponseItem): BillLi
   };
 }
 
-export async function listBillSummaries(options?: ReadRequestOptions): Promise<BillListSummary[]> {
+export async function listBillSummariesPage(
+  input: ListBillSummariesPageInput = {},
+): Promise<BillListPage> {
   if (!pb.authStore.record?.id) {
-    return [];
+    return {
+      items: [],
+      page: input.page ?? 1,
+      pageSize: input.pageSize ?? 20,
+      totalItems: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      summary: {
+        billCount: 0,
+        totalAmount: 0,
+      },
+    };
   }
 
-  const response = await sendApiRequest<BillListSummaryApiResponseItem[]>('/api/bills/summary', {
-    method: 'GET',
-    signal: options?.signal,
-  });
+  const query = new URLSearchParams();
+  query.set('filter', input.filter ?? 'you_owe');
+  if (input.page) {
+    query.set('page', String(input.page));
+  }
+  if (input.pageSize) {
+    query.set('pageSize', String(input.pageSize));
+  }
 
-  return response.map(mapBillListSummaryApiItem);
+  const response = await sendApiRequest<BillListPageApiResponse>(
+    `/api/bills/summary-page?${query.toString()}`,
+    {
+      method: 'GET',
+      signal: input.signal,
+    },
+  );
+
+  return {
+    items: (response.items ?? []).map(mapBillListSummaryApiItem),
+    page: response.page ?? input.page ?? 1,
+    pageSize: response.pageSize ?? input.pageSize ?? 20,
+    totalItems: parseCount(response.totalItems),
+    totalPages: parseCount(response.totalPages),
+    hasNextPage: response.hasNextPage === true,
+    summary: {
+      billCount: parseCount(response.summary?.billCount),
+      totalAmount: sanitizeCurrency(response.summary?.totalAmount),
+    },
+  };
 }
 
 export async function getBillById(
