@@ -120,6 +120,10 @@ _Avoid_: Lists map
 The exploratory surface for finding restaurants from saved restaurants, Google Places search, nearby search, or storefront photo extraction before recording food activity.
 _Avoid_: saved places, restaurant list, discovery feed
 
+**Storefront Scan History**:
+The local, user-visible history of saved storefront photo extraction results in **Food Discovery**, including extracted restaurant-name options, scan timestamp, and camera/gallery source.
+_Avoid_: storefront cache when the user-visible saved scan results matter
+
 **Food Discovery Map**:
 The nearby-first map view in **Food Discovery** for spatially exploring restaurants before recording food activity.
 _Avoid_: discovery feed map, saved places map, list map
@@ -325,6 +329,7 @@ _Avoid_: notification inbox, user notification history
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.
 - **Food Discovery** may surface saved restaurants, Google places, nearby restaurants, and storefront-extracted names, but it does not create a **Restaurant List**.
+- **Storefront Scan History** is local persistence for **Food Discovery** saved scan results; it is not a backend restaurant record, **Restaurant List**, or **Menu Scan Source Image**.
 - **Food Discovery** prioritizes nearby restaurants for exploratory browsing; saved restaurants are fallback or recall content, not the primary discovery result.
 - **Food Discovery Map** defaults to current-location nearby exploration, but explicit text or location searches may replace the mapped results.
 - Selecting a restaurant in **Food Discovery Map** opens a preview sheet before navigating to restaurant detail.
