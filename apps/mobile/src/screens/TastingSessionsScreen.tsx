@@ -23,13 +23,14 @@ import {
   useTastingSessionWrites,
 } from '../features';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
-import { formatStoredCalendarDateLabel } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 import {
+  formatCompletedTastingSessionSubtitle,
+  formatTastingSessionCount,
   formatTastingSessionStatusLabel,
   getTastingInviteDisplayStatus,
   isTastingInviteWindowOpen,
@@ -101,36 +102,6 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xxs,
   },
 }));
-
-function getApprovedRestaurantCount(session: TastingSessionRecord): number {
-  return session.restaurants.filter((restaurant) => restaurant.status === 'approved').length;
-}
-
-function getApprovedItemCount(session: TastingSessionRecord): number {
-  return session.restaurants
-    .filter((restaurant) => restaurant.status === 'approved')
-    .reduce((count, restaurant) => count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length, 0);
-}
-
-function formatCount(value: number, singular: string, plural: string): string {
-  return `${value} ${value === 1 ? singular : plural}`;
-}
-
-function formatCompletedSessionSummary(session: TastingSessionRecord): string {
-  return [
-    formatCount(getApprovedRestaurantCount(session), 'restaurant', 'restaurants'),
-    formatCount(getApprovedItemCount(session), 'item', 'items'),
-    formatCount(session.participants.length, 'taster', 'tasters'),
-  ].join(', ');
-}
-
-function formatCompletedSessionListSubtitle(session: TastingSessionRecord): string {
-  const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
-    fallback: 'Unknown date',
-    locale: 'en-US',
-  });
-  return `${sessionDate} - ${formatCompletedSessionSummary(session)}`;
-}
 
 function getSessionSortTime(session: TastingSessionRecord): number {
   const timestamp = Date.parse(session.updatedAt || session.createdAt);
@@ -444,7 +415,9 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text variant="titleMd">Active</Text>
-            <Text tone="muted" variant="label">{formatCount(activeSessions.length, 'session', 'sessions')}</Text>
+            <Text tone="muted" variant="label">
+              {formatTastingSessionCount(activeSessions.length, 'session', 'sessions')}
+            </Text>
           </View>
           <OptionList>
             {activeSessions.map((session) => {
@@ -503,7 +476,9 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text variant="titleMd">Completed</Text>
-            <Text tone="muted" variant="label">{formatCount(completedSessions.length, 'session', 'sessions')}</Text>
+            <Text tone="muted" variant="label">
+              {formatTastingSessionCount(completedSessions.length, 'session', 'sessions')}
+            </Text>
           </View>
           <OptionList>
             {completedSessions.map((session, index) => (
@@ -517,7 +492,7 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
                     tone={resolveTastingSessionStatusTone(session.status)}
                   />
                 }
-                subtitle={formatCompletedSessionListSubtitle(session)}
+                subtitle={formatCompletedTastingSessionSubtitle(session)}
                 title={session.name}
               />
             ))}

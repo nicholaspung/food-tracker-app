@@ -11,15 +11,15 @@ import {
   PhotoViewerModal,
   type RecordPhotoEntry,
 } from '../components/shared';
-import { listVisitItemPhotos, type TastingItemRatingRecord, type TastingSessionRecord } from '../features';
+import { listVisitItemPhotos, type TastingItemRatingRecord } from '../features';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
-import { formatStoredCalendarDateLabel } from '../lib/dateFormatting';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
+import { formatCompletedTastingSessionSubtitle } from './tastingSessions/shared';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionResults'>;
@@ -48,35 +48,6 @@ function uniquePhotoEntries(entries: RecordPhotoEntry[]): RecordPhotoEntry[] {
     byId.set(entry.id, entry);
   }
   return Array.from(byId.values());
-}
-
-function getApprovedRestaurantCount(session: TastingSessionRecord): number {
-  return session.restaurants.filter((restaurant) => restaurant.status === 'approved').length;
-}
-
-function getApprovedItemCount(session: TastingSessionRecord): number {
-  return session.restaurants
-    .filter((restaurant) => restaurant.status === 'approved')
-    .reduce((count, restaurant) => count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length, 0);
-}
-
-function formatCount(value: number, singular: string, plural: string): string {
-  return `${value} ${value === 1 ? singular : plural}`;
-}
-
-function formatCompletedSessionSubtitle(session: TastingSessionRecord): string {
-  const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
-    fallback: 'Unknown date',
-    locale: 'en-US',
-  });
-
-  const summary = [
-    formatCount(getApprovedRestaurantCount(session), 'restaurant', 'restaurants'),
-    formatCount(getApprovedItemCount(session), 'item', 'items'),
-    formatCount(session.participants.length, 'taster', 'tasters'),
-  ].join(', ');
-
-  return `${sessionDate} - ${summary}`;
 }
 
 export function TastingSessionResultsScreen({ navigation, route }: TastingSessionResultsScreenProps) {
@@ -185,7 +156,7 @@ export function TastingSessionResultsScreen({ navigation, route }: TastingSessio
           onBackPress={() => navigation.navigate('TastingSessions')}
           subtitle={
             availableSession.status === 'completed'
-              ? formatCompletedSessionSubtitle(availableSession)
+                ? formatCompletedTastingSessionSubtitle(availableSession)
               : 'Results appear after the leader completes the tasting.'
           }
           title={availableSession.name}

@@ -1,4 +1,5 @@
 import type { TastingInviteRecord, TastingSessionRecord, TastingSessionStatus } from '../../features';
+import { formatStoredCalendarDateLabel } from '../../lib/dateFormatting';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
 export interface TastingNavigation {
@@ -48,6 +49,40 @@ export function formatTastingSessionStatusLabel(status: TastingSessionStatus): s
     case 'completed':
       return 'Completed';
   }
+}
+
+export function getApprovedTastingRestaurantCount(session: TastingSessionRecord): number {
+  return session.restaurants.filter((restaurant) => restaurant.status === 'approved').length;
+}
+
+export function getApprovedTastingItemCount(session: TastingSessionRecord): number {
+  return session.restaurants
+    .filter((restaurant) => restaurant.status === 'approved')
+    .reduce(
+      (count, restaurant) =>
+        count + (restaurant.items ?? []).filter((item) => item.status === 'approved').length,
+      0,
+    );
+}
+
+export function formatTastingSessionCount(value: number, singular: string, plural: string): string {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+export function formatCompletedTastingSessionSummary(session: TastingSessionRecord): string {
+  return [
+    formatTastingSessionCount(getApprovedTastingRestaurantCount(session), 'restaurant', 'restaurants'),
+    formatTastingSessionCount(getApprovedTastingItemCount(session), 'item', 'items'),
+    formatTastingSessionCount(session.participants.length, 'taster', 'tasters'),
+  ].join(', ');
+}
+
+export function formatCompletedTastingSessionSubtitle(session: TastingSessionRecord): string {
+  const sessionDate = formatStoredCalendarDateLabel(session.updatedAt || session.createdAt, {
+    fallback: 'Unknown date',
+    locale: 'en-US',
+  });
+  return `${sessionDate} - ${formatCompletedTastingSessionSummary(session)}`;
 }
 
 export function resolveTastingSessionStatusTone(status: TastingSessionStatus): 'info' | 'warning' | 'success' {
