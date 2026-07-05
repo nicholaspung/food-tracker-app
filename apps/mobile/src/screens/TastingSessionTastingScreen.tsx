@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   ConfirmDestructiveModal,
   EmptyState,
-  ErrorState,
   FeatureFormScreenScaffold,
   HomeFeedVisitEntryCard,
   type HomeFeedPhotoRecord,
@@ -41,6 +40,7 @@ import { createThemedStyles } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './createVisit/shared';
 import { formatReviewEntryFooterLabel } from './photoProcessing/shared';
+import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
 import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
@@ -113,6 +113,26 @@ const useStyles = createThemedStyles((theme) => ({
 
 function formatFreeMonthlyPhotoLimitStatus(remaining: number): string {
   return `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`;
+}
+
+function renderTastingSessionFormFallbackScaffold({
+  children,
+  onBackPress,
+  title,
+}: {
+  children: ReactNode;
+  onBackPress: () => void;
+  title: string;
+}) {
+  return (
+    <FeatureFormScreenScaffold
+      onBackPress={onBackPress}
+      primaryAction={{ disabled: true, label: 'Submit Ratings', onPress: () => undefined }}
+      title={title}
+    >
+      {children}
+    </FeatureFormScreenScaffold>
+  );
 }
 
 export function TastingSessionTastingScreen({ navigation, route }: TastingSessionTastingScreenProps) {
@@ -489,27 +509,18 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     }
   };
 
-  if (sessionQuery.isError && !session) {
+  if ((sessionQuery.isError && !session) || !session) {
     return (
-      <FeatureFormScreenScaffold
+      <TastingSessionLifecycleShell
+        isError={sessionQuery.isError}
+        loadingTitle="Loading tasting"
         onBackPress={() => navigation.navigate('TastingSessions')}
-        primaryAction={{ disabled: true, label: 'Submit Ratings', onPress: () => undefined }}
+        renderScaffold={renderTastingSessionFormFallbackScaffold}
+        session={session}
         title="Tasting"
       >
-        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
-      </FeatureFormScreenScaffold>
-    );
-  }
-
-  if (!session) {
-    return (
-      <FeatureFormScreenScaffold
-        onBackPress={() => navigation.navigate('TastingSessions')}
-        primaryAction={{ disabled: true, label: 'Submit Ratings', onPress: () => undefined }}
-        title="Tasting"
-      >
-        <EmptyState title="Loading tasting" />
-      </FeatureFormScreenScaffold>
+        {() => null}
+      </TastingSessionLifecycleShell>
     );
   }
 

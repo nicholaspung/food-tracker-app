@@ -33,6 +33,7 @@ jest.mock('../components/shared', () => ({
   ConfirmDestructiveModal: (props: Record<string, unknown>) =>
     mockReact.createElement('ConfirmDestructiveModal', props),
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
+  ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   FeatureFormScreenScaffold: ({
     children,
     primaryAction,

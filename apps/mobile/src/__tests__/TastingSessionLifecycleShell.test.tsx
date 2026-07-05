@@ -12,6 +12,9 @@ jest.mock('../components/shared', () => ({
   FeatureDetailScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
+  FeatureFormScreenScaffold: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
 }));
 
 const session = {
@@ -101,6 +104,43 @@ describe('TastingSessionLifecycleShell', () => {
 
     renderer!.root.findByType('FeatureDetailScreenScaffold').props.onBackPress();
 
+    expect(onBackPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports form-style fallback scaffolds for tasting loading states', async () => {
+    const onBackPress = jest.fn();
+    let renderer: ReturnType<typeof renderShell> | null = null;
+
+    await act(async () => {
+      renderer = renderShell({
+        loadingTitle: 'Loading tasting',
+        onBackPress,
+        renderScaffold: ({ children, onBackPress: scaffoldBackPress, title }) =>
+          mockReact.createElement(
+            'FeatureFormScreenScaffold',
+            {
+              onBackPress: scaffoldBackPress,
+              primaryAction: { disabled: true, label: 'Submit Ratings' },
+              title,
+            },
+            children,
+          ),
+        session: undefined,
+        title: 'Tasting',
+      });
+    });
+
+    const scaffold = renderer!.root.findByType('FeatureFormScreenScaffold');
+    const emptyState = renderer!.root.findByType('EmptyState');
+
+    expect(scaffold.props.title).toBe('Tasting');
+    expect(scaffold.props.primaryAction).toMatchObject({
+      disabled: true,
+      label: 'Submit Ratings',
+    });
+    expect(emptyState.props.title).toBe('Loading tasting');
+
+    scaffold.props.onBackPress();
     expect(onBackPress).toHaveBeenCalledTimes(1);
   });
 });

@@ -12,8 +12,29 @@ interface TastingSessionLifecycleShellProps {
   isError: boolean;
   loadingTitle: string;
   onBackPress: () => void;
+  renderScaffold?: (props: {
+    children: ReactNode;
+    onBackPress: () => void;
+    title: string;
+  }) => ReactNode;
   session: TastingSessionRecord | null | undefined;
   title: string;
+}
+
+function renderDetailScaffold({
+  children,
+  onBackPress,
+  title,
+}: {
+  children: ReactNode;
+  onBackPress: () => void;
+  title: string;
+}) {
+  return (
+    <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={onBackPress} title={title}>
+      {children}
+    </FeatureDetailScreenScaffold>
+  );
 }
 
 export function TastingSessionLifecycleShell({
@@ -21,23 +42,24 @@ export function TastingSessionLifecycleShell({
   isError,
   loadingTitle,
   onBackPress,
+  renderScaffold = renderDetailScaffold,
   session,
   title,
 }: TastingSessionLifecycleShellProps) {
   if (isError && !session) {
-    return (
-      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={onBackPress} title={title}>
-        <ErrorState description="Could not load this tasting session." title="Session unavailable" />
-      </FeatureDetailScreenScaffold>
-    );
+    return renderScaffold({
+      children: <ErrorState description="Could not load this tasting session." title="Session unavailable" />,
+      onBackPress,
+      title,
+    });
   }
 
   if (!session) {
-    return (
-      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={onBackPress} title={title}>
-        <EmptyState title={loadingTitle} />
-      </FeatureDetailScreenScaffold>
-    );
+    return renderScaffold({
+      children: <EmptyState title={loadingTitle} />,
+      onBackPress,
+      title,
+    });
   }
 
   return <>{children(session)}</>;
