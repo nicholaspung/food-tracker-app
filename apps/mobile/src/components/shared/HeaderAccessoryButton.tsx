@@ -31,7 +31,7 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xxs,
     justifyContent: 'center',
-    minHeight: 32,
+    minHeight: 44,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 4,
   },
