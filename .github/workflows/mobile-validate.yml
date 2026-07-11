@@ -7,6 +7,8 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "scripts/mobile-doctor.sh"
+      - "scripts/verify-mobile-native-sync.mjs"
       - ".github/workflows/mobile-validate.yml"
       - ".github/workflows/mobile-preview.yml"
   workflow_dispatch:

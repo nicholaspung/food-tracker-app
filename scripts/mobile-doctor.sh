@@ -10,4 +10,4 @@ workspace_pnpm_root="$(pnpm root -w)/.pnpm/node_modules"
 export NODE_PATH="${expo_pkg_dir}/node_modules:${expo_parent_dir}:${workspace_pnpm_root}${NODE_PATH:+:${NODE_PATH}}"
 
 node ../../scripts/verify-mobile-native-sync.mjs
-npx expo-doctor --verbose
+pnpm dlx expo-doctor@latest --verbose

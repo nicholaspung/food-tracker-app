@@ -20,6 +20,12 @@ The repo checks in `apps/mobile/ios`, keeps a custom `ReleasePreview` iOS build 
 
 The replacement guardrail is `scripts/verify-mobile-native-sync.mjs`, and `pnpm mobile:doctor` runs it before `expo-doctor`. It validates the resolved production and preview Expo config against the checked-in iOS bundle identifiers, app-link hosts, runtime/version values, deployment target, permission strings, and `ReleasePreview` suffix settings. Update this script when app identity, versioning, deployment target, permissions, or preview-native behavior changes.
 
+## Live Expo Doctor Advisory Policy
+
+`pnpm mobile:doctor` intentionally runs `expo-doctor@latest` as a live Expo advisory gate after native sync validation. Expo Doctor is not pinned in the mobile dependency graph, so its findings can change without a repository or lockfile change.
+
+A new Expo Doctor release may legitimately fail local, CI, or release validation after earlier runs passed. Treat that as updated compatibility guidance: resolve the reported finding, rerun the full mobile checks, and retry the push or release only after the gate passes. Do not dismiss changed findings as nondeterministic CI failures or pin Expo Doctor solely to preserve an earlier result.
+
 ## ExpoSQLite Xcode 26 Decision
 
 Decision: remove the ExpoSQLite/Xcode 26 workaround after the Expo SDK 56 native refresh.
