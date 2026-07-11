@@ -44,7 +44,7 @@ The app prioritizes cold offline browsing and replayable offline writes for the 
 - Default to no local persistence for new data unless it supports cold offline browse, replayable offline writes, auth/session continuity, or a small non-content product marker.
 - New persisted query keys must be allowlisted in `queryPersistence` and reviewed for projection minimization.
 - New user-authored create/update/delete flows in the offline-supported domains must queue replayable payloads through the existing outbox primitives; marker-only queue entries are not enough.
-- Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates. **Tasting Plan Writes** and **Tasting Rating Submission Writes** remain online-only unless a future outbox registration adds replay support for the touched action.
+- Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates into planning, tasting, and completed. Queued completion replays the **Tasting Session Lifecycle** status transition only; it does not replay a participant's rating payload. **Tasting Plan Writes** and **Tasting Rating Submission Writes** remain online-only unless a future dedicated outbox registration adds replay support for the touched action.
 - New support diagnostics may include operation ids, methods, redacted URLs, status, timestamps, retry state, and sanitized error shape. They must not expose serialized queue bodies or auth tokens.
 - Any future encryption work must define key storage, migration, failure recovery, and web fallback behavior before changing production storage.
 

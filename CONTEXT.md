@@ -147,22 +147,24 @@ A participant's personal ratings for the selected menu items they tried during a
 _Avoid_: Assigned items
 
 **Tasting Session Lifecycle**:
-The shared in-progress progression of a group tasting session from lobby, to planning, to rating, to review.
+The shared in-progress progression of a group tasting session from lobby, to planning, to rating, to review. Mobile lifecycle orchestration coordinates the canonical tasting write modules; it is not a separate write-ownership domain.
 _Avoid_: leader steps, invitee steps
 
 **Tasting Session Writes**:
-The mobile module that owns group tasting session lifecycle writes, including creating sessions, joining sessions, invite actions, lobby membership changes, cache effects, and online-only action handling.
+The mobile module that owns group tasting session lifecycle writes, including creating sessions, joining sessions, invite actions, lobby membership changes, cache effects, and session status transitions. The supported outbox subset includes status transitions into planning, tasting, and completed; completing the lifecycle is a session status transition, not rating-payload replay.
 _Avoid_: tasting session mutation helper, group tasting action wrapper
 
 **Tasting Plan Writes**:
-The mobile module that owns leader-selected **Tasting Plan** changes before tasting starts, including adding/removing restaurants, adding/removing menu items, starting tasting, and refreshing affected session state.
+The mobile module that owns leader-selected **Tasting Plan** changes before tasting starts, including adding/removing restaurants, adding/removing menu items, and refreshing affected session state. These mutations are online-only unless a dedicated outbox registration is added. Starting tasting itself is a **Tasting Session Writes** status transition coordinated by the lifecycle flow.
 _Avoid_: tasting suggestion helper, planning screen actions
 
 Technical aliases / legacy names: existing write functions and endpoints may still use names such as `suggestTastingRestaurant`, `suggestTastingMenuItem`, `tasting_session_restaurants`, `restaurant_suggestion`, `restaurantSuggestionId`, and `itemSuggestionId`. Those names refer to selected **Tasting Plan** entries, not a separate suggestions domain.
 
 **Tasting Rating Submission Writes**:
-The mobile module that owns submitting a participant's **Tasting Rating Submission**, including payload construction, generated Visit photo upload handoff, cache effects, and leader completion.
+The mobile module that owns submitting a participant's **Tasting Rating Submission**, including payload construction, generated Visit photo upload handoff, and cache effects. Rating payload submission is online-only unless a dedicated outbox registration is added; leader completion after submissions is a separate **Tasting Session Writes** status transition coordinated by the lifecycle flow.
 _Avoid_: tasting submit helper, rating mutation wrapper
+
+Technical aliases / compatibility: `useTastingSessionLifecycleWrites` is the active mobile orchestration hook that coordinates the three canonical tasting write modules. Older `useTastingPlanWrites` and `useTastingRatingSubmissionWrites` exports remain compatibility adapters; their API placement and online-only guards do not transfer ownership of session status transitions or make lifecycle orchestration a fourth write domain.
 
 **Menu Item Catalog Writes**:
 The mobile module that owns creating and updating a restaurant's saved menu item catalog, including cache insertion, invalidation, scan-created records, and tasting-plan handoff after catalog changes.
@@ -372,6 +374,7 @@ _Avoid_: notification inbox, user notification history
 - **Tasting Session Writes** preserve the write lifecycle for group tasting creation, joining, invite actions, lobby changes, and session status movement.
 - **Tasting Plan Writes** preserve the write lifecycle for leader-selected restaurants and menu items inside a **Tasting Plan**.
 - **Tasting Rating Submission Writes** preserve the write lifecycle for participant ratings and generated Visit photo handoff.
+- Mobile **Tasting Session Lifecycle** orchestration coordinates those write modules without creating a fourth ownership domain: lifecycle status movement, including completion, remains **Tasting Session Writes**.
 - **Menu Item Catalog Writes** preserve menu item catalog write behavior across Visit creation, Photo Processing, menu scan, and Tasting Plan adapters.
 - An **Approved Location Menu Item** belongs to one exact **Restaurant** location.
 - A **Group Menu Suggestion** starts from an **Approved Location Menu Item** but may be shown at related restaurant locations as memory assistance.
@@ -429,8 +432,8 @@ _Avoid_: notification inbox, user notification history
 - **Settings Preferences** writes are part of the offline mutation queue when saving supported preference changes.
 - **Onboarding Progress** is persisted on the authenticated user record and may be updated while offline.
 - **Onboarding Progress** writes are part of the offline mutation queue for first-run completion and supported feature-intro dismissals.
-- Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates.
-- **Tasting Plan Writes** and **Tasting Rating Submission Writes** are separate write modules and should not be described as covered by the tasting-session outbox unless their own replay registrations exist.
+- Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates into planning, tasting, and completed. Queued completion replays only the lifecycle status transition; it does not replay a participant's **Tasting Rating Submission** payload.
+- **Tasting Plan Writes** and **Tasting Rating Submission Writes** are separate online-only write modules and should not be described as covered by the tasting-session outbox unless their own replay registrations exist.
 - A **Notification Signal** may appear as a **Device Notification**, an **In-App Indicator**, or both.
 - A **Device Notification** is either a **Remote Device Notification** or a **Local Device Notification**.
 - An **In-App Indicator** stays tied to the unresolved product state it represents.
