@@ -1,4 +1,7 @@
-import type { RestaurantListDetailPhotoPreviewRecord } from '../../features';
+import type {
+  SharedRestaurantListPhotoPreviewRecord,
+} from '../models';
+import type { RestaurantListDetailPhotoPreviewRecord } from '../store/featureStore';
 import { buildPhotoThumbnailUrl, buildPhotoViewerUrl } from '../../lib/photoUrls';
 import type {
   GroupedBookmarkedItem,
@@ -77,6 +80,49 @@ export function buildBookmarkedItemPhotoEntries(
 
   appendPhotoEntries(entriesById, photosByFoodItemId, item.foodItemId, fallbackOwnerLabel);
   appendPhotoEntries(entriesById, photosByFoodItemId, item.userFoodItemId, fallbackOwnerLabel);
+
+  return Array.from(entriesById.values());
+}
+
+export function groupSharedListPhotosByFoodItemId(
+  photos: readonly SharedRestaurantListPhotoPreviewRecord[],
+): Map<string, SharedRestaurantListPhotoPreviewRecord[]> {
+  const map = new Map<string, SharedRestaurantListPhotoPreviewRecord[]>();
+
+  for (const photo of photos) {
+    const foodItemId = photo.food_item?.trim();
+    if (!foodItemId) {
+      continue;
+    }
+
+    const existing = map.get(foodItemId) ?? [];
+    existing.push(photo);
+    map.set(foodItemId, existing);
+  }
+
+  return map;
+}
+
+export function buildSharedBookmarkedItemPhotoEntries(
+  item: GroupedBookmarkedItem,
+  photosByFoodItemId: Map<string, SharedRestaurantListPhotoPreviewRecord[]>,
+): OwnerItemPhotoEntry[] {
+  const entriesById = new Map<string, OwnerItemPhotoEntry>();
+
+  for (const foodItemId of [item.foodItemId, item.userFoodItemId]) {
+    if (!foodItemId) {
+      continue;
+    }
+
+    for (const photo of photosByFoodItemId.get(foodItemId) ?? []) {
+      entriesById.set(photo.id, {
+        id: photo.id,
+        previewUrl: buildPhotoThumbnailUrl(photo),
+        url: buildPhotoViewerUrl(photo),
+        ownerLabel: 'Shared list',
+      });
+    }
+  }
 
   return Array.from(entriesById.values());
 }

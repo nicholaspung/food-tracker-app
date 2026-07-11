@@ -1,5 +1,4 @@
-import { buildOwnerDisplayItems } from '../screens/listDetail/listDetailDisplayItems';
-import type { GroupedBookmarkedItem } from '../screens/listDetail/listDetailTypes';
+import { buildOwnerDisplayItems, type GroupedBookmarkedItem } from '../features';
 
 function buildItem(overrides: Partial<GroupedBookmarkedItem> = {}): GroupedBookmarkedItem {
   return {

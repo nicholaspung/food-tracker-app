@@ -1,5 +1,5 @@
 import { RecordPhotoThumbnailButton } from '../../components/shared';
-import type { OwnerItemPhotoEntry } from './listDetailTypes';
+import type { OwnerItemPhotoEntry } from '../../features/restaurantLists/listDetailTypes';
 
 interface ListDetailItemPhotoButtonProps {
   accessibilityLabel: string;

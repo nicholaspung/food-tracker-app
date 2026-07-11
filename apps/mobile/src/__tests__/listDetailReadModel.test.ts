@@ -1,6 +1,10 @@
-import type { RestaurantListDetailRecord, RestaurantListRecord } from '../features';
-import { createRecommendationSourceHandoff } from '../features/recommendationSourceHandoff';
-import { buildListDetailReadModel } from '../screens/listDetail/listDetailReadModel';
+import {
+  buildRestaurantListDetailReadModel,
+  type AuthenticatedListDetailReadModelInput,
+  type RestaurantListDetailRecord,
+  type RestaurantListRecord,
+  type SharedRestaurantListDetailRecord,
+} from '../features';
 
 function buildList(overrides: Partial<RestaurantListRecord> = {}): RestaurantListRecord {
   return {
@@ -135,8 +139,9 @@ function buildDetail(overrides: Partial<RestaurantListDetailRecord> = {}): Resta
   };
 }
 
-function buildModel(overrides: Partial<Parameters<typeof buildListDetailReadModel>[0]> = {}) {
-  return buildListDetailReadModel({
+function buildModel(overrides: Partial<AuthenticatedListDetailReadModelInput> = {}) {
+  return buildRestaurantListDetailReadModel({
+    variant: 'authenticated',
     detail: buildDetail(),
     userId: 'owner_1',
     saveBookmarkTarget: null,
@@ -146,7 +151,7 @@ function buildModel(overrides: Partial<Parameters<typeof buildListDetailReadMode
   });
 }
 
-describe('buildListDetailReadModel', () => {
+describe('buildRestaurantListDetailReadModel', () => {
   it('builds owner rows with grouped restaurants, owner display rows, map rows, and photo entries', () => {
     const model = buildModel();
 
@@ -186,26 +191,29 @@ describe('buildListDetailReadModel', () => {
     });
   });
 
+  it('keeps authenticated owner actions tied to the containing list item', () => {
+    const detail = buildDetail();
+    const parentItem = detail.items[0];
+    const bookmarkedItem = parentItem?.bookmarkedItems[0];
+    if (!parentItem || !bookmarkedItem) {
+      throw new Error('Expected an authenticated bookmark fixture.');
+    }
+    bookmarkedItem.listItemId = 'source_list_item_from_friend';
+
+    const model = buildModel({ detail });
+    const item = model.groupedRestaurants
+      .find((group) => group.restaurantId === parentItem.restaurantId)
+      ?.items[0];
+
+    expect(item?.listItemId).toBe(parentItem.id);
+    expect(item?.key).toBe(`${parentItem.id}:${bookmarkedItem.id}`);
+  });
+
   it('builds viewer rows with saved bookmark facts and save-target state', () => {
     const model = buildModel({
       userId: 'viewer_1',
       saveBookmarkTarget: {
         bookmarkLookupIds: ['food_1', 'user_food_1'],
-        restaurantId: 'restaurant_1',
-        restaurantName: 'Alpha Cafe',
-        foodItemId: 'food_1',
-        foodItemName: 'Pancakes',
-        foodItemRating: 9,
-        recommendationSource: createRecommendationSourceHandoff({
-          discoverySurface: 'list_detail',
-          sourceFoodItemId: 'food_1',
-          sourceListId: 'list_1',
-          sourceListItemId: 'list_item_1',
-          sourceUserId: 'friend_2',
-        }),
-        sourceListItemId: 'list_item_1',
-        visitedAt: '2025-02-01T00:00:00.000Z',
-        sourceNote: 'Great patio',
       },
     });
 
@@ -392,5 +400,154 @@ describe('buildListDetailReadModel', () => {
     expect(model.hasBlockingListItemsError).toBe(true);
     expect(model.hasListItemsRefreshError).toBe(false);
     expect(model.list).toBeNull();
+  });
+
+  it('builds unauthenticated shared-link rows without authenticated viewer fields', () => {
+    const detail: SharedRestaurantListDetailRecord = {
+      list: {
+        id: 'shared_list',
+        name: 'Nina Picks',
+        description: 'Neighborhood favorites',
+        ownerName: 'Nina',
+        restaurantCount: 1,
+        updatedAt: '2026-04-01T00:00:00.000Z',
+      },
+      items: [
+        {
+          id: 'shared_item',
+          listId: 'shared_list',
+          restaurantId: 'restaurant_1',
+          restaurantName: 'Alpha Cafe',
+          restaurantCity: 'Berkeley',
+          restaurantCuisineType: 'Cafe',
+          restaurantVisibility: 'private',
+          position: 1,
+          note: 'Great patio',
+          bookmarkedItems: [
+            {
+              id: 'food_1',
+              listItemId: 'source_shared_item',
+              name: 'Pancakes',
+              rating: 9,
+              sourceUserId: 'friend_1',
+              sourceUserName: 'Ari',
+              userFoodItemId: 'user_food_1',
+            },
+            {
+              id: 'food_2',
+              listItemId: 'shared_item',
+              name: ' pancakes ',
+              rating: 8,
+            },
+          ],
+          createdAt: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+      bookmarkState: {
+        savedListIdsByBookmarkLookupId: {
+          food_2: ['saved_elsewhere'],
+        },
+      },
+      photoPreviews: [
+        {
+          id: 'shared_photo',
+          food_item: 'user_food_1',
+          photo: 'shared-photo.jpg',
+          created: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+      viewerLists: [],
+    };
+
+    const model = buildRestaurantListDetailReadModel({
+      variant: 'shared',
+      detail,
+      locallySavedDefaultBookmarkLookupIds: new Set<string>(),
+    });
+
+    expect(model.subtitle).toBe("Nina's list · 1 restaurant\nNeighborhood favorites");
+    expect(model.restaurantRows).toHaveLength(1);
+    expect(model.restaurantRows[0]).toMatchObject({
+      isRestaurantLocked: true,
+      primaryMetaLabel: 'Berkeley',
+      secondaryMetaLabel: 'Cafe',
+      group: {
+        notes: ['Great patio'],
+      },
+      bookmarkedItems: [
+        {
+          name: 'Pancakes',
+          listItemId: 'source_shared_item',
+          isSaved: true,
+          bookmarkLookupIds: ['food_1', 'user_food_1', 'food_2'],
+          photoEntries: [
+            {
+              id: 'shared_photo',
+              ownerLabel: 'Shared list',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('derives shared Want to Try state from the viewer default list and local saves', () => {
+    const detail: SharedRestaurantListDetailRecord = {
+      list: {
+        id: 'shared_list',
+        name: 'Nina Picks',
+        restaurantCount: 1,
+        updatedAt: '2026-04-01T00:00:00.000Z',
+      },
+      items: [
+        {
+          id: 'shared_item',
+          listId: 'shared_list',
+          restaurantId: 'restaurant_1',
+          restaurantName: 'Alpha Cafe',
+          position: 1,
+          bookmarkedItems: [
+            {
+              id: 'food_saved',
+              listItemId: 'shared_item',
+              name: 'Pancakes',
+              rating: 9,
+            },
+            {
+              id: 'food_local',
+              listItemId: 'shared_item',
+              name: 'Waffles',
+              rating: 8,
+            },
+          ],
+          createdAt: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+      bookmarkState: {
+        savedListIdsByBookmarkLookupId: {
+          food_saved: ['want_to_try'],
+        },
+      },
+      photoPreviews: [],
+      viewerLists: [
+        buildList({
+          id: 'want_to_try',
+          isDefault: true,
+          userId: 'viewer_1',
+        }),
+      ],
+    };
+
+    const model = buildRestaurantListDetailReadModel({
+      variant: 'shared',
+      detail,
+      locallySavedDefaultBookmarkLookupIds: new Set(['food_local']),
+    });
+
+    expect(model.defaultList?.id).toBe('want_to_try');
+    expect(model.restaurantRows[0]?.bookmarkedItems.map((item) => item.isSaved)).toEqual([
+      true,
+      true,
+    ]);
   });
 });

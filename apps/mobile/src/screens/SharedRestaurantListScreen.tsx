@@ -17,16 +17,16 @@ import {
   restaurantListQueryKeys,
   saveSharedRestaurantListRecommendation,
 } from '../features';
+import { buildRestaurantListDetailReadModel } from '../features/restaurantLists/restaurantListDetailReadModel';
+import type {
+  GroupedBookmarkedItem,
+  GroupedRestaurant,
+  OwnerItemPhotoEntry,
+} from '../features/restaurantLists/listDetailTypes';
 import {
   createRecommendationSourceHandoff,
   resolveSharedRecommendationSourceListItemId,
 } from '../features/recommendationSourceHandoff';
-import type {
-  RestaurantListBookmarkedItemRecord,
-  RestaurantListItemRecord,
-  SharedRestaurantListPhotoPreviewRecord,
-} from '../features';
-import { buildPhotoThumbnailUrl, buildPhotoViewerUrl } from '../lib/photoUrls';
 import { savePendingAuthRedirect } from '../lib/pendingAuthRedirect';
 import { env } from '../config/env';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -36,26 +36,11 @@ import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
-import { buildBookmarkLookupIds } from './listDetail/listDetailFormatters';
 import { ListDetailBookmarkedItemRow } from './listDetail/ListDetailBookmarkedItemRow';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
-import { buildViewerDisplayItems } from './listDetail/listDetailDisplayItems';
-import type { GroupedBookmarkedItem, OwnerItemPhotoEntry } from './listDetail/listDetailTypes';
 
 type SharedRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'SharedRestaurantList'>;
 const SHARED_LIST_PAGE_SIZE = 20;
-
-interface GroupedSharedRestaurant {
-  restaurantId: string;
-  restaurantName: string;
-  restaurantLocation?: string;
-  restaurantCity?: string;
-  restaurantCuisineType?: string;
-  restaurantVisibility?: 'private' | 'friends' | 'public';
-  notes: string[];
-  firstPosition: number;
-  items: GroupedBookmarkedItem[];
-}
 
 const useStyles = createThemedStyles((theme) => ({
   container: {
@@ -97,104 +82,6 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.muted,
   },
 }));
-
-function mapSharedBookmarkItem(item: RestaurantListBookmarkedItemRecord): GroupedBookmarkedItem {
-  return {
-    key: `${item.listItemId}:${item.id}`,
-    bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
-    foodItemId: item.id,
-    foodItemRestaurantId: item.restaurantId,
-    listItemId: item.listItemId,
-    name: item.name,
-    rating: item.rating,
-    visitedAt: item.visitedAt,
-    sourceUserId: item.sourceUserId,
-    sourceUserName: item.sourceUserName,
-    userFoodItemId: item.userFoodItemId,
-    userFoodItemRating: item.userFoodItemRating,
-    userFoodItemVisitedAt: item.userFoodItemVisitedAt,
-  };
-}
-
-function groupSharedListItems(items: RestaurantListItemRecord[]): GroupedSharedRestaurant[] {
-  const groups = new Map<string, GroupedSharedRestaurant>();
-
-  for (const item of items) {
-    const group =
-      groups.get(item.restaurantId) ??
-      {
-        restaurantId: item.restaurantId,
-        restaurantName: item.restaurantName,
-        restaurantLocation: item.restaurantLocation,
-        restaurantCity: item.restaurantCity,
-        restaurantCuisineType: item.restaurantCuisineType,
-        restaurantVisibility: item.restaurantVisibility,
-        notes: [],
-        firstPosition: item.position,
-        items: [],
-      };
-
-    group.firstPosition = Math.min(group.firstPosition, item.position);
-    group.restaurantName = item.restaurantName;
-    group.restaurantLocation = item.restaurantLocation;
-    group.restaurantCity = item.restaurantCity;
-    group.restaurantCuisineType = item.restaurantCuisineType;
-    group.restaurantVisibility = item.restaurantVisibility;
-
-    if (item.note && !group.notes.includes(item.note)) {
-      group.notes.push(item.note);
-    }
-
-    group.items.push(...item.bookmarkedItems.map(mapSharedBookmarkItem));
-    groups.set(item.restaurantId, group);
-  }
-
-  return Array.from(groups.values())
-    .map((group) => ({
-      ...group,
-      items: buildViewerDisplayItems(group.items),
-    }))
-    .sort((left, right) => left.firstPosition - right.firstPosition);
-}
-
-function groupSharedPhotosByFoodItemId(
-  photos: SharedRestaurantListPhotoPreviewRecord[],
-): Map<string, SharedRestaurantListPhotoPreviewRecord[]> {
-  const lookup = new Map<string, SharedRestaurantListPhotoPreviewRecord[]>();
-  for (const photo of photos) {
-    const foodItemId = photo.food_item?.trim();
-    if (!foodItemId) {
-      continue;
-    }
-    const existing = lookup.get(foodItemId) ?? [];
-    existing.push(photo);
-    lookup.set(foodItemId, existing);
-  }
-  return lookup;
-}
-
-function buildSharedPhotoEntries(
-  item: GroupedBookmarkedItem,
-  photosByFoodItemId: Map<string, SharedRestaurantListPhotoPreviewRecord[]>,
-): OwnerItemPhotoEntry[] {
-  const entriesById = new Map<string, OwnerItemPhotoEntry>();
-
-  for (const foodItemId of [item.foodItemId, item.userFoodItemId]) {
-    if (!foodItemId) {
-      continue;
-    }
-    for (const photo of photosByFoodItemId.get(foodItemId) ?? []) {
-      entriesById.set(photo.id, {
-        id: photo.id,
-        previewUrl: buildPhotoThumbnailUrl(photo),
-        url: buildPhotoViewerUrl(photo),
-        ownerLabel: 'Shared list',
-      });
-    }
-  }
-
-  return Array.from(entriesById.values());
-}
 
 export function SharedRestaurantListScreen({ navigation, route }: SharedRestaurantListScreenProps) {
   const { shareToken } = route.params;
@@ -261,31 +148,15 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
       hasNextPage: lastPage.hasNextPage,
     };
   }, [query.data?.pages]);
-  const groupedRestaurants = useMemo(
-    () => groupSharedListItems(loadedSharedList?.items ?? []),
-    [loadedSharedList?.items],
+  const readModel = useMemo(
+    () => buildRestaurantListDetailReadModel({
+      variant: 'shared',
+      detail: loadedSharedList,
+      locallySavedDefaultBookmarkLookupIds,
+    }),
+    [loadedSharedList, locallySavedDefaultBookmarkLookupIds],
   );
-  const photosByFoodItemId = useMemo(
-    () => groupSharedPhotosByFoodItemId(loadedSharedList?.photoPreviews ?? []),
-    [loadedSharedList?.photoPreviews],
-  );
-  const savedListIdsByBookmarkLookupId = useMemo(() => {
-    const mapping = new Map<string, Set<string>>();
-    for (const [bookmarkLookupId, rawListIds] of Object.entries(
-      loadedSharedList?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
-    )) {
-      const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
-      for (const listId of rawListIds) {
-        if (listId.trim()) {
-          listIds.add(listId.trim());
-        }
-      }
-      mapping.set(bookmarkLookupId, listIds);
-    }
-    return mapping;
-  }, [loadedSharedList?.bookmarkState.savedListIdsByBookmarkLookupId]);
-  const viewerLists = loadedSharedList?.viewerLists ?? [];
-  const defaultList = viewerLists.find((viewerList) => viewerList.isDefault);
+  const { defaultList, restaurantRows } = readModel;
 
   const saveReturnTarget = async () => {
     await savePendingAuthRedirect({
@@ -333,21 +204,13 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     }
   };
 
-  const isItemSavedToDefaultList = (item: GroupedBookmarkedItem) => {
-    const defaultListId = defaultList?.id;
-    return item.bookmarkLookupIds.some((bookmarkLookupId) =>
-      locallySavedDefaultBookmarkLookupIds.has(bookmarkLookupId) ||
-      (defaultListId
-        ? savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId) === true
-        : savedListIdsByBookmarkLookupId.has(bookmarkLookupId)),
-    );
-  };
-
   const saveBookmarkToWantToTry = async (
-    group: GroupedSharedRestaurant,
+    group: GroupedRestaurant,
     item: GroupedBookmarkedItem,
   ) => {
-    if (isSavingBookmark || group.restaurantVisibility === 'private' || isItemSavedToDefaultList(item)) {
+    const row = restaurantRows.find((candidate) => candidate.group.restaurantId === group.restaurantId);
+    const isSaved = row?.bookmarkedItems.find((candidate) => candidate.key === item.key)?.isSaved === true;
+    if (isSavingBookmark || group.restaurantVisibility === 'private' || isSaved) {
       return;
     }
 
@@ -404,15 +267,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
     setPhotoViewerVisible(true);
   };
 
-  const list = loadedSharedList?.list ?? null;
-  const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
-  const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
-  const descriptionLabel = list?.description?.trim();
-  const subtitle = list
-    ? `${list.ownerName ? `${list.ownerName}'s list · ` : ''}${countLabel}${
-        descriptionLabel ? `\n${descriptionLabel}` : ''
-      }`
-    : undefined;
+  const { list, subtitle } = readModel;
   const guestHeader = !isAuthenticated ? (
     <View style={styles.guestHeader}>
       <Pressable
@@ -499,11 +354,11 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
 
             <FlatList
               contentContainerStyle={styles.listContent}
-              data={groupedRestaurants}
+              data={restaurantRows}
               style={styles.list}
               testID="shared-list-rows"
               ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
-              keyExtractor={(group) => group.restaurantId}
+              keyExtractor={(row) => row.group.restaurantId}
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={
                 <EmptyState
@@ -517,30 +372,23 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                 }
               }}
               onEndReachedThreshold={0.4}
-              renderItem={({ item: group, index: groupIndex }) => {
-                const primaryMetaLabel = group.restaurantCity || group.restaurantCuisineType || 'Location not set';
-                const secondaryMetaLabel =
-                  group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null;
-                const isRestaurantLocked = group.restaurantVisibility === 'private';
-
+              renderItem={({ item: row }) => {
+                const { group, groupIndex } = row;
                 return (
                   <ListDetailRestaurantRecommendationGroupCard
                     groupIndex={groupIndex}
-                    isLocked={isRestaurantLocked}
-                    items={group.items}
+                    isLocked={row.isRestaurantLocked}
+                    items={row.bookmarkedItems}
                     key={group.restaurantId}
                     lockTestID={`shared-list-locked-restaurant-${group.restaurantId}`}
                     mode="viewer"
                     notes={group.notes}
-                    primaryMetaLabel={primaryMetaLabel}
-                    renderItem={(item, itemIndex) => {
-                      const photoEntries = buildSharedPhotoEntries(item, photosByFoodItemId);
-
-                      return (
+                    primaryMetaLabel={row.primaryMetaLabel}
+                    renderItem={(item, itemIndex) => (
                         <ListDetailBookmarkedItemRow
-                          canSave={isAuthenticated && !isRestaurantLocked}
+                          canSave={isAuthenticated && !row.isRestaurantLocked}
                           groupIndex={groupIndex}
-                          isSaved={isItemSavedToDefaultList(item)}
+                          isSaved={item.isSaved}
                           item={item}
                           itemIndex={itemIndex}
                           key={item.key}
@@ -548,13 +396,12 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
                           onSave={(targetItem) => {
                             void saveBookmarkToWantToTry(group, targetItem);
                           }}
-                          photoEntries={photoEntries}
+                          photoEntries={item.photoEntries}
                         />
-                      );
-                    }}
+                    )}
                     restaurantId={group.restaurantId}
                     restaurantName={group.restaurantName}
-                    secondaryMetaLabel={secondaryMetaLabel}
+                    secondaryMetaLabel={row.secondaryMetaLabel}
                   />
                 );
               }}

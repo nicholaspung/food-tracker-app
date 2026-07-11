@@ -2,14 +2,14 @@ import { Ionicons } from '../../ui/AppIcon';
 import { Pressable, View } from 'react-native';
 
 import { RatingPill } from '../../components/shared';
-import { createThemedStyles, useTheme } from '../../theme';
-import { Text } from '../../ui';
-import { formatMonthYearLabel } from './listDetailFormatters';
-import { ListDetailItemPhotoButton } from './ListDetailItemPhotoButton';
+import { formatMonthYearLabel } from '../../features/restaurantLists/listDetailFormatters';
 import type {
   GroupedBookmarkedItem,
   OwnerItemPhotoEntry,
-} from './listDetailTypes';
+} from '../../features/restaurantLists/listDetailTypes';
+import { createThemedStyles, useTheme } from '../../theme';
+import { Text } from '../../ui';
+import { ListDetailItemPhotoButton } from './ListDetailItemPhotoButton';
 
 interface ListDetailBookmarkedItemRowProps {
   canSave: boolean;

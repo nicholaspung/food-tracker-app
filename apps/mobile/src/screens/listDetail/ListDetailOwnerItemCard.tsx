@@ -2,17 +2,17 @@ import { Ionicons } from '../../ui/AppIcon';
 import { Pressable } from 'react-native';
 
 import { FoodItemRatingRecordCard, type FoodItemRatingRecordRow } from '../../components/shared';
-import { createThemedStyles, useTheme } from '../../theme';
-import { Text } from '../../ui';
 import {
   formatFullDateLabel,
   formatMonthYearLabel,
-} from './listDetailFormatters';
+} from '../../features/restaurantLists/listDetailFormatters';
 import type {
   OwnerDisplayItem,
   OwnerItemPhotoEntry,
-  PendingDeleteListItem,
-} from './listDetailTypes';
+} from '../../features/restaurantLists/listDetailTypes';
+import type { PendingDeleteListItem } from './listDetailTypes';
+import { createThemedStyles, useTheme } from '../../theme';
+import { Text } from '../../ui';
 
 const MIN_TOUCH_TARGET_SIZE = 44;
 

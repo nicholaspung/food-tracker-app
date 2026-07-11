@@ -25,6 +25,21 @@ import {
   useRestaurantListWrites,
 } from '../features';
 import {
+  buildRestaurantListDetailReadModel,
+  type ListDetailReadModel,
+} from '../features/restaurantLists/restaurantListDetailReadModel';
+import type {
+  GroupedBookmarkedItem,
+  GroupedRestaurant,
+  OwnerDisplayItem,
+  OwnerItemPhotoEntry,
+} from '../features/restaurantLists/listDetailTypes';
+import type {
+  PendingListItemTransferTarget,
+  PendingDeleteListItem,
+  SaveBookmarkTarget,
+} from './listDetail/listDetailTypes';
+import {
   buildCreateVisitRecommendationSourceParams,
   createRecommendationSourceHandoff,
 } from '../features/recommendationSourceHandoff';
@@ -54,16 +69,6 @@ import { ListItemTransferModal } from './listDetail/ListItemTransferModal';
 import { ListDetailRestaurantRecommendationGroupCard } from './listDetail/ListDetailRestaurantRecommendationGroupCard';
 import { ListDetailWantToTryBookmarkCard } from './listDetail/ListDetailWantToTryBookmarkCard';
 import { ListDetailWantToTryMenuItemRow } from './listDetail/ListDetailWantToTryMenuItemRow';
-import { buildListDetailReadModel } from './listDetail/listDetailReadModel';
-import type {
-  GroupedBookmarkedItem,
-  GroupedRestaurant,
-  OwnerDisplayItem,
-  OwnerItemPhotoEntry,
-  PendingListItemTransferTarget,
-  PendingDeleteListItem,
-  SaveBookmarkTarget,
-} from './listDetail/listDetailTypes';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
 type ListDetailViewMode = 'list' | 'map';
@@ -87,7 +92,7 @@ function normalizeListDetailSearchValue(value: string | null | undefined): strin
 }
 
 function doesListDetailRestaurantRowMatchSearch(
-  row: ReturnType<typeof buildListDetailReadModel>['restaurantRows'][number],
+  row: ListDetailReadModel['restaurantRows'][number],
   searchTokens: string[],
 ): boolean {
   if (searchTokens.length === 0) {
@@ -532,7 +537,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const readModel = useMemo(
     () =>
-      buildListDetailReadModel({
+      buildRestaurantListDetailReadModel({
+        variant: 'authenticated',
         detail: loadedDetail,
         isError: detailQuery.isError,
         isLoading: detailQuery.isLoading,

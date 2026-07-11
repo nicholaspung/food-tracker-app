@@ -8,7 +8,10 @@ import {
 } from '../../features';
 import type { trackObservabilityEvent } from '../../observability';
 import type { trackProductEvent } from '../../observability/productAnalytics';
-import type { SaveBookmarkTarget, SaveBookmarkTrackingContext } from './listDetailTypes';
+import type {
+  SaveBookmarkTarget,
+  SaveBookmarkTrackingContext,
+} from './listDetailTypes';
 
 type RestaurantListWrites = ReturnType<typeof useRestaurantListWrites>;
 type ObservabilityTracker = typeof trackObservabilityEvent;

@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { ListItem, Text } from '../../ui';
-import type { OwnerDisplayItem } from './listDetailTypes';
+import type { OwnerDisplayItem } from '../../features/restaurantLists/listDetailTypes';
 
 const MIN_TOUCH_TARGET_SIZE = 44;
 

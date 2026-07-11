@@ -1,26 +1,39 @@
 import type { RestaurantMapGroup } from '../../components/maps';
-import type { RestaurantListDetailRecord, RestaurantListRecord } from '../../features';
+import type {
+  RestaurantListRecord,
+  SharedRestaurantListDetailRecord,
+  SharedRestaurantListRecord,
+} from '../models';
+import type { RestaurantListDetailRecord } from '../store/featureStore';
 import { buildBookmarkLookupIds, formatFullDateLabel, formatMonthYearLabel } from './listDetailFormatters';
 import { buildOwnerDisplayItems, buildViewerDisplayItems } from './listDetailDisplayItems';
 import {
   buildBookmarkedItemPhotoEntries,
   buildOwnerItemPhotoEntries,
+  buildSharedBookmarkedItemPhotoEntries,
   groupListDetailPhotosByFoodItemId,
+  groupSharedListPhotosByFoodItemId,
 } from './listDetailPhotoEntries';
 import type {
   GroupedBookmarkedItem,
   GroupedRestaurant,
   OwnerDisplayItem,
   OwnerItemPhotoEntry,
-  SaveBookmarkTarget,
 } from './listDetailTypes';
 
-export interface ListDetailReadModelInput {
+export interface AuthenticatedListDetailReadModelInput {
+  variant: 'authenticated';
   detail: RestaurantListDetailRecord | undefined;
   userId: string | undefined;
-  saveBookmarkTarget: SaveBookmarkTarget | null;
+  saveBookmarkTarget: { bookmarkLookupIds: readonly string[] } | null;
   isError: boolean;
   isLoading: boolean;
+}
+
+export interface SharedListDetailReadModelInput {
+  variant: 'shared';
+  detail: SharedRestaurantListDetailRecord | undefined;
+  locallySavedDefaultBookmarkLookupIds: ReadonlySet<string>;
 }
 
 export interface ListDetailRestaurantRow {
@@ -88,6 +101,15 @@ export interface ListDetailReadModel {
   };
 }
 
+export interface SharedListDetailReadModel {
+  list: SharedRestaurantListRecord | null;
+  groupedRestaurants: GroupedRestaurant[];
+  restaurantRows: ListDetailRestaurantRow[];
+  savedListIdsByBookmarkLookupId: Map<string, Set<string>>;
+  defaultList: RestaurantListRecord | undefined;
+  subtitle: string | undefined;
+}
+
 function hasUsableCoordinates(group: GroupedRestaurant): group is GroupedRestaurant & {
   latitude: number;
   longitude: number;
@@ -109,7 +131,10 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items']): GroupedRestaurant[] {
+function buildGroupedRestaurants(
+  listItems: RestaurantListDetailRecord['items'],
+  variant: 'authenticated' | 'shared',
+): GroupedRestaurant[] {
   const groups = new Map<string, GroupedRestaurant>();
   const proofKeysByRestaurant = new Map<string, Set<string>>();
 
@@ -118,7 +143,7 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
       ? listItem.bookmarkedItems
       : [];
     const existingGroup = groups.get(listItem.restaurantId);
-    const group =
+    const group: GroupedRestaurant =
       existingGroup ??
       {
         restaurantId: listItem.restaurantId,
@@ -175,13 +200,14 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
     }
 
     for (const item of normalizedBookmarkedItems) {
+      const sourceListItemId = variant === 'shared' ? item.listItemId || listItem.id : listItem.id;
       group.items.push({
-        key: `${listItem.id}:${item.id}`,
+        key: `${sourceListItemId}:${item.id}`,
         bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
         foodItemId: item.id,
         foodItemRestaurantId: item.restaurantId,
         menuItemId: item.menuItemId,
-        listItemId: listItem.id,
+        listItemId: sourceListItemId,
         name: item.name,
         rating: item.rating,
         visitedAt: item.visitedAt,
@@ -202,11 +228,11 @@ function buildGroupedRestaurants(listItems: RestaurantListDetailRecord['items'])
 }
 
 function buildSavedListIdsByBookmarkLookupId(
-  detail: RestaurantListDetailRecord | undefined,
+  savedListIdsByBookmarkLookupId: Record<string, string[]> | undefined,
 ): Map<string, Set<string>> {
   const mapping = new Map<string, Set<string>>();
   for (const [bookmarkLookupId, rawListIds] of Object.entries(
-    detail?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
+    savedListIdsByBookmarkLookupId ?? {},
   )) {
     const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
     for (const candidateListId of rawListIds) {
@@ -298,20 +324,22 @@ function buildMapGroups(
   });
 }
 
-export function buildListDetailReadModel({
+function buildAuthenticatedListDetailReadModel({
   detail,
   isError,
   isLoading,
   saveBookmarkTarget,
   userId,
-}: ListDetailReadModelInput): ListDetailReadModel {
+}: AuthenticatedListDetailReadModelInput): ListDetailReadModel {
   const list = detail?.list ?? null;
   const isOwner = Boolean(list && userId && list.userId === userId);
   const isDefaultList = Boolean(list?.isDefault);
   const listItems = detail?.items ?? [];
   const hasBlockingListItemsError = isError && detail === undefined;
   const hasListItemsRefreshError = !hasBlockingListItemsError && isError;
-  const savedListIdsByBookmarkLookupId = buildSavedListIdsByBookmarkLookupId(detail);
+  const savedListIdsByBookmarkLookupId = buildSavedListIdsByBookmarkLookupId(
+    detail?.bookmarkState.savedListIdsByBookmarkLookupId,
+  );
   const savedBookmarkLookupIds = new Set(savedListIdsByBookmarkLookupId.keys());
   const myLists = detail?.viewerLists ?? [];
   const defaultList = myLists.find((candidate) => candidate.isDefault);
@@ -332,7 +360,7 @@ export function buildListDetailReadModel({
     }
   }
 
-  const groupedRestaurants = buildGroupedRestaurants(listItems);
+  const groupedRestaurants = buildGroupedRestaurants(listItems, 'authenticated');
   const photosByFoodItemId = groupListDetailPhotosByFoodItemId(detail?.photoPreviews ?? []);
   const restaurantRows = groupedRestaurants.map((group, groupIndex) => {
     const primaryMetaLabel = group.restaurantCity || group.restaurantCuisineType || 'Location not set';
@@ -404,4 +432,73 @@ export function buildListDetailReadModel({
       restaurantCount,
     },
   };
+}
+
+function buildSharedListDetailReadModel({
+  detail,
+  locallySavedDefaultBookmarkLookupIds,
+}: SharedListDetailReadModelInput): SharedListDetailReadModel {
+  const list = detail?.list ?? null;
+  const groupedRestaurants = buildGroupedRestaurants(detail?.items ?? [], 'shared');
+  const photosByFoodItemId = groupSharedListPhotosByFoodItemId(detail?.photoPreviews ?? []);
+  const savedListIdsByBookmarkLookupId = buildSavedListIdsByBookmarkLookupId(
+    detail?.bookmarkState.savedListIdsByBookmarkLookupId,
+  );
+  const defaultList = detail?.viewerLists.find((viewerList) => viewerList.isDefault);
+  const defaultListId = defaultList?.id;
+  const restaurantRows = groupedRestaurants.map((group, groupIndex) => {
+    const bookmarkedItems = buildViewerDisplayItems(group.items).map((item) => ({
+      ...item,
+      isSaved: item.bookmarkLookupIds.some((bookmarkLookupId) =>
+        locallySavedDefaultBookmarkLookupIds.has(bookmarkLookupId) ||
+        (defaultListId
+          ? savedListIdsByBookmarkLookupId.get(bookmarkLookupId)?.has(defaultListId) === true
+          : savedListIdsByBookmarkLookupId.has(bookmarkLookupId)),
+      ),
+      photoEntries: buildSharedBookmarkedItemPhotoEntries(item, photosByFoodItemId),
+    }));
+
+    return {
+      group,
+      groupIndex,
+      primaryMetaLabel: group.restaurantCity || group.restaurantCuisineType || 'Location not set',
+      secondaryMetaLabel:
+        group.restaurantCity && group.restaurantCuisineType ? group.restaurantCuisineType : null,
+      isRestaurantLocked: group.restaurantVisibility === 'private',
+      ownerDisplayItems: [],
+      ownerItems: [],
+      bookmarkedItems,
+    };
+  });
+  const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
+  const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
+  const descriptionLabel = list?.description?.trim();
+  const subtitle = list
+    ? `${list.ownerName ? `${list.ownerName}'s list · ` : ''}${countLabel}${
+        descriptionLabel ? `\n${descriptionLabel}` : ''
+      }`
+    : undefined;
+
+  return {
+    list,
+    groupedRestaurants,
+    restaurantRows,
+    savedListIdsByBookmarkLookupId,
+    defaultList,
+    subtitle,
+  };
+}
+
+export function buildRestaurantListDetailReadModel(
+  input: AuthenticatedListDetailReadModelInput,
+): ListDetailReadModel;
+export function buildRestaurantListDetailReadModel(
+  input: SharedListDetailReadModelInput,
+): SharedListDetailReadModel;
+export function buildRestaurantListDetailReadModel(
+  input: AuthenticatedListDetailReadModelInput | SharedListDetailReadModelInput,
+): ListDetailReadModel | SharedListDetailReadModel {
+  return input.variant === 'authenticated'
+    ? buildAuthenticatedListDetailReadModel(input)
+    : buildSharedListDetailReadModel(input);
 }
