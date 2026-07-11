@@ -207,4 +207,45 @@ describe('AddFriendScreen', () => {
       'You cannot add yourself as a friend.',
     );
   });
+
+  it('keeps manual submission disabled while a QR friend request is pending', async () => {
+    let resolveRequest: ((value: { status: 'completed' }) => void) | undefined;
+    sendFriendRequest.mockReturnValue(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    let renderer: any;
+
+    act(() => {
+      renderer = renderAddFriendScreen();
+    });
+
+    act(() => {
+      renderer!.root.findByType('FeatureFormScreenScaffold').props.headerBottomContent.props.onChange('scan-qr');
+    });
+
+    await act(async () => {
+      void renderer!.root.findByType('CameraView').props.onBarcodeScanned({
+        data: 'yummyrecs://friends/add?friendCode=ABCD1234',
+      });
+    });
+
+    act(() => {
+      renderer!.root.findByType('FeatureFormScreenScaffold').props.headerBottomContent.props.onChange('friend-code');
+    });
+    act(() => {
+      renderer!.root.findByType('Input').props.onChangeText('WXYZ5678');
+    });
+
+    const scaffold = renderer!.root.findByType('FeatureFormScreenScaffold');
+    expect(scaffold.props.primaryAction.disabled).toBe(true);
+
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+    });
+    expect(sendFriendRequest).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRequest?.({ status: 'completed' });
+    });
+  });
 });

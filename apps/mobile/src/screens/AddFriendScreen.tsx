@@ -1,12 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { FeatureFormScreenScaffold, PageErrorToast, SegmentedControl } from '../components/shared';
 import type { SegmentedControlOption } from '../components/shared';
 import {
-  extractFriendCodeFromQrPayload,
   resolveOwnFriendCode,
   sanitizeFriendCode,
   useFriendWrites,
@@ -21,6 +20,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Ionicons } from '../ui/AppIcon';
 import { Button, Card, Input, Text } from '../ui';
+import { useFriendInviteQrFlow } from './friends/useFriendInviteQrFlow';
 
 type AddFriendScreenProps = NativeStackScreenProps<RootStackParamList, 'AddFriend'>;
 type AddFriendMethodTab = 'friend-code' | 'scan-qr';
@@ -30,7 +30,6 @@ const ADD_FRIEND_METHOD_OPTIONS: readonly SegmentedControlOption<AddFriendMethod
   { label: 'Scan QR', value: 'scan-qr' },
 ];
 
-const INVALID_SCAN_RETRY_DELAY_MS = 1200;
 const QR_SCAN_ZOOM = 0.08;
 
 const useStyles = createThemedStyles((theme) => ({
@@ -145,22 +144,11 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const scanLockRef = useRef(false);
-  const invalidScanRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [activeTab, setActiveTab] = useState<AddFriendMethodTab>('friend-code');
   const [friendCode, setFriendCode] = useState('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scannedCode, setScannedCode] = useState('');
-  const [hasScanned, setHasScanned] = useState(false);
+  const [manualErrorMessage, setManualErrorMessage] = useState<string | null>(null);
+  const [isManualSubmitting, setIsManualSubmitting] = useState(false);
   const [isTorchEnabled, setIsTorchEnabled] = useState(false);
-
-  useEffect(() => () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-    }
-  }, []);
 
   const myFriendCode = useMemo(
     () => resolveOwnFriendCode(user?.id, user?.friendCode),
@@ -176,39 +164,20 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     navigation.navigate('Friends');
   };
 
-  const handleRequestComplete = () => {
+  const handleRequestComplete = useCallback(() => {
     navigation.navigate('Friends', {
       initialFriendsSubTab: 'sent',
       initialSection: 'friends-list',
     });
-  };
-
-  const resetScanner = () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-      invalidScanRetryTimerRef.current = null;
-    }
-    scanLockRef.current = false;
-    setHasScanned(false);
-    setScannedCode('');
-    setErrorMessage(null);
-    setIsSubmitting(false);
-  };
-
-  const queueInvalidScanRetry = () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-    }
-
-    invalidScanRetryTimerRef.current = setTimeout(() => {
-      scanLockRef.current = false;
-      invalidScanRetryTimerRef.current = null;
-    }, INVALID_SCAN_RETRY_DELAY_MS);
-  };
+  }, [navigation]);
+  const qrFlow = useFriendInviteQrFlow({
+    onComplete: handleRequestComplete,
+    source: 'AddFriendScreen',
+  });
 
   const handleTabChange = (nextTab: AddFriendMethodTab) => {
     setActiveTab(nextTab);
-    setErrorMessage(null);
+    setManualErrorMessage(null);
 
     trackObservabilityEvent('ADD_FRIEND_METHOD_TAB_CHANGED', {
       source: 'AddFriendScreen',
@@ -219,11 +188,15 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
       trackObservabilityEvent('ADD_FRIEND_SCAN_QR_TAPPED', {
         source: 'AddFriendScreen',
       });
-      resetScanner();
+      qrFlow.resetScanner();
     }
   };
 
   const handleSubmit = async () => {
+    if (isManualSubmitting || qrFlow.isSubmitting) {
+      return;
+    }
+
     const validationResult = validateFriendRequestCode({
       code: friendCode,
       entryMethod: 'manual_code',
@@ -237,18 +210,18 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
         reason: validationResult.reason,
         isOnline,
       });
-      setErrorMessage(validationResult.message);
+      setManualErrorMessage(validationResult.message);
       return;
     }
 
-    setErrorMessage(null);
+    setManualErrorMessage(null);
     trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
       source: 'AddFriendScreen',
       entryMethod: 'manual_code',
       codeLength: validationResult.code.length,
       isOnline,
     });
-    setIsSubmitting(true);
+    setIsManualSubmitting(true);
 
     try {
       const requestResult = await friendWrites.sendFriendRequest({
@@ -291,131 +264,12 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
         errorType: error instanceof Error ? error.name : 'unknown_error',
         isOnline,
       });
-      setErrorMessage(message);
+      setManualErrorMessage(message);
     } finally {
-      setIsSubmitting(false);
+      setIsManualSubmitting(false);
     }
   };
-
-  const handleScanResult = async (inviteCode: string) => {
-    const validationResult = validateFriendRequestCode({
-      code: inviteCode,
-      entryMethod: 'qr_scan',
-      ownFriendCode: myFriendCode,
-    });
-    trackObservabilityEvent('QR_SCAN_SUBMIT_STARTED', {
-      source: 'AddFriendScreen',
-    });
-
-    if (!validationResult.ok) {
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
-        source: 'AddFriendScreen',
-        entryMethod: 'qr_scan',
-        reason: validationResult.reason,
-        codeLength: validationResult.codeLength,
-      });
-      setErrorMessage(validationResult.message);
-      setHasScanned(true);
-      return;
-    }
-
-    setErrorMessage(null);
-    setScannedCode(validationResult.code);
-    trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
-      source: 'AddFriendScreen',
-      entryMethod: 'qr_scan',
-      codeLength: validationResult.code.length,
-      isOnline,
-    });
-    setIsSubmitting(true);
-
-    try {
-      const requestResult = await friendWrites.sendFriendRequest({
-        code: validationResult.code,
-        entryMethod: 'qr_scan',
-      });
-
-      if (requestResult.status === 'queued') {
-        trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
-          source: 'AddFriendScreen',
-          entryMethod: 'qr_scan',
-          queued: true,
-        });
-        trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
-          source: 'AddFriendScreen',
-          queued: true,
-        });
-        trackProductEvent('social.friend_request_sent', {
-          source: 'AddFriendScreen',
-          entryMethod: 'qr_scan',
-          queued: true,
-        });
-        handleRequestComplete();
-        return;
-      }
-
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
-        source: 'AddFriendScreen',
-        entryMethod: 'qr_scan',
-        queued: false,
-      });
-      trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
-        source: 'AddFriendScreen',
-        queued: false,
-      });
-      trackProductEvent('social.friend_request_sent', {
-        source: 'AddFriendScreen',
-        entryMethod: 'qr_scan',
-        queued: false,
-      });
-      handleRequestComplete();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not process QR invite.';
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_FAILED', {
-        source: 'AddFriendScreen',
-        entryMethod: 'qr_scan',
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        isOnline,
-      });
-      trackObservabilityEvent('QR_SCAN_SUBMIT_FAILED', {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        source: 'AddFriendScreen',
-      });
-      setErrorMessage(message);
-      setHasScanned(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    if (scanLockRef.current) {
-      return;
-    }
-
-    scanLockRef.current = true;
-    const normalizedCode = extractFriendCodeFromQrPayload(data);
-    if (!normalizedCode) {
-      trackObservabilityEvent('QR_SCAN_INVALID_CODE', {
-        source: 'AddFriendScreen',
-      });
-      setErrorMessage('That QR code is not a Yummy Recs friend invite.');
-      queueInvalidScanRetry();
-      return;
-    }
-
-    trackObservabilityEvent('QR_SCAN_CODE_DETECTED', {
-      source: 'AddFriendScreen',
-    });
-    setScannedCode(normalizedCode);
-    setErrorMessage(null);
-    setHasScanned(true);
-    await handleScanResult(normalizedCode);
-  };
-
-  const canSubmit = friendCode.length === 8 && !isSubmitting;
+  const canSubmit = friendCode.length === 8 && !isManualSubmitting && !qrFlow.isSubmitting;
   const isCameraGranted = cameraPermission?.granted === true;
   const isCameraBlocked = cameraPermission && !cameraPermission.canAskAgain;
 
@@ -437,7 +291,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
           ? {
               disabled: !canSubmit,
               label: 'Send Request',
-              loading: isSubmitting,
+              loading: isManualSubmitting,
               onPress: () => {
                 void handleSubmit();
               },
@@ -450,7 +304,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     >
       {activeTab === 'friend-code' ? (
         <View style={styles.body}>
-          <PageErrorToast errorMessage={errorMessage} title="Could not send friend request" />
+          <PageErrorToast errorMessage={manualErrorMessage} title="Could not send friend request" />
 
           <Card style={styles.formCard}>
             <Input
@@ -460,7 +314,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
               label="Friend Code"
               maxLength={8}
               onChangeText={(value) => {
-                setErrorMessage(null);
+                setManualErrorMessage(null);
                 setFriendCode(sanitizeFriendCode(value));
               }}
               placeholder="Enter 8-character code"
@@ -477,7 +331,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
         </View>
       ) : isCameraGranted ? (
         <View style={styles.cameraSection}>
-          <PageErrorToast errorMessage={errorMessage} title="Scan failed" />
+          <PageErrorToast errorMessage={qrFlow.errorMessage} title="Scan failed" />
 
           <View style={styles.camera}>
             <CameraView
@@ -487,7 +341,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
               }}
               enableTorch={isTorchEnabled}
               facing="back"
-              onBarcodeScanned={!hasScanned && !isSubmitting ? handleBarcodeScanned : undefined}
+              onBarcodeScanned={!qrFlow.hasScanned && !qrFlow.isSubmitting ? qrFlow.handleBarcodeScanned : undefined}
               style={styles.camera}
               zoom={QR_SCAN_ZOOM}
             />
@@ -527,22 +381,22 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
                 <View style={styles.scanWindow} />
               </View>
 
-              {isSubmitting || hasScanned ? (
+              {qrFlow.isSubmitting || qrFlow.hasScanned ? (
                 <View style={styles.overlayBottomCard}>
                   <View style={styles.statusRow}>
-                    {isSubmitting ? <ActivityIndicator color={theme.colors.text.brand} size="small" /> : null}
+                    {qrFlow.isSubmitting ? <ActivityIndicator color={theme.colors.text.brand} size="small" /> : null}
                     <Text style={styles.statusText}>
-                      {isSubmitting
-                        ? `Sending request for ${scannedCode}...`
-                        : hasScanned && scannedCode
-                          ? `Detected invite code ${scannedCode}.`
+                      {qrFlow.isSubmitting
+                        ? `Sending request for ${qrFlow.scannedCode}...`
+                        : qrFlow.hasScanned && qrFlow.scannedCode
+                          ? `Detected invite code ${qrFlow.scannedCode}.`
                           : 'Scan paused. Try another QR code.'}
                     </Text>
                   </View>
-                  {hasScanned && !isSubmitting ? (
+                  {qrFlow.hasScanned && !qrFlow.isSubmitting ? (
                     <Button
                       label="Scan Again"
-                      onPress={resetScanner}
+                      onPress={qrFlow.resetScanner}
                       variant="secondary"
                     />
                   ) : null}

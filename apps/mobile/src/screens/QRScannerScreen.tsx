@@ -1,27 +1,19 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { FeatureDetailScreenScaffold } from '../components/shared';
-import {
-  extractFriendCodeFromQrPayload,
-  resolveOwnFriendCode,
-  useFriendWrites,
-  validateFriendRequestCode,
-} from '../features';
 import { getPlatformPointerEventsProps, getPlatformPointerEventsStyle } from '../lib/platformPointerEvents';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { trackObservabilityEvent } from '../observability';
-import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { useFriendInviteQrFlow } from './friends/useFriendInviteQrFlow';
 
 type QRScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'QRScanner'>;
 
-const INVALID_SCAN_RETRY_DELAY_MS = 1200;
 const QR_SCAN_ZOOM = 0.08;
 
 const useStyles = createThemedStyles((theme) => ({
@@ -127,23 +119,8 @@ const useStyles = createThemedStyles((theme) => ({
 export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const friendWrites = useFriendWrites();
-  const { user } = useAuth();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const scanLockRef = useRef(false);
-  const invalidScanRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [scannedCode, setScannedCode] = useState('');
-  const [hasScanned, setHasScanned] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTorchEnabled, setIsTorchEnabled] = useState(false);
-
-  useEffect(() => () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-    }
-  }, []);
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
@@ -156,142 +133,16 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
   const isCameraGranted = cameraPermission?.granted === true;
   const isCameraBlocked = cameraPermission && !cameraPermission.canAskAgain;
-  const myFriendCode = resolveOwnFriendCode(user?.id, user?.friendCode);
-
-  const resetScanner = () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-      invalidScanRetryTimerRef.current = null;
-    }
-    scanLockRef.current = false;
-    setHasScanned(false);
-    setScannedCode('');
-    setErrorMessage(null);
-    setIsSubmitting(false);
-  };
-
-  const queueInvalidScanRetry = () => {
-    if (invalidScanRetryTimerRef.current) {
-      clearTimeout(invalidScanRetryTimerRef.current);
-    }
-
-    invalidScanRetryTimerRef.current = setTimeout(() => {
-      scanLockRef.current = false;
-      invalidScanRetryTimerRef.current = null;
-    }, INVALID_SCAN_RETRY_DELAY_MS);
-  };
-
-  const handleScanResult = async (inviteCode: string) => {
-    const validationResult = validateFriendRequestCode({
-      code: inviteCode,
-      entryMethod: 'qr_scan',
-      ownFriendCode: myFriendCode,
+  const handleRequestComplete = useCallback(() => {
+    navigation.navigate('Friends', {
+      initialFriendsSubTab: 'sent',
+      initialSection: 'friends-list',
     });
-    trackObservabilityEvent('QR_SCAN_SUBMIT_STARTED', {
-      source: 'QRScannerScreen',
-    });
-
-    if (!validationResult.ok) {
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
-        source: 'QRScannerScreen',
-        entryMethod: 'qr_scan',
-        reason: validationResult.reason,
-        codeLength: validationResult.codeLength,
-      });
-      setErrorMessage(validationResult.message);
-      setHasScanned(true);
-      return;
-    }
-
-    setErrorMessage(null);
-    setScannedCode(validationResult.code);
-    trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
-      source: 'QRScannerScreen',
-      entryMethod: 'qr_scan',
-      codeLength: validationResult.code.length,
-    });
-    setIsSubmitting(true);
-
-    try {
-      const requestResult = await friendWrites.sendFriendRequest({
-        code: validationResult.code,
-        entryMethod: 'qr_scan',
-      });
-
-      if (requestResult.status === 'queued') {
-        trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
-          source: 'QRScannerScreen',
-          entryMethod: 'qr_scan',
-          queued: true,
-        });
-        trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
-          source: 'QRScannerScreen',
-          queued: true,
-        });
-        navigation.navigate('Friends', {
-          initialFriendsSubTab: 'sent',
-          initialSection: 'friends-list',
-        });
-        return;
-      }
-
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
-        source: 'QRScannerScreen',
-        entryMethod: 'qr_scan',
-        queued: false,
-      });
-      trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
-        source: 'QRScannerScreen',
-        queued: false,
-      });
-      navigation.navigate('Friends', {
-        initialFriendsSubTab: 'sent',
-        initialSection: 'friends-list',
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not process QR invite.';
-      trackObservabilityEvent('FRIEND_REQUEST_SEND_FAILED', {
-        source: 'QRScannerScreen',
-        entryMethod: 'qr_scan',
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      });
-      trackObservabilityEvent('QR_SCAN_SUBMIT_FAILED', {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        source: 'QRScannerScreen',
-      });
-      setErrorMessage(message);
-      setHasScanned(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    if (scanLockRef.current) {
-      return;
-    }
-
-    scanLockRef.current = true;
-    const normalizedCode = extractFriendCodeFromQrPayload(data);
-    if (!normalizedCode) {
-      trackObservabilityEvent('QR_SCAN_INVALID_CODE', {
-        source: 'QRScannerScreen',
-      });
-      setErrorMessage('That QR code is not a Yummy Recs friend invite.');
-      queueInvalidScanRetry();
-      return;
-    }
-
-    trackObservabilityEvent('QR_SCAN_CODE_DETECTED', {
-      source: 'QRScannerScreen',
-    });
-    setScannedCode(normalizedCode);
-    setErrorMessage(null);
-    setHasScanned(true);
-    await handleScanResult(normalizedCode);
-  };
+  }, [navigation]);
+  const qrFlow = useFriendInviteQrFlow({
+    onComplete: handleRequestComplete,
+    source: 'QRScannerScreen',
+  });
 
   return (
     <FeatureDetailScreenScaffold
@@ -304,7 +155,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     >
       {isCameraGranted ? (
         <View style={styles.cameraSection}>
-          <PageErrorToast errorMessage={errorMessage} title="Scan failed" />
+          <PageErrorToast errorMessage={qrFlow.errorMessage} title="Scan failed" />
 
           <View style={styles.camera}>
             <CameraView
@@ -314,7 +165,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
               }}
               enableTorch={isTorchEnabled}
               facing="back"
-              onBarcodeScanned={!hasScanned && !isSubmitting ? handleBarcodeScanned : undefined}
+              onBarcodeScanned={!qrFlow.hasScanned && !qrFlow.isSubmitting ? qrFlow.handleBarcodeScanned : undefined}
               style={styles.camera}
               zoom={QR_SCAN_ZOOM}
             />
@@ -354,22 +205,22 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
                 <View style={styles.scanWindow} />
               </View>
 
-              {isSubmitting || hasScanned ? (
+              {qrFlow.isSubmitting || qrFlow.hasScanned ? (
                 <View style={styles.overlayBottomCard}>
                   <View style={styles.statusRow}>
-                    {isSubmitting ? <ActivityIndicator color={theme.colors.text.brand} size="small" /> : null}
+                    {qrFlow.isSubmitting ? <ActivityIndicator color={theme.colors.text.brand} size="small" /> : null}
                     <Text style={styles.statusText}>
-                      {isSubmitting
-                        ? `Sending request for ${scannedCode}...`
-                        : hasScanned && scannedCode
-                          ? `Detected invite code ${scannedCode}.`
+                      {qrFlow.isSubmitting
+                        ? `Sending request for ${qrFlow.scannedCode}...`
+                        : qrFlow.hasScanned && qrFlow.scannedCode
+                          ? `Detected invite code ${qrFlow.scannedCode}.`
                           : 'Scan paused. Try another QR code.'}
                     </Text>
                   </View>
-                  {hasScanned && !isSubmitting ? (
+                  {qrFlow.hasScanned && !qrFlow.isSubmitting ? (
                     <Button
                       label="Scan Again"
-                      onPress={resetScanner}
+                      onPress={qrFlow.resetScanner}
                       variant="secondary"
                     />
                   ) : null}

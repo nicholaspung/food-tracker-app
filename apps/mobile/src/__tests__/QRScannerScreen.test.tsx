@@ -5,6 +5,7 @@ import { useCameraPermissions } from 'expo-camera';
 import { QRScannerScreen } from '../screens/QRScannerScreen';
 import { useFriendWrites } from '../features';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 
 const mockReact = React;
 
@@ -59,8 +60,16 @@ jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
 }));
 
+jest.mock('../observability/productAnalytics', () => ({
+  trackProductEvent: jest.fn(),
+}));
+
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
 }));
 
 jest.mock('../lib/offlineAlerts', () => ({
@@ -122,6 +131,7 @@ jest.mock('../ui', () => ({
 const mockedUseCameraPermissions = useCameraPermissions as jest.MockedFunction<typeof useCameraPermissions>;
 const mockedUseFriendWrites = useFriendWrites as jest.MockedFunction<typeof useFriendWrites>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
 function renderScanner() {
   let renderer: any;
@@ -175,6 +185,9 @@ describe('QRScannerScreen', () => {
         friendCode: 'SELF1234',
         id: 'user-1',
       },
+    } as never);
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
     } as never);
   });
 
