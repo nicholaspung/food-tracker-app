@@ -10,6 +10,13 @@ interface RestaurantListContentInvalidationOptions {
   includeCandidateRestaurants?: boolean;
 }
 
+interface RestaurantListBookmarkStateQueryTarget {
+  bookmarkKey: string;
+  restaurantId: string;
+  foodItemId?: string;
+  menuItemId?: string;
+}
+
 export const restaurantListQueryKeys = {
   root: ['feature', 'restaurantLists'] as const,
   scope: (scope: RestaurantListScope) => ['feature', 'restaurantLists', scope] as const,
@@ -30,6 +37,14 @@ export const restaurantListQueryKeys = {
       'restaurantListBookmarkState',
       listId,
       normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys),
+    ] as const,
+  bookmarkStateChunk: (listId: string, targets: RestaurantListBookmarkStateQueryTarget[]) =>
+    [
+      'feature',
+      'restaurantListBookmarkState',
+      listId,
+      normalizeRestaurantListBookmarkKeysForQueryKey(targets.map((target) => target.bookmarkKey)),
+      normalizeRestaurantListBookmarkTargetsForQueryKey(targets),
     ] as const,
   sharedRoot: ['feature', 'sharedRestaurantList'] as const,
   shared: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken] as const,
@@ -64,6 +79,21 @@ function normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys: string[]):
         .map((bookmarkKey) => bookmarkKey.trim())
         .filter((bookmarkKey) => bookmarkKey.length > 0),
     ),
+  )
+    .sort()
+    .join('|');
+}
+
+function normalizeRestaurantListBookmarkTargetsForQueryKey(
+  targets: RestaurantListBookmarkStateQueryTarget[],
+): string {
+  return Array.from(
+    new Set(targets.map((target) => [
+      target.bookmarkKey.trim(),
+      target.restaurantId.trim(),
+      target.foodItemId?.trim() || '',
+      target.menuItemId?.trim() || '',
+    ].join(':'))),
   )
     .sort()
     .join('|');
