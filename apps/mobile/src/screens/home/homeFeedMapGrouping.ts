@@ -1,4 +1,8 @@
-import type { HomeFeedMapPoint, HomeFeedPhotoPreviewRecord } from '../../features';
+import type {
+  HomeFeedMapMarker,
+  HomeFeedMapPoint,
+  HomeFeedPhotoPreviewRecord,
+} from '../../features';
 import { getRatingLabel } from '../../lib/ratingConstants';
 
 export interface HomeFeedMapRestaurantItem {
@@ -28,12 +32,61 @@ export interface HomeFeedMapRestaurantGroup {
   foodProductCount: number;
 }
 
+export interface HomeFeedMapMarkerGroup {
+  foodProductCount: number;
+  id: string;
+  latitude: number;
+  longitude: number;
+  points: { recordId: string; source: 'visit' | 'food-product' }[];
+  restaurantId?: string;
+  restaurantLocation?: string;
+  restaurantName: string;
+  visitCount: number;
+}
+
 function buildFallbackRestaurantKey(point: HomeFeedMapPoint): string {
   return `${point.restaurantName.trim().toLowerCase()}:${point.latitude.toFixed(5)}:${point.longitude.toFixed(5)}`;
 }
 
 function buildGroupId(point: HomeFeedMapPoint): string {
   return point.restaurantId?.trim() || buildFallbackRestaurantKey(point);
+}
+
+function buildMarkerGroupId(point: HomeFeedMapMarker): string {
+  return point.restaurantId?.trim() || `${point.restaurantName.trim().toLowerCase()}:${point.latitude.toFixed(5)}:${point.longitude.toFixed(5)}`;
+}
+
+export function groupHomeFeedMapMarkersByRestaurant(
+  points: readonly HomeFeedMapMarker[],
+): HomeFeedMapMarkerGroup[] {
+  const groups = new Map<string, HomeFeedMapMarkerGroup>();
+
+  for (const point of points) {
+    const id = buildMarkerGroupId(point);
+    const group = groups.get(id) ?? {
+      foodProductCount: 0,
+      id,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      points: [],
+      restaurantId: point.restaurantId,
+      restaurantLocation: point.restaurantLocation,
+      restaurantName: point.restaurantName,
+      visitCount: 0,
+    };
+    group.points.push({
+      recordId: point.recordId,
+      source: point.source,
+    });
+    if (point.source === 'visit') {
+      group.visitCount += 1;
+    } else {
+      group.foodProductCount += 1;
+    }
+    groups.set(id, group);
+  }
+
+  return Array.from(groups.values());
 }
 
 function buildPhotoPreviewMap(

@@ -81,6 +81,7 @@ export * from './friendCodeUtils';
 export * from './friendsQuery';
 export * from './homeFeedQuery';
 export * from './homeFeedMapQuery';
+export * from './homeFeedMapViewport';
 export * from './homeFeedPagination';
 export * from './homeFeedPreferences';
 export * from './queuedFeatureWriteBrowseProjection';

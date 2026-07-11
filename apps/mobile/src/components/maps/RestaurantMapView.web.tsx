@@ -44,7 +44,10 @@ interface RestaurantMapViewProps {
   onRetry: () => void;
   externalTopInset?: number;
   onUserRegionChangeComplete?: (region: WebRegion) => void;
+  initialRegionOverride?: WebRegion;
   preserveRegionOnGroupsChange?: boolean;
+  selectedGroupDetailErrorMessage?: string | null;
+  selectedGroupDetailLoading?: boolean;
   showCurrentLocationControl?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -342,6 +345,14 @@ export function RestaurantMapView(props: RestaurantMapViewProps) {
             <Text style={styles.selectedDescription} variant="bodySm">
               {selectedGroup.summary}
             </Text>
+            {props.selectedGroupDetailLoading ? (
+              <LoadingOverlay label="Loading location details..." visible />
+            ) : null}
+            {props.selectedGroupDetailErrorMessage ? (
+              <Text style={styles.locationError} variant="bodySmTightSemiBold">
+                {props.selectedGroupDetailErrorMessage}
+              </Text>
+            ) : null}
             {mapOpenErrorMessage ? (
               <Text style={styles.locationError} variant="bodySmTightSemiBold">
                 {mapOpenErrorMessage}

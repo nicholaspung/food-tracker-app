@@ -1,7 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
+import { useQuery } from '@tanstack/react-query';
 
 import type { HomeFeedMapPoint } from '../features';
+import { listHomeFeedMapPointDetails } from '../features/store/homeFeedMapQuery';
 import { RestaurantMapView } from '../components/maps/RestaurantMapView';
 import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
 import { HomeFeedMapView } from '../screens/home/HomeFeedMapView';
@@ -21,6 +23,22 @@ jest.mock('react-native', () => {
       react.createElement('View', props, children),
   };
 });
+
+jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(),
+}));
+
+jest.mock('../features/store/homeFeedMapQuery', () => ({
+  homeFeedMapQueryKeys: {
+    detail: (_userId: string | null | undefined, pointIds: string[]) => [
+      'feature',
+      'homeFeedMap',
+      'detail',
+      pointIds.join('|'),
+    ],
+  },
+  listHomeFeedMapPointDetails: jest.fn(),
+}));
 
 jest.mock('react-native-maps', () => {
   const react = jest.requireActual<typeof import('react')>('react');
@@ -122,11 +140,15 @@ jest.mock('../ui', () => ({
 const mockedUseForegroundLocationCapture = useForegroundLocationCapture as jest.MockedFunction<
   typeof useForegroundLocationCapture
 >;
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedListHomeFeedMapPointDetails =
+  listHomeFeedMapPointDetails as jest.MockedFunction<typeof listHomeFeedMapPointDetails>;
 
-function buildPoint(): HomeFeedMapPoint {
+function buildPoint(): HomeFeedMapPoint & { recordId: string } {
   return {
     eventAt: '2026-05-01T00:00:00.000Z',
     id: 'visit_visit-1',
+    recordId: 'visit-1',
     latitude: 34.05,
     longitude: -118.24,
     ratingSummaryLabel: '3.0 avg',
@@ -153,6 +175,17 @@ function buildPoint(): HomeFeedMapPoint {
     },
   };
 }
+
+beforeEach(() => {
+  mockedUseQuery.mockReturnValue({
+    data: {
+      photoPreviews: [],
+      points: [buildPoint()],
+    },
+    isError: false,
+    isLoading: false,
+  } as never);
+});
 
 function renderMapView(
   props: Partial<React.ComponentProps<typeof HomeFeedMapView>> = {},
@@ -234,6 +267,29 @@ describe('HomeFeedMapView', () => {
       permissionNeedsSettings: false,
       resetPermissionNeedsSettings: jest.fn(),
     });
+    mockedListHomeFeedMapPointDetails.mockReset();
+  });
+
+  it('loads full detail only after a lightweight marker group is selected', async () => {
+    renderMapView({ selectedGroupId: null });
+    expect(mockedUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
+
+    renderMapView({ currentUserId: 'user-1', selectedGroupId: 'restaurant-1' });
+    const queryOptions = mockedUseQuery.mock.calls.at(-1)?.[0];
+    expect(queryOptions).toEqual(expect.objectContaining({ enabled: true }));
+
+    const abortController = new AbortController();
+    mockedListHomeFeedMapPointDetails.mockResolvedValue({ photoPreviews: [], points: [] });
+    const queryFn = queryOptions?.queryFn;
+    expect(typeof queryFn).toBe('function');
+    if (typeof queryFn === 'function') {
+      await queryFn({ signal: abortController.signal } as never);
+    }
+
+    expect(mockedListHomeFeedMapPointDetails).toHaveBeenCalledWith(expect.objectContaining({
+      points: [expect.objectContaining({ recordId: 'visit-1', source: 'visit' })],
+      signal: abortController.signal,
+    }));
   });
 
   it('selects a restaurant marker without relying on a native marker callout', () => {
@@ -328,18 +384,20 @@ describe('HomeFeedMapView', () => {
 
     expect(mockAnimateToRegion).toHaveBeenCalledWith(
       expect.objectContaining({
-        latitude: 34.05,
-        latitudeDelta: 0.045,
-        longitude: -118.24,
-        longitudeDelta: 0.045,
+        latitude: 39.8283,
+        latitudeDelta: 35,
+        longitude: -98.5795,
+        longitudeDelta: 45,
       }),
-      0,
+      300,
     );
   });
 
   it('resets selected restaurant and camera when the reset button is pressed', () => {
     const onSelectedGroupChange = jest.fn();
+    const onRegionChangeComplete = jest.fn();
     const renderer = renderMapView({
+      onRegionChangeComplete,
       onSelectedGroupChange,
       selectedGroupId: 'restaurant-1',
     });
@@ -352,13 +410,17 @@ describe('HomeFeedMapView', () => {
     expect(onSelectedGroupChange).toHaveBeenCalledWith(null);
     expect(mockAnimateToRegion).toHaveBeenCalledWith(
       expect.objectContaining({
-        latitude: 34.05,
-        latitudeDelta: 0.045,
-        longitude: -118.24,
-        longitudeDelta: 0.045,
+        latitude: 39.8283,
+        latitudeDelta: 35,
+        longitude: -98.5795,
+        longitudeDelta: 45,
       }),
       300,
     );
+    expect(onRegionChangeComplete).toHaveBeenCalledWith(expect.objectContaining({
+      latitude: 39.8283,
+      longitude: -98.5795,
+    }));
   });
 
   it('dismisses the hidden-location helper banner', () => {
@@ -385,7 +447,8 @@ describe('HomeFeedMapView', () => {
       label: '34.050000, 118.240000W',
       status: 'success',
     });
-    const renderer = renderMapView();
+    const onRegionChangeComplete = jest.fn();
+    const renderer = renderMapView({ onRegionChangeComplete });
 
     await act(async () => {
       await renderer.root.findByType('CurrentLocationButton').props.onPress();
@@ -399,6 +462,10 @@ describe('HomeFeedMapView', () => {
       }),
       350,
     );
+    expect(onRegionChangeComplete).toHaveBeenCalledWith(expect.objectContaining({
+      latitude: 34.05,
+      longitude: -118.24,
+    }));
   });
 
   it('shows the user location when initial user coordinates are provided', () => {
@@ -485,6 +552,25 @@ describe('HomeFeedMapView', () => {
     act(() => {
       const map = renderer.root.findByType('MapView');
       map.props.onPanDrag();
+      map.props.onRegionChangeComplete(region);
+    });
+
+    expect(onUserRegionChangeComplete).toHaveBeenCalledWith(region);
+  });
+
+  it('reports completed regions after a touch-driven zoom', () => {
+    const onUserRegionChangeComplete = jest.fn();
+    const renderer = renderRestaurantMapView({ onUserRegionChangeComplete });
+    const region = {
+      latitude: 34.05,
+      latitudeDelta: 0.05,
+      longitude: -118.24,
+      longitudeDelta: 0.05,
+    };
+
+    act(() => {
+      const map = renderer.root.findByType('MapView');
+      map.props.onTouchStart();
       map.props.onRegionChangeComplete(region);
     });
 

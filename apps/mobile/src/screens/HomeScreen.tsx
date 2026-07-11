@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import {
   type InfiniteData,
+  keepPreviousData,
   useInfiniteQuery,
   useQuery,
   useQueries,
@@ -38,6 +39,11 @@ import {
   useFriendWrites,
   type VisitRecord,
 } from '../features';
+import {
+  DEFAULT_HOME_FEED_MAP_REGION,
+  normalizeHomeFeedMapViewport,
+  type HomeFeedMapRegion,
+} from '../features/store/homeFeedMapViewport';
 import {
   buildRecommendationBookmarkSourceFields,
   createRecommendationSourceHandoff,
@@ -282,6 +288,8 @@ const useStyles = createThemedStyles((theme) => {
 const HOME_FEED_PAGE_SIZE = 20;
 const FRIEND_FEED_BOOKMARK_HYDRATION_BATCH_SIZE = HOME_FEED_PAGE_SIZE;
 const HOME_FEED_SEARCH_DEBOUNCE_MS = 300;
+const HOME_FEED_MAP_REGION_DEBOUNCE_MS = 350;
+const HOME_FEED_MAP_RECENT_VIEWPORT_LIMIT = 4;
 const VISIT_FOCUS_HIGHLIGHT_DURATION_MS = 2400;
 const SCROLL_TO_FOCUSED_VISIT_RETRY_DELAY_MS = 100;
 
@@ -417,6 +425,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const friendFeedSectionListRef = useRef<SectionList<FeedItem, FriendFeedSection> | null>(null);
   const highlightedVisitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousDefaultsUserIdRef = useRef<string | null | undefined>(undefined);
+  const recentMapViewportQueriesRef = useRef<
+    {
+      cacheIdentity: string;
+      queryKey: ReturnType<typeof homeFeedMapQueryKeys.points>;
+    }[]
+  >([]);
   const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -461,6 +475,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapResetSignal, setMapResetSignal] = useState(0);
+  const [mapRegion, setMapRegion] = useState<HomeFeedMapRegion>(DEFAULT_HOME_FEED_MAP_REGION);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
   });
@@ -470,6 +485,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const debouncedTrimmedSearchQuery = useDebouncedValue(
     trimmedSearchQuery,
     HOME_FEED_SEARCH_DEBOUNCE_MS,
+  );
+  const debouncedMapRegion = useDebouncedValue(mapRegion, HOME_FEED_MAP_REGION_DEBOUNCE_MS);
+  const mapViewport = useMemo(
+    () => normalizeHomeFeedMapViewport(debouncedMapRegion),
+    [debouncedMapRegion],
   );
   const authenticatedUserId = user?.id ?? null;
   const currentUserId = authenticatedUserId;
@@ -502,29 +522,71 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       }),
     getNextPageParam: (lastPage) => lastPage.cursor,
   });
-  const homeFeedMapQuery = useQuery({
-    queryKey: homeFeedMapQueryKeys.points(
+  const homeFeedMapQueryKey = useMemo(() => homeFeedMapQueryKeys.points(
       authenticatedUserId,
       feedScope,
       typeFilter,
       sortFilter,
       debouncedTrimmedSearchQuery,
-    ),
-    enabled: Boolean(authenticatedUserId) && viewMode === 'map',
+      mapViewport?.identity ?? 'invalid-viewport',
+    ), [
+      authenticatedUserId,
+      debouncedTrimmedSearchQuery,
+      feedScope,
+      mapViewport?.identity,
+      sortFilter,
+      typeFilter,
+    ]);
+  const homeFeedMapQuery = useQuery({
+    queryKey: homeFeedMapQueryKey,
+    enabled: Boolean(authenticatedUserId) && viewMode === 'map' && Boolean(mapViewport),
+    gcTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
     queryFn: ({ signal }) =>
-      listHomeFeedMapPoints({
+      mapViewport ? listHomeFeedMapPoints({
         scope: feedScope,
         search: debouncedTrimmedSearchQuery || undefined,
         signal,
         sort: sortFilter,
         typeFilter,
-      }),
+        viewport: mapViewport,
+      }) : Promise.resolve({ omittedWithoutCoordinates: 0, points: [], totalEntries: 0 }),
   });
   const { defaultListId, defaultListQuery } = useWantToTryListRead({ includeDetail: false });
   const resetMapState = useCallback(() => {
     setSelectedMapGroupId(null);
+    setMapRegion(DEFAULT_HOME_FEED_MAP_REGION);
     setMapResetSignal((value) => value + 1);
   }, []);
+
+  useEffect(() => {
+    if (viewMode !== 'map' || !mapViewport || !homeFeedMapQuery.data) {
+      return;
+    }
+
+    const cacheIdentity = JSON.stringify(homeFeedMapQueryKey);
+    const recentQueries = recentMapViewportQueriesRef.current.filter(
+      (entry) => entry.cacheIdentity !== cacheIdentity,
+    );
+    recentQueries.push({ cacheIdentity, queryKey: homeFeedMapQueryKey });
+    const staleQueries = recentQueries.splice(
+      0,
+      Math.max(0, recentQueries.length - HOME_FEED_MAP_RECENT_VIEWPORT_LIMIT),
+    );
+    recentMapViewportQueriesRef.current = recentQueries;
+    for (const staleQuery of staleQueries) {
+      queryClient.removeQueries({
+        exact: true,
+        queryKey: staleQuery.queryKey,
+      });
+    }
+  }, [
+    homeFeedMapQuery.data,
+    homeFeedMapQueryKey,
+    mapViewport,
+    queryClient,
+    viewMode,
+  ]);
 
   const scrollHomeListToTop = useCallback(() => {
     if (viewMode !== 'list') {
@@ -617,7 +679,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     [homeFeedQuery.data],
   );
   const mapPoints = homeFeedMapQuery.data?.points ?? [];
-  const mapPhotoPreviews = homeFeedMapQuery.data?.photoPreviews ?? [];
 
   const buildBrowseAnalyticsPayload = useCallback(
     (overrides?: Record<string, string | number | boolean | null>) => ({
@@ -2050,17 +2111,22 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
               currentUserId={currentUserId}
               errorMessage={homeFeedMapBlockingErrorMessage}
               feedMode={feedMode}
+              initialRegion={DEFAULT_HOME_FEED_MAP_REGION}
               loading={homeFeedMapQuery.isLoading}
               omittedWithoutCoordinates={homeFeedMapQuery.data?.omittedWithoutCoordinates ?? 0}
               onRetry={() => {
                 void homeFeedMapQuery.refetch();
               }}
               onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
-              photoPreviews={mapPhotoPreviews}
+              onRegionChangeComplete={setMapRegion}
               onSelectedGroupChange={setSelectedMapGroupId}
               points={mapPoints}
               resetSignal={mapResetSignal}
+              searchQuery={debouncedTrimmedSearchQuery}
               selectedGroupId={selectedMapGroupId}
+              sort={sortFilter}
+              typeFilter={typeFilter}
+              viewport={mapViewport ?? undefined}
             />
           </>
         ) : feedMode === 'mine' ? (

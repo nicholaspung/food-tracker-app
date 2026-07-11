@@ -45,7 +45,10 @@ interface RestaurantMapViewProps {
   onRetry: () => void;
   externalTopInset?: number;
   onUserRegionChangeComplete?: (region: Region) => void;
+  initialRegionOverride?: Region;
   preserveRegionOnGroupsChange?: boolean;
+  selectedGroupDetailErrorMessage?: string | null;
+  selectedGroupDetailLoading?: boolean;
   showCurrentLocationControl?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -175,7 +178,10 @@ export function RestaurantMapView({
   onRetry,
   externalTopInset = 0,
   onUserRegionChangeComplete,
+  initialRegionOverride,
   preserveRegionOnGroupsChange = false,
+  selectedGroupDetailErrorMessage = null,
+  selectedGroupDetailLoading = false,
   showCurrentLocationControl = true,
   style,
 }: RestaurantMapViewProps) {
@@ -190,7 +196,8 @@ export function RestaurantMapView({
   const [mapOpenLoading, setMapOpenLoading] = useState(false);
   const [hiddenLocationBannerDismissed, setHiddenLocationBannerDismissed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(initialUserCoordinates);
-  const initialRegion = useMemo(() => buildInitialMapRegion(groups), [groups]);
+  const derivedInitialRegion = useMemo(() => buildInitialMapRegion(groups), [groups]);
+  const initialRegion = initialRegionOverride ?? derivedInitialRegion;
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
   const {
     captureLocation,
@@ -310,13 +317,16 @@ export function RestaurantMapView({
     }
 
     setUserCoordinates(result.coordinates);
-    mapRef.current?.animateToRegion?.(buildCurrentLocationRegion(result.coordinates), 350);
+    const currentLocationRegion = buildCurrentLocationRegion(result.coordinates);
+    mapRef.current?.animateToRegion?.(currentLocationRegion, 350);
+    onUserRegionChangeComplete?.(currentLocationRegion);
   };
   const handleResetMapPress = () => {
     onSelectedGroupChange(null);
     mapRef.current?.animateToRegion?.(initialRegion, 300);
+    onUserRegionChangeComplete?.(initialRegion);
   };
-  const handlePanDrag = () => {
+  const handleUserMapGesture = () => {
     userPanPendingRef.current = true;
   };
   const handleRegionChangeComplete = (region: Region) => {
@@ -347,8 +357,9 @@ export function RestaurantMapView({
         onPress={() => {
           onSelectedGroupChange(null);
         }}
-        onPanDrag={handlePanDrag}
+        onPanDrag={handleUserMapGesture}
         onRegionChangeComplete={handleRegionChangeComplete}
+        onTouchStart={handleUserMapGesture}
         ref={mapRef}
         showsUserLocation={Boolean(userCoordinates)}
         style={styles.map}
@@ -436,6 +447,8 @@ export function RestaurantMapView({
         onOpenInMaps={handleOpenInMaps}
         tabs={selectedGroupTabs}
         selectedGroupActionLabel={selectedGroupActionLabel}
+        detailErrorMessage={selectedGroupDetailErrorMessage}
+        detailLoading={selectedGroupDetailLoading}
       />
     </View>
   );

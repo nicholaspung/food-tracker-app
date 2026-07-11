@@ -21,6 +21,8 @@ import type {
 } from './restaurantMapTypes';
 
 interface RestaurantMapSheetProps {
+  detailErrorMessage?: string | null;
+  detailLoading?: boolean;
   mapOpenErrorMessage: string | null;
   mapOpenLoading: boolean;
   group: RestaurantMapGroup | null;
@@ -324,6 +326,8 @@ function RestaurantMapSheetTabContent({
 }
 
 export function RestaurantMapSheet({
+  detailErrorMessage = null,
+  detailLoading = false,
   mapOpenErrorMessage,
   mapOpenLoading,
   group,
@@ -438,6 +442,12 @@ export function RestaurantMapSheet({
           </View>
         ) : (
           <>
+            {detailLoading ? <LoadingState label="Loading location details..." /> : null}
+            {detailErrorMessage ? (
+              <Text style={styles.mapOpenError} variant="bodySmTightSemiBold">
+                {detailErrorMessage}
+              </Text>
+            ) : null}
             {visibleItems.map((item) => (
               <RestaurantItemRow item={item} key={item.id} />
             ))}

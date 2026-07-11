@@ -352,18 +352,17 @@ type homeFeedCountsRow struct {
 	TotalFoodProducts int `db:"totalFoodProducts"`
 }
 
-type homeFeedMapCountsRow struct {
-	TotalEntries      int `db:"totalEntries"`
-	EntriesWithCoords int `db:"entriesWithCoords"`
-}
-
 type homeFeedMapEntryRow struct {
-	Source    string          `db:"source"`
-	RecordID  string          `db:"recordId"`
-	EventAt   string          `db:"eventAt"`
-	CreatedAt string          `db:"createdAt"`
-	Latitude  sql.NullFloat64 `db:"latitude"`
-	Longitude sql.NullFloat64 `db:"longitude"`
+	Source             string          `db:"source"`
+	RecordID           string          `db:"recordId"`
+	EventAt            string          `db:"eventAt"`
+	CreatedAt          string          `db:"createdAt"`
+	Latitude           sql.NullFloat64 `db:"latitude"`
+	Longitude          sql.NullFloat64 `db:"longitude"`
+	RestaurantID       string          `db:"restaurantId"`
+	RestaurantName     string          `db:"restaurantName"`
+	RestaurantLocation string          `db:"restaurantLocation"`
+	LocationText       string          `db:"locationText"`
 }
 
 type homeFeedCursorResponse struct {
@@ -427,11 +426,50 @@ type homeFeedMapPointResponse struct {
 	FoodProduct        *homeFeedFoodProductResponse `json:"foodProduct,omitempty"`
 }
 
+type homeFeedMapMarkerResponse struct {
+	ID                 string  `json:"id"`
+	RecordID           string  `json:"recordId"`
+	Source             string  `json:"source"`
+	EventAt            string  `json:"eventAt"`
+	Latitude           float64 `json:"latitude"`
+	Longitude          float64 `json:"longitude"`
+	RestaurantID       string  `json:"restaurantId,omitempty"`
+	RestaurantName     string  `json:"restaurantName"`
+	RestaurantLocation string  `json:"restaurantLocation,omitempty"`
+	LocationText       string  `json:"locationText,omitempty"`
+}
+
 type homeFeedMapPointsResponse struct {
-	Points                    []homeFeedMapPointResponse     `json:"points"`
-	PhotoPreviews             []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
-	OmittedWithoutCoordinates int                            `json:"omittedWithoutCoordinates"`
-	TotalEntries              int                            `json:"totalEntries"`
+	Points                    []homeFeedMapMarkerResponse `json:"points"`
+	OmittedWithoutCoordinates int                         `json:"omittedWithoutCoordinates"`
+	TotalEntries              int                         `json:"totalEntries"`
+}
+
+type homeFeedMapPointDetailsResponse struct {
+	Points        []homeFeedMapPointResponse     `json:"points"`
+	PhotoPreviews []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
+}
+
+type homeFeedMapPointReference struct {
+	RecordID string `json:"recordId"`
+	Source   string `json:"source"`
+}
+
+type homeFeedMapPointFilter struct {
+	FoodProductIDs []string
+	VisitIDs       []string
+}
+
+type homeFeedMapPointDetailsRequest struct {
+	East       float64                     `json:"east"`
+	North      float64                     `json:"north"`
+	Points     []homeFeedMapPointReference `json:"points"`
+	Scope      string                      `json:"scope"`
+	Search     string                      `json:"search"`
+	Sort       string                      `json:"sort"`
+	South      float64                     `json:"south"`
+	TypeFilter string                      `json:"typeFilter"`
+	West       float64                     `json:"west"`
 }
 
 type visitsPageResponse struct {
@@ -745,6 +783,16 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
+		bounds, err := parseHomeFeedMapBounds(
+			e.Request.URL.Query().Get("north"),
+			e.Request.URL.Query().Get("south"),
+			e.Request.URL.Query().Get("east"),
+			e.Request.URL.Query().Get("west"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
 		response, err := getHomeFeedMapPointsResponse(
 			app,
 			e.Auth.Id,
@@ -753,12 +801,93 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			e.Request.URL.Query().Get("search"),
 			sort,
 			typeFilter,
+			bounds,
 		)
 		if err != nil {
 			log.Printf("Failed to load home feed map points for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load home feed map points", err)
 		}
 
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/home-feed/map-point-details", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+		requestBody := homeFeedMapPointDetailsRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+		if len(requestBody.Points) == 0 || len(requestBody.Points) > 100 {
+			return apis.NewBadRequestError("between 1 and 100 map points are required", nil)
+		}
+		requested := make(map[string]struct{}, len(requestBody.Points))
+		pointFilter := homeFeedMapPointFilter{}
+		for _, point := range requestBody.Points {
+			source := strings.TrimSpace(point.Source)
+			recordID := strings.TrimSpace(point.RecordID)
+			if (source != "visit" && source != "food-product") || recordID == "" {
+				return apis.NewBadRequestError("map point reference is invalid", nil)
+			}
+			requested[source+":"+recordID] = struct{}{}
+			if source == "visit" {
+				pointFilter.VisitIDs = append(pointFilter.VisitIDs, recordID)
+			} else {
+				pointFilter.FoodProductIDs = append(pointFilter.FoodProductIDs, recordID)
+			}
+		}
+		scope, err := normalizeHomeFeedScope(requestBody.Scope)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		typeFilter, err := normalizeHomeFeedTypeFilter(requestBody.TypeFilter)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		sortValue, err := normalizeHomeFeedSort(scope, requestBody.Sort)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		bounds, err := parseHomeFeedMapBounds(
+			strconv.FormatFloat(requestBody.North, 'f', -1, 64),
+			strconv.FormatFloat(requestBody.South, 'f', -1, 64),
+			strconv.FormatFloat(requestBody.East, 'f', -1, 64),
+			strconv.FormatFloat(requestBody.West, 'f', -1, 64),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		rows, err := listHomeFeedMapEntryRows(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			scope,
+			requestBody.Search,
+			sortValue,
+			typeFilter,
+			bounds,
+			&pointFilter,
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load home feed map details", err)
+		}
+		selectedRows := make([]homeFeedMapEntryRow, 0, len(requested))
+		for _, row := range rows {
+			if _, ok := requested[row.Source+":"+row.RecordID]; ok {
+				selectedRows = append(selectedRows, row)
+			}
+		}
+		response, err := buildHomeFeedMapPointDetailsResponse(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			scope,
+			selectedRows,
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load home feed map details", err)
+		}
 		return e.JSON(200, response)
 	}).Bind(apis.RequireAuth())
 
@@ -2380,25 +2509,71 @@ func getHomeFeedMapPointsResponse(
 	search string,
 	sort string,
 	typeFilter string,
+	bounds homeFeedMapBounds,
 ) (homeFeedMapPointsResponse, error) {
-	response := homeFeedMapPointsResponse{
+	response := homeFeedMapPointsResponse{Points: []homeFeedMapMarkerResponse{}}
+	rows, err := listHomeFeedMapEntryRows(app, userID, isAdmin, scope, search, sort, typeFilter, bounds, nil)
+	if err != nil || len(rows) == 0 {
+		return response, err
+	}
+
+	markers := make([]homeFeedMapMarkerResponse, 0, len(rows))
+	for _, row := range rows {
+		if !row.Latitude.Valid || !row.Longitude.Valid {
+			continue
+		}
+		eventAt := row.EventAt
+		if scope == "friends" {
+			eventAt = redactFriendHomeFeedTimestamp(eventAt)
+		}
+
+		switch row.Source {
+		case "visit":
+			markers = append(markers, homeFeedMapMarkerResponse{
+				ID:                 "visit_" + row.RecordID,
+				RecordID:           row.RecordID,
+				Source:             "visit",
+				EventAt:            eventAt,
+				Latitude:           row.Latitude.Float64,
+				Longitude:          row.Longitude.Float64,
+				RestaurantID:       row.RestaurantID,
+				RestaurantName:     defaultString(strings.TrimSpace(row.RestaurantName), "Unknown Restaurant"),
+				RestaurantLocation: strings.TrimSpace(row.RestaurantLocation),
+			})
+		case "food-product":
+			restaurantName := strings.TrimSpace(row.LocationText)
+			if restaurantName == "" {
+				restaurantName = defaultString(strings.TrimSpace(row.RestaurantName), "Food Product")
+			}
+			markers = append(markers, homeFeedMapMarkerResponse{
+				ID:                 "food_product_" + row.RecordID,
+				RecordID:           row.RecordID,
+				Source:             "food-product",
+				EventAt:            eventAt,
+				Latitude:           row.Latitude.Float64,
+				Longitude:          row.Longitude.Float64,
+				RestaurantID:       row.RestaurantID,
+				RestaurantName:     restaurantName,
+				RestaurantLocation: strings.TrimSpace(row.RestaurantLocation),
+				LocationText:       strings.TrimSpace(row.LocationText),
+			})
+		}
+	}
+	response.Points = markers
+	response.TotalEntries = len(markers)
+	return response, nil
+}
+
+func buildHomeFeedMapPointDetailsResponse(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	rows []homeFeedMapEntryRow,
+) (homeFeedMapPointDetailsResponse, error) {
+	response := homeFeedMapPointDetailsResponse{
 		PhotoPreviews: []homeFeedPhotoPreviewResponse{},
 		Points:        []homeFeedMapPointResponse{},
-	}
-
-	counts, err := countHomeFeedMapEntries(app, userID, isAdmin, scope, search, typeFilter)
-	if err != nil {
-		return response, err
-	}
-	response.TotalEntries = counts.TotalEntries
-	response.OmittedWithoutCoordinates = counts.TotalEntries - counts.EntriesWithCoords
-	if response.OmittedWithoutCoordinates < 0 {
-		response.OmittedWithoutCoordinates = 0
-	}
-
-	rows, err := listHomeFeedMapEntryRows(app, userID, isAdmin, scope, search, sort, typeFilter)
-	if err != nil {
-		return response, err
 	}
 	if len(rows) == 0 {
 		return response, nil
@@ -2888,78 +3063,6 @@ func listHomeFeedEntryRows(
 	return rows, err
 }
 
-func countHomeFeedMapEntries(
-	app core.App,
-	userID string,
-	isAdmin bool,
-	scope string,
-	search string,
-	typeFilter string,
-) (homeFeedMapCountsRow, error) {
-	params := dbx.Params{
-		"userId":     userID,
-		"searchLike": buildHomeFeedSearchLike(search),
-	}
-
-	selects := make([]string, 0, 2)
-	if typeFilter != "food-products" {
-		selects = append(selects, `
-			SELECT
-				visits.id AS recordId,
-				restaurants.latitude AS latitude,
-				restaurants.longitude AS longitude
-			FROM visits
-			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search))
-	}
-	if typeFilter != "visits" {
-		selects = append(selects, `
-			SELECT
-				food_items.id AS recordId,
-				linked_restaurants.latitude AS latitude,
-				linked_restaurants.longitude AS longitude
-			FROM food_items
-			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
-			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
-			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search))
-	}
-
-	if len(selects) == 0 {
-		return homeFeedMapCountsRow{}, nil
-	}
-
-	query := `
-		WITH accepted_friends AS (
-			SELECT friend AS friendId
-			FROM friendships
-			WHERE user = {:userId} AND status = 'accepted'
-			UNION
-			SELECT user AS friendId
-			FROM friendships
-			WHERE friend = {:userId} AND status = 'accepted'
-		),
-		filtered_entries AS (
-			` + strings.Join(selects, `
-			UNION ALL
-			`) + `
-		)
-		SELECT
-			COUNT(*) AS [[totalEntries]],
-			COALESCE(SUM(CASE
-				WHEN latitude IS NOT NULL
-					AND longitude IS NOT NULL
-					AND NOT (latitude = 0 AND longitude = 0)
-				THEN 1
-				ELSE 0
-			END), 0) AS [[entriesWithCoords]]
-		FROM filtered_entries
-	`
-
-	row := homeFeedMapCountsRow{}
-	err := app.DB().NewQuery(query).Bind(params).One(&row)
-	return row, err
-}
-
 func listHomeFeedMapEntryRows(
 	app core.App,
 	userID string,
@@ -2968,11 +3071,17 @@ func listHomeFeedMapEntryRows(
 	search string,
 	sort string,
 	typeFilter string,
+	bounds homeFeedMapBounds,
+	pointFilter *homeFeedMapPointFilter,
 ) ([]homeFeedMapEntryRow, error) {
 	params := dbx.Params{
 		"userId":     userID,
 		"searchLike": buildHomeFeedSearchLike(search),
 		"limit":      maxHomeFeedMapPoints,
+		"north":      bounds.North,
+		"south":      bounds.South,
+		"east":       bounds.East,
+		"west":       bounds.West,
 	}
 	visitEventAtExpression := "COALESCE(NULLIF(visits.visitDate, ''), visits.created)"
 	quickTrackEventAtExpression := "COALESCE(NULLIF(food_items.itemDate, ''), food_items.created)"
@@ -2982,7 +3091,23 @@ func listHomeFeedMapEntryRows(
 	}
 
 	selects := make([]string, 0, 2)
-	if typeFilter != "food-products" {
+	visitPointCondition := ""
+	if pointFilter != nil && len(pointFilter.VisitIDs) > 0 {
+		var visitParams dbx.Params
+		visitPointCondition, visitParams = buildSQLInFilter(
+			"visits.id",
+			"mapVisitId",
+			pointFilter.VisitIDs,
+		)
+		for key, value := range visitParams {
+			params[key] = value
+		}
+	}
+	if typeFilter != "food-products" && (pointFilter == nil || visitPointCondition != "") {
+		visitPointFilterSQL := ""
+		if visitPointCondition != "" {
+			visitPointFilterSQL = " AND " + visitPointCondition
+		}
 		selects = append(selects, `
 			SELECT
 				'visit' AS source,
@@ -2990,15 +3115,37 @@ func listHomeFeedMapEntryRows(
 				`+visitEventAtExpression+` AS eventAt,
 				visits.created AS createdAt,
 				restaurants.latitude AS latitude,
-				restaurants.longitude AS longitude
+				restaurants.longitude AS longitude,
+				COALESCE(restaurants.id, '') AS restaurantId,
+				COALESCE(restaurants.name, '') AS restaurantName,
+				COALESCE(restaurants.location, '') AS restaurantLocation,
+				'' AS locationText
 			FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
 			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search)+`
+				`+visitPointFilterSQL+`
 				AND restaurants.latitude IS NOT NULL
 				AND restaurants.longitude IS NOT NULL
-				AND NOT (restaurants.latitude = 0 AND restaurants.longitude = 0)`)
+				AND NOT (restaurants.latitude = 0 AND restaurants.longitude = 0)
+				AND `+buildHomeFeedMapSpatialCondition("restaurants.latitude", "restaurants.longitude", bounds))
 	}
-	if typeFilter != "visits" {
+	foodProductPointCondition := ""
+	if pointFilter != nil && len(pointFilter.FoodProductIDs) > 0 {
+		var foodProductParams dbx.Params
+		foodProductPointCondition, foodProductParams = buildSQLInFilter(
+			"food_items.id",
+			"mapFoodProductId",
+			pointFilter.FoodProductIDs,
+		)
+		for key, value := range foodProductParams {
+			params[key] = value
+		}
+	}
+	if typeFilter != "visits" && (pointFilter == nil || foodProductPointCondition != "") {
+		foodProductPointFilterSQL := ""
+		if foodProductPointCondition != "" {
+			foodProductPointFilterSQL = " AND " + foodProductPointCondition
+		}
 		selects = append(selects, `
 			SELECT
 				'food-product' AS source,
@@ -3006,14 +3153,20 @@ func listHomeFeedMapEntryRows(
 				`+quickTrackEventAtExpression+` AS eventAt,
 				food_items.created AS createdAt,
 				linked_restaurants.latitude AS latitude,
-				linked_restaurants.longitude AS longitude
+				linked_restaurants.longitude AS longitude,
+				COALESCE(linked_restaurants.id, '') AS restaurantId,
+				COALESCE(linked_restaurants.name, '') AS restaurantName,
+				COALESCE(linked_restaurants.location, '') AS restaurantLocation,
+				COALESCE(food_items.location_text, '') AS locationText
 			FROM food_items
 			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
 			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
 			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search)+`
+				`+foodProductPointFilterSQL+`
 				AND linked_restaurants.latitude IS NOT NULL
 				AND linked_restaurants.longitude IS NOT NULL
-				AND NOT (linked_restaurants.latitude = 0 AND linked_restaurants.longitude = 0)`)
+				AND NOT (linked_restaurants.latitude = 0 AND linked_restaurants.longitude = 0)
+				AND `+buildHomeFeedMapSpatialCondition("linked_restaurants.latitude", "linked_restaurants.longitude", bounds))
 	}
 
 	if len(selects) == 0 {
@@ -3041,7 +3194,11 @@ func listHomeFeedMapEntryRows(
 			filtered_entries.eventAt AS [[eventAt]],
 			filtered_entries.createdAt AS [[createdAt]],
 			filtered_entries.latitude AS [[latitude]],
-			filtered_entries.longitude AS [[longitude]]
+			filtered_entries.longitude AS [[longitude]],
+			filtered_entries.restaurantId AS [[restaurantId]],
+			filtered_entries.restaurantName AS [[restaurantName]],
+			filtered_entries.restaurantLocation AS [[restaurantLocation]],
+			filtered_entries.locationText AS [[locationText]]
 		FROM filtered_entries
 		ORDER BY filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC
 		LIMIT {:limit}
@@ -3444,7 +3601,7 @@ func redactFriendHomeFeedTimestamps(response *homeFeedResponse) {
 	}
 }
 
-func redactFriendHomeFeedMapTimestamps(response *homeFeedMapPointsResponse) {
+func redactFriendHomeFeedMapTimestamps(response *homeFeedMapPointDetailsResponse) {
 	for index := range response.Points {
 		response.Points[index].EventAt = redactFriendHomeFeedTimestamp(response.Points[index].EventAt)
 		if response.Points[index].Visit != nil {

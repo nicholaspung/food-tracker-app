@@ -3794,6 +3794,144 @@ func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	}
 }
 
+func TestHomeFeedMapReturnsBoundedMarkersAndLazyDetail(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   37.78,
+		"location":   "San Francisco, CA",
+		"longitude":  -122.42,
+		"name":       "Map Cafe",
+		"visibility": "public",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-07-10 12:00:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "Map Toast",
+		"rating": 4,
+		"user":   user.Id,
+		"visit":  visit.Id,
+	})
+	stranger, _ := createAuthUser(t, server.app, false, false)
+	strangerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       stranger.Id,
+		"visitDate":  "2026-07-10 13:00:00.000Z",
+		"visibility": "public",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "Private Map Toast",
+		"rating": 2,
+		"user":   stranger.Id,
+		"visit":  strangerVisit.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed/map-points?scope=mine&typeFilter=visits&sort=created&north=38&south=37&west=-123&east=-122",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bounded marker request to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	var markersPayload struct {
+		PhotoPreviews json.RawMessage `json:"photoPreviews"`
+		Points        []struct {
+			RecordID       string          `json:"recordId"`
+			RestaurantName string          `json:"restaurantName"`
+			Visit          json.RawMessage `json:"visit"`
+		} `json:"points"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &markersPayload); err != nil {
+		t.Fatalf("failed to decode marker payload: %v", err)
+	}
+	if len(markersPayload.Points) != 1 || markersPayload.Points[0].RecordID != visit.Id {
+		t.Fatalf("expected the in-bounds visit marker, got %#v", markersPayload.Points)
+	}
+	if markersPayload.Points[0].RestaurantName != "Map Cafe" {
+		t.Fatalf("expected marker restaurant summary, got %#v", markersPayload.Points[0])
+	}
+	if markersPayload.PhotoPreviews != nil || markersPayload.Points[0].Visit != nil {
+		t.Fatalf("expected lightweight marker payload without detail or photos: %s", response.Body.String())
+	}
+
+	outsideResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed/map-points?scope=mine&typeFilter=visits&sort=created&north=36&south=35&west=-123&east=-122",
+		token,
+		"",
+	)
+	if outsideResponse.Code != http.StatusOK || strings.Contains(outsideResponse.Body.String(), visit.Id) {
+		t.Fatalf("expected out-of-bounds marker to be excluded, got %d: %s", outsideResponse.Code, outsideResponse.Body.String())
+	}
+
+	detailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/home-feed/map-point-details",
+		token,
+		fmt.Sprintf(`{"scope":"mine","typeFilter":"visits","sort":"created","north":38,"south":37,"west":-123,"east":-122,"points":[{"source":"visit","recordId":%q},{"source":"visit","recordId":%q}]}`, visit.Id, strangerVisit.Id),
+	)
+	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "Map Toast") {
+		t.Fatalf("expected selected marker detail, got %d: %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	if strings.Contains(detailResponse.Body.String(), strangerVisit.Id) || strings.Contains(detailResponse.Body.String(), "Private Map Toast") {
+		t.Fatalf("expected inaccessible marker detail to remain excluded: %s", detailResponse.Body.String())
+	}
+}
+
+func TestHomeFeedMapHandlesAntimeridianBounds(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	createVisitAtLongitude := func(name string, longitude float64) string {
+		restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+			"latitude":   10,
+			"location":   "Dateline",
+			"longitude":  longitude,
+			"name":       name,
+			"visibility": "public",
+		})
+		visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+			"restaurant": restaurant.Id,
+			"user":       user.Id,
+			"visitDate":  "2026-07-10 12:00:00.000Z",
+			"visibility": "private",
+		})
+		return visit.Id
+	}
+
+	eastVisitID := createVisitAtLongitude("East Dateline", 179)
+	westVisitID := createVisitAtLongitude("West Dateline", -179)
+	centerVisitID := createVisitAtLongitude("Prime Meridian", 0)
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed/map-points?scope=mine&typeFilter=visits&sort=created&north=20&south=0&west=170&east=-170",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected antimeridian marker request to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), eastVisitID) || !strings.Contains(response.Body.String(), westVisitID) {
+		t.Fatalf("expected markers on both sides of the antimeridian: %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), centerVisitID) {
+		t.Fatalf("expected prime-meridian marker to remain out of bounds: %s", response.Body.String())
+	}
+}
+
 func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

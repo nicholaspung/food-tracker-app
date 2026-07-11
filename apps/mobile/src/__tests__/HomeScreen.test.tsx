@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { listHomeFeedMapPoints } from '../features';
 import {
   getRestaurantListBookmarkState,
   getRestaurantListDetail,
@@ -29,6 +30,8 @@ const mockFlatListScrollToIndex = jest.fn();
 const mockFlatListScrollToOffset = jest.fn();
 const mockQueryClientInvalidateQueries = jest.fn();
 const mockSectionListScrollTo = jest.fn();
+const mockedListHomeFeedMapPoints =
+  listHomeFeedMapPoints as jest.MockedFunction<typeof listHomeFeedMapPoints>;
 
 jest.mock('react-native', () => {
   const react = jest.requireActual<typeof import('react')>('react');
@@ -204,6 +207,7 @@ jest.mock('../features', () => ({
       typeFilter: string,
       sort: string,
       search: string,
+      viewportIdentity: string,
     ) => [
       'feature',
       'homeFeedMap',
@@ -214,6 +218,7 @@ jest.mock('../features', () => ({
       typeFilter,
       sort,
       search,
+      viewportIdentity,
     ]),
     root: ['feature', 'homeFeedMap'],
   },
@@ -579,6 +584,7 @@ describe('HomeScreen', () => {
     mockedUseQueryClient.mockReturnValue({
       getQueriesData: jest.fn(() => []),
       invalidateQueries: mockQueryClientInvalidateQueries,
+      removeQueries: jest.fn(),
     } as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
@@ -2998,6 +3004,7 @@ describe('HomeScreen', () => {
       'visits',
       'created',
       '',
+      '19.70:-124.50:60.00:-72.70:standard',
     );
     expect(mockedUseQuery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -3012,9 +3019,31 @@ describe('HomeScreen', () => {
           'visits',
           'created',
           '',
+          '19.70:-124.50:60.00:-72.70:standard',
         ],
       }),
     );
+
+    const mapQueryOptions = mockedUseQuery.mock.calls.find(
+      ([options]) => Array.isArray(options.queryKey) && options.queryKey[1] === 'homeFeedMap',
+    )?.[0];
+    const abortController = new AbortController();
+    mockedListHomeFeedMapPoints.mockResolvedValue({
+      omittedWithoutCoordinates: 0,
+      points: [],
+      totalEntries: 0,
+    });
+    const mapQueryFn = mapQueryOptions?.queryFn;
+    expect(typeof mapQueryFn).toBe('function');
+    if (typeof mapQueryFn === 'function') {
+      await mapQueryFn({ signal: abortController.signal } as never);
+    }
+    expect(mockedListHomeFeedMapPoints).toHaveBeenCalledWith(expect.objectContaining({
+      signal: abortController.signal,
+      viewport: expect.objectContaining({
+        identity: '19.70:-124.50:60.00:-72.70:standard',
+      }),
+    }));
   });
 
   it('switches from the list feed to the map view', async () => {
