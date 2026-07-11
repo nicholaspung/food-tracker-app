@@ -27,20 +27,20 @@ minimumReleaseAgeExclude:
   - expo-font@56.0.7
   - expo-modules-core@56.0.16
   - expo-modules-jsi@56.0.9
-  - expo@56.0.12
-  - '@expo/ui@56.0.18'
+  - expo@56.0.15
+  - '@expo/ui@56.0.21'
   - expo-camera@56.0.8
   - expo-dev-client@56.0.20
   - expo-dev-launcher@56.0.20
   - expo-dev-menu@56.0.17
-  - expo-image-manipulator@56.0.19
-  - expo-image-picker@56.0.18
-  - expo-location@56.0.18
+  - expo-image-manipulator@56.0.21
+  - expo-image-picker@56.0.20
+  - expo-location@56.0.20
   - expo-media-library@56.0.7
-  - expo-notifications@56.0.18
+  - expo-notifications@56.0.20
   - expo-sqlite@56.0.5
   - expo-updates@56.0.19
   - expo-video@56.1.4
   - jest-expo@56.0.5
 patchedDependencies:
-  expo-notifications@56.0.19: patches/expo-notifications@56.0.19.patch
+  expo-notifications@56.0.20: patches/expo-notifications@56.0.20.patch
