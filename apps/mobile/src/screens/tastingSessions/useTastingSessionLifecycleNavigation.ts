@@ -9,7 +9,7 @@ import type {
 
 type TastingSessionLifecycleNavigation = NativeStackNavigationProp<RootStackParamList>;
 
-export function executeTastingSessionLifecycleRedirect(
+function executeTastingSessionLifecycleRedirect(
   navigation: TastingSessionLifecycleNavigation,
   destination: TastingSessionLifecycleRedirectDestination,
 ): void {
