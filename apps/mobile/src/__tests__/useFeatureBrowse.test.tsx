@@ -31,18 +31,23 @@ type HookState = ReturnType<typeof useFeatureBrowse<string[], string, 'note.crea
 describe('useFeatureBrowse', () => {
   let latestHook: HookState | null = null;
   const refetch = jest.fn();
+  const fetchNextPage = jest.fn();
 
   function Harness({
     data,
+    hasNextPage = false,
     isError = false,
     isFetching = false,
+    isFetchingNextPage = false,
     isLoading = false,
     isSuccess = true,
     projectQueuedWrites = false,
   }: {
     data?: string[];
+    hasNextPage?: boolean;
     isError?: boolean;
     isFetching?: boolean;
+    isFetchingNextPage?: boolean;
     isLoading?: boolean;
     isSuccess?: boolean;
     projectQueuedWrites?: boolean;
@@ -59,8 +64,11 @@ describe('useFeatureBrowse', () => {
       queuedWriteBrowseProjectionTargets: projectQueuedWrites ? ['notes'] : undefined,
       query: {
         data,
+        fetchNextPage,
+        hasNextPage,
         isError,
         isFetching,
+        isFetchingNextPage,
         isLoading,
         isRefetching: false,
         isSuccess,
@@ -115,6 +123,7 @@ describe('useFeatureBrowse', () => {
   beforeEach(() => {
     latestHook = null;
     refetch.mockReset();
+    fetchNextPage.mockReset();
     (trackObservabilityEvent as jest.Mock).mockReset();
     mockedUseQueuedFeatureWriteBrowseProjection.mockReset();
     mockedUseQueuedFeatureWrites.mockReturnValue({
@@ -218,6 +227,30 @@ describe('useFeatureBrowse', () => {
     });
 
     expect(refreshQueuedWrites).not.toHaveBeenCalled();
+  });
+
+  it('guards load more when there is no next page or a page is already fetching', async () => {
+    await act(async () => {
+      create(React.createElement(Harness, { data: ['one'] }));
+    });
+
+    await act(async () => {
+      await latestHook?.onEndReached();
+    });
+
+    await act(async () => {
+      create(React.createElement(Harness, {
+        data: ['one'],
+        hasNextPage: true,
+        isFetchingNextPage: true,
+      }));
+    });
+
+    await act(async () => {
+      await latestHook?.onEndReached();
+    });
+
+    expect(fetchNextPage).not.toHaveBeenCalled();
   });
 
   it('maps pending queued writes into display rows', async () => {
