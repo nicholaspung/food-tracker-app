@@ -1,6 +1,6 @@
 import { Pressable, View } from 'react-native';
 
-import { getRatingColor, RATING_OPTIONS } from '../../lib/ratingConstants';
+import { getRatingColor, getRatingLabel, RATING_OPTIONS } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme, type Theme } from '../../theme';
 import { Text } from '../../ui';
 
@@ -57,6 +57,9 @@ export function RatingSelector({ value, onChange, testIDPrefix }: RatingSelector
           const isSelected = value === option.value;
           return (
             <Pressable
+              accessibilityLabel={`${option.value}, ${getRatingLabel(option.value)}`}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected }}
               key={option.value}
               onPress={() => onChange(option.value)}
               style={[
