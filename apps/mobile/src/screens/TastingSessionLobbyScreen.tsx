@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,6 +28,7 @@ import {
 } from './tastingSessions/shared';
 import { TastingJoinWindowDurationSelector } from './tastingSessions/TastingJoinWindowDurationSelector';
 import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
+import { useTastingSessionLifecycleNavigation } from './tastingSessions/useTastingSessionLifecycleNavigation';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionLobbyScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionLobby'>;
@@ -130,7 +131,6 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   });
   const sessionQuery = lifecycle.query;
   const isOnline = lifecycle.onlineOnly.isOnline;
-  const hasHandledRevokedAccessRef = useRef(false);
   const [pendingKick, setPendingKick] = useState<TastingParticipantRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isReopenModalVisible, setIsReopenModalVisible] = useState(false);
@@ -168,30 +168,12 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
       })
     : session?.invites ?? [];
 
-  useEffect(() => {
-    if (hasHandledRevokedAccessRef.current || !lifecycle.missingAccess.shouldHandle) {
-      return;
-    }
-    hasHandledRevokedAccessRef.current = true;
-    lifecycle.applyMissingAccessPolicy();
-
-    navigation.navigate('TastingSessions', {
-      errorMessage: lifecycle.missingAccess.message,
-    });
-  }, [lifecycle, navigation]);
-
-  useEffect(() => {
-    const destination = lifecycle.redirectDestination;
-    if (!destination) {
-      return;
-    }
-
-    if (destination.name === 'TastingSessions') {
-      navigation.navigate(destination.name, destination.params);
-    } else {
-      navigation.replace(destination.name, destination.params);
-    }
-  }, [lifecycle.redirectDestination, navigation]);
+  useTastingSessionLifecycleNavigation({
+    applyMissingAccessPolicy: lifecycle.applyMissingAccessPolicy,
+    missingAccess: lifecycle.missingAccess,
+    navigation,
+    redirectDestination: lifecycle.redirectDestination,
+  });
 
   const handleShare = async () => {
     if (!session?.inviteCode || !inviteWindowOpen) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -43,6 +43,7 @@ import { FREE_MONTHLY_PHOTO_LIMIT } from './createVisit/shared';
 import { formatReviewEntryFooterLabel } from './photoProcessing/shared';
 import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
 import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
+import { useTastingSessionLifecycleNavigation } from './tastingSessions/useTastingSessionLifecycleNavigation';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionTastingScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionTasting'>;
@@ -186,18 +187,10 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     galleryRequiredMessage: 'Photo library permission is required to upload an image.',
   });
 
-  useEffect(() => {
-    const destination = lifecycle.redirectDestination;
-    if (!destination) {
-      return;
-    }
-
-    if (destination.name === 'TastingSessions') {
-      navigation.navigate(destination.name, destination.params);
-    } else {
-      navigation.replace(destination.name, destination.params);
-    }
-  }, [lifecycle.redirectDestination, navigation]);
+  useTastingSessionLifecycleNavigation({
+    navigation,
+    redirectDestination: lifecycle.redirectDestination,
+  });
 
   const approvedRestaurants = useMemo(
     () => session?.restaurants.filter((restaurant) => restaurant.status === 'approved') ?? [],

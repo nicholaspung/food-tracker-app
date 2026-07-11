@@ -33,6 +33,7 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { TASTING_SESSION_LIFECYCLE_STEPS } from './tastingSessions/shared';
 import { TastingSessionLifecycleShell } from './tastingSessions/TastingSessionLifecycleShell';
+import { useTastingSessionLifecycleNavigation } from './tastingSessions/useTastingSessionLifecycleNavigation';
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
@@ -209,18 +210,10 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     [pendingRemoveRestaurantId, selectedRestaurants],
   );
 
-  useEffect(() => {
-    const destination = lifecycle.redirectDestination;
-    if (!destination) {
-      return;
-    }
-
-    if (destination.name === 'TastingSessions') {
-      navigation.navigate(destination.name, destination.params);
-    } else {
-      navigation.replace(destination.name, destination.params);
-    }
-  }, [lifecycle.redirectDestination, navigation]);
+  useTastingSessionLifecycleNavigation({
+    navigation,
+    redirectDestination: lifecycle.redirectDestination,
+  });
 
   const restaurantSelection = useTastingPlanRestaurantSelectionFlow({
     autoCaptureReferenceLocation: true,
