@@ -29,7 +29,7 @@ export function WantToTryBookmarkButton({
   const theme = useTheme();
   const isDisabled = disabled || loading;
   const iconColor = saved ? theme.colors.text.warning : theme.colors.text.secondary;
-  const buttonSize = variant === 'card' ? 40 : variant === 'compact' ? COMPACT_ACTION_TARGET_SIZE : 26;
+  const buttonSize = variant === 'card' ? 40 : COMPACT_ACTION_TARGET_SIZE;
   const iconSize = variant === 'card' ? 19 : variant === 'compact' ? 16 : 18;
   const borderRadius = variant === 'compact' ? 8 : variant === 'inline' ? theme.radii.sm : theme.radii.md;
 

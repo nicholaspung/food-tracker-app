@@ -959,7 +959,7 @@ export function RestaurantDiscoveryScreen({
             <WantToTryBookmarkButton
               accessibilityLabel={
                 savedRestaurantIds.has(restaurant.id)
-                  ? `${restaurant.name} is saved to Want to Try`
+                  ? `Remove ${restaurant.name} from Want to Try`
                   : `Save ${restaurant.name} to Want to Try`
               }
               loading={isBookmarkSubmitting}

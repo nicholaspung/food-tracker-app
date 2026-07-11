@@ -518,7 +518,7 @@ export function RestaurantDiscoveryRestaurantScreen({
                         <WantToTryBookmarkButton
                           accessibilityLabel={
                             isSaved
-                              ? `${row.name} is saved to Want to Try`
+                              ? `Remove ${row.name} from Want to Try`
                               : `Save ${row.name} to Want to Try`
                           }
                           loading={isBookmarkSubmitting}
