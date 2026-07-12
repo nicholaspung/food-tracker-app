@@ -69,14 +69,16 @@ jest.mock('@react-navigation/native-stack', () => ({
       name,
       component: Component,
       initialParams,
+      options,
     }: {
       name: string;
       component: React.ComponentType<any>;
       initialParams?: unknown;
+      options?: unknown;
     }) =>
       mockReact.createElement(
         'StackScreen',
-        { name },
+        { name, options },
         Component
           ? mockReact.createElement(Component, {
               navigation: {
@@ -609,6 +611,52 @@ describe('RootNavigator', () => {
     expect(renderedStackScreens).toContain('RestaurantDiscovery');
     expect(renderedStackScreens).toContain('RestaurantDiscoveryRestaurant');
     expect(renderer.root.findAllByType('BottomTabNavigation')).toHaveLength(1);
+  });
+
+  it('disables native back gestures on create visit draft screens', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      actualUser: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+        mobileOnboardingState: completedMobileOnboardingState,
+      },
+      isSubmitting: false,
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    const screenOptionsByName = new Map(
+      renderer.root
+        .findAllByType('StackScreen')
+        .map((node: any) => [node.props.name, node.props.options]),
+    );
+
+    expect(screenOptionsByName.get('CreateVisit')).toMatchObject({
+      gestureEnabled: false,
+      headerShown: false,
+    });
+    expect(screenOptionsByName.get('CreateVisitAddRestaurant')).toMatchObject({
+      gestureEnabled: false,
+      headerShown: false,
+    });
+    expect(screenOptionsByName.get('CreateVisitAddMenuItem')).toMatchObject({
+      gestureEnabled: false,
+      headerShown: false,
+    });
+    expect(screenOptionsByName.get('CreateVisitEditMenuItem')).toMatchObject({
+      gestureEnabled: false,
+      headerShown: false,
+    });
   });
 
   it('renders restaurant discovery routes for regular users', async () => {

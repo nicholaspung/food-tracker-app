@@ -6,6 +6,10 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import {
+  usePreventRemove,
+  type NavigationAction,
+} from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
@@ -565,6 +569,8 @@ export function CreateVisitScreen({
   const [recommendationSource, setRecommendationSource] = useState<RecommendationSourceHandoff | null>(null);
   const [sourceListReturnListId, setSourceListReturnListId] = useState<string | null>(null);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
+  const [pendingDiscardNavigationAction, setPendingDiscardNavigationAction] =
+    useState<NavigationAction | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
     null,
@@ -1975,6 +1981,27 @@ export function CreateVisitScreen({
     },
     [buildFlowAnalyticsPayload, buildTrackingEntryProperties, hasUnsavedChanges, step],
   );
+  const shouldPreventDraftRemoval =
+    hasUnsavedChanges &&
+    !isSubmitting &&
+    !isConvertingVisitItem &&
+    !hasCompletedFlowRef.current;
+  usePreventRemove(shouldPreventDraftRemoval, ({ data }) => {
+    if (!pendingDiscardNavigationAction) {
+      setPendingDiscardNavigationAction(data.action);
+    }
+  });
+  const handleCancelDiscardDraft = useCallback(() => {
+    setPendingDiscardNavigationAction(null);
+  }, []);
+  const handleConfirmDiscardDraft = useCallback(() => {
+    const action = pendingDiscardNavigationAction;
+    setPendingDiscardNavigationAction(null);
+
+    if (action) {
+      navigation.dispatch(action);
+    }
+  }, [navigation, pendingDiscardNavigationAction]);
 
   useEffect(() => {
     const canTrackFlow = !isEditMode || hydratedEditVisitId === editVisitId;
@@ -2329,6 +2356,21 @@ export function CreateVisitScreen({
         testID="edit-visit-convert-item-confirmation-modal"
         title="Convert to Food Product"
         visible={isConversionConfirmVisible}
+      />
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Editing"
+        confirmLabel="Discard Draft"
+        description={
+          isEditMode
+            ? 'You have unsaved changes to this visit. Discard them and leave this screen?'
+            : 'You have an unsaved visit draft. Discard it and leave this screen?'
+        }
+        disabled={isSubmitting || isConvertingVisitItem}
+        onCancel={handleCancelDiscardDraft}
+        onConfirm={handleConfirmDiscardDraft}
+        testID="create-visit-discard-draft-confirmation-modal"
+        title={isEditMode ? 'Discard Changes?' : 'Discard Visit Draft?'}
+        visible={pendingDiscardNavigationAction !== null}
       />
       {sourceNoteId ? (
         <LinkedNoteCard

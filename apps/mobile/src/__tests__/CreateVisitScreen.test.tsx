@@ -22,6 +22,7 @@ import { useCreateVisitDraftItems } from '../screens/createVisit/useCreateVisitD
 import { useCreateVisitSubmission } from '../screens/createVisit/useCreateVisitSubmission';
 
 const mockReact = React;
+const mockUsePreventRemove = jest.fn();
 const mockTheme = {
   colors: {
     background: {
@@ -100,6 +101,10 @@ const nonEditableMenuItem = {
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  usePreventRemove: (...args: unknown[]) => mockUsePreventRemove(...args),
 }));
 
 jest.mock('expo-image-picker', () => ({
@@ -403,6 +408,7 @@ describe('CreateVisitScreen', () => {
   let toggleMenuItemSelection: jest.Mock;
   let navigation: {
     canGoBack: jest.Mock;
+    dispatch: jest.Mock;
     goBack: jest.Mock;
     navigate: jest.Mock;
     setParams: jest.Mock;
@@ -414,6 +420,7 @@ describe('CreateVisitScreen', () => {
     toggleMenuItemSelection = jest.fn();
     navigation = {
       canGoBack: jest.fn(() => true),
+      dispatch: jest.fn(),
       goBack: jest.fn(),
       navigate: jest.fn(),
       setParams: jest.fn(),
@@ -549,6 +556,7 @@ describe('CreateVisitScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
+    mockUsePreventRemove.mockReset();
     mockedUseCreateVisitDraftItems.mockReset();
     mockedUseCreateVisitDraftItems.mockReturnValue({
       draftItems: [],
@@ -1250,6 +1258,83 @@ describe('CreateVisitScreen', () => {
 
     expect(navigation.goBack).not.toHaveBeenCalled();
     expect(findScaffold().props.primaryAction.label).toBe('Select Items');
+  });
+
+  it('prompts before removing an unsaved create visit draft and replays confirmed navigation', async () => {
+    const blockedBackAction = { source: 'CreateVisit-route', target: 'root-stack', type: 'GO_BACK' };
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'draft-item-1',
+          name: 'Noodles',
+          notes: '',
+          photos: [],
+          rating: 4,
+        },
+      ],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn(() => false),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: {} } as never}
+        />,
+      );
+    });
+
+    expect(mockUsePreventRemove).toHaveBeenLastCalledWith(true, expect.any(Function));
+
+    await act(async () => {
+      mockUsePreventRemove.mock.calls.at(-1)?.[1]({
+        data: {
+          action: blockedBackAction,
+        },
+      });
+    });
+
+    const modal = renderer.root.findByProps({
+      testID: 'create-visit-discard-draft-confirmation-modal',
+    });
+    expect(modal.props.visible).toBe(true);
+    expect(navigation.dispatch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      modal.props.onCancel();
+    });
+
+    expect(
+      renderer.root.findByProps({
+        testID: 'create-visit-discard-draft-confirmation-modal',
+      }).props.visible,
+    ).toBe(false);
+
+    await act(async () => {
+      mockUsePreventRemove.mock.calls.at(-1)?.[1]({
+        data: {
+          action: blockedBackAction,
+        },
+      });
+    });
+    await act(async () => {
+      renderer.root
+        .findByProps({ testID: 'create-visit-discard-draft-confirmation-modal' })
+        .props.onConfirm();
+    });
+
+    expect(navigation.dispatch).toHaveBeenCalledWith(blockedBackAction);
   });
 
   it('hydrates related-location preselected items without treating the suggestion id as a menu item id', async () => {

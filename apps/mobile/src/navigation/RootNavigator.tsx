@@ -308,6 +308,10 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const CREATE_VISIT_DRAFT_SCREEN_OPTIONS = {
+  gestureEnabled: false,
+  headerShown: false,
+};
 export const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
   prefixes: [
     'yummyrecs://',
@@ -772,22 +776,22 @@ export function RootNavigator() {
                   <Stack.Screen
                     component={CreateVisitScreen}
                     name="CreateVisit"
-                    options={{ headerShown: false }}
+                    options={CREATE_VISIT_DRAFT_SCREEN_OPTIONS}
                   />
                   <Stack.Screen
                     component={CreateVisitAddRestaurantScreen}
                     name="CreateVisitAddRestaurant"
-                    options={{ headerShown: false }}
+                    options={CREATE_VISIT_DRAFT_SCREEN_OPTIONS}
                   />
                   <Stack.Screen
                     component={CreateVisitAddMenuItemScreen}
                     name="CreateVisitAddMenuItem"
-                    options={{ headerShown: false }}
+                    options={CREATE_VISIT_DRAFT_SCREEN_OPTIONS}
                   />
                   <Stack.Screen
                     component={CreateVisitEditMenuItemScreen}
                     name="CreateVisitEditMenuItem"
-                    options={{ headerShown: false }}
+                    options={CREATE_VISIT_DRAFT_SCREEN_OPTIONS}
                   />
                   <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ headerShown: false }} />
                   <Stack.Screen component={FoodProductScreen} name="FoodProduct" options={{ headerShown: false }} />

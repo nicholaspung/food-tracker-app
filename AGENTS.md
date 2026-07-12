@@ -25,7 +25,19 @@ This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
 - Follow existing data flow: React Query for reads, feature-layer functions for domain logic, and queued writes for offline-safe user mutations.
 - Use theme tokens and shared UI primitives/components; avoid ad-hoc styling or one-off UI patterns.
 - Add or preserve loading, empty, and error states for all async screens.
+- Prefer the smallest correct change. Avoid speculative abstractions, new helpers, new files, or broad refactors unless they remove real duplication or are needed for the requested behavior.
+- Keep tests proportional to risk. Prefer updating existing tests or adding one focused regression test over creating broad new suites, snapshots, or low-value coverage for straightforward UI wiring.
+- After the implementation works, do a simplification pass over the changed files: remove unused code, collapse unnecessary indirection, inline one-off helpers where clearer, and make sure the final design is the simplest solution that satisfies the request.
 - Before finishing, run a quick consistency pass with the checklist at the bottom of this file.
+
+## Simplicity and Test Discipline
+
+- Start with the existing implementation shape and change as little structure as possible.
+- Add a new abstraction only when it clearly reduces repeated logic, clarifies a domain boundary, or matches an established local pattern.
+- Do not add code "for later" or generalize for future scenarios that are not part of the task.
+- When tests are needed, cover the behavior most likely to regress with the fewest practical cases.
+- Do not add tests solely to exercise implementation details, styling-only changes, or behavior already covered by nearby tests.
+- If a change is low risk and existing checks cover it sufficiently, note that no new tests were added rather than adding low-signal tests.
 
 ## App Composition and Providers
 
