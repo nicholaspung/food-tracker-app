@@ -7,6 +7,7 @@ import {
   EmptyState,
   FeatureFormScreenScaffold,
   FeatureFormReadStateScaffold,
+  type FeatureFormReadStateScaffoldConfig,
   PageErrorToast,
   RestaurantListEditorFormFields,
 } from '../components/shared';
@@ -138,22 +139,26 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
     }
   };
 
+  const readStateScaffold = {
+    base: {
+      onBackPress: handleBack,
+      primaryAction: {
+        label: 'Save List',
+        disabled: true,
+        onPress: () => {},
+      },
+      secondaryAction: {
+        label: 'Cancel',
+        onPress: handleBack,
+      },
+      title: 'Edit List',
+    },
+  } satisfies FeatureFormReadStateScaffoldConfig;
+
   if (listQuery.isLoading) {
     return (
       <FeatureFormReadStateScaffold
-        scaffold={{
-          onBackPress: handleBack,
-          primaryAction: {
-            label: 'Save List',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: handleBack,
-          },
-          title: 'Edit List',
-        }}
+        scaffold={readStateScaffold}
         state="loading"
       />
     );
@@ -169,19 +174,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           },
           title: 'List unavailable',
         }}
-        scaffold={{
-          onBackPress: handleBack,
-          primaryAction: {
-            label: 'Save List',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: handleBack,
-          },
-          title: 'Edit List',
-        }}
+        scaffold={readStateScaffold}
         state="error"
       />
     );
@@ -195,19 +188,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           onAction: handleBack,
           title: 'List not found',
         }}
-        scaffold={{
-          onBackPress: handleBack,
-          primaryAction: {
-            label: 'Save List',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: handleBack,
-          },
-          title: 'Edit List',
-        }}
+        scaffold={readStateScaffold}
         state="empty"
       />
     );

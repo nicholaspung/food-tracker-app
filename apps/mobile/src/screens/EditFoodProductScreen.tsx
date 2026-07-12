@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   FeatureFormScreenScaffold,
   FeatureFormReadStateScaffold,
+  type FeatureFormReadStateScaffoldConfig,
   LightweightStatusCard,
   OFFLINE_USAGE_WARNING_MESSAGE,
   PageErrorToast,
@@ -298,29 +299,37 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     [buildEditorAnalyticsPayload],
   );
 
+  const readStateScaffold = {
+    base: {
+      onBackPress: () => {
+        exitMethodRef.current = 'header_back';
+        handleBackPress();
+      },
+      primaryAction: {
+        label: 'Save Changes',
+        disabled: true,
+        onPress: () => {},
+      },
+      secondaryAction: {
+        label: 'Cancel',
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          handleBackPress();
+        },
+      },
+      title: 'Edit Food Product',
+    },
+    overrides: {
+      error: { subtitle: 'Update the saved details for this food product.' },
+      empty: { subtitle: 'Update the saved details for this food product.' },
+    },
+  } satisfies FeatureFormReadStateScaffoldConfig;
+
   if (foodProductQuery.isLoading) {
     return (
       <FeatureFormReadStateScaffold
         loading={{ skeletonHeights: [20, 20, 20, 20] }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            handleBackPress();
-          },
-          primaryAction: {
-            label: 'Save Changes',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              handleBackPress();
-            },
-          },
-          title: 'Edit Food Product',
-        }}
+        scaffold={readStateScaffold}
         state="loading"
       />
     );
@@ -338,26 +347,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
           },
           title: 'Food product unavailable',
         }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            handleBackPress();
-          },
-          primaryAction: {
-            label: 'Save Changes',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              handleBackPress();
-            },
-          },
-          subtitle: 'Update the saved details for this food product.',
-          title: 'Edit Food Product',
-        }}
+        scaffold={readStateScaffold}
         state="error"
       />
     );
@@ -376,26 +366,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
           },
           title: 'Food product not found',
         }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            handleBackPress();
-          },
-          primaryAction: {
-            label: 'Save Changes',
-            disabled: true,
-            onPress: () => {},
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              handleBackPress();
-            },
-          },
-          subtitle: 'Update the saved details for this food product.',
-          title: 'Edit Food Product',
-        }}
+        scaffold={readStateScaffold}
         state="empty"
       />
     );

@@ -120,6 +120,15 @@ jest.mock('../components/shared', () => ({
     scaffold,
     state,
   }: Record<string, any>) => {
+    const override = scaffold.overrides?.[state];
+    const resolvedScaffold = scaffold.base
+      ? {
+          ...scaffold.base,
+          ...override,
+          primaryAction: { ...scaffold.base.primaryAction, ...override?.primaryAction },
+          secondaryAction: { ...scaffold.base.secondaryAction, ...override?.secondaryAction },
+        }
+      : scaffold;
     const content =
       state === 'loading'
         ? (loading?.skeletonHeights ?? [20, 20, 20]).map((height: number, index: number) =>
@@ -129,7 +138,7 @@ jest.mock('../components/shared', () => ({
           ? mockReact.createElement('ErrorState', error)
           : mockReact.createElement('EmptyState', { title: 'Not found', ...empty });
 
-    return mockReact.createElement('FeatureFormScreenScaffold', scaffold, content);
+    return mockReact.createElement('FeatureFormScreenScaffold', resolvedScaffold, content);
   },
   LightweightStatusCard: ({ message, ...props }: Record<string, unknown> & { message?: React.ReactNode }) =>
     mockReact.createElement(

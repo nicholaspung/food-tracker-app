@@ -10,6 +10,7 @@ import {
   ErrorState,
   FeatureFormScreenScaffold,
   FeatureFormReadStateScaffold,
+  type FeatureFormReadStateScaffoldConfig,
   LightweightStatusCard,
   OFFLINE_USAGE_WARNING_MESSAGE,
   PhotoInputField,
@@ -822,31 +823,60 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     totalPhotoCount,
   ]);
 
+  const readStateScaffold = {
+    base: {
+      onBackPress: () => {
+        exitMethodRef.current = 'header_back';
+        closeEditor();
+      },
+      primaryAction: {
+        label: 'Save Changes',
+        onPress: () => undefined,
+        disabled: true,
+      },
+      secondaryAction: {
+        label: 'Cancel',
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          closeEditor();
+        },
+        disabled: true,
+      },
+      subtitle: 'Update your saved note details.',
+      title: 'Edit Note',
+    },
+    overrides: {
+      error: {
+        primaryAction: {
+          disabled: false,
+          label: 'Retry',
+          onPress: () => {
+            void noteDetailQuery.refetch();
+          },
+        },
+        secondaryAction: { disabled: false, variant: 'secondary' },
+        subtitle: 'Could not load this note.',
+      },
+      empty: {
+        primaryAction: {
+          disabled: false,
+          label: 'Back to Notes',
+          onPress: () => {
+            exitMethodRef.current = 'programmatic_navigation';
+            navigation.navigate('Notes');
+          },
+        },
+        secondaryAction: { disabled: false, variant: 'secondary' },
+        subtitle: 'This note no longer exists.',
+      },
+    },
+  } satisfies FeatureFormReadStateScaffoldConfig;
+
   if (isEditing && noteDetailQuery.isLoading) {
     return (
       <FeatureFormReadStateScaffold
         loading={{ skeletonHeights: [84, 180, 180] }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            closeEditor();
-          },
-          primaryAction: {
-            label: 'Save Changes',
-            onPress: () => undefined,
-            disabled: true,
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              closeEditor();
-            },
-            disabled: true,
-          },
-          subtitle: 'Update your saved note details.',
-          title: 'Edit Note',
-        }}
+        scaffold={readStateScaffold}
         state="loading"
       />
     );
@@ -864,28 +894,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           },
           title: 'Note unavailable',
         }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            closeEditor();
-          },
-          primaryAction: {
-            label: 'Retry',
-            onPress: () => {
-              void noteDetailQuery.refetch();
-            },
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              closeEditor();
-            },
-            variant: 'secondary',
-          },
-          subtitle: 'Could not load this note.',
-          title: 'Edit Note',
-        }}
+        scaffold={readStateScaffold}
         state="error"
       />
     );
@@ -904,29 +913,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           },
           title: 'Note not found',
         }}
-        scaffold={{
-          onBackPress: () => {
-            exitMethodRef.current = 'header_back';
-            closeEditor();
-          },
-          primaryAction: {
-            label: 'Back to Notes',
-            onPress: () => {
-              exitMethodRef.current = 'programmatic_navigation';
-              navigation.navigate('Notes');
-            },
-          },
-          secondaryAction: {
-            label: 'Cancel',
-            onPress: () => {
-              exitMethodRef.current = 'secondary_cancel';
-              closeEditor();
-            },
-            variant: 'secondary',
-          },
-          subtitle: 'This note no longer exists.',
-          title: 'Edit Note',
-        }}
+        scaffold={readStateScaffold}
         state="empty"
       />
     );

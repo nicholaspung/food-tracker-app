@@ -112,4 +112,38 @@ describe('FeatureFormReadStateScaffold', () => {
       title: 'Record not found',
     });
   });
+
+  it('merges state overrides with a shared base scaffold config', () => {
+    let renderer: any = null;
+
+    act(() => {
+      renderer = create(
+        <FeatureFormReadStateScaffold
+          error={{ title: 'Record unavailable' }}
+          scaffold={{
+            base: scaffold,
+            overrides: {
+              error: {
+                primaryAction: { label: 'Retry' },
+                subtitle: 'Could not load the record.',
+              },
+            },
+          }}
+          state="error"
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props).toMatchObject({
+      onBackPress: scaffold.onBackPress,
+      primaryAction: {
+        disabled: true,
+        label: 'Retry',
+        onPress: scaffold.primaryAction.onPress,
+      },
+      secondaryAction: scaffold.secondaryAction,
+      subtitle: 'Could not load the record.',
+      title: 'Edit Thing',
+    });
+  });
 });
