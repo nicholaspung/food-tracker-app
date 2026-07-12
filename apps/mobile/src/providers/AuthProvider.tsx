@@ -163,11 +163,27 @@ function resolveProductAuthUserTier(user: AuthUser | null): 'admin' | 'subscribe
   return tier === 'anonymous' ? null : tier;
 }
 
-interface AuthProviderProps {
-  children: React.ReactNode;
+export type AuthBootstrapOutcome = 'successful_restore' | 'failed_restore';
+
+export interface AuthBootstrapResult {
+  authRestoreDurationMs: number;
+  hadPersistedToken: boolean;
+  hasValidSession: boolean;
+  outcome: AuthBootstrapOutcome;
+  refreshFailed: boolean;
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+interface AuthProviderProps {
+  children: React.ReactNode;
+  onBootstrapComplete?: (result: AuthBootstrapResult) => void;
+  waitForLocalStateReset?: () => Promise<void>;
+}
+
+export function AuthProvider({
+  children,
+  onBootstrapComplete,
+  waitForLocalStateReset,
+}: AuthProviderProps) {
   const queryClient = useQueryClient();
   const { discardQueuedMutations } = useSync();
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
@@ -182,6 +198,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const previousAuthenticatedUserIdRef = useRef<string | null | undefined>(undefined);
+  const isProviderMountedRef = useRef(true);
   const isResettingSessionRef = useRef(false);
   const suppressNextAuthBoundaryResetRef = useRef(false);
 
@@ -213,6 +230,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       isResettingSessionRef.current = true;
       try {
+        await waitForLocalStateReset?.();
+        if (!isProviderMountedRef.current) {
+          return;
+        }
         const cleanupErrors: unknown[] = [];
 
         try {
@@ -248,7 +269,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isResettingSessionRef.current = false;
       }
     },
-    [discardQueuedMutations, queryClient],
+    [discardQueuedMutations, queryClient, waitForLocalStateReset],
   );
 
   const refreshAuthSession = useCallback(async () => {
@@ -273,6 +294,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     syncAuthSnapshot();
   }, [syncAuthSnapshot]);
+
+  useEffect(() => {
+    isProviderMountedRef.current = true;
+
+    return () => {
+      isProviderMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -332,20 +361,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
           syncAuthSnapshot();
         }
 
+        const authRestoreDurationMs = Date.now() - restoreStartedAt;
+        const hasValidSession = Boolean(pb.authStore.token && getCurrentUser());
         trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
-          durationMs: Date.now() - restoreStartedAt,
+          durationMs: authRestoreDurationMs,
           hadPersistedToken,
-          hasValidSession: Boolean(pb.authStore.token && getCurrentUser()),
+          hasValidSession,
           refreshFailed,
           source: 'AuthProvider',
         });
+        if (isMounted) {
+          onBootstrapComplete?.({
+            authRestoreDurationMs,
+            hadPersistedToken,
+            hasValidSession,
+            outcome: 'successful_restore',
+            refreshFailed,
+          });
+        }
       } catch (error) {
         if (hadRestoredSession || Boolean(pb.authStore.token)) {
           await resetAuthenticatedLocalState('auth_change');
         }
 
+        const authRestoreDurationMs = Date.now() - restoreStartedAt;
         trackObservabilityEvent('AUTH_SESSION_RESTORE_FAILED', {
-          durationMs: Date.now() - restoreStartedAt,
+          durationMs: authRestoreDurationMs,
           errorMessage: error instanceof Error ? error.message : String(error),
           errorType: error instanceof Error ? error.name : 'unknown_error',
           hadPersistedToken,
@@ -358,6 +399,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setVerificationGraceEndsAt(null);
           setAuthError('Unable to restore session. Please sign in again.');
           captureObservabilityError(error);
+          onBootstrapComplete?.({
+            authRestoreDurationMs,
+            hadPersistedToken,
+            hasValidSession: false,
+            outcome: 'failed_restore',
+            refreshFailed,
+          });
         }
       }
     };
@@ -374,7 +422,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isMounted = false;
       unsubscribe();
     };
-  }, [resetAuthenticatedLocalState, syncAuthSnapshot]);
+  }, [onBootstrapComplete, resetAuthenticatedLocalState, syncAuthSnapshot]);
 
   useLayoutEffect(() => {
     if (status === 'bootstrapping') {

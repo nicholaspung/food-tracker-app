@@ -265,6 +265,98 @@ describe('AuthProvider', () => {
     expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it('reports auth bootstrap completion for startup coordination', async () => {
+    const onBootstrapComplete = jest.fn();
+
+    await act(async () => {
+      create(
+        <AuthProvider onBootstrapComplete={onBootstrapComplete}>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onBootstrapComplete).toHaveBeenCalledWith({
+      authRestoreDurationMs: expect.any(Number),
+      hadPersistedToken: true,
+      hasValidSession: true,
+      outcome: 'successful_restore',
+      refreshFailed: false,
+    });
+  });
+
+  it('waits for query restoration before bootstrap clears authenticated local state', async () => {
+    mockAuthRefresh.mockRejectedValue(new Error('Unauthorized'));
+    let releaseQueryRestore = () => {};
+    const queryRestoreBarrier = new Promise<void>((resolve) => {
+      releaseQueryRestore = resolve;
+    });
+    const waitForLocalStateReset = jest.fn(() => queryRestoreBarrier);
+
+    await act(async () => {
+      create(
+        <AuthProvider waitForLocalStateReset={waitForLocalStateReset}>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(waitForLocalStateReset).toHaveBeenCalledTimes(1);
+    expect(mockQueryClientClear).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseQueryRestore();
+      await queryRestoreBarrier;
+      await Promise.resolve();
+    });
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
+    expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('auth_change');
+  });
+
+  it('does not clear shared local state when bootstrap unmounts while waiting to reset', async () => {
+    mockAuthRefresh.mockRejectedValue(new Error('Unauthorized'));
+    let releaseQueryRestore = () => {};
+    const queryRestoreBarrier = new Promise<void>((resolve) => {
+      releaseQueryRestore = resolve;
+    });
+    let renderer: any;
+
+    await act(async () => {
+      renderer = create(
+        <AuthProvider waitForLocalStateReset={() => queryRestoreBarrier}>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+
+    await act(async () => {
+      releaseQueryRestore();
+      await queryRestoreBarrier;
+      await Promise.resolve();
+    });
+
+    expect(mockQueryClientClear).not.toHaveBeenCalled();
+    expect(mockClearPersistedQueryCache).not.toHaveBeenCalled();
+    expect(mockDiscardQueuedMutations).not.toHaveBeenCalled();
+  });
+
   it('clears auth, query cache, persisted cache, and queued mutations on explicit sign-out', async () => {
     let renderer: any;
     await act(async () => {

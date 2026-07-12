@@ -1,6 +1,6 @@
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { localPersistence } from '../localPersistence';
@@ -12,11 +12,12 @@ import {
 } from '../observability/productAnalytics';
 import { SplashScreen } from '../screens/SplashScreen';
 import {
+  clearPersistedQueryCache,
   queryPersister,
   readPersistedQueryCacheMetadata,
   shouldPersistQuery,
 } from './queryPersistence';
-import { AuthProvider } from './AuthProvider';
+import { AuthProvider, type AuthBootstrapResult } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
 import { OtaUpdatesProvider } from './OtaUpdatesProvider';
@@ -33,16 +34,39 @@ const queryClient = new QueryClient({
 const QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS = 4000;
 type QueryRestoreOutcome = 'successful_restore' | 'trimmed_restore' | 'failed_restore' | 'timeout';
 
+interface QueryRestoreResult {
+  queryRestoreDurationMs: number;
+  queryRestoreOutcome: QueryRestoreOutcome;
+  restoreFailed: boolean;
+}
+
+interface RestoreBarrier {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
 interface AppProvidersProps {
   children: React.ReactNode;
 }
 
 export function AppProviders({ children }: AppProvidersProps) {
-  const [isQueryPersistenceReady, setIsQueryPersistenceReady] = useState(false);
+  const [queryRestoreResult, setQueryRestoreResult] = useState<QueryRestoreResult | null>(null);
+  const [authBootstrapResult, setAuthBootstrapResult] = useState<AuthBootstrapResult | null>(null);
   const appStartedAtRef = useRef(Date.now());
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const sessionStartedAtRef = useRef(Date.now());
   const hasTrackedColdStartRef = useRef(false);
+  const queryRestoreBarrierRef = useRef<RestoreBarrier | null>(null);
+  if (!queryRestoreBarrierRef.current) {
+    queryRestoreBarrierRef.current = createRestoreBarrier();
+  }
+  const handleAuthBootstrapComplete = useCallback((result: AuthBootstrapResult) => {
+    setAuthBootstrapResult(result);
+  }, []);
+  const waitForQueryPersistenceRestore = useCallback(
+    () => queryRestoreBarrierRef.current?.promise ?? Promise.resolve(),
+    [],
+  );
 
   useEffect(() => {
     initializeObservability();
@@ -68,6 +92,7 @@ export function AppProviders({ children }: AppProvidersProps) {
 
   useEffect(() => {
     let isMounted = true;
+    let didRestoreTimeout = false;
     const restoreStartedAt = Date.now();
     let restoreFailed = false;
     let queryRestoreOutcome: QueryRestoreOutcome = 'successful_restore';
@@ -85,33 +110,51 @@ export function AppProviders({ children }: AppProvidersProps) {
       });
 
       unsubscribe = nextUnsubscribe;
-      await withTimeout(
-        restorePromise,
-        QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS,
-        'Persisted React Query cache restore timed out.',
-      );
+      try {
+        await withTimeout(
+          restorePromise,
+          QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS,
+          'Persisted React Query cache restore timed out.',
+          () => {
+            didRestoreTimeout = true;
+          },
+        );
+      } catch (error) {
+        if (didRestoreTimeout) {
+          unsubscribe();
+          void restorePromise
+            .then(async () => {
+              if (didRestoreTimeout) {
+                queryClient.clear();
+                await clearPersistedQueryCache();
+              }
+            })
+            .catch((lateRestoreError) => {
+              logger.warn('[AppProviders] Failed to neutralize late query-cache hydration:', lateRestoreError);
+            });
+          queryClient.clear();
+          await clearPersistedQueryCache();
+        }
+        throw error;
+      }
       queryRestoreOutcome = persistedCacheMetadata?.trimmed ? 'trimmed_restore' : 'successful_restore';
     };
 
     void restorePersistedQueries()
       .catch((error) => {
         restoreFailed = true;
-        queryRestoreOutcome = isTimeoutError(error) ? 'timeout' : 'failed_restore';
+        queryRestoreOutcome = didRestoreTimeout || isTimeoutError(error) ? 'timeout' : 'failed_restore';
         logger.warn('[AppProviders] Failed to restore persisted React Query cache:', error);
       })
       .finally(() => {
+        const queryRestoreDurationMs = Date.now() - restoreStartedAt;
+        queryRestoreBarrierRef.current?.resolve();
         if (isMounted) {
-          setIsQueryPersistenceReady(true);
-          if (!hasTrackedColdStartRef.current) {
-            hasTrackedColdStartRef.current = true;
-            trackObservabilityEvent('APP_COLD_START_COMPLETED', {
-              appStartupDurationMs: Date.now() - appStartedAtRef.current,
-              queryRestoreDurationMs: Date.now() - restoreStartedAt,
-              restoreFailed,
-              queryRestoreOutcome,
-              source: 'AppProviders',
-            });
-          }
+          setQueryRestoreResult({
+            queryRestoreDurationMs,
+            queryRestoreOutcome,
+            restoreFailed,
+          });
         }
       });
 
@@ -120,6 +163,24 @@ export function AppProviders({ children }: AppProvidersProps) {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!queryRestoreResult || !authBootstrapResult || hasTrackedColdStartRef.current) {
+      return;
+    }
+
+    hasTrackedColdStartRef.current = true;
+    trackObservabilityEvent('APP_COLD_START_COMPLETED', {
+      appStartupDurationMs: Date.now() - appStartedAtRef.current,
+      authRefreshFailed: authBootstrapResult.refreshFailed,
+      authRestoreDurationMs: authBootstrapResult.authRestoreDurationMs,
+      authRestoreOutcome: authBootstrapResult.outcome,
+      queryRestoreDurationMs: queryRestoreResult.queryRestoreDurationMs,
+      queryRestoreOutcome: queryRestoreResult.queryRestoreOutcome,
+      restoreFailed: queryRestoreResult.restoreFailed,
+      source: 'AppProviders',
+    });
+  }, [authBootstrapResult, queryRestoreResult]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -184,19 +245,31 @@ export function AppProviders({ children }: AppProvidersProps) {
     <ConnectivityProvider>
       <QueryClientProvider client={queryClient}>
         <SyncProvider>
-          {isQueryPersistenceReady ? (
-            <OtaUpdatesProvider>
-              <AuthProvider>
+          <OtaUpdatesProvider>
+            <AuthProvider
+              onBootstrapComplete={handleAuthBootstrapComplete}
+              waitForLocalStateReset={waitForQueryPersistenceRestore}
+            >
+              {queryRestoreResult && authBootstrapResult ? (
                 <ErrorToastProvider>{children}</ErrorToastProvider>
-              </AuthProvider>
-            </OtaUpdatesProvider>
-          ) : (
-            <SplashScreen />
-          )}
+              ) : (
+                <SplashScreen />
+              )}
+            </AuthProvider>
+          </OtaUpdatesProvider>
         </SyncProvider>
       </QueryClientProvider>
     </ConnectivityProvider>
   );
+}
+
+function createRestoreBarrier(): RestoreBarrier {
+  let resolve = () => {};
+  const promise = new Promise<void>((nextResolve) => {
+    resolve = nextResolve;
+  });
+
+  return { promise, resolve };
 }
 
 async function resolveProductAnalyticsAnonymousId(): Promise<string> {
@@ -212,9 +285,15 @@ async function resolveProductAnalyticsAnonymousId(): Promise<string> {
   return nextAnonymousId;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
+      onTimeout?.();
       const error = new Error(message);
       error.name = 'TimeoutError';
       reject(error);
@@ -234,5 +313,5 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 }
 
 function isTimeoutError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'TimeoutError';
+  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError';
 }
