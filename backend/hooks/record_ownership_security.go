@@ -57,8 +57,34 @@ func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
 	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
 		return err
 	}
+	if err := enforceMenuItemTrustCreateSecurity(e.Record); err != nil {
+		return err
+	}
 
 	return e.Next()
+}
+
+func enforceMenuItemTrustCreateSecurity(record *core.Record) error {
+	if record == nil || record.Collection() == nil || record.Collection().Name != "menu_items" {
+		return nil
+	}
+
+	approvalStatus := strings.TrimSpace(record.GetString("approvalStatus"))
+	if approvalStatus == "" {
+		record.Set("approvalStatus", "unreviewed")
+	} else if approvalStatus != "unreviewed" {
+		return apis.NewForbiddenError("menu item approval state is admin controlled", nil)
+	}
+
+	if strings.TrimSpace(record.GetString("approvalReviewedBy")) != "" ||
+		strings.TrimSpace(record.GetString("approvalReviewedAt")) != "" ||
+		strings.TrimSpace(record.GetString("promotedFrom")) != "" ||
+		strings.TrimSpace(record.GetString("promotedTo")) != "" ||
+		record.GetBool("groupSuitable") {
+		return apis.NewForbiddenError("menu item catalog trust fields are admin controlled", nil)
+	}
+
+	return nil
 }
 
 func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {

@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -55,6 +56,119 @@ func TestRestaurantCreateRejectsCrossUserCreatedBySpoofing(t *testing.T) {
 	)
 	if response.Code == http.StatusOK {
 		t.Fatalf("expected spoofed restaurant create to be rejected, got 200: %s", response.Body.String())
+	}
+}
+
+func TestMenuItemCreateRejectsRawCatalogTrustState(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Trust Boundary Cafe",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+	linkedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Existing Trusted Link",
+		"restaurant":     restaurant.Id,
+		"createdBy":      owner.Id,
+		"visibility":     "public",
+		"approvalStatus": "unreviewed",
+	})
+
+	maliciousFields := []map[string]any{
+		{"approvalStatus": "approved"},
+		{"approvalStatus": "rejected"},
+		{"approvalReviewedBy": owner.Id},
+		{"approvalReviewedAt": "2026-07-21 12:00:00.000Z"},
+		{"promotedFrom": linkedItem.Id},
+		{"promotedTo": linkedItem.Id},
+		{"groupSuitable": true},
+	}
+	for index, maliciousField := range maliciousFields {
+		payload := map[string]any{
+			"name":           fmt.Sprintf("Forged Trust Item %d", index),
+			"restaurant":     restaurant.Id,
+			"createdBy":      owner.Id,
+			"visibility":     "public",
+			"approvalStatus": "unreviewed",
+		}
+		for field, value := range maliciousField {
+			payload[field] = value
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("failed to encode malicious payload: %v", err)
+		}
+
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/collections/menu_items/records",
+			ownerToken,
+			string(body),
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected forged trust create to return 403, got %d for %#v: %s", response.Code, maliciousField, response.Body.String())
+		}
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"menu_items",
+		"restaurant = {:restaurantId}",
+		map[string]any{"restaurantId": restaurant.Id},
+	); count != 1 {
+		t.Fatalf("expected only the seeded menu item after rejected creates, got %d", count)
+	}
+}
+
+func TestMenuItemCreateInitializesSafeUnreviewedTrustState(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Contribution Cafe",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/menu_items/records",
+		ownerToken,
+		fmt.Sprintf(`{"name":"Community Toast","restaurant":"%s","createdBy":"%s","visibility":"public"}`, restaurant.Id, owner.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected safe public contribution to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := map[string]any{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode created menu item: %v", err)
+	}
+	menuItemID, _ := payload["id"].(string)
+	created, err := server.app.FindRecordById("menu_items", menuItemID)
+	if err != nil {
+		t.Fatalf("failed to reload created menu item: %v", err)
+	}
+	if created.GetString("approvalStatus") != "unreviewed" ||
+		created.GetBool("groupSuitable") ||
+		created.GetString("approvalReviewedBy") != "" ||
+		created.GetString("approvalReviewedAt") != "" ||
+		created.GetString("promotedFrom") != "" ||
+		created.GetString("promotedTo") != "" {
+		t.Fatalf("unexpected trust state on safe contribution: %#v", created)
 	}
 }
 
