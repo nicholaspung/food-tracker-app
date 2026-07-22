@@ -994,6 +994,7 @@ func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	actor, actorToken := createAuthUser(t, server.app, false, false)
 	appParticipant, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, actor.Id, appParticipant.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, actor.Id, "actor-device", "ExponentPushToken[actor]", true)
 	createNotificationDeviceRecord(t, server.app, appParticipant.Id, "participant-device", "ExponentPushToken[participant]", true)
 
@@ -1039,6 +1040,42 @@ func TestBillOwedNotificationDeliveryOnCreate(t *testing.T) {
 	assertNotificationDeliveryLogWithSignal(t, server.app, appParticipant.Id, "bill_owed", "sent", 1)
 }
 
+func TestBillOwedNotificationRejectedForNonFriendEnrollment(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, actorToken := createAuthUser(t, server.app, false, false)
+	nonFriend, _ := createAuthUser(t, server.app, false, false)
+	createNotificationDeviceRecord(t, server.app, nonFriend.Id, "target-device", "ExponentPushToken[target]", true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills",
+		actorToken,
+		`{
+			"title":"Rejected Notification Bill",
+			"totalAmount":20,
+			"participants":[
+				{"id":"actor","name":"Actor","userId":"`+actor.Id+`","amountOwed":10,"paidStatus":"paid"},
+				{"id":"target","name":"Target","userId":"`+nonFriend.Id+`","amountOwed":10,"paidStatus":"pending"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected non-friend enrollment 403, got %d: %s", response.Code, response.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected rejected enrollment to send no push, got %#v", sender.calls)
+	}
+	if count := countRecordsByFilter(t, server.app, "notification_delivery_logs", "user = {:userId}", map[string]any{"userId": nonFriend.Id}); count != 0 {
+		t.Fatalf("expected rejected enrollment to create no delivery log, got %d", count)
+	}
+}
+
 func TestBillOwedNotificationDeliveryOnEditDedupesAndSendsNewOwes(t *testing.T) {
 	sender := &recordingNotificationPushSender{}
 	restore := handlers.SetNotificationPushSenderForTests(sender)
@@ -1049,6 +1086,7 @@ func TestBillOwedNotificationDeliveryOnEditDedupesAndSendsNewOwes(t *testing.T) 
 	existingOwer, _ := createAuthUser(t, server.app, false, false)
 	newOwer, _ := createAuthUser(t, server.app, false, false)
 	changedOwer, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, actor.Id, newOwer.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, existingOwer.Id, "existing-device", "ExponentPushToken[existing]", true)
 	createNotificationDeviceRecord(t, server.app, newOwer.Id, "new-device", "ExponentPushToken[new]", true)
 	createNotificationDeviceRecord(t, server.app, changedOwer.Id, "changed-device", "ExponentPushToken[changed]", true)
@@ -1106,6 +1144,7 @@ func TestBillOwedNotificationPreferenceSuppression(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	actor, actorToken := createAuthUser(t, server.app, false, false)
 	participant, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, actor.Id, participant.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, participant.Id, "participant-device", "ExponentPushToken[participant]", true)
 	createBillNotificationPreferenceRecord(t, server.app, participant.Id, false)
 

@@ -60,6 +60,45 @@ func TestRestaurantCreateRejectsCrossUserCreatedBySpoofing(t *testing.T) {
 	}
 }
 
+func TestBillParticipantRawCreateRequiresAcceptedFriend(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	creator, creatorToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	nonFriend, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, creator.Id, friend.Id, "accepted")
+	bill := seedBillRecord(t, server.app, creator.Id, "Raw Participant Security")
+
+	rejected := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/bill_participants/records",
+		creatorToken,
+		fmt.Sprintf(`{"bill":"%s","user":"%s","participant_name":"Target","amount_owed":10,"paid_status":"pending"}`, bill.Id, nonFriend.Id),
+	)
+	if rejected.Code != http.StatusForbidden {
+		t.Fatalf("expected raw non-friend enrollment 403, got %d: %s", rejected.Code, rejected.Body.String())
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_participants", "user = {:userId}", map[string]any{"userId": nonFriend.Id}); count != 0 {
+		t.Fatalf("expected rejected raw enrollment to create no relation, got %d", count)
+	}
+
+	accepted := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/bill_participants/records",
+		creatorToken,
+		fmt.Sprintf(`{"bill":"%s","user":"%s","participant_name":"Friend","amount_owed":10,"paid_status":"pending"}`, bill.Id, friend.Id),
+	)
+	if accepted.Code != http.StatusOK {
+		t.Fatalf("expected raw accepted-friend enrollment 200, got %d: %s", accepted.Code, accepted.Body.String())
+	}
+}
+
 func TestRestaurantRawWritesRejectGoogleCatalogTrustChanges(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
 		hooks.RegisterRecordOwnershipHooks(app)

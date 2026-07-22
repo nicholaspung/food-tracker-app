@@ -2776,7 +2776,7 @@ func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.
 	})
 	leader, leaderToken := createAuthUser(t, server.app, false, true)
 	friend, friendToken := createAuthUser(t, server.app, false, true)
-	nonFriend, nonFriendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, leader.Id, friend.Id, "accepted")
 
 	response := performJSONRequest(
 		t,
@@ -2786,22 +2786,21 @@ func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.
 		leaderToken,
 		`{
 			"title":"Tasting Session Bill",
-			"totalAmount":90,
+			"totalAmount":60,
 			"tax":0,
 			"tip":0,
 			"fees":0,
 			"extrasSplitMode":"equal",
 			"participants":[
 				{"id":"user:`+leader.Id+`","name":"Leader","userId":"`+leader.Id+`","amountOwed":30,"paidStatus":"paid"},
-				{"id":"user:friendship_1","name":"Friend","userId":"`+friend.Id+`","amountOwed":30,"paidStatus":"pending"},
-				{"id":"custom:tasting:participant_1","name":"Non Friend","userId":"`+nonFriend.Id+`","amountOwed":30,"paidStatus":"pending"}
+				{"id":"user:friendship_1","name":"Friend","userId":"`+friend.Id+`","amountOwed":30,"paidStatus":"pending"}
 			],
 			"items":[
 				{
 					"id":"item_1",
 					"itemName":"Shared meal",
-					"price":90,
-					"assignedToParticipantIds":["user:`+leader.Id+`","user:friendship_1","custom:tasting:participant_1"],
+					"price":60,
+					"assignedToParticipantIds":["user:`+leader.Id+`","user:friendship_1"],
 					"splitMode":"simple"
 				}
 			]
@@ -2846,7 +2845,37 @@ func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.
 
 	assertBillSummaryContains(leaderToken, "leader", 0)
 	assertBillSummaryContains(friendToken, "friend", 30)
-	assertBillSummaryContains(nonFriendToken, "non-friend", 30)
+}
+
+func TestBillCreateEndpointRejectsNonFriendParticipant(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+	nonFriend, _ := createAuthUser(t, server.app, false, true)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/bills",
+		creatorToken,
+		`{
+			"title":"Rejected Dinner",
+			"totalAmount":20,
+			"participants":[
+				{"id":"creator","name":"Creator","userId":"`+creator.Id+`","amountOwed":10,"paidStatus":"paid"},
+				{"id":"target","name":"Target","userId":"`+nonFriend.Id+`","amountOwed":10,"paidStatus":"pending"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected non-friend enrollment 403, got %d: %s", response.Code, response.Body.String())
+	}
+	if count := countRecordsByFilter(t, server.app, "bills", "creator_user = {:userId}", map[string]any{"userId": creator.Id}); count != 0 {
+		t.Fatalf("expected rejected enrollment to roll back the Bill, got %d records", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_participants", "user = {:userId}", map[string]any{"userId": nonFriend.Id}); count != 0 {
+		t.Fatalf("expected rejected enrollment to create no participant relation, got %d", count)
+	}
 }
 
 func TestBillUpdateEndpointMakesAddedUserParticipantVisibleInBillSummary(t *testing.T) {
@@ -2856,6 +2885,7 @@ func TestBillUpdateEndpointMakesAddedUserParticipantVisibleInBillSummary(t *test
 	})
 	creator, creatorToken := createAuthUser(t, server.app, false, true)
 	addedParticipant, addedParticipantToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, creator.Id, addedParticipant.Id, "accepted")
 
 	bill := seedBillRecord(t, server.app, creator.Id, "Edited Dinner")
 	creatorParticipant := seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, creator.GetString("name"), 1, "paid")
@@ -2918,6 +2948,52 @@ func TestBillUpdateEndpointMakesAddedUserParticipantVisibleInBillSummary(t *test
 	}
 
 	t.Fatalf("expected added participant summary to include edited bill %s, got %#v", bill.Id, summaries)
+}
+
+func TestBillUpdateEndpointRejectsNonFriendParticipantReassignment(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+	nonFriend, _ := createAuthUser(t, server.app, false, true)
+	bill := seedBillRecord(t, server.app, creator.Id, "Original Dinner")
+	creatorParticipant := seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, "Creator", 10, "paid")
+	guestParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Guest", 10, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/bills/"+bill.Id,
+		creatorToken,
+		`{
+			"title":"Poisoned Dinner",
+			"totalAmount":20,
+			"participants":[
+				{"id":"`+creatorParticipant.Id+`","name":"Creator","userId":"`+creator.Id+`","amountOwed":10,"paidStatus":"paid"},
+				{"id":"`+guestParticipant.Id+`","name":"Target","userId":"`+nonFriend.Id+`","amountOwed":10,"paidStatus":"pending"}
+			]
+		}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected non-friend update enrollment 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloaded, err := server.app.FindRecordById("bills", bill.Id)
+	if err != nil {
+		t.Fatalf("failed to reload Bill after rejected update: %v", err)
+	}
+	if reloaded.GetString("bill_name") != "Original Dinner" {
+		t.Fatalf("expected rejected update to roll back Bill title, got %q", reloaded.GetString("bill_name"))
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_participants", "user = {:userId}", map[string]any{"userId": nonFriend.Id}); count != 0 {
+		t.Fatalf("expected rejected update to create no participant relation, got %d", count)
+	}
+	reloadedGuest, err := server.app.FindRecordById("bill_participants", guestParticipant.Id)
+	if err != nil {
+		t.Fatalf("failed to reload guest after rejected reassignment: %v", err)
+	}
+	if reloadedGuest.GetString("user") != "" || reloadedGuest.GetString("participant_name") != "Guest" {
+		t.Fatalf("expected guest participant reassignment to roll back, got %#v", reloadedGuest)
+	}
 }
 
 func TestBillUpdateEndpointRequiresCreatorAndRollsBackOnInvalidNestedItem(t *testing.T) {

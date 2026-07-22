@@ -1537,7 +1537,7 @@ func createBillTransaction(app core.App, authRecord *core.Record, requestBody bi
 		return nil, apis.NewApiError(500, "failed to create bill", err)
 	}
 
-	if _, _, err := syncBillChildren(app, billRecord.Id, nil, nil, requestBody.Participants, requestBody.Items); err != nil {
+	if _, _, err := syncBillChildren(app, authRecord.Id, billRecord.Id, nil, nil, requestBody.Participants, requestBody.Items); err != nil {
 		return nil, err
 	}
 
@@ -1646,6 +1646,7 @@ func updateBillTransaction(
 
 	if _, _, err := syncBillChildren(
 		app,
+		authRecord.Id,
 		billID,
 		existingParticipants,
 		existingItems,
@@ -1762,6 +1763,7 @@ func updateBillParticipantPaidStatusTransaction(
 
 func syncBillChildren(
 	app core.App,
+	actorUserID string,
 	billID string,
 	existingParticipants []*core.Record,
 	existingItems []*core.Record,
@@ -1782,6 +1784,10 @@ func syncBillChildren(
 	participantIDsToDelete := []string{}
 
 	if requestParticipants != nil {
+		acceptedFriendIDs, friendErr := listAcceptedFriendIDs(app, actorUserID)
+		if friendErr != nil {
+			return nil, nil, apis.NewApiError(500, "failed to validate bill participants", friendErr)
+		}
 		existingParticipantsByID := make(map[string]*core.Record, len(existingParticipants))
 		for _, participant := range existingParticipants {
 			existingParticipantsByID[participant.Id] = participant
@@ -1793,6 +1799,15 @@ func syncBillChildren(
 			participantUserID := strings.TrimSpace(participant.UserID)
 			if participantName == "" && participantUserID == "" {
 				return nil, nil, apis.NewBadRequestError("participant name is required", nil)
+			}
+			if participantUserID != "" && participantUserID != actorUserID {
+				_, isAcceptedFriend := acceptedFriendIDs[participantUserID]
+				existingParticipant := existingParticipantsByID[participant.ID]
+				isUnchangedExistingLink := existingParticipant != nil &&
+					strings.TrimSpace(existingParticipant.GetString("user")) == participantUserID
+				if !isAcceptedFriend && !isUnchangedExistingLink {
+					return nil, nil, apis.NewForbiddenError("Bill participants must be accepted friends", nil)
+				}
 			}
 
 			customTipContribution := sanitizeOptionalCurrency(participant.CustomTipContribution)

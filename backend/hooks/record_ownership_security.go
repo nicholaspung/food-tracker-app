@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -36,6 +37,9 @@ func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
 	if e == nil || e.Collection == nil {
 		return nil
 	}
+	if e.Collection.Name == "bill_participants" {
+		return enforceBillParticipantCreateRequestSecurity(e)
+	}
 
 	ownerField, ok := ownerBoundCollectionFields[e.Collection.Name]
 	if !ok {
@@ -62,6 +66,53 @@ func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
 	}
 	if err := enforceRestaurantGoogleCatalogTrustCreateSecurity(e.Record); err != nil {
 		return err
+	}
+
+	return e.Next()
+}
+
+func enforceBillParticipantCreateRequestSecurity(e *core.RecordRequestEvent) error {
+	if e.HasSuperuserAuth() {
+		return e.Next()
+	}
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	billID := strings.TrimSpace(e.Record.GetString("bill"))
+	if billID == "" {
+		return apis.NewBadRequestError("bill is required", nil)
+	}
+	bill, err := e.App.FindRecordById("bills", billID)
+	if err != nil {
+		return apis.NewBadRequestError("invalid bill", err)
+	}
+	if strings.TrimSpace(bill.GetString("creator_user")) != e.Auth.Id {
+		return apis.NewForbiddenError("only the Bill creator can add participants", nil)
+	}
+
+	participantUserID := strings.TrimSpace(e.Record.GetString("user"))
+	if participantUserID == "" || participantUserID == e.Auth.Id {
+		return e.Next()
+	}
+
+	row := struct {
+		Count int `db:"count"`
+	}{}
+	if err := e.App.DB().NewQuery(`
+		SELECT COUNT(*) AS [[count]]
+		FROM friendships
+		WHERE status = 'accepted'
+		  AND ((user = {:actorId} AND friend = {:participantId})
+		    OR (user = {:participantId} AND friend = {:actorId}))
+	`).Bind(dbx.Params{
+		"actorId":       e.Auth.Id,
+		"participantId": participantUserID,
+	}).One(&row); err != nil {
+		return apis.NewApiError(500, "failed to validate Bill participant", err)
+	}
+	if row.Count == 0 {
+		return apis.NewForbiddenError("Bill participants must be accepted friends", nil)
 	}
 
 	return e.Next()
