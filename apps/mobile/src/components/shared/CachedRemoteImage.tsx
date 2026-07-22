@@ -14,6 +14,7 @@ import {
   markPhotoImageLoaded,
   prefetchPhotoImages,
 } from '../../lib/photoImageCache';
+import { usePocketBaseFileUri } from '../../hooks/usePocketBaseFileUri';
 
 export interface CachedRemoteImageProps {
   accessibilityLabel?: string;
@@ -34,16 +35,18 @@ export function CachedRemoteImage({
   testID,
   uri,
 }: CachedRemoteImageProps) {
+  const resolvedUri = usePocketBaseFileUri(uri);
+
   useEffect(() => {
-    prefetchPhotoImages([uri]);
-  }, [uri]);
+    prefetchPhotoImages([resolvedUri]);
+  }, [resolvedUri]);
 
   const handleLoad = useCallback(
     (event: NativeSyntheticEvent<ImageLoadEventData>) => {
-      markPhotoImageLoaded(uri);
+      markPhotoImageLoaded(resolvedUri);
       onLoad?.(event);
     },
-    [onLoad, uri],
+    [onLoad, resolvedUri],
   );
 
   return (
@@ -53,7 +56,7 @@ export function CachedRemoteImage({
       onError={onError}
       onLoad={handleLoad}
       resizeMode={resizeMode}
-      source={buildCachedImageSource(uri)}
+      source={buildCachedImageSource(resolvedUri)}
       style={style}
       testID={testID}
     />

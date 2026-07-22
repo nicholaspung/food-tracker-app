@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { PaginationControls } from '@/components/shared/PaginationControls';
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { updateAdminMenuItem } from '@/features/menu-inventory/api';
 import type { ReassignVisitRestaurantResult, UserModerationProfile } from '@/features/users/api';
 import {
@@ -807,12 +808,14 @@ function ReassignVisitRestaurantModal({
 
 function UserDetailTabPanel({
   activeTab,
+  fileAccessToken,
   highlightedRecord,
   onNavigateToRecord,
   profile,
   userId,
 }: {
   activeTab: UserDetailTab;
+  fileAccessToken: string;
   highlightedRecord: { id: string; tab: UserDetailTab } | null;
   onNavigateToRecord: (tab: UserDetailTab, id: string) => void;
   profile: UserModerationProfile;
@@ -1605,6 +1608,7 @@ function UserDetailTabPanel({
                           collectionName,
                         },
                         fileName,
+                        fileAccessToken ? { token: fileAccessToken } : {},
                       )
                     : null;
 
@@ -1762,6 +1766,7 @@ function UserDetailTabPanel({
 
 export function UserDetailPage() {
   const { userId = '' } = useParams();
+  const { fileAccessToken } = useAuth();
   const [activeTab, setActiveTab] = useState<UserDetailTab>('activity');
   const [isAccountSnapshotExpanded, setIsAccountSnapshotExpanded] = useState(true);
   const [highlightedRecord, setHighlightedRecord] = useState<{ id: string; tab: UserDetailTab } | null>(null);
@@ -1908,6 +1913,7 @@ export function UserDetailPage() {
 
               <UserDetailTabPanel
                 activeTab={activeTab}
+                fileAccessToken={fileAccessToken}
                 highlightedRecord={highlightedRecord}
                 onNavigateToRecord={handleNavigateToRecord}
                 profile={profileQuery.data}

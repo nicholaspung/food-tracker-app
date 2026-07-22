@@ -5,7 +5,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
+	"net/url"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,9 +93,69 @@ type sharedRestaurantListPhotoPreview struct {
 	CollectionID   string `json:"collectionId,omitempty"`
 	CollectionName string `json:"collectionName,omitempty"`
 	Created        string `json:"created"`
+	AccessPath     string `json:"accessPath"`
 }
 
 func registerRestaurantListSharingSummaryHandler(se *core.ServeEvent, app core.App) {
+	se.Router.GET("/api/public/restaurant-lists/{shareToken}/photos/{photoId}/{filename}", func(e *core.RequestEvent) error {
+		shareToken := strings.TrimSpace(e.Request.PathValue("shareToken"))
+		photoID := strings.TrimSpace(e.Request.PathValue("photoId"))
+		filename := strings.TrimSpace(e.Request.PathValue("filename"))
+		if shareToken == "" || photoID == "" || filename == "" {
+			return apis.NewNotFoundError("shared restaurant list photo not found", nil)
+		}
+
+		page, pageSize, err := parseRestaurantListDetailPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewNotFoundError("shared restaurant list photo not found", nil)
+		}
+
+		response, err := getSharedRestaurantListResponse(app, shareToken, nil, page, pageSize)
+		if err != nil {
+			return apis.NewNotFoundError("shared restaurant list photo not found", err)
+		}
+
+		isVisiblePhoto := false
+		for _, photo := range response.PhotoPreviews {
+			if photo.ID == photoID && photo.Photo == filename {
+				isVisiblePhoto = true
+				break
+			}
+		}
+		if !isVisiblePhoto {
+			return apis.NewNotFoundError("shared restaurant list photo not found", nil)
+		}
+
+		record, err := app.FindRecordById("visit_photos", photoID)
+		if err != nil || strings.TrimSpace(record.GetString("photo")) != filename {
+			return apis.NewNotFoundError("shared restaurant list photo not found", err)
+		}
+
+		fsys, err := app.NewFilesystem()
+		if err != nil {
+			return apis.NewApiError(http.StatusInternalServerError, "failed to open shared restaurant list photo", err)
+		}
+		defer fsys.Close()
+
+		fileKey := record.BaseFilesPath() + "/" + filename
+		reader, err := fsys.GetReader(fileKey)
+		if err != nil {
+			return apis.NewNotFoundError("shared restaurant list photo not found", err)
+		}
+		defer reader.Close()
+
+		contentType := resolveSharedRestaurantListPhotoContentType(filename)
+		e.Response.Header().Set("Cache-Control", "private, max-age=300")
+		e.Response.Header().Set("Content-Type", contentType)
+		e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+		e.Response.WriteHeader(http.StatusOK)
+		_, err = io.Copy(e.Response, reader)
+		return err
+	})
+
 	se.Router.GET("/api/public/restaurant-lists/{shareToken}", func(e *core.RequestEvent) error {
 		shareToken := strings.TrimSpace(e.Request.PathValue("shareToken"))
 		if shareToken == "" {
@@ -378,6 +443,7 @@ func getSharedRestaurantListResponse(
 			CollectionID:   photo.CollectionID,
 			CollectionName: photo.CollectionName,
 			Created:        photo.Created,
+			AccessPath:     buildSharedRestaurantListPhotoAccessPath(shareToken, photo.ID, photo.Photo, page, pageSize),
 		})
 	}
 
@@ -399,6 +465,29 @@ func getSharedRestaurantListResponse(
 	}
 
 	return response, nil
+}
+
+func resolveSharedRestaurantListPhotoContentType(filename string) string {
+	extension := strings.ToLower(path.Ext(filename))
+	switch extension {
+	case ".heic":
+		return "image/heic"
+	case ".heif":
+		return "image/heif"
+	}
+
+	if contentType := mime.TypeByExtension(extension); contentType != "" {
+		return contentType
+	}
+	return "application/octet-stream"
+}
+
+func buildSharedRestaurantListPhotoAccessPath(shareToken string, photoID string, filename string, page int, pageSize int) string {
+	query := url.Values{}
+	query.Set("page", strconv.Itoa(page))
+	query.Set("pageSize", strconv.Itoa(pageSize))
+	return "/api/public/restaurant-lists/" + url.PathEscape(shareToken) +
+		"/photos/" + url.PathEscape(photoID) + "/" + url.PathEscape(filename) + "?" + query.Encode()
 }
 
 func saveSharedRestaurantListRecommendationTransaction(

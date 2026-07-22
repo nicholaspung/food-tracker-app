@@ -3,6 +3,7 @@ import { ClientResponseError } from 'pocketbase';
 import * as pocketbaseModule from '../lib/pocketbase';
 import { trackObservabilityEvent } from '../observability';
 import {
+  buildPocketBaseFileUrl,
   confirmUserEmailVerification,
   listCollectionPage,
   listCollectionRecords,
@@ -10,6 +11,7 @@ import {
 } from '../features/store/pocketbaseGateway';
 
 jest.mock('../lib/pocketbase', () => ({
+  getPocketBaseFileAccessToken: jest.fn(),
   pb: {
     authStore: {
       token: 'test-token',
@@ -18,6 +20,9 @@ jest.mock('../lib/pocketbase', () => ({
       confirmVerification: jest.fn(),
       getList: jest.fn(),
     })),
+    files: {
+      getURL: jest.fn(),
+    },
     send: jest.fn(),
   },
   __mockConfirmVerification: jest.fn(),
@@ -53,7 +58,31 @@ describe('pocketbaseGateway', () => {
     mockedPocketbaseModule.__mockConfirmVerification.mockReset();
     mockedPocketbaseModule.__mockGetList.mockReset();
     mockedPocketbaseModule.__mockSend.mockReset();
+    jest.mocked(mockedPocketbaseModule.getPocketBaseFileAccessToken).mockReset();
+    jest.mocked(mockedPocketbaseModule.pb.files.getURL).mockReset();
     mockedTrackObservabilityEvent.mockReset();
+  });
+
+  it('adds the private file token to generated photo URLs', () => {
+    jest.mocked(mockedPocketbaseModule.getPocketBaseFileAccessToken).mockReturnValue('private-file-token');
+    jest.mocked(mockedPocketbaseModule.pb.files.getURL).mockReturnValue('https://files.example/photo');
+
+    const url = buildPocketBaseFileUrl({
+      collectionName: 'visit_photos',
+      recordId: 'photo-1',
+      filename: 'ramen.jpg',
+      thumb: '100x100',
+    });
+
+    expect(url).toBe('https://files.example/photo');
+    expect(mockedPocketbaseModule.pb.files.getURL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionName: 'visit_photos',
+        id: 'photo-1',
+      }),
+      'ramen.jpg',
+      { thumb: '100x100', token: 'private-file-token' },
+    );
   });
 
   it('omits undefined filters from paginated collection requests', async () => {

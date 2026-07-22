@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -49,7 +50,22 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 		"name":   "Spicy Miso",
 		"rating": 5,
 	})
-	insertVisitPhotoRowRaw(t, server.app, owner.Id, visit.Id, foodItem.Id)
+	photoID := insertVisitPhotoRowRaw(t, server.app, owner.Id, visit.Id, foodItem.Id)
+	photoRecord, err := server.app.FindRecordById("visit_photos", photoID)
+	if err != nil {
+		t.Fatalf("failed to load shared visit photo: %v", err)
+	}
+	fsys, err := server.app.NewFilesystem()
+	if err != nil {
+		t.Fatalf("failed to create shared photo filesystem: %v", err)
+	}
+	if err := fsys.Upload([]byte("shared photo bytes"), photoRecord.BaseFilesPath()+"/test-photo.jpg"); err != nil {
+		_ = fsys.Close()
+		t.Fatalf("failed to upload shared photo: %v", err)
+	}
+	if err := fsys.Close(); err != nil {
+		t.Fatalf("failed to close shared photo filesystem: %v", err)
+	}
 	sourceListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
 		"list":       list.Id,
 		"restaurant": restaurant.Id,
@@ -161,6 +177,7 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 			OwnerName  string `json:"ownerName"`
 			UserID     string `json:"user"`
 			Photo      string `json:"photo"`
+			AccessPath string `json:"accessPath"`
 		} `json:"photoPreviews"`
 		BookmarkState map[string]any `json:"bookmarkState"`
 	}
@@ -196,6 +213,25 @@ func TestRestaurantListShareLinkLifecycleAndPublicProjection(t *testing.T) {
 	}
 	if publicPayload.PhotoPreviews[0].OwnerName != "" || publicPayload.PhotoPreviews[0].UserID != "" {
 		t.Fatalf("public photo leaked owner identity: %#v", publicPayload.PhotoPreviews[0])
+	}
+	sharedPhotoPath := publicPayload.PhotoPreviews[0].AccessPath
+	if !strings.HasPrefix(sharedPhotoPath, "/api/public/restaurant-lists/"+sharePayload.ShareToken+"/photos/"+photoID+"/") {
+		t.Fatalf("unexpected shared photo access path: %q", sharedPhotoPath)
+	}
+	sharedPhotoResponse := performJSONRequest(t, server.mux, http.MethodGet, sharedPhotoPath, "", "")
+	if sharedPhotoResponse.Code != http.StatusOK || sharedPhotoResponse.Body.String() != "shared photo bytes" {
+		t.Fatalf("expected shared photo download, got %d: %q", sharedPhotoResponse.Code, sharedPhotoResponse.Body.String())
+	}
+	forgedPhotoResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		strings.Replace(sharedPhotoPath, photoID, "missing-photo", 1),
+		"",
+		"",
+	)
+	if forgedPhotoResponse.Code == http.StatusOK {
+		t.Fatalf("expected unlisted shared photo download to fail, got %d", forgedPhotoResponse.Code)
 	}
 	if publicPayload.BookmarkState != nil {
 		t.Fatalf("public payload leaked bookmark state: %#v", publicPayload.BookmarkState)

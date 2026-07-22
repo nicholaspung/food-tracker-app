@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
 import type {
   RestaurantListBookmarkedItemRecord,
@@ -161,6 +162,7 @@ interface RestaurantListDetailApiPhotoPreviewRecord {
   collectionName?: string;
   created: string;
   ownerName?: string;
+  accessPath?: string;
 }
 
 interface RestaurantListDetailApiResponse {
@@ -604,14 +606,20 @@ function mapSharedRestaurantListResponse(response: SharedRestaurantListApiRespon
     bookmarkState: {
       savedListIdsByBookmarkLookupId,
     },
-    photoPreviews: (response.photoPreviews ?? []).map((photoPreview) => ({
-      id: photoPreview.id,
-      food_item: photoPreview.food_item?.trim() || undefined,
-      photo: photoPreview.photo,
-      collectionId: photoPreview.collectionId?.trim() || undefined,
-      collectionName: photoPreview.collectionName?.trim() || undefined,
-      created: photoPreview.created,
-    })),
+    photoPreviews: (response.photoPreviews ?? []).map((photoPreview) => {
+      const accessPath = photoPreview.accessPath?.trim();
+      return {
+        id: photoPreview.id,
+        food_item: photoPreview.food_item?.trim() || undefined,
+        photo: photoPreview.photo,
+        collectionId: photoPreview.collectionId?.trim() || undefined,
+        collectionName: photoPreview.collectionName?.trim() || undefined,
+        ...(accessPath
+          ? { uri: `${env.pocketbaseUrl.replace(/\/+$/, '')}/${accessPath.replace(/^\/+/, '')}` }
+          : {}),
+        created: photoPreview.created,
+      };
+    }),
     viewerLists: (response.viewerLists ?? []).map(mapRestaurantListDetailApiListRecord),
   };
 }

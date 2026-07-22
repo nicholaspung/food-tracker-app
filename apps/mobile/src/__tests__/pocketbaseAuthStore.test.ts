@@ -37,6 +37,23 @@ describe('SecureStoreAuthStore', () => {
     expect(restoredStore.record?.id).toBe('user_1');
   });
 
+  it('restores the last file token for the same user and clears it across accounts', async () => {
+    const store = new SecureStoreAuthStore('test_auth_key');
+    await store.waitUntilReady();
+    store.save('jwt_token', { id: 'user_1' } as never);
+    store.saveFileAccessToken('file_token_1', 'user_1');
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const restoredStore = new SecureStoreAuthStore('test_auth_key');
+    await restoredStore.waitUntilReady();
+    expect(restoredStore.getFileAccessToken('user_1')).toBe('file_token_1');
+
+    restoredStore.save('jwt_token_2', { id: 'user_2' } as never);
+    expect(restoredStore.getFileAccessToken('user_1')).toBe('');
+    expect(restoredStore.getFileAccessToken('user_2')).toBe('');
+  });
+
   it('ignores legacy AsyncStorage auth state when SecureStore is available', async () => {
     await AsyncStorage.setItem(
       'test_auth_key_legacy',

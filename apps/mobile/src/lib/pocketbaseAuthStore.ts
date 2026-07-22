@@ -9,6 +9,8 @@ import { logger } from './logger';
 
 interface PersistedAuthState {
   backendUrl?: string;
+  fileAccessToken?: string;
+  fileAccessTokenUserId?: string;
   token: string;
   record: RecordModel | null;
 }
@@ -43,6 +45,8 @@ function getSecureStoreOptions(secureStore: SecureStoreModuleType): SecureStoreO
 }
 
 export class SecureStoreAuthStore extends BaseAuthStore {
+  private fileAccessToken = '';
+  private fileAccessTokenUserId = '';
   private readonly storageKey: string;
   private readonly restorePromise: Promise<void>;
   private readonly secureStoreAvailablePromise: Promise<boolean>;
@@ -59,13 +63,36 @@ export class SecureStoreAuthStore extends BaseAuthStore {
   }
 
   override save(token: string, record?: RecordModel | null): void {
+    const nextUserId = record?.id ?? '';
+    if (this.fileAccessTokenUserId && this.fileAccessTokenUserId !== nextUserId) {
+      this.fileAccessToken = '';
+      this.fileAccessTokenUserId = '';
+    }
     super.save(token, record);
     void this.persistToStorage();
   }
 
   override clear(): void {
+    this.fileAccessToken = '';
+    this.fileAccessTokenUserId = '';
     super.clear();
     void this.clearPersistedStorage();
+  }
+
+  getFileAccessToken(userId: string): string {
+    return this.fileAccessTokenUserId === userId ? this.fileAccessToken : '';
+  }
+
+  saveFileAccessToken(token: string, userId: string): void {
+    this.fileAccessToken = token;
+    this.fileAccessTokenUserId = userId;
+    void this.persistToStorage();
+  }
+
+  clearFileAccessToken(): void {
+    this.fileAccessToken = '';
+    this.fileAccessTokenUserId = '';
+    void this.persistToStorage();
   }
 
   private async restoreFromStorage(): Promise<void> {
@@ -86,6 +113,8 @@ export class SecureStoreAuthStore extends BaseAuthStore {
         return;
       }
 
+      this.fileAccessToken = parsed.fileAccessToken ?? '';
+      this.fileAccessTokenUserId = parsed.fileAccessTokenUserId ?? '';
       super.save(parsed.token, parsed.record);
     } catch (error) {
       logger.warn('[AuthStore] Failed to restore stored auth state:', error);
@@ -102,6 +131,8 @@ export class SecureStoreAuthStore extends BaseAuthStore {
 
       const serialized = JSON.stringify({
         backendUrl: env.pocketbaseUrl,
+        fileAccessToken: this.fileAccessToken || undefined,
+        fileAccessTokenUserId: this.fileAccessTokenUserId || undefined,
         token: this.token,
         record: this.record,
       } satisfies PersistedAuthState);

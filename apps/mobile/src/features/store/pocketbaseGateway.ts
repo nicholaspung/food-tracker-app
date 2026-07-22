@@ -1,6 +1,6 @@
 import { ClientResponseError, type CommonOptions, type RecordModel } from 'pocketbase';
 
-import { pb } from '../../lib/pocketbase';
+import { getPocketBaseFileAccessToken, pb } from '../../lib/pocketbase';
 import { trackObservabilityEvent } from '../../observability';
 import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 
@@ -296,12 +296,13 @@ export function buildPocketBaseFileUrl(input: {
     collectionName: input.collectionName,
     id: input.recordId,
   };
+  const token = getPocketBaseFileAccessToken();
+  const options = {
+    ...(input.thumb ? { thumb: input.thumb } : {}),
+    ...(token ? { token } : {}),
+  };
 
-  if (input.thumb) {
-    return pb.files.getURL(record, input.filename, { thumb: input.thumb });
-  }
-
-  return pb.files.getURL(record, input.filename);
+  return pb.files.getURL(record, input.filename, options);
 }
 
 export async function requestUserPasswordReset(email: string): Promise<void> {

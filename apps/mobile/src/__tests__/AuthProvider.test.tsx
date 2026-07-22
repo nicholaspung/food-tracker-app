@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { useSync } from '../providers/SyncProvider';
 
 const mockAuthRefresh = jest.fn();
+const mockRefreshPocketBaseFileAccessToken = jest.fn();
+const mockClearPocketBaseFileAccessToken = jest.fn();
 const mockAuthWithPassword = jest.fn();
 const mockOnChange = jest.fn();
 const mockClear = jest.fn();
@@ -48,6 +50,8 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('../lib/pocketbase', () => ({
+  clearPocketBaseFileAccessToken: (...args: unknown[]) => mockClearPocketBaseFileAccessToken(...args),
+  refreshPocketBaseFileAccessToken: (...args: unknown[]) => mockRefreshPocketBaseFileAccessToken(...args),
   pb: {
     authStore: {
       get token() {
@@ -144,6 +148,8 @@ describe('AuthProvider', () => {
 
     authChangeListener = null;
     mockAuthRefresh.mockReset();
+    mockRefreshPocketBaseFileAccessToken.mockReset();
+    mockClearPocketBaseFileAccessToken.mockReset();
     mockAuthWithPassword.mockReset();
     mockOnChange.mockReset();
     mockClear.mockReset();
@@ -161,6 +167,7 @@ describe('AuthProvider', () => {
       discardQueuedMutations: mockDiscardQueuedMutations,
     } as unknown as ReturnType<typeof useSync>);
     mockAuthRefresh.mockResolvedValue(undefined);
+    mockRefreshPocketBaseFileAccessToken.mockResolvedValue('file-token');
     mockOnChange.mockImplementation((listener: () => void) => {
       authChangeListener = listener;
       return () => {

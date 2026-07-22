@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
+import { useAuth } from '@/features/auth/AuthProvider';
 import type { AdminUser } from '@/features/auth/types';
 import {
   claimModerationCase,
@@ -229,14 +230,17 @@ function getContentModerationStatus(value?: string) {
   return trimmed ? trimmed : 'active';
 }
 
-function buildPhotoUrl(photo: ModerationPhoto, thumb?: string) {
+function buildPhotoUrl(photo: ModerationPhoto, fileAccessToken: string, thumb?: string) {
   return pb.files.getURL(
     {
       collectionName: photo.collectionName,
       id: photo.id,
     },
     photo.photo,
-    thumb ? { thumb } : {},
+    {
+      ...(thumb ? { thumb } : {}),
+      ...(fileAccessToken ? { token: fileAccessToken } : {}),
+    },
   );
 }
 
@@ -437,6 +441,8 @@ function ModerationPhotoStrip({
   photos: ModerationPhoto[];
   onPhotoClick?: (photoId: string) => void;
 }) {
+  const { fileAccessToken } = useAuth();
+
   if (photos.length === 0) {
     return null;
   }
@@ -456,7 +462,7 @@ function ModerationPhotoStrip({
           <img
             alt={photo.caption?.trim() || 'User upload'}
             className="photo-thumb moderation-photo-thumb"
-            src={buildPhotoUrl(photo, '160x160')}
+            src={buildPhotoUrl(photo, fileAccessToken, '160x160')}
           />
         </button>
       ))}
@@ -479,6 +485,7 @@ function PhotoCarouselModal({
   onModeratePhoto?: (photo: ModerationPhoto) => void;
   photos: ModerationPhoto[];
 }) {
+  const { fileAccessToken } = useAuth();
   const [activeIndex, setActiveIndex] = useState(initialIndex);
 
   useEffect(() => {
@@ -568,7 +575,7 @@ function PhotoCarouselModal({
           <img
             alt={activePhoto.caption?.trim() || `Visit photo ${activeIndex + 1}`}
             className="moderation-carousel-image"
-            src={buildPhotoUrl(activePhoto)}
+            src={buildPhotoUrl(activePhoto, fileAccessToken)}
           />
 
           {photos.length > 1 ? (
@@ -596,7 +603,11 @@ function PhotoCarouselModal({
                 onClick={() => setActiveIndex(index)}
                 type="button"
               >
-                <img alt="" className="moderation-carousel-thumb-image" src={buildPhotoUrl(photo, '120x120')} />
+                <img
+                  alt=""
+                  className="moderation-carousel-thumb-image"
+                  src={buildPhotoUrl(photo, fileAccessToken, '120x120')}
+                />
               </button>
             ))}
           </div>
@@ -680,6 +691,8 @@ function ReportedContentPreview({
   profile: UserModerationProfile;
   showActions?: boolean;
 }) {
+  const { fileAccessToken } = useAuth();
+
   if (caseRecord.targetType === 'visit' || caseRecord.targetType === 'food-product') {
     const entry = profile.feedEntries.find(
       (candidate) => candidate.contentType === caseRecord.targetType && candidate.id === caseRecord.targetRecordId,
@@ -907,7 +920,7 @@ function ReportedContentPreview({
           <img
             alt={photo.caption?.trim() || 'Reported user photo'}
             className="moderation-review-image"
-            src={buildPhotoUrl(photo)}
+            src={buildPhotoUrl(photo, fileAccessToken)}
           />
         </div>
       </article>

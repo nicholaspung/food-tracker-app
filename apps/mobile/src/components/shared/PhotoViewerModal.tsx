@@ -32,6 +32,7 @@ import {
   prefetchPhotoImages,
 } from '../../lib/photoImageCache';
 import { createThemedStyles, getPhotoViewerPalette, useTheme } from '../../theme';
+import { usePocketBaseFileUri } from '../../hooks/usePocketBaseFileUri';
 import { Text } from '../../ui';
 import { CachedRemoteImage } from './CachedRemoteImage';
 
@@ -174,12 +175,14 @@ function ViewerImage({
   testID,
   uri,
 }: ViewerImageProps) {
+  const resolvedUri = usePocketBaseFileUri(uri);
+
   return (
     <Animated.Image
       onError={onError}
       onLoad={onLoad}
       resizeMode={resizeMode}
-      source={buildCachedImageSource(uri)}
+      source={buildCachedImageSource(resolvedUri)}
       style={style}
       testID={testID}
     />

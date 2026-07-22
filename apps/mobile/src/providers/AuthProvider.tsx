@@ -18,7 +18,11 @@ import {
   resolveEmailVerificationAccess,
   type EmailVerificationStatus,
 } from '../lib/emailVerificationAccess';
-import { pb } from '../lib/pocketbase';
+import {
+  clearPocketBaseFileAccessToken,
+  pb,
+  refreshPocketBaseFileAccessToken,
+} from '../lib/pocketbase';
 import { authStore } from '../lib/pocketbaseAuthStore';
 import { logger } from '../lib/logger';
 import {
@@ -54,6 +58,7 @@ type RolePreviewSettingKey = keyof RolePreviewSettings;
 
 export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
 const AUTH_VERIFICATION_STATUS_REFRESH_INTERVAL_MS = 15_000;
+const PRIVATE_FILE_TOKEN_REFRESH_INTERVAL_MS = 120_000;
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 6_000;
 
 interface AuthContextValue {
@@ -292,6 +297,10 @@ export function AuthProvider({
       throw refreshError;
     }
 
+    await refreshPocketBaseFileAccessToken().catch((error) => {
+      logger.warn('[AuthProvider] private file token refresh failed:', error);
+    });
+
     syncAuthSnapshot();
   }, [syncAuthSnapshot]);
 
@@ -351,6 +360,10 @@ export function AuthProvider({
             }
             logger.warn('[AuthProvider] authRefresh failed, using cached session:', refreshError);
           }
+
+          await refreshPocketBaseFileAccessToken().catch((error) => {
+            logger.warn('[AuthProvider] private file token refresh failed:', error);
+          });
         }
 
         if (hadRestoredSession && !getCurrentUser()) {
@@ -498,6 +511,20 @@ export function AuthProvider({
   }, [appState, refreshAuthSession, status, verificationStatus]);
 
   useEffect(() => {
+    if (status !== 'authenticated' || !actualUser) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      void refreshPocketBaseFileAccessToken().catch((error) => {
+        logger.warn('[AuthProvider] private file token refresh failed:', error);
+      });
+    }, PRIVATE_FILE_TOKEN_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [actualUser, status]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextState;
@@ -626,6 +653,10 @@ export function AuthProvider({
           throw new Error('Authentication succeeded but user payload was invalid.');
         }
 
+        await refreshPocketBaseFileAccessToken().catch((error) => {
+          logger.warn('[AuthProvider] private file token refresh failed:', error);
+        });
+
         const nextState = resolveAuthenticationState(authUser);
         setActualUser(nextState.actualUser);
         setStatus(nextState.status);
@@ -670,6 +701,7 @@ export function AuthProvider({
       });
     }
     pb.authStore.clear();
+    clearPocketBaseFileAccessToken();
     await resetAuthenticatedLocalState('logout');
     setActualUser(null);
     setRolePreviewSettings(DEFAULT_ROLE_PREVIEW_SETTINGS);

@@ -200,6 +200,7 @@ export interface SharedRestaurantListPhotoPreviewRecord {
   photo: string;
   collectionId?: string;
   collectionName?: string;
+  uri?: string;
   created: string;
 }
 

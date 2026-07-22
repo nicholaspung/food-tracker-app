@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { pb } from '@/lib/pocketbase';
+import { clearAdminFileAccessToken, pb, refreshAdminFileAccessToken } from '@/lib/pocketbase';
 import type { AdminUser } from '@/features/auth/types';
 
 interface AuthContextValue {
+  fileAccessToken: string;
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AdminUser | null;
@@ -35,6 +36,7 @@ function readAuthUser(): AdminUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(() => readAuthUser());
   const [isLoading, setIsLoading] = useState(true);
+  const [fileAccessToken, setFileAccessToken] = useState('');
 
   useEffect(() => {
     const unsubscribe = pb.authStore.onChange(() => {
@@ -48,8 +50,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (!user?.isAdmin) {
+      clearAdminFileAccessToken();
+      setFileAccessToken('');
+      return undefined;
+    }
+
+    let isActive = true;
+    const refreshFileToken = async () => {
+      try {
+        const token = await refreshAdminFileAccessToken();
+        if (isActive) {
+          setFileAccessToken(token);
+        }
+      } catch {
+        // Keep the prior token while a transient refresh failure recovers.
+      }
+    };
+
+    void refreshFileToken();
+    const intervalId = window.setInterval(refreshFileToken, 90_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [user?.id, user?.isAdmin]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
+      fileAccessToken,
       isAuthenticated: Boolean(user?.isAdmin),
       isLoading,
       user,
@@ -64,11 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(readAuthUser());
       },
       logout: () => {
+        clearAdminFileAccessToken();
         pb.authStore.clear();
         setUser(null);
       },
     }),
-    [isLoading, user],
+    [fileAccessToken, isLoading, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
