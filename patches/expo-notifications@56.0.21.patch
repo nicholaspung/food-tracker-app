@@ -1,5 +1,4 @@
 diff --git a/build/utils/updateDevicePushTokenAsync.js b/build/utils/updateDevicePushTokenAsync.js
-index d2b2521..5880bc7 100644
 --- a/build/utils/updateDevicePushTokenAsync.js
 +++ b/build/utils/updateDevicePushTokenAsync.js
 @@ -109,7 +109,10 @@ export async function updateDevicePushTokenAsync(signal, token) {
@@ -15,7 +14,6 @@ index d2b2521..5880bc7 100644
                  // request is expected to succeed and we don't need this one, so let's
                  // just return.
 diff --git a/src/utils/updateDevicePushTokenAsync.ts b/src/utils/updateDevicePushTokenAsync.ts
-index d15eb24..c2b58dc 100644
 --- a/src/utils/updateDevicePushTokenAsync.ts
 +++ b/src/utils/updateDevicePushTokenAsync.ts
 @@ -136,7 +136,12 @@ export async function updateDevicePushTokenAsync(signal: AbortSignal, token: Dev
