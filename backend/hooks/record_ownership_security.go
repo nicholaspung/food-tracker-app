@@ -91,6 +91,9 @@ func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 	if e == nil || e.Collection == nil {
 		return nil
 	}
+	if e.Collection.Name == "list_items" {
+		return enforceImmutableListItemParent(e)
+	}
 
 	ownerField, ok := ownerBoundCollectionFields[e.Collection.Name]
 	if !ok {
@@ -119,6 +122,25 @@ func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 	}
 	if err := enforceMenuItemTrustUpdateSecurity(e.Record, original); err != nil {
 		return err
+	}
+
+	return e.Next()
+}
+
+func enforceImmutableListItemParent(e *core.RecordRequestEvent) error {
+	if e.HasSuperuserAuth() {
+		return e.Next()
+	}
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	original := e.Record.Original()
+	if original == nil {
+		return apis.NewBadRequestError("existing record is required", nil)
+	}
+	if strings.TrimSpace(e.Record.GetString("list")) != strings.TrimSpace(original.GetString("list")) {
+		return apis.NewForbiddenError("list cannot be modified", nil)
 	}
 
 	return e.Next()
