@@ -117,8 +117,52 @@ func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
 		return err
 	}
+	if err := enforceMenuItemTrustUpdateSecurity(e.Record, original); err != nil {
+		return err
+	}
 
 	return e.Next()
+}
+
+func enforceMenuItemTrustUpdateSecurity(record *core.Record, original *core.Record) error {
+	if record == nil || original == nil || record.Collection() == nil || record.Collection().Name != "menu_items" {
+		return nil
+	}
+
+	for _, field := range []string{
+		"approvalStatus",
+		"approvalReviewedBy",
+		"approvalReviewedAt",
+		"promotedFrom",
+		"promotedTo",
+	} {
+		if strings.TrimSpace(record.GetString(field)) != strings.TrimSpace(original.GetString(field)) {
+			return apis.NewForbiddenError("menu item catalog trust fields are admin controlled", nil)
+		}
+	}
+	if record.GetBool("groupSuitable") != original.GetBool("groupSuitable") {
+		return apis.NewForbiddenError("menu item catalog trust fields are admin controlled", nil)
+	}
+
+	if menuItemHasAdminTrustState(original) {
+		return apis.NewForbiddenError("reviewed menu items must be updated through the audited admin API", nil)
+	}
+
+	return nil
+}
+
+func menuItemHasAdminTrustState(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	approvalStatus := strings.TrimSpace(record.GetString("approvalStatus"))
+	return (approvalStatus != "" && approvalStatus != "unreviewed") ||
+		strings.TrimSpace(record.GetString("approvalReviewedBy")) != "" ||
+		strings.TrimSpace(record.GetString("approvalReviewedAt")) != "" ||
+		strings.TrimSpace(record.GetString("promotedFrom")) != "" ||
+		strings.TrimSpace(record.GetString("promotedTo")) != "" ||
+		record.GetBool("groupSuitable")
 }
 
 func validateOwnerBoundRelations(app core.App, authUserID string, record *core.Record) error {

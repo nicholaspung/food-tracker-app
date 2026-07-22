@@ -172,6 +172,143 @@ func TestMenuItemCreateInitializesSafeUnreviewedTrustState(t *testing.T) {
 	}
 }
 
+func TestMenuItemUpdateRejectsRawCatalogTrustChanges(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Trusted Update Cafe",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+	linkedItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Promotion Target",
+		"restaurant":     restaurant.Id,
+		"createdBy":      admin.Id,
+		"visibility":     "public",
+		"approvalStatus": "approved",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Other Trusted Update Cafe",
+		"location":   "Pasadena",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+	sourceImageID := insertMenuImageRowRaw(t, server.app, restaurant.Id, owner.Id)
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":               "Trusted Toast",
+		"restaurant":         restaurant.Id,
+		"createdBy":          owner.Id,
+		"visibility":         "public",
+		"approvalStatus":     "approved",
+		"approvalReviewedBy": admin.Id,
+		"approvalReviewedAt": "2026-07-21 12:00:00.000Z",
+		"groupSuitable":      true,
+		"sourceImage":        sourceImageID,
+		"isFromOCR":          true,
+	})
+	originalUpdated := menuItem.GetString("updated")
+
+	maliciousUpdates := []struct {
+		authToken string
+		payload   string
+	}{
+		{ownerToken, `{"approvalStatus":"unreviewed"}`},
+		{ownerToken, `{"approvalReviewedBy":""}`},
+		{ownerToken, `{"approvalReviewedAt":"2026-07-22 12:00:00.000Z"}`},
+		{ownerToken, fmt.Sprintf(`{"promotedFrom":"%s"}`, linkedItem.Id)},
+		{ownerToken, fmt.Sprintf(`{"promotedTo":"%s"}`, linkedItem.Id)},
+		{ownerToken, `{"groupSuitable":false}`},
+		{ownerToken, `{"visibility":"friends"}`},
+		{ownerToken, `{"name":"Poisoned Trusted Name"}`},
+		{ownerToken, fmt.Sprintf(`{"restaurant":"%s"}`, otherRestaurant.Id)},
+		{ownerToken, `{"sourceImage":""}`},
+		{ownerToken, `{"isFromOCR":false}`},
+		{ownerToken, `{}`},
+		{ownerToken, `{"name":"Trusted Toast"}`},
+		{adminToken, `{"approvalStatus":"rejected"}`},
+	}
+	for _, maliciousUpdate := range maliciousUpdates {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPatch,
+			"/api/collections/menu_items/records/"+menuItem.Id,
+			maliciousUpdate.authToken,
+			maliciousUpdate.payload,
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected forged trust update to return 403, got %d for %s: %s", response.Code, maliciousUpdate.payload, response.Body.String())
+		}
+
+		reloaded, err := server.app.FindRecordById("menu_items", menuItem.Id)
+		if err != nil {
+			t.Fatalf("failed to reload menu item: %v", err)
+		}
+		if reloaded.GetString("approvalStatus") != "approved" ||
+			reloaded.GetString("approvalReviewedBy") != admin.Id ||
+			reloaded.GetString("approvalReviewedAt") != "2026-07-21 12:00:00.000Z" ||
+			reloaded.GetString("promotedFrom") != "" ||
+			reloaded.GetString("promotedTo") != "" ||
+			!reloaded.GetBool("groupSuitable") ||
+			reloaded.GetString("visibility") != "public" ||
+			reloaded.GetString("name") != "Trusted Toast" ||
+			reloaded.GetString("restaurant") != restaurant.Id ||
+			reloaded.GetString("sourceImage") != sourceImageID ||
+			!reloaded.GetBool("isFromOCR") ||
+			reloaded.GetString("updated") != originalUpdated {
+			t.Fatalf("menu item trust state changed after rejected update %s: %#v", maliciousUpdate.payload, reloaded)
+		}
+	}
+}
+
+func TestMenuItemUpdateAllowsUnreviewedContentAndVisibilityChange(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Unreviewed Edit Cafe",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "public",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"name":           "Draft Toast",
+		"restaurant":     restaurant.Id,
+		"createdBy":      owner.Id,
+		"visibility":     "friends",
+		"approvalStatus": "unreviewed",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/menu_items/records/"+menuItem.Id,
+		ownerToken,
+		`{"name":"Updated Toast","visibility":"public"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected unreviewed content edit to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloaded, err := server.app.FindRecordById("menu_items", menuItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload updated menu item: %v", err)
+	}
+	if reloaded.GetString("name") != "Updated Toast" ||
+		reloaded.GetString("visibility") != "public" ||
+		reloaded.GetString("approvalStatus") != "unreviewed" {
+		t.Fatalf("unexpected unreviewed menu item state after visibility edit: %#v", reloaded)
+	}
+}
+
 func TestRestaurantGroupMembershipRejectsNonAdminRawWrites(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
 		hooks.RegisterRecordOwnershipHooks(app)
