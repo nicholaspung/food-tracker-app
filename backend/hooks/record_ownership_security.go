@@ -60,8 +60,25 @@ func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
 	if err := enforceMenuItemTrustCreateSecurity(e.Record); err != nil {
 		return err
 	}
+	if err := enforceRestaurantGoogleCatalogTrustCreateSecurity(e.Record); err != nil {
+		return err
+	}
 
 	return e.Next()
+}
+
+func enforceRestaurantGoogleCatalogTrustCreateSecurity(record *core.Record) error {
+	if record == nil || record.Collection() == nil || record.Collection().Name != "restaurants" {
+		return nil
+	}
+
+	if record.GetBool("isGooglePlace") ||
+		strings.TrimSpace(record.GetString("googlePlaceCachedAt")) != "" ||
+		isPublicRestaurantPlaceIDClaim(record) {
+		return apis.NewForbiddenError("Google Place catalog trust is server controlled", nil)
+	}
+
+	return nil
 }
 
 func enforceMenuItemTrustCreateSecurity(record *core.Record) error {
@@ -123,8 +140,31 @@ func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 	if err := enforceMenuItemTrustUpdateSecurity(e.Record, original); err != nil {
 		return err
 	}
+	if err := enforceRestaurantGoogleCatalogTrustUpdateSecurity(e.Record, original); err != nil {
+		return err
+	}
 
 	return e.Next()
+}
+
+func enforceRestaurantGoogleCatalogTrustUpdateSecurity(record *core.Record, original *core.Record) error {
+	if record == nil || original == nil || record.Collection() == nil || record.Collection().Name != "restaurants" {
+		return nil
+	}
+
+	if record.GetBool("isGooglePlace") != original.GetBool("isGooglePlace") ||
+		strings.TrimSpace(record.GetString("googlePlaceCachedAt")) != strings.TrimSpace(original.GetString("googlePlaceCachedAt")) ||
+		isPublicRestaurantPlaceIDClaim(record) {
+		return apis.NewForbiddenError("Google Place catalog trust is server controlled", nil)
+	}
+
+	return nil
+}
+
+func isPublicRestaurantPlaceIDClaim(record *core.Record) bool {
+	return record != nil &&
+		strings.TrimSpace(record.GetString("visibility")) == "public" &&
+		strings.TrimSpace(record.GetString("placeId")) != ""
 }
 
 func enforceImmutableListItemParent(e *core.RecordRequestEvent) error {

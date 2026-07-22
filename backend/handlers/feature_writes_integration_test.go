@@ -98,8 +98,7 @@ func TestRestaurantUpsertEndpointPrefersPlaceIDMatch(t *testing.T) {
 		token,
 		`{
 			"restaurantName":"Renamed Place",
-			"placeId":"place-123",
-			"isGooglePlace":true
+			"placeId":"place-123"
 		}`,
 	)
 	if response.Code != http.StatusOK {
@@ -119,6 +118,49 @@ func TestRestaurantUpsertEndpointPrefersPlaceIDMatch(t *testing.T) {
 	}
 	if count := countRestaurantsByName(t, server.app, "Renamed Place"); count != 0 {
 		t.Fatalf("expected 0 renamed-place duplicates, got %d", count)
+	}
+}
+
+func TestRestaurantUpsertEndpointRejectsGoogleCatalogPromotion(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	maliciousRequests := []string{
+		`{
+			"restaurantName":"Poisoned Google Place",
+			"location":"Fake City",
+			"placeId":"real-place-id",
+			"isGooglePlace":true
+		}`,
+		`{
+			"restaurantName":"Public Place ID Claim",
+			"location":"Fake City",
+			"visibility":"public",
+			"placeId":"reserved-place-id"
+		}`,
+	}
+	for _, body := range maliciousRequests {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/restaurants/upsert",
+			token,
+			body,
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected Google catalog promotion 403, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"restaurants",
+		"createdBy = {:userId}",
+		map[string]any{"userId": user.Id},
+	); count != 0 {
+		t.Fatalf("expected rejected promotion to create no restaurants, got %d", count)
 	}
 }
 
@@ -206,6 +248,49 @@ func TestRestaurantUpsertEndpointDoesNotReusePrivatePlaceIDMatchFromAnotherUser(
 		nil,
 	); count != 2 {
 		t.Fatalf("expected 2 isolated restaurants with placeId place-999, got %d", count)
+	}
+}
+
+func TestRestaurantUpsertEndpointDoesNotTrustPublicNonGooglePlaceIDMatch(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	requester, token := createAuthUser(t, server.app, false, true)
+
+	legacy := seedRestaurantRecordWithPlaceID(t, server.app, owner.Id, "Unverified Public Place", "unverified-public-place")
+	legacy.Set("visibility", "public")
+	if err := server.app.Save(legacy); err != nil {
+		t.Fatalf("failed to save legacy public Place ID record: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurants/upsert",
+		token,
+		`{
+			"restaurantName":"Requester Private Place",
+			"visibility":"private",
+			"placeId":"unverified-public-place"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected private owner-bound upsert 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse restaurant payload: %v", err)
+	}
+	if payload.ID == legacy.Id {
+		t.Fatalf("expected public non-Google Place ID record %q not to be trusted", legacy.Id)
+	}
+	created, err := server.app.FindRecordById("restaurants", payload.ID)
+	if err != nil {
+		t.Fatalf("failed to reload requester restaurant: %v", err)
+	}
+	if created.GetString("createdBy") != requester.Id || created.GetString("visibility") != "private" {
+		t.Fatalf("expected private owner-bound restaurant, got %#v", created)
 	}
 }
 

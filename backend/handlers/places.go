@@ -205,7 +205,8 @@ func syncGooglePlaceRestaurantRecords(
 	records := make([]*core.Record, 0, len(dedupedPlaces))
 
 	for _, place := range dedupedPlaces {
-		existing := existingByPlaceID[place.PlaceID]
+		placeIDKey := normalizeGooglePlaceID(place.PlaceID)
+		existing := existingByPlaceID[placeIDKey]
 		if existing != nil {
 			if shouldRefreshGooglePlaceRestaurant(existing) {
 				applyGooglePlaceToRestaurantRecord(existing, place, now)
@@ -227,8 +228,8 @@ func syncGooglePlaceRestaurantRecords(
 		if err := app.Save(record); err != nil {
 			if isUniqueConstraintError(err) {
 				refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
-				if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
-					records = append(records, refetchedByPlaceID[place.PlaceID])
+				if refetchErr == nil && refetchedByPlaceID[placeIDKey] != nil {
+					records = append(records, refetchedByPlaceID[placeIDKey])
 					continue
 				}
 			}
@@ -237,7 +238,7 @@ func syncGooglePlaceRestaurantRecords(
 			continue
 		}
 
-		existingByPlaceID[place.PlaceID] = record
+		existingByPlaceID[placeIDKey] = record
 		records = append(records, record)
 	}
 
@@ -253,11 +254,12 @@ func dedupePlacesByID(places []placeResult) []placeResult {
 		if placeID == "" {
 			continue
 		}
-		if _, exists := seen[placeID]; exists {
+		placeIDKey := normalizeGooglePlaceID(placeID)
+		if _, exists := seen[placeIDKey]; exists {
 			continue
 		}
 
-		seen[placeID] = struct{}{}
+		seen[placeIDKey] = struct{}{}
 		place.PlaceID = placeID
 		place.Name = strings.TrimSpace(place.Name)
 		place.Vicinity = strings.TrimSpace(place.Vicinity)
@@ -279,29 +281,46 @@ func findRestaurantsByPlaceID(
 	clauses := make([]string, 0, len(places))
 	for index, place := range places {
 		paramKey := fmt.Sprintf("placeId%d", index)
-		clauses = append(clauses, fmt.Sprintf("placeId = {:%s}", paramKey))
-		params[paramKey] = place.PlaceID
+		clauses = append(clauses, fmt.Sprintf("LOWER(TRIM(COALESCE(placeId, ''))) = {:%s}", paramKey))
+		params[paramKey] = normalizeGooglePlaceID(place.PlaceID)
 	}
 
-	filter := fmt.Sprintf("isGooglePlace = true && (%s)", strings.Join(clauses, " || "))
-	records, err := app.FindRecordsByFilter("restaurants", filter, "-updated,-created", len(places)*2, 0, params)
-	if err != nil {
+	rows := []struct {
+		ID string `db:"id"`
+	}{}
+	query := fmt.Sprintf(`
+		SELECT id
+		FROM restaurants
+		WHERE (COALESCE(isGooglePlace, 0) = 1 OR visibility = 'public')
+		  AND (%s)
+		ORDER BY updated DESC, created DESC, id ASC
+		LIMIT %d
+	`, strings.Join(clauses, " OR "), len(places)*2)
+	if err := app.DB().NewQuery(query).Bind(params).All(&rows); err != nil {
 		return nil, fmt.Errorf("find cached restaurants: %w", err)
 	}
 
-	result := make(map[string]*core.Record, len(records))
-	for _, record := range records {
-		placeID := strings.TrimSpace(record.GetString("placeId"))
-		if placeID == "" {
+	result := make(map[string]*core.Record, len(rows))
+	for _, row := range rows {
+		record, err := app.FindRecordById("restaurants", row.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load cached restaurant: %w", err)
+		}
+		placeIDKey := normalizeGooglePlaceID(record.GetString("placeId"))
+		if placeIDKey == "" {
 			continue
 		}
-		if _, exists := result[placeID]; exists {
+		if _, exists := result[placeIDKey]; exists {
 			continue
 		}
-		result[placeID] = record
+		result[placeIDKey] = record
 	}
 
 	return result, nil
+}
+
+func normalizeGooglePlaceID(placeID string) string {
+	return strings.ToLower(strings.TrimSpace(placeID))
 }
 
 func applyGooglePlaceToRestaurantRecord(record *core.Record, place placeResult, cachedAt time.Time) {

@@ -45,7 +45,6 @@ type restaurantResolveInput struct {
 	PlaceID        string
 	Latitude       *float64
 	Longitude      *float64
-	IsGooglePlace  bool
 }
 
 func registerRestaurantWriteHandlers(se *core.ServeEvent, app core.App) {
@@ -57,6 +56,9 @@ func registerRestaurantWriteHandlers(se *core.ServeEvent, app core.App) {
 		requestBody := restaurantUpsertRequest{}
 		if err := e.BindBody(&requestBody); err != nil {
 			return apis.NewBadRequestError("invalid request body", err)
+		}
+		if requestBody.IsGooglePlace {
+			return apis.NewForbiddenError("Google Place restaurants must be created through Places search", nil)
 		}
 
 		var responsePayload restaurantResponse
@@ -70,7 +72,6 @@ func registerRestaurantWriteHandlers(se *core.ServeEvent, app core.App) {
 				PlaceID:        requestBody.PlaceID,
 				Latitude:       requestBody.Latitude,
 				Longitude:      requestBody.Longitude,
-				IsGooglePlace:  requestBody.IsGooglePlace,
 			})
 			if err != nil {
 				return err
@@ -145,7 +146,7 @@ func resolveRestaurantForWrite(
 	record.Set("location", resolveRestaurantWriteLocation(trimmedName, input.Location))
 	record.Set("cuisineType", strings.TrimSpace(input.CuisineType))
 	record.Set("placeId", trimmedPlaceID)
-	record.Set("isGooglePlace", input.IsGooglePlace)
+	record.Set("isGooglePlace", false)
 
 	if input.Latitude != nil {
 		record.Set("latitude", *input.Latitude)
@@ -155,17 +156,16 @@ func resolveRestaurantForWrite(
 		record.Set("longitude", *input.Longitude)
 	}
 
-	if input.IsGooglePlace {
-		record.Set("createdBy", "")
-		record.Set("visibility", "public")
-	} else {
-		visibility := strings.TrimSpace(input.Visibility)
-		if visibility == "" {
-			visibility = authRecord.GetString("defaultRestaurantVisibility")
-		}
-		record.Set("createdBy", authRecord.Id)
-		record.Set("visibility", normalizeRestaurantVisibility(visibility))
+	visibility := strings.TrimSpace(input.Visibility)
+	if visibility == "" {
+		visibility = authRecord.GetString("defaultRestaurantVisibility")
 	}
+	if trimmedPlaceID != "" && visibility == "public" {
+		return nil, apis.NewForbiddenError("public Place ID restaurants must be created through Places search", nil)
+	}
+	visibility = normalizeRestaurantVisibility(visibility)
+	record.Set("createdBy", authRecord.Id)
+	record.Set("visibility", visibility)
 
 	if err := app.Save(record); err != nil {
 		if !isUniqueConstraintError(err) {

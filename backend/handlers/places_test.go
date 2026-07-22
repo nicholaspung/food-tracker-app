@@ -109,6 +109,53 @@ func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.
 	}
 }
 
+func TestSyncGooglePlaceRestaurantsHealsLegacyPublicPlaceIDCollision(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	searcher := createPlacesTestUser(t, app, "places-collision-searcher@example.com")
+
+	collection, err := app.FindCollectionByNameOrId("restaurants")
+	if err != nil {
+		t.Fatalf("failed to resolve restaurants collection: %v", err)
+	}
+	legacy := core.NewRecord(collection)
+	legacy.Set("name", "Poisoned Name")
+	legacy.Set("location", "Fake City")
+	legacy.Set("placeId", "LEGACY-COLLISION-PLACE")
+	legacy.Set("isGooglePlace", false)
+	legacy.Set("createdBy", searcher.Id)
+	legacy.Set("visibility", "public")
+	if err := app.Save(legacy); err != nil {
+		t.Fatalf("failed to save legacy public collision: %v", err)
+	}
+
+	results, err := syncGooglePlaceRestaurants(app, searcher, []placeResult{{
+		PlaceID:  "legacy-collision-place",
+		Name:     "Verified Restaurant",
+		Vicinity: "Verified City",
+		Types:    []string{"thai_restaurant"},
+		Geometry: placeGeometry{Location: placeLocation{Lat: 34.0522, Lng: -118.2437}},
+	}})
+	if err != nil {
+		t.Fatalf("syncGooglePlaceRestaurants returned error: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != legacy.Id {
+		t.Fatalf("expected legacy collision to converge on record %q, got %#v", legacy.Id, results)
+	}
+
+	reloaded, err := app.FindRecordById("restaurants", legacy.Id)
+	if err != nil {
+		t.Fatalf("failed to reload healed collision: %v", err)
+	}
+	if reloaded.GetString("name") != "Verified Restaurant" ||
+		reloaded.GetString("location") != "Verified City" ||
+		reloaded.GetString("cuisineType") != "Thai" ||
+		!reloaded.GetBool("isGooglePlace") ||
+		reloaded.GetString("createdBy") != "" ||
+		reloaded.GetString("visibility") != "public" {
+		t.Fatalf("expected provider metadata to replace legacy collision, got %#v", reloaded)
+	}
+}
+
 func createPlacesTestVisit(t *testing.T, app core.App, restaurantID string, userID string) *core.Record {
 	t.Helper()
 

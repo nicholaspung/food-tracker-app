@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -56,6 +57,79 @@ func TestRestaurantCreateRejectsCrossUserCreatedBySpoofing(t *testing.T) {
 	)
 	if response.Code == http.StatusOK {
 		t.Fatalf("expected spoofed restaurant create to be rejected, got 200: %s", response.Body.String())
+	}
+}
+
+func TestRestaurantRawWritesRejectGoogleCatalogTrustChanges(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	maliciousCreates := []string{
+		fmt.Sprintf(`{"name":"Forged Google Restaurant","location":"Los Angeles","createdBy":"%s","visibility":"public","placeId":"forged-place","isGooglePlace":true}`, owner.Id),
+		fmt.Sprintf(`{"name":"Forged Cached Restaurant","location":"Los Angeles","createdBy":"%s","visibility":"public","googlePlaceCachedAt":"2026-07-21 12:00:00.000Z"}`, owner.Id),
+		fmt.Sprintf(`{"name":"Public Place ID Claim","location":"Los Angeles","createdBy":"%s","visibility":"public","placeId":"reserved-place"}`, owner.Id),
+	}
+	for _, body := range maliciousCreates {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/collections/restaurants/records",
+			ownerToken,
+			body,
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected forged Google trust create 403, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Owner Restaurant",
+		"location":   "Los Angeles",
+		"createdBy":  owner.Id,
+		"visibility": "friends",
+	})
+	maliciousUpdates := []string{
+		`{"placeId":"forged-place","isGooglePlace":true}`,
+		`{"googlePlaceCachedAt":"2026-07-21 12:00:00.000Z"}`,
+		`{"visibility":"public","placeId":"reserved-place"}`,
+	}
+	for _, body := range maliciousUpdates {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPatch,
+			"/api/collections/restaurants/records/"+restaurant.Id,
+			ownerToken,
+			body,
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected forged Google trust update 403, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	allowedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/restaurants/records/"+restaurant.Id,
+		ownerToken,
+		`{"name":"Updated Owner Restaurant"}`,
+	)
+	if allowedResponse.Code != http.StatusOK {
+		t.Fatalf("expected ordinary owner update 200, got %d: %s", allowedResponse.Code, allowedResponse.Body.String())
+	}
+
+	reloaded, err := server.app.FindRecordById("restaurants", restaurant.Id)
+	if err != nil {
+		t.Fatalf("failed to reload restaurant after trust checks: %v", err)
+	}
+	if reloaded.GetString("name") != "Updated Owner Restaurant" ||
+		reloaded.GetBool("isGooglePlace") ||
+		strings.TrimSpace(reloaded.GetString("googlePlaceCachedAt")) != "" {
+		t.Fatalf("unexpected restaurant state after trust checks: %#v", reloaded)
 	}
 }
 

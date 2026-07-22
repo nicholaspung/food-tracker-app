@@ -159,7 +159,7 @@ func findAccessibleRestaurantByNormalizedPlaceID(
 	if record, err := findFirstRestaurantByNormalizedPlaceID(
 		app,
 		normalizedPlaceID,
-		"(COALESCE(visibility, '') = 'public' OR COALESCE(isGooglePlace, 0) = 1)",
+		"COALESCE(isGooglePlace, 0) = 1",
 		nil,
 	); err != nil || record != nil {
 		return record, err
