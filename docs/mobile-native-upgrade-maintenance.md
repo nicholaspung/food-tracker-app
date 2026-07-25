@@ -56,14 +56,14 @@ Result:
 
 ## Expo Notifications Push Token Cancellation Patch
 
-Decision: keep the `expo-notifications@56.0.21` patch until upstream treats React Native canceled fetches as non-failures in `updateDevicePushTokenAsync`.
+Decision: keep the `expo-notifications@56.0.22` patch until upstream treats React Native canceled fetches as non-failures in `updateDevicePushTokenAsync`.
 
 Why:
 
-- The active patch is registered in `pnpm-workspace.yaml` and `pnpm-lock.yaml` as `patches/expo-notifications@56.0.21.patch`.
+- The active patch is registered in `pnpm-workspace.yaml` and `pnpm-lock.yaml` as `patches/expo-notifications@56.0.22.patch`.
 - The patch only changes `updateDevicePushTokenAsync` to stop retrying when the caller's `AbortSignal` is already aborted or React Native throws `"Fetch request has been canceled"` instead of an `AbortError`.
 - Without the patch, aborting an in-flight server registration update can be logged as a warning and scheduled for retry even though a newer registration request is expected to replace it.
-- As of 2026-07-21, the published `expo-notifications@56.0.21` tarball still only checks `error?.name === "AbortError"` in its clean `src/utils/updateDevicePushTokenAsync.ts` and `build/utils/updateDevicePushTokenAsync.js`. The cancellation patch was therefore ported unchanged during the SDK 56 patch refresh.
+- As of 2026-07-24, the published `expo-notifications@56.0.22` tarball still only checks `error?.name === "AbortError"` in its clean `src/utils/updateDevicePushTokenAsync.ts` and `build/utils/updateDevicePushTokenAsync.js`. The cancellation patch was therefore ported unchanged during the SDK 56 patch refresh.
 
 Verification before removal:
 
@@ -81,7 +81,7 @@ The `notificationInteraction` test suite covers app-level notification device re
 
 Removal condition:
 
-- Remove `patches/expo-notifications@56.0.21.patch` and the matching `patchedDependencies` entries only after a compatible Expo SDK notification package includes equivalent cancellation handling in both TypeScript source and built JavaScript output, and the verification commands above pass.
+- Remove `patches/expo-notifications@56.0.22.patch` and the matching `patchedDependencies` entries only after a compatible Expo SDK notification package includes equivalent cancellation handling in both TypeScript source and built JavaScript output, and the verification commands above pass.
 
 ## When Adding A Native Workaround
 
