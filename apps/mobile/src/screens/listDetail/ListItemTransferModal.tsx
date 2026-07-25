@@ -155,7 +155,19 @@ export function ListItemTransferModal({
 
                   return (
                     <Pressable
+                      accessibilityHint={
+                        isLockedSavedList
+                          ? 'This item is already saved in this list and cannot be changed'
+                          : isSelected
+                            ? `Removes this item from ${list.name}`
+                            : `Adds this item to ${list.name}`
+                      }
+                      accessibilityLabel={list.name}
                       accessibilityRole="button"
+                      accessibilityState={{
+                        disabled: isLockedSavedList,
+                        selected: isSelected,
+                      }}
                       disabled={isLockedSavedList}
                       key={list.id}
                       onPress={() => {

@@ -1,5 +1,5 @@
 import { Ionicons } from '../../ui/AppIcon';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { FoodItemRatingRecordCard, type FoodItemRatingRecordRow } from '../../components/shared';
 import {
@@ -31,10 +31,14 @@ interface ListDetailOwnerItemCardProps {
     sourceUserId?: string;
   }) => void;
   onLongPressItem?: (item: OwnerDisplayItem) => void;
+  onOrganizeItem?: (item: OwnerDisplayItem) => void;
   onOpenPhotos: (entries: OwnerItemPhotoEntry[]) => void;
 }
 
 const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.xxs,
+  },
   iWentButton: {
     alignItems: 'center',
     borderRadius: theme.radii.sm,
@@ -60,6 +64,27 @@ const useStyles = createThemedStyles((theme) => ({
   deleteButtonPressed: {
     backgroundColor: theme.colors.status.dangerBg,
   },
+  organizeButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+    minHeight: MIN_TOUCH_TARGET_SIZE,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  organizeButtonPressed: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  organizeButtonLabel: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySmTightSemiBold,
+  },
 }));
 
 export function ListDetailOwnerItemCard({
@@ -71,6 +96,7 @@ export function ListDetailOwnerItemCard({
   onConfirmDeleteItem,
   onIWentThere,
   onLongPressItem,
+  onOrganizeItem,
   onOpenPhotos,
 }: ListDetailOwnerItemCardProps) {
   const theme = useTheme();
@@ -178,20 +204,40 @@ export function ListDetailOwnerItemCard({
   }
 
   return (
-    <FoodItemRatingRecordCard
-      itemName={item.name}
-      onLongPress={
-        onLongPressItem
-          ? () => {
-              onLongPressItem(item);
-            }
-          : undefined
-      }
-      onOpenPhotos={onOpenPhotos}
-      photoAccessibilityLabel={`View photos for ${item.name}`}
-      photoEntries={photoEntries}
-      photoTestID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
-      rows={rows}
-    />
+    <View style={styles.container}>
+      <FoodItemRatingRecordCard
+        itemName={item.name}
+        onLongPress={
+          onLongPressItem
+            ? () => {
+                onLongPressItem(item);
+              }
+            : undefined
+        }
+        onOpenPhotos={onOpenPhotos}
+        photoAccessibilityLabel={`View photos for ${item.name}`}
+        photoEntries={photoEntries}
+        photoTestID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
+        rows={rows}
+      />
+      {onOrganizeItem ? (
+        <Pressable
+          accessibilityHint="Choose which lists include this item"
+          accessibilityLabel={`Organize ${item.name}`}
+          accessibilityRole="button"
+          onPress={() => {
+            onOrganizeItem(item);
+          }}
+          style={({ pressed }) => [
+            styles.organizeButton,
+            pressed ? styles.organizeButtonPressed : null,
+          ]}
+          testID={`organize-list-item-${groupIndex}-${itemIndex}`}
+        >
+          <Ionicons color={theme.colors.text.info} name="options-outline" size={16} />
+          <Text style={styles.organizeButtonLabel}>Organize</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }

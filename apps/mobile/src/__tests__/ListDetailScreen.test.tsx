@@ -1221,7 +1221,7 @@ describe('ListDetailScreen', () => {
     });
   });
 
-  it('adds a long-pressed source item to another list', async () => {
+  it('opens the discoverable organize action and exposes destination selection state', async () => {
     const queryClient = { invalidateQueries: jest.fn() } as unknown as ReturnType<typeof useQueryClient>;
     mockedUseQueryClient.mockReturnValue(queryClient);
     mockedUseAuth.mockReturnValue({
@@ -1236,7 +1236,13 @@ describe('ListDetailScreen', () => {
             buildList({ id: 'default_list', name: 'Want to Try', isDefault: true }),
             buildList({ id: 'list_1', name: 'Favorites' }),
             buildList({ id: 'list_2', name: 'Date Night' }),
+            buildList({ id: 'list_3', name: 'Lunch Spots' }),
           ],
+          bookmarkState: {
+            savedListIdsByBookmarkLookupId: {
+              food_item_1: ['list_2'],
+            },
+          },
           items: [
             buildListItem({
               bookmarkedItems: [
@@ -1264,21 +1270,40 @@ describe('ListDetailScreen', () => {
     });
 
     await act(async () => {
-      renderer.root.findByProps({ itemName: 'Spicy Ramen' }).props.onLongPress();
+      renderer.root.findByProps({ testID: 'organize-list-item-0-0' }).props.onPress();
     });
 
+    const organizeButton = renderer.root.findByProps({ testID: 'organize-list-item-0-0' });
+    expect(organizeButton.props.accessibilityLabel).toBe('Organize Spicy Ramen');
+    expect(organizeButton.props.accessibilityHint).toBe('Choose which lists include this item');
     expect(renderer.root.findAllByProps({ testID: 'list-item-transfer-list-default_list' })).toHaveLength(0);
+    expect(
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_1' }).props.accessibilityState,
+    ).toEqual({ disabled: false, selected: true });
+    expect(
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' }).props.accessibilityState,
+    ).toEqual({ disabled: true, selected: true });
+    expect(
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' }).props.accessibilityHint,
+    ).toBe('This item is already saved in this list and cannot be changed');
+    expect(
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_3' }).props.accessibilityState,
+    ).toEqual({ disabled: false, selected: false });
 
     await act(async () => {
-      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_2' }).props.onPress();
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_3' }).props.onPress();
     });
+
+    expect(
+      renderer.root.findByProps({ testID: 'list-item-transfer-list-list_3' }).props.accessibilityState,
+    ).toEqual({ disabled: false, selected: true });
 
     await act(async () => {
       await renderer.root.findByProps({ testID: 'list-item-transfer-modal' }).props.primaryAction.onPress();
     });
 
     expect(restaurantListWrites.saveBookmarkToLists).toHaveBeenCalledWith({
-      listIds: ['list_2'],
+      listIds: ['list_3'],
       sourceListId: 'list_1',
       bookmark: {
         restaurantId: 'restaurant_food_1',

@@ -1860,6 +1860,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                         onLongPressItem={(targetItem) => {
                           openTransferModal(group, targetItem);
                         }}
+                        onOrganizeItem={(targetItem) => {
+                          openTransferModal(group, targetItem);
+                        }}
                         onOpenPhotos={openPhotoViewer}
                         photoEntries={item.photoEntries}
                       />
