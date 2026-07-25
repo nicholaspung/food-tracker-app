@@ -2,6 +2,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import { replayFeatureOutboxMutation } from '../features/store/featureOutboxOperations';
 import { logger } from '../lib/logger';
+import { isRequestAbortError } from '../lib/requestAbortError';
 import { isConflictStatus, isRetryableStatus } from './retryPolicy';
 import type {
   MutationSendResult,
@@ -117,7 +118,7 @@ export function createFetchMutationTransport(
           errorMessage: createErrorMessage(statusCode, responseText),
         };
       } catch (error) {
-        if (isAbortError(error) || signal?.aborted) {
+        if (isRequestAbortError(error) || signal?.aborted) {
           return createCancelledSendResult();
         }
 
@@ -203,7 +204,7 @@ async function trySendLocalFeatureMutation(
       errorMessage: null,
     };
   } catch (error) {
-    if (isAbortError(error) || signal?.aborted) {
+    if (isRequestAbortError(error) || signal?.aborted) {
       return createCancelledSendResult();
     }
 
@@ -272,16 +273,4 @@ function createCancelledSendResult(): MutationSendResult {
     errorMessage: null,
     cancelled: true,
   };
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof ClientResponseError) {
-    return error.isAbort;
-  }
-
-  if (error instanceof Error) {
-    return error.name === 'AbortError' || error.message === 'Aborted';
-  }
-
-  return false;
 }

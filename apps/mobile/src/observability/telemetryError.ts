@@ -1,5 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
+import { isRequestAbortError } from '../lib/requestAbortError';
 import type { EventProperties } from './index';
 
 interface SafeTelemetryErrorInput {
@@ -30,7 +31,7 @@ export function buildSafeTelemetryErrorProperties(
     }),
     errorMessageRedacted: hasRawMessage,
     errorType,
-    isAbort: isAbortError(normalizedInput.error),
+    isAbort: isRequestAbortError(normalizedInput.error),
     retryable: typeof normalizedInput.retryable === 'boolean' ? normalizedInput.retryable : undefined,
     sourceOperation: normalizedInput.sourceOperation ?? undefined,
     statusCode,
@@ -86,7 +87,7 @@ function resolveSafeErrorMessage(input: {
     return `HTTP ${input.statusCode}`;
   }
 
-  if (isAbortError(input.error)) {
+  if (isRequestAbortError(input.error)) {
     return 'Request aborted';
   }
 
@@ -97,7 +98,7 @@ function resolveErrorCategory(input: {
   error: unknown;
   statusCode: number | null;
 }): string {
-  if (isAbortError(input.error)) {
+  if (isRequestAbortError(input.error)) {
     return 'request_aborted';
   }
 
@@ -136,18 +137,6 @@ function hasUnsafeErrorMessage(input: SafeTelemetryErrorInput): boolean {
   }
 
   return typeof error === 'string' && error.trim().length > 0;
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof ClientResponseError) {
-    return error.isAbort;
-  }
-
-  if (error instanceof Error) {
-    return error.name === 'AbortError' || error.message === 'Aborted';
-  }
-
-  return false;
 }
 
 function compactTelemetryErrorProperties(

@@ -9,9 +9,11 @@ describe('buildSafeTelemetryErrorProperties', () => {
     );
 
     expect(properties).toMatchObject({
+      errorCategory: 'error',
       errorMessage: 'Error',
       errorMessageRedacted: true,
       errorType: 'Error',
+      isAbort: false,
       statusCode: null,
     });
     expect(JSON.stringify(properties)).not.toContain('jane@example.com');
@@ -38,5 +40,34 @@ describe('buildSafeTelemetryErrorProperties', () => {
     expect(JSON.stringify(properties)).not.toContain('Hidden Dumplings');
     expect(JSON.stringify(properties)).not.toContain('nick@example.com');
     expect(JSON.stringify(properties)).not.toContain('Secret Restaurant');
+  });
+
+  it.each([
+    [
+      'PocketBase abort',
+      new ClientResponseError({
+        isAbort: true,
+        message: 'request cancelled',
+        status: 0,
+      }),
+      'ClientResponseError',
+    ],
+    [
+      'AbortError name',
+      Object.assign(new Error('cancelled'), { name: 'AbortError' }),
+      'AbortError',
+    ],
+    ['Aborted message', new Error('Aborted'), 'Error'],
+  ])('redacts %s errors as request-aborted telemetry', (_label, error, errorType) => {
+    const properties = buildSafeTelemetryErrorProperties(error);
+
+    expect(properties).toMatchObject({
+      errorCategory: 'request_aborted',
+      errorMessage: 'Request aborted',
+      errorMessageRedacted: true,
+      errorType,
+      isAbort: true,
+      statusCode: null,
+    });
   });
 });
