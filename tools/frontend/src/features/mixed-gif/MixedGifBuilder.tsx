@@ -43,14 +43,6 @@ type DraftClip = {
   taps: MixedGifClipItem['taps'];
 };
 
-function readPointerPosition(event: React.MouseEvent<HTMLElement>, element: HTMLElement) {
-  const rect = element.getBoundingClientRect();
-  return {
-    x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
-    y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
-  };
-}
-
 function mediaDimensions(media: HTMLImageElement | HTMLVideoElement) {
   return media instanceof HTMLVideoElement
     ? { width: media.videoWidth, height: media.videoHeight }
@@ -419,20 +411,6 @@ export function MixedGifBuilder({
     const start = Math.max(0, Math.min(nextStart, boundedEndInput - 0.05));
     const end = Math.min(duration, Math.max(nextEnd, start + 0.05));
     return { start, end };
-  }
-
-  function updateDraftClipRange(nextStart: number, nextEnd: number) {
-    if (!draftClip) {
-      return;
-    }
-
-    const { start, end } = normalizeDraftClipRange(nextStart, nextEnd);
-    setDraftClip({
-      ...draftClip,
-      start,
-      end,
-      taps: draftClip.taps.filter((tap) => tap.timestamp >= start && tap.timestamp < end),
-    });
   }
 
   function updateDraftClipBoundary(boundary: 'start' | 'end', value: number) {
@@ -1092,7 +1070,7 @@ export function MixedGifBuilder({
                   }}
                   onPause={() => setIsSourcePlaying(false)}
                   onPlay={() => setIsSourcePlaying(true)}
-                  onSeeked={(event) => {
+                  onSeeked={() => {
                     refreshMediaLayout();
                   }}
                   onTimeUpdate={(event) => {

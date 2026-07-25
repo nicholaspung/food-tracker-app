@@ -1,6 +1,6 @@
 import { pb } from '@/lib/pocketbase';
 import { toPocketBaseDateTime } from '@/lib/formatters';
-import type { FeedbackMessage, FeedbackThread, MenuReviewRequest, PhotoUpload } from '@/lib/types';
+import type { FeedbackMessage, FeedbackThread, MenuReviewRequest } from '@/lib/types';
 
 async function countRecords(collectionName: string, filter?: string) {
   const result = await pb.collection(collectionName).getList(1, 1, {
