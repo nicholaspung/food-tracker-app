@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 import {
   ConfirmDestructiveModal,
   FeatureActionCard,
+  FeatureFormReadStateScaffold,
   FeatureFormScreenScaffold,
   PageErrorToast,
   SegmentedControl,
@@ -376,6 +377,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [owedAmountOverrides, setOwedAmountOverrides] = useState<Record<string, string>>({});
   const [participantRecordIdByDraftId, setParticipantRecordIdByDraftId] = useState<Record<string, string>>({});
   const [isEditHydrated, setIsEditHydrated] = useState(false);
+  const [hydratedSourceTastingSessionId, setHydratedSourceTastingSessionId] =
+    useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
@@ -509,7 +512,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       isEditMode ||
       !sourceTastingSessionId ||
       appliedSourceTastingSessionIdRef.current === sourceTastingSessionId ||
-      friendsQuery.isLoading
+      friendsQuery.isLoading ||
+      hasBlockingFriendsError
     ) {
       return;
     }
@@ -528,6 +532,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setPayerParticipantId(currentUserDraftId);
     setErrorMessage(null);
     appliedSourceTastingSessionIdRef.current = sourceTastingSessionId;
+    setHydratedSourceTastingSessionId(sourceTastingSessionId);
 
     trackObservabilityEvent('CREATE_BILL_TASTING_SESSION_APPLIED', {
       source: 'CreateBillScreen',
@@ -538,6 +543,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     buildTastingSessionBillDraft,
     currentUserDraftId,
     friendsQuery.isLoading,
+    hasBlockingFriendsError,
     isEditMode,
     setCustomParticipants,
     setPayerParticipantId,
@@ -1369,6 +1375,62 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           disabled: isCreating,
           variant: 'secondary' as const,
         };
+
+  const hasSourceTastingSession = Boolean(sourceTastingSessionId);
+  const hasBlockingSourceTastingSessionError =
+    hasSourceTastingSession &&
+    !sourceTastingSessionQuery.data &&
+    sourceTastingSessionQuery.isError;
+  const hasBlockingSourceHydrationError =
+    hasBlockingSourceTastingSessionError ||
+    (hasSourceTastingSession && hasBlockingFriendsError);
+  const isSourceTastingSessionHydrated =
+    hasSourceTastingSession &&
+    hydratedSourceTastingSessionId === sourceTastingSessionId;
+
+  if (hasSourceTastingSession && !isSourceTastingSessionHydrated) {
+    const sourceReadStateScaffold = {
+      bodyStyle: styles.body,
+      onBackPress: handleCreateBackPress,
+      subtitle: screenSubtitle,
+      testID: 'create-bill-screen',
+      title: screenTitle,
+    };
+
+    if (hasBlockingSourceHydrationError) {
+      return (
+        <FeatureFormReadStateScaffold
+          error={{
+            analyticsSource: 'CreateBillScreen',
+            description: hasBlockingSourceTastingSessionError
+              ? 'Could not load the source tasting session.'
+              : 'Could not load friends needed to build this bill.',
+            onRetry: () => {
+              if (hasBlockingSourceTastingSessionError) {
+                void sourceTastingSessionQuery.refetch();
+              }
+              if (hasBlockingFriendsError) {
+                void friendsQuery.refetch();
+              }
+            },
+            title: 'Tasting bill unavailable',
+          }}
+          scaffold={sourceReadStateScaffold}
+          state="error"
+        />
+      );
+    }
+
+    return (
+      <FeatureFormReadStateScaffold
+        loading={{
+          label: 'Loading tasting session bill...',
+        }}
+        scaffold={sourceReadStateScaffold}
+        state="loading"
+      />
+    );
+  }
 
   return (
     <FeatureFormScreenScaffold

@@ -124,6 +124,8 @@ jest.mock('../components/shared', () => ({
   FeatureFormScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
   ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  FeatureFormReadStateScaffold: (props: Record<string, unknown>) =>
+    mockReact.createElement('FeatureFormReadStateScaffold', props),
   FeatureActionCard: (props: Record<string, unknown>) => mockReact.createElement('FeatureActionCard', props),
   OptionList: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
@@ -222,7 +224,10 @@ const mockedTrackObservabilityEvent =
   trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
-type TestRenderer = ReturnType<typeof create> & { root: any };
+type TestRenderer = ReturnType<typeof create> & {
+  root: any;
+  update: (element: React.ReactElement) => void;
+};
 
 function buildInfiniteQueryResult(items: Record<string, unknown>[]) {
   return {
@@ -250,7 +255,10 @@ function buildInfiniteQueryResult(items: Record<string, unknown>[]) {
   } as unknown as ReturnType<typeof useInfiniteQuery>;
 }
 
-function buildBillQueryResult(data: Record<string, unknown> | null) {
+function buildBillQueryResult(
+  data: Record<string, unknown> | null,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     data,
     isError: false,
@@ -258,6 +266,7 @@ function buildBillQueryResult(data: Record<string, unknown> | null) {
     isLoading: false,
     isSuccess: Boolean(data),
     refetch: jest.fn(),
+    ...overrides,
   } as unknown as ReturnType<typeof useQuery>;
 }
 
@@ -600,6 +609,28 @@ describe('CreateBillScreen', () => {
     return renderer as TestRenderer;
   }
 
+  async function updateScreen(
+    renderer: TestRenderer,
+    routeParams?: {
+      billId?: string;
+      sourceTastingSessionId?: string;
+    },
+  ) {
+    await act(async () => {
+      renderer.update(
+        <CreateBillScreen
+          navigation={navigation as never}
+          route={{
+            key: 'CreateBill-route',
+            name: 'CreateBill',
+            params: routeParams,
+          } as never}
+        />,
+      );
+    });
+    await flushMicrotasks();
+  }
+
   async function addTypedParticipant(renderer: TestRenderer, name: string) {
     let pickerTrigger = renderer.root.findAllByType('OptionListRow').find(
       (node: any) => node.props.testID === 'bill-friends-picker-trigger',
@@ -894,6 +925,166 @@ describe('CreateBillScreen', () => {
         }),
       ]),
     );
+  });
+
+  it('keeps the draft gated until a delayed tasting session succeeds', async () => {
+    let sourceQueryResult = buildBillQueryResult(null, {
+      isLoading: true,
+      isSuccess: false,
+    });
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      const queryKey = options.queryKey ?? [];
+      if (queryKey[0] === 'feature' && queryKey[1] === 'tasting-sessions') {
+        return sourceQueryResult;
+      }
+
+      return buildBillQueryResult(billQueryData);
+    });
+
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+
+    expect(renderer.root.findByType('FeatureFormReadStateScaffold').props.state).toBe('loading');
+    expect(renderer.root.findAllByType('FeatureActionCard')).toHaveLength(0);
+
+    sourceQueryResult = buildBillQueryResult(buildTastingSession());
+    await updateScreen(renderer, { sourceTastingSessionId: 'session_1' });
+
+    expect(renderer.root.findAllByType('FeatureFormReadStateScaffold')).toHaveLength(0);
+    expect(hasExactText(renderer, 'Custom Split Source')).toBe(true);
+
+    const manualItemsButton = findByTestId(renderer, 'Button', 'bill-source-manual-items-button');
+    await act(async () => {
+      manualItemsButton.props.onPress();
+    });
+    expect(findByTestId(renderer, 'Input', 'bill-name-input').props.value).toBe('Ramen House');
+  });
+
+  it('keeps the draft gated until friends load and then maps session friends', async () => {
+    const friendRecord = {
+      createdAt: '2026-04-20T00:00:00.000Z',
+      email: 'alex@example.com',
+      id: 'friendship_user_2',
+      name: 'Friend Alex',
+      status: 'friend',
+      userId: 'user-2',
+    };
+    let friendsQueryResult = {
+      ...buildInfiniteQueryResult([]),
+      data: undefined,
+      isLoading: true,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useInfiniteQuery>;
+    mockedUseInfiniteQuery.mockImplementation(() => friendsQueryResult);
+    tastingSessionQueryData = buildTastingSession();
+
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+
+    expect(renderer.root.findByType('FeatureFormReadStateScaffold').props.state).toBe('loading');
+    expect(renderer.root.findAllByType('FeatureActionCard')).toHaveLength(0);
+
+    friendsQueryResult = buildInfiniteQueryResult([friendRecord]);
+    await updateScreen(renderer, { sourceTastingSessionId: 'session_1' });
+
+    expect(renderer.root.findAllByType('FeatureFormReadStateScaffold')).toHaveLength(0);
+    expect(
+      mockedTrackObservabilityEvent.mock.calls.find(
+        ([eventName]) => eventName === 'CREATE_BILL_TASTING_SESSION_APPLIED',
+      )?.[1],
+    ).toEqual({
+      source: 'CreateBillScreen',
+      selectedFriendCount: 1,
+      customParticipantCount: 1,
+    });
+  });
+
+  it('shows a retryable blocking state when the tasting session cannot load', async () => {
+    const refetch = jest.fn(async () => undefined);
+    mockedUseQuery.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
+      const queryKey = options.queryKey ?? [];
+      if (queryKey[0] === 'feature' && queryKey[1] === 'tasting-sessions') {
+        return buildBillQueryResult(null, {
+          isError: true,
+          isSuccess: false,
+          refetch,
+        });
+      }
+
+      return buildBillQueryResult(billQueryData);
+    });
+
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+    const readState = renderer.root.findByType('FeatureFormReadStateScaffold');
+
+    expect(readState.props.state).toBe('error');
+    expect(readState.props.error).toMatchObject({
+      description: 'Could not load the source tasting session.',
+      title: 'Tasting bill unavailable',
+    });
+    expect(renderer.root.findAllByType('FeatureActionCard')).toHaveLength(0);
+
+    await act(async () => {
+      readState.props.error.onRetry();
+    });
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a retryable blocking state when friends cannot load', async () => {
+    const refetch = jest.fn(async () => undefined);
+    mockedUseInfiniteQuery.mockImplementation(
+      () =>
+        ({
+          ...buildInfiniteQueryResult([]),
+          data: undefined,
+          isError: true,
+          isSuccess: false,
+          refetch,
+        }) as unknown as ReturnType<typeof useInfiniteQuery>,
+    );
+    tastingSessionQueryData = buildTastingSession();
+
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+    const readState = renderer.root.findByType('FeatureFormReadStateScaffold');
+
+    expect(readState.props.state).toBe('error');
+    expect(readState.props.error).toMatchObject({
+      description: 'Could not load friends needed to build this bill.',
+      title: 'Tasting bill unavailable',
+    });
+    expect(renderer.root.findAllByType('FeatureActionCard')).toHaveLength(0);
+
+    await act(async () => {
+      readState.props.error.onRetry();
+    });
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not overwrite draft edits when refreshed tasting session data arrives', async () => {
+    tastingSessionQueryData = buildTastingSession();
+    const renderer = await renderScreen({ sourceTastingSessionId: 'session_1' });
+    const manualItemsButton = findByTestId(renderer, 'Button', 'bill-source-manual-items-button');
+
+    await act(async () => {
+      manualItemsButton.props.onPress();
+    });
+
+    const billNameInput = findByTestId(renderer, 'Input', 'bill-name-input');
+    await act(async () => {
+      billNameInput.props.onChangeText('My edited tasting bill');
+    });
+
+    tastingSessionQueryData = buildTastingSession({
+      restaurantName: 'Late Restaurant Name',
+    });
+    await updateScreen(renderer, { sourceTastingSessionId: 'session_1' });
+
+    expect(findByTestId(renderer, 'Input', 'bill-name-input').props.value).toBe(
+      'My edited tasting bill',
+    );
+    expect(
+      mockedTrackObservabilityEvent.mock.calls.filter(
+        ([eventName]) => eventName === 'CREATE_BILL_TASTING_SESSION_APPLIED',
+      ),
+    ).toHaveLength(1);
   });
 
   it('filters non-numeric characters from bill total input', async () => {
