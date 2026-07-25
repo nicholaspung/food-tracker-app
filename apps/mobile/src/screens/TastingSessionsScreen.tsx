@@ -21,7 +21,7 @@ import {
   listTastingSessionSummariesPage,
   tastingSessionsQueryKeys,
   type TastingSessionListSummary,
-  useTastingSessionWrites,
+  useTastingSessionLifecycleWrites,
 } from '../features';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -202,7 +202,7 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
   const theme = useTheme();
   const { isOnline } = useConnectivity();
   const { user } = useAuth();
-  const tastingSessionWrites = useTastingSessionWrites();
+  const tastingSessionWrites = useTastingSessionLifecycleWrites();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeSessionsQuery = useInfiniteQuery({
     queryKey: tastingSessionsQueryKeys.summaries('active'),
@@ -345,24 +345,24 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     try {
       setErrorMessage(null);
       const acceptResult = await tastingSessionWrites.acceptInvite({
-        isOnline,
         sessionId: session.id,
       });
-      if (acceptResult.status === 'blocked') {
-        setErrorMessage(acceptResult.message);
+      if (acceptResult.status !== 'completed') {
+        if (acceptResult.status === 'blocked') {
+          setErrorMessage(acceptResult.message);
+        }
         return;
       }
       navigateToTastingSession(navigation, acceptResult.result);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not join session.');
     }
-  }, [isOnline, navigation, tastingSessionWrites]);
+  }, [navigation, tastingSessionWrites]);
 
   const handleDismissInvite = useCallback(async (session: TastingSessionListSummary) => {
     try {
       setErrorMessage(null);
       const dismissResult = await tastingSessionWrites.dismissInvite({
-        isOnline,
         sessionId: session.id,
       });
       if (dismissResult.status === 'blocked') {
@@ -371,7 +371,7 @@ export function TastingSessionsScreen({ navigation, route }: TastingSessionsScre
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not dismiss invite.');
     }
-  }, [isOnline, tastingSessionWrites]);
+  }, [tastingSessionWrites]);
 
   const renderSessionItem = useCallback(
     ({ item: session, section }: { item: TastingSessionListSummary; section: TastingSessionListSection }) => {

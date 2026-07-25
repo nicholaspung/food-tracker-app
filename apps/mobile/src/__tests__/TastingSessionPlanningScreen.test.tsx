@@ -39,6 +39,10 @@ jest.mock('react-native', () => ({
     mockReact.createElement('View', props, children),
 }));
 
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
 jest.mock('../components/shared', () => ({
   ConfirmDestructiveModal: (props: Record<string, unknown>) =>
     mockReact.createElement('ConfirmDestructiveModal', props),

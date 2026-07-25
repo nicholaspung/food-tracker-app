@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery } from '@tanstack/react-query';
 
-import { useTastingSessionWrites, type TastingSessionListSummary } from '../features';
+import { useTastingSessionLifecycleWrites, type TastingSessionListSummary } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -82,7 +82,7 @@ jest.mock('../features', () => ({
     root: ['feature', 'tasting-sessions'],
     summaries: (filter: string) => ['feature', 'tasting-sessions', 'summaries', filter],
   },
-  useTastingSessionWrites: jest.fn(),
+  useTastingSessionLifecycleWrites: jest.fn(),
 }));
 
 jest.mock('../providers/AuthProvider', () => ({
@@ -150,8 +150,8 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
-const mockedUseTastingSessionWrites = useTastingSessionWrites as jest.MockedFunction<
-  typeof useTastingSessionWrites
+const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
+  typeof useTastingSessionLifecycleWrites
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
@@ -320,7 +320,7 @@ describe('TastingSessionsScreen', () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as ReturnType<typeof useConnectivity>);
-    mockedUseTastingSessionWrites.mockReturnValue({
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
       acceptInvite,
       createSession: jest.fn(),
       deleteSession: jest.fn(),
@@ -330,7 +330,7 @@ describe('TastingSessionsScreen', () => {
       reopenInviteWindow: jest.fn(),
       removeParticipant: jest.fn(),
       resendInvite: jest.fn(),
-    } as unknown as ReturnType<typeof useTastingSessionWrites>);
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
   });
 
   it('keeps expired pending invites off the active session list', () => {
@@ -351,7 +351,6 @@ describe('TastingSessionsScreen', () => {
     });
 
     expect(dismissInvite).toHaveBeenCalledWith({
-      isOnline: true,
       sessionId: 'session_2000-01-01T00:00:00.000Z',
     });
     expect(renderer.root.findAllByType('OptionListRow').some((node: any) => node.props.title === 'Ramen night')).toBe(false);
@@ -362,6 +361,24 @@ describe('TastingSessionsScreen', () => {
 
     expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === 'Join Invite')).toBe(true);
     expect(renderer.root.findAllByType('StatusPill').some((node: any) => node.props.label === 'Expired')).toBe(false);
+  });
+
+  it('accepts an invite through the lifecycle write interface', async () => {
+    const session = buildSession('2099-01-01T00:00:00.000Z');
+    acceptInvite.mockResolvedValueOnce({
+      result: session,
+      status: 'completed',
+    });
+    const { navigation, renderer } = renderScreen([session]);
+
+    await act(async () => {
+      await findButton(renderer, 'Join Invite').props.onPress();
+    });
+
+    expect(acceptInvite).toHaveBeenCalledWith({ sessionId: session.id });
+    expect(navigation.navigate).toHaveBeenCalledWith('TastingSessionLobby', {
+      sessionId: session.id,
+    });
   });
 
   it('hides active lobby sessions when the user is not leader, participant, or actively invited', () => {

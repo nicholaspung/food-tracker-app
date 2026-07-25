@@ -120,8 +120,6 @@ export * from './useOnboardingProgressWrites';
 export * from './useRestaurantListWrites';
 export * from './useSettingsPreferencesWrites';
 export * from './useTastingSessionLifecycleWrites';
-export * from './useTastingSessionWrites';
-export * from './useTastingPlanWrites';
 export * from './useTastingPlanPlanningState';
 export * from './useTastingPlanMenuCatalog';
 export * from './visitPhotosQuery';

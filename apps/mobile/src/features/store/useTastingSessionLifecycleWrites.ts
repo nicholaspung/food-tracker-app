@@ -133,7 +133,7 @@ export const TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES = {
   submitRatings: 'Connect to the internet to submit ratings.',
 } as const;
 
-export function blockedTastingSessionLifecycleWrite(
+function blockedTastingSessionLifecycleWrite(
   message: string,
 ): TastingSessionLifecycleWriteResult<never> {
   return {
