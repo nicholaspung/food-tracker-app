@@ -1,4 +1,5 @@
 import React from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, create } from 'react-test-renderer';
 
 import { LoadingOverlay } from '../components/shared/LoadingOverlay';
@@ -46,6 +47,10 @@ jest.mock('../ui', () => ({
 }));
 
 describe('LoadingOverlay', () => {
+  beforeEach(() => {
+    (AccessibilityInfo.announceForAccessibility as jest.Mock).mockClear();
+  });
+
   it('renders nothing when hidden', async () => {
     let renderer: any;
     await act(async () => {
@@ -63,9 +68,15 @@ describe('LoadingOverlay', () => {
 
     const modal = renderer.root.findByType('Modal');
     const overlay = renderer.root.findByProps({ pointerEvents: 'auto' });
+    const progress = renderer.root.findByProps({
+      accessibilityLabel: 'Signing in...',
+      accessibilityRole: 'progressbar',
+    });
 
     expect(modal.props).toEqual(
       expect.objectContaining({
+        accessibilityLabel: 'Signing in...',
+        accessibilityViewIsModal: true,
         transparent: true,
         visible: true,
         statusBarTranslucent: true,
@@ -76,6 +87,52 @@ describe('LoadingOverlay', () => {
         backgroundColor: 'overlay-color',
         flex: 1,
       }),
+    );
+    expect(progress.props.accessibilityLiveRegion).toBe('polite');
+    expect(progress.props.accessibilityState).toEqual({ busy: true });
+
+    modal.props.onShow();
+    modal.props.onShow();
+
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledTimes(1);
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Signing in...',
+    );
+  });
+
+  it('does not announce a stale onShow event after the overlay closes', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<LoadingOverlay label="Signing in..." visible />);
+    });
+
+    const delayedOnShow = renderer.root.findByType('Modal').props.onShow;
+
+    await act(async () => {
+      renderer.update(<LoadingOverlay label="Signing in..." visible={false} />);
+    });
+    delayedOnShow();
+
+    expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled();
+  });
+
+  it('announces a changed label while the visible overlay remains open', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<LoadingOverlay label="Verifying your email..." visible />);
+    });
+
+    renderer.root.findByType('Modal').props.onShow();
+
+    await act(async () => {
+      renderer.update(
+        <LoadingOverlay label="Sending verification email..." visible />,
+      );
+    });
+
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledTimes(2);
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenLastCalledWith(
+      'Sending verification email...',
     );
   });
 });
