@@ -48,8 +48,12 @@ describe('receiptParsingGateway', () => {
     mockUpload.mockResolvedValue({
       body: JSON.stringify({
         confidence: 'high',
+        debug: { model: 'gemini-test' },
+        finalTotal: 14,
         items: [{ confidence: 'high', name: 'Ramen', price: 12 }],
         requestCorrelation: 'mobile-receipt-scan-test',
+        subtotal: 12,
+        tax: 2,
         warnings: [],
       }),
       headers: {},
@@ -128,6 +132,27 @@ describe('receiptParsingGateway', () => {
       },
       status: 400,
     } satisfies Partial<ClientResponseError>);
+  });
+
+  it('rejects malformed successful receipt scan responses at the gateway', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        confidence: 'high',
+        items: [{ confidence: 'high', name: 'Ramen', price: '12.00' }],
+        requestCorrelation: 'mobile-receipt-scan-test',
+        warnings: [],
+      }),
+      headers: {},
+      status: 200,
+    });
+
+    await expect(
+      parseReceiptImage({
+        mimeType: 'image/jpeg',
+        name: 'receipt.jpg',
+        uri: 'file:///receipt.jpg',
+      }),
+    ).rejects.toThrow('Receipt scan returned an invalid response.');
   });
 
   it('aborts receipt image parsing if the native upload does not resolve', async () => {

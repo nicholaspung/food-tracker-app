@@ -144,7 +144,7 @@ export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseM
   );
 
   assertNativeImageUploadSucceeded(uploadResult, buildParseMenuUrl(), 'Menu scan failed.');
-  return parseNativeImageUploadResponse<ParseMenuImageResponse>(uploadResult.body);
+  return parseMenuImageUploadResponse(uploadResult.body);
 }
 
 export async function extractRestaurantNamesFromImage(
@@ -157,7 +157,7 @@ export async function extractRestaurantNamesFromImage(
   );
 
   assertNativeImageUploadSucceeded(uploadResult, buildFindRestaurantNameUrl(), 'Restaurant name extraction failed.');
-  return parseNativeImageUploadResponse<RestaurantNameExtractionResponse>(uploadResult.body);
+  return parseRestaurantNameExtractionUploadResponse(uploadResult.body);
 }
 
 export async function createMenuReviewRequest(
@@ -281,13 +281,112 @@ function assertNativeImageUploadSucceeded(
   });
 }
 
-function parseNativeImageUploadResponse<T>(body: string): T {
+function parseMenuImageUploadResponse(body: string): ParseMenuImageResponse {
   const parsedBody = parseJsonObject(body);
-  if (!parsedBody) {
+  if (!parsedBody || !isParseMenuImageResponse(parsedBody)) {
     throw new Error('AI image parsing returned an invalid response.');
   }
 
-  return parsedBody as unknown as T;
+  return parsedBody;
+}
+
+function parseRestaurantNameExtractionUploadResponse(
+  body: string,
+): RestaurantNameExtractionResponse {
+  const parsedBody = parseJsonObject(body);
+  if (!parsedBody || !isRestaurantNameExtractionResponse(parsedBody)) {
+    throw new Error('AI image parsing returned an invalid response.');
+  }
+
+  return parsedBody;
+}
+
+function isParseMenuImageResponse(value: unknown): value is ParseMenuImageResponse {
+  return (
+    isRecord(value) &&
+    typeof value.csv === 'string' &&
+    isOptionalString(value.sourceImageId) &&
+    (value.verification === undefined || isMenuVerification(value.verification))
+  );
+}
+
+function isMenuVerification(
+  value: unknown,
+): value is NonNullable<ParseMenuImageResponse['verification']> {
+  return (
+    isRecord(value) &&
+    typeof value.checked === 'boolean' &&
+    (typeof value.matched === 'boolean' || value.matched === null) &&
+    isMenuScanConfidence(value.confidence) &&
+    isOptionalString(value.selectedRestaurantName) &&
+    Array.isArray(value.observedRestaurantNames) &&
+    value.observedRestaurantNames.every(isString) &&
+    isOptionalString(value.reason)
+  );
+}
+
+function isRestaurantNameExtractionResponse(
+  value: unknown,
+): value is RestaurantNameExtractionResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.error !== undefined) {
+    return (
+      value.error === 'NOT_RESTAURANT' &&
+      value.found === undefined &&
+      isOptionalString(value.reason)
+    );
+  }
+
+  if (value.found === true) {
+    return (
+      Array.isArray(value.options) &&
+      value.options.every(isRestaurantNameOption) &&
+      isOptionalString(value.language)
+    );
+  }
+
+  return value.found === false && isOptionalString(value.allText);
+}
+
+function isRestaurantNameOption(
+  value: unknown,
+): value is Extract<RestaurantNameExtractionResponse, { found: true }>['options'][number] {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    isStorefrontConfidence(value.confidence) &&
+    isOptionalString(value.reason)
+  );
+}
+
+function isMenuScanConfidence(
+  value: unknown,
+): value is NonNullable<ParseMenuImageResponse['verification']>['confidence'] {
+  return isStorefrontConfidence(value) || value === 'unknown';
+}
+
+function isStorefrontConfidence(
+  value: unknown,
+): value is Extract<
+  RestaurantNameExtractionResponse,
+  { found: true }
+>['options'][number]['confidence'] {
+  return value === 'high' || value === 'medium' || value === 'low';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
 }
 
 function parsePocketBaseUploadErrorResponse(body: string, fallbackMessage: string): Record<string, unknown> {

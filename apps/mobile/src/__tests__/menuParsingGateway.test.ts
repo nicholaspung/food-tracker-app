@@ -60,6 +60,7 @@ describe('menuParsingGateway', () => {
     mockUpload.mockResolvedValue({
       body: JSON.stringify({
         csv: 'menu_item,price\nRamen,12',
+        debug: { model: 'gemini-test' },
         verification: {
           checked: true,
           matched: true,
@@ -152,6 +153,30 @@ describe('menuParsingGateway', () => {
     });
   });
 
+  it('rejects malformed successful menu scan responses at the gateway', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        csv: 'menu_item,price\nRamen,12',
+        verification: {
+          checked: true,
+          matched: true,
+          confidence: 'high',
+          observedRestaurantNames: 'Ichiran',
+        },
+      }),
+      headers: {},
+      status: 200,
+    });
+
+    await expect(
+      parseMenuImage({
+        mimeType: 'image/jpeg',
+        name: 'menu.jpg',
+        uri: 'file:///menu.jpg',
+      }),
+    ).rejects.toThrow('AI image parsing returned an invalid response.');
+  });
+
   it('keeps scanned menu item creation on the PocketBase API gateway', async () => {
     mockedPocketbaseModule.pb.send.mockResolvedValue({
       createdItems: [],
@@ -233,6 +258,32 @@ describe('menuParsingGateway', () => {
     );
   });
 
+  it.each([
+    ['no names found', { allText: 'Unclear storefront text', found: false }],
+    [
+      'non-restaurant image',
+      {
+        debug: { model: 'gemini-test' },
+        error: 'NOT_RESTAURANT',
+        reason: 'The image is a document.',
+      },
+    ],
+  ])('accepts the valid storefront extraction union branch for %s', async (_label, response) => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify(response),
+      headers: {},
+      status: 200,
+    });
+
+    await expect(
+      extractRestaurantNamesFromImage({
+        mimeType: 'image/jpeg',
+        name: 'storefront.jpg',
+        uri: 'file:///storefront.jpg',
+      }),
+    ).resolves.toEqual(response);
+  });
+
   it('omits blank storefront request correlation headers', async () => {
     mockUpload.mockResolvedValue({
       body: JSON.stringify({
@@ -258,6 +309,45 @@ describe('menuParsingGateway', () => {
         },
       }),
     );
+  });
+
+  it('rejects malformed successful storefront extraction responses at the gateway', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        found: true,
+        options: [{ confidence: 'certain', name: '明洞餃子' }],
+      }),
+      headers: {},
+      status: 200,
+    });
+
+    await expect(
+      extractRestaurantNamesFromImage({
+        mimeType: 'image/jpeg',
+        name: 'storefront.jpg',
+        uri: 'file:///storefront.jpg',
+      }),
+    ).rejects.toThrow('AI image parsing returned an invalid response.');
+  });
+
+  it('rejects storefront responses with conflicting union discriminants', async () => {
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        error: 'NOT_RESTAURANT',
+        found: true,
+        reason: 'The image is a document.',
+      }),
+      headers: {},
+      status: 200,
+    });
+
+    await expect(
+      extractRestaurantNamesFromImage({
+        mimeType: 'image/jpeg',
+        name: 'storefront.jpg',
+        uri: 'file:///storefront.jpg',
+      }),
+    ).rejects.toThrow('AI image parsing returned an invalid response.');
   });
 
   it('aborts menu image parsing if the API does not resolve', async () => {

@@ -122,11 +122,66 @@ function assertReceiptUploadSucceeded(uploadResult: UploadResult): void {
 
 function parseReceiptUploadResponse(body: string): ReceiptScanDraftResult {
   const parsedBody = parseJsonObject(body);
-  if (!parsedBody) {
+  if (!parsedBody || !isReceiptScanDraftResult(parsedBody)) {
     throw new Error('Receipt scan returned an invalid response.');
   }
 
-  return parsedBody as unknown as ReceiptScanDraftResult;
+  return parsedBody;
+}
+
+function isReceiptScanDraftResult(value: unknown): value is ReceiptScanDraftResult {
+  return (
+    isRecord(value) &&
+    typeof value.requestCorrelation === 'string' &&
+    isReceiptScanConfidence(value.confidence) &&
+    Array.isArray(value.items) &&
+    value.items.every(isReceiptScanItem) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every(isString) &&
+    isOptionalString(value.restaurantName) &&
+    isOptionalString(value.title) &&
+    isOptionalFiniteNumber(value.subtotal) &&
+    isOptionalFiniteNumber(value.tax) &&
+    isOptionalFiniteNumber(value.tip) &&
+    isOptionalFiniteNumber(value.fees) &&
+    isOptionalFiniteNumber(value.discount) &&
+    isOptionalFiniteNumber(value.finalTotal)
+  );
+}
+
+function isReceiptScanItem(value: unknown): value is ReceiptScanItem {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    isFiniteNumber(value.price) &&
+    isReceiptScanConfidence(value.confidence) &&
+    isOptionalString(value.quantityText) &&
+    isOptionalString(value.warning)
+  );
+}
+
+function isReceiptScanConfidence(value: unknown): value is ReceiptScanConfidence {
+  return value === 'high' || value === 'medium' || value === 'low' || value === 'unknown';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+function isOptionalFiniteNumber(value: unknown): value is number | undefined {
+  return value === undefined || isFiniteNumber(value);
 }
 
 function parsePocketBaseUploadErrorResponse(body: string): Record<string, unknown> {
