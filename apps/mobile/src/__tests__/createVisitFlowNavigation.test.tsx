@@ -1,6 +1,7 @@
 import { CommonActions, StackActions, StackRouter } from '@react-navigation/routers';
 import { useQueryClient } from '@tanstack/react-query';
 import React from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, create } from 'react-test-renderer';
 
 import {
@@ -355,6 +356,95 @@ describe('create visit flow navigation', () => {
     );
   });
 
+  it('identifies active menu progress without relying on the image filename', async () => {
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    mockUseMenuScanFlow.mockReturnValue({
+      createdItemNames: [],
+      errorMessage: null,
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: 'IMG_5678.jpg',
+      status: 'processing',
+      verification: null,
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <MenuScanPhotoProcessingScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              mode: 'menu_scan',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Cafe Test',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(renderer!.root.findByType('ScanProcessingProgressCard').props).toEqual(
+      expect.objectContaining({
+        imageName: 'IMG_5678.jpg',
+        progressAccessibilityLabel: 'Menu scan progress',
+      }),
+    );
+  });
+
+  it('announces menu scan completion as a polite alert', async () => {
+    const navigation = {
+      goBack: jest.fn(),
+      popTo: jest.fn(),
+    };
+    mockUseMenuScanFlow.mockReturnValue({
+      createdItemNames: ['Miso Ramen'],
+      errorMessage: null,
+      existingItemNames: [],
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: jest.fn(),
+      scanMenu: jest.fn(),
+      selectedImageName: 'menu.jpg',
+      status: 'success',
+      verification: null,
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <MenuScanPhotoProcessingScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              mode: 'menu_scan',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'Cafe Test',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    const completionAlert = renderer!.root
+      .findAllByType('View')
+      .find((view: any) => view.props.accessibilityLabel === 'Menu scan complete');
+
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Menu scan complete.',
+    );
+    expect(completionAlert?.props.accessibilityLiveRegion).toBe('polite');
+    expect(completionAlert?.props.accessibilityRole).toBe('alert');
+  });
+
   it('returns from the menu scan helper screen to food discovery restaurant detail', async () => {
     const navigation = {
       goBack: jest.fn(),
@@ -499,6 +589,9 @@ describe('create visit flow navigation', () => {
         toast.props.actionLabel === 'Try Again',
       ),
     ).toBe(true);
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Menu scan failed.',
+    );
   });
 
   it('uses popTo after adding a restaurant from the create visit flow', async () => {

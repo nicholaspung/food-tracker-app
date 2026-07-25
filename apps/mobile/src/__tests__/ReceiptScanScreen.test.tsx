@@ -1,4 +1,5 @@
 import React from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, create } from 'react-test-renderer';
 
 import { useMonthlyUsage, useReceiptScanFlow } from '../features';
@@ -21,6 +22,9 @@ interface TestRendererWithRoot {
 }
 
 jest.mock('react-native', () => ({
+  AccessibilityInfo: {
+    announceForAccessibility: jest.fn(),
+  },
   Animated: {
     Value: jest.fn(() => ({
       interpolate: jest.fn(() => '0deg'),
@@ -169,11 +173,65 @@ describe('ReceiptScanScreen', () => {
   it('keeps receipt source actions visible after a generic scan failure', async () => {
     const renderer = await renderScreen();
 
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Receipt scan failed.',
+    );
     expect(
       renderer.root.findAllByType('PageErrorToast').some(
         (toast) => toast.props.errorMessage === 'Something went wrong.',
       ),
     ).toBe(true);
     expect(renderer.root.findAllByType('PhotoSourcePickerCard')).toHaveLength(1);
+  });
+
+  it('identifies active receipt progress without relying on the image filename', async () => {
+    mockedUseReceiptScanFlow.mockReturnValue({
+      errorMessage: null,
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: mockResetReceiptScan,
+      result: null,
+      scanReceipt: mockScanReceipt,
+      selectedImageName: 'IMG_1234.jpg',
+      status: 'processing',
+    });
+
+    const renderer = await renderScreen();
+
+    expect(renderer.root.findAllByType('ScanProcessingProgressCard')[0]?.props).toEqual(
+      expect.objectContaining({
+        imageName: 'IMG_1234.jpg',
+        progressAccessibilityLabel: 'Receipt scan progress',
+      }),
+    );
+  });
+
+  it('announces receipt scan completion as a polite alert', async () => {
+    mockedUseReceiptScanFlow.mockReturnValue({
+      errorMessage: null,
+      lastRequestedSource: 'gallery',
+      permissionNeedsSettings: false,
+      reset: mockResetReceiptScan,
+      result: {
+        confidence: 'high',
+        items: [],
+        requestCorrelation: 'receipt-test',
+        warnings: [],
+      },
+      scanReceipt: mockScanReceipt,
+      selectedImageName: 'receipt.jpg',
+      status: 'success',
+    });
+
+    const renderer = await renderScreen();
+    const completionAlert = renderer.root
+      .findAllByType('View')
+      .find((view) => view.props.accessibilityLabel === 'Receipt scan complete');
+
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Receipt scan complete.',
+    );
+    expect(completionAlert?.props.accessibilityLiveRegion).toBe('polite');
+    expect(completionAlert?.props.accessibilityRole).toBe('alert');
   });
 });

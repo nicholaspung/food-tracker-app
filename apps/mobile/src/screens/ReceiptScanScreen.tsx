@@ -1,6 +1,7 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Linking, View } from 'react-native';
+import { useEffect } from 'react';
+import { AccessibilityInfo, Linking, Platform, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
@@ -83,6 +84,18 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
         : receiptScanFlow.status === 'error'
           ? 'error'
           : 'choose';
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') {
+      return;
+    }
+
+    if (phase === 'success') {
+      AccessibilityInfo.announceForAccessibility('Receipt scan complete.');
+    } else if (phase === 'error') {
+      AccessibilityInfo.announceForAccessibility('Receipt scan failed.');
+    }
+  }, [phase]);
 
   const returnToBillDraft = () => {
     const result = receiptScanFlow.result;
@@ -174,6 +187,7 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
           elapsedLabel={processingProgress.elapsedLabel}
           imageName={receiptScanFlow.selectedImageName}
           processingPercent={processingProgress.processingPercent}
+          progressAccessibilityLabel="Receipt scan progress"
           progressValue={processingProgress.progressValue}
           spin={processingProgress.processingSpin}
           statusText="We're processing your receipt now."
@@ -182,7 +196,12 @@ export function ReceiptScanScreen({ navigation, route }: ReceiptScanScreenProps)
 
       {phase === 'success' && receiptScanFlow.result ? (
         <Card style={styles.card}>
-          <View style={styles.successHeader}>
+          <View
+            accessibilityLabel="Receipt scan complete"
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            style={styles.successHeader}
+          >
             <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={18} />
             <Text tone="success" variant="label">
               Receipt scan completed

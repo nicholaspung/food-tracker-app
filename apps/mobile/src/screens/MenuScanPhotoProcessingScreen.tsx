@@ -1,6 +1,6 @@
 import { Ionicons } from '../ui/AppIcon';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { AccessibilityInfo, Alert, Linking, Platform, View } from 'react-native';
 
 import {
   FeatureFormScreenScaffold,
@@ -167,6 +167,18 @@ export function MenuScanPhotoProcessingScreen({
   const processingProgress = useScanProcessingProgress(menuScanFlow.status);
 
   useEffect(() => {
+    if (Platform.OS !== 'ios') {
+      return;
+    }
+
+    if (phase === 'success') {
+      AccessibilityInfo.announceForAccessibility('Menu scan complete.');
+    } else if (phase === 'error') {
+      AccessibilityInfo.announceForAccessibility('Menu scan failed.');
+    }
+  }, [phase]);
+
+  useEffect(() => {
     if (
       !isMenuScan ||
       !autoStartSourcePicker ||
@@ -326,6 +338,7 @@ export function MenuScanPhotoProcessingScreen({
           elapsedLabel={processingProgress.elapsedLabel}
           imageName={menuScanFlow.selectedImageName}
           processingPercent={processingProgress.processingPercent}
+          progressAccessibilityLabel="Menu scan progress"
           progressValue={processingProgress.progressValue}
           spin={processingProgress.processingSpin}
           statusText="We're processing your image now."
@@ -334,7 +347,12 @@ export function MenuScanPhotoProcessingScreen({
 
       {phase === 'success' ? (
         <Card style={styles.successCard}>
-          <View style={styles.processingHint}>
+          <View
+            accessibilityLabel="Menu scan complete"
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            style={styles.processingHint}
+          >
             <Ionicons
               color={theme.colors.text.success}
               name="checkmark-circle"
