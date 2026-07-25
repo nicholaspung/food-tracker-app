@@ -206,15 +206,6 @@ func geminiFailureMessage(err error, fallback string) string {
 	return fallback
 }
 
-func generateGeminiContentWithFallback(
-	ctx context.Context,
-	client *genai.Client,
-	prompt string,
-	imagePart genai.Part,
-) geminiGenerationResult {
-	return generateGeminiContentWithFallbackOptions(ctx, client, prompt, imagePart, geminiGenerationOptions{})
-}
-
 func generateGeminiContentWithFallbackOptions(
 	ctx context.Context,
 	client *genai.Client,
