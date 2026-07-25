@@ -19,7 +19,7 @@ func enforcePostingWritePolicy(authRecord *core.Record) error {
 	return nil
 }
 
-func applyCreateModerationPolicy(authRecord *core.Record, record *core.Record) {
+func applyPreReviewModerationPolicy(authRecord *core.Record, record *core.Record) {
 	if authRecord == nil || record == nil {
 		return
 	}

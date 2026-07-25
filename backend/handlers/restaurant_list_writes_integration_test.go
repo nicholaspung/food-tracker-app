@@ -1171,6 +1171,139 @@ func TestRestaurantListAddRatingsEndpointUpdatesNoteAndAddsOnlyNewItems(t *testi
 	}
 }
 
+func TestRestaurantListAddRatingsEndpointRejectsPostingSuspendedUserWithoutMutations(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Suspended Curry Club")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Dinner List",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	firstVisit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	secondVisit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	firstFoodItem := seedFoodItemRecord(t, server.app, firstVisit.Id, user.Id, "Katsu Curry", 4)
+	secondFoodItem := seedFoodItemRecord(t, server.app, secondVisit.Id, user.Id, "Croquette", 5)
+	existingListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"foodItem":   firstFoodItem.Id,
+		"position":   1,
+		"note":       "Old note",
+	})
+	user.Set("postingSuspendedUntil", time.Now().UTC().Add(time.Hour))
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to suspend user: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/restaurants", list.Id),
+		token,
+		fmt.Sprintf(`{
+			"restaurantId":"%s",
+			"foodItemIds":["%s","%s"],
+			"note":"Changed note"
+		}`, restaurant.Id, firstFoodItem.Id, secondFoodItem.Id),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedExistingItem, err := server.app.FindRecordById("list_items", existingListItem.Id)
+	if err != nil {
+		t.Fatalf("failed to reload existing list item: %v", err)
+	}
+	if reloadedExistingItem.GetString("note") != "Old note" {
+		t.Fatalf("expected existing note to remain unchanged, got %q", reloadedExistingItem.GetString("note"))
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"list_items",
+		"list = {:listId} && restaurant = {:restaurantId}",
+		map[string]any{"listId": list.Id, "restaurantId": restaurant.Id},
+	); count != 1 {
+		t.Fatalf("expected rejected update to create no list items, got %d total", count)
+	}
+}
+
+func TestRestaurantListAddRatingsEndpointQuarantinesPreReviewMutations(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Review Curry Club")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Dinner List",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	firstVisit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	secondVisit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	firstFoodItem := seedFoodItemRecord(t, server.app, firstVisit.Id, user.Id, "Katsu Curry", 4)
+	secondFoodItem := seedFoodItemRecord(t, server.app, secondVisit.Id, user.Id, "Croquette", 5)
+	existingListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    user.Id,
+		"foodItem":   firstFoodItem.Id,
+		"position":   1,
+		"note":       "Old note",
+	})
+	user.Set("contentModerationMode", lib.ContentModerationModePreReview)
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to enable pre-review mode: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/restaurants", list.Id),
+		token,
+		fmt.Sprintf(`{
+			"restaurantId":"%s",
+			"foodItemIds":["%s","%s"],
+			"note":"Changed note"
+		}`, restaurant.Id, firstFoodItem.Id, secondFoodItem.Id),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	records, err := server.app.FindRecordsByFilter(
+		"list_items",
+		"list = {:listId} && restaurant = {:restaurantId}",
+		"position",
+		10,
+		0,
+		map[string]any{"listId": list.Id, "restaurantId": restaurant.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to reload list items: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected two list items, got %d", len(records))
+	}
+	if records[0].Id != existingListItem.Id || records[0].GetString("note") != "Changed note" {
+		t.Fatalf("expected existing item note to update, got %#v", records[0])
+	}
+	for _, record := range records {
+		if record.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+			t.Fatalf("expected list item %s moderationStatus=under_review, got %q", record.Id, record.GetString("moderationStatus"))
+		}
+		if _, err := server.app.FindFirstRecordByFilter(
+			"moderation_cases",
+			"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+			map[string]any{"targetType": "list-item", "targetRecordId": record.Id},
+		); err != nil {
+			t.Fatalf("failed to load moderation case for list item %s: %v", record.Id, err)
+		}
+	}
+}
+
 func TestRestaurantListReorderEndpointUpdatesGroupedPositions(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

@@ -417,7 +417,7 @@ func saveRestaurantListBookmarkTransaction(
 		record.Set("menuItem", menuItemRecord.Id)
 		record.Set("position", nextPosition)
 		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
-		applyCreateModerationPolicy(authRecord, record)
+		applyPreReviewModerationPolicy(authRecord, record)
 
 		if err := app.Save(record); err != nil {
 			if !isUniqueConstraintError(err) {
@@ -485,7 +485,7 @@ func saveRestaurantListBookmarkTransaction(
 		record.Set("addedBy", authRecord.Id)
 		record.Set("position", nextPosition)
 		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
-		applyCreateModerationPolicy(authRecord, record)
+		applyPreReviewModerationPolicy(authRecord, record)
 
 		if err := app.Save(record); err != nil {
 			if !isUniqueConstraintError(err) {
@@ -576,7 +576,7 @@ func saveRestaurantListBookmarkTransaction(
 	record.Set("foodItem", foodItemID)
 	record.Set("position", nextPosition)
 	record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
-	applyCreateModerationPolicy(authRecord, record)
+	applyPreReviewModerationPolicy(authRecord, record)
 
 	if err := app.Save(record); err != nil {
 		if !isUniqueConstraintError(err) {
@@ -687,6 +687,9 @@ func addRestaurantListRatingsTransaction(
 	if err != nil {
 		return "", err
 	}
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return "", err
+	}
 
 	restaurantID := strings.TrimSpace(requestBody.RestaurantID)
 	if restaurantID == "" {
@@ -733,8 +736,12 @@ func addRestaurantListRatingsTransaction(
 
 	if noteProvided && firstExistingItem != nil {
 		firstExistingItem.Set("note", emptyStringToNil(trimmedNote))
+		applyPreReviewModerationPolicy(authRecord, firstExistingItem)
 		if err := app.Save(firstExistingItem); err != nil {
 			return "", apis.NewApiError(500, "failed to update restaurant list note", err)
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, firstExistingItem); err != nil {
+			return "", err
 		}
 
 		if len(newFoodItemIDs) == 0 {
@@ -763,8 +770,12 @@ func addRestaurantListRatingsTransaction(
 		record.Set("addedBy", authRecord.Id)
 		record.Set("position", nextPosition)
 		record.Set("note", emptyStringToNil(trimmedNote))
+		applyPreReviewModerationPolicy(authRecord, record)
 		if err := app.Save(record); err != nil {
 			return "", apis.NewApiError(500, "failed to add restaurant to list", err)
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, record); err != nil {
+			return "", err
 		}
 
 		return restaurantID, nil
@@ -781,12 +792,16 @@ func addRestaurantListRatingsTransaction(
 		if noteProvided && firstExistingItem == nil && index == 0 {
 			record.Set("note", emptyStringToNil(trimmedNote))
 		}
+		applyPreReviewModerationPolicy(authRecord, record)
 
 		if err := app.Save(record); err != nil {
 			if !isUniqueConstraintError(err) {
 				return "", apis.NewApiError(500, "failed to add restaurant ratings to list", err)
 			}
 		} else {
+			if err := registerPreReviewModerationCase(app, authRecord, record); err != nil {
+				return "", err
+			}
 			nextPosition += 1
 		}
 	}

@@ -670,7 +670,7 @@ func createVisitTransaction(
 		visitRecord.Set("visitDate", normalizedVisitedAt)
 		visitRecord.Set(visitLocalDateFieldName, visitLocalDate)
 		visitRecord.Set("visibility", normalizedVisibility)
-		applyCreateModerationPolicy(authRecord, visitRecord)
+		applyPreReviewModerationPolicy(authRecord, visitRecord)
 
 		if err := app.Save(visitRecord); err != nil {
 			return result, apis.NewApiError(500, "failed to create visit", err)
@@ -1094,7 +1094,7 @@ func appendVisitItems(
 		createdItem.Set("user", authRecord.Id)
 		createdItem.Set("menuItem", emptyStringToNil(menuItemID))
 		createdItem.Set("itemType", foodItemTypeVisitItem)
-		applyCreateModerationPolicy(authRecord, createdItem)
+		applyPreReviewModerationPolicy(authRecord, createdItem)
 		if err := app.Save(createdItem); err != nil {
 			return nil, apis.NewApiError(500, "failed to create visit item", err)
 		}
