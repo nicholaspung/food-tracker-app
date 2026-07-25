@@ -10,6 +10,8 @@ import { StatusPill, type StatusPillTone } from './StatusPill';
 export type VisibilityOptionValue = 'private' | 'friends' | 'public';
 export type VisibilityLabelPreset = 'default' | 'personal';
 
+const MINIMUM_TOUCH_TARGET_HEIGHT = 44;
+
 type VisibilityTone = 'secondary' | 'info' | 'success';
 
 interface VisibilityOptionMeta {
@@ -91,7 +93,7 @@ const useStyles = createThemedStyles((
     flexDirection: 'row',
     gap: isPersonalSegmentedLayout ? 6 : isCompactLayout ? 4 : 6,
     justifyContent: 'center',
-    minHeight: isPersonalSegmentedLayout ? 46 : 38,
+    minHeight: isPersonalSegmentedLayout ? 46 : MINIMUM_TOUCH_TARGET_HEIGHT,
     minWidth: 0,
     paddingHorizontal: isPersonalSegmentedLayout
       ? theme.spacing.sm
@@ -292,8 +294,6 @@ export function VisibilityOptionSelector({
                   styles.segmentedOptionLabel,
                   { color: optionTextColor },
                 ]}
-                ellipsizeMode="tail"
-                numberOfLines={1}
                 variant={segmentedLabelVariant}
               >
                 {optionMeta.label}

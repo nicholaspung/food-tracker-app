@@ -70,8 +70,19 @@ function getTextContent(node: any): string {
   return node.children.map(getTextContent).join('');
 }
 
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce(
+      (result, entry) => ({ ...result, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style && typeof style === 'object' ? style as Record<string, unknown> : {};
+}
+
 describe('FilterChipGroup', () => {
-  it('announces selected state for the active chip', async () => {
+  it('keeps every chip at least 44 points tall and announces selected state', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -82,6 +93,7 @@ describe('FilterChipGroup', () => {
             { label: 'All', value: 'all' },
             { label: 'Visits', value: 'visits' },
           ]}
+          chipStyle={{ minHeight: 20 }}
           value="visits"
         />,
       );
@@ -93,5 +105,19 @@ describe('FilterChipGroup', () => {
 
     expect(visitsChip?.props.accessibilityState).toEqual({ selected: true });
     expect(allChip?.props.accessibilityState).toEqual({ selected: false });
+    expect(flattenStyle(visitsChip?.props.style)).toEqual(
+      expect.objectContaining({
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 44,
+      }),
+    );
+    expect(flattenStyle(allChip?.props.style)).toEqual(
+      expect.objectContaining({
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 44,
+      }),
+    );
   });
 });

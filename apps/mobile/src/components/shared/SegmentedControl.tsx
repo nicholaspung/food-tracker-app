@@ -8,6 +8,8 @@ import { StatusPill } from './StatusPill';
 
 type SegmentedControlBadgeTone = 'default' | 'alert';
 
+const MINIMUM_TOUCH_TARGET_HEIGHT = 44;
+
 export interface SegmentedControlOption<T extends string> {
   label: string;
   value: T;
@@ -73,6 +75,9 @@ const useStyles = createThemedStyles((theme) => ({
       radius: 1,
     }),
   },
+  minimumTouchTarget: {
+    minHeight: MINIMUM_TOUCH_TARGET_HEIGHT,
+  },
   label: {
     color: theme.colors.text.muted,
     flexShrink: 1,
@@ -124,6 +129,7 @@ export function SegmentedControl<T extends string>({
               segmentStyle,
               isActive ? [styles.segmentActive, activeSegmentStyle] : null,
               pressed && !isActive ? { opacity: 0.75 } : null,
+              styles.minimumTouchTarget,
             ]}
             testID={getOptionTestID?.(option.value, index)}
           >

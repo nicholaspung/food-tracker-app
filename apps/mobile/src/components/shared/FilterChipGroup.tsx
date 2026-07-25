@@ -4,6 +4,8 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 
+const MINIMUM_TOUCH_TARGET_HEIGHT = 44;
+
 export interface FilterChipOption<T extends string> {
   label: string;
   value: T;
@@ -35,15 +37,20 @@ const useStyles = createThemedStyles((theme) => ({
     paddingRight: theme.spacing.sm,
   },
   chip: {
+    alignItems: 'center',
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
+    justifyContent: 'center',
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xxs,
   },
   chipActive: {
     backgroundColor: theme.colors.status.infoBg,
     borderColor: theme.colors.border.info,
+  },
+  minimumTouchTarget: {
+    minHeight: MINIMUM_TOUCH_TARGET_HEIGHT,
   },
   chipLabel: {
     color: theme.colors.text.secondary,
@@ -78,7 +85,12 @@ export function FilterChipGroup<T extends string>({
         onPress={() => {
           onChange(option.value);
         }}
-        style={[styles.chip, chipStyle, isSelected ? [styles.chipActive, activeChipStyle] : null]}
+        style={[
+          styles.chip,
+          chipStyle,
+          isSelected ? [styles.chipActive, activeChipStyle] : null,
+          styles.minimumTouchTarget,
+        ]}
       >
         <Text
           style={[styles.chipLabel, labelStyle, isSelected ? [styles.chipLabelActive, activeLabelStyle] : null]}
