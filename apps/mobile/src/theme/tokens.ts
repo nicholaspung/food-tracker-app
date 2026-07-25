@@ -18,7 +18,7 @@ export const radiusTokens = {
 
 export const sizeTokens = {
   buttonHeight: 46,
-  secondaryButtonHeight: 40,
+  secondaryButtonHeight: 44,
   inputMinHeight: 50,
   modalMaxWidth: 520,
   skeletonPulseMs: 900,

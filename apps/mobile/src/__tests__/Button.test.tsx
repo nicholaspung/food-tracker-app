@@ -25,8 +25,8 @@ const theme = {
     md: 12,
   },
   sizes: {
-    buttonHeight: 48,
-    secondaryButtonHeight: 40,
+    buttonHeight: 46,
+    secondaryButtonHeight: 44,
   },
   spacing: {
     md: 16,
@@ -66,6 +66,29 @@ jest.mock('../ui/Text', () => ({
 }));
 
 describe('Button', () => {
+  it.each([
+    ['primary', undefined, theme.sizes.buttonHeight],
+    ['secondary', 'secondary' as const, theme.sizes.secondaryButtonHeight],
+  ])('uses the shared %s minimum touch-target height', async (_name, variant, expectedHeight) => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<Button label="Action" onPress={jest.fn()} variant={variant} />);
+    });
+
+    const button = renderer.root.findByType('Pressable');
+    const [baseStyle] = button.props.style({ pressed: false });
+
+    expect(baseStyle.minHeight).toBe(expectedHeight);
+    expect(baseStyle.minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  it('keeps the production secondary size token at the minimum touch-target baseline', () => {
+    const { sizeTokens } = jest.requireActual<typeof import('../theme/tokens')>('../theme/tokens');
+
+    expect(sizeTokens.secondaryButtonHeight).toBeGreaterThanOrEqual(44);
+  });
+
   it('announces disabled state for disabled actions', async () => {
     let renderer: any = null;
 
