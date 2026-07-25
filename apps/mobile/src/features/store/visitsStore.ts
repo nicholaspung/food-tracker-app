@@ -27,6 +27,10 @@ import type {
 import { markNoteUsed } from './notesStore';
 import type { VisitRecord } from '../models';
 import { uploadVisitPhotos } from './visitPhotoUploads';
+import {
+  mapVisitPhotoCollectionRecord,
+  type VisitPhotoCollectionRecord,
+} from './visitPhotoRecords';
 
 export type {
   CreateVisitInput,
@@ -66,14 +70,6 @@ interface VisitApiRecord {
   updatedAt: string;
 }
 
-interface VisitPhotoCollectionRecord {
-  id: string;
-  food_item?: string;
-  user?: string;
-  photo: string;
-  created: string;
-}
-
 function normalizePageNumber(value: number | undefined, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -108,19 +104,6 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
     recommendationSource: record.recommendationSource,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  };
-}
-
-function mapVisitPhotoCollectionRecord(
-  record: VisitPhotoCollectionRecord,
-): VisitPhotoRecord {
-  return {
-    id: record.id,
-    food_item: record.food_item?.trim() || undefined,
-    user: record.user?.trim() || undefined,
-    photo: record.photo.trim(),
-    collectionName: 'visit_photos',
-    created: record.created,
   };
 }
 

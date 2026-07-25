@@ -33,6 +33,10 @@ import type {
   FoodItemCollectionRecord,
 } from './pocketbaseRecordTypes';
 import { uploadVisitPhotos } from './visitPhotoUploads';
+import {
+  mapVisitPhotoCollectionRecord,
+  type VisitPhotoCollectionRecord,
+} from './visitPhotoRecords';
 
 export type {
   CreateFoodProductInput,
@@ -52,14 +56,6 @@ interface FoodProductCategorySuggestionsResponse {
 
 interface ReadRequestOptions {
   signal?: AbortSignal;
-}
-
-interface VisitPhotoCollectionRecord {
-  id: string;
-  food_item?: string;
-  user?: string;
-  photo: string;
-  created: string;
 }
 
 function normalizeFoodProductCategory(value: string | null | undefined): string | undefined {
@@ -87,17 +83,6 @@ function mapFoodProductCollectionRecord(record: FoodItemCollectionRecord): FoodP
     itemDate: record.itemDate,
     createdAt: record.created,
     updatedAt: record.updated,
-  };
-}
-
-function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): VisitPhotoRecord {
-  return {
-    id: record.id,
-    food_item: record.food_item?.trim() || undefined,
-    user: record.user?.trim() || undefined,
-    photo: record.photo.trim(),
-    collectionName: 'visit_photos',
-    created: record.created,
   };
 }
 
