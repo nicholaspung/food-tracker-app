@@ -81,7 +81,7 @@ The mobile module that owns creating, updating, deleting, reordering, and bookma
 _Avoid_: list helper, bookmark mutation helper
 
 **Shared Restaurant List**:
-A live, read-only view of a **Restaurant List** made accessible through a revocable secret link.
+A live, read-only, least-privilege projection of a **Restaurant List** made accessible through a revocable secret link.
 _Avoid_: Public Restaurant List, public list
 
 **Creator Guide**:
@@ -275,6 +275,9 @@ _Avoid_: notification inbox, user notification history
 - A **Restaurant List** contains zero or more restaurants.
 - A **Shared Restaurant List** represents exactly one **Restaurant List**.
 - A **Shared Restaurant List** shows the current contents of its **Restaurant List**, not a frozen snapshot.
+- A **Shared Restaurant List** may include recommendation photo previews currently present on its requested page, without attaching source-user identifiers to the recommendation or photo-preview payload.
+- A guest photo request must use the active share link and is revalidated against that current shared-list page; it does not grant direct access to the source Visit, **Visit Item**, or photo record and cannot fetch an unlisted photo.
+- Regenerating or disabling a **Shared Restaurant List** link, or removing the associated recommendation from its **Restaurant List**, removes the corresponding guest media path.
 - A **Creator Guide** is distributed through a **Shared Restaurant List** link, not through a new public **Restaurant List** visibility state.
 - **Recommendation Usage** can credit both the source **Visit Item** and the **Restaurant List** or **Creator Guide** where the acting user discovered it.
 - **Want to Try** stores personal intent and preserves the original **Recommendation Source**; it does not become the credited source when the user later creates a Visit from it.
