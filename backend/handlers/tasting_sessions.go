@@ -1922,12 +1922,21 @@ func submitTastingRatings(app core.App, authRecord *core.Record, sessionID strin
 		return apis.NewApiError(500, "failed to load existing ratings", err)
 	}
 	existingByItemID := map[string]*core.Record{}
+	generatedVisitIDsToCheck := map[string]struct{}{}
 	for _, ratingRecord := range existingRatings {
 		itemID := strings.TrimSpace(ratingRecord.GetString("item"))
 		if _, keep := payloadByItemID[itemID]; !keep {
+			if generatedVisitID := strings.TrimSpace(ratingRecord.GetString("generated_visit")); generatedVisitID != "" {
+				generatedVisitIDsToCheck[generatedVisitID] = struct{}{}
+			}
 			if generatedItemID := strings.TrimSpace(ratingRecord.GetString("generated_food_item")); generatedItemID != "" {
-				if generatedItemRecord, findErr := app.FindRecordById("food_items", generatedItemID); findErr == nil {
-					_ = app.Delete(generatedItemRecord)
+				generatedItemRecord, findErr := app.FindRecordById("food_items", generatedItemID)
+				if findErr == nil {
+					if deleteErr := app.Delete(generatedItemRecord); deleteErr != nil {
+						return apis.NewApiError(500, "failed to remove omitted rating item", deleteErr)
+					}
+				} else if !errors.Is(findErr, sql.ErrNoRows) {
+					return apis.NewApiError(500, "failed to load omitted rating item", findErr)
 				}
 			}
 			if err := app.Delete(ratingRecord); err != nil {
@@ -1983,9 +1992,47 @@ func submitTastingRatings(app core.App, authRecord *core.Record, sessionID strin
 			return apis.NewApiError(500, "failed to save tasting rating", err)
 		}
 	}
+	if err := removeEmptyGeneratedTastingVisits(app, authRecord.Id, generatedVisitIDsToCheck); err != nil {
+		return err
+	}
 	participantRecord.Set("submitted_at", time.Now().UTC())
 	if err := app.Save(participantRecord); err != nil {
 		return apis.NewApiError(500, "failed to mark tasting submission", err)
+	}
+	return nil
+}
+
+func removeEmptyGeneratedTastingVisits(
+	app core.App,
+	userID string,
+	visitIDs map[string]struct{},
+) error {
+	for visitID := range visitIDs {
+		_, err := app.FindFirstRecordByFilter(
+			"food_items",
+			"visit = {:visit}",
+			dbx.Params{"visit": visitID},
+		)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return apis.NewApiError(500, "failed to check generated visit items", err)
+		}
+
+		visitRecord, err := app.FindRecordById("visits", visitID)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return apis.NewApiError(500, "failed to load generated visit", err)
+		}
+		if strings.TrimSpace(visitRecord.GetString("user")) != userID {
+			continue
+		}
+		if err := app.Delete(visitRecord); err != nil {
+			return apis.NewApiError(500, "failed to remove empty generated visit", err)
+		}
 	}
 	return nil
 }

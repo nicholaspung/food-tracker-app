@@ -1276,6 +1276,12 @@ func TestTastingSessionRatingCreatesCurrentVisitForHomeFeedWhenOlderRestaurantVi
 		"createdBy":  leader.Id,
 		"visibility": "friends",
 	})
+	secondMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Truffle Chips",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
 
 	addItemResponse := performJSONRequest(
 		t,
@@ -1290,6 +1296,20 @@ func TestTastingSessionRatingCreatesCurrentVisitForHomeFeedWhenOlderRestaurantVi
 	}
 	sessionWithItem := parseJSONResponse[tastingSessionResponse](t, addItemResponse.Body.Bytes())
 	itemID := sessionWithItem.Restaurants[0].Items[0].ID
+
+	addSecondItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestionID+"/items",
+		authToken,
+		`{"menuItemId":"`+secondMenuItem.Id+`"}`,
+	)
+	if addSecondItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected second add item to succeed, got %d: %s", addSecondItemResponse.Code, addSecondItemResponse.Body.String())
+	}
+	sessionWithSecondItem := parseJSONResponse[tastingSessionResponse](t, addSecondItemResponse.Body.Bytes())
+	secondItemID := sessionWithSecondItem.Restaurants[0].Items[1].ID
 
 	startRatingResponse := performJSONRequest(
 		t,
@@ -1309,18 +1329,30 @@ func TestTastingSessionRatingCreatesCurrentVisitForHomeFeedWhenOlderRestaurantVi
 		http.MethodPost,
 		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
 		authToken,
-		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+itemID+`","rating":5,"note":"Fresh tasting"}]}]}`,
+		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+itemID+`","rating":5,"note":"Fresh tasting"},{"itemId":"`+secondItemID+`","rating":4,"note":"Earthy tasting"}]}]}`,
 	)
 	if rateResponse.Code != http.StatusOK {
 		t.Fatalf("expected rate item to succeed, got %d: %s", rateResponse.Code, rateResponse.Body.String())
 	}
 	ratedSession := parseJSONResponse[tastingSessionResponse](t, rateResponse.Body.Bytes())
-	generatedVisitID := ratedSession.Restaurants[0].Items[0].Ratings[0].GeneratedVisitID
+	var generatedRating, secondGeneratedRating tastingSessionRatingEntry
+	for _, item := range ratedSession.Restaurants[0].Items {
+		switch item.ID {
+		case itemID:
+			generatedRating = item.Ratings[0]
+		case secondItemID:
+			secondGeneratedRating = item.Ratings[0]
+		}
+	}
+	generatedVisitID := generatedRating.GeneratedVisitID
 	if generatedVisitID == "" {
-		t.Fatalf("expected rating response to include generated visit id, got %#v", ratedSession.Restaurants[0].Items[0].Ratings[0])
+		t.Fatalf("expected rating response to include generated visit id, got %#v", generatedRating)
 	}
 	if generatedVisitID == olderVisit.Id {
 		t.Fatalf("expected tasting rating to create a current visit instead of reusing older visit %s", olderVisit.Id)
+	}
+	if secondGeneratedRating.GeneratedVisitID != generatedVisitID {
+		t.Fatalf("expected both tasting ratings to share generated visit %s, got %#v", generatedVisitID, secondGeneratedRating)
 	}
 
 	homeFeedResponse := performJSONRequest(
@@ -1358,8 +1390,142 @@ func TestTastingSessionRatingCreatesCurrentVisitForHomeFeedWhenOlderRestaurantVi
 	if homeFeedPayload.Items[0].Visit.ID != generatedVisitID {
 		t.Fatalf("expected generated tasting visit first in home feed, got %s want %s", homeFeedPayload.Items[0].Visit.ID, generatedVisitID)
 	}
-	if len(homeFeedPayload.Items[0].Visit.Items) != 1 || homeFeedPayload.Items[0].Visit.Items[0].Name != "Sea Salt Chips" {
-		t.Fatalf("expected generated tasting item on first home feed visit, got %#v", homeFeedPayload.Items[0].Visit.Items)
+	if len(homeFeedPayload.Items[0].Visit.Items) != 2 {
+		t.Fatalf("expected both generated tasting items on first home feed visit, got %#v", homeFeedPayload.Items[0].Visit.Items)
+	}
+
+	generatedFoodItemID := generatedRating.GeneratedFoodItemID
+	secondGeneratedFoodItemID := secondGeneratedRating.GeneratedFoodItemID
+	preserveTastingVisitResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		authToken,
+		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+secondItemID+`","rating":4,"note":"Still earthy"}]}]}`,
+	)
+	if preserveTastingVisitResponse.Code != http.StatusOK {
+		t.Fatalf("expected partial rating resubmission to succeed, got %d: %s", preserveTastingVisitResponse.Code, preserveTastingVisitResponse.Body.String())
+	}
+	if _, err := server.app.FindRecordById("visits", generatedVisitID); err != nil {
+		t.Fatalf("expected generated visit with another tasting item to remain: %v", err)
+	}
+	if _, err := server.app.FindRecordById("food_items", generatedFoodItemID); err == nil {
+		t.Fatal("expected omitted tasting-generated item to be removed")
+	}
+	if _, err := server.app.FindRecordById("food_items", secondGeneratedFoodItemID); err != nil {
+		t.Fatalf("expected retained tasting-generated item to remain: %v", err)
+	}
+	remainingRatings, err := server.app.FindRecordsByFilter(
+		"tasting_session_ratings",
+		"session = {:session} && user = {:user}",
+		"",
+		10,
+		0,
+		map[string]any{"session": createdSession.ID, "user": leader.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load ratings after partial resubmission: %v", err)
+	}
+	if len(remainingRatings) != 1 || remainingRatings[0].GetString("item") != secondItemID {
+		t.Fatalf("expected only the retained tasting rating to remain, got %#v", remainingRatings)
+	}
+
+	ordinaryItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":      generatedVisitID,
+		"user":       leader.Id,
+		"name":       "Ordinary Snack",
+		"rating":     3,
+		"visibility": "friends",
+	})
+
+	preserveVisitResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		authToken,
+		`{"restaurants":[]}`,
+	)
+	if preserveVisitResponse.Code != http.StatusOK {
+		t.Fatalf("expected empty rating resubmission to succeed, got %d: %s", preserveVisitResponse.Code, preserveVisitResponse.Body.String())
+	}
+	if _, err := server.app.FindRecordById("visits", generatedVisitID); err != nil {
+		t.Fatalf("expected generated visit with an ordinary item to remain: %v", err)
+	}
+	if _, err := server.app.FindRecordById("food_items", secondGeneratedFoodItemID); err == nil {
+		t.Fatal("expected final omitted tasting-generated item to be removed")
+	}
+	remainingRatings, err = server.app.FindRecordsByFilter(
+		"tasting_session_ratings",
+		"session = {:session} && user = {:user}",
+		"",
+		10,
+		0,
+		map[string]any{"session": createdSession.ID, "user": leader.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load ratings after empty resubmission: %v", err)
+	}
+	if len(remainingRatings) != 0 {
+		t.Fatalf("expected omitted tasting rating to be removed, got %d", len(remainingRatings))
+	}
+
+	if err := server.app.Delete(ordinaryItem); err != nil {
+		t.Fatalf("failed to remove ordinary visit item: %v", err)
+	}
+	rerateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		authToken,
+		`{"restaurants":[{"restaurantSuggestionId":"`+restaurantSuggestionID+`","items":[{"itemId":"`+itemID+`","rating":5,"note":"Fresh again"}]}]}`,
+	)
+	if rerateResponse.Code != http.StatusOK {
+		t.Fatalf("expected rerating to succeed, got %d: %s", rerateResponse.Code, rerateResponse.Body.String())
+	}
+	reratedSession := parseJSONResponse[tastingSessionResponse](t, rerateResponse.Body.Bytes())
+	if reratedSession.Restaurants[0].Items[0].Ratings[0].GeneratedVisitID != generatedVisitID {
+		t.Fatalf("expected rerating to reuse current generated visit %s, got %#v", generatedVisitID, reratedSession.Restaurants[0].Items[0].Ratings[0])
+	}
+
+	deleteEmptyVisitResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		authToken,
+		`{"restaurants":[]}`,
+	)
+	if deleteEmptyVisitResponse.Code != http.StatusOK {
+		t.Fatalf("expected final empty rating resubmission to succeed, got %d: %s", deleteEmptyVisitResponse.Code, deleteEmptyVisitResponse.Body.String())
+	}
+	if _, err := server.app.FindRecordById("visits", generatedVisitID); err == nil {
+		t.Fatal("expected empty generated visit to be removed")
+	}
+
+	finalHomeFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=5&scope=mine&typeFilter=visits&sort=created",
+		authToken,
+		"",
+	)
+	if finalHomeFeedResponse.Code != http.StatusOK {
+		t.Fatalf("expected final home feed to load, got %d: %s", finalHomeFeedResponse.Code, finalHomeFeedResponse.Body.String())
+	}
+	homeFeedPayload.Items = nil
+	homeFeedPayload.TotalVisits = 0
+	if err := json.Unmarshal(finalHomeFeedResponse.Body.Bytes(), &homeFeedPayload); err != nil {
+		t.Fatalf("failed to parse final home feed response: %v", err)
+	}
+	if homeFeedPayload.TotalVisits != 1 || len(homeFeedPayload.Items) != 1 || homeFeedPayload.Items[0].Visit == nil {
+		t.Fatalf("expected only the older non-empty visit after cleanup, got %#v", homeFeedPayload)
+	}
+	if homeFeedPayload.Items[0].Visit.ID != olderVisit.Id {
+		t.Fatalf("expected older visit %s to remain, got %#v", olderVisit.Id, homeFeedPayload.Items[0].Visit)
 	}
 }
 
