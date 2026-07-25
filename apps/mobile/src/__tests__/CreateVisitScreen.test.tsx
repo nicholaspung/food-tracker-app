@@ -1262,6 +1262,21 @@ describe('CreateVisitScreen', () => {
 
   it('prompts before removing an unsaved create visit draft and replays confirmed navigation', async () => {
     const blockedBackAction = { source: 'CreateVisit-route', target: 'root-stack', type: 'GO_BACK' };
+    const completeNavigation = jest.fn();
+    navigation.dispatch.mockImplementation((action) => {
+      const [shouldPreventRemoval, preventRemoval] = mockUsePreventRemove.mock.calls.at(-1) ?? [];
+
+      if (shouldPreventRemoval) {
+        preventRemoval({
+          data: {
+            action,
+          },
+        });
+        return;
+      }
+
+      completeNavigation(action);
+    });
     mockedUseCreateVisitDraftItems.mockReturnValue({
       draftItems: [
         {
@@ -1320,6 +1335,8 @@ describe('CreateVisitScreen', () => {
         testID: 'create-visit-discard-draft-confirmation-modal',
       }).props.visible,
     ).toBe(false);
+    expect(mockUsePreventRemove).toHaveBeenLastCalledWith(true, expect.any(Function));
+    expect(completeNavigation).not.toHaveBeenCalled();
 
     await act(async () => {
       mockUsePreventRemove.mock.calls.at(-1)?.[1]({
@@ -1335,6 +1352,7 @@ describe('CreateVisitScreen', () => {
     });
 
     expect(navigation.dispatch).toHaveBeenCalledWith(blockedBackAction);
+    expect(completeNavigation).toHaveBeenCalledWith(blockedBackAction);
   });
 
   it('hydrates related-location preselected items without treating the suggestion id as a menu item id', async () => {

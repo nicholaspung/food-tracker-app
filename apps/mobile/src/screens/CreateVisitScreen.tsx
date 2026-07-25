@@ -571,6 +571,7 @@ export function CreateVisitScreen({
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [pendingDiscardNavigationAction, setPendingDiscardNavigationAction] =
     useState<NavigationAction | null>(null);
+  const [isDiscardDraftConfirmed, setIsDiscardDraftConfirmed] = useState(false);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
     null,
@@ -1985,7 +1986,8 @@ export function CreateVisitScreen({
     hasUnsavedChanges &&
     !isSubmitting &&
     !isConvertingVisitItem &&
-    !hasCompletedFlowRef.current;
+    !hasCompletedFlowRef.current &&
+    !isDiscardDraftConfirmed;
   usePreventRemove(shouldPreventDraftRemoval, ({ data }) => {
     if (!pendingDiscardNavigationAction) {
       setPendingDiscardNavigationAction(data.action);
@@ -1995,13 +1997,21 @@ export function CreateVisitScreen({
     setPendingDiscardNavigationAction(null);
   }, []);
   const handleConfirmDiscardDraft = useCallback(() => {
+    if (pendingDiscardNavigationAction) {
+      setIsDiscardDraftConfirmed(true);
+    }
+  }, [pendingDiscardNavigationAction]);
+
+  useEffect(() => {
+    if (!isDiscardDraftConfirmed || !pendingDiscardNavigationAction) {
+      return;
+    }
+
     const action = pendingDiscardNavigationAction;
     setPendingDiscardNavigationAction(null);
-
-    if (action) {
-      navigation.dispatch(action);
-    }
-  }, [navigation, pendingDiscardNavigationAction]);
+    setIsDiscardDraftConfirmed(false);
+    navigation.dispatch(action);
+  }, [isDiscardDraftConfirmed, navigation, pendingDiscardNavigationAction]);
 
   useEffect(() => {
     const canTrackFlow = !isEditMode || hydratedEditVisitId === editVisitId;
