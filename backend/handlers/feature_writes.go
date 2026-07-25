@@ -600,6 +600,10 @@ func createVisitTransaction(
 ) (visitCreateTransactionResult, error) {
 	result := visitCreateTransactionResult{}
 
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return result, err
+	}
+
 	if strings.TrimSpace(requestBody.RestaurantID) == "" && strings.TrimSpace(requestBody.RestaurantName) == "" {
 		return result, apis.NewBadRequestError("restaurant name is required", nil)
 	}
@@ -666,9 +670,13 @@ func createVisitTransaction(
 		visitRecord.Set("visitDate", normalizedVisitedAt)
 		visitRecord.Set(visitLocalDateFieldName, visitLocalDate)
 		visitRecord.Set("visibility", normalizedVisibility)
+		applyCreateModerationPolicy(authRecord, visitRecord)
 
 		if err := app.Save(visitRecord); err != nil {
 			return result, apis.NewApiError(500, "failed to create visit", err)
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, visitRecord); err != nil {
+			return result, err
 		}
 	}
 
@@ -1083,8 +1091,12 @@ func appendVisitItems(
 		createdItem.Set("user", authRecord.Id)
 		createdItem.Set("menuItem", emptyStringToNil(menuItemID))
 		createdItem.Set("itemType", foodItemTypeVisitItem)
+		applyCreateModerationPolicy(authRecord, createdItem)
 		if err := app.Save(createdItem); err != nil {
 			return nil, apis.NewApiError(500, "failed to create visit item", err)
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, createdItem); err != nil {
+			return nil, err
 		}
 
 		createdItemIDs = append(createdItemIDs, createdItem.Id)

@@ -2,13 +2,17 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/hooks"
+	"myapp/lib"
 )
 
 type visitResponsePayload struct {
@@ -397,6 +401,189 @@ func TestVisitCreateEndpointCreatesNestedRecords(t *testing.T) {
 	if count := countRestaurantsByName(t, server.app, "Noodle House"); count != 1 {
 		t.Fatalf("expected 1 restaurant, got %d", count)
 	}
+}
+
+func TestVisitCreateEndpointRejectsPostingSuspendedUser(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	user.Set("postingSuspendedUntil", time.Now().UTC().Add(time.Hour))
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to suspend user: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantName":"Blocked Bistro",
+			"visibility":"friends",
+			"items":[{"name":"Blocked Dish","rating":4}]
+		}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": user.Id}); count != 0 {
+		t.Fatalf("expected rejected create to persist no visits, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "food_items", "user = {:userId}", map[string]any{"userId": user.Id}); count != 0 {
+		t.Fatalf("expected rejected create to persist no food items, got %d", count)
+	}
+}
+
+func TestVisitCreateEndpointQuarantinesPreReviewContent(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	user.Set("contentModerationMode", lib.ContentModerationModePreReview)
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to enable pre-review mode: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantName":"Review Bistro",
+			"visibility":"friends",
+			"items":[{"name":"Review Dish","rating":4}]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload visitResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse visit payload: %v", err)
+	}
+
+	visit, err := server.app.FindRecordById("visits", payload.ID)
+	if err != nil {
+		t.Fatalf("failed to reload created visit: %v", err)
+	}
+	if visit.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+		t.Fatalf("expected visit moderationStatus=under_review, got %q", visit.GetString("moderationStatus"))
+	}
+
+	items, err := server.app.FindRecordsByFilter(
+		"food_items",
+		"visit = {:visitId}",
+		"",
+		10,
+		0,
+		map[string]any{"visitId": visit.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to reload created food items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one created food item, got %d", len(items))
+	}
+	if items[0].GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+		t.Fatalf("expected food item moderationStatus=under_review, got %q", items[0].GetString("moderationStatus"))
+	}
+
+	for _, target := range []struct {
+		recordID   string
+		targetType string
+	}{
+		{recordID: visit.Id, targetType: "visit"},
+		{recordID: items[0].Id, targetType: "food-item"},
+	} {
+		moderationCase, err := server.app.FindFirstRecordByFilter(
+			"moderation_cases",
+			"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+			map[string]any{
+				"targetType":     target.targetType,
+				"targetRecordId": target.recordID,
+			},
+		)
+		if err != nil {
+			t.Fatalf("failed to load %s moderation case: %v", target.targetType, err)
+		}
+		if moderationCase.GetString("status") != lib.ModerationCaseStatusUnderReview {
+			t.Fatalf(
+				"expected %s moderation case status=under_review, got %q",
+				target.targetType,
+				moderationCase.GetString("status"),
+			)
+		}
+	}
+}
+
+func TestVisitCollectionCreateAppliesModerationPolicy(t *testing.T) {
+	t.Run("rejects posting-suspended users", func(t *testing.T) {
+		server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+			hooks.RegisterModerationHooks(app)
+		})
+		user, token := createAuthUser(t, server.app, false, true)
+		user.Set("moderationState", lib.UserModerationStateBanned)
+		if err := server.app.Save(user); err != nil {
+			t.Fatalf("failed to suspend user: %v", err)
+		}
+		restaurant := seedRestaurantRecord(t, server.app, user.Id, "Direct Blocked Bistro")
+
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/collections/visits/records",
+			token,
+			fmt.Sprintf(
+				`{"restaurant":"%s","user":"%s","visitDate":"2026-04-05T18:00:00Z","visibility":"friends"}`,
+				restaurant.Id,
+				user.Id,
+			),
+		)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+		}
+	})
+
+	t.Run("quarantines pre-review content", func(t *testing.T) {
+		server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+			hooks.RegisterModerationHooks(app)
+		})
+		user, token := createAuthUser(t, server.app, false, true)
+		user.Set("contentModerationMode", lib.ContentModerationModePreReview)
+		if err := server.app.Save(user); err != nil {
+			t.Fatalf("failed to enable pre-review mode: %v", err)
+		}
+		restaurant := seedRestaurantRecord(t, server.app, user.Id, "Direct Review Bistro")
+
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/collections/visits/records",
+			token,
+			fmt.Sprintf(
+				`{"restaurant":"%s","user":"%s","visitDate":"2026-04-05T18:00:00Z","visibility":"friends"}`,
+				restaurant.Id,
+				user.Id,
+			),
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+		}
+
+		payload := parseJSONMap(t, response.Body.Bytes())
+		visitID, _ := payload["id"].(string)
+		visit, err := server.app.FindRecordById("visits", visitID)
+		if err != nil {
+			t.Fatalf("failed to reload direct-created visit: %v", err)
+		}
+		if visit.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+			t.Fatalf("expected moderationStatus=under_review, got %q", visit.GetString("moderationStatus"))
+		}
+	})
 }
 
 func TestVisitCreateEndpointRecordsSuggestionProvenanceForQualifiedGroupSuggestion(t *testing.T) {

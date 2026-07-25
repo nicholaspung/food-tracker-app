@@ -79,6 +79,34 @@ type ContentReportInput struct {
 	TargetUserID     string
 }
 
+var postingModerationCollections = map[string]struct{}{
+	"visits":           {},
+	"food_items":       {},
+	"notes":            {},
+	"restaurant_lists": {},
+	"list_items":       {},
+}
+
+var photoModerationCollections = map[string]struct{}{
+	"visit_photos": {},
+	"note_photos":  {},
+}
+
+func IsPostingModerationCollection(collectionName string) bool {
+	_, ok := postingModerationCollections[strings.TrimSpace(collectionName)]
+	return ok
+}
+
+func IsPhotoModerationCollection(collectionName string) bool {
+	_, ok := photoModerationCollections[strings.TrimSpace(collectionName)]
+	return ok
+}
+
+func ContentWriteRequiresPreReview(user *core.Record, collectionName string) bool {
+	return IsUserInPreReviewMode(user) &&
+		(IsPostingModerationCollection(collectionName) || IsPhotoModerationCollection(collectionName))
+}
+
 func IsVisibleContentModerationStatus(status string) bool {
 	switch strings.TrimSpace(status) {
 	case "", ContentModerationStatusActive, ContentModerationStatusReviewed:
@@ -199,6 +227,71 @@ func UpsertModerationCase(app core.App, input ModerationCaseInput) (*core.Record
 	}
 
 	return record, nil
+}
+
+func UpsertPreReviewModerationCase(app core.App, record *core.Record) (*core.Record, error) {
+	if record == nil {
+		return nil, fmt.Errorf("record is required")
+	}
+
+	collectionName := record.Collection().Name
+	return UpsertModerationCase(app, ModerationCaseInput{
+		Action:           ModerationActionQuarantine,
+		ReasonCode:       "pre_review",
+		Status:           ModerationCaseStatusUnderReview,
+		TargetCollection: collectionName,
+		TargetLabel:      ResolveAuditTargetLabel(record, RecordAuditSnapshot(record)),
+		TargetRecordID:   record.Id,
+		TargetType:       mapModerationTargetType(collectionName, record),
+		TargetUserID:     resolveModerationTargetUserID(record),
+	})
+}
+
+func resolveModerationTargetUserID(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+
+	switch {
+	case strings.TrimSpace(record.GetString("user")) != "":
+		return strings.TrimSpace(record.GetString("user"))
+	case strings.TrimSpace(record.GetString("addedBy")) != "":
+		return strings.TrimSpace(record.GetString("addedBy"))
+	case strings.TrimSpace(record.GetString("createdBy")) != "":
+		return strings.TrimSpace(record.GetString("createdBy"))
+	default:
+		return ""
+	}
+}
+
+func mapModerationTargetType(collectionName string, record *core.Record) string {
+	switch collectionName {
+	case "visits":
+		return "visit"
+	case "food_items":
+		if isFoodProductRecord(record) {
+			return "food-product"
+		}
+		return "food-item"
+	case "restaurant_lists":
+		return "list"
+	case "list_items":
+		return "list-item"
+	case "notes":
+		return "note"
+	case "visit_photos", "note_photos":
+		return "photo"
+	default:
+		return collectionName
+	}
+}
+
+func isFoodProductRecord(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	return strings.TrimSpace(record.GetString("itemType")) == "food-product"
 }
 
 func UpsertContentReport(app core.App, input ContentReportInput) (*core.Record, error) {
