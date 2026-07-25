@@ -37,13 +37,6 @@ type LoopsEventInput struct {
 	MailingLists    map[string]bool
 }
 
-type LoopsTransactionalInput struct {
-	TransactionalID string
-	Email           string
-	DataVariables   map[string]any
-	AddToAudience   bool
-}
-
 type loopsResponse struct {
 	Success bool   `json:"success"`
 	ID      string `json:"id"`
@@ -126,24 +119,6 @@ func (client LoopsClient) SendEvent(input LoopsEventInput) error {
 
 	var response loopsResponse
 	return client.doJSON(http.MethodPost, "/events/send", payload, &response)
-}
-
-func (client LoopsClient) SendTransactionalEmail(input LoopsTransactionalInput) error {
-	if !client.IsConfigured() {
-		return nil
-	}
-
-	payload := map[string]any{
-		"transactionalId": strings.TrimSpace(input.TransactionalID),
-		"email":           strings.ToLower(strings.TrimSpace(input.Email)),
-		"dataVariables":   input.DataVariables,
-	}
-	if input.AddToAudience {
-		payload["addToAudience"] = true
-	}
-
-	var response loopsResponse
-	return client.doJSON(http.MethodPost, "/transactional", payload, &response)
 }
 
 func (client LoopsClient) doJSON(method string, path string, payload map[string]any, target *loopsResponse) error {
