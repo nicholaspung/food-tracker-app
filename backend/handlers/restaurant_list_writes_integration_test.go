@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/hooks"
+	"myapp/lib"
 )
 
 type restaurantListDetailPayload struct {
@@ -214,6 +217,170 @@ func TestRestaurantListSaveBookmarkEndpointDedupesExistingFoodItem(t *testing.T)
 	); count != 1 {
 		t.Fatalf("expected 1 deduped list item, got %d", count)
 	}
+}
+
+func TestRestaurantListSaveBookmarkEndpointRejectsPostingSuspendedUser(t *testing.T) {
+	for _, variant := range []string{"restaurant", "menu-item", "food-item"} {
+		t.Run(variant, func(t *testing.T) {
+			server, user, token, list, restaurant, requestBody := newBookmarkModerationFixture(t, variant)
+			user.Set("postingSuspendedUntil", time.Now().UTC().Add(time.Hour))
+			if err := server.app.Save(user); err != nil {
+				t.Fatalf("failed to suspend user: %v", err)
+			}
+
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodPost,
+				fmt.Sprintf("/api/restaurant-lists/%s/bookmarks", list.Id),
+				token,
+				requestBody,
+			)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+			}
+
+			if count := countRecordsByFilter(
+				t,
+				server.app,
+				"list_items",
+				"list = {:listId} && restaurant = {:restaurantId}",
+				map[string]any{"listId": list.Id, "restaurantId": restaurant.Id},
+			); count != 0 {
+				t.Fatalf("expected rejected %s bookmark to create no list items, got %d", variant, count)
+			}
+		})
+	}
+}
+
+func TestRestaurantListSaveBookmarkEndpointQuarantinesPreReviewUser(t *testing.T) {
+	for _, variant := range []string{"restaurant", "menu-item", "food-item"} {
+		t.Run(variant, func(t *testing.T) {
+			server, user, token, list, restaurant, requestBody := newBookmarkModerationFixture(t, variant)
+			user.Set("contentModerationMode", lib.ContentModerationModePreReview)
+			if err := server.app.Save(user); err != nil {
+				t.Fatalf("failed to enable pre-review mode: %v", err)
+			}
+
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodPost,
+				fmt.Sprintf("/api/restaurant-lists/%s/bookmarks", list.Id),
+				token,
+				requestBody,
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+			}
+
+			records, err := server.app.FindRecordsByFilter(
+				"list_items",
+				"list = {:listId} && restaurant = {:restaurantId}",
+				"",
+				10,
+				0,
+				map[string]any{"listId": list.Id, "restaurantId": restaurant.Id},
+			)
+			if err != nil {
+				t.Fatalf("failed to reload %s bookmark: %v", variant, err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("expected one %s bookmark, got %d", variant, len(records))
+			}
+			if records[0].GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+				t.Fatalf(
+					"expected %s bookmark moderationStatus=under_review, got %q",
+					variant,
+					records[0].GetString("moderationStatus"),
+				)
+			}
+
+			moderationCase, err := server.app.FindFirstRecordByFilter(
+				"moderation_cases",
+				"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+				map[string]any{"targetType": "list-item", "targetRecordId": records[0].Id},
+			)
+			if err != nil {
+				t.Fatalf("failed to load %s bookmark moderation case: %v", variant, err)
+			}
+			if moderationCase.GetString("status") != lib.ModerationCaseStatusUnderReview {
+				t.Fatalf(
+					"expected %s bookmark moderation case status=under_review, got %q",
+					variant,
+					moderationCase.GetString("status"),
+				)
+			}
+		})
+	}
+}
+
+func TestRestaurantListItemCollectionCreateRejectsPostingSuspendedUser(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterModerationHooks(app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Direct Bookmark Bistro")
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Direct Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	user.Set("moderationState", lib.UserModerationStateBanned)
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to ban user: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/list_items/records",
+		token,
+		fmt.Sprintf(
+			`{"list":"%s","restaurant":"%s","addedBy":"%s","position":1}`,
+			list.Id,
+			restaurant.Id,
+			user.Id,
+		),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func newBookmarkModerationFixture(
+	t *testing.T,
+	variant string,
+) (*preparedServer, *core.Record, string, *core.Record, *core.Record, string) {
+	t.Helper()
+
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Moderated Bookmark Bistro")
+	listData := map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	}
+	if variant != "food-item" {
+		listData["name"] = "Want to Try"
+		listData["isDefault"] = true
+	}
+	list := createCollectionRecord(t, server.app, "restaurant_lists", listData)
+
+	requestBody := fmt.Sprintf(`{"restaurantId":"%s"}`, restaurant.Id)
+	switch variant {
+	case "menu-item":
+		menuItem := seedMenuItemRecord(t, server.app, restaurant.Id, user.Id, "Saved Noodles", "public", false)
+		requestBody = fmt.Sprintf(`{"restaurantId":"%s","menuItemId":"%s"}`, restaurant.Id, menuItem.Id)
+	case "food-item":
+		visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+		foodItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Saved Soup", 4)
+		requestBody = fmt.Sprintf(`{"restaurantId":"%s","foodItemId":"%s"}`, restaurant.Id, foodItem.Id)
+	}
+
+	return server, user, token, list, restaurant, requestBody
 }
 
 func TestRestaurantListSaveBookmarkEndpointRecordsDurableFriendRecommendationUsage(t *testing.T) {

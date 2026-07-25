@@ -353,6 +353,9 @@ func saveRestaurantListBookmarkTransaction(
 	if err != nil {
 		return "", err
 	}
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return "", err
+	}
 
 	restaurantID := strings.TrimSpace(requestBody.RestaurantID)
 	if restaurantID == "" {
@@ -414,12 +417,16 @@ func saveRestaurantListBookmarkTransaction(
 		record.Set("menuItem", menuItemRecord.Id)
 		record.Set("position", nextPosition)
 		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
+		applyCreateModerationPolicy(authRecord, record)
 
 		if err := app.Save(record); err != nil {
 			if !isUniqueConstraintError(err) {
 				return "", apis.NewApiError(500, "failed to save menu item to default list", err)
 			}
 			return restaurantID, nil
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, record); err != nil {
+			return "", err
 		}
 
 		if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
@@ -478,6 +485,7 @@ func saveRestaurantListBookmarkTransaction(
 		record.Set("addedBy", authRecord.Id)
 		record.Set("position", nextPosition)
 		record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
+		applyCreateModerationPolicy(authRecord, record)
 
 		if err := app.Save(record); err != nil {
 			if !isUniqueConstraintError(err) {
@@ -493,6 +501,9 @@ func saveRestaurantListBookmarkTransaction(
 			}
 
 			return "", apis.NewApiError(500, "failed to save restaurant to default list", err)
+		}
+		if err := registerPreReviewModerationCase(app, authRecord, record); err != nil {
+			return "", err
 		}
 
 		if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
@@ -565,6 +576,7 @@ func saveRestaurantListBookmarkTransaction(
 	record.Set("foodItem", foodItemID)
 	record.Set("position", nextPosition)
 	record.Set("note", emptyStringToNil(strings.TrimSpace(derefString(requestBody.Note))))
+	applyCreateModerationPolicy(authRecord, record)
 
 	if err := app.Save(record); err != nil {
 		if !isUniqueConstraintError(err) {
@@ -580,6 +592,9 @@ func saveRestaurantListBookmarkTransaction(
 		}
 
 		return "", apis.NewApiError(500, "failed to save bookmark to restaurant list", err)
+	}
+	if err := registerPreReviewModerationCase(app, authRecord, record); err != nil {
+		return "", err
 	}
 
 	if err := recordSavedRecommendationUsageEvent(app, recommendationUsageEventInput{
