@@ -116,6 +116,10 @@ _Avoid_: Analytics dashboard, notification when a durable proof summary is meant
 A map view of the restaurants inside one **Restaurant List**.
 _Avoid_: Lists map
 
+**Home Feed Map**:
+The viewport-bounded map representation of the currently filtered Home feed, showing eligible Visit and Food Product entries grouped by restaurant location.
+_Avoid_: feed map, discovery map, list map
+
 **Food Discovery**:
 The exploratory surface for finding restaurants from saved restaurants, Google Places search, nearby search, or storefront photo extraction before recording food activity.
 _Avoid_: saved places, restaurant list, discovery feed
@@ -330,6 +334,12 @@ _Avoid_: notification inbox, user notification history
 - **Source Note Completion** may happen after a completed entry write or be queued after a queued entry write.
 - A **List Detail** belongs to exactly one **Restaurant List**.
 - A **List Detail Map** plots only the restaurants in its **Restaurant List**.
+- **Home Feed Map** follows the Home feed's active Mine or Friends scope plus its search, type, and sort filters.
+- **Home Feed Map** includes Visit and Food Product entries only when their linked restaurant has usable coordinates inside the current viewport.
+- **Home Feed Map** groups visible entries by restaurant location and loads selected-location feed details separately from marker summaries.
+- Moving the **Home Feed Map** viewport may replace the visible result set; it is not a paginated projection of the Home feed rows already loaded in list view.
+- **Home Feed Map** applies the same Mine/Friends visibility policy as the Home feed and month-redacts friend-scope marker and selected Visit/Food Product timestamps; selected-location photo-preview timestamps remain exact in the current read model.
+- **Home Feed Map** is a filtered personal-history feed representation, not nearby exploration in **Food Discovery Map** or membership in a **List Detail Map**.
 - **Food Discovery** may surface saved restaurants, Google places, nearby restaurants, and storefront-extracted names, but it does not create a **Restaurant List**.
 - **Storefront Scan History** is local persistence for **Food Discovery** saved scan results; it is not a backend restaurant record, **Restaurant List**, or **Menu Scan Source Image**.
 - **Food Discovery** prioritizes nearby restaurants for exploratory browsing; saved restaurants are fallback or recall content, not the primary discovery result.
@@ -491,6 +501,9 @@ _Avoid_: notification inbox, user notification history
 
 > **Dev:** "Should the **List Detail Map** include every list the viewer can see?"
 > **Domain expert:** "No - it only plots restaurants from the currently opened **Restaurant List**."
+
+> **Dev:** "Does **Home Feed Map** show only the Home rows already loaded in list view?"
+> **Domain expert:** "No - it queries the currently filtered feed inside the map viewport and loads selected-location details separately."
 
 > **Dev:** "Is a **Shared Restaurant List** the same as making a **Restaurant List** public?"
 > **Domain expert:** "No - it is a revocable secret-link view, while the Restaurant List keeps its normal visibility."
