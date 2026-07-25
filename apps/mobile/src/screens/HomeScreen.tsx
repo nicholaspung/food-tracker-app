@@ -1842,17 +1842,31 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     ({ section }: { section: FriendFeedSection }) => {
       const isMonthExpanded = expandedMonths.has(section.monthKey);
       const isFirstMonth = section.monthKey === firstFriendMonthKey;
+      const accessibilityLabel = [
+        section.monthLabel,
+        formatCount(section.visitsCount, 'visit', 'visits'),
+        formatCount(section.foodProductCount, 'food product', 'food products'),
+      ].join(', ');
 
       return (
         <View style={[styles.monthSectionHeader, isFirstMonth ? styles.monthFirstSectionHeader : null]}>
           <Pressable
+            accessible
+            accessibilityLabel={accessibilityLabel}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isMonthExpanded }}
             onPress={() => {
               toggleMonth(section.monthKey);
             }}
             style={styles.monthHeader}
           >
             <View style={styles.monthHeaderLeft}>
-              <Text style={styles.monthChevron} variant="labelMdBold">
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={styles.monthChevron}
+                variant="labelMdBold"
+              >
                 {isMonthExpanded ? 'v' : '>'}
               </Text>
               <Text style={styles.monthLabel} variant="titleSm">{section.monthLabel}</Text>

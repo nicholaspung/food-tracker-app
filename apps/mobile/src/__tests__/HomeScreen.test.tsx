@@ -2892,6 +2892,98 @@ describe('HomeScreen', () => {
     expect(sectionList.props.SectionSeparatorComponent).toBeUndefined();
   });
 
+  it('announces friend-feed month headers with count context and expanded state', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        email: 'user@example.com',
+        id: 'user-1',
+      },
+    } as never);
+    mockHomeFeedQuery({
+      items: [
+        {
+          eventAt: '2026-04-18T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            createdAt: '2026-04-18T08:00:00.000Z',
+            id: 'visit-friend',
+            items: [
+              {
+                id: 'visit-item-friend',
+                menuItemVisibility: 'friends',
+                name: 'Friend Noodles',
+                rating: 8,
+              },
+            ],
+            restaurantName: 'Friend Bistro',
+            source: 'visit',
+            updatedAt: '2026-04-18T08:05:00.000Z',
+            userId: 'friend-user',
+            userName: 'Friend',
+            visitedAt: '2026-04-18T08:00:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-19T08:00:00.000Z',
+          foodProduct: {
+            createdAt: '2026-04-19T08:00:00.000Z',
+            id: 'food-product-friend',
+            itemName: 'Friend Snack',
+            rating: 8,
+            source: 'food_product',
+            updatedAt: '2026-04-19T08:05:00.000Z',
+            userId: 'friend-user',
+            userName: 'Friend',
+          },
+          source: 'food_product',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const accessibilityLabel = 'April 2026, 1 visit, 1 food product';
+    const findMonthHeader = () => renderer.root.findByProps({ accessibilityLabel });
+
+    expect(findMonthHeader().props.accessibilityRole).toBe('button');
+    expect(findMonthHeader().props.accessibilityState).toEqual({ expanded: true });
+    expect(
+      findMonthHeader()
+        .findAllByType('Text')
+        .find((node: any) => node.children.includes('v'))?.props,
+    ).toEqual(
+      expect.objectContaining({
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants',
+      }),
+    );
+
+    await act(async () => {
+      findMonthHeader().props.onPress();
+    });
+
+    expect(findMonthHeader().props.accessibilityState).toEqual({ expanded: false });
+  });
+
   it('keeps the home list refresh prop active until the refetch lifecycle settles', async () => {
     const refetchDeferred = createDeferred<{
       data: {
