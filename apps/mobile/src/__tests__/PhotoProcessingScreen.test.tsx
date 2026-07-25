@@ -540,6 +540,58 @@ describe('PhotoProcessingScreen', () => {
     } as ReturnType<typeof usePhotoProcessingSubmission>);
   });
 
+  it('exposes photo grouping selection and minimum touch targets to assistive technology', async () => {
+    const renderer = await renderPhotoProcessingScreen();
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[0].props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    const firstGroup = renderer.root.findByProps({
+      accessibilityLabel: 'Select item group 1',
+    });
+    const secondGroup = renderer.root.findByProps({
+      accessibilityLabel: 'Select item group 2',
+    });
+    const addSecondPhoto = renderer.root.findByProps({
+      accessibilityLabel: 'Add second.jpg to Item 1',
+    });
+
+    expect(firstGroup.props.accessibilityState).toEqual({ selected: true });
+    expect(secondGroup.props.accessibilityState).toEqual({ selected: false });
+    expect(addSecondPhoto.props.accessibilityState).toEqual({ disabled: false });
+    expect(addSecondPhoto.props.hitSlop).toBe(8);
+    expect(
+      renderer.root.findByProps({
+        accessibilityLabel: 'View second.jpg full screen',
+      }),
+    ).not.toBe(addSecondPhoto);
+
+    await act(async () => {
+      addSecondPhoto.props.onPress();
+    });
+
+    const removeSecondPhoto = renderer.root.findByProps({
+      accessibilityLabel: 'Remove second.jpg from Item 1',
+    });
+    expect(removeSecondPhoto.props.hitSlop).toEqual({
+      bottom: 22,
+      left: 22,
+    });
+    expect(removeSecondPhoto.props.style).toEqual(
+      expect.objectContaining({
+        height: 22,
+        right: 0,
+        top: 0,
+        width: 22,
+      }),
+    );
+  });
+
   it('shows selected photos before muted add-more controls once photos exist', async () => {
     const renderer = await renderPhotoProcessingScreen();
 

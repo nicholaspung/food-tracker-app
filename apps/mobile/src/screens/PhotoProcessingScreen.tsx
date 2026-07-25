@@ -283,8 +283,8 @@ const useStyles = createThemedStyles((theme) => ({
     height: 22,
     justifyContent: 'center',
     position: 'absolute',
-    right: -6,
-    top: -6,
+    right: 0,
+    top: 0,
     width: 22,
   },
   largePhotoPreview: {
@@ -2238,6 +2238,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 <Pressable
                   accessibilityLabel={`Select item group ${index + 1}`}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
                   key={group.id}
                   onPress={() => {
                     setSelectedRestaurantPhotoGroupId(group.id);
@@ -2305,6 +2306,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     <Pressable
                       accessibilityLabel={`Remove ${photo.name} from ${selectedGroupTitle}`}
                       accessibilityRole="button"
+                      hitSlop={{ bottom: 22, left: 22 }}
                       onPress={() => {
                         splitPhotoToRestaurantGroup(photo.id);
                       }}
@@ -2343,9 +2345,20 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                       <Image source={{ uri: photo.uri }} style={styles.groupingPhotoImage} />
                     </Pressable>
                     <Pressable
-                      accessibilityLabel={`Add ${photo.name} to ${selectedGroupTitle}`}
+                      accessibilityHint={
+                        selectedGroupId
+                          ? undefined
+                          : 'Select an item group before adding this photo.'
+                      }
+                      accessibilityLabel={
+                        selectedGroupId
+                          ? `Add ${photo.name} to ${selectedGroupTitle}`
+                          : `Add ${photo.name} to an item group`
+                      }
                       accessibilityRole="button"
+                      accessibilityState={{ disabled: !selectedGroupId }}
                       disabled={!selectedGroupId}
+                      hitSlop={8}
                       onPress={() => {
                         if (selectedGroupId) {
                           movePhotoToRestaurantGroup(photo.id, selectedGroupId);
