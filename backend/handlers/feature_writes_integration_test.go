@@ -2310,6 +2310,93 @@ func TestVisitUpdateEndpointRequiresOwner(t *testing.T) {
 	}
 }
 
+func TestVisitUpdateEndpointRejectsPostingSuspendedOwnerWithoutMutations(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Suspended Owner Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Original Soup", 4)
+
+	owner.Set("postingSuspendedUntil", time.Now().UTC().Add(time.Hour))
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to suspend owner: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/visits/"+visit.Id,
+		token,
+		fmt.Sprintf(
+			`{
+				"visibility":"private",
+				"items":[
+					{"id":"%s","name":"Changed Soup","rating":1},
+					{"name":"New Dish","rating":5}
+				]
+			}`,
+			item.Id,
+		),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit: %v", err)
+	}
+	if reloadedVisit.GetString("visibility") != "friends" {
+		t.Fatalf("expected visit visibility to remain friends, got %q", reloadedVisit.GetString("visibility"))
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit item: %v", err)
+	}
+	if reloadedItem.GetString("name") != "Original Soup" || reloadedItem.GetFloat("rating") != 4 {
+		t.Fatalf("expected existing item to remain unchanged, got name=%q rating=%v", reloadedItem.GetString("name"), reloadedItem.GetFloat("rating"))
+	}
+	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": visit.Id}); count != 1 {
+		t.Fatalf("expected rejected update to create no food items, got %d total", count)
+	}
+}
+
+func TestVisitCollectionUpdateRejectsPostingSuspendedOwner(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterModerationHooks(app)
+	})
+	owner, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Direct Suspended Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+
+	owner.Set("moderationState", lib.UserModerationStateBanned)
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to ban owner: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/visits/records/"+visit.Id,
+		token,
+		`{"visibility":"private"}`,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit: %v", err)
+	}
+	if reloadedVisit.GetString("visibility") != "friends" {
+		t.Fatalf("expected visit visibility to remain friends, got %q", reloadedVisit.GetString("visibility"))
+	}
+}
+
 func TestVisitUpdateEndpointSynchronizesVisitLocalDate(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

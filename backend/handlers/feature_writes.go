@@ -990,6 +990,9 @@ func updateVisitTransaction(
 	if visitRecord.GetString("user") != authRecord.Id {
 		return nil, apis.NewForbiddenError("you can only edit your own visits", nil)
 	}
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return nil, err
+	}
 
 	if requestBody.RestaurantID != nil || requestBody.RestaurantName != nil {
 		nextRestaurantID := ""
