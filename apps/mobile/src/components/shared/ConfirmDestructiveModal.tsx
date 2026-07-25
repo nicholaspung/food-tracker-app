@@ -36,6 +36,7 @@ export function ConfirmDestructiveModal({
 
   return (
     <Modal
+      accessibilityLabel={title}
       description={description}
       onRequestClose={onCancel}
       primaryAction={{

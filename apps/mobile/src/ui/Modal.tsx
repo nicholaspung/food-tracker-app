@@ -1,4 +1,4 @@
-import { Modal as RNModal, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Modal as RNModal, Pressable, StyleSheet, View } from 'react-native';
 import type { PropsWithChildren } from 'react';
 
 import { useTheme } from '../theme';
@@ -16,6 +16,7 @@ interface ModalAction {
 
 export interface ModalProps {
   visible: boolean;
+  accessibilityLabel?: string;
   title?: string;
   description?: string;
   onRequestClose: () => void;
@@ -26,6 +27,7 @@ export interface ModalProps {
 
 export function Modal({
   visible,
+  accessibilityLabel,
   title,
   description,
   onRequestClose,
@@ -39,10 +41,17 @@ export function Modal({
   const styles = StyleSheet.create({
     overlay: {
       flex: 1,
-      backgroundColor: theme.colors.background.overlay,
       alignItems: 'center',
       justifyContent: 'center',
       padding: theme.spacing.lg,
+    },
+    backdrop: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: theme.colors.background.overlay,
     },
     card: {
       width: '100%',
@@ -69,12 +78,43 @@ export function Modal({
   });
 
   const hasTwoActions = Boolean(primaryAction && secondaryAction);
+  const resolvedAccessibilityLabel =
+    accessibilityLabel?.trim() || title?.trim() || description?.trim() || 'Dialog';
 
   return (
-    <RNModal animationType="fade" onRequestClose={onRequestClose} transparent visible={visible}>
-      <Pressable onPress={onRequestClose} style={styles.overlay}>
-        <Pressable onPress={() => undefined} style={styles.card} testID={testID}>
-          {title ? <Text variant="titleMd">{title}</Text> : null}
+    <RNModal
+      accessibilityLabel={resolvedAccessibilityLabel}
+      accessibilityViewIsModal
+      animationType="fade"
+      onRequestClose={onRequestClose}
+      onShow={() => {
+        AccessibilityInfo.announceForAccessibility(`Dialog, ${resolvedAccessibilityLabel}`);
+      }}
+      transparent
+      visible={visible}
+    >
+      <View style={styles.overlay}>
+        <Pressable
+          accessibilityElementsHidden
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          onPress={onRequestClose}
+          style={styles.backdrop}
+        />
+        <View
+          accessibilityViewIsModal
+          accessible={false}
+          importantForAccessibility="no"
+          onAccessibilityEscape={onRequestClose}
+          onStartShouldSetResponder={() => true}
+          style={styles.card}
+          testID={testID}
+        >
+          {title ? (
+            <Text accessibilityRole="header" variant="titleMd">
+              {title}
+            </Text>
+          ) : null}
           {description ? <Text tone="secondary">{description}</Text> : null}
           {children}
           {primaryAction || secondaryAction ? (
@@ -103,8 +143,8 @@ export function Modal({
               ) : null}
             </View>
           ) : null}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </RNModal>
   );
 }
