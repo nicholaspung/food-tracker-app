@@ -408,6 +408,67 @@ describe('FeatureOnboardingScreen', () => {
     expect(renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.disabled).toBe(true);
   });
 
+  it('exposes reachable, stateful carousel controls', async () => {
+    const renderer = await renderFeatureOnboardingScreen();
+    const previous = renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' });
+    const next = renderer.root.findByProps({ testID: 'feature-onboarding-next-button' });
+    const welcome = renderer.root.findByProps({ testID: 'feature-onboarding-indicator-welcome' });
+    const privacy = renderer.root.findByProps({ testID: 'feature-onboarding-indicator-month_privacy' });
+
+    expect(previous.props.accessibilityState).toEqual({ disabled: true });
+    expect(next.props.accessibilityState).toEqual({ disabled: false });
+    expect(previous.props.style[0]).toEqual(expect.objectContaining({ height: 44, width: 44 }));
+    expect(next.props.style[0]).toEqual(expect.objectContaining({ height: 44, width: 44 }));
+    expect(welcome.props.accessibilityLabel).toBe('Show onboarding card 1: Welcome to Yummy Recs');
+    expect(welcome.props.accessibilityState).toEqual({ selected: true });
+    expect(privacy.props.accessibilityState).toEqual({ selected: false });
+    expect(welcome.props.style).toEqual(expect.objectContaining({ minHeight: 44, minWidth: 44 }));
+    expect(renderer.root.findByProps({ testID: 'feature-onboarding-indicators-scroll' }).props.horizontal).toBe(true);
+
+    await act(async () => {
+      next.props.onPress();
+    });
+
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-previous-button' }).props.accessibilityState,
+    ).toEqual({ disabled: false });
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-welcome' }).props.accessibilityState,
+    ).toEqual({ selected: false });
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-month_privacy' }).props.accessibilityState,
+    ).toEqual({ selected: true });
+
+    const carousel = renderer.root.findAllByType('ScrollView').find((node: any) => node.props.pagingEnabled);
+    await act(async () => {
+      carousel.props.onMomentumScrollEnd({
+        nativeEvent: {
+          contentOffset: {
+            x: 716,
+          },
+        },
+      });
+    });
+
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-month_privacy' }).props.accessibilityState,
+    ).toEqual({ selected: false });
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-tutorials' }).props.accessibilityState,
+    ).toEqual({ selected: true });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.onPress();
+    });
+
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-next-button' }).props.accessibilityState,
+    ).toEqual({ disabled: true });
+    expect(
+      renderer.root.findByProps({ testID: 'feature-onboarding-indicator-support_invites' }).props.accessibilityState,
+    ).toEqual({ selected: true });
+  });
+
   it('finishes onboarding and resets to Home', async () => {
     const renderer = await renderFeatureOnboardingScreen();
 

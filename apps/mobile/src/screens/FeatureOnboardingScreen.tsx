@@ -36,6 +36,8 @@ interface MainOnboardingCard {
   accentIcons?: IoniconName[];
 }
 
+const CAROUSEL_CONTROL_SIZE = 44;
+
 function resolvePublishedMainOnboardingMedia(
   cardId: MainOnboardingCardId,
   key: keyof typeof FEATURE_ONBOARDING_ASSETS,
@@ -271,9 +273,9 @@ const useStyles = createThemedStyles((
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
-    height: 36,
+    height: CAROUSEL_CONTROL_SIZE,
     justifyContent: 'center',
-    width: 36,
+    width: CAROUSEL_CONTROL_SIZE,
   },
   arrowButtonDisabled: {
     opacity: 0.35,
@@ -284,8 +286,15 @@ const useStyles = createThemedStyles((
     gap: theme.spacing.xs,
     justifyContent: 'center',
   },
+  dotsViewport: {
+    flex: 1,
+  },
   indicatorButton: {
+    alignItems: 'center',
     borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    minHeight: CAROUSEL_CONTROL_SIZE,
+    minWidth: CAROUSEL_CONTROL_SIZE,
     paddingHorizontal: theme.spacing.xxs,
     paddingVertical: theme.spacing.xs,
   },
@@ -383,6 +392,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
   const { isOnline } = useConnectivity();
   const onboardingWrites = useOnboardingProgressWrites();
   const carouselRef = useRef<ScrollView | null>(null);
+  const indicatorScrollRef = useRef<ScrollView | null>(null);
   const lastTrackedCardKeyRef = useRef<string | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(() => findMainOnboardingCardIndex(initialCardId));
   const [isSaving, setIsSaving] = useState(false);
@@ -438,6 +448,14 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
       y: 0,
     });
   }, [boundedActiveCardIndex, carouselCardWidth]);
+
+  useEffect(() => {
+    indicatorScrollRef.current?.scrollTo({
+      animated: true,
+      x: boundedActiveCardIndex * (CAROUSEL_CONTROL_SIZE + theme.spacing.xs),
+      y: 0,
+    });
+  }, [boundedActiveCardIndex, theme.spacing.xs]);
 
   useEffect(() => {
     trackCardViewed(boundedActiveCardIndex, 'initial');
@@ -532,6 +550,7 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
           <Pressable
             accessibilityLabel="Show previous onboarding card"
             accessibilityRole="button"
+            accessibilityState={{ disabled: boundedActiveCardIndex === 0 }}
             disabled={boundedActiveCardIndex === 0}
             onPress={() => {
               navigateToCardIndex(boundedActiveCardIndex - 1, 'arrow');
@@ -545,14 +564,22 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
             <Ionicons color={theme.colors.text.primary} name="chevron-back" size={20} />
           </Pressable>
 
-          <View style={styles.dotsRow}>
+          <ScrollView
+            contentContainerStyle={styles.dotsRow}
+            horizontal
+            ref={indicatorScrollRef}
+            showsHorizontalScrollIndicator={false}
+            style={styles.dotsViewport}
+            testID="feature-onboarding-indicators-scroll"
+          >
             {MAIN_ONBOARDING_CARDS.map((card, index) => {
               const isActive = index === boundedActiveCardIndex;
 
               return (
                 <Pressable
-                  accessibilityLabel={`Show onboarding card ${index + 1}`}
+                  accessibilityLabel={`Show onboarding card ${index + 1}: ${card.title}`}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
                   key={card.id}
                   onPress={() => {
                     navigateToCardIndex(index, 'indicator');
@@ -564,11 +591,12 @@ export function FeatureOnboardingScreen({ navigation, route }: FeatureOnboarding
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           <Pressable
             accessibilityLabel="Show next onboarding card"
             accessibilityRole="button"
+            accessibilityState={{ disabled: isFinalCard }}
             disabled={isFinalCard}
             onPress={() => {
               navigateToCardIndex(boundedActiveCardIndex + 1, 'arrow');

@@ -161,7 +161,11 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
     width: 18,
   },
   indicatorButton: {
+    alignItems: 'center',
     borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
     paddingHorizontal: theme.spacing.xxs,
     paddingVertical: theme.spacing.xs,
   },
@@ -323,12 +327,14 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
           {ONBOARDING_CARDS.map((card, index) => (
             <Pressable
               key={card.id}
-              accessibilityLabel={`Show onboarding card ${index + 1}`}
+              accessibilityLabel={`Show onboarding card ${index + 1}: ${card.title}`}
               accessibilityRole="button"
+              accessibilityState={{ selected: index === boundedActiveCardIndex }}
               onPress={() => {
                 handleCardIndicatorPress(index);
               }}
               style={styles.indicatorButton}
+              testID={`onboarding-indicator-${card.id}`}
             >
               <View style={[styles.indicatorDot, index === boundedActiveCardIndex ? styles.indicatorDotActive : null]} />
             </Pressable>
