@@ -239,20 +239,6 @@ button {
   white-space: nowrap;
 }
 
-.nav-link-badge {
-  background: rgba(0, 113, 227, 0.12);
-  color: var(--accent);
-  border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.nav-link.active .nav-link-badge {
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
-}
-
 /* sidebar footer user card */
 .sidebar-user-card {
   display: flex;
@@ -451,11 +437,6 @@ button {
   width: 36px;
 }
 
-/* legacy sidebar-summary — hidden; no longer rendered */
-.sidebar-summary {
-  display: none;
-}
-
 /* ─── Content area ───────────────────────────────────────────────────────── */
 
 .content {
@@ -543,15 +524,6 @@ button {
   min-width: 0;
 }
 
-.hero-panel {
-  display: grid;
-  gap: 20px;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
-}
-
 .state-panel {
   background: var(--bg-soft);
   border-radius: var(--radius-sm);
@@ -574,25 +546,15 @@ button {
 
 /* ─── Grid layouts ───────────────────────────────────────────────────────── */
 
-.hero-grid,
 .metric-grid,
-.route-grid,
 .dashboard-status-grid,
 .detail-grid {
   display: grid;
   gap: 16px;
 }
 
-.hero-grid {
-  grid-template-columns: 1fr;
-}
-
 .metric-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.route-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dashboard-status-grid {
@@ -707,18 +669,6 @@ button {
   display: inline;
   padding: 0;
   text-align: left;
-}
-
-/* ─── Mini stat (auth hero) ──────────────────────────────────────────────── */
-
-.mini-stat {
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────────────── */
@@ -1695,12 +1645,6 @@ select.input {
   margin: 0;
 }
 
-.record-overview-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .record-overview-card {
   align-items: flex-start;
   background: var(--bg-soft);
@@ -1957,10 +1901,6 @@ select.input {
   flex-shrink: 0;
 }
 
-.moderation-detail-grid {
-  align-items: start;
-}
-
 .moderation-entry {
   gap: 14px;
 }
@@ -2048,26 +1988,9 @@ select.input {
   overflow-wrap: anywhere;
 }
 
-.moderation-review-workspace,
-.moderation-context-panel,
-.moderation-review-sidebar {
+.moderation-context-panel {
   display: grid;
   gap: 16px;
-}
-
-.moderation-case-switcher {
-  align-items: flex-start;
-}
-
-.moderation-review-grid {
-  align-items: start;
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.95fr);
-}
-
-.moderation-review-main {
-  min-width: 0;
 }
 
 .moderation-report-row {
@@ -2584,8 +2507,7 @@ select.input {
 }
 
 .moderation-case-card h3,
-.moderation-entry h3,
-.moderation-review-sidebar h3 {
+.moderation-entry h3 {
   line-height: 1.2;
 }
 
@@ -2694,10 +2616,6 @@ select.input {
   margin-bottom: 12px;
 }
 
-.menu-item-textarea {
-  min-height: 96px;
-}
-
 .access-flag-grid {
   display: grid;
   gap: 12px;
@@ -2802,20 +2720,10 @@ select.input {
   margin-bottom: 18px;
 }
 
-.auth-hero {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  justify-content: center;
-  padding: 60px 48px;
-  background: linear-gradient(135deg, #eef5ff 0%, #f2f2f7 100%);
-}
-
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 1200px) {
   .metric-grid,
-  .route-grid,
   .dashboard-status-grid,
   .detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2971,20 +2879,17 @@ select.input {
   }
 
   .page-shell,
-  .auth-panel,
-  .auth-hero {
+  .auth-panel {
     padding: 20px;
   }
 
   .metric-grid,
-  .route-grid,
   .dashboard-status-grid,
   .audit-grid,
   .detail-grid,
   .menu-item-help-list,
   .photo-review-layout,
   .feedback-detail-grid,
-  .record-overview-grid,
   .split-list,
   .access-flag-grid,
   .access-state-grid,
@@ -3056,7 +2961,6 @@ select.input {
   }
 
   .moderation-meta-grid,
-  .moderation-review-grid,
   .moderation-case-workspace,
   .moderation-case-list-meta {
     grid-template-columns: 1fr;
@@ -3086,9 +2990,4 @@ select.input {
     justify-content: flex-start;
   }
 
-  .moderation-case-switcher {
-    overflow-x: auto;
-    padding-bottom: 4px;
-    flex-wrap: nowrap;
-  }
 }
