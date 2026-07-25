@@ -1,5 +1,7 @@
 import {
   completeTastingSession,
+  deleteTastingSession,
+  leaveTastingSession,
   lockTastingSessionMembership,
   startTastingSession,
   submitTastingRatings,
@@ -36,6 +38,8 @@ jest.mock('../features/store/visitPhotoUploads', () => ({
 }));
 
 const mockedCompleteTastingSession = completeTastingSession as jest.MockedFunction<typeof completeTastingSession>;
+const mockedDeleteTastingSession = deleteTastingSession as jest.MockedFunction<typeof deleteTastingSession>;
+const mockedLeaveTastingSession = leaveTastingSession as jest.MockedFunction<typeof leaveTastingSession>;
 const mockedLockTastingSessionMembership =
   lockTastingSessionMembership as jest.MockedFunction<typeof lockTastingSessionMembership>;
 const mockedStartTastingSession = startTastingSession as jest.MockedFunction<typeof startTastingSession>;
@@ -74,6 +78,8 @@ describe('createTastingSessionLifecycleWriteActions', () => {
     queryClient.cancelQueries.mockResolvedValue(undefined);
     queryClient.invalidateQueries.mockResolvedValue(undefined);
     mockedCompleteTastingSession.mockResolvedValue({ ...tastingSession, status: 'completed' } as never);
+    mockedDeleteTastingSession.mockResolvedValue({ success: true });
+    mockedLeaveTastingSession.mockResolvedValue({ success: true });
     mockedLockTastingSessionMembership.mockResolvedValue({ ...tastingSession, status: 'planning' } as never);
     mockedStartTastingSession.mockResolvedValue({ ...tastingSession, status: 'tasting' } as never);
     mockedSuggestTastingRestaurant.mockResolvedValue(tastingSession as never);
@@ -146,6 +152,35 @@ describe('createTastingSessionLifecycleWriteActions', () => {
     expect(result).toEqual({ status: 'queued' });
     expect(mockedStartTastingSession).not.toHaveBeenCalled();
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('removes deleted or left sessions from both paginated summary caches', async () => {
+    const actions = createActions();
+
+    await actions.deleteSession({ sessionId: 'session_1' });
+    await actions.leaveSession({ sessionId: 'session_1' });
+
+    expect(mockedDeleteTastingSession).toHaveBeenCalledWith('session_1');
+    expect(mockedLeaveTastingSession).toHaveBeenCalledWith('session_1');
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.summaries('active'),
+      expect.any(Function),
+    );
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.summaries('completed'),
+      expect.any(Function),
+    );
+    expect(queryClient.setQueryData).not.toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.root,
+      expect.any(Function),
+    );
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.detail('session_1'),
+      null,
+    );
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: tastingSessionsQueryKeys.summariesRoot,
+    });
   });
 
   it('keeps Tasting Plan and Tasting Rating Submission actions online-only inside the module', async () => {

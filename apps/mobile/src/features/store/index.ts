@@ -100,6 +100,7 @@ export * from './receiptParsingGateway';
 export * from './restaurantListQuery';
 export * from './restaurantsQuery';
 export * from './settingsQuery';
+export * from './tastingSessionSummariesCache';
 export * from './tastingSessionsQuery';
 export * from './queuedFeatureWrites';
 export * from './usageQuery';

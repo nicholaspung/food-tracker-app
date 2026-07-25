@@ -142,7 +142,7 @@ describe('useTastingSessionWrites', () => {
     });
     expect(mockedJoinTastingSession).toHaveBeenCalledWith({ inviteCode: 'abc123' });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: tastingSessionsQueryKeys.root,
+      queryKey: tastingSessionsQueryKeys.summariesRoot,
     });
 
     await act(async () => {
@@ -159,7 +159,7 @@ describe('useTastingSessionWrites', () => {
     expect(mockedAcceptTastingInvite).toHaveBeenCalledWith('session_1');
     expect(mockedDismissTastingInvite).toHaveBeenCalledWith('session_1');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: tastingSessionsQueryKeys.root,
+      queryKey: tastingSessionsQueryKeys.summariesRoot,
     });
 
     await act(async () => {
@@ -194,7 +194,7 @@ describe('useTastingSessionWrites', () => {
     });
     expect(mockedResendTastingInvite).toHaveBeenCalledWith('session_1', 'invite_1');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: tastingSessionsQueryKeys.root,
+      queryKey: tastingSessionsQueryKeys.summariesRoot,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.detail('session_1'),
@@ -224,7 +224,11 @@ describe('useTastingSessionWrites', () => {
       queryKey: tastingSessionsQueryKeys.detail('session_1'),
     });
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
-      tastingSessionsQueryKeys.root,
+      tastingSessionsQueryKeys.summaries('active'),
+      expect.any(Function),
+    );
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      tastingSessionsQueryKeys.summaries('completed'),
       expect.any(Function),
     );
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
@@ -232,7 +236,7 @@ describe('useTastingSessionWrites', () => {
       null,
     );
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: tastingSessionsQueryKeys.root,
+      queryKey: tastingSessionsQueryKeys.summariesRoot,
     });
     expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: tastingSessionsQueryKeys.detail('session_1'),

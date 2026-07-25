@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import type { TastingSessionRecord } from '../features';
+import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import {
   applyTastingSessionMissingAccessCachePolicy,
   getTastingSessionLifecycleMissingAccessFacts,
@@ -147,11 +148,32 @@ describe('tasting session lifecycle read state', () => {
 
   it('represents missing access and centralizes cache removal policy', () => {
     const queryClient = new QueryClient();
-    queryClient.setQueryData(['feature', 'tasting-sessions'], [
-      baseSession,
-      { ...baseSession, id: 'session_2', name: 'Pho night' },
-    ]);
-    queryClient.setQueryData(['feature', 'tasting-sessions', 'session_1'], baseSession);
+    const summaryPage = {
+      hasNextPage: false,
+      items: [
+        baseSession,
+        { ...baseSession, id: 'session_2', name: 'Pho night' },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalItems: 2,
+      totalPages: 1,
+    };
+    queryClient.setQueryData(tastingSessionsQueryKeys.summaries('active'), {
+      pageParams: [1],
+      pages: [summaryPage],
+    });
+    queryClient.setQueryData(tastingSessionsQueryKeys.summaries('completed'), {
+      pageParams: [1],
+      pages: [
+        {
+          ...summaryPage,
+          items: [{ ...baseSession, status: 'completed' as const }],
+          totalItems: 1,
+        },
+      ],
+    });
+    queryClient.setQueryData(tastingSessionsQueryKeys.detail('session_1'), baseSession);
 
     expect(
       getTastingSessionLifecycleMissingAccessFacts({
@@ -172,10 +194,23 @@ describe('tasting session lifecycle read state', () => {
 
     applyTastingSessionMissingAccessCachePolicy(queryClient, 'session_1');
 
-    expect(queryClient.getQueryData(['feature', 'tasting-sessions'])).toEqual([
-      { ...baseSession, id: 'session_2', name: 'Pho night' },
-    ]);
-    expect(queryClient.getQueryData(['feature', 'tasting-sessions', 'session_1'])).toBeNull();
+    expect(
+      queryClient.getQueryData<{ pages: { items: TastingSessionRecord[]; totalItems: number }[] }>(
+        tastingSessionsQueryKeys.summaries('active'),
+      )?.pages[0],
+    ).toMatchObject({
+      items: [{ ...baseSession, id: 'session_2', name: 'Pho night' }],
+      totalItems: 1,
+    });
+    expect(
+      queryClient.getQueryData<{ pages: { items: TastingSessionRecord[]; totalItems: number }[] }>(
+        tastingSessionsQueryKeys.summaries('completed'),
+      )?.pages[0],
+    ).toMatchObject({
+      items: [],
+      totalItems: 0,
+    });
+    expect(queryClient.getQueryData(tastingSessionsQueryKeys.detail('session_1'))).toBeNull();
   });
 
   it('returns online-only warning and disabled action facts by screen', () => {

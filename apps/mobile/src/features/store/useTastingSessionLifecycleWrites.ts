@@ -40,6 +40,7 @@ import {
 } from './tastingSessionsApiStore';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
+import { removeTastingSessionFromSummariesCache } from './tastingSessionSummariesCache';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 import { syncVisitMutationCaches } from './visitsQuery';
@@ -160,7 +161,7 @@ function mapReplaySafeResult<T>(
 
 async function invalidateTastingSessionList(queryClient: QueryClient): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.summariesRoot }),
     queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
   ]);
 }
@@ -197,10 +198,7 @@ async function removeDeletedTastingSessionFromCache(
   sessionId: string,
 ): Promise<void> {
   await queryClient.cancelQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) });
-  queryClient.setQueryData<TastingSessionRecord[] | undefined>(
-    tastingSessionsQueryKeys.root,
-    (cachedSessions) => cachedSessions?.filter((session) => session.id !== sessionId),
-  );
+  removeTastingSessionFromSummariesCache(queryClient, sessionId);
   queryClient.setQueryData(tastingSessionsQueryKeys.detail(sessionId), null);
   await invalidateTastingSessionList(queryClient);
 }

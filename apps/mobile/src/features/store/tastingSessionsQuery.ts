@@ -64,16 +64,9 @@ export function getCachedTastingSessionDetail(
   queryClient: QueryClient,
   sessionId: string,
 ): TastingSessionRecord | null {
-  const cachedDetail = queryClient.getQueryData<TastingSessionRecord | null>(
-    tastingSessionsQueryKeys.detail(sessionId),
-  );
-  if (cachedDetail) {
-    return cachedDetail;
-  }
-
   return (
-    queryClient
-      .getQueryData<TastingSessionRecord[]>(tastingSessionsQueryKeys.root)
-      ?.find((session) => session.id === sessionId) ?? null
+    queryClient.getQueryData<TastingSessionRecord | null>(
+      tastingSessionsQueryKeys.detail(sessionId),
+    ) ?? null
   );
 }

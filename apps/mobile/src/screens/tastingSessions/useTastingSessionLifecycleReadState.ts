@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 
 import {
   getTastingSessionById,
+  removeTastingSessionFromSummariesCache,
   tastingSessionsQueryKeys,
   type TastingParticipantRecord,
   type TastingSessionRecord,
@@ -184,11 +185,9 @@ export function applyTastingSessionMissingAccessCachePolicy(
   queryClient: QueryClient,
   sessionId: string,
 ): void {
-  queryClient.setQueryData<TastingSessionRecord[]>(tastingSessionsQueryKeys.root, (cachedSessions) =>
-    cachedSessions?.filter((cachedSession) => cachedSession.id !== sessionId),
-  );
+  removeTastingSessionFromSummariesCache(queryClient, sessionId);
   queryClient.setQueryData(tastingSessionsQueryKeys.detail(sessionId), null);
-  void queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.root });
+  void queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.summariesRoot });
 }
 
 export function getTastingSessionLifecycleOnlineOnlyFacts(input: {
