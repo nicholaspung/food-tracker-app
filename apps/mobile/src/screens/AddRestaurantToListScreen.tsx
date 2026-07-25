@@ -1006,13 +1006,8 @@ export function AddRestaurantToListScreen({
                           const extraPhotoCount = Math.max((item.photoCount ?? 0) - 1, 0);
 
                           return (
-                            <Pressable
-                              accessibilityRole="button"
-                              disabled={isAlreadyAdded}
+                            <View
                               key={item.id}
-                              onPress={() => {
-                                handleToggleFoodItem(item.id);
-                              }}
                               style={[
                                 styles.foodItemRow,
                                 isSelected ? styles.foodItemRowSelected : null,
@@ -1027,8 +1022,7 @@ export function AddRestaurantToListScreen({
                                     accessibilityLabel={`View photos for ${item.name}`}
                                     accessibilityRole="button"
                                     disabled={loadingPhotoFoodItemId === item.id}
-                                    onPress={(event) => {
-                                      event.stopPropagation();
+                                    onPress={() => {
                                       void handleOpenFoodItemPhotos(item);
                                     }}
                                     style={[
@@ -1052,7 +1046,25 @@ export function AddRestaurantToListScreen({
                                   </Pressable>
                                 ) : null}
 
-                                <View style={styles.foodItemContent}>
+                                <Pressable
+                                  accessibilityHint={
+                                    isAlreadyAdded
+                                      ? 'Already in this Restaurant List.'
+                                      : undefined
+                                  }
+                                  accessibilityLabel={item.name}
+                                  accessibilityRole="button"
+                                  accessibilityState={{
+                                    disabled: isAlreadyAdded,
+                                    selected: isSelected,
+                                  }}
+                                  disabled={isAlreadyAdded}
+                                  onPress={() => {
+                                    handleToggleFoodItem(item.id);
+                                  }}
+                                  style={styles.foodItemContent}
+                                  testID={`add-restaurant-food-item-${item.id}`}
+                                >
                                   <View style={styles.foodItemHeader}>
                                     <View style={styles.foodItemTitleWrap}>
                                       <Text style={styles.foodItemTitle} variant="labelMdBold">
@@ -1083,9 +1095,9 @@ export function AddRestaurantToListScreen({
                                   <View style={styles.foodItemMetaRow}>
                                     <RatingPill rating={item.rating} />
                                   </View>
-                                </View>
+                                </Pressable>
                               </View>
-                            </Pressable>
+                            </View>
                           );
                         })}
                       </View>
