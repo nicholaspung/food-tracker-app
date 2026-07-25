@@ -5,6 +5,8 @@ import {
   buildRecentRestaurantsQueryOptions,
   buildRestaurantMenuItemsQueryOptions,
   buildRestaurantSuggestionSearchText,
+  isCurrentLocationSearchSelection,
+  isUserAddedRestaurantOption,
   resolveSavedRestaurantsUiState,
   runRestaurantNearbyCoordinateSearch,
   runRestaurantNearbySearch,
@@ -72,6 +74,45 @@ const restaurants: RestaurantRecord[] = [
 describe('restaurant selection module', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('recognizes current-location labels without treating manual locations as GPS', () => {
+    expect(
+      isCurrentLocationSearchSelection({
+        isUsingCurrentLocation: true,
+        manualLocation: 'Oakland',
+      }),
+    ).toBe(true);
+    expect(
+      isCurrentLocationSearchSelection({
+        isUsingCurrentLocation: false,
+        manualLocation: 'Current location',
+      }),
+    ).toBe(true);
+    expect(
+      isCurrentLocationSearchSelection({
+        isUsingCurrentLocation: false,
+        manualLocation: 'Your location (phone GPS)',
+      }),
+    ).toBe(true);
+    expect(
+      isCurrentLocationSearchSelection({
+        isUsingCurrentLocation: false,
+        manualLocation: 'Your location (phone GPS unavailable)',
+      }),
+    ).toBe(true);
+    expect(
+      isCurrentLocationSearchSelection({
+        isUsingCurrentLocation: false,
+        manualLocation: 'Oakland',
+      }),
+    ).toBe(false);
+  });
+
+  it('distinguishes user-added restaurants from Google Places restaurants', () => {
+    expect(isUserAddedRestaurantOption({ restaurant: {} })).toBe(true);
+    expect(isUserAddedRestaurantOption({ restaurant: { isGooglePlace: false } })).toBe(true);
+    expect(isUserAddedRestaurantOption({ restaurant: { isGooglePlace: true } })).toBe(false);
   });
 
   it('normalizes saved restaurant suggestion query keys and request search text', async () => {

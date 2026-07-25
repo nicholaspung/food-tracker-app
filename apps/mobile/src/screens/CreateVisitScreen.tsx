@@ -48,6 +48,10 @@ import {
   createRecommendationSourceHandoff,
   type RecommendationSourceHandoff,
 } from '../features/recommendationSourceHandoff';
+import {
+  isCurrentLocationSearchSelection,
+  isUserAddedRestaurantOption,
+} from '../features/restaurants/restaurantSelection';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
@@ -105,29 +109,6 @@ type CreateVisitExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
-
-const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
-const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
-const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
-
-function isCurrentLocationSearchSelection({
-  isUsingCurrentLocation,
-  manualLocation,
-}: {
-  isUsingCurrentLocation: boolean;
-  manualLocation: string;
-}): boolean {
-  return (
-    isUsingCurrentLocation ||
-    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
-  );
-}
-
-function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
-  return restaurant.isGooglePlace !== true;
-}
 
 function resolveCreateVisitEntrySource(options: {
   editVisitId?: string;

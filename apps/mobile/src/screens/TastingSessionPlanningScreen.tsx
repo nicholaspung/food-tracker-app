@@ -25,6 +25,10 @@ import {
   useTastingPlanPlanningState,
   useTastingSessionLifecycleWrites,
 } from '../features';
+import {
+  isCurrentLocationSearchSelection,
+  isUserAddedRestaurantOption,
+} from '../features/restaurants/restaurantSelection';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -37,29 +41,6 @@ import { useTastingSessionLifecycleNavigation } from './tastingSessions/useTasti
 import { useTastingSessionLifecycleReadState } from './tastingSessions/useTastingSessionLifecycleReadState';
 
 type TastingSessionPlanningScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionPlanning'>;
-
-const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
-const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
-const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
-
-function isCurrentLocationSearchSelection({
-  isUsingCurrentLocation,
-  manualLocation,
-}: {
-  isUsingCurrentLocation: boolean;
-  manualLocation: string;
-}): boolean {
-  return (
-    isUsingCurrentLocation ||
-    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
-  );
-}
-
-function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
-  return restaurant.isGooglePlace !== true;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   headerDescription: {

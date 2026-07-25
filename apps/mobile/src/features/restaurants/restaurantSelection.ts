@@ -27,6 +27,9 @@ import {
 
 const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as const;
 const RESTAURANT_SELECTION_PAGE_SIZE = 12;
+const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
+const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
+const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
 export const RESTAURANT_SUGGESTIONS_LIMIT = 50;
 
 type RestaurantSearchQueryKey = readonly ['feature', 'restaurants', 'search', string, number, number];
@@ -175,6 +178,29 @@ export type RestaurantNearbySearchPreflightResult =
       RestaurantNearbySearchResult,
       { status: 'offline' | 'quota_reached' }
     >;
+
+export function isCurrentLocationSearchSelection({
+  isUsingCurrentLocation,
+  manualLocation,
+}: {
+  isUsingCurrentLocation: boolean;
+  manualLocation: string;
+}): boolean {
+  return (
+    isUsingCurrentLocation ||
+    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
+    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
+  );
+}
+
+export function isUserAddedRestaurantOption({
+  restaurant,
+}: {
+  restaurant: Pick<RestaurantRecord, 'isGooglePlace'>;
+}): boolean {
+  return restaurant.isGooglePlace !== true;
+}
 
 export function buildRecentRestaurantsQueryOptions({
   enabled,

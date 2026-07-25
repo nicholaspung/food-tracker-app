@@ -48,6 +48,10 @@ import {
   useMenuItemCatalogWrites,
   type RestaurantRecord,
 } from '../features';
+import {
+  isCurrentLocationSearchSelection,
+  isUserAddedRestaurantOption,
+} from '../features/restaurants/restaurantSelection';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
@@ -120,29 +124,6 @@ type PhotoProcessingExitMethod =
   | 'secondary_cancel'
   | 'system_back_or_gesture'
   | 'programmatic_navigation';
-
-const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
-const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
-const LEGACY_CURRENT_LOCATION_SEARCH_PREFIX = 'Your location (phone GPS';
-
-function isCurrentLocationSearchSelection({
-  isUsingCurrentLocation,
-  manualLocation,
-}: {
-  isUsingCurrentLocation: boolean;
-  manualLocation: string;
-}): boolean {
-  return (
-    isUsingCurrentLocation ||
-    manualLocation === CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation === LEGACY_CURRENT_LOCATION_SEARCH_LABEL ||
-    manualLocation.startsWith(LEGACY_CURRENT_LOCATION_SEARCH_PREFIX)
-  );
-}
-
-function isUserAddedRestaurantOption({ restaurant }: VisitRestaurantWithDistance): boolean {
-  return restaurant.isGooglePlace !== true;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   choiceContent: {
