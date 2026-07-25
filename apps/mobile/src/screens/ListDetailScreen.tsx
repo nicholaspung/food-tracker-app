@@ -233,9 +233,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.md,
     borderWidth: 1,
-    height: 32,
+    height: 44,
     justifyContent: 'center',
-    width: 32,
+    width: 44,
   },
   headerIconButtonActive: {
     backgroundColor: theme.colors.status.infoBg,

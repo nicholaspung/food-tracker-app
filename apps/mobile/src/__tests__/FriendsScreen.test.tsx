@@ -475,6 +475,13 @@ describe('FriendsScreen', () => {
 
     const removeButton = renderer.root.findByProps({ testID: 'friend-remove-button-friendship-1' });
 
+    expect(flattenStyle(removeButton.props.style)).toEqual(
+      expect.objectContaining({
+        minHeight: 44,
+        minWidth: 44,
+      }),
+    );
+
     await act(async () => {
       removeButton.props.onPress();
     });

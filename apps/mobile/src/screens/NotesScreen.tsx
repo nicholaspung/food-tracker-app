@@ -133,13 +133,22 @@ const useStyles = createThemedStyles((theme) => ({
   noteActionsInline: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  useAction: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
   },
   useActionLabel: {
     color: theme.colors.text.brand,
   },
   iconAction: {
-    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
   },
   noteContentRow: {
     alignItems: 'flex-start',

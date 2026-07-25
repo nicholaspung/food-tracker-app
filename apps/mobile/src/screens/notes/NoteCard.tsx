@@ -24,6 +24,7 @@ interface NoteCardProps {
     noteTopRow: object;
     noteMeta: object;
     noteActionsInline: object;
+    useAction: object;
     useActionLabel: object;
     iconAction: object;
     noteContentRow: object;
@@ -74,6 +75,7 @@ export function NoteCard({
               onPress={() => {
                 onUse(note);
               }}
+              style={styles.useAction}
               testID={`note-use-button-${note.id}`}
             >
               <Text style={styles.useActionLabel} variant="bodyBaseSemiBold">Use</Text>

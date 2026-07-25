@@ -811,6 +811,65 @@ describe('NotesScreen', () => {
     expect(renderer?.root.findByProps({ testID: 'note-delete-button-note_1' })).toBeDefined();
   });
 
+  it('keeps adjacent note actions independently tappable with 44-point targets', async () => {
+    const navigation = {
+      navigate: jest.fn(),
+    };
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [buildNote()],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={navigation as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const useButton = renderer.root.findByProps({
+      testID: 'note-use-button-note_1',
+    });
+    const editButton = renderer.root.findByProps({
+      testID: 'note-edit-button-note_1',
+    });
+    const deleteButton = renderer.root.findByProps({
+      testID: 'note-delete-button-note_1',
+    });
+
+    for (const button of [useButton, editButton, deleteButton]) {
+      expect(
+        styleIncludes(button.props.style, {
+          minHeight: 44,
+          minWidth: 44,
+        }),
+      ).toBe(true);
+    }
+
+    act(() => {
+      useButton.props.onPress();
+      editButton.props.onPress();
+      deleteButton.props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ProcessPhotos', {
+      sourceNoteId: 'note_1',
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('NoteEditor', {
+      noteId: 'note_1',
+    });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'NOTE_DELETE_TAPPED',
+      {
+        noteStatus: 'draft',
+        source: 'NotesScreen',
+      },
+    );
+  });
+
   it('omits the location row when location text is empty and keeps the four-line preview clamp', async () => {
     let renderer: any = null;
 

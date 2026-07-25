@@ -619,6 +619,107 @@ describe('ListDetailScreen', () => {
     expect(findExactTextNodes(renderer.root, 'Fire')).toHaveLength(0);
   });
 
+  it('keeps adjacent owner header actions distinct with 44-point targets', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            name: 'A Restaurant List With a Long Name',
+          }),
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const shareButton = findRightAccessoryElementByTestID(
+      renderer.root,
+      'list-detail-share-button',
+    );
+    const editButton = findRightAccessoryElementByTestID(
+      renderer.root,
+      'list-detail-edit-button',
+    );
+    const deleteButton = findRightAccessoryElementByTestID(
+      renderer.root,
+      'list-detail-delete-button',
+    );
+
+    for (const button of [shareButton, editButton, deleteButton]) {
+      expect(flattenStyle(button.props.style)).toEqual(
+        expect.objectContaining({
+          height: 44,
+          width: 44,
+        }),
+      );
+    }
+
+    act(() => {
+      shareButton.props.onPress();
+      editButton.props.onPress();
+      deleteButton.props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('EditRestaurantList', {
+      listId: 'list_1',
+    });
+    expect(renderer.root.findByProps({ testID: 'share-list-modal' }).props.visible).toBe(true);
+    expect(
+      renderer.root.findByProps({
+        testID: 'delete-list-confirmation-modal',
+      }).props.visible,
+    ).toBe(true);
+  });
+
+  it('gives the default-list add action a 44-point target', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+          }),
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const addButton = findRightAccessoryElementByTestID(
+      renderer.root,
+      'list-detail-add-button',
+    );
+
+    expect(flattenStyle(addButton.props.style)).toEqual(
+      expect.objectContaining({
+        height: 44,
+        width: 44,
+      }),
+    );
+
+    act(() => {
+      addButton.props.onPress();
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('RestaurantDiscovery');
+  });
+
   it('does not depend on onTextLayout to render the combined metadata label', async () => {
     let renderer: any = null;
 

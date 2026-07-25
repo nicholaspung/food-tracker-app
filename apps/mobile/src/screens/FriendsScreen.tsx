@@ -168,7 +168,10 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.sm,
   },
   iconAction: {
-    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
   },
   textAction: {
     paddingHorizontal: theme.spacing.xs,
