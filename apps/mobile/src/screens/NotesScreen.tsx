@@ -482,9 +482,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     shouldQueryNotesBySearch
       ? searchedNotesQuery
       : baseNotesQuery;
+  const browseData =
+    shouldUseServerSearchResults
+      ? searchedNotesQuery.data
+      : baseNotesQuery.data;
   const browseQuery = useMemo(
     () => ({
-      data: activePaginationQuery.data,
+      data: browseData,
       fetchNextPage: activePaginationQuery.fetchNextPage,
       hasNextPage: activePaginationQuery.hasNextPage,
       isError: baseNotesQuery.isError,
@@ -496,7 +500,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       refetch: activePaginationQuery.refetch,
     }),
     [
-      activePaginationQuery.data,
       activePaginationQuery.fetchNextPage,
       activePaginationQuery.hasNextPage,
       activePaginationQuery.isFetching,
@@ -506,6 +509,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       baseNotesQuery.isError,
       baseNotesQuery.isLoading,
       baseNotesQuery.isSuccess,
+      browseData,
     ],
   );
   const hasSearchFallbackError =

@@ -317,12 +317,14 @@ function buildErrorNotesQueryResult() {
 
 function mockNotesQueries(options?: {
   baseItems?: Record<string, unknown>[];
+  baseQueryOverrides?: Record<string, unknown>;
   searchItemsByTerm?: Record<string, Record<string, unknown>[]>;
   loadingSearchTerms?: string[];
   errorSearchTerms?: string[];
 }) {
   const {
     baseItems = [buildNote()],
+    baseQueryOverrides = {},
     searchItemsByTerm = {},
     loadingSearchTerms = [],
     errorSearchTerms = [],
@@ -352,7 +354,7 @@ function mockNotesQueries(options?: {
       return buildNotesQueryResult(searchItemsByTerm[searchTerm] ?? []);
     }
 
-    return buildNotesQueryResult(baseItems);
+    return buildNotesQueryResult(baseItems, baseQueryOverrides);
   });
 }
 
@@ -366,6 +368,7 @@ describe('NotesScreen', () => {
     mockNotesQueries();
     mockedUseQueryClient.mockReturnValue({
       fetchQuery: jest.fn(),
+      getQueriesData: jest.fn(() => []),
       invalidateQueries: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseQueuedFeatureWrites.mockReturnValue({
@@ -1188,6 +1191,80 @@ describe('NotesScreen', () => {
     expect(renderer?.root.findByType('PageErrorToast').props.errorMessage).toBe(
       'Could not refresh search results. Showing local matches.',
     );
+  });
+
+  it('keeps cached local matches visible when the base refresh and offline search both fail', async () => {
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [
+        buildNote({
+          content: 'Alpha note',
+          locationText: 'Window booth',
+        }),
+      ],
+      baseQueryOverrides: {
+        isError: true,
+        isSuccess: false,
+      },
+      errorSearchTerms: ['al'],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer?.root.findByType('Input').props.onChangeText('al');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(
+      renderer?.root.findAll(
+        (node: any) => node.type === 'Text' && node.props.children === 'Alpha note',
+      ),
+    ).toHaveLength(1);
+    expect(renderer?.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Could not refresh search results. Showing local matches.',
+    );
+  });
+
+  it('keeps a cacheless notes failure blocking', async () => {
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [],
+      baseQueryOverrides: {
+        data: undefined,
+        isError: true,
+        isSuccess: false,
+      },
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const errorState = renderer?.root.findByType('ErrorState');
+    expect(errorState.props.description).toBe('Could not load notes.');
+    expect(renderer?.root.findByType('FlatList').props.data).toEqual([]);
   });
 
   it('keeps the empty search state and base badge counts when stale server results are rejected', async () => {
