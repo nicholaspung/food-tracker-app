@@ -13,6 +13,7 @@ import {
   resolveDefaultRestaurantVisibilityFromAuth,
   upsertRestaurantRecord,
 } from '../features';
+import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -107,7 +108,7 @@ export function CreateVisitAddRestaurantScreen({
         visibility,
       });
 
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurants'] });
+      await queryClient.invalidateQueries({ queryKey: restaurantsQueryKeys.root });
       trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddRestaurantScreen',
         hasCreatedRestaurantId: Boolean(createdRestaurant.id),

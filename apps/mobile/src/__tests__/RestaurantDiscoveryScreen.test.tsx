@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
 import { extractRestaurantNamesFromImage, parseLimitExceededError, useMonthlyUsage } from '../features';
+import { usageQueryKeys } from '../features/store/usageQuery';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
@@ -1684,7 +1685,7 @@ describe('RestaurantDiscoveryScreen', () => {
       expect.objectContaining({ uri: 'file:///staged-storefront.jpg' }),
     ]);
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'usage', 'monthly'],
+      queryKey: usageQueryKeys.monthlyRoot,
     });
   });
 

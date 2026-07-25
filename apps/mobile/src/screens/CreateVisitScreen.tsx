@@ -57,6 +57,7 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
+import { visitsQueryKeys } from '../features/store/visitsQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useCreateVisitRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
@@ -799,7 +800,7 @@ export function CreateVisitScreen({
   }, [loadedRestaurantRecords]);
   const scrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const editVisitQuery = useQuery({
-    queryKey: ["feature", "visit", editVisitId ?? ""],
+    queryKey: visitsQueryKeys.detail(editVisitId ?? ''),
     queryFn: async ({ signal }) => {
       if (!editVisitId) {
         return null;

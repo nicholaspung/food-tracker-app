@@ -18,6 +18,7 @@ import {
   buildRestaurantMenuItemsQueryOptions,
   buildRestaurantSearchQueryOptions,
 } from '../features/restaurants/restaurantSelection';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
 import { searchAndCacheRestaurantsByText } from '../lib/googlePlaces';
 
@@ -186,9 +187,11 @@ describe('useRestaurantSelectionFlow', () => {
       signal: new AbortController().signal,
     } as never);
 
-    expect(options.queryKey).toEqual(['feature', 'menuItems', 'restaurant-1']);
+    expect(options.queryKey).toEqual(menuItemsQueryKeys.restaurant('restaurant-1'));
     expect(result).toBe(cachedMenuItems);
-    expect(queryClient.getQueryData).toHaveBeenCalledWith(['feature', 'menuItems', 'restaurant-1']);
+    expect(queryClient.getQueryData).toHaveBeenCalledWith(
+      menuItemsQueryKeys.restaurant('restaurant-1'),
+    );
     expect(mockedListMenuItemsForRestaurant).not.toHaveBeenCalled();
   });
 

@@ -13,6 +13,7 @@ import {
   updateVisit,
 } from '../features/store/visitsStore';
 import { syncVisitMutationCaches, visitsQueryKeys } from '../features/store/visitsQuery';
+import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 
 jest.mock('../features/store/featureOutboxOperations', () => ({
   moveVisitItemApiMutationInput: jest.fn((itemId: string, destinationVisitId: string) => ({
@@ -36,6 +37,7 @@ jest.mock('../features/store/homeFeedQuery', () => ({
 jest.mock('../features/store/visitsQuery', () => ({
   syncVisitMutationCaches: jest.fn(),
   visitsQueryKeys: {
+    detail: (visitId: string) => ['feature', 'visit', visitId.trim()],
     root: ['feature', 'visits'],
   },
 }));
@@ -231,12 +233,14 @@ describe('visitActionWrites', () => {
     expect(mockedInvalidateHomeFeedQueries).toHaveBeenCalledWith(queryClient);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: visitsQueryKeys.root });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visit', 'visit_1'],
+      queryKey: visitsQueryKeys.detail('visit_1'),
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'visit', 'visit_2'],
+      queryKey: visitsQueryKeys.detail('visit_2'),
     });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visitPhotos'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: visitPhotosQueryKeys.root,
+    });
   });
 
   it('queues visit item moves and keeps queued feedback in the action module', async () => {
@@ -313,4 +317,3 @@ describe('visitActionWrites', () => {
     });
   });
 });
-

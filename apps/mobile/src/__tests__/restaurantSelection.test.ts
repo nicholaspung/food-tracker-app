@@ -20,7 +20,9 @@ import {
   listMenuItemsForRestaurant,
   listRestaurantSuggestions,
 } from '../features/store/restaurantsStore';
+import { menuItemsQueryKeys } from '../features/store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../features/store/restaurantsQuery';
+import { usageQueryKeys } from '../features/store/usageQuery';
 
 jest.mock('../features/store/restaurantsStore', () => ({
   listMenuItemsForRestaurant: jest.fn(),
@@ -155,9 +157,11 @@ describe('restaurant selection module', () => {
 
     const result = await options.queryFn({ signal: new AbortController().signal } as never);
 
-    expect(options.queryKey).toEqual(['feature', 'menuItems', 'restaurant-ramen']);
+    expect(options.queryKey).toEqual(menuItemsQueryKeys.restaurant('restaurant-ramen'));
     expect(result).toBe(cachedMenuItems);
-    expect(queryClient.getQueryData).toHaveBeenCalledWith(['feature', 'menuItems', 'restaurant-ramen']);
+    expect(queryClient.getQueryData).toHaveBeenCalledWith(
+      menuItemsQueryKeys.restaurant('restaurant-ramen'),
+    );
     expect(mockedListMenuItemsForRestaurant).not.toHaveBeenCalled();
   });
 
@@ -264,7 +268,7 @@ describe('restaurant selection module', () => {
 
     expect(syncMonthlyUsageSnapshot(queryClient as never, snapshot as never)).toBe(true);
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
-      ['feature', 'usage', 'monthly', 'actual'],
+      usageQueryKeys.monthly('actual'),
       snapshot,
     );
     expect(syncMonthlyUsageSnapshot(queryClient as never, null)).toBe(false);
@@ -369,7 +373,7 @@ describe('restaurant selection module', () => {
       radius: 5000,
     });
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
-      ['feature', 'usage', 'monthly', 'actual'],
+      usageQueryKeys.monthly('actual'),
       usageSnapshot,
     );
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
@@ -451,7 +455,7 @@ describe('restaurant selection module', () => {
       status: 'error',
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'usage', 'monthly'],
+      queryKey: usageQueryKeys.monthlyRoot,
     });
   });
 
@@ -571,7 +575,7 @@ describe('restaurant selection module', () => {
       radius: 5000,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'usage', 'monthly'],
+      queryKey: usageQueryKeys.monthlyRoot,
     });
   });
 
@@ -612,7 +616,7 @@ describe('restaurant selection module', () => {
       radius: 5000,
     });
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
-      ['feature', 'usage', 'monthly', 'actual'],
+      usageQueryKeys.monthly('actual'),
       usageSnapshot,
     );
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();

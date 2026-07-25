@@ -21,6 +21,7 @@ import {
   updateVisit,
 } from './visitsStore';
 import { syncVisitMutationCaches, visitsQueryKeys } from './visitsQuery';
+import { visitPhotosQueryKeys } from './visitPhotosQuery';
 import type {
   OfflineAwareFeatureWrite,
   OfflineAwareFeatureWriteResult,
@@ -134,12 +135,12 @@ async function invalidateMoveVisitItemQueries(
     invalidateHomeFeedQueries(queryClient),
     queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
     queryClient.invalidateQueries({
-      queryKey: ['feature', 'visit', sourceVisitId],
+      queryKey: visitsQueryKeys.detail(sourceVisitId),
     }),
     queryClient.invalidateQueries({
-      queryKey: ['feature', 'visit', destinationVisitId],
+      queryKey: visitsQueryKeys.detail(destinationVisitId),
     }),
-    queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+    queryClient.invalidateQueries({ queryKey: visitPhotosQueryKeys.root }),
   ]);
 }
 
@@ -232,8 +233,8 @@ export async function moveVisitItemActionWithOfflineSupport({
     item,
     sourceVisitId,
   };
-  const sourceVisitQueryKey = ['feature', 'visit', sourceVisitId] as const;
-  const destinationVisitQueryKey = ['feature', 'visit', destinationVisit.id] as const;
+  const sourceVisitQueryKey = visitsQueryKeys.detail(sourceVisitId);
+  const destinationVisitQueryKey = visitsQueryKeys.detail(destinationVisit.id);
   const homeFeedSnapshots = queryClient.getQueriesData<HomeFeedInfiniteData>({
     queryKey: homeFeedQueryKeys.root,
   });

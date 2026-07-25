@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { createNote, deleteNote, markNoteUsed, updateNote } from '../features/store/notesStore';
 import { notesQueryKeys } from '../features/store/notesQuery';
+import { usageQueryKeys } from '../features/store/usageQuery';
 import { promoteCachedNoteToUsed, removeCachedNote } from '../features/store/notesCache';
 import { useNoteWrites } from '../features/store/useNoteWrites';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -238,7 +239,7 @@ describe('useNoteWrites', () => {
       queryKey: ['feature', 'notePhotos', 'note_1'],
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'usage', 'monthly'],
+      queryKey: usageQueryKeys.monthlyRoot,
     });
     expect(result).toEqual({ status: 'completed', result: savedNote });
 

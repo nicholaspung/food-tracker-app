@@ -16,6 +16,7 @@ import {
   useOfflineAwareFeatureWrite,
 } from './useOfflineAwareFeatureWrite';
 import { useFeatureWriteSubmit } from './useFeatureWriteSubmit';
+import { usageQueryKeys } from './usageQuery';
 
 interface UpdateNoteWriteInput {
   noteId: string;
@@ -62,7 +63,9 @@ async function syncSavedNoteCaches(
   ];
 
   if (options.hasNewPhotos) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }));
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: usageQueryKeys.monthlyRoot }),
+    );
   }
 
   await Promise.all(invalidations);

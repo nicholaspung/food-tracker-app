@@ -42,6 +42,7 @@ import {
 import { useFoodDiscoveryMapReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
 import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
+import { usageQueryKeys } from '../features/store/usageQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -1205,7 +1206,7 @@ export function RestaurantDiscoveryScreen({
         if (imageInput) {
           await cleanupStagedPhotoFiles([imageInput]);
         }
-        void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
+        void queryClient.invalidateQueries({ queryKey: usageQueryKeys.monthlyRoot });
       }
     },
     [

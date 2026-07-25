@@ -18,12 +18,17 @@ import type {
 } from './photoProcessingTypes';
 import {
   FREE_MONTHLY_PHOTO_UPLOAD_LIMIT as FREE_MONTHLY_PHOTO_LIMIT,
+  foodProductsQueryKeys,
   formatFreeMonthlyPhotoLimitStatus,
   formatLimitExceededMessage,
   homeFeedMapQueryKeys,
   homeFeedQueryKeys,
+  notesQueryKeys,
   parseLimitExceededError,
   restaurantsQueryKeys,
+  usageQueryKeys,
+  visitPhotosQueryKeys,
+  visitsQueryKeys,
   type MonthlyUsageSnapshot,
 } from '../store';
 import type { OfflineAwareFeatureWrite } from '../store/useOfflineAwareFeatureWrite';
@@ -208,7 +213,7 @@ async function refreshAffectedPhotoSubmissionQueries(input: SubmitProcessedPhoto
   await Promise.all([
     input.queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
     input.queryClient.invalidateQueries({ queryKey: homeFeedMapQueryKeys.root }),
-    input.queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
+    input.queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
     ...(input.processType === 'restaurant'
       ? [
           input.queryClient.invalidateQueries({
@@ -216,14 +221,14 @@ async function refreshAffectedPhotoSubmissionQueries(input: SubmitProcessedPhoto
           }),
         ]
       : []),
-    input.queryClient.invalidateQueries({ queryKey: ['feature', 'foodProducts'] }),
-    input.queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+    input.queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
+    input.queryClient.invalidateQueries({ queryKey: visitPhotosQueryKeys.root }),
     input.queryClient.invalidateQueries({
-      queryKey: ['feature', 'usage', 'monthly'],
+      queryKey: usageQueryKeys.monthlyRoot,
     }),
     ...(input.sourceNoteId
       ? [
-          input.queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
+          input.queryClient.invalidateQueries({ queryKey: notesQueryKeys.root }),
         ]
       : []),
   ]);

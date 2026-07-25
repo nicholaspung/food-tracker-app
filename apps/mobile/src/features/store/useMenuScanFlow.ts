@@ -13,6 +13,7 @@ import {
   parseMenuImage,
 } from './menuParsingGateway';
 import { formatLimitExceededMessage, parseLimitExceededError } from './usageLimitsGateway';
+import { usageQueryKeys } from './usageQuery';
 import { createAIRequestCorrelation, resolveAIImageErrorProperties } from './aiImageObservability';
 import { useMenuItemCatalogWrites } from './useMenuItemCatalogWrites';
 
@@ -280,7 +281,7 @@ export function useMenuScanFlow(options: MenuScanFlowOptions): MenuScanFlowContr
         if (imageInput) {
           await cleanupStagedPhotoFiles([imageInput]);
         }
-        void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
+        void queryClient.invalidateQueries({ queryKey: usageQueryKeys.monthlyRoot });
       }
     },
     [menuItemCatalogWrites, options, pickImageAssets, queryClient],

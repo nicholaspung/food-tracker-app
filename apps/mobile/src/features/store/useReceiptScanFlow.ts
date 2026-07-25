@@ -9,6 +9,7 @@ import { trackProductEvent } from '../../observability/productAnalytics';
 import { createAIRequestCorrelation, resolveAIImageErrorProperties } from './aiImageObservability';
 import { parseReceiptImage, type ReceiptScanDraftResult } from './receiptParsingGateway';
 import { formatLimitExceededMessage, parseLimitExceededError } from './usageLimitsGateway';
+import { usageQueryKeys } from './usageQuery';
 
 export type ReceiptScanSource = PhotoPickerPermissionSource;
 export type ReceiptScanFlowStatus = 'idle' | 'selecting' | 'processing' | 'success' | 'error';
@@ -200,7 +201,7 @@ export function useReceiptScanFlow(): ReceiptScanFlowController {
         );
         return null;
       } finally {
-        void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
+        void queryClient.invalidateQueries({ queryKey: usageQueryKeys.monthlyRoot });
       }
     },
     [pickImageAssets, queryClient],

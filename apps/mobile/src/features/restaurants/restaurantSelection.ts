@@ -9,7 +9,9 @@ import {
   listRestaurantSuggestions,
   searchRestaurantsPage,
 } from '../store/restaurantsStore';
+import { menuItemsQueryKeys } from '../store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../store/restaurantsQuery';
+import { usageQueryKeys } from '../store/usageQuery';
 import {
   formatLimitExceededMessage,
   parseLimitExceededError,
@@ -25,7 +27,6 @@ import {
   type VisitRestaurantWithDistance,
 } from '../../lib/visitRestaurantSearch';
 
-const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as const;
 const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 const CURRENT_LOCATION_SEARCH_LABEL = 'Current location';
 const LEGACY_CURRENT_LOCATION_SEARCH_LABEL = 'Your location (phone GPS)';
@@ -284,12 +285,14 @@ export function buildRestaurantMenuItemsQueryOptions({
       }
 
       if (!isOnline) {
-        return queryClient.getQueryData<MenuItemRecord[]>(['feature', 'menuItems', selectedRestaurantId]) ?? [];
+        return queryClient.getQueryData<MenuItemRecord[]>(
+          menuItemsQueryKeys.restaurant(selectedRestaurantId),
+        ) ?? [];
       }
 
       return listMenuItemsForRestaurant(selectedRestaurantId, { signal });
     },
-    queryKey: ['feature', 'menuItems', selectedRestaurantId ?? ''] as const,
+    queryKey: menuItemsQueryKeys.restaurant(selectedRestaurantId ?? ''),
   };
 }
 
@@ -329,7 +332,7 @@ export function syncMonthlyUsageSnapshot(
     return false;
   }
 
-  queryClient.setQueryData(MONTHLY_USAGE_QUERY_KEY, snapshot);
+  queryClient.setQueryData(usageQueryKeys.monthly('actual'), snapshot);
   return true;
 }
 
@@ -518,7 +521,7 @@ export async function runRestaurantTextSearch({
   } finally {
     if (!didSyncMonthlyUsageSnapshot) {
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'usage', 'monthly'],
+        queryKey: usageQueryKeys.monthlyRoot,
       });
     }
   }
@@ -598,7 +601,7 @@ export async function runRestaurantNearbySearch({
   } finally {
     if (!didSyncMonthlyUsageSnapshot) {
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'usage', 'monthly'],
+        queryKey: usageQueryKeys.monthlyRoot,
       });
     }
   }
@@ -661,7 +664,7 @@ export async function runRestaurantNearbyCoordinateSearch({
   } finally {
     if (!didSyncMonthlyUsageSnapshot) {
       await queryClient.invalidateQueries({
-        queryKey: ['feature', 'usage', 'monthly'],
+        queryKey: usageQueryKeys.monthlyRoot,
       });
     }
   }

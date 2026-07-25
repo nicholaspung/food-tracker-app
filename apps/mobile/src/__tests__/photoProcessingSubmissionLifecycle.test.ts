@@ -10,6 +10,16 @@ import { cleanupStagedPhotoFiles } from '../lib/photoStaging';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../observability';
+import {
+  foodProductsQueryKeys,
+  homeFeedMapQueryKeys,
+  homeFeedQueryKeys,
+  notesQueryKeys,
+  restaurantsQueryKeys,
+  usageQueryKeys,
+  visitPhotosQueryKeys,
+  visitsQueryKeys,
+} from '../features/store';
 
 jest.mock('../features/photoProcessing/photoSubmission', () => ({
   submitFoodProductPhotoEntries: jest.fn(),
@@ -29,9 +39,24 @@ jest.mock('../features/store', () => ({
   homeFeedQueryKeys: {
     root: ['feature', 'homeFeed'],
   },
+  foodProductsQueryKeys: {
+    root: ['feature', 'foodProducts'],
+  },
+  notesQueryKeys: {
+    root: ['feature', 'notes'],
+  },
   parseLimitExceededError: jest.fn(() => null),
   restaurantsQueryKeys: {
     root: ['feature', 'restaurants'],
+  },
+  usageQueryKeys: {
+    monthlyRoot: ['feature', 'usage', 'monthly'],
+  },
+  visitPhotosQueryKeys: {
+    root: ['feature', 'visitPhotos'],
+  },
+  visitsQueryKeys: {
+    root: ['feature', 'visits'],
   },
 }));
 
@@ -200,14 +225,14 @@ describe('submitProcessedPhotos', () => {
       noteId: 'note-1',
       visitVisibility: 'friends',
     }));
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeed'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeedMap'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visits'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'restaurants'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'foodProducts'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visitPhotos'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'usage', 'monthly'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notes'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: homeFeedQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: homeFeedMapQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: visitsQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: restaurantsQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: foodProductsQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: visitPhotosQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: usageQueryKeys.monthlyRoot });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
     expect(mockedCleanupStagedPhotoFiles).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({ id: 'photo-1' }),
     ]));
@@ -235,7 +260,7 @@ describe('submitProcessedPhotos', () => {
     expect(mockedSubmitFoodProductPhotoEntries).toHaveBeenCalledWith(expect.objectContaining({
       foodProductForms: expect.any(Object),
     }));
-    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['feature', 'restaurants'] });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: restaurantsQueryKeys.root });
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({
       analyticsSource: 'PhotoProcessingScreen',
       subject: 'Photo entries',
@@ -258,10 +283,10 @@ describe('submitProcessedPhotos', () => {
 
     const result = await submitProcessedPhotos(buildInput());
 
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeed'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'homeFeedMap'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visits'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'visitPhotos'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: homeFeedQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: homeFeedMapQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: visitsQueryKeys.root });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: visitPhotosQueryKeys.root });
     expect(result).toEqual({
       errorMessage: 'Upload failed',
       status: 'failed',
