@@ -19,6 +19,7 @@ interface QueueRow {
   id: string;
   method: MutationMethod;
   url: string;
+  origin_account_id: string | null;
   body: string | null;
   headers: string;
   status: MutationStatus;
@@ -42,6 +43,10 @@ interface LatestErrorRow {
   last_error: string | null;
 }
 
+interface TableColumnRow {
+  name: string;
+}
+
 export class SQLiteMutationQueueStore implements MutationQueueStore {
   private databasePromise: Promise<SQLiteDatabase> | null = null;
 
@@ -53,6 +58,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
         id TEXT PRIMARY KEY NOT NULL,
         method TEXT NOT NULL,
         url TEXT NOT NULL,
+        origin_account_id TEXT,
         body TEXT,
         headers TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -72,6 +78,14 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_updated
       ON ${TABLE_NAME}(updated_at DESC);
     `);
+
+    const tableColumns =
+      (await database.getAllAsync<TableColumnRow>(`PRAGMA table_info(${TABLE_NAME});`)) ?? [];
+    if (!tableColumns.some((column) => column.name === 'origin_account_id')) {
+      await database.execAsync(
+        `ALTER TABLE ${TABLE_NAME} ADD COLUMN origin_account_id TEXT;`,
+      );
+    }
 
     // A previous app process may have crashed after marking a row in-flight.
     // Those writes are safe to replay because the queue stores idempotency keys.
@@ -94,6 +108,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       id: createMutationId(),
       method: input.method,
       url: input.url,
+      originAccountId: input.originAccountId ?? null,
       body: serializeBody(input.body),
       headers: normalizeHeaders(input.headers),
       status: 'pending',
@@ -110,14 +125,15 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     await database.runAsync(
       `
       INSERT INTO ${TABLE_NAME} (
-        id, method, url, body, headers, status, idempotency_key,
+        id, method, url, origin_account_id, body, headers, status, idempotency_key,
         attempt_count, max_attempts, next_retry_at, last_error,
         created_at, updated_at, last_attempt_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       mutation.id,
       mutation.method,
       mutation.url,
+      mutation.originAccountId,
       mutation.body,
       JSON.stringify(mutation.headers),
       mutation.status,
@@ -139,7 +155,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     const rows = await database.getAllAsync<QueueRow>(
       `
       SELECT
-        id, method, url, body, headers, status, idempotency_key,
+        id, method, url, origin_account_id, body, headers, status, idempotency_key,
         attempt_count, max_attempts, next_retry_at, last_error,
         created_at, updated_at, last_attempt_at
       FROM ${TABLE_NAME}
@@ -157,7 +173,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     const rows = await database.getAllAsync<QueueRow>(
       `
       SELECT
-        id, method, url, body, headers, status, idempotency_key,
+        id, method, url, origin_account_id, body, headers, status, idempotency_key,
         attempt_count, max_attempts, next_retry_at, last_error,
         created_at, updated_at, last_attempt_at
       FROM ${TABLE_NAME}
@@ -318,6 +334,7 @@ function deserializeRow(row: QueueRow): QueuedMutation {
     id: row.id,
     method: row.method,
     url: row.url,
+    originAccountId: row.origin_account_id,
     body: row.body,
     headers: parseHeaders(row.headers),
     status: row.status,

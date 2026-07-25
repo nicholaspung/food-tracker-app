@@ -80,6 +80,53 @@ describe('SQLiteMutationQueueStore retention cleanup', () => {
     );
   });
 
+  it('persists the originating account in native SQLite rows', async () => {
+    const store = new NativeSQLiteMutationQueueStore();
+
+    await store.enqueue({
+      method: 'POST',
+      originAccountId: 'account_a',
+      url: 'local://feature/feedback.create',
+    });
+
+    expect(mockRunAsync).toHaveBeenCalledWith(
+      expect.stringContaining('origin_account_id'),
+      expect.any(String),
+      'POST',
+      'local://feature/feedback.create',
+      'account_a',
+      null,
+      '{}',
+      'pending',
+      expect.any(String),
+      0,
+      5,
+      0,
+      null,
+      expect.any(Number),
+      expect.any(Number),
+      null,
+    );
+  });
+
+  it('round-trips the originating account through web queue storage', async () => {
+    const storage = createLocalStorageMock([]);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+    const firstStore = new WebSQLiteMutationQueueStore();
+
+    await firstStore.enqueue({
+      method: 'POST',
+      originAccountId: 'account_a',
+      url: 'local://feature/feedback.create',
+    });
+
+    const restartedStore = new WebSQLiteMutationQueueStore();
+    expect((await restartedStore.getQueuedMutations(1))[0]?.originAccountId).toBe('account_a');
+  });
+
   it('removes only terminal failed native SQLite rows older than the cutoff', async () => {
     mockRunAsync.mockResolvedValueOnce({ changes: 2 });
     const store = new NativeSQLiteMutationQueueStore();
@@ -174,6 +221,7 @@ function buildQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMut
     id: 'mut_seeded',
     method: 'POST',
     url: 'local://feature/note.create',
+    originAccountId: 'user_1',
     body: JSON.stringify({ note: 'queued body' }),
     headers: {
       'X-Mobile-Write-Operation': 'note.create',

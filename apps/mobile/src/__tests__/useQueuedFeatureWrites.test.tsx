@@ -17,6 +17,7 @@ describe('useQueuedFeatureWrites', () => {
     id: 'queue-1',
     url: 'local://feature/note.create',
     method: 'POST',
+    originAccountId: 'user_1',
     headers: {
       'X-Mobile-Write-Operation': 'note.create',
     },

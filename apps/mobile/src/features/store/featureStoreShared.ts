@@ -19,6 +19,7 @@ type MutationProperties = Record<string, MutationPropertyValue>;
 
 export interface FeatureWriteRequestOptions {
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 function compactMutationProperties(

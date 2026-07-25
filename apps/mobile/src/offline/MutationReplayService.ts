@@ -288,6 +288,16 @@ export class MutationReplayService {
               }),
             },
           );
+          if (sendResult.accountBindingState) {
+            trackObservabilityEvent('SYNC_MUTATION_ACCOUNT_QUARANTINED', {
+              accountBindingState: sendResult.accountBindingState,
+              mutationId: nextMutation.id,
+              mutationTarget: resolveMutationTarget(nextMutation.url),
+              operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              queueDepth: this.snapshot.queueDepth,
+              trigger,
+            });
+          }
         }
 
         if (successfulMutationsSinceRefresh > 0) {

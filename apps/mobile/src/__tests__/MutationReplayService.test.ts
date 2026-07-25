@@ -1,4 +1,5 @@
 import { MutationReplayService } from '../offline/MutationReplayService';
+import { createFetchMutationTransport } from '../offline/fetchMutationTransport';
 import { trackObservabilityEvent } from '../observability';
 import type {
   EnqueueMutationInput,
@@ -40,6 +41,7 @@ function createDeferredPromise<T>() {
 class InMemoryQueueStore implements MutationQueueStore {
   getStatsCallCount = 0;
   onGetStatsBeforeReturn?: () => Promise<void> | void;
+  onMarkInFlight?: () => Promise<void> | void;
 
   constructor(
     private readonly sharedState: SharedQueueState = { rows: new Map() },
@@ -69,6 +71,7 @@ class InMemoryQueueStore implements MutationQueueStore {
       id: `mut_${this.sharedState.rows.size + 1}`,
       method: input.method,
       url: input.url,
+      originAccountId: input.originAccountId ?? null,
       body: typeof input.body === 'string' ? input.body : JSON.stringify(input.body ?? null),
       headers: input.headers ?? {},
       status: 'pending',
@@ -117,6 +120,7 @@ class InMemoryQueueStore implements MutationQueueStore {
     mutation.attemptCount += 1;
     mutation.lastAttemptAt = at;
     mutation.updatedAt = at;
+    await this.onMarkInFlight?.();
   }
 
   async remove(id: string): Promise<void> {
@@ -248,6 +252,7 @@ function buildQueuedMutation(overrides?: Partial<QueuedMutation>): QueuedMutatio
     id: 'mut_seeded_1',
     method: 'POST',
     url: 'local://feature/food-product.create',
+    originAccountId: null,
     body: JSON.stringify({
       itemName: 'Sparkling Water',
     }),
@@ -509,6 +514,97 @@ describe('MutationReplayService', () => {
     await restartedService.start();
 
     expect(restartedService.getSnapshot().queueDepth).toBe(0);
+  });
+
+  it('quarantines feedback when the account switches after replay starts', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_feedback_account_a',
+          buildQueuedMutation({
+            id: 'mut_feedback_account_a',
+            url: 'local://feature/feedback.create',
+            headers: {
+              'X-Mobile-Write-Operation': 'feedback.create',
+            },
+            body: JSON.stringify({
+              title: 'Account A feedback',
+              description: 'Private feedback from account A',
+            }),
+            originAccountId: 'account_a',
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    let activeAccountId = 'account_a';
+    store.onMarkInFlight = () => {
+      activeAccountId = 'account_b';
+    };
+    const fetchImplementation = jest.fn() as unknown as typeof fetch;
+    const transport = createFetchMutationTransport({
+      fetchImplementation,
+      getActiveAccountId: () => activeAccountId,
+      getAuthToken: () => `${activeAccountId}_token`,
+    });
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.replay('foreground');
+
+    expect(fetchImplementation).not.toHaveBeenCalled();
+    expect(service.getSnapshot()).toEqual(
+      expect.objectContaining({
+        failedCount: 1,
+        queueDepth: 1,
+      }),
+    );
+    expect((await service.getQueuedMutations(1))[0]).toEqual(
+      expect.objectContaining({
+        attemptCount: 1,
+        lastError: 'Queued write belongs to a different account and was quarantined.',
+        status: 'failed',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'SYNC_MUTATION_ACCOUNT_QUARANTINED',
+      expect.objectContaining({
+        accountBindingState: 'different_account',
+        operationName: 'feedback.create',
+      }),
+    );
+  });
+
+  it('replays feedback normally when the queued account remains active', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_feedback_account_a',
+          buildQueuedMutation({
+            id: 'mut_feedback_account_a',
+            url: 'local://feature/feedback.create',
+            headers: {
+              'X-Mobile-Write-Operation': 'feedback.create',
+            },
+            body: JSON.stringify({
+              title: 'Account A feedback',
+              description: 'Private feedback from account A',
+            }),
+            originAccountId: 'account_a',
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(sharedState);
+    const transport = createTransport([]);
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.replay('foreground');
+
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot().queueDepth).toBe(0);
+    expect(service.getSnapshot().failedCount).toBe(0);
   });
 
   it('cancels an in-flight replay before clearing queued writes', async () => {

@@ -12,10 +12,15 @@ import type {
 
 const DEFAULT_ERROR_MESSAGE = 'Request failed.';
 const MAX_ERROR_MESSAGE_LENGTH = 180;
+const MISSING_ORIGIN_ACCOUNT_ERROR =
+  'Queued write has no origin account and was quarantined.';
+const ACCOUNT_MISMATCH_ERROR =
+  'Queued write belongs to a different account and was quarantined.';
 
 interface CreateFetchMutationTransportOptions {
   cancelPendingRequests?: () => void;
   fetchImplementation?: typeof fetch;
+  getActiveAccountId?: () => string | null;
   getAuthToken?: () => string | null;
 }
 
@@ -33,6 +38,20 @@ export function createFetchMutationTransport(
 
       if (signal?.aborted) {
         return createCancelledSendResult();
+      }
+
+      const accountBindingFailure = resolveAccountBindingFailure(
+        mutation,
+        options.getActiveAccountId,
+      );
+      if (accountBindingFailure) {
+        return {
+          ok: false,
+          retryable: false,
+          statusCode: null,
+          errorMessage: accountBindingFailure.errorMessage,
+          accountBindingState: accountBindingFailure.state,
+        };
       }
 
       if (!fetchImplementation) {
@@ -58,7 +77,7 @@ export function createFetchMutationTransport(
       }
 
       try {
-        const localResult = await trySendLocalFeatureMutation(mutation, signal);
+        const localResult = await trySendLocalFeatureMutation(mutation, signal, authToken);
         if (localResult) {
           return localResult;
         }
@@ -143,6 +162,7 @@ async function safeReadText(response: Response): Promise<string> {
 async function trySendLocalFeatureMutation(
   mutation: QueuedMutation,
   signal?: AbortSignal,
+  authToken?: string | null,
 ): Promise<MutationSendResult | null> {
   const isLocalFeatureMutation = mutation.url.startsWith('local://feature/');
   if (!isLocalFeatureMutation) {
@@ -154,7 +174,10 @@ async function trySendLocalFeatureMutation(
   }
 
   try {
-    const replayResult = await replayFeatureOutboxMutation(mutation);
+    const replayResult = await replayFeatureOutboxMutation(mutation, {
+      authToken,
+      signal,
+    });
     if (replayResult.status === 'unhandled') {
       return {
         ok: false,
@@ -201,6 +224,44 @@ async function trySendLocalFeatureMutation(
       errorMessage: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
     };
   }
+}
+
+function resolveAccountBindingFailure(
+  mutation: QueuedMutation,
+  getActiveAccountId: (() => string | null) | undefined,
+):
+  | {
+      errorMessage: string;
+      state: 'different_account' | 'missing_active' | 'missing_origin';
+    }
+  | null {
+  if (!getActiveAccountId) {
+    return null;
+  }
+
+  if (!mutation.originAccountId) {
+    return {
+      errorMessage: MISSING_ORIGIN_ACCOUNT_ERROR,
+      state: 'missing_origin',
+    };
+  }
+
+  const activeAccountId = getActiveAccountId();
+  if (!activeAccountId) {
+    return {
+      errorMessage: ACCOUNT_MISMATCH_ERROR,
+      state: 'missing_active',
+    };
+  }
+
+  if (mutation.originAccountId !== activeAccountId) {
+    return {
+      errorMessage: ACCOUNT_MISMATCH_ERROR,
+      state: 'different_account',
+    };
+  }
+
+  return null;
 }
 
 function createCancelledSendResult(): MutationSendResult {

@@ -9,12 +9,14 @@ export interface EnqueueMutationInput {
   headers?: Record<string, string>;
   maxAttempts?: number;
   idempotencyKey?: string;
+  originAccountId?: string | null;
 }
 
 export interface QueuedMutation {
   id: string;
   method: MutationMethod;
   url: string;
+  originAccountId: string | null;
   body: string | null;
   headers: Record<string, string>;
   status: MutationStatus;
@@ -60,6 +62,7 @@ export interface MutationSendResult {
   statusCode: number | null;
   errorMessage: string | null;
   cancelled?: boolean;
+  accountBindingState?: 'different_account' | 'missing_active' | 'missing_origin';
 }
 
 export interface MutationTransportSendOptions {

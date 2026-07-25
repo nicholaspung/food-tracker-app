@@ -129,7 +129,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const enqueueMutation = useCallback(
     async (input: EnqueueMutationInput): Promise<QueuedMutation> => {
-      const mutation = await syncEngine.enqueue(input);
+      const mutation = await syncEngine.enqueue({
+        ...input,
+        originAccountId: pb.authStore.record?.id ?? null,
+      });
       if (isOnline && hasReplayableSession() && !shouldBlockReplayForEmailVerification()) {
         void syncEngine.replay('enqueue');
       }

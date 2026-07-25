@@ -258,6 +258,7 @@ export async function createFeedback(
         {
           expand: 'user',
           headers: resolveFeatureWriteHeaders(requestOptions),
+          signal: requestOptions?.signal,
         },
       );
 
@@ -325,6 +326,7 @@ export async function sendFeedbackMessage(
           body: {
             message: trimmedMessage,
           },
+          signal: requestOptions?.signal,
         },
       );
 

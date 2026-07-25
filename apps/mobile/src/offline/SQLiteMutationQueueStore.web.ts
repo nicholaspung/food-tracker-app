@@ -36,6 +36,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       id: createMutationId(),
       method: input.method,
       url: input.url,
+      originAccountId: input.originAccountId ?? null,
       body: serializeBody(input.body),
       headers: normalizeHeaders(input.headers),
       status: 'pending',
@@ -193,7 +194,7 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
         return this.memoryStore;
       }
 
-      const mutations = parsedValue.filter(isQueuedMutation);
+      const mutations = parsedValue.filter(isQueuedMutation).map(normalizeQueuedMutation);
       this.memoryStore = mutations;
       return mutations;
     } catch {
@@ -233,6 +234,16 @@ function isQueuedMutation(value: unknown): value is QueuedMutation {
     typeof candidate.createdAt === 'number' &&
     typeof candidate.updatedAt === 'number'
   );
+}
+
+function normalizeQueuedMutation(mutation: QueuedMutation): QueuedMutation {
+  return {
+    ...mutation,
+    originAccountId:
+      typeof mutation.originAccountId === 'string' && mutation.originAccountId.trim()
+        ? mutation.originAccountId
+        : null,
+  };
 }
 
 function serializeBody(body: unknown): string | null {

@@ -147,6 +147,7 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
     id: 'mut_1',
     method: 'POST',
     url: 'local://feature/visit.create',
+    originAccountId: 'user_1',
     body: JSON.stringify({
       restaurantName: 'Noodle House',
       items: [
@@ -478,6 +479,7 @@ describe('featureOutboxOperations', () => {
   });
 
   it('replays feedback creation through the adapter registry', async () => {
+    const controller = new AbortController();
     const handled = await replayFeatureOutboxMutation(
       createQueuedMutation({
         url: 'local://feature/feedback.create',
@@ -486,6 +488,10 @@ describe('featureOutboxOperations', () => {
           'X-Mobile-Write-Operation': 'feedback.create',
         },
       }),
+      {
+        authToken: 'account_a_token',
+        signal: controller.signal,
+      },
     );
 
     expect(handled).toEqual({ status: 'replayed' });
@@ -496,7 +502,9 @@ describe('featureOutboxOperations', () => {
           'X-Mobile-Write-Operation': 'feedback.create',
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
+          Authorization: 'Bearer account_a_token',
         },
+        signal: controller.signal,
       },
     );
   });

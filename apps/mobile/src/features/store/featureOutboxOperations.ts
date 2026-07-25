@@ -335,6 +335,10 @@ export function updateBillParticipantPaidStatusApiMutationInput(
 
 export async function replayFeatureOutboxMutation(
   mutation: QueuedMutation,
+  options?: {
+    authToken?: string | null;
+    signal?: AbortSignal;
+  },
 ): Promise<FeatureOutboxReplayResult> {
   const operationName = parseFeatureOutboxOperationName(mutation.url);
   if (!operationName) {
@@ -346,7 +350,7 @@ export async function replayFeatureOutboxMutation(
     return parsedPayload;
   }
 
-  const requestOptions = createReplayFeatureWriteRequestOptions(mutation);
+  const requestOptions = createReplayFeatureWriteRequestOptions(mutation, options);
 
   return replayRegisteredFeatureOutboxOperation(operationName, parsedPayload.payload, requestOptions);
 }
@@ -387,12 +391,29 @@ function parseMutationPayload(
 
 function createReplayFeatureWriteRequestOptions(
   mutation: QueuedMutation,
+  options?: {
+    authToken?: string | null;
+    signal?: AbortSignal;
+  },
 ): FeatureWriteRequestOptions {
-  return {
-    headers: {
-      ...mutation.headers,
-      'Idempotency-Key': mutation.idempotencyKey,
-      'X-Idempotency-Key': mutation.idempotencyKey,
-    },
+  const headers: Record<string, string> = {
+    ...mutation.headers,
+    'Idempotency-Key': mutation.idempotencyKey,
+    'X-Idempotency-Key': mutation.idempotencyKey,
   };
+  if (options?.authToken && !hasHeader(headers, 'Authorization')) {
+    headers.Authorization = `Bearer ${options.authToken}`;
+  }
+
+  return {
+    headers,
+    ...(options?.signal ? { signal: options.signal } : {}),
+  };
+}
+
+function hasHeader(headers: Record<string, string>, expectedHeaderName: string): boolean {
+  const normalizedExpectedName = expectedHeaderName.toLowerCase();
+  return Object.keys(headers).some(
+    (headerName) => headerName.toLowerCase() === normalizedExpectedName,
+  );
 }

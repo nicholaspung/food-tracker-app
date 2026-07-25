@@ -17,6 +17,7 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
     id: 'mut_1',
     method: 'POST',
     url: 'local://feature/tasting-session.create',
+    originAccountId: 'user_1',
     body: JSON.stringify({
       name: 'Friday noodles',
       joinDurationMinutes: 60,

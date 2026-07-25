@@ -6,6 +6,7 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
     id: 'mut_1',
     method: 'POST',
     url: 'https://api.example.com/visits',
+    originAccountId: 'user_1',
     body: JSON.stringify({ rating: 5 }),
     headers: {},
     status: 'pending',
@@ -31,6 +32,7 @@ describe('createFetchMutationTransport', () => {
 
     const transport = createFetchMutationTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
+      getActiveAccountId: () => 'user_1',
       getAuthToken: () => 'jwt_value',
     });
 
@@ -46,6 +48,26 @@ describe('createFetchMutationTransport', () => {
       'X-Idempotency-Key': 'idem_123',
       Authorization: 'Bearer jwt_value',
     });
+  });
+
+  it('rejects a queued write when its origin account no longer matches', async () => {
+    const fetchMock = jest.fn();
+    const transport = createFetchMutationTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+      getActiveAccountId: () => 'user_2',
+      getAuthToken: () => 'user_2_token',
+    });
+
+    const result = await transport.send(createQueuedMutation());
+
+    expect(result).toEqual({
+      accountBindingState: 'different_account',
+      errorMessage: 'Queued write belongs to a different account and was quarantined.',
+      ok: false,
+      retryable: false,
+      statusCode: null,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('marks 409 conflicts as non-retryable', async () => {
