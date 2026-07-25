@@ -356,23 +356,6 @@ func shouldRefreshGooglePlaceRestaurant(record *core.Record) bool {
 	return isGooglePlaceCacheStale(record.GetDateTime("googlePlaceCachedAt").Time())
 }
 
-func mapRestaurantSearchResult(record *core.Record) restaurantSearchResult {
-	location := strings.TrimSpace(record.GetString("location"))
-
-	return restaurantSearchResult{
-		ID:            record.Id,
-		Name:          strings.TrimSpace(record.GetString("name")),
-		City:          location,
-		Location:      location,
-		CuisineType:   strings.TrimSpace(record.GetString("cuisineType")),
-		Visibility:    strings.TrimSpace(record.GetString("visibility")),
-		Latitude:      optionalRecordFloat(record, "latitude"),
-		Longitude:     optionalRecordFloat(record, "longitude"),
-		PlaceID:       strings.TrimSpace(record.GetString("placeId")),
-		IsGooglePlace: record.GetBool("isGooglePlace"),
-	}
-}
-
 func optionalRecordFloat(record *core.Record, fieldName string) *float64 {
 	if record == nil || record.Get(fieldName) == nil {
 		return nil
