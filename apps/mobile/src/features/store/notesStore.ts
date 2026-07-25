@@ -537,6 +537,7 @@ export async function markNoteUsed(
       try {
         await updateCollectionRecord('notes', trimmedNoteId, payload, {
           headers: resolveFeatureWriteHeaders(requestOptions),
+          ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
         });
       } catch (error) {
         if (!isNotFoundError(error)) {

@@ -292,6 +292,18 @@ describe('foodProductsStore', () => {
   });
 
   it('creates a food product with freeform location text and clears legacy coordinates', async () => {
+    const controller = new AbortController();
+    const requestOptions = {
+      headers: {
+        Authorization: 'Bearer account_a_token',
+      },
+      signal: controller.signal,
+    };
+    const photo = {
+      uri: 'file:///matcha.jpg',
+      name: 'matcha.jpg',
+      mimeType: 'image/jpeg',
+    };
     mockedCreateCollectionRecord.mockResolvedValue({
         id: 'food-product-2',
         name: 'Matcha Latte',
@@ -313,15 +325,19 @@ describe('foodProductsStore', () => {
     });
 
     await expect(
-      createFoodProduct({
-        itemName: '  Matcha Latte  ',
-        locationText: '  Ferry Building  ',
-        rating: 4,
-        notes: '  Earthy  ',
-        visibility: 'friends',
-        itemCategory: 'packaged_food',
-        itemDate: '2026-04-18T07:00:00.000Z',
-      }),
+      createFoodProduct(
+        {
+          itemName: '  Matcha Latte  ',
+          locationText: '  Ferry Building  ',
+          rating: 4,
+          notes: '  Earthy  ',
+          visibility: 'friends',
+          itemCategory: 'packaged_food',
+          itemDate: '2026-04-18T07:00:00.000Z',
+          photo,
+        },
+        requestOptions,
+      ),
     ).resolves.toMatchObject({
       id: 'food-product-2',
       itemName: 'Matcha Latte',
@@ -348,8 +364,92 @@ describe('foodProductsStore', () => {
       },
       {
         expand: 'user,visit,visit.restaurant',
-        headers: undefined,
+        headers: {
+          Authorization: 'Bearer account_a_token',
+        },
+        signal: controller.signal,
       },
+    );
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(
+      undefined,
+      'food-product-2',
+      'user-1',
+      [photo],
+      undefined,
+      requestOptions,
+    );
+  });
+
+  it('resumes a queued create after the product commits but its photo upload fails', async () => {
+    const requestOptions = {
+      headers: {
+        Authorization: 'Bearer account_a_token',
+        'Idempotency-Key': 'food-product-replay-1',
+      },
+    };
+    const photo = {
+      uri: 'file:///private.jpg',
+      name: 'private.jpg',
+      mimeType: 'image/jpeg',
+    };
+    const committedRecord = {
+      id: 'replay-product-1',
+      itemType: 'food-product',
+      name: 'Private snack',
+      rating: 4,
+      user: 'user-1',
+      visibility: 'private',
+      itemDate: '2026-04-18T07:00:00.000Z',
+      created: '2026-04-18T07:00:00.000Z',
+      updated: '2026-04-18T07:00:00.000Z',
+    };
+    mockedCreateCollectionRecord
+      .mockResolvedValueOnce(committedRecord)
+      .mockRejectedValueOnce(buildClientResponseError(400));
+    mockedGetCollectionRecord.mockResolvedValue(committedRecord);
+    mockedUploadVisitPhotos
+      .mockRejectedValueOnce(new Error('upload connection lost'))
+      .mockResolvedValueOnce(undefined);
+
+    const input = {
+      itemName: 'Private snack',
+      rating: 4,
+      visibility: 'private' as const,
+      itemDate: '2026-04-18T07:00:00.000Z',
+      photo,
+    };
+
+    await expect(createFoodProduct(input, requestOptions)).rejects.toThrow(
+      'upload connection lost',
+    );
+    await expect(createFoodProduct(input, requestOptions)).resolves.toMatchObject({
+      id: 'replay-product-1',
+      itemName: 'Private snack',
+      visibility: 'private',
+    });
+
+    const firstPayload = mockedCreateCollectionRecord.mock.calls[0]?.[1];
+    const secondPayload = mockedCreateCollectionRecord.mock.calls[1]?.[1];
+    expect(firstPayload?.id).toMatch(/^i[a-z0-9]{14}$/);
+    expect(secondPayload?.id).toBe(firstPayload?.id);
+    expect(mockedGetCollectionRecord).toHaveBeenCalledWith(
+      'food_items',
+      firstPayload?.id,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer account_a_token',
+        }),
+      }),
+    );
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledTimes(2);
+    expect(mockedUploadVisitPhotos).toHaveBeenNthCalledWith(
+      2,
+      undefined,
+      'replay-product-1',
+      'user-1',
+      [photo],
+      undefined,
+      requestOptions,
     );
   });
 

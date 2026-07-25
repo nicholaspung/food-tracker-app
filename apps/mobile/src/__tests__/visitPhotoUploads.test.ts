@@ -1,5 +1,6 @@
 import { File, UploadType } from 'expo-file-system';
 
+import { getCollectionRecord } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
 
@@ -28,7 +29,14 @@ jest.mock('../lib/pocketbase', () => ({
   },
 }));
 
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  getCollectionRecord: jest.fn(),
+}));
+
 const mockedFile = File as jest.MockedClass<typeof File>;
+const mockedGetCollectionRecord = getCollectionRecord as jest.MockedFunction<
+  typeof getCollectionRecord
+>;
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
     token: string;
@@ -39,6 +47,7 @@ describe('uploadVisitPhotos', () => {
   beforeEach(() => {
     mockUpload.mockReset();
     mockedFile.mockClear();
+    mockedGetCollectionRecord.mockReset();
     mockedPocketBase.authStore.token = 'auth-token-1';
   });
 
@@ -128,6 +137,83 @@ describe('uploadVisitPhotos', () => {
           user: 'user-1',
         },
       }),
+    );
+  });
+
+  it('does not start a queued photo upload after replay cancellation', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      uploadVisitPhotos(
+        undefined,
+        'food-item-1',
+        'user-1',
+        [
+          {
+            mimeType: 'image/png',
+            name: 'private.png',
+            uri: 'file:///staged/private.png',
+          },
+        ],
+        undefined,
+        {
+          headers: {
+            Authorization: 'Bearer account-a-token',
+          },
+          signal: controller.signal,
+        },
+      ),
+    ).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it('treats a committed replay photo as successful after an ambiguous upload failure', async () => {
+    mockUpload.mockRejectedValue(new Error('connection lost after upload'));
+    mockedGetCollectionRecord.mockResolvedValue({
+      id: 'existing-photo',
+      food_item: 'food-item-1',
+      user: 'user-1',
+    });
+
+    await expect(
+      uploadVisitPhotos(
+        undefined,
+        'food-item-1',
+        'user-1',
+        [
+          {
+            mimeType: 'image/png',
+            name: 'private.png',
+            uri: 'file:///staged/private.png',
+          },
+        ],
+        undefined,
+        {
+          headers: {
+            Authorization: 'Bearer account-a-token',
+            'Idempotency-Key': 'food-product-replay-1',
+          },
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    const uploadOptions = mockUpload.mock.calls[0]?.[1];
+    const replayPhotoId = uploadOptions?.parameters?.id;
+    expect(replayPhotoId).toMatch(/^i[a-z0-9]{14}$/);
+    expect(mockedGetCollectionRecord).toHaveBeenCalledWith(
+      'visit_photos',
+      replayPhotoId,
+      {
+        fields: 'id,food_item,user',
+        headers: {
+          Authorization: 'Bearer account-a-token',
+          'Idempotency-Key': 'food-product-replay-1',
+        },
+      },
     );
   });
 

@@ -375,6 +375,7 @@ describe('featureOutboxOperations', () => {
   });
 
   it('replays food product creates through the public feature outbox replay interface', async () => {
+    const controller = new AbortController();
     mockedCreateFoodProduct.mockResolvedValue({
       id: 'food-product-1',
       itemName: 'Chili Crisp',
@@ -396,6 +397,10 @@ describe('featureOutboxOperations', () => {
           'X-Mobile-Write-Operation': 'food-product.create',
         },
       }),
+      {
+        authToken: 'account_a_token',
+        signal: controller.signal,
+      },
     );
 
     expect(handled).toEqual({ status: 'replayed' });
@@ -409,7 +414,9 @@ describe('featureOutboxOperations', () => {
           'X-Mobile-Write-Operation': 'food-product.create',
           'Idempotency-Key': 'idem_123',
           'X-Idempotency-Key': 'idem_123',
+          Authorization: 'Bearer account_a_token',
         },
+        signal: controller.signal,
       },
     );
   });

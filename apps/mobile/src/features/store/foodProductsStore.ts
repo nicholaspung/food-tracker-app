@@ -9,6 +9,7 @@ import { markNoteUsed } from './notesStore';
 import {
   deleteCollectionRecordsIgnoringNotFound,
   buildOrFilter,
+  deriveFeatureWriteRecordId,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
@@ -193,6 +194,10 @@ export async function createFoodProduct(
         latitude: null,
         longitude: null,
       };
+      const replayRecordId = deriveFeatureWriteRecordId(requestOptions, 'food-product');
+      if (replayRecordId) {
+        payload.id = replayRecordId;
+      }
 
       if (input.notes !== undefined) {
         payload.notes = input.notes.trim() || '';
@@ -202,10 +207,40 @@ export async function createFoodProduct(
         payload.itemCategory = normalizedCategory;
       }
 
-      const record = await createCollectionRecord<FoodItemCollectionRecord>('food_items', payload, {
+      const collectionOptions = {
         expand: 'user,visit,visit.restaurant',
         headers: resolveFeatureWriteHeaders(requestOptions),
-      });
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+      };
+      let record: FoodItemCollectionRecord;
+      try {
+        record = await createCollectionRecord<FoodItemCollectionRecord>(
+          'food_items',
+          payload,
+          collectionOptions,
+        );
+      } catch (createError) {
+        if (!replayRecordId) {
+          throw createError;
+        }
+
+        try {
+          const existingRecord = await getCollectionRecord<FoodItemCollectionRecord>(
+            'food_items',
+            replayRecordId,
+            collectionOptions,
+          );
+          if (
+            existingRecord.user !== currentUserId ||
+            existingRecord.itemType !== 'food-product'
+          ) {
+            throw createError;
+          }
+          record = existingRecord;
+        } catch {
+          throw createError;
+        }
+      }
 
       if (input.photo) {
         await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo], undefined, requestOptions);
@@ -291,6 +326,7 @@ export async function updateFoodProduct(
         {
           expand: 'user,visit,visit.restaurant',
           headers: resolveFeatureWriteHeaders(requestOptions),
+          ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
         },
       );
 
@@ -340,6 +376,7 @@ export async function deleteFoodProduct(
     try {
       await deleteCollectionRecord('food_items', foodProductId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
       });
     } catch (error) {
       if (isNotFoundError(error)) {

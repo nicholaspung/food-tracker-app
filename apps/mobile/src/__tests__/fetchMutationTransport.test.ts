@@ -70,6 +70,38 @@ describe('createFetchMutationTransport', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('quarantines cross-account food product payloads before decoding or photo upload', async () => {
+    const fetchMock = jest.fn();
+    const transport = createFetchMutationTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+      getActiveAccountId: () => 'user_2',
+      getAuthToken: () => 'user_2_token',
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({
+        url: 'local://feature/food-product.create',
+        body: JSON.stringify({
+          itemName: 'Account A private item',
+          photo: {
+            mimeType: 'image/jpeg',
+            name: 'private.jpg',
+            uri: 'file:///private.jpg',
+          },
+          rating: 5,
+        }),
+        headers: {
+          'X-Mobile-Write-Operation': 'food-product.create',
+        },
+        originAccountId: 'user_1',
+      }),
+    );
+
+    expect(result.accountBindingState).toBe('different_account');
+    expect(result.retryable).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('marks 409 conflicts as non-retryable', async () => {
     const fetchMock = jest.fn(async () => ({
       ok: false,

@@ -40,6 +40,7 @@ interface CollectionPageOptions extends PocketBaseRequestOptions {
 interface CollectionGetOptions extends PocketBaseRequestOptions {
   expand?: string;
   fields?: string;
+  headers?: Record<string, string>;
 }
 
 interface CollectionCreateOptions extends PocketBaseRequestOptions {

@@ -22,6 +22,31 @@ export interface FeatureWriteRequestOptions {
   signal?: AbortSignal;
 }
 
+export function deriveFeatureWriteRecordId(
+  requestOptions: FeatureWriteRequestOptions | undefined,
+  scope: string,
+): string | undefined {
+  const idempotencyKey = Object.entries(requestOptions?.headers ?? {}).find(
+    ([headerName]) => headerName.toLowerCase() === 'idempotency-key',
+  )?.[1]?.trim();
+  if (!idempotencyKey) {
+    return undefined;
+  }
+
+  const input = `${scope}:${idempotencyKey}`;
+  let firstHash = 0x811c9dc5;
+  let secondHash = 0x9e3779b9;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input.charCodeAt(index);
+    firstHash = Math.imul(firstHash ^ character, 0x01000193);
+    secondHash = Math.imul(secondHash ^ character, 0x85ebca6b);
+  }
+
+  return `i${(firstHash >>> 0).toString(36).padStart(7, '0')}${(secondHash >>> 0)
+    .toString(36)
+    .padStart(7, '0')}`;
+}
+
 function compactMutationProperties(
   properties: MutationProperties | undefined,
 ): Record<string, string | number | boolean | null> {
@@ -148,6 +173,7 @@ export async function deleteCollectionRecordsIgnoringNotFound(
     normalizedRecordIds.map((recordId) =>
       deleteCollectionRecord(collectionName, recordId, {
         headers: resolveFeatureWriteHeaders(requestOptions),
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
       }),
     ),
   );
