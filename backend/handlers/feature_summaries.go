@@ -14,6 +14,8 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 const visibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed')`
@@ -4670,7 +4672,7 @@ func getSameNameRestaurantHistory(
 		return response, nil
 	}
 
-	candidateRestaurants, err := listAccessibleSameNameRestaurantCandidates(app, viewerUserID, isAdmin)
+	candidateRestaurants, err := listAccessibleSameNameRestaurantCandidates(app, viewerUserID, isAdmin, normalizedName)
 	if err != nil {
 		return response, apis.NewApiError(500, "failed to load restaurant history candidates", err)
 	}
@@ -4679,9 +4681,6 @@ func getSameNameRestaurantHistory(
 	restaurantIDs := make([]string, 0, len(candidateRestaurants))
 	seenRestaurantIDs := map[string]struct{}{}
 	for _, candidate := range candidateRestaurants {
-		if normalizeRestaurantHistoryName(candidate.Name) != normalizedName {
-			continue
-		}
 		trimmedID := strings.TrimSpace(candidate.RestaurantID)
 		if trimmedID == "" {
 			continue
@@ -4715,7 +4714,21 @@ func listAccessibleSameNameRestaurantCandidates(
 	app core.App,
 	userID string,
 	isAdmin bool,
+	normalizedName string,
 ) ([]restaurantHistoryCandidateRow, error) {
+	query := buildAccessibleSameNameRestaurantCandidatesQuery(isAdmin)
+
+	rows := []restaurantHistoryCandidateRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"normalizedName": normalizedName,
+			"userId":         userID,
+		}).
+		All(&rows)
+	return rows, err
+}
+
+func buildAccessibleSameNameRestaurantCandidatesQuery(isAdmin bool) string {
 	query := buildRestaurantSearchBaseQuery(isAdmin) + `
 		SELECT
 			restaurants.id AS [[restaurantId]],
@@ -4723,20 +4736,17 @@ func listAccessibleSameNameRestaurantCandidates(
 			COALESCE(restaurants.location, '') AS [[location]],
 			COALESCE(restaurants.cuisineType, '') AS [[cuisineType]]
 		FROM restaurants
+		WHERE restaurants.historyNormalizedName = {:normalizedName}
 	`
 	if !isAdmin {
 		query += `
-			WHERE ` + restaurantAccessCondition()
+			AND (` + restaurantAccessCondition() + `)
+		`
 	}
 	query += `
 		ORDER BY restaurants.name ASC, restaurants.location ASC, restaurants.id ASC
 	`
-
-	rows := []restaurantHistoryCandidateRow{}
-	err := app.DB().NewQuery(query).
-		Bind(dbx.Params{"userId": userID}).
-		All(&rows)
-	return rows, err
+	return query
 }
 
 func listSameNameHistoryVisitItemRows(
@@ -4971,7 +4981,7 @@ func buildSameNameRestaurantHistoryResponse(
 }
 
 func normalizeRestaurantHistoryName(name string) string {
-	return normalizeRestaurantHistoryText(name)
+	return lib.NormalizeRestaurantHistoryName(name)
 }
 
 func normalizeRestaurantHistoryItemName(name string) string {

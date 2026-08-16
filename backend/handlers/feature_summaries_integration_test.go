@@ -14,7 +14,13 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
+	"myapp/hooks"
 )
+
+func registerFeatureSummaryHandlersWithRestaurantHistoryNames(se *core.ServeEvent, app core.App) {
+	hooks.RegisterRestaurantHistoryNameHooks(app)
+	handlers.RegisterFeatureSummaryHandlers(se, app)
+}
 
 func setCollectionRecordCreatedAt(
 	t *testing.T,
@@ -3488,7 +3494,7 @@ func TestRestaurantOrderedItemsEndpointReturnsOwnExactRestaurantItems(t *testing
 }
 
 func TestSameNameRestaurantHistoryEndpointAggregatesOwnVisitItemsAcrossLocations(t *testing.T) {
-	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	server := newPreparedServer(t, registerFeatureSummaryHandlersWithRestaurantHistoryNames)
 	user, token := createAuthUser(t, server.app, false, false)
 	friend, _ := createAuthUser(t, server.app, false, false)
 	nonFriend, _ := createAuthUser(t, server.app, false, false)
@@ -3679,7 +3685,7 @@ func TestSameNameRestaurantHistoryEndpointAggregatesOwnVisitItemsAcrossLocations
 }
 
 func TestSameNameRestaurantHistoryEndpointReturnsEmptyHistoryForUnvisitedRestaurant(t *testing.T) {
-	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	server := newPreparedServer(t, registerFeatureSummaryHandlersWithRestaurantHistoryNames)
 	user, token := createAuthUser(t, server.app, false, false)
 
 	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
@@ -3717,7 +3723,7 @@ func TestSameNameRestaurantHistoryEndpointReturnsEmptyHistoryForUnvisitedRestaur
 }
 
 func TestSameNameRestaurantHistoryEndpointRejectsInaccessibleRestaurant(t *testing.T) {
-	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	server := newPreparedServer(t, registerFeatureSummaryHandlersWithRestaurantHistoryNames)
 	user, token := createAuthUser(t, server.app, false, false)
 	otherUser, _ := createAuthUser(t, server.app, false, false)
 
