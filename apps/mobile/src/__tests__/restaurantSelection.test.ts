@@ -146,7 +146,9 @@ describe('restaurant selection module', () => {
       },
     ];
     const queryClient = {
-      getQueryData: jest.fn(() => cachedMenuItems),
+      getQueriesData: jest.fn(() => [
+        [menuItemsQueryKeys.paginated('restaurant-ramen'), cachedMenuItems],
+      ]),
     };
     const options = buildRestaurantMenuItemsQueryOptions({
       enabled: true,
@@ -157,11 +159,11 @@ describe('restaurant selection module', () => {
 
     const result = await options.queryFn({ signal: new AbortController().signal } as never);
 
-    expect(options.queryKey).toEqual(menuItemsQueryKeys.restaurant('restaurant-ramen'));
-    expect(result).toBe(cachedMenuItems);
-    expect(queryClient.getQueryData).toHaveBeenCalledWith(
-      menuItemsQueryKeys.restaurant('restaurant-ramen'),
-    );
+    expect(options.queryKey).toEqual(menuItemsQueryKeys.firstPage('restaurant-ramen'));
+    expect(result).toEqual(cachedMenuItems);
+    expect(queryClient.getQueriesData).toHaveBeenCalledWith({
+      queryKey: menuItemsQueryKeys.restaurant('restaurant-ramen'),
+    });
     expect(mockedListMenuItemsForRestaurant).not.toHaveBeenCalled();
   });
 

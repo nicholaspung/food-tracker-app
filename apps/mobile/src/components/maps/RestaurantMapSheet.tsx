@@ -321,6 +321,15 @@ function RestaurantMapSheetTabContent({
       {tab.items.map((item) => (
         <RestaurantItemRow item={item} key={item.id} />
       ))}
+      {tab.actionLabel && tab.onActionPress ? (
+        <Button
+          label={tab.actionLabel}
+          loading={tab.actionLoading}
+          onPress={tab.onActionPress}
+          testID="restaurant-map-sheet-tab-action"
+          variant="secondary"
+        />
+      ) : null}
     </>
   );
 }

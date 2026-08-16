@@ -1,10 +1,10 @@
 import { Ionicons } from "../../ui/AppIcon";
-import { useMemo } from "react";
+import { useRef } from "react";
 import { Pressable, View } from "react-native";
 
 import { createThemedStyles, useTheme } from "../../theme";
 import { createPlatformShadow } from "../../theme/shadows";
-import { Card, Input, Text } from "../../ui";
+import { Button, Card, Input, Text } from "../../ui";
 import { EmptyState } from "./EmptyState";
 import { LoadingState } from "./LoadingState";
 import { PageErrorToast } from "./PageErrorToast";
@@ -12,6 +12,10 @@ import { RatingPill } from "./RatingPill";
 import { VisitMenuItemOptionRow } from "./VisitMenuItemOptionRow";
 
 type MenuItemVisibility = "private" | "friends" | "public";
+
+function normalizeMenuItemSearch(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
 
 export interface RestaurantMenuItemPickerItem {
   id: string;
@@ -60,6 +64,7 @@ export interface RestaurantMenuItemPickerProps<
   ) => boolean;
   isItemSelected: (item: TMenuItem) => boolean;
   isLoading: boolean;
+  isLoadingMore?: boolean;
   isOnline: boolean;
   isReviewDisabled?: boolean;
   isReviewSubmitted?: boolean;
@@ -69,6 +74,7 @@ export interface RestaurantMenuItemPickerProps<
   onAddManual: () => void;
   onEditItem?: (item: TMenuItem) => void;
   onRequestMenuReview: () => void;
+  onLoadMore?: () => void;
   onToggleCrossLocationItem?: (
     item: RestaurantMenuItemPickerCrossLocationItem,
   ) => void;
@@ -79,6 +85,9 @@ export interface RestaurantMenuItemPickerProps<
   onToggleItem: (item: TMenuItem) => void;
   scanDisabled?: boolean;
   searchQuery: string;
+  selectedItems?: TMenuItem[];
+  selectionScopeKey?: string;
+  hasMore?: boolean;
   selectedCount: number;
   testIDPrefix: string;
   hasError: boolean;
@@ -289,6 +298,7 @@ export function RestaurantMenuItemPicker<
   isCrossLocationItemSelected = () => false,
   isItemSelected,
   isLoading,
+  isLoadingMore = false,
   isOnline,
   isReviewDisabled = false,
   isReviewSubmitted = false,
@@ -298,6 +308,7 @@ export function RestaurantMenuItemPicker<
   onAddManual,
   onEditItem,
   onRequestMenuReview,
+  onLoadMore,
   onToggleCrossLocationItem,
   onRetry,
   onScanMenuPhoto,
@@ -306,24 +317,47 @@ export function RestaurantMenuItemPicker<
   onToggleItem,
   scanDisabled = false,
   searchQuery,
+  selectedItems = [],
+  selectionScopeKey = "",
   selectedCount,
   testIDPrefix,
+  hasMore = false,
 }: RestaurantMenuItemPickerProps<TMenuItem>) {
   const theme = useTheme();
   const styles = useStyles();
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const displayedItems = useMemo(() => {
-    const filteredItems = normalizedQuery
-      ? items.filter((item) =>
-          item.name.toLowerCase().includes(normalizedQuery),
-        )
-      : items;
-    const selectedItems = filteredItems.filter((item) => isItemSelected(item));
-    const unselectedItems = filteredItems.filter(
-      (item) => !isItemSelected(item),
-    );
-    return [...selectedItems, ...unselectedItems];
-  }, [isItemSelected, items, normalizedQuery]);
+  const normalizedQuery = normalizeMenuItemSearch(searchQuery);
+  const observedItemsRef = useRef(new Map<string, TMenuItem>());
+  const observedScopeKeyRef = useRef(selectionScopeKey);
+  if (observedScopeKeyRef.current !== selectionScopeKey) {
+    observedItemsRef.current.clear();
+    observedScopeKeyRef.current = selectionScopeKey;
+  }
+  const currentItems = [...selectedItems, ...items];
+  const currentItemIds = new Set(currentItems.map((item) => item.id));
+  for (const [itemId, item] of observedItemsRef.current) {
+    if (!currentItemIds.has(itemId) && !isItemSelected(item)) {
+      observedItemsRef.current.delete(itemId);
+    }
+  }
+  for (const item of selectedItems) {
+    if (!observedItemsRef.current.has(item.id)) {
+      observedItemsRef.current.set(item.id, item);
+    }
+  }
+  for (const item of items) {
+    observedItemsRef.current.set(item.id, item);
+  }
+  const filteredItems = normalizedQuery
+    ? items.filter((item) =>
+        normalizeMenuItemSearch(item.name).includes(normalizedQuery),
+      )
+    : items;
+  const retainedSelectedItems = [...observedItemsRef.current.values()].filter((item) =>
+    isItemSelected(item),
+  );
+  const selectedItemIds = new Set(retainedSelectedItems.map((item) => item.id));
+  const unselectedItems = filteredItems.filter((item) => !selectedItemIds.has(item.id));
+  const displayedItems = [...retainedSelectedItems, ...unselectedItems];
   const firstUnselectedIndex = displayedItems.findIndex(
     (item) => !isItemSelected(item),
   );
@@ -560,7 +594,7 @@ export function RestaurantMenuItemPicker<
           value={searchQuery}
         />
 
-        {isLoading ? (
+        {isLoading && displayedItems.length === 0 ? (
           <LoadingState label="Loading menu items..." />
         ) : hasError ? (
           <PageErrorToast
@@ -618,6 +652,16 @@ export function RestaurantMenuItemPicker<
               </View>
             );
           })
+        ) : null}
+
+        {hasMore && onLoadMore ? (
+          <Button
+            label="Load more menu items"
+            loading={isLoadingMore}
+            onPress={onLoadMore}
+            testID={`${testIDPrefix}-load-more-menu-items`}
+            variant="secondary"
+          />
         ) : null}
 
         {hasCrossLocationItems ? (

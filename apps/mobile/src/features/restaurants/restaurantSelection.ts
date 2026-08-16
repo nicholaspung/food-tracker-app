@@ -9,7 +9,11 @@ import {
   listRestaurantSuggestions,
   searchRestaurantsPage,
 } from '../store/restaurantsStore';
-import { menuItemsQueryKeys } from '../store/menuItemsQuery';
+import {
+  getCachedRestaurantMenuItems,
+  menuItemsQueryKeys,
+  RESTAURANT_MENU_ITEMS_PAGE_SIZE,
+} from '../store/menuItemsQuery';
 import { restaurantsQueryKeys } from '../store/restaurantsQuery';
 import { usageQueryKeys } from '../store/usageQuery';
 import {
@@ -285,14 +289,17 @@ export function buildRestaurantMenuItemsQueryOptions({
       }
 
       if (!isOnline) {
-        return queryClient.getQueryData<MenuItemRecord[]>(
-          menuItemsQueryKeys.restaurant(selectedRestaurantId),
-        ) ?? [];
+        return getCachedRestaurantMenuItems(queryClient, selectedRestaurantId);
       }
 
-      return listMenuItemsForRestaurant(selectedRestaurantId, { signal });
+      const page = await listMenuItemsForRestaurant(selectedRestaurantId, {
+        page: 1,
+        pageSize: RESTAURANT_MENU_ITEMS_PAGE_SIZE,
+        signal,
+      });
+      return page.items;
     },
-    queryKey: menuItemsQueryKeys.restaurant(selectedRestaurantId ?? ''),
+    queryKey: menuItemsQueryKeys.firstPage(selectedRestaurantId ?? ''),
   };
 }
 

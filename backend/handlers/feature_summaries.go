@@ -47,6 +47,8 @@ const defaultRestaurantSuggestionsLimit = 50
 const maxRestaurantSuggestionsLimit = 50
 const defaultRestaurantSearchPageSize = 20
 const maxRestaurantSearchPageSize = 50
+const defaultRestaurantMenuItemsPageSize = 20
+const maxRestaurantMenuItemsPageSize = 50
 const defaultHomeFeedPageSize = 20
 const maxHomeFeedPageSize = 50
 const maxHomeFeedMapPoints = 500
@@ -278,9 +280,15 @@ type menuItemSelectionSummary struct {
 	Updated          string `db:"updated" json:"updated,omitempty"`
 	UserEatenCount   int    `db:"userEatenCount" json:"userEatenCount,omitempty"`
 	FriendEatenCount int    `db:"friendEatenCount" json:"friendEatenCount,omitempty"`
-	ApprovalStatus   string `db:"approvalStatus" json:"-"`
-	CreatorIsAdmin   int    `db:"creatorIsAdmin" json:"-"`
-	PromotedTo       string `db:"promotedTo" json:"-"`
+}
+
+type menuItemSelectionPageResponse struct {
+	Items       []menuItemSelectionSummary `json:"items"`
+	Page        int                        `json:"page"`
+	PageSize    int                        `json:"pageSize"`
+	TotalItems  int                        `json:"totalItems"`
+	TotalPages  int                        `json:"totalPages"`
+	HasNextPage bool                       `json:"hasNextPage"`
 }
 
 type restaurantOrderedItemSummary struct {
@@ -974,7 +982,27 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("restaurantId is required", nil)
 		}
 
-		items, err := listRestaurantMenuItemSummaries(app, e.Auth, restaurantID)
+		page, pageSize, err := parseRestaurantMenuItemsPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		menuItemIDs, err := parseRestaurantMenuItemIDs(e.Request.URL.Query().Get("ids"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		items, err := listRestaurantMenuItemSummaries(
+			app,
+			e.Auth,
+			restaurantID,
+			page,
+			pageSize,
+			e.Request.URL.Query().Get("search"),
+			menuItemIDs,
+		)
 		if err != nil {
 			log.Printf("Failed to load menu items for restaurant %s and user %s: %v", restaurantID, e.Auth.Id, err)
 			return err
@@ -1780,6 +1808,41 @@ func parseRestaurantSearchPagination(pageRaw string, pageSizeRaw string) (int, i
 	}
 
 	return page, pageSize, nil
+}
+
+func parseRestaurantMenuItemsPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page, pageSize, err := parseRestaurantSearchPagination(pageRaw, pageSizeRaw)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if strings.TrimSpace(pageSizeRaw) == "" {
+		pageSize = defaultRestaurantMenuItemsPageSize
+	} else if pageSize > maxRestaurantMenuItemsPageSize {
+		pageSize = maxRestaurantMenuItemsPageSize
+	}
+
+	return page, pageSize, nil
+}
+
+func parseRestaurantMenuItemIDs(raw string) ([]string, error) {
+	ids := make([]string, 0)
+	seen := map[string]struct{}{}
+	for _, value := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(value)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+		if len(ids) > maxRestaurantMenuItemsPageSize {
+			return nil, fmt.Errorf("too many menu item ids")
+		}
+	}
+	return ids, nil
 }
 
 func normalizeHomeFeedScope(raw string) (string, error) {
@@ -4186,9 +4249,18 @@ func listRestaurantMenuItemSummaries(
 	app core.App,
 	authRecord *core.Record,
 	restaurantID string,
-) ([]menuItemSelectionSummary, error) {
+	page int,
+	pageSize int,
+	search string,
+	menuItemIDs []string,
+) (menuItemSelectionPageResponse, error) {
+	response := menuItemSelectionPageResponse{
+		Items:    []menuItemSelectionSummary{},
+		Page:     page,
+		PageSize: pageSize,
+	}
 	if authRecord == nil {
-		return []menuItemSelectionSummary{}, apis.NewUnauthorizedError("authentication required", nil)
+		return response, apis.NewUnauthorizedError("authentication required", nil)
 	}
 
 	viewerUserID := strings.TrimSpace(authRecord.Id)
@@ -4197,7 +4269,7 @@ func listRestaurantMenuItemSummaries(
 	if !isAdmin && viewerUserID != "" {
 		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
 		if err != nil {
-			return nil, apis.NewApiError(500, "failed to resolve menu item visibility", err)
+			return response, apis.NewApiError(500, "failed to resolve menu item visibility", err)
 		}
 		acceptedFriendIDs = friendIDs
 	}
@@ -4205,13 +4277,68 @@ func listRestaurantMenuItemSummaries(
 	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apis.NewNotFoundError("restaurant not found", nil)
+			return response, apis.NewNotFoundError("restaurant not found", nil)
 		}
-		return nil, apis.NewApiError(500, "failed to resolve restaurant", err)
+		return response, apis.NewApiError(500, "failed to resolve restaurant", err)
 	}
 
-	rows := []menuItemSelectionSummary{}
-	query := `
+	accessCondition := menuItemSelectionAccessCondition("menu_items", isAdmin)
+	promotedTargetAccessCondition := menuItemSelectionAccessCondition("promoted_target", isAdmin)
+	approvedItemAccessCondition := menuItemSelectionAccessCondition("approved_item", isAdmin)
+	filterConditions := []string{
+		`menu_items.restaurant = {:restaurantId}`,
+		`(` + accessCondition + `)`,
+		`NOT (
+			TRIM(COALESCE(menu_items.promotedTo, '')) != ''
+			AND EXISTS (
+				SELECT 1
+				FROM menu_items promoted_target
+				WHERE promoted_target.id = menu_items.promotedTo
+					AND promoted_target.restaurant = menu_items.restaurant
+					AND (` + promotedTargetAccessCondition + `)
+			)
+		)`,
+		`NOT (
+			COALESCE(menu_items.approvalStatus, 'unreviewed') != {:approvedStatus}
+			AND COALESCE(creator.isAdmin, 0) = 0
+			AND TRIM(COALESCE(menu_items.name, '')) != ''
+			AND EXISTS (
+				SELECT 1
+				FROM menu_items approved_item
+				WHERE approved_item.restaurant = menu_items.restaurant
+					AND COALESCE(approved_item.approvalStatus, 'unreviewed') = {:approvedStatus}
+					AND LOWER(TRIM(COALESCE(approved_item.name, ''))) = LOWER(TRIM(COALESCE(menu_items.name, '')))
+					AND (` + approvedItemAccessCondition + `)
+			)
+		)`,
+	}
+	normalizedSearch := strings.ToLower(strings.Join(strings.Fields(search), " "))
+	if normalizedSearch != "" {
+		filterConditions = append(
+			filterConditions,
+			`LOWER(TRIM(COALESCE(menu_items.name, ''))) LIKE {:searchLike} ESCAPE '\'`,
+		)
+	}
+	encodedMenuItemIDs, err := json.Marshal(menuItemIDs)
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to encode menu item ids", err)
+	}
+	if len(menuItemIDs) > 0 {
+		filterConditions = append(
+			filterConditions,
+			`menu_items.id IN (SELECT value FROM json_each({:menuItemIdsJson}))`,
+		)
+	}
+	filterSQL := strings.Join(filterConditions, " AND ")
+	params := dbx.Params{
+		"approvedStatus":  menuItemApprovalStatusApproved,
+		"restaurantId":    restaurantRecord.Id,
+		"menuItemIdsJson": string(encodedMenuItemIDs),
+		"searchLike":      "%" + escapeMenuItemSearchValue(normalizedSearch) + "%",
+		"userId":          viewerUserID,
+		"visitItemType":   foodItemTypeVisitItem,
+	}
+	baseQuery := `
 		WITH accepted_friends AS (
 			SELECT friend AS friendId
 			FROM friendships
@@ -4221,6 +4348,29 @@ func listRestaurantMenuItemSummaries(
 			FROM friendships
 			WHERE friend = {:userId} AND status = 'accepted'
 		)
+	`
+
+	countRow := struct {
+		TotalItems int `db:"totalItems"`
+	}{}
+	countQuery := baseQuery + `
+		SELECT COUNT(*) AS [[totalItems]]
+		FROM menu_items
+		LEFT JOIN users creator ON creator.id = menu_items.createdBy
+		WHERE ` + filterSQL
+	if err := app.DB().NewQuery(countQuery).Bind(params).One(&countRow); err != nil {
+		return response, apis.NewApiError(500, "failed to count menu items", err)
+	}
+
+	response.TotalItems = countRow.TotalItems
+	if countRow.TotalItems == 0 {
+		return response, nil
+	}
+	response.TotalPages = (countRow.TotalItems + pageSize - 1) / pageSize
+	response.HasNextPage = page < response.TotalPages
+
+	rows := []menuItemSelectionSummary{}
+	query := baseQuery + `
 		SELECT
 			menu_items.id AS [[id]],
 			menu_items.restaurant AS [[restaurant]],
@@ -4231,9 +4381,6 @@ func listRestaurantMenuItemSummaries(
 			COALESCE(menu_items.isFromOCR, 0) AS [[isFromOCR]],
 			COALESCE(menu_items.created, '') AS [[created]],
 			COALESCE(menu_items.updated, '') AS [[updated]],
-			COALESCE(menu_items.approvalStatus, 'unreviewed') AS [[approvalStatus]],
-			COALESCE(menu_items.promotedTo, '') AS [[promotedTo]],
-			COALESCE(creator.isAdmin, 0) AS [[creatorIsAdmin]],
 			COALESCE(user_history.userEatenCount, 0) AS [[userEatenCount]],
 			COALESCE(friend_history.friendEatenCount, 0) AS [[friendEatenCount]]
 		FROM menu_items
@@ -4265,96 +4412,59 @@ func listRestaurantMenuItemSummaries(
 				AND (visits.visibility = 'public' OR visits.visibility = 'friends')
 			GROUP BY LOWER(TRIM(COALESCE(food_items.name, '')))
 		) friend_history ON friend_history.normalizedName = LOWER(TRIM(COALESCE(menu_items.name, '')))
-		WHERE menu_items.restaurant = {:restaurantId}
+		WHERE ` + filterSQL + `
 		ORDER BY menu_items.created DESC, menu_items.id DESC
+		LIMIT {:limit}
+		OFFSET {:offset}
 	`
 	if err := app.DB().NewQuery(query).
 		Bind(dbx.Params{
-			"restaurantId":  restaurantRecord.Id,
-			"userId":        viewerUserID,
-			"visitItemType": foodItemTypeVisitItem,
+			"approvedStatus":  params["approvedStatus"],
+			"limit":           pageSize,
+			"offset":          (page - 1) * pageSize,
+			"restaurantId":    params["restaurantId"],
+			"menuItemIdsJson": params["menuItemIdsJson"],
+			"searchLike":      params["searchLike"],
+			"userId":          params["userId"],
+			"visitItemType":   params["visitItemType"],
 		}).
 		All(&rows); err != nil {
-		return nil, apis.NewApiError(500, "failed to load menu items", err)
+		return response, apis.NewApiError(500, "failed to load menu items", err)
 	}
 
-	accessibleRows := make([]menuItemSelectionSummary, 0, len(rows))
-	accessibleIDs := map[string]struct{}{}
-	approvedNames := map[string]struct{}{}
-	for _, row := range rows {
-		record, err := app.FindRecordById("menu_items", row.ID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			return nil, apis.NewApiError(500, "failed to resolve menu item", err)
-		}
-		if !canAccessMenuItemRecord(record, viewerUserID, isAdmin, acceptedFriendIDs) {
-			continue
-		}
-
+	for index := range rows {
+		row := &rows[index]
 		row.Name = strings.TrimSpace(row.Name)
 		row.Description = strings.TrimSpace(row.Description)
 		row.CreatedBy = strings.TrimSpace(row.CreatedBy)
 		row.Visibility = strings.TrimSpace(row.Visibility)
-		row.ApprovalStatus = strings.TrimSpace(row.ApprovalStatus)
-		row.PromotedTo = strings.TrimSpace(row.PromotedTo)
-
-		accessibleRows = append(accessibleRows, row)
-		accessibleIDs[row.ID] = struct{}{}
-
-		if row.ApprovalStatus == menuItemApprovalStatusApproved {
-			normalizedName := normalizeMenuItemName(row.Name)
-			if normalizedName != "" {
-				approvedNames[normalizedName] = struct{}{}
-			}
-		}
 	}
 
-	return suppressPromotedMenuItemContributionSummaries(accessibleRows, accessibleIDs, approvedNames), nil
+	response.Items = rows
+	return response, nil
 }
 
-func suppressPromotedMenuItemContributionSummaries(
-	rows []menuItemSelectionSummary,
-	accessibleIDs map[string]struct{},
-	approvedNames map[string]struct{},
-) []menuItemSelectionSummary {
-	result := make([]menuItemSelectionSummary, 0, len(rows))
-	for _, row := range rows {
-		if shouldSuppressMenuItemContributionSummary(row, accessibleIDs, approvedNames) {
-			continue
-		}
-		result = append(result, row)
+func menuItemSelectionAccessCondition(alias string, isAdmin bool) string {
+	if isAdmin {
+		return `1 = 1`
 	}
-	return result
+
+	return `(
+		` + alias + `.createdBy = {:userId}
+		OR ` + alias + `.visibility = 'public'
+		OR (
+			` + alias + `.visibility = 'friends'
+			AND ` + alias + `.createdBy IN (SELECT friendId FROM accepted_friends)
+		)
+	)`
 }
 
-func shouldSuppressMenuItemContributionSummary(
-	row menuItemSelectionSummary,
-	accessibleIDs map[string]struct{},
-	approvedNames map[string]struct{},
-) bool {
-	if promotedTo := strings.TrimSpace(row.PromotedTo); promotedTo != "" {
-		if _, targetIsAccessible := accessibleIDs[promotedTo]; targetIsAccessible {
-			return true
-		}
-	}
-
-	normalizedName := normalizeMenuItemName(row.Name)
-	if normalizedName == "" {
-		return false
-	}
-	if _, hasApprovedName := approvedNames[normalizedName]; !hasApprovedName {
-		return false
-	}
-	if strings.TrimSpace(row.ApprovalStatus) == menuItemApprovalStatusApproved {
-		return false
-	}
-	if row.CreatorIsAdmin != 0 {
-		return false
-	}
-
-	return true
+func escapeMenuItemSearchValue(value string) string {
+	return strings.NewReplacer(
+		`\`, `\\`,
+		`%`, `\%`,
+		`_`, `\_`,
+	).Replace(value)
 }
 
 func listRestaurantOrderedItemSummaries(

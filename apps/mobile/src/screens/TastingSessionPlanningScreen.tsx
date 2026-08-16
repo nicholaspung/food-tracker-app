@@ -21,6 +21,7 @@ import {
   type MenuItemRecord,
   type RestaurantRecord,
   useMonthlyUsage,
+  useRestaurantSelectedMenuItemsQuery,
   useTastingPlanMenuCatalog,
   useTastingPlanPlanningState,
   useTastingSessionLifecycleWrites,
@@ -190,7 +191,6 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     () => selectedRestaurants.find((restaurant) => restaurant.id === pendingRemoveRestaurantId) ?? null,
     [pendingRemoveRestaurantId, selectedRestaurants],
   );
-
   useTastingSessionLifecycleNavigation({
     navigation,
     redirectDestination: lifecycle.redirectDestination,
@@ -253,7 +253,34 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
     activeRestaurantId: activeRestaurant?.restaurantId ?? null,
     enabled: phase === 'items',
     isOnline,
+    searchQuery: menuItemSearchQuery,
   });
+  const selectedMenuItemIdList = useMemo(() => [...selectedItemIds], [selectedItemIds]);
+  const selectedMenuItemsQuery = useRestaurantSelectedMenuItemsQuery({
+    enabled: phase === 'items',
+    isOnline,
+    itemIds: selectedMenuItemIdList,
+    restaurantId: activeRestaurant?.restaurantId ?? null,
+  });
+  const hydratedSelectedMenuItemsById = useMemo(
+    () => new Map((selectedMenuItemsQuery.data ?? []).map((item) => [item.id, item])),
+    [selectedMenuItemsQuery.data],
+  );
+  const selectedMenuItemsForPicker = useMemo<MenuItemRecord[]>(
+    () =>
+      (activeRestaurant?.items ?? []).flatMap((item) =>
+        item.status === 'approved' && item.menuItemId
+          ? [
+              hydratedSelectedMenuItemsById.get(item.menuItemId) ?? {
+                id: item.menuItemId,
+                name: item.name,
+                restaurant: activeRestaurant?.restaurantId ?? '',
+              },
+            ]
+          : [],
+      ),
+    [activeRestaurant, hydratedSelectedMenuItemsById],
+  );
 
   useEffect(() => {
     const activeRestaurantId = activeRestaurant?.restaurantId ?? null;
@@ -805,15 +832,17 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 hasError={menuItemsQuery.isError}
                 isItemSelected={(item) => selectedItemIds.has(item.id)}
                 isLoading={menuItemsQuery.isLoading}
+                isLoadingMore={menuItemsQuery.isFetchingNextPage}
                 isOnline={isOnline}
                 isReviewDisabled={!isOnline || menuReviewSubmitted}
                 isReviewSubmitted={menuReviewSubmitted}
                 isTipVisible={isTipPopoverVisible}
                 items={menuItemsQuery.data ?? []}
+                hasMore={menuItemsQuery.hasNextPage}
                 label={
                   menuItemSearchQuery.trim()
-                    ? `Search results (${menuItemsQuery.data?.length ?? 0})`
-                    : `All menu items (${menuItemsQuery.data?.length ?? 0})`
+                    ? `Search results (${menuItemsQuery.totalItems})`
+                    : `All menu items (${menuItemsQuery.totalItems})`
                 }
                 onAddManual={() => {
                   navigation.navigate('CreateVisitAddMenuItem', {
@@ -835,6 +864,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 onRequestMenuReview={() => {
                   void handleRequestMenuReview();
                 }}
+                onLoadMore={() => {
+                  void menuItemsQuery.fetchNextPage();
+                }}
                 onRetry={() => {
                   void menuItemsQuery.refetch();
                 }}
@@ -846,6 +878,8 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                 }}
                 scanDisabled={scanHandoff.disabled}
                 searchQuery={menuItemSearchQuery}
+                selectedItems={selectedMenuItemsForPicker}
+                selectionScopeKey={activeRestaurant.restaurantId}
                 selectedCount={activeSelectedItemCount}
                 testIDPrefix="tasting-planning"
               />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { RestaurantMapSheetTabId } from '../components/maps';
 import type { AllLocationsHistoryRecord, MenuItemRecord } from '../features';
@@ -19,6 +19,7 @@ import type { RestaurantRecord } from '../features/models';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 
 jest.mock('@tanstack/react-query', () => ({
+  useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
@@ -33,6 +34,7 @@ jest.mock('../lib/googlePlaces', () => ({
 }));
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedGetAllLocationsHistory = getAllLocationsHistory as jest.MockedFunction<
   typeof getAllLocationsHistory
@@ -89,6 +91,32 @@ const menuItemsByRestaurant: Record<string, MenuItemRecord[]> = {
   ],
 };
 
+function buildMenuItemsInfiniteQueryResult(
+  items: MenuItemRecord[],
+  error: Error | null = null,
+) {
+  return {
+    data: {
+      pages: [{
+        items,
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length > 0 ? 1 : 0,
+        hasNextPage: false,
+      }],
+      pageParams: [1],
+    },
+    error,
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+    isError: Boolean(error),
+    isFetchingNextPage: false,
+    isPending: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useInfiniteQuery>;
+}
+
 const historyByRestaurant: Record<string, AllLocationsHistoryRecord> = {
   'restaurant-1': {
     anchorRestaurant: { id: 'restaurant-1', name: 'Erewhon West Hollywood' },
@@ -126,6 +154,7 @@ const historyByRestaurant: Record<string, AllLocationsHistoryRecord> = {
 describe('useFoodDiscoveryMapReadModel', () => {
   const queryClient = {
     getQueryData: jest.fn(),
+    getQueriesData: jest.fn(() => []),
   };
   let activeSheetTab: RestaurantMapSheetTabId;
   let currentRestaurants: VisitRestaurantWithDistance[];
@@ -144,7 +173,17 @@ describe('useFoodDiscoveryMapReadModel', () => {
     renderer = null;
     queryClient.getQueryData.mockReturnValue(undefined);
     mockedUseQueryClient.mockReturnValue(queryClient as never);
-    mockedListMenuItemsForRestaurant.mockResolvedValue(menuItemsByRestaurant['restaurant-1']);
+    mockedUseInfiniteQuery.mockImplementation((options: any) =>
+      buildMenuItemsInfiniteQueryResult(menuItemsByRestaurant[options.queryKey[2]] ?? []),
+    );
+    mockedListMenuItemsForRestaurant.mockResolvedValue({
+      items: menuItemsByRestaurant['restaurant-1'],
+      page: 1,
+      pageSize: 20,
+      totalItems: 2,
+      totalPages: 1,
+      hasNextPage: false,
+    });
     mockedGetAllLocationsHistory.mockResolvedValue(historyByRestaurant['restaurant-1']);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
@@ -241,11 +280,11 @@ describe('useFoodDiscoveryMapReadModel', () => {
 
   it('uses cached offline data for selected restaurant sheet queries', async () => {
     isOnline = false;
+    queryClient.getQueriesData.mockReturnValue([
+      [menuItemsQueryKeys.paginated('restaurant-1'), menuItemsByRestaurant['restaurant-1']],
+    ] as never);
     queryClient.getQueryData.mockImplementation((queryKey) => {
       const key = queryKey as readonly string[];
-      if (key.includes('menuItems')) {
-        return menuItemsByRestaurant['restaurant-1'];
-      }
       if (key.includes('allLocationsHistory')) {
         return historyByRestaurant['restaurant-1'];
       }
@@ -259,20 +298,27 @@ describe('useFoodDiscoveryMapReadModel', () => {
     } as never));
 
     await renderHook();
-    const menuQuery = mockedUseQuery.mock.calls.find((call) =>
+    const menuQuery = mockedUseInfiniteQuery.mock.calls.find((call) =>
       ((call[0] as any).queryKey as readonly string[]).includes('menuItems'),
     )?.[0] as any;
     const historyQuery = mockedUseQuery.mock.calls.find((call) =>
       ((call[0] as any).queryKey as readonly string[]).includes('allLocationsHistory'),
     )?.[0] as any;
 
-    await expect(menuQuery.queryFn({ signal: undefined })).resolves.toEqual(
-      menuItemsByRestaurant['restaurant-1'],
-    );
+    await expect(menuQuery.queryFn({ pageParam: 1, signal: undefined })).resolves.toEqual({
+      items: menuItemsByRestaurant['restaurant-1'],
+      page: 1,
+      pageSize: 20,
+      totalItems: 2,
+      totalPages: 1,
+      hasNextPage: false,
+    });
     await expect(historyQuery.queryFn({ signal: undefined })).resolves.toEqual(
       historyByRestaurant['restaurant-1'],
     );
-    expect(queryClient.getQueryData).toHaveBeenCalledWith(menuItemsQueryKeys.restaurant('restaurant-1'));
+    expect(queryClient.getQueriesData).toHaveBeenCalledWith({
+      queryKey: menuItemsQueryKeys.restaurant('restaurant-1'),
+    });
     expect(queryClient.getQueryData).toHaveBeenCalledWith(
       restaurantsQueryKeys.allLocationsHistory('restaurant-1'),
     );
@@ -295,6 +341,12 @@ describe('useFoodDiscoveryMapReadModel', () => {
   });
 
   it('keeps cached rows visible when a refresh error is present', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildMenuItemsInfiniteQueryResult(
+        menuItemsByRestaurant['restaurant-1'],
+        new Error('Menu refresh failed'),
+      ),
+    );
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('menuItems')) {
@@ -343,6 +395,7 @@ describe('useFoodDiscoveryMapReadModel', () => {
 describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   const queryClient = {
     getQueryData: jest.fn(),
+    getQueriesData: jest.fn(() => []),
   };
   let detailHook: ReturnType<typeof useFoodDiscoveryRestaurantDetailReadModel> | null;
   let renderer: ReturnType<typeof create> | null;
@@ -353,7 +406,17 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
     renderer = null;
     queryClient.getQueryData.mockReturnValue(undefined);
     mockedUseQueryClient.mockReturnValue(queryClient as never);
-    mockedListMenuItemsForRestaurant.mockResolvedValue(menuItemsByRestaurant['restaurant-1']);
+    mockedUseInfiniteQuery.mockImplementation((options: any) =>
+      buildMenuItemsInfiniteQueryResult(menuItemsByRestaurant[options.queryKey[2]] ?? []),
+    );
+    mockedListMenuItemsForRestaurant.mockResolvedValue({
+      items: menuItemsByRestaurant['restaurant-1'],
+      page: 1,
+      pageSize: 20,
+      totalItems: 2,
+      totalPages: 1,
+      hasNextPage: false,
+    });
     mockedGetAllLocationsHistory.mockResolvedValue(historyByRestaurant['restaurant-1']);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
@@ -491,6 +554,11 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   it('labels related-location menu rows without implying exact-location history', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildMenuItemsInfiniteQueryResult([
+        { id: 'menu-a', name: 'Coconut Yogurt', restaurant: 'restaurant-1' },
+      ]),
+    );
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('menuItems')) {
@@ -541,6 +609,16 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   it('uses linked catalog contribution counts for approved menu item history labels', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildMenuItemsInfiniteQueryResult([
+        {
+          id: 'approved-menu-item',
+          name: 'Spicy Miso Ramen',
+          restaurant: 'restaurant-1',
+          userEatenCount: 1,
+        },
+      ]),
+    );
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('menuItems')) {
@@ -598,6 +676,7 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   it('labels related-location suggestions when matching user history is from grouped restaurants', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(buildMenuItemsInfiniteQueryResult([]));
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('menuItems')) {
@@ -681,11 +760,14 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   });
 
   it('uses cached offline restaurant detail data when available', async () => {
+    queryClient.getQueriesData.mockReturnValue([
+      [
+        menuItemsQueryKeys.paginated('restaurant-1'),
+        menuItemsByRestaurant['restaurant-1'],
+      ],
+    ] as never);
     queryClient.getQueryData.mockImplementation((queryKey) => {
       const key = queryKey as readonly string[];
-      if (key.includes('menuItems')) {
-        return menuItemsByRestaurant['restaurant-1'];
-      }
       if (key.includes('allLocationsHistory')) {
         return historyByRestaurant['restaurant-1'];
       }
@@ -700,26 +782,39 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
     } as never));
 
     await renderDetailHook({ isOnline: false });
-    const menuQuery = mockedUseQuery.mock.calls.find((call) =>
+    const menuQuery = mockedUseInfiniteQuery.mock.calls.find((call) =>
       ((call[0] as any).queryKey as readonly string[]).includes('menuItems'),
     )?.[0] as any;
     const historyQuery = mockedUseQuery.mock.calls.find((call) =>
       ((call[0] as any).queryKey as readonly string[]).includes('allLocationsHistory'),
     )?.[0] as any;
 
-    await expect(menuQuery.queryFn({ signal: undefined })).resolves.toEqual(
-      menuItemsByRestaurant['restaurant-1'],
-    );
+    await expect(menuQuery.queryFn({ pageParam: 1, signal: undefined })).resolves.toEqual({
+      items: menuItemsByRestaurant['restaurant-1'],
+      page: 1,
+      pageSize: 20,
+      totalItems: 2,
+      totalPages: 1,
+      hasNextPage: false,
+    });
     await expect(historyQuery.queryFn({ signal: undefined })).resolves.toEqual(
       historyByRestaurant['restaurant-1'],
     );
-    expect(queryClient.getQueryData).toHaveBeenCalledWith(menuItemsQueryKeys.restaurant('restaurant-1'));
+    expect(queryClient.getQueriesData).toHaveBeenCalledWith({
+      queryKey: menuItemsQueryKeys.restaurant('restaurant-1'),
+    });
     expect(queryClient.getQueryData).toHaveBeenCalledWith(
       restaurantsQueryKeys.allLocationsHistory('restaurant-1'),
     );
   });
 
   it('keeps refresh errors non-blocking when cached detail rows are present', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildMenuItemsInfiniteQueryResult(
+        menuItemsByRestaurant['restaurant-1'],
+        new Error('Refresh failed'),
+      ),
+    );
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('menuItems')) {

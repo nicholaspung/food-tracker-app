@@ -40,6 +40,8 @@ import {
   listVisitItemPhotos,
   useMenuItemCatalogWrites,
   useMonthlyUsage,
+  useRestaurantSelectedMenuItemsQuery,
+  type MenuItemRecord,
   type RestaurantRecord,
   type VisitItem,
   type VisitPhotoRecord,
@@ -574,7 +576,7 @@ export function CreateVisitScreen({
   const restaurantSelection = useCreateVisitRestaurantSelectionFlow({
     autoCaptureReferenceLocation: step === 0,
     isOnline,
-    menuItemsEnabled: step === 1 && Boolean(selectedRestaurantId),
+    menuItemsEnabled: false,
     savedRestaurantsEnabled: step === 0,
     selectedRestaurantId,
     usage: {
@@ -622,13 +624,21 @@ export function CreateVisitScreen({
   const menuItemsQuery = useMemo(
     () => ({
       data: selectedRestaurantDetail.menuItems,
+      fetchNextPage: selectedRestaurantDetail.fetchNextMenuCatalogPage,
+      hasNextPage: selectedRestaurantDetail.menuCatalogHasNextPage,
       isError: Boolean(selectedRestaurantDetail.menuCatalogErrorMessage),
+      isFetchingNextPage: selectedRestaurantDetail.menuCatalogIsFetchingNextPage,
       isLoading: selectedRestaurantDetail.menuCatalogLoading,
       refetch: selectedRestaurantDetail.refetchMenuCatalog,
+      totalItems: selectedRestaurantDetail.menuCatalogTotalItems,
     }),
     [
+      selectedRestaurantDetail.fetchNextMenuCatalogPage,
+      selectedRestaurantDetail.menuCatalogHasNextPage,
       selectedRestaurantDetail.menuCatalogErrorMessage,
+      selectedRestaurantDetail.menuCatalogIsFetchingNextPage,
       selectedRestaurantDetail.menuCatalogLoading,
+      selectedRestaurantDetail.menuCatalogTotalItems,
       selectedRestaurantDetail.menuItems,
       selectedRestaurantDetail.refetchMenuCatalog,
     ],
@@ -683,6 +693,38 @@ export function CreateVisitScreen({
     ? formatFreeMonthlyPhotoLimitStatus(estimatedFreeMonthlyPhotosRemaining)
     : null;
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
+  const selectedMenuItemIds = useMemo(
+    () =>
+      draftItems.flatMap((item) =>
+        item.sourceMenuItemId ? [item.sourceMenuItemId] : [],
+      ),
+    [draftItems],
+  );
+  const selectedMenuItemsQuery = useRestaurantSelectedMenuItemsQuery({
+    enabled: step === 1,
+    isOnline,
+    itemIds: selectedMenuItemIds,
+    restaurantId: selectedRestaurantId,
+  });
+  const hydratedSelectedMenuItemsById = useMemo(
+    () => new Map((selectedMenuItemsQuery.data ?? []).map((item) => [item.id, item])),
+    [selectedMenuItemsQuery.data],
+  );
+  const selectedMenuItemsForPicker = useMemo<MenuItemRecord[]>(
+    () =>
+      draftItems.flatMap((item) =>
+        item.sourceMenuItemId && selectedRestaurantId
+          ? [
+              hydratedSelectedMenuItemsById.get(item.sourceMenuItemId) ?? {
+                id: item.sourceMenuItemId,
+                name: item.name,
+                restaurant: selectedRestaurantId,
+              },
+            ]
+          : [],
+      ),
+    [draftItems, hydratedSelectedMenuItemsById, selectedRestaurantId],
+  );
   const crossLocationMenuItems: RestaurantMenuItemPickerCrossLocationItem[] =
     selectedRestaurantDetail.menuSelectionSuggestions;
   const isCrossLocationItemSelected = useCallback(
@@ -988,6 +1030,7 @@ export function CreateVisitScreen({
       editVisit.items.map((item: VisitItem) => ({
         id: item.id,
         name: item.name,
+        sourceMenuItemId: item.menuItemId,
         rating: item.rating,
         description: item.description?.trim() ?? "",
         notes: item.notes?.trim() ?? "",
@@ -1814,10 +1857,8 @@ export function CreateVisitScreen({
     />
   );
   const menuItemsLabel = menuItemSearchQuery.trim()
-    ? `Search results (${(menuItemsQuery.data ?? []).filter((item) =>
-        item.name.toLowerCase().includes(menuItemSearchQuery.trim().toLowerCase()),
-      ).length})`
-    : `All menu items (${menuItemsQuery.data?.length ?? 0})`;
+    ? `Search results (${menuItemsQuery.totalItems})`
+    : `All menu items (${menuItemsQuery.totalItems})`;
   const editVisitPhotoLoadWarningMessage =
     isEditMode &&
     hydratedEditVisitId === editVisitId &&
@@ -2501,12 +2542,14 @@ export function CreateVisitScreen({
           isCrossLocationItemSelected={isCrossLocationItemSelected}
           isItemSelected={isMenuItemSelected}
           isLoading={menuItemsQuery.isLoading}
+          isLoadingMore={menuItemsQuery.isFetchingNextPage}
           isOnline={isOnline}
           isReviewDisabled={isReviewBadgeDisabled}
           isReviewSubmitted={menuReviewSubmitted}
           isTipVisible={isTipPopoverVisible}
           items={menuItemsQuery.data ?? []}
           label={menuItemsLabel}
+          hasMore={menuItemsQuery.hasNextPage}
           onAddManual={() => {
             if (!selectedRestaurantId || !restaurantName.trim()) {
               return;
@@ -2530,6 +2573,9 @@ export function CreateVisitScreen({
           onRequestMenuReview={() => {
             void handleRequestMenuReview();
           }}
+          onLoadMore={() => {
+            void menuItemsQuery.fetchNextPage();
+          }}
           onToggleCrossLocationItem={(item) => {
             void handleToggleCrossLocationItem(item);
           }}
@@ -2550,6 +2596,8 @@ export function CreateVisitScreen({
           onToggleItem={toggleMenuItemSelection}
           scanDisabled={!isOnline}
           searchQuery={menuItemSearchQuery}
+          selectedItems={selectedMenuItemsForPicker}
+          selectionScopeKey={selectedRestaurantId ?? ""}
           selectedCount={selectedMenuItemCount}
           testIDPrefix="create-visit"
         />

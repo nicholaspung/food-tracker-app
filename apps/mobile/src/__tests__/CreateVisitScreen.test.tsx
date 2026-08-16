@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   convertVisitItemToFoodProduct,
@@ -10,6 +10,7 @@ import {
   syncVisitMutationCaches,
   useMenuItemCatalogWrites,
   useMonthlyUsage,
+  useRestaurantSelectedMenuItemsQuery,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useVisitWrites } from '../features/store/useVisitWrites';
@@ -99,6 +100,7 @@ const nonEditableMenuItem = {
 };
 
 jest.mock('@tanstack/react-query', () => ({
+  useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
@@ -215,6 +217,7 @@ jest.mock('../features', () => ({
   syncVisitMutationCaches: jest.fn(() => Promise.resolve()),
   useMenuItemCatalogWrites: jest.fn(),
   useMonthlyUsage: jest.fn(),
+  useRestaurantSelectedMenuItemsQuery: jest.fn(),
 }));
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
@@ -316,6 +319,7 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedCreateMenuReviewRequest = createMenuReviewRequest as jest.MockedFunction<
   typeof createMenuReviewRequest
@@ -335,6 +339,10 @@ const mockedUseMenuItemCatalogWrites = useMenuItemCatalogWrites as jest.MockedFu
   typeof useMenuItemCatalogWrites
 >;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedUseRestaurantSelectedMenuItemsQuery =
+  useRestaurantSelectedMenuItemsQuery as jest.MockedFunction<
+    typeof useRestaurantSelectedMenuItemsQuery
+  >;
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
@@ -361,6 +369,29 @@ function buildQueryResult<T>(data: T) {
     isLoading: false,
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useQuery>;
+}
+
+function buildMenuItemsInfiniteQueryResult(items = [editableMenuItem, nonEditableMenuItem]) {
+  return {
+    data: {
+      pages: [{
+        items,
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length > 0 ? 1 : 0,
+        hasNextPage: false,
+      }],
+      pageParams: [1],
+    },
+    error: null,
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+    isError: false,
+    isFetchingNextPage: false,
+    isPending: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useInfiniteQuery>;
 }
 
 function buildAllLocationsHistory(items: Record<string, unknown>[]) {
@@ -428,9 +459,12 @@ describe('CreateVisitScreen', () => {
 
     mockedUseQuery.mockReset();
     mockedUseQuery.mockImplementation(buildDefaultCreateVisitQueryResult);
+    mockedUseInfiniteQuery.mockReset();
+    mockedUseInfiniteQuery.mockReturnValue(buildMenuItemsInfiniteQueryResult());
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue({
       getQueryData: jest.fn(),
+      getQueriesData: jest.fn(() => []),
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
@@ -455,6 +489,10 @@ describe('CreateVisitScreen', () => {
       isError: false,
       refetch: jest.fn(),
     });
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReset();
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReturnValue({
+      data: [],
+    } as unknown as ReturnType<typeof useRestaurantSelectedMenuItemsQuery>);
     mockedUseMenuItemCatalogWrites.mockReset();
     mockedUseMenuItemCatalogWrites.mockReturnValue({
       applyScannedMenuItems: jest.fn(),
@@ -763,6 +801,60 @@ describe('CreateVisitScreen', () => {
       menuItemId: editableMenuItem.id,
       restaurantId: editableMenuItem.restaurant,
     });
+  });
+
+  it('hydrates preselected menu items that are outside the loaded catalog page', async () => {
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'draft-1',
+          name: editableMenuItem.name,
+          notes: '',
+          photos: [],
+          rating: 0,
+          sourceMenuItemId: editableMenuItem.id,
+        },
+      ],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn((item) => item.id === editableMenuItem.id),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReturnValue({
+      data: [editableMenuItem],
+    } as unknown as ReturnType<typeof useRestaurantSelectedMenuItemsQuery>);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{
+            params: {
+              preselectedRestaurantId: 'restaurant-1',
+              preselectedRestaurantName: 'Fire',
+              returnToStep: 1,
+            },
+          } as never}
+        />,
+      );
+    });
+
+    expect(mockedUseRestaurantSelectedMenuItemsQuery).toHaveBeenCalledWith({
+      enabled: true,
+      isOnline: true,
+      itemIds: [editableMenuItem.id],
+      restaurantId: 'restaurant-1',
+    });
+    expect(renderer.root.findByType('RestaurantMenuItemPicker').props.selectedItems).toEqual([
+      editableMenuItem,
+    ]);
   });
 
   it('passes non-duplicate all locations history items into the menu item picker', async () => {
@@ -1458,6 +1550,7 @@ describe('CreateVisitScreen', () => {
           items: [
             {
               id: 'item-1',
+              menuItemId: 'menu-item-1',
               name: 'Bottled Tea',
               rating: 4,
             },
@@ -1561,6 +1654,7 @@ describe('CreateVisitScreen', () => {
           items: [
             {
               id: 'item-1',
+              menuItemId: 'menu-item-1',
               name: 'Bottled Tea',
               rating: 4,
             },
@@ -1613,6 +1707,7 @@ describe('CreateVisitScreen', () => {
     expect(setDraftItems).toHaveBeenCalledWith([
       expect.objectContaining({
         id: 'item-1',
+        sourceMenuItemId: 'menu-item-1',
         photos: [
           expect.objectContaining({
             id: 'photo-1',

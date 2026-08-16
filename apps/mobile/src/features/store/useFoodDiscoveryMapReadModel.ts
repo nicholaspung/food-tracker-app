@@ -19,12 +19,11 @@ import type {
   GroupMenuSuggestionsRecord,
   MenuItemRecord,
 } from './featureStore';
-import { menuItemsQueryKeys } from './menuItemsQuery';
+import { useRestaurantMenuItemsQuery } from './menuItemsQuery';
 import { restaurantsQueryKeys } from './restaurantsQuery';
 import {
   getAllLocationsHistory,
   getGroupMenuSuggestionsForRestaurant,
-  listMenuItemsForRestaurant,
 } from './restaurantsStore';
 
 interface FoodDiscoveryMapReadModelInput {
@@ -82,13 +81,17 @@ interface FoodDiscoveryRestaurantDetailReadModel {
   groupMenuSuggestionsErrorMessage: string | null;
   groupMenuSuggestionsLoading: boolean;
   menuCatalogErrorMessage: string | null;
+  menuCatalogHasNextPage: boolean;
+  menuCatalogIsFetchingNextPage: boolean;
   menuCatalogLoading: boolean;
   menuCatalogRows: FoodDiscoveryMenuCatalogRow[];
+  menuCatalogTotalItems: number;
   menuItems: MenuItemRecord[];
   menuSelectionSuggestions: MenuSelectionSuggestion[];
   refetchAllLocationsHistory: () => Promise<unknown>;
   refetchGroupMenuSuggestions: () => Promise<unknown>;
   refetchMenuCatalog: () => Promise<unknown>;
+  fetchNextMenuCatalogPage: () => Promise<unknown>;
   relatedMenuSuggestions: FoodDiscoveryMenuSelectionSuggestion[];
   yourOrderedItemsRows: RestaurantMapItem[];
 }
@@ -494,28 +497,14 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
 }: FoodDiscoveryRestaurantDetailReadModelInput): FoodDiscoveryRestaurantDetailReadModel {
   const queryClient = useQueryClient();
   const restaurantId = restaurant?.id ?? '';
-  const menuItemsQueryKey = menuItemsQueryKeys.restaurant(restaurantId);
   const allLocationsHistoryQueryKey = restaurantsQueryKeys.allLocationsHistory(restaurantId);
   const groupMenuSuggestionsQueryKey = restaurantsQueryKeys.groupMenuSuggestions(restaurantId);
 
-  const menuItemsQuery = useQuery({
+  const menuItemsQuery = useRestaurantMenuItemsQuery({
     enabled: enabled && Boolean(restaurantId),
-    queryFn: async ({ signal }) => {
-      if (!restaurantId) {
-        return [];
-      }
-
-      if (!isOnline) {
-        const cached = queryClient.getQueryData<MenuItemRecord[]>(menuItemsQueryKey);
-        if (cached) {
-          return cached;
-        }
-        throw new Error('Menu items need internet connection.');
-      }
-
-      return listMenuItemsForRestaurant(restaurantId, { signal });
-    },
-    queryKey: menuItemsQueryKey,
+    isOnline,
+    restaurantId,
+    search: menuSelectionSearchQuery,
   });
 
   const allLocationsHistoryQuery = useQuery({
@@ -615,13 +604,17 @@ export function useFoodDiscoveryRestaurantDetailReadModel({
     ),
     groupMenuSuggestionsLoading: isQueryLoading(groupMenuSuggestionsQuery),
     menuCatalogErrorMessage: getBlockingErrorMessage(menuItemsQuery.error, menuCatalogRows.length > 0),
+    menuCatalogHasNextPage: menuItemsQuery.hasNextPage,
+    menuCatalogIsFetchingNextPage: menuItemsQuery.isFetchingNextPage,
     menuCatalogLoading: isQueryLoading(menuItemsQuery),
     menuCatalogRows,
+    menuCatalogTotalItems: menuItemsQuery.totalItems,
     menuItems,
     menuSelectionSuggestions,
     refetchAllLocationsHistory: allLocationsHistoryQuery.refetch,
     refetchGroupMenuSuggestions: groupMenuSuggestionsQuery.refetch,
     refetchMenuCatalog: menuItemsQuery.refetch,
+    fetchNextMenuCatalogPage: menuItemsQuery.fetchNextPage,
     relatedMenuSuggestions,
     yourOrderedItemsRows,
   };
@@ -673,11 +666,20 @@ export function useFoodDiscoveryMapReadModel({
           title: 'All Locations',
         },
         location: {
+          actionLabel: selectedRestaurantDetail.menuCatalogHasNextPage
+            ? 'Load more menu items'
+            : undefined,
+          actionLoading: selectedRestaurantDetail.menuCatalogIsFetchingNextPage,
           emptyDescription: 'Open this restaurant to scan a menu or add items.',
           emptyTitle: 'No menu items yet',
           errorMessage: selectedRestaurantDetail.menuCatalogErrorMessage,
           items: selectedRestaurantDetail.menuCatalogRows,
           loading: selectedRestaurantDetail.menuCatalogLoading,
+          onActionPress: selectedRestaurantDetail.menuCatalogHasNextPage
+            ? () => {
+                void selectedRestaurantDetail.fetchNextMenuCatalogPage();
+              }
+            : undefined,
           title: 'This Location',
         },
         onTabChange: onSheetTabChange,

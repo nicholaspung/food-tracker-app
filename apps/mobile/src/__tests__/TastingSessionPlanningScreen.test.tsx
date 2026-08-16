@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import {
   type TastingSessionRecord,
   useTastingPlanMenuCatalog,
+  useRestaurantSelectedMenuItemsQuery,
   useTastingSessionLifecycleWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -98,6 +99,7 @@ jest.mock('../features', () => {
     })),
     useTastingPlanMenuCatalog: jest.fn(),
     useTastingPlanPlanningState: planningState.useTastingPlanPlanningState,
+    useRestaurantSelectedMenuItemsQuery: jest.fn(),
     useTastingSessionLifecycleWrites: jest.fn(),
   };
 });
@@ -194,6 +196,10 @@ const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites 
 const mockedUseTastingPlanMenuCatalog = useTastingPlanMenuCatalog as jest.MockedFunction<
   typeof useTastingPlanMenuCatalog
 >;
+const mockedUseRestaurantSelectedMenuItemsQuery =
+  useRestaurantSelectedMenuItemsQuery as jest.MockedFunction<
+    typeof useRestaurantSelectedMenuItemsQuery
+  >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseRestaurantSelectionFlow = useTastingPlanRestaurantSelectionFlow as jest.MockedFunction<
@@ -371,6 +377,10 @@ describe('TastingSessionPlanningScreen', () => {
   }
 
   beforeEach(() => {
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReset();
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReturnValue({
+      data: [],
+    } as unknown as ReturnType<typeof useRestaurantSelectedMenuItemsQuery>);
     mockNavigate.mockReset();
     mockReplace.mockReset();
     mockClearPlacesSearchState.mockReset();
@@ -580,6 +590,19 @@ describe('TastingSessionPlanningScreen', () => {
 
   it('renders add item controls for leaders on non-rejected restaurants', async () => {
     mockLifecycleSession(sessionWithRestaurant);
+    const hydratedSelectedItem = {
+      createdBy: 'user-1',
+      description: 'Chicken broth and soy tare',
+      friendEatenCount: 2,
+      id: 'menu-item-1',
+      name: 'Shoyu Ramen',
+      restaurant: 'restaurant-1',
+      userEatenCount: 3,
+      visibility: 'private' as const,
+    };
+    mockedUseRestaurantSelectedMenuItemsQuery.mockReturnValue({
+      data: [hydratedSelectedItem],
+    } as unknown as ReturnType<typeof useRestaurantSelectedMenuItemsQuery>);
     mockedUseTastingPlanMenuCatalog.mockReturnValue({
       menuItemsQuery: {
         data: [
@@ -605,6 +628,7 @@ describe('TastingSessionPlanningScreen', () => {
 
     const picker = renderer.root.findByType('RestaurantMenuItemPicker');
     expect(picker.props.selectedCount).toBe(1);
+    expect(picker.props.selectedItems).toEqual([hydratedSelectedItem]);
 
     act(() => {
       picker.props.onScanMenuPhoto();

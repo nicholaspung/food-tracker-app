@@ -93,6 +93,8 @@ jest.mock("../theme", () => ({
 }));
 
 jest.mock("../ui", () => ({
+  Button: (props: Record<string, unknown>) =>
+    mockReact.createElement("Button", props),
   Card: ({
     children,
     ...props
@@ -108,9 +110,14 @@ jest.mock("../ui", () => ({
 }));
 
 const currentMenuItem = {
+  createdBy: "user-1",
+  description: "House-ground beef with smoked cheddar",
+  friendEatenCount: 2,
   id: "menu-item-1",
   restaurant: "restaurant-1",
   name: "Burger",
+  userEatenCount: 3,
+  visibility: "private" as const,
 };
 
 const crossLocationItem = {
@@ -183,6 +190,81 @@ function renderPicker(
 }
 
 describe("RestaurantMenuItemPicker", () => {
+  it("keeps selected rows visible when search results change pages", () => {
+    const renderer = renderPicker({
+      isItemSelected: (item) => item.id === currentMenuItem.id,
+      searchQuery: "",
+      selectionScopeKey: "restaurant-1",
+    });
+
+    act(() => {
+      renderer.update(
+        <RestaurantMenuItemPicker
+          currentUserId="user-1"
+          hasError={false}
+          isItemSelected={(item) => item.id === currentMenuItem.id}
+          isLoading={false}
+          isOnline
+          isTipVisible={false}
+          items={[{ id: "menu-item-2", restaurant: "restaurant-1", name: "Pizza" }]}
+          label="Search results (1)"
+          onAddManual={jest.fn()}
+          onRequestMenuReview={jest.fn()}
+          onRetry={jest.fn()}
+          onScanMenuPhoto={jest.fn()}
+          onSearchQueryChange={jest.fn()}
+          onTipVisibilityChange={jest.fn()}
+          onToggleItem={jest.fn()}
+          searchQuery="pizza"
+          selectionScopeKey="restaurant-1"
+          selectedCount={1}
+          testIDPrefix="create-visit"
+        />,
+      );
+    });
+
+    const rows = renderer.root.findAllByType("VisitMenuItemOptionRow");
+    expect(rows.map((row: any) => row.props.name)).toEqual(["Burger", "Pizza"]);
+    expect(rows[0].props).toMatchObject({
+      compactActions: true,
+      description: currentMenuItem.description,
+      friendEatenCount: currentMenuItem.friendEatenCount,
+      userEatenCount: currentMenuItem.userEatenCount,
+      visibility: currentMenuItem.visibility,
+    });
+    expect(rows[0].props.editButtonTestID).toBe(
+      "create-visit-menu-item-edit-button-0",
+    );
+  });
+
+  it("matches server search normalization when the query contains repeated whitespace", () => {
+    const renderer = renderPicker({
+      items: [
+        {
+          id: "menu-item-2",
+          restaurant: "restaurant-1",
+          name: "Spicy Ramen",
+        },
+      ],
+      searchQuery: "spicy   ramen",
+    });
+
+    expect(renderer.root.findByType("VisitMenuItemOptionRow").props.name).toBe(
+      "Spicy Ramen",
+    );
+  });
+
+  it("loads the next bounded page on demand", () => {
+    const onLoadMore = jest.fn();
+    const renderer = renderPicker({ hasMore: true, onLoadMore });
+
+    act(() => {
+      renderer.root.findByProps({ testID: "create-visit-load-more-menu-items" }).props.onPress();
+    });
+
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
   it("renders current restaurant menu items and cross-location suggestions together", () => {
     const renderer = renderPicker({
       crossLocationItems: [crossLocationItem],

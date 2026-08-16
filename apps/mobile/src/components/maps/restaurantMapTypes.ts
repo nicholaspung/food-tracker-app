@@ -34,6 +34,7 @@ export interface RestaurantMapSheetTabState {
   emptyTitle: string;
   emptyDescription?: string;
   actionLabel?: string;
+  actionLoading?: boolean;
   onActionPress?: () => void;
   items: RestaurantMapItem[];
 }

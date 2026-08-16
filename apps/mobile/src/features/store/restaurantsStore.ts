@@ -70,6 +70,23 @@ interface SearchRestaurantsPageApiResponse {
   hasNextPage?: boolean;
 }
 
+export interface ListRestaurantMenuItemsInput {
+  ids?: string[];
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  signal?: AbortSignal;
+}
+
+interface RestaurantMenuItemsPageApiResponse {
+  items?: MenuItemRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+}
+
 export interface UpsertRestaurantInput {
   restaurantName: string;
   location?: string;
@@ -229,24 +246,49 @@ export async function listRestaurantSuggestions(
 
 export async function listMenuItemsForRestaurant(
   restaurantId: string,
-  options?: SearchRestaurantsPageOptions,
-): Promise<MenuItemRecord[]> {
+  input?: ListRestaurantMenuItemsInput,
+): Promise<PaginatedResult<MenuItemRecord>> {
+  const { page, pageSize: requestedPageSize } = resolvePaginationInput(input);
+  const pageSize = Math.min(50, requestedPageSize);
   if (!pb.authStore.record?.id) {
-    return [];
+    return createEmptyPaginatedResult({ page, pageSize });
   }
 
   const trimmedRestaurantId = restaurantId.trim();
   if (!trimmedRestaurantId) {
-    return [];
+    return createEmptyPaginatedResult({ page, pageSize });
   }
 
-  return sendApiRequest<MenuItemRecord[]>(
-    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items`,
+  const normalizedSearch = input?.search?.replace(/\s+/g, ' ').trim() ?? '';
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (normalizedSearch) {
+    query.set('search', normalizedSearch);
+  }
+  const normalizedIds = [...new Set(input?.ids?.map((id) => id.trim()).filter(Boolean) ?? [])]
+    .slice(0, 50);
+  if (normalizedIds.length > 0) {
+    query.set('ids', normalizedIds.join(','));
+  }
+
+  const response = await sendApiRequest<RestaurantMenuItemsPageApiResponse>(
+    `/api/restaurants/${encodeURIComponent(trimmedRestaurantId)}/menu-items?${query.toString()}`,
     {
       method: 'GET',
-      signal: options?.signal,
+      signal: input?.signal,
     },
   );
+
+  return {
+    items: Array.isArray(response.items) ? response.items : [],
+    page: response.page ?? page,
+    pageSize: response.pageSize ?? pageSize,
+    totalItems: response.totalItems ?? 0,
+    totalPages: response.totalPages ?? 0,
+    hasNextPage: response.hasNextPage === true,
+  };
 }
 
 export async function getGroupMenuSuggestionsForRestaurant(

@@ -2739,11 +2739,13 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
 	}
 
-	var payload []struct {
-		ID               string `json:"id"`
-		Name             string `json:"name"`
-		UserEatenCount   int    `json:"userEatenCount"`
-		FriendEatenCount int    `json:"friendEatenCount"`
+	var payload struct {
+		Items []struct {
+			ID               string `json:"id"`
+			Name             string `json:"name"`
+			UserEatenCount   int    `json:"userEatenCount"`
+			FriendEatenCount int    `json:"friendEatenCount"`
+		} `json:"items"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse menu item response JSON: %v; body=%s", err, response.Body.String())
@@ -2754,7 +2756,7 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 		UserEatenCount   int
 		FriendEatenCount int
 	}{}
-	for _, item := range payload {
+	for _, item := range payload.Items {
 		itemsByID[item.ID] = struct {
 			Name             string
 			UserEatenCount   int
@@ -2763,7 +2765,7 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 
 	if len(itemsByID) != 2 {
-		t.Fatalf("expected only accessible menu items, got %#v", payload)
+		t.Fatalf("expected only accessible menu items, got %#v", payload.Items)
 	}
 	if itemsByID[ramen.Id].UserEatenCount != 2 {
 		t.Fatalf("expected ramen to count user's matching restaurant items only, got %#v", itemsByID[ramen.Id])
@@ -2776,6 +2778,92 @@ func TestRestaurantMenuItemsEndpointReturnsUserEatenCounts(t *testing.T) {
 	}
 	if itemsByID[friendsItem.Id].FriendEatenCount != 0 {
 		t.Fatalf("expected gyoza to have no friend eaten count, got %#v", itemsByID[friendsItem.Id])
+	}
+}
+
+func TestRestaurantMenuItemsEndpointPaginatesCapsAndSearchesAccessibleItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	viewer, token := createAuthUser(t, server.app, false, false)
+	other, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Paged Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  viewer.Id,
+	})
+
+	itemIDsByName := map[string]string{}
+	for _, item := range []map[string]any{
+		{"name": "Match One", "createdBy": viewer.Id, "visibility": "public"},
+		{"name": "Match Two", "createdBy": viewer.Id, "visibility": "private"},
+		{"name": "Other Item", "createdBy": viewer.Id, "visibility": "public"},
+		{"name": "Match Hidden", "createdBy": other.Id, "visibility": "private"},
+	} {
+		item["restaurant"] = restaurant.Id
+		record := createCollectionRecord(t, server.app, "menu_items", item)
+		itemIDsByName[item["name"].(string)] = record.Id
+	}
+
+	type menuItemsPage struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	requestPage := func(path string) menuItemsPage {
+		t.Helper()
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, token, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+		}
+
+		payload := menuItemsPage{}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("failed to parse menu item page JSON: %v; body=%s", err, response.Body.String())
+		}
+		return payload
+	}
+
+	basePath := fmt.Sprintf("/api/restaurants/%s/menu-items", restaurant.Id)
+	firstPage := requestPage(basePath + "?page=1&pageSize=2")
+	secondPage := requestPage(basePath + "?page=2&pageSize=2")
+	if firstPage.Page != 1 || firstPage.PageSize != 2 || firstPage.TotalItems != 3 || firstPage.TotalPages != 2 || !firstPage.HasNextPage {
+		t.Fatalf("unexpected first page metadata: %#v", firstPage)
+	}
+	if len(firstPage.Items) != 2 || len(secondPage.Items) != 1 || secondPage.HasNextPage {
+		t.Fatalf("unexpected page boundaries: first=%#v second=%#v", firstPage, secondPage)
+	}
+
+	searchPage := requestPage(basePath + "?pageSize=500&search=match")
+	if searchPage.PageSize != 50 {
+		t.Fatalf("expected page size to be capped at 50, got %d", searchPage.PageSize)
+	}
+	if searchPage.TotalItems != 2 || len(searchPage.Items) != 2 {
+		t.Fatalf("expected only accessible matching items, got %#v", searchPage)
+	}
+	for _, item := range searchPage.Items {
+		if item.Name == "Match Hidden" {
+			t.Fatalf("expected private inaccessible match to be filtered, got %#v", searchPage.Items)
+		}
+	}
+
+	selectedPage := requestPage(
+		basePath + "?ids=" + itemIDsByName["Match One"] + "," + itemIDsByName["Other Item"],
+	)
+	if selectedPage.TotalItems != 2 || len(selectedPage.Items) != 2 {
+		t.Fatalf("expected bounded selected-item hydration, got %#v", selectedPage)
+	}
+	selectedIDs := map[string]bool{}
+	for _, item := range selectedPage.Items {
+		selectedIDs[item.ID] = true
+	}
+	if !selectedIDs[itemIDsByName["Match One"]] || !selectedIDs[itemIDsByName["Other Item"]] {
+		t.Fatalf("expected only requested selected items, got %#v", selectedPage.Items)
 	}
 }
 
@@ -2861,26 +2949,28 @@ func TestRestaurantMenuItemsEndpointSuppressesApprovedCatalogContributions(t *te
 				t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
 			}
 
-			var payload []struct {
-				ID   string `json:"id"`
-				Name string `json:"name"`
+			var payload struct {
+				Items []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"items"`
 			}
 			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 				t.Fatalf("failed to parse menu item response JSON: %v; body=%s", err, response.Body.String())
 			}
 
 			itemsByID := map[string]string{}
-			for _, item := range payload {
+			for _, item := range payload.Items {
 				itemsByID[item.ID] = item.Name
 			}
 			for _, expectedID := range testCase.expectedIDs {
 				if _, exists := itemsByID[expectedID]; !exists {
-					t.Fatalf("expected menu item %s in payload, got %#v", expectedID, payload)
+					t.Fatalf("expected menu item %s in payload, got %#v", expectedID, payload.Items)
 				}
 			}
 			for _, hiddenID := range testCase.hiddenIDs {
 				if _, exists := itemsByID[hiddenID]; exists {
-					t.Fatalf("expected contribution %s to be suppressed, got %#v", hiddenID, payload)
+					t.Fatalf("expected contribution %s to be suppressed, got %#v", hiddenID, payload.Items)
 				}
 			}
 		})

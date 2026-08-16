@@ -1,6 +1,6 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { RestaurantDiscoveryRestaurantScreen } from "../screens/RestaurantDiscoveryRestaurantScreen";
 import { menuItemsQueryKeys } from "../features/store/menuItemsQuery";
@@ -24,6 +24,7 @@ jest.mock("react-native", () => ({
 }));
 
 jest.mock("@tanstack/react-query", () => ({
+  useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
 }));
@@ -150,6 +151,9 @@ jest.mock("../ui", () => ({
 }));
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<
+  typeof useInfiniteQuery
+>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<
   typeof useQueryClient
 >;
@@ -168,6 +172,29 @@ function collectText(node: any): string {
   }
 
   return collectText(node.props?.children);
+}
+
+function setMockMenuItems(items: Record<string, unknown>[]) {
+  mockedUseInfiniteQuery.mockReturnValue({
+    data: {
+      pages: [{
+        items,
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length > 0 ? 1 : 0,
+        hasNextPage: false,
+      }],
+      pageParams: [1],
+    },
+    error: null,
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+    isError: false,
+    isFetchingNextPage: false,
+    isPending: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useInfiniteQuery>);
 }
 
 function renderScreen() {
@@ -210,8 +237,10 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
       status: "completed",
       result: [[]],
     });
+    setMockMenuItems([]);
     mockedUseQueryClient.mockReturnValue({
       getQueryData: jest.fn(),
+      getQueriesData: jest.fn(() => []),
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
     } as never);
@@ -263,9 +292,9 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
         .findAllByType("Text")
         .some((node: any) => node.props.children === "Actions"),
     ).toBe(true);
-    expect(mockedUseQuery).toHaveBeenCalledWith(
+    expect(mockedUseInfiniteQuery).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: menuItemsQueryKeys.restaurant("restaurant-1"),
+        queryKey: menuItemsQueryKeys.paginated("restaurant-1"),
       }),
     );
     expect(renderer.root.findByType("EmptyState").props.title).toBe(
@@ -274,6 +303,9 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
   });
 
   it("saves a discovered menu item to Want to Try without list selection", async () => {
+    setMockMenuItems([
+      { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
+    ]);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("default")) {
@@ -365,6 +397,9 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
   });
 
   it("removes existing default-list menu item bookmarks", async () => {
+    setMockMenuItems([
+      { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
+    ]);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("default")) {
@@ -485,6 +520,9 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
   });
 
   it("renders related-location menu suggestions separately from exact-location menu items", () => {
+    setMockMenuItems([
+      { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
+    ]);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {
@@ -594,6 +632,16 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
   });
 
   it("renders exact ordered-history badges on menu rows without adding history labels to suggestions", () => {
+    setMockMenuItems([
+      { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
+      {
+        id: "menu-item-2",
+        name: "Spicy Miso Ramen",
+        restaurant: "restaurant-1",
+        userEatenCount: 1,
+      },
+      { id: "menu-item-3", name: "No History Item", restaurant: "restaurant-1" },
+    ]);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {
@@ -800,6 +848,9 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
   });
 
   it("hides related-location suggestions when none qualify", () => {
+    setMockMenuItems([
+      { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
+    ]);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {

@@ -109,7 +109,23 @@ describe('mobile feature query keys', () => {
       'menuItems',
       'restaurant_1',
     ]);
+    expect(menuItemsQueryKeys.paginated(' restaurant_1 ', '  Spicy   Ramen ', 20)).toEqual([
+      'feature',
+      'menuItems',
+      'restaurant_1',
+      'paginated',
+      'spicy ramen',
+      20,
+    ]);
+    expect(menuItemsQueryKeys.firstPage(' restaurant_1 ', 20)).toEqual([
+      'feature',
+      'menuItems',
+      'restaurant_1',
+      'firstPage',
+      20,
+    ]);
     expect(isRestaurantMenuItemsQueryKey(menuItemsQueryKeys.restaurant('restaurant_1'))).toBe(true);
+    expect(isRestaurantMenuItemsQueryKey(menuItemsQueryKeys.paginated('restaurant_1'))).toBe(true);
     expect(isTastingSessionsListQueryKey(tastingSessionsQueryKeys.summaries('active'))).toBe(true);
     expect(isTastingSessionsListQueryKey(tastingSessionsQueryKeys.summaries('completed'))).toBe(true);
     expect(isTastingSessionDetailQueryKey(tastingSessionsQueryKeys.detail('session_1'))).toBe(true);

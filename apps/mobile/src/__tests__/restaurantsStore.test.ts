@@ -1,6 +1,7 @@
 import {
   getAllLocationsHistory,
   getGroupMenuSuggestionsForRestaurant,
+  listMenuItemsForRestaurant,
 } from '../features/store/restaurantsStore';
 import { sendApiRequest } from '../features/store/pocketbaseGateway';
 import { pb } from '../lib/pocketbase';
@@ -105,6 +106,40 @@ describe('restaurantsStore', () => {
 
     expect(mockedSendApiRequest).toHaveBeenCalledWith(
       '/api/restaurants/restaurant-1/group-menu-suggestions',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
+  });
+
+  it('loads one searchable menu item page and forwards cancellation', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValue({
+      items: [{ id: 'menu-1', name: 'Spicy Ramen', restaurant: 'restaurant-1' }],
+      page: 2,
+      pageSize: 20,
+      totalItems: 21,
+      totalPages: 2,
+      hasNextPage: false,
+    });
+
+    await expect(
+      listMenuItemsForRestaurant(' restaurant-1 ', {
+        ids: [' menu-1 ', 'menu-2', 'menu-1'],
+        page: 2,
+        pageSize: 20,
+        search: '  spicy   ramen ',
+        signal: abortController.signal,
+      }),
+    ).resolves.toEqual(expect.objectContaining({
+      page: 2,
+      totalItems: 21,
+      items: [expect.objectContaining({ id: 'menu-1' })],
+    }));
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurants/restaurant-1/menu-items?page=2&pageSize=20&search=spicy+ramen&ids=menu-1%2Cmenu-2',
       {
         method: 'GET',
         signal: abortController.signal,

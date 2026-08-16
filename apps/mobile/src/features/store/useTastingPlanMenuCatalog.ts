@@ -1,44 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
-import type { MenuItemRecord } from './featureStore';
 import { createMenuReviewRequest } from './menuParsingGateway';
-import { menuItemsQueryKeys } from './menuItemsQuery';
-import { listMenuItemsForRestaurant } from './restaurantsStore';
+import { useRestaurantMenuItemsQuery } from './menuItemsQuery';
 
 interface UseTastingPlanMenuCatalogInput {
   activeRestaurantId: string | null;
   enabled: boolean;
   isOnline: boolean;
+  searchQuery?: string;
 }
 
 export function useTastingPlanMenuCatalog({
   activeRestaurantId,
   enabled,
   isOnline,
+  searchQuery = '',
 }: UseTastingPlanMenuCatalogInput) {
   const queryClient = useQueryClient();
   const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
   const reviewResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const menuItemsQuery = useQuery({
-    queryKey: menuItemsQueryKeys.restaurant(activeRestaurantId ?? ''),
-    queryFn: ({ signal }) => {
-      if (!activeRestaurantId) {
-        return Promise.resolve([]);
-      }
-
-      if (!isOnline) {
-        return Promise.resolve(
-          queryClient.getQueryData<MenuItemRecord[]>(
-            menuItemsQueryKeys.restaurant(activeRestaurantId),
-          ) ?? [],
-        );
-      }
-
-      return listMenuItemsForRestaurant(activeRestaurantId, { signal });
-    },
+  const menuItemsQuery = useRestaurantMenuItemsQuery({
+    restaurantId: activeRestaurantId,
     enabled: enabled && Boolean(activeRestaurantId),
+    isOnline,
+    search: searchQuery,
   });
 
   useEffect(() => {

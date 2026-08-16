@@ -537,6 +537,17 @@ export function RestaurantDiscoveryRestaurantScreen({
                   </Fragment>
                 );
               })}
+              {restaurantDetail.menuCatalogHasNextPage ? (
+                <Button
+                  label="Load more menu items"
+                  loading={restaurantDetail.menuCatalogIsFetchingNextPage}
+                  onPress={() => {
+                    void restaurantDetail.fetchNextMenuCatalogPage();
+                  }}
+                  testID="restaurant-discovery-load-more-menu-items"
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           ) : (
             <EmptyState
