@@ -83,7 +83,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@eslint/eslintrc": "^2.1.4",
-    "@posthog/cli": "^0.7.11",
+    "@posthog/cli": "^0.8.4",
     "@react-navigation/routers": "7.5.3",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.14",
