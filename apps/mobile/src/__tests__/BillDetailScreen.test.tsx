@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getBillById } from '../features';
-import { sendBillPaymentReminder } from '../features/store/billsStore';
+import { useBillPaymentReminderWrite } from '../features/store/useBillPaymentReminderWrite';
 import { useBillWrites } from '../features/store/useBillWrites';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -113,8 +113,8 @@ jest.mock('../features/store/billsQuery', () => ({
   getCachedBillDetail: jest.fn(() => undefined),
 }));
 
-jest.mock('../features/store/billsStore', () => ({
-  sendBillPaymentReminder: jest.fn(),
+jest.mock('../features/store/useBillPaymentReminderWrite', () => ({
+  useBillPaymentReminderWrite: jest.fn(),
 }));
 
 jest.mock('../features/store/useBillWrites', () => ({
@@ -160,7 +160,9 @@ jest.mock('../ui', () => ({
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
-const mockedSendBillPaymentReminder = sendBillPaymentReminder as jest.MockedFunction<typeof sendBillPaymentReminder>;
+const mockedUseBillPaymentReminderWrite = useBillPaymentReminderWrite as jest.MockedFunction<
+  typeof useBillPaymentReminderWrite
+>;
 const mockedUseBillWrites = useBillWrites as jest.MockedFunction<typeof useBillWrites>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent
@@ -174,6 +176,7 @@ const queryClient = {
   invalidateQueries: jest.fn(),
   setQueryData: jest.fn(),
 };
+const sendPaymentReminder = jest.fn();
 
 function buildNavigation(overrides: Record<string, unknown> = {}) {
   return {
@@ -290,12 +293,16 @@ describe('BillDetailScreen payment reminders', () => {
     mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
     mockedUseAuth.mockReturnValue({ user: { id: 'user_1' } } as ReturnType<typeof useAuth>);
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
+    mockedUseBillPaymentReminderWrite.mockReturnValue({ sendPaymentReminder });
     mockedUseBillWrites.mockReturnValue({
       deleteBill: jest.fn(),
       updateBillStatus: jest.fn(),
       updateParticipantPaidStatus: jest.fn(),
     } as unknown as ReturnType<typeof useBillWrites>);
-    mockedSendBillPaymentReminder.mockResolvedValue({ status: 'sent' });
+    sendPaymentReminder.mockResolvedValue({
+      eligibility: { available: false, availableAt: '2026-05-26T12:00:00.000Z' },
+      status: 'sent',
+    });
   });
 
   it('refetches bill detail aggressively so persisted participant status does not stay stale', async () => {
@@ -395,6 +402,10 @@ describe('BillDetailScreen payment reminders', () => {
 
   it('keeps eligible reminder actions visible but disabled while offline', async () => {
     mockedUseConnectivity.mockReturnValue({ isOnline: false } as ReturnType<typeof useConnectivity>);
+    sendPaymentReminder.mockResolvedValue({
+      message: 'Connect to the internet to send payment reminders.',
+      status: 'blocked',
+    });
     const renderer = await renderBillDetail();
     const eligibleButton = findPressableByTestId(renderer, 'bill-participant-reminder-eligible');
 
@@ -406,7 +417,10 @@ describe('BillDetailScreen payment reminders', () => {
       eligibleButton?.props.onPress();
     });
 
-    expect(mockedSendBillPaymentReminder).not.toHaveBeenCalled();
+    expect(sendPaymentReminder).toHaveBeenCalledWith({
+      billId: 'bill_1',
+      participantId: 'eligible',
+    });
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
       'Connect to the internet to send payment reminders.',
     );
@@ -421,8 +435,11 @@ describe('BillDetailScreen payment reminders', () => {
   });
 
   it('opens the reminder result modal in a sending state and disables the action while in flight', async () => {
-    let resolveReminder: (value: { status: 'sent' }) => void = () => undefined;
-    mockedSendBillPaymentReminder.mockReturnValue(
+    let resolveReminder: (value: {
+      eligibility: { available: false; availableAt: string };
+      status: 'sent';
+    }) => void = () => undefined;
+    sendPaymentReminder.mockReturnValue(
       new Promise((resolve) => {
         resolveReminder = resolve;
       }),
@@ -434,7 +451,10 @@ describe('BillDetailScreen payment reminders', () => {
       reminderButton?.props.onPress();
     });
 
-    expect(mockedSendBillPaymentReminder).toHaveBeenCalledWith('bill_1', 'eligible');
+    expect(sendPaymentReminder).toHaveBeenCalledWith({
+      billId: 'bill_1',
+      participantId: 'eligible',
+    });
     expect(findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.disabled).toBe(true);
     const modal = findReminderResultModal(renderer);
     expect(modal.props.visible).toBe(true);
@@ -443,7 +463,10 @@ describe('BillDetailScreen payment reminders', () => {
     expect(modal.props.primaryAction).toBeUndefined();
 
     await act(async () => {
-      resolveReminder({ status: 'sent' });
+      resolveReminder({
+        eligibility: { available: false, availableAt: '2026-05-26T12:00:00.000Z' },
+        status: 'sent',
+      });
     });
   });
 
@@ -462,33 +485,11 @@ describe('BillDetailScreen payment reminders', () => {
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBeNull();
   });
 
-  it('optimistically marks the participant reminded and invalidates bill detail after send succeeds', async () => {
-    const bill = buildBill();
-    const renderer = await renderBillDetail(bill);
-
-    await act(async () => {
-      findPressableByTestId(renderer, 'bill-participant-reminder-eligible')?.props.onPress();
-    });
-
-    expect(queryClient.setQueryData).toHaveBeenCalledWith(
-      ['feature', 'bills', 'detail', 'bill_1'],
-      expect.any(Function),
-    );
-    const updater = queryClient.setQueryData.mock.calls[0]?.[1] as (cachedBill: typeof bill) => typeof bill;
-    const updatedBill = updater(bill);
-    expect(updatedBill.participants.find((participant) => participant.id === 'eligible')).toMatchObject({
-      paymentReminderAvailable: false,
-    });
-    expect(
-      updatedBill.participants.find((participant) => participant.id === 'eligible')?.paymentReminderAvailableAt,
-    ).toEqual(expect.any(String));
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'bills', 'detail', 'bill_1'],
-    });
-  });
-
   it('shows weekly rate limits in the reminder result modal instead of the page error toast', async () => {
-    mockedSendBillPaymentReminder.mockRejectedValue(new Error('payment reminder already sent this week'));
+    sendPaymentReminder.mockResolvedValue({
+      eligibility: { available: false, availableAt: '2026-05-26T12:00:00.000Z' },
+      status: 'weekly_limited',
+    });
     const renderer = await renderBillDetail();
 
     await act(async () => {
@@ -505,12 +506,12 @@ describe('BillDetailScreen payment reminders', () => {
 
   it.each([
     [
-      'skipped_preference_disabled',
+      'preference_disabled',
       'Reminder Not Sent',
       'Alex has payment reminders turned off.',
     ],
     [
-      'skipped_no_active_device',
+      'no_active_device',
       'Reminder Not Sent',
       'Alex has no active notification device.',
     ],
@@ -519,10 +520,15 @@ describe('BillDetailScreen payment reminders', () => {
       'Reminder Not Sent',
       'The notification provider could not send the reminder. Try again in a moment.',
     ],
+    [
+      'unexpected_failure',
+      'Reminder Not Sent',
+      'The reminder could not be sent. Try again in a moment.',
+    ],
   ])(
     'shows the %s outcome in the reminder result modal instead of the page error toast',
     async (status, title, description) => {
-      mockedSendBillPaymentReminder.mockResolvedValue({ status });
+      sendPaymentReminder.mockResolvedValue({ status });
       const renderer = await renderBillDetail();
 
       await act(async () => {

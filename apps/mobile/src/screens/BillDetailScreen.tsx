@@ -22,11 +22,11 @@ import {
   type BillRecord,
 } from '../features';
 import { billsQueryKeys, getCachedBillDetail } from '../features/store/billsQuery';
-import {
-  sendBillPaymentReminder,
-  type BillPaymentReminderResult,
-} from '../features/store/billsStore';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
+import {
+  type BillPaymentReminderWriteResult,
+  useBillPaymentReminderWrite,
+} from '../features/store/useBillPaymentReminderWrite';
 import { useBillWrites } from '../features/store/useBillWrites';
 import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -154,28 +154,23 @@ interface BillPaymentReminderModalCopy {
 }
 
 function mapBillPaymentReminderResultStatus(
-  status: BillPaymentReminderResult['status'],
+  status: BillPaymentReminderWriteResult['status'],
 ): BillPaymentReminderModalOutcome {
   if (
     status === 'sent' ||
-    status === 'skipped_preference_disabled' ||
-    status === 'skipped_no_active_device' ||
     status === 'provider_failed'
   ) {
     return status;
   }
 
-  if (status === 'skipped_rate_limited') {
+  if (status === 'weekly_limited') {
     return 'already_sent_this_week';
   }
-
-  return 'failed';
-}
-
-function mapBillPaymentReminderError(error: unknown): BillPaymentReminderModalOutcome {
-  const message = error instanceof Error ? error.message : '';
-  if (message.toLowerCase().includes('already sent this week')) {
-    return 'already_sent_this_week';
+  if (status === 'preference_disabled') {
+    return 'skipped_preference_disabled';
+  }
+  if (status === 'no_active_device') {
+    return 'skipped_no_active_device';
   }
 
   return 'failed';
@@ -228,11 +223,6 @@ function getBillPaymentReminderModalCopy({
         actionLabel: 'Done',
       };
   }
-}
-
-function getOptimisticPaymentReminderAvailableAt(): string {
-  const weeklyCooldownMs = 7 * 24 * 60 * 60 * 1000;
-  return new Date(Date.now() + weeklyCooldownMs).toISOString();
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -371,6 +361,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
   const billWrites = useBillWrites();
+  const billPaymentReminderWrite = useBillPaymentReminderWrite();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
@@ -603,8 +594,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   };
 
   const remindParticipant = async (participant: BillParticipantRecord) => {
-    if (!bill || !isCreator || !isOnline) {
-      setErrorMessage('Connect to the internet to send payment reminders.');
+    if (!bill || !isCreator) {
       return;
     }
 
@@ -619,52 +609,31 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       source: 'BillDetailScreen',
     });
 
-    try {
-      const result = await sendBillPaymentReminder(billId, participant.id);
-      if (result.status === 'sent') {
-        queryClient.setQueryData<BillRecord | null>(billsQueryKeys.detail(billId), (cachedBill) => {
-          if (!cachedBill) {
-            return cachedBill;
-          }
-
-          return {
-            ...cachedBill,
-            participants: cachedBill.participants.map((cachedParticipant) =>
-              cachedParticipant.id === participant.id
-                ? {
-                    ...cachedParticipant,
-                    paymentReminderAvailable: false,
-                    paymentReminderAvailableAt:
-                      cachedParticipant.paymentReminderAvailableAt ?? getOptimisticPaymentReminderAvailableAt(),
-                  }
-                : cachedParticipant,
-            ),
-          };
-        });
-        void queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(billId) });
-      }
-      setReminderModalState({
-        participantName,
-        outcome: mapBillPaymentReminderResultStatus(result.status),
-      });
-      trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_SUCCEEDED', {
-        source: 'BillDetailScreen',
-        status: result.status,
-      });
-    } catch (error) {
-      const outcome = mapBillPaymentReminderError(error);
-      setReminderModalState({
-        participantName,
-        outcome,
-      });
+    const result = await billPaymentReminderWrite.sendPaymentReminder({
+      billId,
+      participantId: participant.id,
+    });
+    if (result.status === 'blocked') {
+      setReminderModalState(null);
+      setErrorMessage(result.message);
       trackObservabilityEvent('BILL_DETAIL_PAYMENT_REMINDER_FAILED', {
         source: 'BillDetailScreen',
-        error: error instanceof Error ? error.message : 'Could not send payment reminder.',
-        outcome,
+        outcome: result.status,
       });
-    } finally {
-      setRemindingParticipantId(null);
+    } else {
+      const outcome = mapBillPaymentReminderResultStatus(result.status);
+      setReminderModalState({ participantName, outcome });
+      const eventName =
+        result.status === 'unexpected_failure'
+          ? 'BILL_DETAIL_PAYMENT_REMINDER_FAILED'
+          : 'BILL_DETAIL_PAYMENT_REMINDER_SUCCEEDED';
+      trackObservabilityEvent(eventName, {
+        source: 'BillDetailScreen',
+        status: result.status,
+        ...(eventName === 'BILL_DETAIL_PAYMENT_REMINDER_FAILED' ? { outcome } : {}),
+      });
     }
+    setRemindingParticipantId(null);
   };
 
   const handleDeleteBill = async () => {

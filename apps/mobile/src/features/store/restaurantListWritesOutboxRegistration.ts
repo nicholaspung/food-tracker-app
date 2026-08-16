@@ -11,6 +11,7 @@ import {
   createRestaurantList,
   deleteRestaurantList,
   moveRestaurantListRestaurant,
+  organizeRestaurantListItem,
   removeRestaurantFoodItemBookmarkFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
@@ -27,6 +28,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.create',
     'list.default.bookmark.save',
     'list.default.restaurant.save',
+    'list.item.organize',
     'list.restaurant.add',
     'list.restaurant.reorder',
     'list.restaurant.remove.source',
@@ -54,6 +56,12 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
       'list.default.restaurant.save',
       [{ key: 'restaurantId', type: 'string' }],
     ),
+    'list.item.organize': createFeatureOutboxPayloadDecoder('list.item.organize', [
+      { key: 'currentListId', type: 'string' },
+      { key: 'destinationListIds', type: 'array' },
+      { key: 'representations', type: 'array' },
+      { key: 'restaurantId', type: 'string' },
+    ]),
     'list.restaurant.add': createFeatureOutboxPayloadDecoder('list.restaurant.add', [
       { key: 'listId', type: 'string' },
       { key: 'restaurantId', type: 'string' },
@@ -94,6 +102,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.create': replayDefaultRestaurantListCreate,
     'list.default.bookmark.save': replayDefaultRestaurantListBookmarkSave,
     'list.default.restaurant.save': replayDefaultRestaurantListRestaurantSave,
+    'list.item.organize': replayRestaurantListItemOrganization,
     'list.restaurant.add': replayRestaurantListRestaurantAdd,
     'list.restaurant.reorder': replayRestaurantListRestaurantReorder,
     'list.restaurant.remove.source': replayRestaurantListRestaurantRemoveSource,
@@ -161,6 +170,13 @@ async function replayDefaultRestaurantListRestaurantSave(
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
   await saveRestaurantToDefaultList(payload, requestOptions);
+}
+
+async function replayRestaurantListItemOrganization(
+  payload: FeatureOutboxOperationPayloadMap['list.item.organize'],
+  requestOptions: FeatureWriteRequestOptions,
+): Promise<void> {
+  await organizeRestaurantListItem(payload, requestOptions);
 }
 
 async function replayRestaurantListRestaurantAdd(

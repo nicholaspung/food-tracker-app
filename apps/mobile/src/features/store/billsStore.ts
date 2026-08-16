@@ -471,23 +471,20 @@ export async function markBillParticipantPaid(
   );
 }
 
-export type BillPaymentReminderResult = {
-  status:
-    | 'sent'
-    | 'skipped_preference_disabled'
-    | 'skipped_no_active_device'
-    | 'provider_failed'
-    | string;
-};
+export interface BillPaymentReminderApiResponse {
+  paymentReminderAvailable?: unknown;
+  paymentReminderAvailableAt?: unknown;
+  status?: unknown;
+}
 
 export async function sendBillPaymentReminder(
   billId: string,
   participantId: string,
-): Promise<BillPaymentReminderResult> {
+): Promise<BillPaymentReminderApiResponse> {
   return trackFeatureMutation(
     'bill.participant.payment_reminder',
     async () =>
-      sendApiRequest<BillPaymentReminderResult>(
+      sendApiRequest<BillPaymentReminderApiResponse>(
         `/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/payment-reminder`,
         {
           method: 'POST',

@@ -1525,6 +1525,184 @@ func TestRestaurantListRemoveUserRatingEndpointDeletesOrphanedItem(t *testing.T)
 	}
 }
 
+func TestRestaurantListOrganizeItemEndpointMovesMixedRepresentationsAtomicallyAndReplaysIdempotently(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, token := createAuthUser(t, server.app, false, true)
+	sourceUser, _ := createAuthUser(t, server.app, false, true)
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   actor.Id,
+		"friend": sourceUser.Id,
+		"status": "accepted",
+	})
+
+	restaurant := seedRestaurantRecord(t, server.app, sourceUser.Id, "Organization Bistro")
+	currentList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Current",
+		"visibility": "private",
+		"user":       actor.Id,
+	})
+	destinationA := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Destination A",
+		"visibility": "private",
+		"user":       actor.Id,
+	})
+	destinationB := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Destination B",
+		"visibility": "private",
+		"user":       actor.Id,
+	})
+	sourceVisit := seedVisitRecord(t, server.app, restaurant.Id, sourceUser.Id, "friends")
+	userVisit := seedVisitRecord(t, server.app, restaurant.Id, actor.Id, "friends")
+	sourceFoodItem := seedFoodItemRecord(t, server.app, sourceVisit.Id, sourceUser.Id, "Friend Pick", 4)
+	userFoodItem := seedFoodItemRecord(t, server.app, userVisit.Id, actor.Id, "My Pick", 5)
+	currentListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":         currentList.Id,
+		"restaurant":   restaurant.Id,
+		"addedBy":      actor.Id,
+		"foodItem":     sourceFoodItem.Id,
+		"userFoodItem": userFoodItem.Id,
+		"sourceUser":   sourceUser.Id,
+		"position":     1,
+	})
+
+	// Simulate a prior partial delivery: the friend representation already reached
+	// one destination before this durable command is replayed.
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       destinationA.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    actor.Id,
+		"foodItem":   sourceFoodItem.Id,
+		"sourceUser": sourceUser.Id,
+		"position":   1,
+	})
+
+	requestBody := fmt.Sprintf(`{
+		"destinationListIds":["%s","%s"],
+		"restaurantId":"%s",
+		"representations":[
+			{"listItemId":"%s","foodItemId":"%s"},
+			{"listItemId":"%s","foodItemId":"%s"}
+		]
+	}`, destinationA.Id, destinationB.Id, restaurant.Id, currentListItem.Id, sourceFoodItem.Id, currentListItem.Id, userFoodItem.Id)
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			fmt.Sprintf("/api/restaurant-lists/%s/items/organize", currentList.Id),
+			token,
+			requestBody,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected organization attempt %d to return 200, got %d: %s", attempt, response.Code, response.Body.String())
+		}
+
+		if records := findRestaurantListGroupRecordsForTest(t, server.app, currentList.Id, restaurant.Id); len(records) != 0 {
+			t.Fatalf("expected current list to be empty after attempt %d, got %d records", attempt, len(records))
+		}
+		for _, destinationList := range []*core.Record{destinationA, destinationB} {
+			records := findRestaurantListGroupRecordsForTest(t, server.app, destinationList.Id, restaurant.Id)
+			if len(records) != 2 {
+				t.Fatalf("expected two destination representations in %s after attempt %d, got %d", destinationList.Id, attempt, len(records))
+			}
+
+			sourceRepresentationCount := 0
+			userRepresentationCount := 0
+			for _, record := range records {
+				if record.GetString("foodItem") == sourceFoodItem.Id || record.GetString("userFoodItem") == sourceFoodItem.Id {
+					sourceRepresentationCount++
+					if record.GetString("sourceUser") != sourceUser.Id {
+						t.Fatalf("expected destination %s sourceUser=%q, got %q", destinationList.Id, sourceUser.Id, record.GetString("sourceUser"))
+					}
+				}
+				if record.GetString("foodItem") == userFoodItem.Id || record.GetString("userFoodItem") == userFoodItem.Id {
+					userRepresentationCount++
+				}
+			}
+			if sourceRepresentationCount != 1 || userRepresentationCount != 1 {
+				t.Fatalf("expected destination %s to contain each representation once, got source=%d user=%d", destinationList.Id, sourceRepresentationCount, userRepresentationCount)
+			}
+		}
+	}
+}
+
+func TestRestaurantListOrganizeItemEndpointRejectsWantToTryWithoutPartialWrites(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	actor, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, actor.Id, "Atomic Organization Cafe")
+	currentList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Current",
+		"visibility": "private",
+		"user":       actor.Id,
+	})
+	validDestination := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Valid Destination",
+		"visibility": "private",
+		"user":       actor.Id,
+	})
+	wantToTry := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"visibility": "private",
+		"user":       actor.Id,
+		"isDefault":  true,
+	})
+	visit := seedVisitRecord(t, server.app, restaurant.Id, actor.Id, "friends")
+	foodItem := seedFoodItemRecord(t, server.app, visit.Id, actor.Id, "Only Pick", 4)
+	currentListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       currentList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    actor.Id,
+		"foodItem":   foodItem.Id,
+		"position":   1,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		fmt.Sprintf("/api/restaurant-lists/%s/items/organize", currentList.Id),
+		token,
+		fmt.Sprintf(`{
+			"destinationListIds":["%s","%s"],
+			"restaurantId":"%s",
+			"representations":[{"listItemId":"%s","foodItemId":"%s"}]
+		}`, validDestination.Id, wantToTry.Id, restaurant.Id, currentListItem.Id, foodItem.Id),
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected Want to Try destination to return 400, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if records := findRestaurantListGroupRecordsForTest(t, server.app, validDestination.Id, restaurant.Id); len(records) != 0 {
+		t.Fatalf("expected rejected command to leave valid destination unchanged, got %d records", len(records))
+	}
+	if records := findRestaurantListGroupRecordsForTest(t, server.app, currentList.Id, restaurant.Id); len(records) != 1 || records[0].Id != currentListItem.Id {
+		t.Fatalf("expected rejected command to preserve the current item, got %#v", records)
+	}
+}
+
+func findRestaurantListGroupRecordsForTest(
+	t *testing.T,
+	app core.App,
+	listID string,
+	restaurantID string,
+) []*core.Record {
+	t.Helper()
+
+	records, err := app.FindRecordsByFilter(
+		"list_items",
+		"list = {:listId} && restaurant = {:restaurantId}",
+		"position,created",
+		200,
+		0,
+		map[string]any{"listId": listID, "restaurantId": restaurantID},
+	)
+	if err != nil {
+		t.Fatalf("failed to load restaurant list group records: %v", err)
+	}
+	return records
+}
+
 func findRecommendationUsageRecords(
 	t *testing.T,
 	app core.App,

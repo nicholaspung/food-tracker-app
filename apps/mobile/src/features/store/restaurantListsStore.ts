@@ -15,6 +15,7 @@ import type {
   CreateRestaurantListInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
+  OrganizeRestaurantListItemInput,
   PaginatedResult,
   RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
@@ -56,6 +57,7 @@ export type {
   ListRestaurantListVisitedRestaurantsPageInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
+  OrganizeRestaurantListItemInput,
   RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
@@ -1344,6 +1346,68 @@ export async function addRestaurantVisitRatingsToList(
     {
       requestedFoodItemCount: input.foodItemIds?.length ?? 0,
       hasNote: Boolean(input.note?.trim()),
+    },
+  );
+}
+
+export async function organizeRestaurantListItem(
+  input: OrganizeRestaurantListItemInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
+  return trackFeatureMutation(
+    'restaurant_list.item.organize',
+    async () => {
+      getAuthenticatedUserId();
+      const currentListId = input.currentListId.trim();
+      const restaurantId = input.restaurantId.trim();
+      const destinationListIds = Array.from(
+        new Set(
+          input.destinationListIds
+            .map((listId) => listId.trim())
+            .filter((listId) => listId.length > 0),
+        ),
+      );
+      const representations = Array.from(
+        new Map(
+          input.representations
+            .map((representation) => ({
+              foodItemId: representation.foodItemId.trim(),
+              listItemId: representation.listItemId.trim(),
+            }))
+            .filter((representation) => representation.foodItemId && representation.listItemId)
+            .map((representation) => [
+              `${representation.listItemId}:${representation.foodItemId}`,
+              representation,
+            ]),
+        ).values(),
+      );
+
+      if (!currentListId || !restaurantId) {
+        throw new Error('Current list and restaurant are required.');
+      }
+      if (destinationListIds.length === 0) {
+        throw new Error('Select at least one destination list.');
+      }
+      if (representations.length === 0) {
+        throw new Error('A restaurant list item representation is required.');
+      }
+
+      await sendApiRequest(
+        `/api/restaurant-lists/${encodeURIComponent(currentListId)}/items/organize`,
+        {
+          method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
+          body: {
+            destinationListIds,
+            representations,
+            restaurantId,
+          },
+        },
+      );
+    },
+    {
+      destinationListCount: input.destinationListIds.length,
+      representationCount: input.representations.length,
     },
   );
 }

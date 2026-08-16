@@ -585,11 +585,22 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewApiError(500, "failed to deliver payment reminder", err)
 		}
 
-		if result.Status == "skipped_rate_limited" {
-			return apis.NewBadRequestError("payment reminder already sent this week", nil)
+		responsePayload := map[string]any{"status": result.Status}
+		if result.Status == "sent" || result.Status == "skipped_rate_limited" {
+			availability, err := getBillPaymentReminderAvailability(
+				app,
+				participantRecord.Id,
+				recipientID,
+				time.Now().UTC(),
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load payment reminder availability", err)
+			}
+			responsePayload["paymentReminderAvailable"] = availability.Available
+			responsePayload["paymentReminderAvailableAt"] = availability.AvailableAt
 		}
 
-		return e.JSON(200, map[string]any{"status": result.Status})
+		return e.JSON(200, responsePayload)
 	}).Bind(apis.RequireAuth())
 }
 

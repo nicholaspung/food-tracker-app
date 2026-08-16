@@ -79,6 +79,7 @@ jest.mock('../features/store/restaurantListsStore', () => ({
   createRestaurantList: jest.fn(),
   deleteRestaurantList: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
+  organizeRestaurantListItem: jest.fn(),
   removeRestaurantListSourceRating: jest.fn(),
   removeRestaurantListUserRating: jest.fn(),
   saveRestaurantFoodItemToList: jest.fn(),

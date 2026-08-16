@@ -9,6 +9,7 @@ import {
   createRestaurantList,
   deleteRestaurantList,
   moveRestaurantListRestaurant,
+  organizeRestaurantListItem,
   removeRestaurantFoodItemBookmarkFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
@@ -37,6 +38,7 @@ jest.mock('../features/store/restaurantListsStore', () => ({
   createRestaurantList: jest.fn(),
   deleteRestaurantList: jest.fn(),
   moveRestaurantListRestaurant: jest.fn(),
+  organizeRestaurantListItem: jest.fn(),
   removeRestaurantFoodItemBookmarkFromList: jest.fn(),
   removeRestaurantListSourceRating: jest.fn(),
   removeRestaurantListUserRating: jest.fn(),
@@ -71,6 +73,8 @@ const mockedCreateRestaurantList = createRestaurantList as jest.MockedFunction<t
 const mockedDeleteRestaurantList = deleteRestaurantList as jest.MockedFunction<typeof deleteRestaurantList>;
 const mockedMoveRestaurantListRestaurant =
   moveRestaurantListRestaurant as jest.MockedFunction<typeof moveRestaurantListRestaurant>;
+const mockedOrganizeRestaurantListItem =
+  organizeRestaurantListItem as jest.MockedFunction<typeof organizeRestaurantListItem>;
 const mockedRemoveRestaurantFoodItemBookmarkFromList =
   removeRestaurantFoodItemBookmarkFromList as jest.MockedFunction<typeof removeRestaurantFoodItemBookmarkFromList>;
 const mockedRemoveRestaurantListSourceRating =
@@ -114,6 +118,7 @@ describe('useRestaurantListWrites', () => {
     mockedCreateRestaurantList.mockResolvedValue({ id: 'list_1' } as never);
     mockedDeleteRestaurantList.mockResolvedValue(undefined);
     mockedMoveRestaurantListRestaurant.mockResolvedValue([]);
+    mockedOrganizeRestaurantListItem.mockResolvedValue(undefined);
     mockedRemoveRestaurantFoodItemBookmarkFromList.mockResolvedValue([]);
     mockedRemoveRestaurantListSourceRating.mockResolvedValue([]);
     mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
@@ -564,6 +569,52 @@ describe('useRestaurantListWrites', () => {
       includeCandidateRestaurants: true,
     });
     expect(result).toEqual({ status: 'completed', result: updatedItems });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues one durable command for multi-list item organization', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+    const input = {
+      currentListId: 'current_list_1',
+      destinationListIds: ['target_list_1', 'target_list_2'],
+      restaurantId: 'restaurant_1',
+      representations: [
+        { foodItemId: 'source_food_item_1', listItemId: 'source_list_item_1' },
+        { foodItemId: 'user_food_item_1', listItemId: 'source_list_item_1' },
+      ],
+    };
+
+    let result: Awaited<ReturnType<typeof hook.organizeRestaurantListItem>> | undefined;
+    await act(async () => {
+      result = await hook.organizeRestaurantListItem(input);
+    });
+
+    expect(writeFeature).toHaveBeenCalledTimes(1);
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.item.organize',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+      }),
+    );
+    expect(mockedOrganizeRestaurantListItem).not.toHaveBeenCalled();
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledTimes(3);
+    for (const listId of ['current_list_1', 'target_list_1', 'target_list_2']) {
+      expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, listId, {
+        includeCandidateRestaurants: true,
+      });
+    }
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('List organization');
+    expect(result).toEqual({ status: 'queued' });
 
     await act(async () => {
       renderer.unmount();

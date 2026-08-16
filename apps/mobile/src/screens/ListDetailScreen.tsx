@@ -1231,6 +1231,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       ),
     [alreadyTransferredListIds, listId, selectedTransferListIds],
   );
+  const desiredTransferListIds = useMemo(
+    () =>
+      transferTargetLists
+        .filter(
+          (targetList) =>
+            selectedTransferListIds.has(targetList.id) || alreadyTransferredListIds.has(targetList.id),
+        )
+        .map((targetList) => targetList.id),
+    [alreadyTransferredListIds, selectedTransferListIds, transferTargetLists],
+  );
   const shouldRemoveTransferTargetFromCurrentList =
     Boolean(transferTarget) && !selectedTransferListIds.has(listId);
   const hasAnySelectedTransferList =
@@ -1290,73 +1300,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setTransferModalError(null);
   };
 
-  const addTransferTargetToList = async (
-    target: PendingListItemTransferTarget,
-    destinationListId: string,
-  ): Promise<boolean> => {
-    let queued = false;
-
-    if (target.source) {
-      const result = await restaurantListWrites.saveBookmarkToLists({
-        listIds: [destinationListId],
-        sourceListId: listId,
-        bookmark: {
-          restaurantId: target.source.restaurantId ?? target.restaurantId,
-          foodItemId: target.source.foodItemId,
-          sourceListId: listId,
-          sourceListItemId: target.source.listItemId,
-          ...(target.source.sourceUserId ? { sourceUserId: target.source.sourceUserId } : {}),
-        },
-      });
-      queued = queued || result.status === 'queued';
-    }
-
-    if (target.user) {
-      const foodItemId =
-        target.user.kind === 'linked' ? target.user.userFoodItemId : target.user.foodItemId;
-      const result = await restaurantListWrites.addRestaurant({
-        listId: destinationListId,
-        restaurantId: target.user.restaurantId ?? target.restaurantId,
-        foodItemIds: [foodItemId],
-      });
-      queued = queued || result.status === 'queued';
-    }
-
-    return queued;
-  };
-
-  const removeTransferTargetFromCurrentList = async (
-    target: PendingListItemTransferTarget,
-  ): Promise<boolean> => {
-    let queued = false;
-
-    if (target.source) {
-      const result = await restaurantListWrites.removeRestaurantListSourceRating({
-        listId,
-        listItemId: target.source.listItemId,
-        foodItemId: target.source.foodItemId,
-      });
-      queued = queued || result.status === 'queued';
-    }
-
-    if (target.user) {
-      const result =
-        target.user.kind === 'linked'
-          ? await restaurantListWrites.removeRestaurantListUserRating({
-              listId,
-              listItemId: target.user.listItemId,
-            })
-          : await restaurantListWrites.removeRestaurantListSourceRating({
-              listId,
-              listItemId: target.user.listItemId,
-              foodItemId: target.user.foodItemId,
-            });
-      queued = queued || result.status === 'queued';
-    }
-
-    return queued;
-  };
-
   const confirmTransferItem = async () => {
     if (!transferTarget || isTransferringItem) {
       return;
@@ -1384,19 +1327,34 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
 
     try {
-      let addQueued = false;
-      for (const targetListId of selectedNewTransferListIds) {
-        addQueued = (await addTransferTargetToList(transferTarget, targetListId)) || addQueued;
-      }
-      const removeQueued = shouldRemoveTransferTargetFromCurrentList
-        ? await removeTransferTargetFromCurrentList(transferTarget)
-        : false;
+      const result = await restaurantListWrites.organizeRestaurantListItem({
+        currentListId: listId,
+        destinationListIds: desiredTransferListIds,
+        representations: [
+          ...(transferTarget.source
+            ? [{
+                foodItemId: transferTarget.source.foodItemId,
+                listItemId: transferTarget.source.listItemId,
+              }]
+            : []),
+          ...(transferTarget.user
+            ? [{
+                foodItemId:
+                  transferTarget.user.kind === 'linked'
+                    ? transferTarget.user.userFoodItemId
+                    : transferTarget.user.foodItemId,
+                listItemId: transferTarget.user.listItemId,
+              }]
+            : []),
+        ],
+        restaurantId: transferTarget.restaurantId,
+      });
 
       trackObservabilityEvent('LIST_DETAIL_ITEM_TRANSFER_SUCCEEDED', {
         source: 'ListDetailScreen',
         addListCount: selectedNewTransferListIds.length,
         removeFromCurrentList: shouldRemoveTransferTargetFromCurrentList,
-        queued: addQueued || removeQueued,
+        queued: result.status === 'queued',
       });
       setTransferTarget(null);
       setSelectedTransferListIds(new Set());

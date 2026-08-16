@@ -8,6 +8,7 @@ import {
   createRestaurantList,
   deleteRestaurantList,
   moveRestaurantListRestaurant,
+  organizeRestaurantListItem,
   removeRestaurantFoodItemBookmarkFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
@@ -17,6 +18,7 @@ import {
   type AddRestaurantVisitRatingsToListInput,
   type CreateRestaurantListInput,
   type MoveRestaurantListRestaurantInput,
+  type OrganizeRestaurantListItemInput,
   type RemoveRestaurantFoodItemBookmarkFromListInput,
   type RemoveRestaurantListSourceRatingInput,
   type RestaurantListDetailRecord,
@@ -624,11 +626,41 @@ export function useRestaurantListWrites() {
     [queryClient, submitFeatureWrite],
   );
 
+  const organizeRestaurantListItemWrite = useCallback(
+    async (
+      input: OrganizeRestaurantListItemInput,
+    ): Promise<OfflineAwareFeatureWriteResult<void>> => {
+      const affectedListIds = Array.from(
+        new Set([input.currentListId, ...input.destinationListIds].filter(Boolean)),
+      );
+
+      return submitFeatureWrite({
+        operationName: 'list.item.organize',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+        execute: () => organizeRestaurantListItem(input),
+        fallbackErrorMessage: 'Could not organize this item.',
+        onSettledInvalidate: async () => {
+          await Promise.all(
+            affectedListIds.map((listId) =>
+              syncRestaurantListMembershipCaches(queryClient, listId),
+            ),
+          );
+        },
+        queuedToast: 'List organization',
+      });
+    },
+    [queryClient, submitFeatureWrite],
+  );
+
   return {
     addRestaurant: addRestaurantWrite,
     createDefaultRestaurantList: createDefaultListWrite,
     createRestaurantList: createListWrite,
     deleteRestaurantList: deleteListWrite,
+    organizeRestaurantListItem: organizeRestaurantListItemWrite,
     reorderRestaurant: reorderRestaurantWrite,
     removeRestaurantListSourceRating: removeSourceRatingWrite,
     removeRestaurantListUserRating: removeUserRatingWrite,

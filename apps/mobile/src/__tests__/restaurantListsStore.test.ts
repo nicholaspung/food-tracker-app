@@ -3,6 +3,7 @@ import {
   getRestaurantListDetail,
   getRestaurantListBookmarkState,
   getRestaurantListCandidateRestaurants,
+  organizeRestaurantListItem,
   removeRestaurantFoodItemBookmarkFromList,
   saveSharedRestaurantListRecommendation,
   saveRestaurantToDefaultList,
@@ -322,6 +323,59 @@ describe('restaurantListsStore.saveSharedRestaurantListRecommendation', () => {
         targetListIds: ['target-list-1'],
       },
     });
+  });
+});
+
+describe('restaurantListsStore.organizeRestaurantListItem', () => {
+  beforeEach(() => {
+    mockedSendApiRequest.mockReset();
+    mockedPocketBase.authStore.record = {
+      collectionId: 'users',
+      collectionName: 'users',
+      id: 'user-1',
+    };
+  });
+
+  it('posts one normalized organization command with replay headers', async () => {
+    mockedSendApiRequest.mockResolvedValue({ listIds: ['current-list', 'target-list'] });
+
+    await expect(
+      organizeRestaurantListItem(
+        {
+          currentListId: ' current-list ',
+          destinationListIds: [' target-list ', 'target-list', ''],
+          restaurantId: ' restaurant-1 ',
+          representations: [
+            { foodItemId: ' source-food-1 ', listItemId: ' source-list-item-1 ' },
+            { foodItemId: ' user-food-1 ', listItemId: ' source-list-item-1 ' },
+          ],
+        },
+        {
+          headers: {
+            'X-Idempotency-Key': 'organization-1',
+          },
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(mockedSendApiRequest).toHaveBeenCalledTimes(1);
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurant-lists/current-list/items/organize',
+      {
+        method: 'POST',
+        headers: {
+          'X-Idempotency-Key': 'organization-1',
+        },
+        body: {
+          destinationListIds: ['target-list'],
+          restaurantId: 'restaurant-1',
+          representations: [
+            { foodItemId: 'source-food-1', listItemId: 'source-list-item-1' },
+            { foodItemId: 'user-food-1', listItemId: 'source-list-item-1' },
+          ],
+        },
+      },
+    );
   });
 });
 

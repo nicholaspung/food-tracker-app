@@ -256,6 +256,18 @@ export interface RemoveRestaurantListSourceRatingInput {
   foodItemId: string;
 }
 
+export interface OrganizeRestaurantListItemRepresentationInput {
+  foodItemId: string;
+  listItemId: string;
+}
+
+export interface OrganizeRestaurantListItemInput {
+  currentListId: string;
+  destinationListIds: string[];
+  representations: OrganizeRestaurantListItemRepresentationInput[];
+  restaurantId: string;
+}
+
 export interface MoveRestaurantListRestaurantInput {
   listId: string;
   restaurantId: string;

@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -1195,6 +1196,17 @@ func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected payment reminder to succeed, got %d: %s", response.Code, response.Body.String())
 	}
+	var sentPayload struct {
+		Status                     string  `json:"status"`
+		PaymentReminderAvailable   bool    `json:"paymentReminderAvailable"`
+		PaymentReminderAvailableAt *string `json:"paymentReminderAvailableAt"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &sentPayload); err != nil {
+		t.Fatalf("failed to decode payment reminder response: %v", err)
+	}
+	if sentPayload.Status != "sent" || sentPayload.PaymentReminderAvailable || sentPayload.PaymentReminderAvailableAt == nil {
+		t.Fatalf("expected authoritative sent cooldown, got %#v", sentPayload)
+	}
 	if len(sender.calls) != 1 {
 		t.Fatalf("expected one payment reminder push, got %#v", sender.calls)
 	}
@@ -1228,8 +1240,19 @@ func TestBillPaymentReminderDeliveryAndWeeklyRateLimit(t *testing.T) {
 		creatorToken,
 		"",
 	)
-	if rateLimitedResponse.Code != http.StatusBadRequest {
+	if rateLimitedResponse.Code != http.StatusOK {
 		t.Fatalf("expected weekly rate limit response, got %d: %s", rateLimitedResponse.Code, rateLimitedResponse.Body.String())
+	}
+	var rateLimitedPayload struct {
+		Status                     string  `json:"status"`
+		PaymentReminderAvailable   bool    `json:"paymentReminderAvailable"`
+		PaymentReminderAvailableAt *string `json:"paymentReminderAvailableAt"`
+	}
+	if err := json.Unmarshal(rateLimitedResponse.Body.Bytes(), &rateLimitedPayload); err != nil {
+		t.Fatalf("failed to decode rate-limited reminder response: %v", err)
+	}
+	if rateLimitedPayload.Status != "skipped_rate_limited" || rateLimitedPayload.PaymentReminderAvailable || rateLimitedPayload.PaymentReminderAvailableAt == nil {
+		t.Fatalf("expected authoritative weekly cooldown, got %#v", rateLimitedPayload)
 	}
 	if len(sender.calls) != 1 {
 		t.Fatalf("expected rate limit to avoid another provider send, got %#v", sender.calls)
@@ -1318,7 +1341,7 @@ func TestBillPaymentReminderReservationPreventsDuplicateProviderSend(t *testing.
 		creatorToken,
 		"",
 	)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != http.StatusOK {
 		t.Fatalf("expected reserved reminder to be rate limited, got %d: %s", response.Code, response.Body.String())
 	}
 	if len(sender.calls) != 0 {
@@ -1409,7 +1432,7 @@ func TestBillPaymentReminderCooldownSurvivesPerDeviceReceiptFailure(t *testing.T
 		creatorToken,
 		"",
 	)
-	if rateLimitedResponse.Code != http.StatusBadRequest {
+	if rateLimitedResponse.Code != http.StatusOK {
 		t.Fatalf("expected reminder to remain rate limited after receipt failure, got %d: %s", rateLimitedResponse.Code, rateLimitedResponse.Body.String())
 	}
 	if len(sender.calls) != 2 {

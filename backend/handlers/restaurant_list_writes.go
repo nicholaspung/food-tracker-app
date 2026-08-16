@@ -39,6 +39,32 @@ type restaurantListRemoveSourceRatingRequest struct {
 	FoodItemID string `json:"foodItemId"`
 }
 
+type restaurantListItemOrganizationRepresentationRequest struct {
+	ListItemID string `json:"listItemId"`
+	FoodItemID string `json:"foodItemId"`
+}
+
+type restaurantListItemOrganizationRequest struct {
+	DestinationListIDs []string                                              `json:"destinationListIds"`
+	RestaurantID       string                                                `json:"restaurantId"`
+	Representations    []restaurantListItemOrganizationRepresentationRequest `json:"representations"`
+}
+
+type restaurantListItemOrganizationRepresentationKind string
+
+const (
+	restaurantListItemOrganizationSource         restaurantListItemOrganizationRepresentationKind = "source"
+	restaurantListItemOrganizationUserLinked     restaurantListItemOrganizationRepresentationKind = "user-linked"
+	restaurantListItemOrganizationUserStandalone restaurantListItemOrganizationRepresentationKind = "user-standalone"
+)
+
+type resolvedRestaurantListItemOrganizationRepresentation struct {
+	FoodItemID   string
+	Kind         restaurantListItemOrganizationRepresentationKind
+	ListItemID   string
+	SourceUserID string
+}
+
 type restaurantListMutationGroupResponse struct {
 	List         restaurantListDetailListResponse   `json:"list"`
 	ListID       string                             `json:"listId"`
@@ -182,6 +208,34 @@ func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/items/organize", func(e *core.RequestEvent) error {
+		currentListID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if currentListID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		requestBody := restaurantListItemOrganizationRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var affectedListIDs []string
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			var err error
+			affectedListIDs, err = organizeRestaurantListItemTransaction(
+				txApp,
+				e.Auth,
+				currentListID,
+				requestBody,
+			)
+			return err
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, map[string]any{"listIds": affectedListIDs})
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/restaurant-lists/{listId}/restaurants/reorder", func(e *core.RequestEvent) error {
@@ -549,7 +603,6 @@ func saveRestaurantListBookmarkTransaction(
 		return "", apis.NewBadRequestError("sourceUserId must match the saved food item owner", nil)
 	}
 	recommendationSourceUserID := recommendationUsageSourceUserFromFoodItem(sourceUserID, foodItemRecord)
-
 	existingItem, err := findRestaurantListItemByFoodItem(app, listRecord.Id, foodItemID)
 	if err != nil {
 		return "", apis.NewApiError(500, "failed to load existing restaurant list item", err)
@@ -807,6 +860,324 @@ func addRestaurantListRatingsTransaction(
 	}
 
 	return restaurantID, nil
+}
+
+func organizeRestaurantListItemTransaction(
+	app core.App,
+	authRecord *core.Record,
+	currentListID string,
+	requestBody restaurantListItemOrganizationRequest,
+) ([]string, error) {
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return nil, err
+	}
+
+	currentList, err := findOwnedRestaurantListRecord(app, currentListID, authRecord.Id)
+	if err != nil {
+		return nil, err
+	}
+	if currentList.GetBool("isDefault") {
+		return nil, apis.NewBadRequestError("Want to Try items cannot be organized as curated list items", nil)
+	}
+
+	restaurantID := strings.TrimSpace(requestBody.RestaurantID)
+	if restaurantID == "" {
+		return nil, apis.NewBadRequestError("restaurantId is required", nil)
+	}
+	if _, err := findRestaurantRecord(app, restaurantID); err != nil {
+		return nil, err
+	}
+
+	destinationListIDs := normalizeUniqueTrimmedIDs(requestBody.DestinationListIDs)
+	if len(destinationListIDs) == 0 {
+		return nil, apis.NewBadRequestError("at least one destination list is required", nil)
+	}
+	for _, destinationListID := range destinationListIDs {
+		destinationList, err := findOwnedRestaurantListRecord(app, destinationListID, authRecord.Id)
+		if err != nil {
+			return nil, err
+		}
+		if destinationList.GetBool("isDefault") {
+			return nil, apis.NewBadRequestError("Want to Try cannot be a curated list organization destination", nil)
+		}
+	}
+
+	representationRequests, err := normalizeRestaurantListOrganizationRepresentations(requestBody.Representations)
+	if err != nil {
+		return nil, err
+	}
+	resolvedRepresentations := make([]resolvedRestaurantListItemOrganizationRepresentation, 0, len(representationRequests))
+	for _, representationRequest := range representationRequests {
+		resolvedRepresentation, err := resolveRestaurantListOrganizationRepresentation(
+			app,
+			authRecord,
+			currentListID,
+			destinationListIDs,
+			restaurantID,
+			representationRequest,
+		)
+		if err != nil {
+			return nil, err
+		}
+		resolvedRepresentations = append(resolvedRepresentations, resolvedRepresentation)
+	}
+
+	for _, destinationListID := range destinationListIDs {
+		if destinationListID == currentListID {
+			continue
+		}
+
+		userFoodItemIDs := make([]string, 0, len(resolvedRepresentations))
+		for _, representation := range resolvedRepresentations {
+			if representation.Kind != restaurantListItemOrganizationSource {
+				userFoodItemIDs = append(userFoodItemIDs, representation.FoodItemID)
+				continue
+			}
+
+			containsSourceRating, err := restaurantListContainsFoodItem(
+				app,
+				destinationListID,
+				restaurantID,
+				representation.FoodItemID,
+			)
+			if err != nil {
+				return nil, apis.NewApiError(500, "failed to load destination list item", err)
+			}
+			if containsSourceRating {
+				continue
+			}
+
+			if _, err := saveRestaurantListBookmarkTransaction(
+				app,
+				authRecord,
+				destinationListID,
+				restaurantListSaveBookmarkRequest{
+					RestaurantID: restaurantID,
+					FoodItemID:   representation.FoodItemID,
+					SourceUserID: representation.SourceUserID,
+					SourceListID: currentListID,
+					SourceItemID: representation.ListItemID,
+				},
+			); err != nil {
+				return nil, err
+			}
+		}
+
+		if len(userFoodItemIDs) > 0 {
+			if _, err := addRestaurantListRatingsTransaction(
+				app,
+				authRecord,
+				destinationListID,
+				restaurantListAddRatingsRequest{
+					RestaurantID: restaurantID,
+					FoodItemIDs:  userFoodItemIDs,
+				},
+			); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if !containsTrimmedID(destinationListIDs, currentListID) {
+		for _, representation := range resolvedRepresentations {
+			switch representation.Kind {
+			case restaurantListItemOrganizationUserLinked:
+				if _, err := removeRestaurantListUserRatingTransaction(
+					app,
+					authRecord,
+					currentListID,
+					representation.ListItemID,
+				); err != nil {
+					return nil, err
+				}
+			case restaurantListItemOrganizationUserStandalone:
+				if _, err := removeRestaurantListSourceRatingTransaction(
+					app,
+					authRecord,
+					currentListID,
+					representation.ListItemID,
+					restaurantListRemoveSourceRatingRequest{FoodItemID: representation.FoodItemID},
+				); err != nil {
+					return nil, err
+				}
+			}
+		}
+		for _, representation := range resolvedRepresentations {
+			if representation.Kind != restaurantListItemOrganizationSource {
+				continue
+			}
+			if _, err := removeRestaurantListSourceRatingTransaction(
+				app,
+				authRecord,
+				currentListID,
+				representation.ListItemID,
+				restaurantListRemoveSourceRatingRequest{FoodItemID: representation.FoodItemID},
+			); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return normalizeUniqueTrimmedIDs(append([]string{currentListID}, destinationListIDs...)), nil
+}
+
+func normalizeRestaurantListOrganizationRepresentations(
+	representations []restaurantListItemOrganizationRepresentationRequest,
+) ([]restaurantListItemOrganizationRepresentationRequest, error) {
+	normalized := make([]restaurantListItemOrganizationRepresentationRequest, 0, len(representations))
+	seen := map[string]struct{}{}
+	for _, representation := range representations {
+		listItemID := strings.TrimSpace(representation.ListItemID)
+		foodItemID := strings.TrimSpace(representation.FoodItemID)
+		if listItemID == "" || foodItemID == "" {
+			return nil, apis.NewBadRequestError("listItemId and foodItemId are required", nil)
+		}
+		key := listItemID + ":" + foodItemID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, restaurantListItemOrganizationRepresentationRequest{
+			ListItemID: listItemID,
+			FoodItemID: foodItemID,
+		})
+	}
+	if len(normalized) == 0 {
+		return nil, apis.NewBadRequestError("at least one item representation is required", nil)
+	}
+	return normalized, nil
+}
+
+func resolveRestaurantListOrganizationRepresentation(
+	app core.App,
+	authRecord *core.Record,
+	currentListID string,
+	destinationListIDs []string,
+	restaurantID string,
+	representation restaurantListItemOrganizationRepresentationRequest,
+) (resolvedRestaurantListItemOrganizationRepresentation, error) {
+	resolved := resolvedRestaurantListItemOrganizationRepresentation{
+		FoodItemID: representation.FoodItemID,
+		ListItemID: representation.ListItemID,
+	}
+	foodItemRecord, visitRecord, err := findFoodItemWithVisit(app, representation.FoodItemID)
+	if err != nil {
+		return resolved, err
+	}
+	foodItemOwnerID := strings.TrimSpace(foodItemRecord.GetString("user"))
+
+	currentListItem, err := app.FindRecordById("list_items", representation.ListItemID)
+	if err == nil {
+		if strings.TrimSpace(currentListItem.GetString("list")) != currentListID ||
+			strings.TrimSpace(currentListItem.GetString("restaurant")) != restaurantID ||
+			!restaurantListItemReferencesFoodItem(currentListItem, representation.FoodItemID) {
+			return resolved, apis.NewBadRequestError("item representation does not belong to the current list", nil)
+		}
+
+		if strings.TrimSpace(currentListItem.GetString("userFoodItem")) == representation.FoodItemID {
+			if foodItemOwnerID != authRecord.Id {
+				return resolved, apis.NewForbiddenError("you can only organize your own visit rating", nil)
+			}
+			if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, true); err != nil {
+				return resolved, err
+			}
+			resolved.Kind = restaurantListItemOrganizationUserLinked
+			return resolved, nil
+		}
+
+		sourceUserID := strings.TrimSpace(currentListItem.GetString("sourceUser"))
+		if sourceUserID != "" || foodItemOwnerID != authRecord.Id {
+			if sourceUserID != "" && sourceUserID != foodItemOwnerID {
+				return resolved, apis.NewBadRequestError("saved recommendation source does not match the food item owner", nil)
+			}
+			if err := ensureFoodItemVisibleToUser(app, authRecord, foodItemRecord, visitRecord); err != nil {
+				return resolved, err
+			}
+			if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, false); err != nil {
+				return resolved, err
+			}
+			resolved.Kind = restaurantListItemOrganizationSource
+			resolved.SourceUserID = foodItemOwnerID
+			return resolved, nil
+		}
+
+		if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, true); err != nil {
+			return resolved, err
+		}
+		resolved.Kind = restaurantListItemOrganizationUserStandalone
+		return resolved, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return resolved, apis.NewApiError(500, "failed to load current list item representation", err)
+	}
+
+	hasReplayDestination := false
+	for _, destinationListID := range destinationListIDs {
+		if destinationListID == currentListID {
+			return resolved, apis.NewBadRequestError("current list item representation was not found", nil)
+		}
+		hasReplayDestination = true
+		containsRepresentation, err := restaurantListContainsFoodItem(
+			app,
+			destinationListID,
+			restaurantID,
+			representation.FoodItemID,
+		)
+		if err != nil {
+			return resolved, apis.NewApiError(500, "failed to validate organized item replay", err)
+		}
+		if !containsRepresentation {
+			return resolved, apis.NewBadRequestError("current list item representation was not found", nil)
+		}
+	}
+	if !hasReplayDestination {
+		return resolved, apis.NewBadRequestError("current list item representation was not found", nil)
+	}
+
+	if foodItemOwnerID == authRecord.Id {
+		if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, true); err != nil {
+			return resolved, err
+		}
+		resolved.Kind = restaurantListItemOrganizationUserStandalone
+		return resolved, nil
+	}
+	if err := ensureFoodItemVisibleToUser(app, authRecord, foodItemRecord, visitRecord); err != nil {
+		return resolved, err
+	}
+	if err := ensureFoodItemMatchesRestaurant(foodItemRecord, visitRecord, restaurantID, false); err != nil {
+		return resolved, err
+	}
+	resolved.Kind = restaurantListItemOrganizationSource
+	resolved.SourceUserID = foodItemOwnerID
+	return resolved, nil
+}
+
+func restaurantListContainsFoodItem(
+	app core.App,
+	listID string,
+	restaurantID string,
+	foodItemID string,
+) (bool, error) {
+	items, err := listRestaurantListGroupRecords(app, listID, restaurantID, "position,created")
+	if err != nil {
+		return false, err
+	}
+	for _, item := range items {
+		if restaurantListItemReferencesFoodItem(item, foodItemID) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func containsTrimmedID(values []string, expected string) bool {
+	trimmedExpected := strings.TrimSpace(expected)
+	for _, value := range values {
+		if strings.TrimSpace(value) == trimmedExpected {
+			return true
+		}
+	}
+	return false
 }
 
 func reorderRestaurantListTransaction(

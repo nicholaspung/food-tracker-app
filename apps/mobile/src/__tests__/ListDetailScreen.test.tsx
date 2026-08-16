@@ -511,6 +511,7 @@ describe('ListDetailScreen', () => {
     deleteRestaurantList: jest.fn(),
     errorMessage: null,
     isSubmitting: false,
+    organizeRestaurantListItem: jest.fn(),
     reorderRestaurant: jest.fn(),
     removeBookmarkFromDefaultList: jest.fn(),
     removeRestaurantListSourceRating: jest.fn(),
@@ -568,6 +569,10 @@ describe('ListDetailScreen', () => {
     });
     restaurantListWrites.addRestaurant.mockResolvedValue({
       result: [],
+      status: 'completed',
+    });
+    restaurantListWrites.organizeRestaurantListItem.mockResolvedValue({
+      result: undefined,
       status: 'completed',
     });
     restaurantListWrites.removeRestaurantListSourceRating.mockResolvedValue({
@@ -1302,17 +1307,13 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'list-item-transfer-modal' }).props.primaryAction.onPress();
     });
 
-    expect(restaurantListWrites.saveBookmarkToLists).toHaveBeenCalledWith({
-      listIds: ['list_3'],
-      sourceListId: 'list_1',
-      bookmark: {
-        restaurantId: 'restaurant_food_1',
-        foodItemId: 'food_item_1',
-        sourceListId: 'list_1',
-        sourceListItemId: 'item_1',
-        sourceUserId: 'friend_1',
-      },
+    expect(restaurantListWrites.organizeRestaurantListItem).toHaveBeenCalledWith({
+      currentListId: 'list_1',
+      destinationListIds: ['list_1', 'list_2', 'list_3'],
+      restaurantId: 'restaurant_1',
+      representations: [{ foodItemId: 'food_item_1', listItemId: 'item_1' }],
     });
+    expect(restaurantListWrites.saveBookmarkToLists).not.toHaveBeenCalled();
     expect(restaurantListWrites.removeRestaurantListSourceRating).not.toHaveBeenCalled();
   });
 
@@ -1461,31 +1462,19 @@ describe('ListDetailScreen', () => {
       await renderer.root.findByProps({ testID: 'list-item-transfer-modal' }).props.primaryAction.onPress();
     });
 
-    expect(restaurantListWrites.saveBookmarkToLists).toHaveBeenCalledWith({
-      listIds: ['list_2'],
-      sourceListId: 'list_1',
-      bookmark: {
-        restaurantId: 'restaurant_1',
-        foodItemId: 'food_item_1',
-        sourceListId: 'list_1',
-        sourceListItemId: 'item_1',
-        sourceUserId: 'friend_1',
-      },
-    });
-    expect(restaurantListWrites.addRestaurant).toHaveBeenCalledWith({
-      listId: 'list_2',
+    expect(restaurantListWrites.organizeRestaurantListItem).toHaveBeenCalledWith({
+      currentListId: 'list_1',
+      destinationListIds: ['list_2'],
       restaurantId: 'restaurant_1',
-      foodItemIds: ['user_food_item_1'],
+      representations: [
+        { foodItemId: 'food_item_1', listItemId: 'item_1' },
+        { foodItemId: 'user_food_item_1', listItemId: 'item_1' },
+      ],
     });
-    expect(restaurantListWrites.removeRestaurantListSourceRating).toHaveBeenCalledWith({
-      listId: 'list_1',
-      listItemId: 'item_1',
-      foodItemId: 'food_item_1',
-    });
-    expect(restaurantListWrites.removeRestaurantListUserRating).toHaveBeenCalledWith({
-      listId: 'list_1',
-      listItemId: 'item_1',
-    });
+    expect(restaurantListWrites.saveBookmarkToLists).not.toHaveBeenCalled();
+    expect(restaurantListWrites.addRestaurant).not.toHaveBeenCalled();
+    expect(restaurantListWrites.removeRestaurantListSourceRating).not.toHaveBeenCalled();
+    expect(restaurantListWrites.removeRestaurantListUserRating).not.toHaveBeenCalled();
   });
 
   it('delegates offline source rating deletion to restaurant list writes', async () => {

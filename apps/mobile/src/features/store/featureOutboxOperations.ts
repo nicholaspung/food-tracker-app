@@ -26,6 +26,7 @@ import {
   type InviteFriendInput,
   type MarkNoteUsedInput,
   type MoveRestaurantListRestaurantInput,
+  type OrganizeRestaurantListItemInput,
   type RemoveRestaurantFoodItemBookmarkFromListInput,
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
@@ -186,6 +187,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'list.default.create': EmptyOperationPayload;
   'list.default.bookmark.save': SaveBookmarkToDefaultListOperationPayload;
   'list.default.restaurant.save': SaveRestaurantToDefaultListOperationPayload;
+  'list.item.organize': OrganizeRestaurantListItemInput;
   'list.restaurant.add': AddRestaurantVisitRatingsToListInput;
   'list.restaurant.reorder': MoveRestaurantListRestaurantInput;
   'list.restaurant.remove.source': RemoveRestaurantListSourceRatingInput;
