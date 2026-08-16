@@ -1,8 +1,8 @@
 import type { RestaurantListVisitedRestaurantFoodItem } from '../../features';
 
 interface FilterVisibleRestaurantFoodItemsInput {
-  foodItems: RestaurantListVisitedRestaurantFoodItem[];
-  selectedFoodItemIds: string[];
+  foodItems: readonly RestaurantListVisitedRestaurantFoodItem[];
+  selectedFoodItemIds: readonly string[];
   hideDuplicateRatings: boolean;
 }
 
@@ -14,7 +14,7 @@ export function filterVisibleRestaurantFoodItems({
   foodItems,
   selectedFoodItemIds,
   hideDuplicateRatings,
-}: FilterVisibleRestaurantFoodItemsInput): RestaurantListVisitedRestaurantFoodItem[] {
+}: FilterVisibleRestaurantFoodItemsInput): readonly RestaurantListVisitedRestaurantFoodItem[] {
   if (!hideDuplicateRatings || foodItems.length < 2) {
     return foodItems;
   }

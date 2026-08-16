@@ -204,6 +204,7 @@ export interface RestaurantListVisitedRestaurantFoodItem {
   visitedAt: string;
   photoPreview?: RestaurantListVisitedRestaurantFoodItemPhotoPreview;
   photoCount?: number;
+  alreadyAdded: boolean;
 }
 
 export interface RestaurantListVisitedRestaurantCandidate {
@@ -213,11 +214,10 @@ export interface RestaurantListVisitedRestaurantCandidate {
   cuisineType?: string;
   visibility?: 'private' | 'friends' | 'public';
   itemCount: number;
-  visitDates: string[];
-  foodItems: RestaurantListVisitedRestaurantFoodItem[];
+  latestVisitDate?: string;
   alreadyInList: boolean;
   existingNote?: string;
-  linkedFoodItemIds: string[];
+  linkedItemCount: number;
 }
 
 export interface AddRestaurantVisitRatingsToListInput {
@@ -337,6 +337,9 @@ export interface RestaurantListDetailRecord {
 export interface RestaurantListCandidateRestaurantsResult extends PaginatedResult<RestaurantListVisitedRestaurantCandidate> {
   list: RestaurantListRecord | null;
 }
+
+export type RestaurantListVisitedRestaurantFoodItemsPage =
+  PaginatedResult<RestaurantListVisitedRestaurantFoodItem>;
 
 export interface NoteOverviewPage {
   items: NoteOverviewItemRecord[];

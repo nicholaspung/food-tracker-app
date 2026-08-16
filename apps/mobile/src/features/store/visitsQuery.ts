@@ -63,6 +63,9 @@ export async function syncVisitMutationCaches(
     queryClient.invalidateQueries({ queryKey: visitsQueryKeys.detailRoot }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultList }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
+    queryClient.invalidateQueries({
+      queryKey: restaurantListQueryKeys.candidateRestaurantFoodItemsRoot,
+    }),
     queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root }),
     queryClient.invalidateQueries({ queryKey: restaurantsQueryKeys.root }),
   ];

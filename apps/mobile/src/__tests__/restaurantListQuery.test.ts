@@ -73,6 +73,15 @@ describe('restaurantListQuery', () => {
       'ramen',
       'pages',
     ]);
+    expect(
+      restaurantListQueryKeys.candidateRestaurantFoodItemPages('list_1', 'restaurant_1'),
+    ).toEqual([
+      'feature',
+      'restaurantListCandidateFoodItems',
+      'list_1',
+      'restaurant_1',
+      'pages',
+    ]);
   });
 
   it('normalizes batched candidate food item photo keys deterministically', () => {
@@ -114,6 +123,7 @@ describe('restaurantListQuery', () => {
       restaurantListQueryKeys.items('list_1'),
       restaurantListQueryKeys.detail('list_1'),
       restaurantListQueryKeys.itemLinks('list_1'),
+      restaurantListQueryKeys.candidateRestaurantFoodItemsByList('list_1'),
       restaurantListQueryKeys.root,
     ]);
 
@@ -122,6 +132,7 @@ describe('restaurantListQuery', () => {
       restaurantListQueryKeys.items('list_1'),
       restaurantListQueryKeys.detail('list_1'),
       restaurantListQueryKeys.itemLinks('list_1'),
+      restaurantListQueryKeys.candidateRestaurantFoodItemsByList('list_1'),
       restaurantListQueryKeys.candidateRestaurantsByList('list_1'),
       restaurantListQueryKeys.root,
     ]);
@@ -132,12 +143,17 @@ describe('restaurantListQuery', () => {
     const listId = 'list_1';
     const listPageKey = restaurantListQueryKeys.paginated('my', '');
     const candidateKey = restaurantListQueryKeys.candidateRestaurants(listId, 'pizza');
+    const candidateFoodItemsKey = restaurantListQueryKeys.candidateRestaurantFoodItemPages(
+      listId,
+      'restaurant_1',
+    );
 
     queryClient.setQueryData(restaurantListQueryKeys.list(listId), { id: listId });
     queryClient.setQueryData(restaurantListQueryKeys.items(listId), [{ id: 'item_1' }]);
     queryClient.setQueryData(restaurantListQueryKeys.detail(listId), { list: { id: listId }, items: [] });
     queryClient.setQueryData(restaurantListQueryKeys.itemLinks(listId), [{ id: 'link_1' }]);
     queryClient.setQueryData(candidateKey, [{ id: 'restaurant_1' }]);
+    queryClient.setQueryData(candidateFoodItemsKey, { pages: [], pageParams: [] });
     queryClient.setQueryData(listPageKey, { pages: [], pageParams: [] });
 
     await invalidateRestaurantListContentQueries(queryClient, listId, { includeCandidateRestaurants: true });
@@ -147,6 +163,7 @@ describe('restaurantListQuery', () => {
     expect(queryClient.getQueryState(restaurantListQueryKeys.detail(listId))?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(restaurantListQueryKeys.itemLinks(listId))?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(candidateKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(candidateFoodItemsKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(listPageKey)?.isInvalidated).toBe(true);
   });
 
@@ -154,12 +171,17 @@ describe('restaurantListQuery', () => {
     const queryClient = createQueryClient();
     const listId = 'list_1';
     const candidateKey = restaurantListQueryKeys.candidateRestaurants(listId, 'pizza');
+    const candidateFoodItemsKey = restaurantListQueryKeys.candidateRestaurantFoodItemPages(
+      listId,
+      'restaurant_1',
+    );
     const listPageKey = restaurantListQueryKeys.paginated('my', '');
 
     for (const queryKey of getRestaurantListRemovalKeys(listId)) {
       queryClient.setQueryData(queryKey, { queryKey });
     }
     queryClient.setQueryData(candidateKey, { id: 'candidate_1' });
+    queryClient.setQueryData(candidateFoodItemsKey, { pages: [], pageParams: [] });
     queryClient.setQueryData(listPageKey, { pages: [], pageParams: [] });
 
     removeRestaurantListQueries(queryClient, listId);
@@ -169,6 +191,7 @@ describe('restaurantListQuery', () => {
     expect(queryClient.getQueryData(restaurantListQueryKeys.detail(listId))).toBeUndefined();
     expect(queryClient.getQueryData(restaurantListQueryKeys.itemLinks(listId))).toBeUndefined();
     expect(queryClient.getQueryData(candidateKey)).toBeUndefined();
+    expect(queryClient.getQueryData(candidateFoodItemsKey)).toBeUndefined();
     expect(queryClient.getQueryData(listPageKey)).toEqual({ pages: [], pageParams: [] });
   });
 

@@ -943,9 +943,10 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 	}
 }
 
-func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *testing.T) {
+func TestRestaurantListCandidateRestaurantsEndpointSplitsSummaryFromPaginatedItems(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
 
 	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
 		"name":       "Saved",
@@ -982,6 +983,24 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		"user":       user.Id,
 		"visitDate":  "2026-04-04 18:30:00.000Z",
 		"visibility": "private",
+	})
+	otherUserVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(annotatedRestaurant),
+		"user":       otherUser.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "private",
+	})
+	otherUserItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  otherUserVisit.Id,
+		"user":   otherUser.Id,
+		"name":   "Friend's Nigiri",
+		"rating": 5,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  otherVisit.Id,
+		"user":   user.Id,
+		"name":   "Fries",
+		"rating": 4,
 	})
 
 	recommendedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
@@ -1031,13 +1050,6 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		"name":   "Yuzu Soda",
 		"rating": 3,
 	})
-	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"visit":  otherVisit.Id,
-		"user":   user.Id,
-		"name":   "Fries",
-		"rating": 4,
-	})
-
 	createCollectionRecord(t, server.app, "list_items", map[string]any{
 		"list":             list.Id,
 		"restaurant":       annotatedRestaurant.Id,
@@ -1047,6 +1059,13 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		"userFoodItem":     userLinkedItem.Id,
 		"recommendedItems": []string{recommendedItem.Id},
 		"note":             "Already bookmarked",
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       list.Id,
+		"restaurant": annotatedRestaurant.Id,
+		"addedBy":    user.Id,
+		"position":   2,
+		"foodItem":   otherUserItem.Id,
 	})
 
 	response := performJSONRequest(
@@ -1066,6 +1085,7 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		Name         string `json:"name"`
 		VisitedAt    string `json:"visitedAt"`
 		PhotoCount   int    `json:"photoCount"`
+		AlreadyAdded bool   `json:"alreadyAdded"`
 		PhotoPreview *struct {
 			ID    string `json:"id"`
 			Photo string `json:"photo"`
@@ -1077,15 +1097,16 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 			ID string `json:"id"`
 		} `json:"list"`
 		Items []struct {
-			ID                string                     `json:"id"`
-			Name              string                     `json:"name"`
-			Visibility        string                     `json:"visibility"`
-			ItemCount         int                        `json:"itemCount"`
-			VisitDates        []string                   `json:"visitDates"`
-			AlreadyInList     bool                       `json:"alreadyInList"`
-			ExistingNote      string                     `json:"existingNote"`
-			LinkedFoodItemIDs []string                   `json:"linkedFoodItemIds"`
-			FoodItems         []candidateFoodItemPayload `json:"foodItems"`
+			ID              string          `json:"id"`
+			Name            string          `json:"name"`
+			Visibility      string          `json:"visibility"`
+			ItemCount       int             `json:"itemCount"`
+			LatestVisitDate string          `json:"latestVisitDate"`
+			AlreadyInList   bool            `json:"alreadyInList"`
+			ExistingNote    string          `json:"existingNote"`
+			LinkedItemCount int             `json:"linkedItemCount"`
+			VisitDates      json.RawMessage `json:"visitDates"`
+			FoodItems       json.RawMessage `json:"foodItems"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -1096,7 +1117,7 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		t.Fatalf("expected target list metadata, got %#v", payload.List)
 	}
 	if len(payload.Items) != 2 {
-		t.Fatalf("expected hydrated candidate restaurants, got %d: %#v", len(payload.Items), payload.Items)
+		t.Fatalf("expected candidate restaurant summaries, got %d: %#v", len(payload.Items), payload.Items)
 	}
 
 	item := payload.Items[0]
@@ -1109,40 +1130,144 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 	if !item.AlreadyInList || item.ExistingNote != "Already bookmarked" {
 		t.Fatalf("expected list annotation metadata, got %#v", item)
 	}
-	if item.ItemCount != 3 || len(item.FoodItems) != 3 {
-		t.Fatalf("expected 3 rated items, got %#v", item)
+	if item.ItemCount != 3 || item.LinkedItemCount != 3 {
+		t.Fatalf("expected summary counts for 3 rated items, got %#v", item)
 	}
-	if len(item.VisitDates) != 2 || item.VisitDates[0] != "2026-04-05 18:30:00.000Z" || item.VisitDates[1] != "2026-04-02 18:30:00.000Z" {
-		t.Fatalf("expected visit dates ordered newest first, got %#v", item.VisitDates)
+	if item.LatestVisitDate != "2026-04-05 18:30:00.000Z" {
+		t.Fatalf("expected latest visit date summary, got %#v", item.LatestVisitDate)
+	}
+	if item.FoodItems != nil || item.VisitDates != nil {
+		t.Fatalf("expected candidate response to omit full history arrays, got %#v", item)
 	}
 
-	foodItemIDs := make([]string, 0, len(item.FoodItems))
-	for _, foodItem := range item.FoodItems {
-		foodItemIDs = append(foodItemIDs, foodItem.ID)
+	legacyResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants", list.Id),
+		token,
+		"",
+	)
+	if legacyResponse.Code != http.StatusOK {
+		t.Fatalf("expected legacy visited restaurants 200 OK, got %d: %s", legacyResponse.Code, legacyResponse.Body.String())
 	}
-	if !containsVisitedRestaurantString(item.LinkedFoodItemIDs, recommendedItem.Id) ||
-		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, sourceItem.Id) ||
-		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, userLinkedItem.Id) {
-		t.Fatalf("expected linked food item ids to include existing list links, got %#v", item.LinkedFoodItemIDs)
+	var legacyPayload struct {
+		Items []struct {
+			ID                string          `json:"id"`
+			VisitDates        json.RawMessage `json:"visitDates"`
+			FoodItems         json.RawMessage `json:"foodItems"`
+			LinkedFoodItemIDs json.RawMessage `json:"linkedFoodItemIds"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(legacyResponse.Body.Bytes(), &legacyPayload); err != nil {
+		t.Fatalf("failed to parse legacy response JSON: %v; body=%s", err, legacyResponse.Body.String())
+	}
+	var emptyLegacyItem *struct {
+		ID                string          `json:"id"`
+		VisitDates        json.RawMessage `json:"visitDates"`
+		FoodItems         json.RawMessage `json:"foodItems"`
+		LinkedFoodItemIDs json.RawMessage `json:"linkedFoodItemIds"`
+	}
+	for index := range legacyPayload.Items {
+		if legacyPayload.Items[index].ID == otherRestaurant.Id {
+			emptyLegacyItem = &legacyPayload.Items[index]
+			break
+		}
+	}
+	if emptyLegacyItem == nil {
+		t.Fatalf("expected legacy payload for restaurant %s, got %#v", otherRestaurant.Id, legacyPayload.Items)
+	}
+	if string(emptyLegacyItem.LinkedFoodItemIDs) != "[]" {
+		t.Fatalf("expected legacy empty linkedFoodItemIds array to be preserved, got %#v", emptyLegacyItem)
+	}
+	if emptyLegacyItem.VisitDates == nil || emptyLegacyItem.FoodItems == nil {
+		t.Fatalf("expected legacy history array fields to remain present, got %#v", emptyLegacyItem)
+	}
+
+	firstItemsResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf(
+			"/api/restaurant-lists/%s/candidate-restaurants/%s/items?page=1&pageSize=2",
+			list.Id,
+			annotatedRestaurant.Id,
+		),
+		token,
+		"",
+	)
+	if firstItemsResponse.Code != http.StatusOK {
+		t.Fatalf("expected first item page 200 OK, got %d: %s", firstItemsResponse.Code, firstItemsResponse.Body.String())
+	}
+
+	var firstItemsPayload struct {
+		Items       []candidateFoodItemPayload `json:"items"`
+		Page        int                        `json:"page"`
+		PageSize    int                        `json:"pageSize"`
+		TotalItems  int                        `json:"totalItems"`
+		TotalPages  int                        `json:"totalPages"`
+		HasNextPage bool                       `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(firstItemsResponse.Body.Bytes(), &firstItemsPayload); err != nil {
+		t.Fatalf("failed to parse first item page: %v; body=%s", err, firstItemsResponse.Body.String())
+	}
+	if len(firstItemsPayload.Items) != 2 || firstItemsPayload.Page != 1 || firstItemsPayload.PageSize != 2 || firstItemsPayload.TotalItems != 3 || firstItemsPayload.TotalPages != 2 || !firstItemsPayload.HasNextPage {
+		t.Fatalf("expected bounded first item page, got %#v", firstItemsPayload)
+	}
+
+	secondItemsResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf(
+			"/api/restaurant-lists/%s/candidate-restaurants/%s/items?page=2&pageSize=2",
+			list.Id,
+			annotatedRestaurant.Id,
+		),
+		token,
+		"",
+	)
+	if secondItemsResponse.Code != http.StatusOK {
+		t.Fatalf("expected second item page 200 OK, got %d: %s", secondItemsResponse.Code, secondItemsResponse.Body.String())
+	}
+	var secondItemsPayload struct {
+		Items       []candidateFoodItemPayload `json:"items"`
+		Page        int                        `json:"page"`
+		HasNextPage bool                       `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(secondItemsResponse.Body.Bytes(), &secondItemsPayload); err != nil {
+		t.Fatalf("failed to parse second item page: %v; body=%s", err, secondItemsResponse.Body.String())
+	}
+	if len(secondItemsPayload.Items) != 1 || secondItemsPayload.Page != 2 || secondItemsPayload.HasNextPage {
+		t.Fatalf("expected final bounded item page, got %#v", secondItemsPayload)
+	}
+
+	allFoodItems := append(firstItemsPayload.Items, secondItemsPayload.Items...)
+	foodItemIDs := make([]string, 0, len(allFoodItems))
+	for _, foodItem := range allFoodItems {
+		foodItemIDs = append(foodItemIDs, foodItem.ID)
+		if !foodItem.AlreadyAdded {
+			t.Fatalf("expected linked item %s to be marked already added", foodItem.ID)
+		}
 	}
 	if !containsVisitedRestaurantString(foodItemIDs, recommendedItem.Id) ||
 		!containsVisitedRestaurantString(foodItemIDs, sourceItem.Id) ||
 		!containsVisitedRestaurantString(foodItemIDs, userLinkedItem.Id) {
-		t.Fatalf("expected restaurant food items in response, got %#v", item.FoodItems)
+		t.Fatalf("expected all restaurant food items across pages, got %#v", allFoodItems)
 	}
 
 	var sourceItemPayload *candidateFoodItemPayload
 	var recommendedItemPayload *candidateFoodItemPayload
-	for index := range item.FoodItems {
-		switch item.FoodItems[index].ID {
+	for index := range allFoodItems {
+		switch allFoodItems[index].ID {
 		case sourceItem.Id:
-			sourceItemPayload = &item.FoodItems[index]
+			sourceItemPayload = &allFoodItems[index]
 		case recommendedItem.Id:
-			recommendedItemPayload = &item.FoodItems[index]
+			recommendedItemPayload = &allFoodItems[index]
 		}
 	}
 	if sourceItemPayload == nil {
-		t.Fatalf("expected source item payload for %s, got %#v", sourceItem.Id, item.FoodItems)
+		t.Fatalf("expected source item payload for %s, got %#v", sourceItem.Id, allFoodItems)
 	}
 	if sourceItemPayload.PhotoPreview == nil {
 		t.Fatalf("expected source item photo preview, got %#v", sourceItemPayload)
@@ -1154,7 +1279,7 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		t.Fatalf("expected photoCount=2 for source item, got %#v", sourceItemPayload)
 	}
 	if recommendedItemPayload == nil {
-		t.Fatalf("expected recommended item payload for %s, got %#v", recommendedItem.Id, item.FoodItems)
+		t.Fatalf("expected recommended item payload for %s, got %#v", recommendedItem.Id, allFoodItems)
 	}
 	if recommendedItemPayload.PhotoPreview != nil {
 		t.Fatalf("expected no photo preview for recommended item, got %#v", recommendedItemPayload.PhotoPreview)

@@ -178,6 +178,7 @@ type restaurantListVisitedRestaurantCandidateFoodItemResponse struct {
 	VisitedAt    string                                             `json:"visitedAt"`
 	PhotoPreview *restaurantListDetailPhotoPreviewReferenceResponse `json:"photoPreview,omitempty"`
 	PhotoCount   int                                                `json:"photoCount,omitempty"`
+	AlreadyAdded bool                                               `json:"alreadyAdded,omitempty"`
 }
 
 type restaurantListDetailPhotoPreviewReferenceResponse struct {
@@ -186,6 +187,19 @@ type restaurantListDetailPhotoPreviewReferenceResponse struct {
 }
 
 type restaurantListVisitedRestaurantCandidateResponse struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Location        string `json:"location,omitempty"`
+	CuisineType     string `json:"cuisineType,omitempty"`
+	Visibility      string `json:"visibility,omitempty"`
+	ItemCount       int    `json:"itemCount"`
+	LatestVisitDate string `json:"latestVisitDate,omitempty"`
+	AlreadyInList   bool   `json:"alreadyInList"`
+	ExistingNote    string `json:"existingNote,omitempty"`
+	LinkedItemCount int    `json:"linkedItemCount"`
+}
+
+type restaurantListVisitedRestaurantResponse struct {
 	ID                string                                                     `json:"id"`
 	Name              string                                                     `json:"name"`
 	Location          string                                                     `json:"location,omitempty"`
@@ -199,13 +213,22 @@ type restaurantListVisitedRestaurantCandidateResponse struct {
 	LinkedFoodItemIDs []string                                                   `json:"linkedFoodItemIds"`
 }
 
+type restaurantListVisitedRestaurantFoodItemsPageResponse struct {
+	Items       []restaurantListVisitedRestaurantCandidateFoodItemResponse `json:"items"`
+	Page        int                                                        `json:"page"`
+	PageSize    int                                                        `json:"pageSize"`
+	TotalItems  int                                                        `json:"totalItems"`
+	TotalPages  int                                                        `json:"totalPages"`
+	HasNextPage bool                                                       `json:"hasNextPage"`
+}
+
 type restaurantListVisitedRestaurantsPageResponse struct {
-	Items       []restaurantListVisitedRestaurantCandidateResponse `json:"items"`
-	Page        int                                                `json:"page"`
-	PageSize    int                                                `json:"pageSize"`
-	TotalItems  int                                                `json:"totalItems"`
-	TotalPages  int                                                `json:"totalPages"`
-	HasNextPage bool                                               `json:"hasNextPage"`
+	Items       []restaurantListVisitedRestaurantResponse `json:"items"`
+	Page        int                                       `json:"page"`
+	PageSize    int                                       `json:"pageSize"`
+	TotalItems  int                                       `json:"totalItems"`
+	TotalPages  int                                       `json:"totalPages"`
+	HasNextPage bool                                      `json:"hasNextPage"`
 }
 
 type restaurantListCandidateRestaurantsResponse struct {
@@ -225,6 +248,7 @@ type restaurantListVisitedRestaurantCandidateRow struct {
 	CuisineType   string `db:"cuisineType"`
 	Visibility    string `db:"visibility"`
 	LatestVisitAt string `db:"latestVisitAt"`
+	ItemCount     int    `db:"itemCount"`
 }
 
 type restaurantListVisitedRestaurantCandidateFoodItemRow struct {
@@ -379,6 +403,40 @@ func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.Ap
 			}
 
 			return apis.NewApiError(500, "failed to load candidate restaurants", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/restaurant-lists/{listId}/candidate-restaurants/{restaurantId}/items", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		restaurantID := strings.TrimSpace(e.Request.PathValue("restaurantId"))
+		if listID == "" || restaurantID == "" {
+			return apis.NewBadRequestError("listId and restaurantId are required", nil)
+		}
+
+		page, pageSize, parseErr := parseRestaurantListDetailPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if parseErr != nil {
+			return apis.NewBadRequestError(parseErr.Error(), nil)
+		}
+
+		response, err := getRestaurantListVisitedRestaurantFoodItemsPageResponse(
+			app,
+			e.Auth.Id,
+			listID,
+			restaurantID,
+			page,
+			pageSize,
+		)
+		if err != nil {
+			if errors.Is(err, errRestaurantListDetailNotFound) {
+				return apis.NewNotFoundError("list not found", nil)
+			}
+
+			return apis.NewApiError(500, "failed to load candidate restaurant items", err)
 		}
 
 		return e.JSON(200, response)
@@ -1313,7 +1371,7 @@ func getRestaurantListVisitedRestaurantsPageResponse(
 	search string,
 ) (restaurantListVisitedRestaurantsPageResponse, error) {
 	response := restaurantListVisitedRestaurantsPageResponse{
-		Items:    []restaurantListVisitedRestaurantCandidateResponse{},
+		Items:    []restaurantListVisitedRestaurantResponse{},
 		Page:     page,
 		PageSize: pageSize,
 	}
@@ -1365,14 +1423,14 @@ func getRestaurantListVisitedRestaurantsPageResponse(
 	}
 
 	restaurantIDs := make([]string, 0, len(restaurantRows))
-	itemsByRestaurantID := make(map[string]*restaurantListVisitedRestaurantCandidateResponse, len(restaurantRows))
+	itemsByRestaurantID := make(map[string]*restaurantListVisitedRestaurantResponse, len(restaurantRows))
 	linkedFoodItemIDSets := make(map[string]map[string]struct{}, len(restaurantRows))
 	visitDateSets := make(map[string]map[string]struct{}, len(restaurantRows))
 	foodItemSets := make(map[string]map[string]struct{}, len(restaurantRows))
 
 	for _, row := range restaurantRows {
 		restaurantIDs = append(restaurantIDs, row.RestaurantID)
-		itemsByRestaurantID[row.RestaurantID] = &restaurantListVisitedRestaurantCandidateResponse{
+		itemsByRestaurantID[row.RestaurantID] = &restaurantListVisitedRestaurantResponse{
 			ID:                row.RestaurantID,
 			Name:              defaultString(strings.TrimSpace(row.Name), "Unknown restaurant"),
 			Location:          strings.TrimSpace(row.Location),
@@ -1467,7 +1525,7 @@ func getRestaurantListVisitedRestaurantsPageResponse(
 		}
 	}
 
-	response.Items = make([]restaurantListVisitedRestaurantCandidateResponse, 0, len(restaurantIDs))
+	response.Items = make([]restaurantListVisitedRestaurantResponse, 0, len(restaurantIDs))
 	for _, restaurantID := range restaurantIDs {
 		item := itemsByRestaurantID[restaurantID]
 		if item == nil {
@@ -1504,18 +1562,167 @@ func getRestaurantListCandidateRestaurantsResponse(
 		return response, errRestaurantListDetailNotFound
 	}
 
-	pageResponse, err := getRestaurantListVisitedRestaurantsPageResponse(app, userID, listID, page, pageSize, search)
+	trimmedSearch := strings.TrimSpace(search)
+	totalItems, err := countRestaurantListVisitedRestaurants(app, userID, trimmedSearch)
 	if err != nil {
 		return response, err
 	}
 
 	response.List = buildRestaurantListDetailListResponse(listRecord)
-	response.Items = pageResponse.Items
-	response.Page = pageResponse.Page
-	response.PageSize = pageResponse.PageSize
-	response.TotalItems = pageResponse.TotalItems
-	response.TotalPages = pageResponse.TotalPages
-	response.HasNextPage = pageResponse.HasNextPage
+	response.TotalItems = totalItems
+	response.TotalPages = (totalItems + pageSize - 1) / pageSize
+	response.HasNextPage = response.TotalPages > 0 && page < response.TotalPages
+	if totalItems == 0 {
+		return response, nil
+	}
+
+	restaurantRows, err := listRestaurantListVisitedRestaurantCandidateRows(
+		app,
+		userID,
+		page,
+		pageSize,
+		trimmedSearch,
+	)
+	if err != nil {
+		return response, err
+	}
+
+	restaurantIDs := make([]string, 0, len(restaurantRows))
+	itemsByRestaurantID := make(map[string]*restaurantListVisitedRestaurantCandidateResponse, len(restaurantRows))
+	for _, row := range restaurantRows {
+		restaurantIDs = append(restaurantIDs, row.RestaurantID)
+		itemsByRestaurantID[row.RestaurantID] = &restaurantListVisitedRestaurantCandidateResponse{
+			ID:              row.RestaurantID,
+			Name:            defaultString(strings.TrimSpace(row.Name), "Unknown restaurant"),
+			Location:        strings.TrimSpace(row.Location),
+			CuisineType:     strings.TrimSpace(row.CuisineType),
+			Visibility:      normalizeRestaurantVisibilityValue(row.Visibility),
+			ItemCount:       row.ItemCount,
+			LatestVisitDate: strings.TrimSpace(row.LatestVisitAt),
+		}
+	}
+
+	listItemRecords, err := listRestaurantListAnnotationRecords(app, listID, restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	for _, listItem := range listItemRecords {
+		restaurantID := strings.TrimSpace(listItem.GetString("restaurant"))
+		item := itemsByRestaurantID[restaurantID]
+		if item == nil {
+			continue
+		}
+
+		item.AlreadyInList = true
+		if item.ExistingNote == "" {
+			item.ExistingNote = strings.TrimSpace(listItem.GetString("note"))
+		}
+	}
+
+	linkedItemCounts, err := countRestaurantListLinkedCandidateFoodItems(
+		app,
+		userID,
+		listID,
+		restaurantIDs,
+	)
+	if err != nil {
+		return response, err
+	}
+
+	response.Items = make([]restaurantListVisitedRestaurantCandidateResponse, 0, len(restaurantRows))
+	for _, restaurantID := range restaurantIDs {
+		item := itemsByRestaurantID[restaurantID]
+		if item == nil {
+			continue
+		}
+		item.LinkedItemCount = linkedItemCounts[restaurantID]
+		response.Items = append(response.Items, *item)
+	}
+
+	return response, nil
+}
+
+func getRestaurantListVisitedRestaurantFoodItemsPageResponse(
+	app core.App,
+	userID string,
+	listID string,
+	restaurantID string,
+	page int,
+	pageSize int,
+) (restaurantListVisitedRestaurantFoodItemsPageResponse, error) {
+	response := restaurantListVisitedRestaurantFoodItemsPageResponse{
+		Items:    []restaurantListVisitedRestaurantCandidateFoodItemResponse{},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	listRecord, err := app.FindRecordById("restaurant_lists", listID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return response, errRestaurantListDetailNotFound
+	}
+	if err != nil {
+		return response, err
+	}
+	if strings.TrimSpace(listRecord.GetString("user")) != userID {
+		return response, errRestaurantListDetailNotFound
+	}
+
+	totalItems, err := countRestaurantListVisitedRestaurantFoodItems(app, userID, restaurantID)
+	if err != nil {
+		return response, err
+	}
+	response.TotalItems = totalItems
+	response.TotalPages = (totalItems + pageSize - 1) / pageSize
+	response.HasNextPage = response.TotalPages > 0 && page < response.TotalPages
+	if totalItems == 0 {
+		return response, nil
+	}
+
+	rows, err := listRestaurantListVisitedRestaurantFoodItemPageRows(app, userID, restaurantID, page, pageSize)
+	if err != nil {
+		return response, err
+	}
+
+	listItemRecords, err := listRestaurantListAnnotationRecords(app, listID, []string{restaurantID})
+	if err != nil {
+		return response, err
+	}
+	linkedFoodItemIDs := map[string]struct{}{}
+	for _, listItem := range listItemRecords {
+		for _, foodItemID := range append(
+			[]string{listItem.GetString("foodItem"), listItem.GetString("userFoodItem")},
+			listItem.GetStringSlice("recommendedItems")...,
+		) {
+			if trimmedID := strings.TrimSpace(foodItemID); trimmedID != "" {
+				linkedFoodItemIDs[trimmedID] = struct{}{}
+			}
+		}
+	}
+
+	response.Items = make([]restaurantListVisitedRestaurantCandidateFoodItemResponse, 0, len(rows))
+	for _, row := range rows {
+		var photoPreview *restaurantListDetailPhotoPreviewReferenceResponse
+		photoPreviewID := strings.TrimSpace(row.PhotoPreviewID.String)
+		photoPreviewPhoto := strings.TrimSpace(row.PhotoPreviewPhoto.String)
+		if photoPreviewID != "" && photoPreviewPhoto != "" {
+			photoPreview = &restaurantListDetailPhotoPreviewReferenceResponse{
+				ID:    photoPreviewID,
+				Photo: photoPreviewPhoto,
+			}
+		}
+
+		_, alreadyAdded := linkedFoodItemIDs[row.FoodItemID]
+		response.Items = append(response.Items, restaurantListVisitedRestaurantCandidateFoodItemResponse{
+			ID:           row.FoodItemID,
+			Name:         defaultString(strings.TrimSpace(row.FoodItemName), "Unknown item"),
+			Rating:       row.FoodItemRating,
+			Notes:        strings.TrimSpace(row.FoodItemNotes),
+			VisitedAt:    row.VisitAt,
+			PhotoPreview: photoPreview,
+			PhotoCount:   row.PhotoCount,
+			AlreadyAdded: alreadyAdded,
+		})
+	}
 
 	return response, nil
 }
@@ -1567,9 +1774,14 @@ func listRestaurantListVisitedRestaurantCandidateRows(
 		WITH candidate_restaurants AS (
 			SELECT
 				visits.restaurant AS restaurantId,
-				MAX(COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created)) AS [[latestVisitAt]]
+				MAX(COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created)) AS [[latestVisitAt]],
+				COUNT(DISTINCT food_items.id) AS [[itemCount]]
 			FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+			LEFT JOIN food_items
+				ON food_items.visit = visits.id
+				AND ` + visitItemSQL("food_items") + `
+				AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
 			WHERE visits.user = {:userId}
 				AND TRIM(COALESCE(visits.restaurant, '')) != ''
 				AND ` + ownerAccessibleVisitModerationCondition + `
@@ -1582,7 +1794,8 @@ func listRestaurantListVisitedRestaurantCandidateRows(
 			restaurants.location AS [[location]],
 			restaurants.cuisineType AS [[cuisineType]],
 			restaurants.visibility AS [[visibility]],
-			candidate_restaurants.latestVisitAt AS [[latestVisitAt]]
+			candidate_restaurants.latestVisitAt AS [[latestVisitAt]],
+			candidate_restaurants.itemCount AS [[itemCount]]
 		FROM candidate_restaurants
 		LEFT JOIN restaurants ON restaurants.id = candidate_restaurants.restaurantId
 		ORDER BY candidate_restaurants.latestVisitAt DESC, candidate_restaurants.restaurantId DESC
@@ -1666,6 +1879,181 @@ func listRestaurantListVisitedRestaurantFoodItemRows(
 	err := app.DB().NewQuery(query).
 		Bind(params).
 		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
+func countRestaurantListVisitedRestaurantFoodItems(
+	app core.App,
+	userID string,
+	restaurantID string,
+) (int, error) {
+	row := struct {
+		Count int `db:"count"`
+	}{}
+	err := app.DB().NewQuery(`
+		SELECT COUNT(DISTINCT food_items.id) AS [[count]]
+		FROM visits
+		INNER JOIN food_items
+			ON food_items.visit = visits.id
+			AND ` + visitItemSQL("food_items") + `
+			AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+		WHERE visits.user = {:userId}
+			AND visits.restaurant = {:restaurantId}
+			AND ` + ownerAccessibleVisitModerationCondition + `
+	`).Bind(dbx.Params{
+		"restaurantId": restaurantID,
+		"userId":       userID,
+	}).One(&row)
+	if err != nil {
+		return 0, err
+	}
+
+	return row.Count, nil
+}
+
+func countRestaurantListLinkedCandidateFoodItems(
+	app core.App,
+	userID string,
+	listID string,
+	restaurantIDs []string,
+) (map[string]int, error) {
+	result := map[string]int{}
+	filter, params := buildSQLInFilter("visits.restaurant", "restaurantId", restaurantIDs)
+	if filter == "" {
+		return result, nil
+	}
+	params["listId"] = listID
+	params["userId"] = userID
+
+	rows := []struct {
+		RestaurantID    string `db:"restaurantId"`
+		LinkedItemCount int    `db:"linkedItemCount"`
+	}{}
+	err := app.DB().NewQuery(`
+		WITH eligible_food_items AS (
+			SELECT DISTINCT
+				visits.restaurant AS [[restaurantId]],
+				food_items.id AS [[foodItemId]]
+			FROM visits
+			INNER JOIN food_items
+				ON food_items.visit = visits.id
+				AND ` + visitItemSQL("food_items") + `
+				AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+			WHERE visits.user = {:userId}
+				AND ` + ownerAccessibleVisitModerationCondition + `
+				AND ` + filter + `
+		)
+		SELECT
+			eligible_food_items.restaurantId AS [[restaurantId]],
+			COUNT(DISTINCT eligible_food_items.foodItemId) AS [[linkedItemCount]]
+		FROM eligible_food_items
+		INNER JOIN list_items
+			ON list_items.list = {:listId}
+			AND list_items.restaurant = eligible_food_items.restaurantId
+			AND (
+				list_items.foodItem = eligible_food_items.foodItemId
+				OR list_items.userFoodItem = eligible_food_items.foodItemId
+				OR EXISTS (
+					SELECT 1
+					FROM json_each(
+						CASE
+							WHEN json_valid(list_items.recommendedItems) THEN list_items.recommendedItems
+							ELSE '[]'
+						END
+					) recommended_item
+					WHERE recommended_item.value = eligible_food_items.foodItemId
+				)
+			)
+		GROUP BY eligible_food_items.restaurantId
+	`).Bind(params).All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[strings.TrimSpace(row.RestaurantID)] = row.LinkedItemCount
+	}
+
+	return result, nil
+}
+
+func listRestaurantListVisitedRestaurantFoodItemPageRows(
+	app core.App,
+	userID string,
+	restaurantID string,
+	page int,
+	pageSize int,
+) ([]restaurantListVisitedRestaurantCandidateFoodItemRow, error) {
+	rows := []restaurantListVisitedRestaurantCandidateFoodItemRow{}
+	err := app.DB().NewQuery(`
+		WITH paged_food_items AS (
+			SELECT
+				visits.restaurant AS [[restaurantId]],
+				COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) AS [[visitAt]],
+				food_items.id AS [[foodItemId]],
+				food_items.name AS [[foodItemName]],
+				food_items.rating AS [[foodItemRating]],
+				food_items.notes AS [[foodItemNotes]],
+				food_items.created AS [[foodItemCreated]]
+			FROM visits
+			INNER JOIN food_items
+				ON food_items.visit = visits.id
+				AND ` + visitItemSQL("food_items") + `
+				AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+			WHERE visits.user = {:userId}
+				AND visits.restaurant = {:restaurantId}
+				AND ` + ownerAccessibleVisitModerationCondition + `
+			ORDER BY
+				COALESCE(NULLIF(TRIM(visits.visitDate), ''), visits.created) DESC,
+				food_items.created DESC,
+				food_items.id DESC
+			LIMIT {:limit}
+			OFFSET {:offset}
+		), ranked_photos AS (
+			SELECT
+				visit_photos.food_item AS [[foodItemId]],
+				visit_photos.id AS [[photoPreviewId]],
+				visit_photos.photo AS [[photoPreviewPhoto]],
+				COUNT(*) OVER (PARTITION BY visit_photos.food_item) AS [[photoCount]],
+				ROW_NUMBER() OVER (
+					PARTITION BY visit_photos.food_item
+					ORDER BY
+						COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+						visit_photos.id DESC
+				) AS [[photoRank]]
+			FROM visit_photos
+			INNER JOIN paged_food_items ON paged_food_items.foodItemId = visit_photos.food_item
+			WHERE TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+				AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+		)
+		SELECT
+			paged_food_items.restaurantId AS [[restaurantId]],
+			paged_food_items.visitAt AS [[visitAt]],
+			paged_food_items.foodItemId AS [[foodItemId]],
+			paged_food_items.foodItemName AS [[foodItemName]],
+			paged_food_items.foodItemRating AS [[foodItemRating]],
+			paged_food_items.foodItemNotes AS [[foodItemNotes]],
+			ranked_photos.photoPreviewId AS [[photoPreviewId]],
+			ranked_photos.photoPreviewPhoto AS [[photoPreviewPhoto]],
+			COALESCE(ranked_photos.photoCount, 0) AS [[photoCount]]
+		FROM paged_food_items
+		LEFT JOIN ranked_photos
+			ON ranked_photos.foodItemId = paged_food_items.foodItemId
+			AND ranked_photos.photoRank = 1
+		ORDER BY
+			paged_food_items.visitAt DESC,
+			paged_food_items.foodItemCreated DESC,
+			paged_food_items.foodItemId DESC
+	`).Bind(dbx.Params{
+		"limit":        pageSize,
+		"offset":       (page - 1) * pageSize,
+		"restaurantId": restaurantID,
+		"userId":       userID,
+	}).All(&rows)
 	if err != nil {
 		return nil, err
 	}

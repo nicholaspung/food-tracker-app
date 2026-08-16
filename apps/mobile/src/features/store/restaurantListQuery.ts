@@ -60,6 +60,11 @@ export const restaurantListQueryKeys = {
     ['feature', 'restaurantListCandidateRestaurants', listId, searchQuery] as const,
   candidateRestaurantPages: (listId: string, searchQuery: string) =>
     ['feature', 'restaurantListCandidateRestaurants', listId, searchQuery, 'pages'] as const,
+  candidateRestaurantFoodItemsRoot: ['feature', 'restaurantListCandidateFoodItems'] as const,
+  candidateRestaurantFoodItemsByList: (listId: string) =>
+    ['feature', 'restaurantListCandidateFoodItems', listId] as const,
+  candidateRestaurantFoodItemPages: (listId: string, restaurantId: string) =>
+    ['feature', 'restaurantListCandidateFoodItems', listId, restaurantId, 'pages'] as const,
   candidateFoodItemPhotosRoot: ['feature', 'restaurantListCandidateFoodItemPhotos'] as const,
   candidateFoodItemPhotos: (foodItemId: string) =>
     ['feature', 'restaurantListCandidateFoodItemPhotos', foodItemId] as const,
@@ -255,11 +260,12 @@ export function getRestaurantListContentInvalidationKeys(
     restaurantListQueryKeys.items(listId),
     restaurantListQueryKeys.detail(listId),
     restaurantListQueryKeys.itemLinks(listId),
+    restaurantListQueryKeys.candidateRestaurantFoodItemsByList(listId),
     restaurantListQueryKeys.root,
   ];
 
   if (options.includeCandidateRestaurants) {
-    queryKeys.splice(4, 0, restaurantListQueryKeys.candidateRestaurantsByList(listId));
+    queryKeys.splice(5, 0, restaurantListQueryKeys.candidateRestaurantsByList(listId));
   }
 
   return queryKeys;
@@ -280,6 +286,7 @@ export function getRestaurantListRemovalKeys(listId: string): QueryKey[] {
     restaurantListQueryKeys.detail(listId),
     restaurantListQueryKeys.itemLinks(listId),
     restaurantListQueryKeys.candidateRestaurantsByList(listId),
+    restaurantListQueryKeys.candidateRestaurantFoodItemsByList(listId),
   ];
 }
 

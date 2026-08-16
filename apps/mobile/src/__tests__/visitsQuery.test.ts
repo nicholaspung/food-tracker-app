@@ -61,6 +61,9 @@ describe('visitsQuery', () => {
       queryKey: restaurantListQueryKeys.detailRoot,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.candidateRestaurantFoodItemsRoot,
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: restaurantListQueryKeys.root,
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({

@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { RestaurantListVisitedRestaurantCandidate } from '../features';
+import type { RestaurantListVisitedRestaurantFoodItem } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { AddRestaurantToListScreen } from '../screens/AddRestaurantToListScreen';
 
@@ -87,6 +88,14 @@ jest.mock('react-native', () => {
   return mockedReactNative;
 });
 
+jest.mock('react-native-keyboard-controller', () => ({
+  KeyboardAvoidingView: ({
+    children,
+    ...props
+  }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('KeyboardAvoidingView', props, children),
+}));
+
 jest.mock('../components/shared', () => ({
   CachedRemoteImage: (props: Record<string, unknown>) =>
     mockReact.createElement('CachedRemoteImage', props),
@@ -116,6 +125,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 
 jest.mock('../features', () => ({
   getRestaurantListCandidateRestaurants: jest.fn(),
+  getRestaurantListVisitedRestaurantFoodItemsPage: jest.fn(),
   listRestaurantListCandidateFoodItemPhotos: jest.fn(),
   restaurantListQueryKeys: {
     candidateFoodItemPhotos: (foodItemId: string) => [
@@ -129,6 +139,13 @@ jest.mock('../features', () => ({
       'restaurantLists',
       listId,
       searchQuery,
+    ],
+    candidateRestaurantFoodItemPages: (listId: string, restaurantId: string) => [
+      'feature',
+      'restaurantLists',
+      'candidateFoodItems',
+      listId,
+      restaurantId,
     ],
   },
 }));
@@ -206,8 +223,16 @@ const mockedUseQueryListState = useQueryListState as jest.MockedFunction<
 
 const restaurant: RestaurantListVisitedRestaurantCandidate = {
   alreadyInList: true,
-  foodItems: [
+  id: 'restaurant-1',
+  itemCount: 3,
+  latestVisitDate: '2026-07-20T18:00:00.000Z',
+  linkedItemCount: 1,
+  name: 'Ramen House',
+};
+
+const restaurantFoodItems: RestaurantListVisitedRestaurantFoodItem[] = [
     {
+      alreadyAdded: false,
       id: 'food-selectable',
       name: 'Spicy Miso Ramen',
       notes: 'Rich broth',
@@ -215,12 +240,14 @@ const restaurant: RestaurantListVisitedRestaurantCandidate = {
       visitedAt: '2026-07-20T18:00:00.000Z',
     },
     {
+      alreadyAdded: true,
       id: 'food-added',
       name: 'Pork Gyoza',
       rating: 4,
       visitedAt: '2026-07-20T18:00:00.000Z',
     },
     {
+      alreadyAdded: false,
       id: 'food-photo',
       name: 'Matcha Soft Serve',
       photoCount: 1,
@@ -231,13 +258,7 @@ const restaurant: RestaurantListVisitedRestaurantCandidate = {
       rating: 5,
       visitedAt: '2026-07-20T18:00:00.000Z',
     },
-  ],
-  id: 'restaurant-1',
-  itemCount: 3,
-  linkedFoodItemIds: ['food-added'],
-  name: 'Ramen House',
-  visitDates: ['2026-07-20T18:00:00.000Z'],
-};
+  ];
 
 describe('AddRestaurantToListScreen rated-item accessibility', () => {
   const queryClient = {
@@ -264,26 +285,31 @@ describe('AddRestaurantToListScreen rated-item accessibility', () => {
     mockedUseQueryClient.mockReturnValue(
       queryClient as unknown as ReturnType<typeof useQueryClient>,
     );
-    mockedUseInfiniteQuery.mockReturnValue({
-      data: {
-        pageParams: [1],
-        pages: [
-          {
-            hasNextPage: false,
-            items: [restaurant],
-            page: 1,
-          },
-        ],
-      },
-      fetchNextPage: jest.fn(),
-      hasNextPage: false,
-      isError: false,
-      isFetching: false,
-      isFetchingNextPage: false,
-      isLoading: false,
-      isSuccess: true,
-      refetch: jest.fn(),
-    } as unknown as ReturnType<typeof useInfiniteQuery>);
+    mockedUseInfiniteQuery.mockImplementation((options) => {
+      const isFoodItemQuery = (options.queryKey as readonly unknown[]).includes(
+        'candidateFoodItems',
+      );
+      return {
+        data: {
+          pageParams: [1],
+          pages: [
+            {
+              hasNextPage: false,
+              items: isFoodItemQuery ? restaurantFoodItems : [restaurant],
+              page: 1,
+            },
+          ],
+        },
+        fetchNextPage: jest.fn(),
+        hasNextPage: false,
+        isError: false,
+        isFetching: false,
+        isFetchingNextPage: false,
+        isLoading: false,
+        isSuccess: true,
+        refetch: jest.fn(),
+      } as unknown as ReturnType<typeof useInfiniteQuery>;
+    });
     mockedUseQueryListState.mockImplementation(({ data }) => ({
       hasBlockingError: false,
       hasItems: (data?.length ?? 0) > 0,
@@ -382,5 +408,24 @@ describe('AddRestaurantToListScreen rated-item accessibility', () => {
     expect(renderer.root.findByType('PhotoViewerModal').props.visible).toBe(
       true,
     );
+  });
+
+  it('keeps the virtualized item history keyboard aware for note editing', () => {
+    expect(
+      renderer.root.findByProps({
+        testID: 'add-restaurant-food-items-keyboard-avoiding-view',
+      }).props,
+    ).toMatchObject({
+      automaticOffset: true,
+      behavior: 'height',
+    });
+    expect(
+      renderer.root.findByProps({
+        testID: 'add-restaurant-food-item-list',
+      }).props,
+    ).toMatchObject({
+      automaticallyAdjustKeyboardInsets: true,
+      keyboardShouldPersistTaps: 'handled',
+    });
   });
 });

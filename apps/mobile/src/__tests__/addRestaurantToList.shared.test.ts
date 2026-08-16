@@ -13,6 +13,7 @@ function createFoodItem(
     notes: overrides.notes,
     photoCount: overrides.photoCount,
     photoPreview: overrides.photoPreview,
+    alreadyAdded: overrides.alreadyAdded ?? false,
   };
 }
 

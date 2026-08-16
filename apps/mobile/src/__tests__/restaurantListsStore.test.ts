@@ -3,6 +3,7 @@ import {
   getRestaurantListDetail,
   getRestaurantListBookmarkState,
   getRestaurantListCandidateRestaurants,
+  getRestaurantListVisitedRestaurantFoodItemsPage,
   organizeRestaurantListItem,
   removeRestaurantFoodItemBookmarkFromList,
   saveSharedRestaurantListRecommendation,
@@ -549,7 +550,7 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
     };
   });
 
-  it('maps candidate food item photo preview and count from the api response', async () => {
+  it('maps summary-only candidate metadata from the api response', async () => {
     const abortController = new AbortController();
     mockedSendApiRequest.mockResolvedValue({
       list: {
@@ -564,20 +565,9 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
         {
           id: 'restaurant-1',
           name: '  Noodle House  ',
-          itemCount: 1,
-          foodItems: [
-            {
-              id: 'food-item-1',
-              name: '  Ramen  ',
-              rating: 5,
-              visitedAt: '2026-05-01T18:30:00.000Z',
-              photoPreview: {
-                id: '  photo-1  ',
-                photo: '  ramen.jpg  ',
-              },
-              photoCount: 3,
-            },
-          ],
+          itemCount: 4,
+          latestVisitDate: '  2026-05-01T18:30:00.000Z  ',
+          linkedItemCount: 2,
         },
       ],
     });
@@ -595,17 +585,9 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
         {
           id: 'restaurant-1',
           name: 'Noodle House',
-          foodItems: [
-            {
-              id: 'food-item-1',
-              name: 'Ramen',
-              photoPreview: {
-                id: 'photo-1',
-                photo: 'ramen.jpg',
-              },
-              photoCount: 3,
-            },
-          ],
+          itemCount: 4,
+          latestVisitDate: '2026-05-01T18:30:00.000Z',
+          linkedItemCount: 2,
         },
       ],
     });
@@ -620,56 +602,59 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
     expect(mockedListCollectionRecords).not.toHaveBeenCalled();
   });
 
-  it('does not backfill missing candidate photo fields with a secondary collection query', async () => {
+  it('maps a bounded selected-candidate food item page with photo and added state', async () => {
+    const abortController = new AbortController();
     mockedSendApiRequest.mockResolvedValue({
-      list: {
-        id: 'list-1',
-        name: 'Favorites',
-        visibility: 'friends',
-        userId: 'user-1',
-        createdAt: '2026-05-01T18:00:00.000Z',
-        updatedAt: '2026-05-02T18:00:00.000Z',
-      },
       items: [
         {
-          id: 'restaurant-1',
-          name: 'Noodle House',
-          itemCount: 1,
-          foodItems: [
-            {
-              id: 'food-item-1',
-              name: 'Ramen',
-              rating: 5,
-              visitedAt: '2026-05-01T18:30:00.000Z',
-            },
-          ],
+          id: 'food-item-1',
+          name: '  Ramen  ',
+          rating: 5,
+          visitedAt: '2026-05-01T18:30:00.000Z',
+          photoPreview: {
+            id: '  photo-1  ',
+            photo: '  ramen.jpg  ',
+          },
+          photoCount: 3,
+          alreadyAdded: true,
         },
       ],
+      page: 1,
+      pageSize: 1,
+      totalItems: 3,
+      totalPages: 3,
+      hasNextPage: true,
     });
-    mockedListCollectionRecords.mockResolvedValue([
+
+    await expect(
+      getRestaurantListVisitedRestaurantFoodItemsPage('list-1', 'restaurant-1', {
+        page: 1,
+        pageSize: 1,
+        signal: abortController.signal,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          id: 'food-item-1',
+          name: 'Ramen',
+          photoPreview: {
+            id: 'photo-1',
+            photo: 'ramen.jpg',
+          },
+          photoCount: 3,
+          alreadyAdded: true,
+        },
+      ],
+      hasNextPage: true,
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/restaurant-lists/list-1/candidate-restaurants/restaurant-1/items?page=1&pageSize=1',
       {
-        id: 'photo-1',
-        food_item: 'food-item-1',
-        photo: 'ramen.jpg',
-        created: '2026-05-01T18:45:00.000Z',
+        method: 'GET',
+        signal: abortController.signal,
       },
-    ]);
-
-    await expect(getRestaurantListCandidateRestaurants('list-1')).resolves.toMatchObject({
-      items: [
-        {
-          id: 'restaurant-1',
-          foodItems: [
-            {
-              id: 'food-item-1',
-              photoPreview: undefined,
-              photoCount: undefined,
-            },
-          ],
-        },
-      ],
-    });
-
+    );
     expect(mockedListCollectionRecords).not.toHaveBeenCalled();
   });
 
@@ -689,7 +674,7 @@ describe('restaurantListsStore.getRestaurantListCandidateRestaurants', () => {
           id: 'restaurant-1',
           name: 'Noodle House',
           itemCount: 1,
-          foodItems: [],
+          linkedItemCount: 0,
         },
       ],
       page: 2,

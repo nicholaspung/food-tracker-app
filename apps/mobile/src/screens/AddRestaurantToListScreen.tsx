@@ -1,9 +1,9 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, Switch, View, type ListRenderItem } from 'react-native';
+import { useMemo, useState } from 'react';
+import { FlatList, Platform, Pressable, Switch, View, type ListRenderItem } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import {
 	  CachedRemoteImage,
@@ -17,6 +17,7 @@ import {
 } from '../components/shared';
 import {
   getRestaurantListCandidateRestaurants,
+  getRestaurantListVisitedRestaurantFoodItemsPage,
   listRestaurantListCandidateFoodItemPhotos,
   restaurantListQueryKeys,
   type RestaurantListVisitedRestaurantCandidate,
@@ -41,14 +42,9 @@ type AddRestaurantToListScreenProps = NativeStackScreenProps<
   'AddRestaurantToList'
 >;
 
-interface GroupedFoodItemsByDate {
-  dayKey: string;
-  visitDate: string;
-  items: RestaurantListVisitedRestaurantFoodItem[];
-}
-
 const CANDIDATE_RESTAURANT_SEARCH_DEBOUNCE_MS = 250;
 const CANDIDATE_RESTAURANT_PAGE_SIZE = 20;
+const CANDIDATE_FOOD_ITEM_PAGE_SIZE = 20;
 
 const useStyles = createThemedStyles((theme) => ({
   section: {
@@ -228,11 +224,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function toTimestamp(value: string): number {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-}
-
 function toDayKey(value: string): string {
   const trimmed = value.trim();
   const datePartMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -284,7 +275,6 @@ export function AddRestaurantToListScreen({
   const listWrites = useRestaurantListWrites();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const scrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<
@@ -364,23 +354,49 @@ export function AddRestaurantToListScreen({
     [selectedRestaurantId, visitedRestaurants],
   );
 
-  useEffect(() => {
-    if (!selectedRestaurantId) {
-      return;
-    }
-
-    const scrollResetTimeout = setTimeout(() => {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-    }, 0);
-
-    return () => {
-      clearTimeout(scrollResetTimeout);
-    };
-  }, [selectedRestaurantId]);
+  const selectedFoodItemsQuery = useInfiniteQuery({
+    queryKey: restaurantListQueryKeys.candidateRestaurantFoodItemPages(
+      listId,
+      selectedRestaurantId ?? '',
+    ),
+    initialPageParam: 1,
+    enabled: selectedRestaurantId !== null,
+    queryFn: ({ pageParam, signal }) =>
+      getRestaurantListVisitedRestaurantFoodItemsPage(
+        listId,
+        selectedRestaurantId ?? '',
+        {
+          page: pageParam,
+          pageSize: CANDIDATE_FOOD_ITEM_PAGE_SIZE,
+          signal,
+        },
+      ),
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.page + 1 : undefined,
+  });
+  const loadedSelectedRestaurantFoodItems = useMemo(
+    () => selectedFoodItemsQuery.data?.pages.flatMap((page) => page.items),
+    [selectedFoodItemsQuery.data?.pages],
+  );
+  const hasLoadedSelectedRestaurantFoodItems =
+    (loadedSelectedRestaurantFoodItems?.length ?? 0) > 0;
+  const isInitialSelectedFoodItemsLoading =
+    selectedFoodItemsQuery.isLoading && !hasLoadedSelectedRestaurantFoodItems;
+  const selectedFoodItemsState = useQueryListState({
+    data: loadedSelectedRestaurantFoodItems,
+    isError: selectedFoodItemsQuery.isError,
+    isFetching: selectedFoodItemsQuery.isFetching,
+    isLoading: isInitialSelectedFoodItemsLoading,
+    isSuccess: selectedFoodItemsQuery.isSuccess,
+  });
+  const selectedRestaurantFoodItems = selectedFoodItemsState.items;
 
   const selectedRestaurantExistingFoodItemIds = useMemo(
-    () => new Set(selectedRestaurant?.linkedFoodItemIds ?? []),
-    [selectedRestaurant?.linkedFoodItemIds],
+    () => new Set(
+      selectedRestaurantFoodItems
+        .filter((foodItem) => foodItem.alreadyAdded)
+        .map((foodItem) => foodItem.id),
+    ),
+    [selectedRestaurantFoodItems],
   );
 
   const selectedRestaurantAlreadyInList = selectedRestaurant?.alreadyInList === true;
@@ -396,50 +412,12 @@ export function AddRestaurantToListScreen({
   const visibleSelectedRestaurantFoodItems = useMemo(
     () =>
       filterVisibleRestaurantFoodItems({
-        foodItems: selectedRestaurant?.foodItems ?? [],
+        foodItems: selectedRestaurantFoodItems,
         selectedFoodItemIds,
         hideDuplicateRatings,
       }),
-    [hideDuplicateRatings, selectedFoodItemIds, selectedRestaurant?.foodItems],
+    [hideDuplicateRatings, selectedFoodItemIds, selectedRestaurantFoodItems],
   );
-
-  const groupedFoodItems = useMemo<GroupedFoodItemsByDate[]>(() => {
-    if (!selectedRestaurant) {
-      return [];
-    }
-
-    const groups = new Map<string, GroupedFoodItemsByDate>();
-
-    for (const item of visibleSelectedRestaurantFoodItems) {
-      const dayKey = toDayKey(item.visitedAt);
-      const existingGroup = groups.get(dayKey);
-      if (existingGroup) {
-        existingGroup.items.push(item);
-        continue;
-      }
-
-      groups.set(dayKey, {
-        dayKey,
-        visitDate: item.visitedAt,
-        items: [item],
-      });
-    }
-
-    return Array.from(groups.values())
-      .sort(
-        (left, right) =>
-          toTimestamp(right.visitDate) - toTimestamp(left.visitDate),
-      )
-      .map((group) => ({
-        ...group,
-        items: [...group.items].sort((left, right) => {
-          if (left.rating !== right.rating) {
-            return right.rating - left.rating;
-          }
-          return left.name.localeCompare(right.name);
-        }),
-      }));
-  }, [selectedRestaurant, visibleSelectedRestaurantFoodItems]);
   const handleBackToListDetail = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -450,10 +428,7 @@ export function AddRestaurantToListScreen({
   };
 
   const handleSelectRestaurant = (restaurant: RestaurantListVisitedRestaurantCandidate) => {
-    const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
-    const availableItemCount = restaurant.foodItems.filter(
-      (item) => !existingFoodItemIds.has(item.id),
-    ).length;
+    const availableItemCount = Math.max(restaurant.itemCount - restaurant.linkedItemCount, 0);
     trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_RESTAURANT_SELECTED', {
       source: 'AddRestaurantToListScreen',
       alreadyInList: restaurant.alreadyInList === true,
@@ -505,7 +480,7 @@ export function AddRestaurantToListScreen({
     }
 
     const visibleFoodItemCount = filterVisibleRestaurantFoodItems({
-      foodItems: selectedRestaurant.foodItems,
+      foodItems: selectedRestaurantFoodItems,
       selectedFoodItemIds,
       hideDuplicateRatings: enabled,
     }).length;
@@ -694,12 +669,9 @@ export function AddRestaurantToListScreen({
     item: restaurant,
     index: restaurantIndex,
   }) => {
-    const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
-    const availableItemCount = restaurant.foodItems.filter(
-      (item) => !existingFoodItemIds.has(item.id),
-    ).length;
+    const availableItemCount = Math.max(restaurant.itemCount - restaurant.linkedItemCount, 0);
     const allItemsAdded =
-      restaurant.foodItems.length > 0 && availableItemCount === 0;
+      restaurant.itemCount > 0 && availableItemCount === 0;
     const alreadyAdded = restaurant.alreadyInList === true;
     const isRestaurantLocked = restaurant.visibility === 'private';
 
@@ -754,12 +726,127 @@ export function AddRestaurantToListScreen({
               <StatusPill label={metadataLabel} tone="muted" />
             )}
           </View>
-          {restaurant.visitDates[0] ? (
+          {restaurant.latestVisitDate ? (
             <Text style={styles.restaurantMeta} variant="bodySmTight">
-              Latest visit {formatDisplayDate(restaurant.visitDates[0])}
+              Latest visit {formatDisplayDate(restaurant.latestVisitDate)}
             </Text>
           ) : null}
         </Pressable>
+      </Card>
+    );
+  };
+
+  const handleFetchNextSelectedFoodItemPage = () => {
+    if (selectedFoodItemsQuery.hasNextPage && !selectedFoodItemsQuery.isFetchingNextPage) {
+      void selectedFoodItemsQuery.fetchNextPage();
+    }
+  };
+
+  const renderSelectedFoodItem: ListRenderItem<RestaurantListVisitedRestaurantFoodItem> = ({
+    item,
+    index,
+  }) => {
+    const previousItem = visibleSelectedRestaurantFoodItems[index - 1];
+    const startsVisitDate = !previousItem || toDayKey(previousItem.visitedAt) !== toDayKey(item.visitedAt);
+    const isAlreadyAdded = item.alreadyAdded;
+    const isSelected = selectedFoodItemIds.includes(item.id);
+    const photoThumbnailUrl = buildFoodItemPhotoThumbnailUrl(item);
+    const extraPhotoCount = Math.max((item.photoCount ?? 0) - 1, 0);
+
+    return (
+      <Card style={styles.dateGroupCard} tone="default">
+        {startsVisitDate ? (
+          <View style={styles.dateGroupTitleRow}>
+            <Ionicons
+              color={theme.colors.text.muted}
+              name="calendar-outline"
+              size={15}
+            />
+            <Text variant="label">{formatDisplayDate(item.visitedAt)}</Text>
+          </View>
+        ) : null}
+        <View
+          style={[
+            styles.foodItemRow,
+            isSelected ? styles.foodItemRowSelected : null,
+            isAlreadyAdded ? styles.foodItemRowDisabled : null,
+          ]}
+        >
+          <View style={styles.foodItemBody}>
+            {photoThumbnailUrl ? (
+              <Pressable
+                accessibilityLabel={`View photos for ${item.name}`}
+                accessibilityRole="button"
+                disabled={loadingPhotoFoodItemId === item.id}
+                onPress={() => {
+                  void handleOpenFoodItemPhotos(item);
+                }}
+                style={[
+                  styles.foodItemPhotoWrap,
+                  loadingPhotoFoodItemId === item.id
+                    ? styles.foodItemPhotoWrapLoading
+                    : null,
+                ]}
+              >
+                <CachedRemoteImage
+                  uri={photoThumbnailUrl}
+                  style={styles.foodItemPhotoThumb}
+                />
+                {extraPhotoCount > 0 ? (
+                  <View style={styles.foodItemPhotoCountBadge}>
+                    <Text style={styles.foodItemPhotoCountText}>+{extraPhotoCount}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ) : null}
+
+            <Pressable
+              accessibilityHint={
+                isAlreadyAdded ? 'Already in this Restaurant List.' : undefined
+              }
+              accessibilityLabel={item.name}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isAlreadyAdded, selected: isSelected }}
+              disabled={isAlreadyAdded}
+              onPress={() => {
+                handleToggleFoodItem(item.id);
+              }}
+              style={styles.foodItemContent}
+              testID={`add-restaurant-food-item-${item.id}`}
+            >
+              <View style={styles.foodItemHeader}>
+                <View style={styles.foodItemTitleWrap}>
+                  <Text style={styles.foodItemTitle} variant="labelMdBold">
+                    {item.name}
+                  </Text>
+                  {item.notes ? (
+                    <Text style={styles.foodItemNote} variant="bodySmTight">
+                      {item.notes}
+                    </Text>
+                  ) : null}
+                </View>
+                {isAlreadyAdded ? (
+                  <StatusPill label="Added" tone="success" />
+                ) : isSelected ? (
+                  <Ionicons
+                    color={theme.colors.text.warning}
+                    name="checkmark-circle"
+                    size={18}
+                  />
+                ) : (
+                  <Ionicons
+                    color={theme.colors.text.muted}
+                    name="ellipse-outline"
+                    size={18}
+                  />
+                )}
+              </View>
+              <View style={styles.foodItemMetaRow}>
+                <RatingPill rating={item.rating} />
+              </View>
+            </Pressable>
+          </View>
+        </View>
       </Card>
     );
   };
@@ -813,8 +900,7 @@ export function AddRestaurantToListScreen({
             ? `Add ${selectedRestaurant.name}`
             : "Add Restaurant to List"
         }
-        scrollViewRef={scrollViewRef}
-        bodyScrollable={selectedRestaurant !== null}
+        bodyScrollable={false}
       >
         <PageErrorToast
           errorMessage={errorMessage}
@@ -901,230 +987,157 @@ export function AddRestaurantToListScreen({
             ) : null}
           </>
         ) : (
-          <>
-            <Card style={styles.selectedCard} tone="default">
-              <View style={styles.selectedRestaurantMeta}>
-                <View style={styles.restaurantTitleRow}>
-                  {selectedRestaurant.visibility === 'private' ? (
-                    <Ionicons
-                      accessibilityLabel="Private restaurant"
-                      color={theme.colors.text.muted}
-                      name="lock-closed-outline"
-                      size={14}
-                      testID={`locked-selected-restaurant-${selectedRestaurant.id}`}
-                    />
-                  ) : null}
-                  <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
-                    {selectedRestaurant.name}
-                  </Text>
-                </View>
-                <Text style={styles.restaurantSubtitle} variant="metaRegular">
-                  {[selectedRestaurant.location, selectedRestaurant.cuisineType]
-                    .filter(Boolean)
-                    .join(" • ") || `${selectedRestaurant.itemCount} rated items`}
-                </Text>
-                {selectedRestaurantAlreadyInList ? (
-                  <View style={styles.alreadyInListBanner}>
-                    <Ionicons
-                      color={theme.colors.text.warning}
-                      name="checkmark-circle-outline"
-                      size={14}
-                    />
-                    <Text style={styles.alreadyInListText} variant="bodySmTight">
-                      Already in this list. Add more rated items below.
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </Card>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle} variant="titleXsTight">
-                Recommended Items (Optional)
-              </Text>
-              <Text style={styles.sectionDescription} variant="metaRegular">
-                Select items you have rated. Items already in this list are marked
-                as added.
-              </Text>
-
-              <View style={styles.duplicateToggleRow}>
-                <View style={styles.duplicateToggleTextWrap}>
-                  <Text style={styles.duplicateToggleTitle} variant="label">
-                    Hide duplicate ratings
-                  </Text>
-                  <Text style={styles.duplicateToggleSubtitle} variant="bodySmTight">
-                    Show only the latest rating for each item unless you already
-                    selected an older rating.
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityLabel="Hide duplicate ratings"
-                  ios_backgroundColor={theme.colors.border.strong}
-                  onValueChange={handleToggleHideDuplicateRatings}
-                  testID="add-restaurant-hide-duplicate-ratings-toggle"
-                  thumbColor={theme.colors.background.surface}
-                  trackColor={{
-                    false: theme.colors.border.strong,
-                    true: theme.colors.fill.brand,
+          <KeyboardAvoidingView
+            automaticOffset
+            behavior="height"
+            style={styles.restaurantList}
+            testID="add-restaurant-food-items-keyboard-avoiding-view"
+          >
+            <FlatList
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={styles.restaurantListContent}
+              data={visibleSelectedRestaurantFoodItems}
+              ItemSeparatorComponent={() => <View style={styles.restaurantListSeparator} />}
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              keyboardShouldPersistTaps="handled"
+              keyExtractor={(item) => item.id}
+            ListHeaderComponent={
+              <View style={styles.cardList}>
+                <PageErrorToast
+                  actionLabel="Retry"
+                  errorMessage={
+                    selectedFoodItemsState.hasRefreshError
+                      ? "Could not refresh rated items. Showing saved data."
+                      : null
+                  }
+                  onAction={() => {
+                    void selectedFoodItemsQuery.refetch();
                   }}
-                  value={hideDuplicateRatings}
+                  title="Rated items unavailable"
                 />
-              </View>
 
-              {groupedFoodItems.length === 0 ? (
+                <Card style={styles.selectedCard} tone="default">
+                  <View style={styles.selectedRestaurantMeta}>
+                    <View style={styles.restaurantTitleRow}>
+                      {selectedRestaurant.visibility === 'private' ? (
+                        <Ionicons
+                          accessibilityLabel="Private restaurant"
+                          color={theme.colors.text.muted}
+                          name="lock-closed-outline"
+                          size={14}
+                          testID={`locked-selected-restaurant-${selectedRestaurant.id}`}
+                        />
+                      ) : null}
+                      <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
+                        {selectedRestaurant.name}
+                      </Text>
+                    </View>
+                    <Text style={styles.restaurantSubtitle} variant="metaRegular">
+                      {[selectedRestaurant.location, selectedRestaurant.cuisineType]
+                        .filter(Boolean)
+                        .join(" • ") || `${selectedRestaurant.itemCount} rated items`}
+                    </Text>
+                    {selectedRestaurantAlreadyInList ? (
+                      <View style={styles.alreadyInListBanner}>
+                        <Ionicons
+                          color={theme.colors.text.warning}
+                          name="checkmark-circle-outline"
+                          size={14}
+                        />
+                        <Text style={styles.alreadyInListText} variant="bodySmTight">
+                          Already in this list. Add more rated items below.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </Card>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle} variant="titleXsTight">
+                    Recommended Items (Optional)
+                  </Text>
+                  <Text style={styles.sectionDescription} variant="metaRegular">
+                    Select items you have rated. Items already in this list are marked
+                    as added.
+                  </Text>
+
+                  <View style={styles.duplicateToggleRow}>
+                    <View style={styles.duplicateToggleTextWrap}>
+                      <Text style={styles.duplicateToggleTitle} variant="label">
+                        Hide duplicate ratings
+                      </Text>
+                      <Text style={styles.duplicateToggleSubtitle} variant="bodySmTight">
+                        Show only the latest loaded rating for each item unless you
+                        already selected an older rating.
+                      </Text>
+                    </View>
+                    <Switch
+                      accessibilityLabel="Hide duplicate ratings"
+                      ios_backgroundColor={theme.colors.border.strong}
+                      onValueChange={handleToggleHideDuplicateRatings}
+                      testID="add-restaurant-hide-duplicate-ratings-toggle"
+                      thumbColor={theme.colors.background.surface}
+                      trackColor={{
+                        false: theme.colors.border.strong,
+                        true: theme.colors.fill.brand,
+                      }}
+                      value={hideDuplicateRatings}
+                    />
+                  </View>
+                </View>
+              </View>
+            }
+            ListEmptyComponent={
+              isInitialSelectedFoodItemsLoading ? (
+                <View style={styles.cardList}>
+                  <Skeleton height={110} />
+                  <Skeleton height={110} />
+                </View>
+              ) : selectedFoodItemsState.hasBlockingError ? (
+                <ErrorState
+                  description="Could not load rated items for this restaurant."
+                  onRetry={() => {
+                    void selectedFoodItemsQuery.refetch();
+                  }}
+                  retryLabel="Retry"
+                  title="Rated items unavailable"
+                />
+              ) : (
                 <EmptyState
                   description="No rated items found for this restaurant."
                   title="No items available"
                 />
-              ) : (
-                <View style={styles.cardList}>
-                  {groupedFoodItems.map((group) => (
-                    <Card
-                      key={group.dayKey}
-                      style={styles.dateGroupCard}
-                      tone="default"
-                    >
-                      <View style={styles.dateGroupTitleRow}>
-                        <Ionicons
-                          color={theme.colors.text.muted}
-                          name="calendar-outline"
-                          size={15}
-                        />
-                        <Text variant="label">
-                          {formatDisplayDate(group.visitDate)}
-                        </Text>
-                        <Text tone="muted">{`(${group.items.length})`}</Text>
-                      </View>
-
-                      <View style={styles.cardList}>
-                        {group.items.map((item) => {
-                          const isAlreadyAdded = selectedRestaurantExistingFoodItemIds.has(item.id);
-                          const isSelected = selectedFoodItemIds.includes(
-                            item.id,
-                          );
-                          const photoThumbnailUrl = buildFoodItemPhotoThumbnailUrl(item);
-                          const extraPhotoCount = Math.max((item.photoCount ?? 0) - 1, 0);
-
-                          return (
-                            <View
-                              key={item.id}
-                              style={[
-                                styles.foodItemRow,
-                                isSelected ? styles.foodItemRowSelected : null,
-                                isAlreadyAdded
-                                  ? styles.foodItemRowDisabled
-                                  : null,
-                              ]}
-                            >
-                              <View style={styles.foodItemBody}>
-                                {photoThumbnailUrl ? (
-                                  <Pressable
-                                    accessibilityLabel={`View photos for ${item.name}`}
-                                    accessibilityRole="button"
-                                    disabled={loadingPhotoFoodItemId === item.id}
-                                    onPress={() => {
-                                      void handleOpenFoodItemPhotos(item);
-                                    }}
-                                    style={[
-                                      styles.foodItemPhotoWrap,
-                                      loadingPhotoFoodItemId === item.id
-                                        ? styles.foodItemPhotoWrapLoading
-                                        : null,
-                                    ]}
-                                  >
-                                    <CachedRemoteImage
-                                      uri={photoThumbnailUrl}
-                                      style={styles.foodItemPhotoThumb}
-                                    />
-                                    {extraPhotoCount > 0 ? (
-                                      <View style={styles.foodItemPhotoCountBadge}>
-                                        <Text style={styles.foodItemPhotoCountText}>
-                                          +{extraPhotoCount}
-                                        </Text>
-                                      </View>
-                                    ) : null}
-                                  </Pressable>
-                                ) : null}
-
-                                <Pressable
-                                  accessibilityHint={
-                                    isAlreadyAdded
-                                      ? 'Already in this Restaurant List.'
-                                      : undefined
-                                  }
-                                  accessibilityLabel={item.name}
-                                  accessibilityRole="button"
-                                  accessibilityState={{
-                                    disabled: isAlreadyAdded,
-                                    selected: isSelected,
-                                  }}
-                                  disabled={isAlreadyAdded}
-                                  onPress={() => {
-                                    handleToggleFoodItem(item.id);
-                                  }}
-                                  style={styles.foodItemContent}
-                                  testID={`add-restaurant-food-item-${item.id}`}
-                                >
-                                  <View style={styles.foodItemHeader}>
-                                    <View style={styles.foodItemTitleWrap}>
-                                      <Text style={styles.foodItemTitle} variant="labelMdBold">
-                                        {item.name}
-                                      </Text>
-                                      {item.notes ? (
-                                        <Text style={styles.foodItemNote} variant="bodySmTight">
-                                          {item.notes}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                    {isAlreadyAdded ? (
-                                      <StatusPill label="Added" tone="success" />
-                                    ) : isSelected ? (
-                                      <Ionicons
-                                        color={theme.colors.text.warning}
-                                        name="checkmark-circle"
-                                        size={18}
-                                      />
-                                    ) : (
-                                      <Ionicons
-                                        color={theme.colors.text.muted}
-                                        name="ellipse-outline"
-                                        size={18}
-                                      />
-                                    )}
-                                  </View>
-                                  <View style={styles.foodItemMetaRow}>
-                                    <RatingPill rating={item.rating} />
-                                  </View>
-                                </Pressable>
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </Card>
-                  ))}
+              )
+            }
+            ListFooterComponent={
+              <View style={styles.cardList}>
+                {selectedFoodItemsQuery.isFetchingNextPage ? (
+                  <Skeleton height={110} />
+                ) : null}
+                <View style={styles.section}>
+                  <Input
+                    label="General note (optional)"
+                    maxLength={300}
+                    multiline
+                    onChangeText={(value) => {
+                      setNote(value);
+                      setNoteDirty(true);
+                    }}
+                    placeholder="Why do you recommend this restaurant?"
+                    testID="add-restaurant-note-input"
+                    value={note}
+                  />
+                  <Text tone="muted">{`${note.length}/300`}</Text>
                 </View>
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <View>
-                <Input
-                  label="General note (optional)"
-                  maxLength={300}
-                  multiline
-                  onChangeText={(value) => {
-                    setNote(value);
-                    setNoteDirty(true);
-                  }}
-                  placeholder="Why do you recommend this restaurant?"
-                  testID="add-restaurant-note-input"
-                  value={note}
-                />
               </View>
-              <Text tone="muted">{`${note.length}/300`}</Text>
-            </View>
-          </>
+            }
+            onEndReached={handleFetchNextSelectedFoodItemPage}
+            onEndReachedThreshold={0.4}
+            renderItem={renderSelectedFoodItem}
+            style={styles.restaurantList}
+              testID="add-restaurant-food-item-list"
+            />
+          </KeyboardAvoidingView>
         )}
       </FeatureFormScreenScaffold>
 

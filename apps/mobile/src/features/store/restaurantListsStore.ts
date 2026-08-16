@@ -20,6 +20,8 @@ import type {
   RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
+  RestaurantListVisitedRestaurantFoodItem,
+  RestaurantListVisitedRestaurantFoodItemsPage,
   SaveRestaurantFoodItemToListInput,
   SaveRestaurantToDefaultListInput,
   UpdateRestaurantListInput,
@@ -61,6 +63,7 @@ export type {
   RemoveRestaurantFoodItemBookmarkFromListInput,
   RemoveRestaurantListSourceRatingInput,
   RestaurantListVisitedRestaurantCandidate,
+  RestaurantListVisitedRestaurantFoodItemsPage,
   SaveRestaurantFoodItemToListInput,
   SaveRestaurantToDefaultListInput,
   UpdateRestaurantListInput,
@@ -252,22 +255,33 @@ interface RestaurantListVisitedRestaurantCandidateApiRecord {
   cuisineType?: string;
   visibility?: 'private' | 'friends' | 'public';
   itemCount: number;
-  visitDates?: string[];
-  foodItems?: {
-    id: string;
-    name: string;
-    rating: number;
-    notes?: string;
-    visitedAt: string;
-    photoPreview?: {
-      id: string;
-      photo: string;
-    };
-    photoCount?: number;
-  }[];
+  latestVisitDate?: string;
   alreadyInList?: boolean;
   existingNote?: string;
-  linkedFoodItemIds?: string[];
+  linkedItemCount?: number;
+}
+
+interface RestaurantListVisitedRestaurantFoodItemApiRecord {
+  id: string;
+  name: string;
+  rating: number;
+  notes?: string;
+  visitedAt: string;
+  photoPreview?: {
+    id: string;
+    photo: string;
+  };
+  photoCount?: number;
+  alreadyAdded?: boolean;
+}
+
+interface RestaurantListVisitedRestaurantFoodItemsPageApiResponse {
+  items?: RestaurantListVisitedRestaurantFoodItemApiRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 interface RestaurantListMutationGroupApiResponse {
@@ -510,34 +524,34 @@ function mapRestaurantListVisitedRestaurantCandidateRecord(
       typeof record.itemCount === 'number' && Number.isFinite(record.itemCount) && record.itemCount >= 0
         ? Math.floor(record.itemCount)
         : 0,
-    visitDates: (record.visitDates ?? []).map((visitDate) => visitDate.trim()).filter((visitDate) => visitDate.length > 0),
-    foodItems: (record.foodItems ?? []).map((item) => ({
-      id: item.id,
-      name: item.name.trim(),
-      rating: item.rating,
-      notes: item.notes?.trim() || undefined,
-      visitedAt: item.visitedAt,
-      photoPreview:
-        typeof item.photoPreview?.id === 'string' &&
-        item.photoPreview.id.trim().length > 0 &&
-        typeof item.photoPreview.photo === 'string' &&
-        item.photoPreview.photo.trim().length > 0
-          ? {
-              id: item.photoPreview.id.trim(),
-              photo: item.photoPreview.photo.trim(),
-            }
-          : undefined,
-      photoCount: normalizeOptionalCount(item.photoCount),
-    })),
+    latestVisitDate: record.latestVisitDate?.trim() || undefined,
     alreadyInList: record.alreadyInList === true,
     existingNote: record.existingNote?.trim() || undefined,
-    linkedFoodItemIds: Array.from(
-      new Set(
-        (record.linkedFoodItemIds ?? [])
-          .map((foodItemId) => foodItemId.trim())
-          .filter((foodItemId) => foodItemId.length > 0),
-      ),
-    ),
+    linkedItemCount: normalizeOptionalCount(record.linkedItemCount) ?? 0,
+  };
+}
+
+function mapRestaurantListVisitedRestaurantFoodItemRecord(
+  item: RestaurantListVisitedRestaurantFoodItemApiRecord,
+): RestaurantListVisitedRestaurantFoodItem {
+  return {
+    id: item.id,
+    name: item.name.trim(),
+    rating: item.rating,
+    notes: item.notes?.trim() || undefined,
+    visitedAt: item.visitedAt,
+    photoPreview:
+      typeof item.photoPreview?.id === 'string' &&
+      item.photoPreview.id.trim().length > 0 &&
+      typeof item.photoPreview.photo === 'string' &&
+      item.photoPreview.photo.trim().length > 0
+        ? {
+            id: item.photoPreview.id.trim(),
+            photo: item.photoPreview.photo.trim(),
+          }
+        : undefined,
+    photoCount: normalizeOptionalCount(item.photoCount),
+    alreadyAdded: item.alreadyAdded === true,
   };
 }
 
@@ -942,6 +956,40 @@ export async function getRestaurantListCandidateRestaurants(
 
     throw error;
   }
+}
+
+export async function getRestaurantListVisitedRestaurantFoodItemsPage(
+  listId: string,
+  restaurantId: string,
+  options?: PaginatedReadRequestOptions,
+): Promise<RestaurantListVisitedRestaurantFoodItemsPage> {
+  const trimmedListId = listId.trim();
+  const trimmedRestaurantId = restaurantId.trim();
+  if (!pb.authStore.record?.id || !trimmedListId || !trimmedRestaurantId) {
+    return createEmptyPaginatedResult();
+  }
+
+  const pagination = resolvePaginationInput(options);
+  const query = new URLSearchParams({
+    page: String(pagination.page),
+    pageSize: String(pagination.pageSize),
+  });
+  const response = await sendApiRequest<RestaurantListVisitedRestaurantFoodItemsPageApiResponse>(
+    `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/candidate-restaurants/${encodeURIComponent(trimmedRestaurantId)}/items?${query.toString()}`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
+
+  return {
+    items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantFoodItemRecord),
+    page: normalizePositiveInteger(response.page, pagination.page),
+    pageSize: normalizeOptionalCount(response.pageSize) ?? pagination.pageSize,
+    totalItems: normalizeOptionalCount(response.totalItems) ?? response.items?.length ?? 0,
+    totalPages: normalizeOptionalCount(response.totalPages) ?? 0,
+    hasNextPage: response.hasNextPage === true,
+  };
 }
 
 export async function createDefaultRestaurantList(
