@@ -4,6 +4,7 @@ import {
   getRestaurantListContentInvalidationKeys,
   getRestaurantListRemovalKeys,
   invalidateRestaurantListContentQueries,
+  isPaginatedRestaurantListQueryKey,
   normalizeRestaurantListFoodItemIdsForQueryKey,
   removeRestaurantListQueries,
   restaurantListQueryKeys,
@@ -52,13 +53,6 @@ function buildListPage(items: RestaurantListRecord[]) {
 describe('restaurantListQuery', () => {
   it('uses canonical list detail and paginated list keys', () => {
     expect(restaurantListQueryKeys.detail('list_1')).toEqual(['feature', 'restaurantListDetail', 'list_1']);
-    expect(restaurantListQueryKeys.paginated('my', 'pizza')).toEqual([
-      'feature',
-      'restaurantLists',
-      'my',
-      'paginated',
-      'pizza',
-    ]);
     expect(restaurantListQueryKeys.paginatedInfinite('my', 'pizza')).toEqual([
       'feature',
       'restaurantLists',
@@ -73,6 +67,16 @@ describe('restaurantListQuery', () => {
       'ramen',
       'pages',
     ]);
+    expect(isPaginatedRestaurantListQueryKey(
+      restaurantListQueryKeys.paginatedInfinite('friends', 'pizza'),
+    )).toBe(true);
+    expect(isPaginatedRestaurantListQueryKey([
+      'feature',
+      'restaurantLists',
+      'my',
+      'paginated',
+      'pizza',
+    ])).toBe(false);
     expect(
       restaurantListQueryKeys.candidateRestaurantFoodItemPages('list_1', 'restaurant_1'),
     ).toEqual([
@@ -141,7 +145,7 @@ describe('restaurantListQuery', () => {
   it('invalidates list-scoped detail caches and collection queries together', async () => {
     const queryClient = createQueryClient();
     const listId = 'list_1';
-    const listPageKey = restaurantListQueryKeys.paginated('my', '');
+    const listPageKey = restaurantListQueryKeys.paginatedInfinite('my', '');
     const candidateKey = restaurantListQueryKeys.candidateRestaurants(listId, 'pizza');
     const candidateFoodItemsKey = restaurantListQueryKeys.candidateRestaurantFoodItemPages(
       listId,
@@ -175,7 +179,7 @@ describe('restaurantListQuery', () => {
       listId,
       'restaurant_1',
     );
-    const listPageKey = restaurantListQueryKeys.paginated('my', '');
+    const listPageKey = restaurantListQueryKeys.paginatedInfinite('my', '');
 
     for (const queryKey of getRestaurantListRemovalKeys(listId)) {
       queryClient.setQueryData(queryKey, { queryKey });
@@ -197,8 +201,8 @@ describe('restaurantListQuery', () => {
 
   it('adds a queued list into cached collection queries and seeds the base my-lists query', () => {
     const queryClient = createQueryClient();
-    const pizzaSearchKey = restaurantListQueryKeys.paginated('my', 'pizza');
-    const sushiSearchKey = restaurantListQueryKeys.paginated('my', 'sushi');
+    const pizzaSearchKey = restaurantListQueryKeys.paginatedInfinite('my', 'pizza');
+    const sushiSearchKey = restaurantListQueryKeys.paginatedInfinite('my', 'sushi');
     const existingPizzaList = buildList({ id: 'list_existing', name: 'Pizza Night' });
     const existingSushiList = buildList({ id: 'list_other', name: 'Sushi Trail' });
     const queuedList = buildList({ id: 'offline_list_1', name: 'Pizza Crawl' });
@@ -210,7 +214,7 @@ describe('restaurantListQuery', () => {
 
     expect(
       queryClient.getQueryData<{ pages: { items: RestaurantListRecord[] }[] }>(
-        restaurantListQueryKeys.paginated('my', ''),
+        restaurantListQueryKeys.paginatedInfinite('my', ''),
       )?.pages[0]?.items.map((item) => item.id),
     ).toEqual(['offline_list_1']);
     expect(
@@ -230,12 +234,33 @@ describe('restaurantListQuery', () => {
     ).toEqual(['list_other']);
   });
 
-  it('replaces incompatible persisted list collection cache data when adding a list', () => {
+  it('moves an updated list between cached search variants', () => {
+    const queryClient = createQueryClient();
+    const pizzaSearchKey = restaurantListQueryKeys.paginatedInfinite('my', 'pizza');
+    const sushiSearchKey = restaurantListQueryKeys.paginatedInfinite('my', 'sushi');
+    const existingList = buildList({ name: 'Pizza Night' });
+    const updatedList = buildList({ name: 'Sushi Night' });
+
+    queryClient.setQueryData(pizzaSearchKey, buildListPage([existingList]));
+    queryClient.setQueryData(sushiSearchKey, buildListPage([]));
+
+    upsertRestaurantListInCollectionCaches(queryClient, updatedList, 'my');
+
+    expect(queryClient.getQueryData<ReturnType<typeof buildListPage>>(pizzaSearchKey)?.pages[0]).toEqual(
+      expect.objectContaining({ items: [], totalItems: 0, totalPages: 0 }),
+    );
+    expect(queryClient.getQueryData<ReturnType<typeof buildListPage>>(sushiSearchKey)?.pages[0]).toEqual(
+      expect.objectContaining({ items: [updatedList], totalItems: 1, totalPages: 1 }),
+    );
+  });
+
+  it('replaces incompatible live collection data without touching an obsolete persisted key', () => {
     const queryClient = createQueryClient();
     const queuedList = buildList({ id: 'offline_list_1', name: 'Pizza Crawl' });
-    const badPersistedKey = restaurantListQueryKeys.paginated('my', '');
+    const liveKey = restaurantListQueryKeys.paginatedInfinite('my', '');
+    const obsoletePersistedKey = ['feature', 'restaurantLists', 'my', 'paginated', ''] as const;
 
-    queryClient.setQueryData(badPersistedKey, {
+    queryClient.setQueryData(liveKey, {
       items: [],
       page: 1,
       pageSize: 100,
@@ -243,14 +268,20 @@ describe('restaurantListQuery', () => {
       totalPages: 0,
       hasNextPage: false,
     });
+    queryClient.setQueryData(obsoletePersistedKey, buildListPage([
+      buildList({ id: 'stale_list', name: 'Stale persisted list' }),
+    ]));
 
     expect(() => {
       upsertRestaurantListInCollectionCaches(queryClient, queuedList, 'my');
     }).not.toThrow();
     expect(
       queryClient.getQueryData<{ pages: { items: RestaurantListRecord[] }[] }>(
-        badPersistedKey,
+        liveKey,
       )?.pages[0]?.items.map((item) => item.id),
     ).toEqual(['offline_list_1']);
+    expect(queryClient.getQueryData(obsoletePersistedKey)).toEqual(buildListPage([
+      buildList({ id: 'stale_list', name: 'Stale persisted list' }),
+    ]));
   });
 });

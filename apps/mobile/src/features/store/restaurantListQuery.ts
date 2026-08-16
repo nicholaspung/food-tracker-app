@@ -20,8 +20,6 @@ interface RestaurantListBookmarkStateQueryTarget {
 export const restaurantListQueryKeys = {
   root: ['feature', 'restaurantLists'] as const,
   scope: (scope: RestaurantListScope) => ['feature', 'restaurantLists', scope] as const,
-  paginated: (scope: RestaurantListScope, searchQuery: string) =>
-    ['feature', 'restaurantLists', scope, 'paginated', searchQuery] as const,
   paginatedInfinite: (scope: RestaurantListScope, searchQuery: string) =>
     ['feature', 'restaurantLists', scope, 'paginatedInfinite', searchQuery] as const,
   defaultList: ['feature', 'restaurantLists', 'my', 'default'] as const,
@@ -213,20 +211,22 @@ function upsertRestaurantListInCollectionData(
   };
 }
 
-function resolveRestaurantListSearchQuery(queryKey: QueryKey): string | null {
-  if (
-    !Array.isArray(queryKey) ||
-    queryKey.length !== 5 ||
-    queryKey[0] !== restaurantListQueryKeys.root[0] ||
-    queryKey[1] !== restaurantListQueryKeys.root[1] ||
-    typeof queryKey[2] !== 'string' ||
-    (queryKey[3] !== 'paginated' && queryKey[3] !== 'paginatedInfinite') ||
-    typeof queryKey[4] !== 'string'
-  ) {
-    return null;
-  }
+export function isPaginatedRestaurantListQueryKey(
+  queryKey: QueryKey,
+): queryKey is ReturnType<typeof restaurantListQueryKeys.paginatedInfinite> {
+  return (
+    Array.isArray(queryKey) &&
+    queryKey.length === 5 &&
+    queryKey[0] === restaurantListQueryKeys.root[0] &&
+    queryKey[1] === restaurantListQueryKeys.root[1] &&
+    (queryKey[2] === 'my' || queryKey[2] === 'friends') &&
+    queryKey[3] === 'paginatedInfinite' &&
+    typeof queryKey[4] === 'string'
+  );
+}
 
-  return queryKey[4];
+function resolveRestaurantListSearchQuery(queryKey: QueryKey): string | null {
+  return isPaginatedRestaurantListQueryKey(queryKey) ? queryKey[4] : null;
 }
 
 async function invalidateQueryKeys(queryClient: QueryClient, queryKeys: readonly QueryKey[]): Promise<void> {
@@ -340,14 +340,10 @@ export function upsertRestaurantListInCollectionCaches(
     );
   }
 
-  for (const baseQueryKey of [
-    restaurantListQueryKeys.paginated(scope, ''),
-    restaurantListQueryKeys.paginatedInfinite(scope, ''),
-  ]) {
-    const baseQueryData = queryClient.getQueryData<unknown>(baseQueryKey);
-    if (!isRestaurantListInfiniteData(baseQueryData)) {
-      queryClient.setQueryData(baseQueryKey, createRestaurantListCollectionData(list));
-    }
+  const baseQueryKey = restaurantListQueryKeys.paginatedInfinite(scope, '');
+  const baseQueryData = queryClient.getQueryData<unknown>(baseQueryKey);
+  if (!isRestaurantListInfiniteData(baseQueryData)) {
+    queryClient.setQueryData(baseQueryKey, createRestaurantListCollectionData(list));
   }
 }
 

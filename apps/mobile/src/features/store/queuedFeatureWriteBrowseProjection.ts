@@ -15,7 +15,10 @@ import type { PaginatedResult } from './sharedTypes';
 import { billsQueryKeys, isPaginatedBillsQueryKey } from './billsQuery';
 import { homeFeedQueryKeys, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
 import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
-import { restaurantListQueryKeys } from './restaurantListQuery';
+import {
+  isPaginatedRestaurantListQueryKey,
+  restaurantListQueryKeys,
+} from './restaurantListQuery';
 import type { QueuedFeatureWrite } from './queuedFeatureWrites';
 import type { FoodProductRecord, NoteRecord, RestaurantListRecord, VisitRecord } from '../models';
 
@@ -55,17 +58,6 @@ function isPageWithItems(page: unknown): page is PaginatedResult<AnyRecord> {
     Boolean(page) &&
     typeof page === 'object' &&
     Array.isArray((page as Partial<PaginatedResult<AnyRecord>>).items)
-  );
-}
-
-function isRestaurantListPaginatedQueryKey(queryKey: QueryKey): boolean {
-  return (
-    Array.isArray(queryKey) &&
-    queryKey.length === 5 &&
-    queryKey[0] === restaurantListQueryKeys.root[0] &&
-    queryKey[1] === restaurantListQueryKeys.root[1] &&
-    queryKey[3] === 'paginated' &&
-    typeof queryKey[4] === 'string'
   );
 }
 
@@ -325,7 +317,7 @@ function projectQueuedRestaurantLists(
         item.name as string,
         item.description as string | undefined,
       ]),
-    isRestaurantListPaginatedQueryKey,
+    isPaginatedRestaurantListQueryKey,
   );
 }
 

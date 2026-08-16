@@ -118,7 +118,6 @@ jest.mock('../features', () => ({
   invalidateRestaurantListCollectionQueries: jest.fn(),
   listRestaurantListsPage: jest.fn(),
   restaurantListQueryKeys: {
-    paginated: jest.fn((scope: string, search: string) => ['feature', 'restaurantLists', scope, 'paginated', search]),
     paginatedInfinite: jest.fn((scope: string, search: string) => [
       'feature',
       'restaurantLists',

@@ -136,7 +136,7 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
 
   it('patches queued list and bill creates into their browse caches', () => {
     const queryClient = new QueryClient();
-    queryClient.setQueryData(restaurantListQueryKeys.paginated('my', ''), {
+    queryClient.setQueryData(restaurantListQueryKeys.paginatedInfinite('my', ''), {
       pages: [
         {
           items: [],
@@ -194,7 +194,7 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
 
     const listData = queryClient.getQueryData<{
       pages: { items: { id: string; name: string }[] }[];
-    }>(restaurantListQueryKeys.paginated('my', ''));
+    }>(restaurantListQueryKeys.paginatedInfinite('my', ''));
     const legacyBillData = queryClient.getQueryData<{ id: string; title: string }[]>(billsQueryKeys.root);
     const billData = queryClient.getQueryData<{
       pages: { items: { id: string; title: string }[]; totalItems: number }[];
@@ -236,7 +236,7 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
       ],
       pageParams: [1],
     });
-    queryClient.setQueryData(restaurantListQueryKeys.paginated('my', ''), {
+    queryClient.setQueryData(restaurantListQueryKeys.paginatedInfinite('my', ''), {
       pages: [
         {
           items: [],
@@ -269,7 +269,7 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
     }>(notesQueryKeys.paginated('draft'));
     const listData = queryClient.getQueryData<{
       pages: { items: { id: string; name: string }[] }[];
-    }>(restaurantListQueryKeys.paginated('my', ''));
+    }>(restaurantListQueryKeys.paginatedInfinite('my', ''));
 
     expect(noteData?.pages[0]?.items).toEqual([
       expect.objectContaining({
