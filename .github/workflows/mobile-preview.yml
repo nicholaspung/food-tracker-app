@@ -96,7 +96,7 @@ jobs:
 
       - name: Verify pinned EAS CLI
         working-directory: apps/mobile
-        run: pnpm dlx eas-cli@19.0.8 --version
+        run: pnpm exec eas --version
 
       - name: Lint mobile app
         run: pnpm mobile:lint
@@ -193,7 +193,7 @@ jobs:
         if: steps.release_type.outputs.publish_mode == 'ota'
         working-directory: apps/mobile
         run: |
-          pnpm dlx eas-cli@19.0.8 update \
+          pnpm exec eas update \
             --channel "${{ steps.release_target.outputs.ota_channel }}" \
             --environment "${{ steps.release_target.outputs.eas_environment }}" \
             --message "${{ steps.release_target.outputs.target_label }} OTA from ${GITHUB_REF_NAME} (${GITHUB_SHA::7})" \
@@ -203,7 +203,7 @@ jobs:
         if: steps.release_type.outputs.publish_mode == 'build'
         working-directory: apps/mobile
         run: |
-          pnpm dlx eas-cli@19.0.8 build \
+          pnpm exec eas build \
             --platform "${{ steps.build_platform.outputs.build_platform }}" \
             --profile "${{ steps.release_target.outputs.build_profile }}" \
             --non-interactive \

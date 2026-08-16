@@ -64,6 +64,7 @@ jest.mock('../features/store/homeFeedQuery', () => ({
 jest.mock('../features/store/visitsQuery', () => ({
   syncVisitMutationCaches: jest.fn(),
   visitsQueryKeys: {
+    detail: (visitId: string) => ['feature', 'visit', visitId],
     root: ['feature', 'visits'],
   },
 }));

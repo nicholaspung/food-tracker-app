@@ -75,7 +75,7 @@ jobs:
 
       - name: Verify pinned EAS CLI
         working-directory: apps/mobile
-        run: pnpm dlx eas-cli@19.0.8 --version
+        run: pnpm exec eas --version
 
       - name: Lint mobile app
         run: pnpm mobile:lint
@@ -98,7 +98,7 @@ jobs:
           RELEASE_MESSAGE: ${{ github.event.inputs.release_message }}
           RELEASE_PLATFORM: ${{ github.event.inputs.platform }}
         run: |
-          pnpm dlx eas-cli@19.0.8 update \
+          pnpm exec eas update \
             --channel production \
             --environment production \
             --platform "$RELEASE_PLATFORM" \

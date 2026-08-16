@@ -9,7 +9,7 @@ interface NotificationDeviceLifecycleDependencies {
   unregisterCurrentDevice: () => Promise<void>;
 }
 
-export function createNotificationDeviceLifecycle({
+function createNotificationDeviceLifecycle({
   unregisterCurrentDevice,
 }: NotificationDeviceLifecycleDependencies): NotificationDeviceLifecycle {
   return {

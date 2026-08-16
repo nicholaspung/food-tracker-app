@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 
 import { RestaurantDiscoveryScreen } from '../screens/RestaurantDiscoveryScreen';
@@ -49,12 +49,14 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(() => ({
     data: [],
     error: null,
     isPending: false,
   })),
   useQueryClient: jest.fn(() => ({
+    getQueryData: jest.fn(),
     invalidateQueries: mockInvalidateQueries,
     setQueryData: mockSetQueryData,
   })),
@@ -259,6 +261,7 @@ const mockedCaptureObservabilityError = captureObservabilityError as jest.Mocked
 >;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
+const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedClipboard = Clipboard as jest.Mocked<typeof Clipboard>;
@@ -310,6 +313,18 @@ describe('RestaurantDiscoveryScreen', () => {
     mockRemoveBookmarkFromDefaultList.mockResolvedValue({ status: 'completed', result: [] });
     mockSaveRestaurantToDefaultList.mockReset();
     mockSaveRestaurantToDefaultList.mockResolvedValue({ status: 'completed', result: [] });
+    mockedUseInfiniteQuery.mockReset();
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [1],
+        pages: [],
+      },
+      error: null,
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isPending: false,
+    } as never);
     mockedUseQuery.mockReset();
     mockedUseQuery.mockReturnValue({
       data: [],
@@ -1164,6 +1179,29 @@ describe('RestaurantDiscoveryScreen', () => {
   });
 
   it('passes Food Discovery-only sheet tabs for the selected map restaurant', () => {
+    mockedUseInfiniteQuery.mockReturnValue({
+      data: {
+        pageParams: [1],
+        pages: [
+          {
+            hasNextPage: false,
+            items: [
+              { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
+              { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
+            ],
+            page: 1,
+            pageSize: 20,
+            totalItems: 2,
+            totalPages: 1,
+          },
+        ],
+      },
+      error: null,
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isPending: false,
+    } as never);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly string[];
       if (queryKey.includes('allLocationsHistory')) {
@@ -1190,17 +1228,6 @@ describe('RestaurantDiscoveryScreen', () => {
             restaurants: [],
             visitCount: 2,
           },
-          error: null,
-          isPending: false,
-        } as never;
-      }
-
-      if (queryKey.includes('menuItems')) {
-        return {
-          data: [
-            { id: 'menu-b', name: 'Ziti', restaurant: 'restaurant-1' },
-            { id: 'menu-a', name: 'Aguachile', restaurant: 'restaurant-1' },
-          ],
           error: null,
           isPending: false,
         } as never;

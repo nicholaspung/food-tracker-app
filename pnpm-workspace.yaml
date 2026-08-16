@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - '!apps/case-calendar'
   - tools/*
   - backend
 allowBuilds:
@@ -16,32 +17,3 @@ overrides:
   "uuid@<11.1.1": 11.1.1
   ws@7: 7.5.11
   ws@8: 8.21.0
-minimumReleaseAgeExclude:
-  - "@expo/cli@56.1.15"
-  - "@expo/log-box@56.0.13"
-  - "@expo/metro-config@56.0.14"
-  - babel-preset-expo@56.0.15
-  - expo-asset@56.0.17
-  - expo-constants@56.0.22
-  - expo-file-system@56.0.8
-  - expo-font@56.0.7
-  - expo-modules-core@56.0.16
-  - expo-modules-jsi@56.0.9
-  - expo@56.0.17
-  - '@expo/ui@56.0.23'
-  - expo-camera@56.0.8
-  - expo-dev-client@56.0.24
-  - expo-dev-launcher@56.0.20
-  - expo-dev-menu@56.0.17
-  - expo-image-manipulator@56.0.23
-  - expo-image-picker@56.0.22
-  - expo-location@56.0.22
-  - expo-media-library@56.0.10
-  - expo-notifications@56.0.22
-  - expo-splash-screen@56.0.14
-  - expo-sqlite@56.0.5
-  - expo-updates@56.0.23
-  - expo-video@56.1.4
-  - jest-expo@56.0.5
-patchedDependencies:
-  expo-notifications@56.0.22: patches/expo-notifications@56.0.22.patch

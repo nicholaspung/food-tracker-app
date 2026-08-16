@@ -24,7 +24,22 @@ The replacement guardrail is `scripts/verify-mobile-native-sync.mjs`, and `pnpm 
 
 `pnpm mobile:doctor` intentionally runs `expo-doctor@latest` as a live Expo advisory gate after native sync validation. Expo Doctor is not pinned in the mobile dependency graph, so its findings can change without a repository or lockfile change.
 
+Release tooling intentionally pins `eas-cli` in the mobile development dependencies so local and CI releases use the lockfile version. Expo Doctor categorically rejects a project-local EAS CLI, so the Doctor wrapper suppresses only its `npm explain eas-cli` probe. The wrapper still downloads `expo-doctor@latest` and runs every other live Doctor check against the actual app config, native projects, dependencies, and lockfile.
+
 A new Expo Doctor release may legitimately fail local, CI, or release validation after earlier runs passed. Treat that as updated compatibility guidance: resolve the reported finding, rerun the full mobile checks, and retry the push or release only after the gate passes. Do not dismiss changed findings as nondeterministic CI failures or pin Expo Doctor solely to preserve an earlier result.
+
+## Expo SDK 57 Hermes Regression Upgrade
+
+Decision: upgrade from Expo SDK 56 / React Native 0.85.3 to Expo SDK 57 / React Native 0.86.2.
+
+Why:
+
+- Expo Doctor reports that SDK 56's Hermes V1 `250829098.0.10` has a known memory regression. React Native 0.86.2 includes the first fixed Hermes release, `250829098.0.16`.
+- Expo dependencies and development tooling are aligned with the versions selected by `expo install --fix` for `expo@57.0.13`.
+- The checked-in Podfile enables Expo's SDK 57 precompiled-module default while preserving the source-build escape hatch and custom `ReleasePreview` configuration.
+- The SDK 56 package release-age exceptions were removed because the SDK 57 dependency set installs without bypassing the repository's supply-chain age policy.
+
+The SDK 57 config plugin list includes `expo-status-bar`, and the checked-in CocoaPods lockfile and Xcode project are regenerated with React Native 0.86.2.
 
 ## ExpoSQLite Xcode 26 Decision
 
@@ -54,34 +69,27 @@ Result:
 - Manual `simctl launch` succeeded.
 - Simulator logs showed the JavaScript bundle loading and no native SQLite/offline queue initialization errors.
 
-## Expo Notifications Push Token Cancellation Patch
+## Retired Expo Notifications Push Token Cancellation Patch
 
-Decision: keep the `expo-notifications@56.0.22` patch until upstream treats React Native canceled fetches as non-failures in `updateDevicePushTokenAsync`.
+Decision: retire the `expo-notifications@56.0.22` patch during the Expo SDK 57 upgrade.
 
 Why:
 
-- The active patch is registered in `pnpm-workspace.yaml` and `pnpm-lock.yaml` as `patches/expo-notifications@56.0.22.patch`.
-- The patch only changes `updateDevicePushTokenAsync` to stop retrying when the caller's `AbortSignal` is already aborted or React Native throws `"Fetch request has been canceled"` instead of an `AbortError`.
-- Without the patch, aborting an in-flight server registration update can be logged as a warning and scheduled for retry even though a newer registration request is expected to replace it.
-- As of 2026-07-24, the published `expo-notifications@56.0.22` tarball still only checks `error?.name === "AbortError"` in its clean `src/utils/updateDevicePushTokenAsync.ts` and `build/utils/updateDevicePushTokenAsync.js`. The cancellation patch was therefore ported unchanged during the SDK 56 patch refresh.
+- `expo-notifications@57.0.11` checks `signal.aborted` as well as `AbortError` before logging or retrying an aborted device-token update.
+- Equivalent handling is present in both the published TypeScript source and built JavaScript output.
+- The version-specific patch and `patchedDependencies` registration are therefore no longer needed.
 
-Verification before removal:
+Verification performed on 2026-08-16:
 
 ```sh
-pnpm view expo-notifications version dist-tags --json
-tmpdir=$(mktemp -d)
-(cd "$tmpdir" && npm pack expo-notifications@<candidate-version> --silent && tar -xzf expo-notifications-*.tgz)
-rg -n "signal\\.aborted|Fetch request has been canceled|AbortError" "$tmpdir/package/src/utils/updateDevicePushTokenAsync.ts" "$tmpdir/package/build/utils/updateDevicePushTokenAsync.js"
+npm pack expo-notifications@57.0.11
+rg -n "signal\\.aborted|AbortError" package/src/utils/updateDevicePushTokenAsync.ts package/build/utils/updateDevicePushTokenAsync.js
 pnpm --filter @food-tracker/mobile test -- notificationInteraction
 pnpm --filter @food-tracker/mobile exec expo install --check
 pnpm mobile:doctor
 ```
 
-The `notificationInteraction` test suite covers app-level notification device registration and retry behavior around Expo push-token failures. For a candidate package removal, also verify the native registration path in a development build with notification permission granted by signing in, forcing a push-token registration refresh, then backgrounding/foregrounding or signing out during the request so the stale registration update is aborted. The app should complete the replacement registration path without logging `Fetch request has been canceled` as a warning or retrying the aborted update.
-
-Removal condition:
-
-- Remove `patches/expo-notifications@56.0.22.patch` and the matching `patchedDependencies` entries only after a compatible Expo SDK notification package includes equivalent cancellation handling in both TypeScript source and built JavaScript output, and the verification commands above pass.
+The `notificationInteraction` test suite covers app-level notification device registration and retry behavior around Expo push-token failures. During native smoke testing, also verify that backgrounding, foregrounding, or signing out during registration does not log or retry the superseded request.
 
 ## When Adding A Native Workaround
 

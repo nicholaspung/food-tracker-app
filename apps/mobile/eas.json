@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 18.7.0",
+    "version": "19.0.8",
     "appVersionSource": "remote"
   },
   "build": {
@@ -17,7 +17,7 @@
       "distribution": "internal",
       "environment": "development",
       "ios": {
-        "image": "sdk-56"
+        "image": "sdk-57"
       },
       "env": {
         "APP_VARIANT": "production",
@@ -30,7 +30,7 @@
       "distribution": "internal",
       "environment": "preview",
       "ios": {
-        "image": "sdk-56",
+        "image": "sdk-57",
         "buildConfiguration": "ReleasePreview"
       },
       "env": {
@@ -47,7 +47,7 @@
       "distribution": "internal",
       "environment": "production",
       "ios": {
-        "image": "sdk-56",
+        "image": "sdk-57",
         "buildConfiguration": "ReleasePreview"
       },
       "env": {
@@ -64,7 +64,7 @@
       "autoIncrement": true,
       "environment": "production",
       "ios": {
-        "image": "sdk-56"
+        "image": "sdk-57"
       },
       "env": {
         "APP_VARIANT": "production",

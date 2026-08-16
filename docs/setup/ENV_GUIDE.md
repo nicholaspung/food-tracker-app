@@ -207,7 +207,7 @@ FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=AA:BB:CC:...,DD:EE:FF:...
 
 Find Android fingerprints from the signing credentials used for the build:
 
-- EAS-managed credentials: `cd apps/mobile && eas credentials -p android`, select the app/profile, then inspect the Android keystore certificate fingerprints.
+- EAS-managed credentials: `pnpm --dir apps/mobile exec eas credentials -p android`, select the app/profile, then inspect the Android keystore certificate fingerprints.
 - Google Play App Signing: Play Console > the app > Setup > App integrity > App signing key certificate > SHA-256 certificate fingerprint. Also copy the Upload key certificate fingerprint if links should work for builds signed with the upload key outside Play distribution.
 - Local keystore: run `keytool -list -v -keystore path/to/keystore.jks -alias your_alias` and copy the `SHA256` value.
 
@@ -245,7 +245,7 @@ The checked-in `eas.json` already sets:
 This should represent the beta mobile environment. It is especially important for OTA updates because [.github/workflows/mobile-preview.yml](/Users/developer/programming/food-tracker-app/.github/workflows/mobile-preview.yml) runs:
 
 ```bash
-eas update --channel preview --environment preview
+pnpm exec eas update --channel preview --environment preview
 ```
 
 Recommended `preview` Expo environment variables:
@@ -354,7 +354,7 @@ These are explicit `type: update` workflows and are intended to avoid routing OT
 For App Store/TestFlight production OTA updates, use the GitHub Actions `Mobile Production OTA` workflow. It runs the full mobile validation suite, then publishes with:
 
 ```bash
-eas update --channel production --environment production
+pnpm exec eas update --channel production --environment production
 ```
 
 The local fallback command for authenticated Expo operators is:
@@ -366,8 +366,7 @@ pnpm mobile:update:production
 For internal device testing against production today, use:
 
 ```bash
-cd apps/mobile
-eas build --profile production-preview --platform ios
+pnpm --dir apps/mobile exec eas build --profile production-preview --platform ios
 ```
 
 and, after that build is installed:

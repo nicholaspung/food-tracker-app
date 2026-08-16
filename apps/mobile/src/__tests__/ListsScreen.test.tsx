@@ -353,7 +353,9 @@ describe('ListsScreen', () => {
     );
     mockedUseQueryClient.mockReset();
     mockedUseQueryClient.mockReturnValue({
+      getQueriesData: jest.fn(() => []),
       invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
     } as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);

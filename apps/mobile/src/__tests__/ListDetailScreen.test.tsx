@@ -495,6 +495,20 @@ function findRightAccessoryElementByTestID(root: any, testID: string): any {
 }
 
 describe('ListDetailScreen', () => {
+  beforeAll(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
   const navigation = {
     canGoBack: jest.fn(() => true),
     goBack: jest.fn(),

@@ -89,11 +89,15 @@ jest.mock('../features', () => ({
   generateInviteCodes: jest.fn(),
   getAuthRecord: jest.fn(() => ({ isInitialUser: false })),
   getFeedbackCountSummary: jest.fn(),
+  getMoreFeatureSignalSummary: jest.fn(),
   getProfile: jest.fn(),
   isAddOnboardingCardDismissed: jest.fn((state, cardId) => Boolean(state?.addCards?.[cardId]?.dismissedAt)),
   invalidateInviteCodesQueries: jest.fn(),
   listInviteCodes: jest.fn(),
   lockInviteCode: jest.fn(),
+  moreFeatureSignalQueryKeys: {
+    summary: ['feature', 'moreFeatureSignals'],
+  },
   profileQueryKeys: {
     inviteCodes: jest.fn(() => ['feature', 'profile', 'invites']),
     profile: ['feature', 'profile'],

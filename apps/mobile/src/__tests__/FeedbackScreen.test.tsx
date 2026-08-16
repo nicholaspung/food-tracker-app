@@ -55,6 +55,10 @@ jest.mock('react-native', () => {
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
+  useQueryClient: jest.fn(() => ({
+    getQueriesData: jest.fn(() => []),
+    setQueryData: jest.fn(),
+  })),
 }));
 
 jest.mock('../components/shared', () => ({

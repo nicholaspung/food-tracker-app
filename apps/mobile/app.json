@@ -80,6 +80,7 @@
       "expo-localization",
       "expo-sqlite",
       "expo-notifications",
+      "expo-status-bar",
       "expo-video",
       "posthog-react-native/expo",
       "expo-font"

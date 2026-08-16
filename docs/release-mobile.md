@@ -38,6 +38,14 @@ pnpm mobile:unused-exports
 (cd backend && govulncheck ./...)
 ```
 
+EAS CLI is pinned by the mobile workspace and installed through the repository lockfile. Use the repository scripts below for updates, builds, and submissions; for direct EAS inspection, resolve the same locked binary with:
+
+```sh
+pnpm --dir apps/mobile exec eas --version
+```
+
+Do not substitute a global `eas` installation or `pnpm dlx eas-cli`; local release commands and GitHub Actions are expected to use this workspace binary.
+
 - Confirm staging/beta backend has been deployed and smoke tested.
 - Confirm login, signup, core browse screens, core writes, and offline-sensitive flows work against staging/beta.
 - Confirm the app handles offline/refetch failures with cached data where expected.
@@ -130,7 +138,7 @@ pnpm run mobile:build:ios:production:submit:no-bump
 Use this release-specific summary for version `1.1.2` submissions:
 
 ```text
-Yummy Recs 1.1.2 updates the mobile runtime to Expo SDK 56 / React Native 0.85 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
+Yummy Recs 1.1.2 updates the mobile runtime to Expo SDK 57 / React Native 0.86 and includes user-facing improvements for notifications, Want to Try lists, bills, tasting sessions, onboarding tutorials, offline/local persistence, and photo handling.
 
 Reviewer-visible changes:
 - Visit reminders are one-time local device notifications. Bills, bill payment reminders, and monthly friend activity use remote device notifications where applicable. Settings > Notifications manages saved notification preferences separately from the current device's system notification permission.
@@ -138,7 +146,7 @@ Reviewer-visible changes:
 - Bills now refresh more reliably after notification taps, focus changes, reconnects, and detail navigation.
 - Tasting sessions include improved reminder/deep-link behavior, an exit flow, and clearer delete/trash confirmations.
 - Onboarding/tutorial media has been refreshed and converted to GIF assets.
-- Photo intake and uploads were updated for Expo SDK 56 file-system behavior.
+- Photo intake and uploads were updated for Expo SDK 57 file-system behavior.
 
 Existing review context:
 - Camera is used for QR scanning and food/receipt photo capture.
