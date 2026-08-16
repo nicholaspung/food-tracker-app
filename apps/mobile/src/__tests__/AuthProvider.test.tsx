@@ -17,6 +17,7 @@ const mockQueryClientClear = jest.fn();
 const mockSave = jest.fn();
 const mockWaitUntilReady = jest.fn();
 const mockLoadRolePreviewSettings = jest.fn();
+const mockDeactivateNotificationDeviceForSignOut = jest.fn();
 
 let authChangeListener: (() => void) | null = null;
 const mockAuthStoreState = {
@@ -86,6 +87,12 @@ jest.mock('../providers/queryPersistence', () => ({
 
 jest.mock('../providers/SyncProvider', () => ({
   useSync: jest.fn(),
+}));
+
+jest.mock('../providers/auth/notificationDeviceLifecycle', () => ({
+  notificationDeviceLifecycle: {
+    deactivateForSignOut: (...args: unknown[]) => mockDeactivateNotificationDeviceForSignOut(...args),
+  },
 }));
 
 jest.mock('../lib/logger', () => ({
@@ -159,6 +166,7 @@ describe('AuthProvider', () => {
     mockSave.mockReset();
     mockWaitUntilReady.mockReset();
     mockLoadRolePreviewSettings.mockReset();
+    mockDeactivateNotificationDeviceForSignOut.mockReset();
 
     mockedUseQueryClient.mockReturnValue({
       clear: mockQueryClientClear,
@@ -207,6 +215,7 @@ describe('AuthProvider', () => {
       viewAsNonAdmin: false,
       viewAsNonSubscriber: false,
     });
+    mockDeactivateNotificationDeviceForSignOut.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -385,7 +394,11 @@ describe('AuthProvider', () => {
     expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
     expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
     expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('logout');
+    expect(mockDeactivateNotificationDeviceForSignOut).toHaveBeenCalledWith('user_1');
     expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(mockDeactivateNotificationDeviceForSignOut.mock.invocationCallOrder[0]).toBeLessThan(
+      mockClear.mock.invocationCallOrder[0],
+    );
     expect(mockClear.mock.invocationCallOrder[0]).toBeLessThan(
       mockDiscardQueuedMutations.mock.invocationCallOrder[0],
     );
