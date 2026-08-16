@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.25.11-alpine AS builder
+FROM golang:1.25.13-alpine AS builder
 
 # Install build dependencies including C++ compiler for goheif/libde265
 RUN apk add --no-cache git gcc g++ musl-dev libheif-dev libde265-dev
@@ -16,9 +16,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application and report the toolchain embedded in the binary
 # CGO is required for SQLite
-RUN CGO_ENABLED=1 GOOS=linux go build -o pocketbase .
+RUN go version && \
+    CGO_ENABLED=1 GOOS=linux go build -o pocketbase . && \
+    go version -m /build/pocketbase
 
 # Stage 2: Runtime image
 FROM alpine:latest
