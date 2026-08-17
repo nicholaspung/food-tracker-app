@@ -10,40 +10,19 @@ interface RestaurantListContentInvalidationOptions {
   includeCandidateRestaurants?: boolean;
 }
 
-interface RestaurantListBookmarkStateQueryTarget {
-  bookmarkKey: string;
-  restaurantId: string;
-  foodItemId?: string;
-  menuItemId?: string;
-}
-
 export const restaurantListQueryKeys = {
   root: ['feature', 'restaurantLists'] as const,
   scope: (scope: RestaurantListScope) => ['feature', 'restaurantLists', scope] as const,
   paginatedInfinite: (scope: RestaurantListScope, searchQuery: string) =>
     ['feature', 'restaurantLists', scope, 'paginatedInfinite', searchQuery] as const,
-  defaultList: ['feature', 'restaurantLists', 'my', 'default'] as const,
+  defaultListRoot: ['feature', 'restaurantLists', 'my', 'default'] as const,
+  defaultList: (userId: string) =>
+    ['feature', 'restaurantLists', 'my', 'default', userId.trim()] as const,
   listRoot: ['feature', 'restaurantList'] as const,
   list: (listId: string) => ['feature', 'restaurantList', listId] as const,
   detailRoot: ['feature', 'restaurantListDetail'] as const,
   detail: (listId: string) => ['feature', 'restaurantListDetail', listId] as const,
   detailPages: (listId: string) => ['feature', 'restaurantListDetail', listId, 'pages'] as const,
-  bookmarkStateRoot: ['feature', 'restaurantListBookmarkState'] as const,
-  bookmarkState: (listId: string, bookmarkKeys: string[]) =>
-    [
-      'feature',
-      'restaurantListBookmarkState',
-      listId,
-      normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys),
-    ] as const,
-  bookmarkStateChunk: (listId: string, targets: RestaurantListBookmarkStateQueryTarget[]) =>
-    [
-      'feature',
-      'restaurantListBookmarkState',
-      listId,
-      normalizeRestaurantListBookmarkKeysForQueryKey(targets.map((target) => target.bookmarkKey)),
-      normalizeRestaurantListBookmarkTargetsForQueryKey(targets),
-    ] as const,
   sharedRoot: ['feature', 'sharedRestaurantList'] as const,
   shared: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken] as const,
   sharedPages: (shareToken: string) => ['feature', 'sharedRestaurantList', shareToken, 'pages'] as const,
@@ -74,33 +53,6 @@ export const restaurantListQueryKeys = {
       normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds),
     ] as const,
 };
-
-function normalizeRestaurantListBookmarkKeysForQueryKey(bookmarkKeys: string[]): string {
-  return Array.from(
-    new Set(
-      bookmarkKeys
-        .map((bookmarkKey) => bookmarkKey.trim())
-        .filter((bookmarkKey) => bookmarkKey.length > 0),
-    ),
-  )
-    .sort()
-    .join('|');
-}
-
-function normalizeRestaurantListBookmarkTargetsForQueryKey(
-  targets: RestaurantListBookmarkStateQueryTarget[],
-): string {
-  return Array.from(
-    new Set(targets.map((target) => [
-      target.bookmarkKey.trim(),
-      target.restaurantId.trim(),
-      target.foodItemId?.trim() || '',
-      target.menuItemId?.trim() || '',
-    ].join(':'))),
-  )
-    .sort()
-    .join('|');
-}
 
 export function normalizeRestaurantListFoodItemIdsForQueryKey(foodItemIds: string[]): string {
   return Array.from(
@@ -274,7 +226,7 @@ export function getRestaurantListContentInvalidationKeys(
 function getRestaurantListSaveTargetInvalidationKeys(listId: string): QueryKey[] {
   return [
     restaurantListQueryKeys.detail(listId),
-    restaurantListQueryKeys.defaultList,
+    restaurantListQueryKeys.defaultListRoot,
     restaurantListQueryKeys.scope('my'),
   ];
 }

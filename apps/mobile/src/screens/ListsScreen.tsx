@@ -28,12 +28,11 @@ import {
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
-import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
+import { useWantToTryResolver } from '../features/store/useWantToTryState';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, ListItem, Text } from '../ui';
 
@@ -281,14 +280,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
-  const { isOnline } = useConnectivity();
-  const { createDefaultRestaurantList: createDefaultRestaurantListWrite } = useRestaurantListWrites();
+  const { defaultListQuery } = useWantToTryResolver(user?.id);
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
-  const hasTriedCreatingDefault = useRef(false);
   const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
   const debouncedTrimmedSearchQuery = useDebouncedValue(trimmedSearchQuery, LIST_SEARCH_DEBOUNCE_MS);
@@ -387,89 +382,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     refreshEventPrefix: 'LISTS_REFRESH',
   });
 
-  useEffect(() => {
-    hasTriedCreatingDefault.current = false;
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (
-      !user?.id ||
-      debouncedTrimmedSearchQuery.length > 0 ||
-      hasTriedCreatingDefault.current ||
-      !myListsQuery.data ||
-      myListsQuery.isLoading ||
-      (myListsQuery.isError && !myListsQuery.data)
-    ) {
-      return;
-    }
-
-    if (isCreatingDefaultList) {
-      return;
-    }
-
-    const myLists = myListsBrowseState.items;
-    const hasDefault = myLists.some((list) => list.isDefault);
-    if (hasDefault) {
-      return;
-    }
-
-    hasTriedCreatingDefault.current = true;
-    setIsCreatingDefaultList(true);
-
-    void (async () => {
-      trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_STARTED', {
-        source: 'ListsScreen',
-        isOnline,
-        listCountBeforeCreate: myLists.length,
-        trigger: 'missing_default_list',
-      });
-
-      try {
-        const createResult = await createDefaultRestaurantListWrite();
-
-        if (createResult.status === 'queued') {
-          trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
-            source: 'ListsScreen',
-            listCountBeforeCreate: myLists.length,
-            queued: true,
-            trigger: 'missing_default_list',
-          });
-          return;
-        }
-
-        trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
-          source: 'ListsScreen',
-          listCountBeforeCreate: myLists.length,
-          queued: false,
-          trigger: 'missing_default_list',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not prepare your Want to Try list.';
-        trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_FAILED', {
-          source: 'ListsScreen',
-          errorMessage: message,
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-          isOnline,
-          listCountBeforeCreate: myLists.length,
-          trigger: 'missing_default_list',
-        });
-        setErrorMessage(message);
-      } finally {
-        setIsCreatingDefaultList(false);
-      }
-    })();
-  }, [
-    user?.id,
-    debouncedTrimmedSearchQuery,
-    isCreatingDefaultList,
-    myListsBrowseState.items,
-    myListsQuery.data,
-    myListsQuery.isError,
-    myListsQuery.isLoading,
-    isOnline,
-    createDefaultRestaurantListWrite,
-  ]);
-
   const myLists = myListsBrowseState.items;
   const friendLists = friendsListsBrowseState.items;
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
@@ -503,7 +415,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     [activeTab, friendLists.length, friendsListsBrowseState.totalItems, myLists.length, myListsBrowseState.totalItems],
   );
 
-  const isLoading = activeBrowseState.isLoading || (activeTab === 'my' && isCreatingDefaultList);
+  const isLoading = activeBrowseState.isLoading || (activeTab === 'my' && defaultListQuery.isLoading);
   const hasSearch = trimmedSearchQuery.length > 0;
   const browseState = activeBrowseState;
 
@@ -694,7 +606,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       <PageErrorToast
         analyticsProps={buildBrowseAnalyticsPayload()}
         analyticsSource="ListsScreen"
-        errorMessage={errorMessage}
+        errorMessage={
+          defaultListQuery.error instanceof Error
+            ? defaultListQuery.error.message
+            : defaultListQuery.isError
+              ? 'Could not prepare your Want to Try list.'
+              : null
+        }
         title="List operation failed"
       />
 

@@ -845,8 +845,7 @@ export async function getRestaurantListBookmarkState(
     .filter(
       (target) =>
         target.bookmarkKey.length > 0 &&
-        target.restaurantId.length > 0 &&
-        (target.foodItemId || target.menuItemId),
+        target.restaurantId.length > 0,
     );
 
   if (!trimmedListId || normalizedTargets.length === 0) {

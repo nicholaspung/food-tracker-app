@@ -18,6 +18,7 @@ const (
 	defaultRestaurantListDetailPageSize   = 20
 	maxRestaurantListDetailPageSize       = 50
 	maxRestaurantListBookmarkStateTargets = 100
+	maxRestaurantListBookmarkStateRecords = 2000
 )
 
 var errRestaurantListDetailNotFound = errors.New("restaurant list detail not found")
@@ -2542,7 +2543,14 @@ func buildRestaurantListBookmarkStateResponse(
 		return response, nil
 	}
 
-	records, err := app.FindRecordsByFilter("list_items", filter, "", maxRestaurantListBookmarkStateTargets, 0, params)
+	records, err := app.FindRecordsByFilter(
+		"list_items",
+		filter,
+		"",
+		maxRestaurantListBookmarkStateRecords,
+		0,
+		params,
+	)
 	if err != nil {
 		return response, apis.NewApiError(500, "failed to load bookmark state", err)
 	}
@@ -2582,10 +2590,6 @@ func normalizeRestaurantListBookmarkStateTargets(
 		if normalizedTarget.BookmarkKey == "" || normalizedTarget.RestaurantID == "" {
 			continue
 		}
-		if normalizedTarget.FoodItemID == "" && normalizedTarget.MenuItemID == "" {
-			continue
-		}
-
 		dedupeKey := normalizedTarget.BookmarkKey + "\x00" + normalizedTarget.RestaurantID + "\x00" + normalizedTarget.FoodItemID + "\x00" + normalizedTarget.MenuItemID
 		if _, exists := seen[dedupeKey]; exists {
 			continue
@@ -2607,6 +2611,19 @@ func buildRestaurantListBookmarkStateTargetFilter(
 	seen := map[string]struct{}{}
 
 	for index, target := range normalizeRestaurantListBookmarkStateTargets(targets) {
+		if target.FoodItemID == "" && target.MenuItemID == "" {
+			dedupeKey := "restaurant:" + target.RestaurantID
+			if _, exists := seen[dedupeKey]; exists {
+				continue
+			}
+
+			seen[dedupeKey] = struct{}{}
+			paramKey := fmt.Sprintf("restaurantId%d", index)
+			params[paramKey] = target.RestaurantID
+			clauses = append(clauses, fmt.Sprintf("restaurant = {:%s}", paramKey))
+			continue
+		}
+
 		lookupID := target.FoodItemID
 		if target.MenuItemID != "" {
 			lookupID = target.MenuItemID
@@ -2644,6 +2661,9 @@ func restaurantListBookmarkStateTargetMatchesRecord(
 
 	if target.MenuItemID != "" {
 		return strings.TrimSpace(record.GetString("menuItem")) == target.MenuItemID
+	}
+	if target.FoodItemID == "" {
+		return true
 	}
 
 	for _, lookupID := range restaurantListDetailLookupIDsForRecord(record) {

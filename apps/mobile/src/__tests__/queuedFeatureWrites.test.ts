@@ -55,6 +55,7 @@ describe('queuedFeatureWrites', () => {
       createdAt: 1000,
       idempotencyKey: 'idem_1',
       lastError: null,
+      originAccountId: 'user_1',
     });
   });
 

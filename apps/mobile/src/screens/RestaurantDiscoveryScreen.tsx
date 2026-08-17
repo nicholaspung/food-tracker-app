@@ -41,7 +41,10 @@ import {
 } from '../features';
 import { useFoodDiscoveryMapReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
 import { useRestaurantListWrites } from '../features/store/useRestaurantListWrites';
-import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
+import {
+  createWantToTryRestaurantTarget,
+  useWantToTryMembership,
+} from '../features/store/useWantToTryState';
 import { usageQueryKeys } from '../features/store/usageQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import type { PhotoPickerPermissionSource } from '../hooks/usePhotoPickerPermissions';
@@ -611,8 +614,6 @@ export function RestaurantDiscoveryScreen({
   const [selectedMapGroupId, setSelectedMapGroupId] = useState<string | null>(null);
   const [mapSheetTab, setMapSheetTab] = useState<RestaurantMapSheetTabId>('location');
   const [mapResetSignal, setMapResetSignal] = useState(0);
-  const [locallySavedRestaurantIds, setLocallySavedRestaurantIds] = useState<Set<string>>(() => new Set());
-  const [locallyRemovedRestaurantIds, setLocallyRemovedRestaurantIds] = useState<Set<string>>(() => new Set());
   const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<string | null>(null);
   const [isBookmarkSubmitting, setIsBookmarkSubmitting] = useState(false);
   const [showStorefrontPhotoSources, setShowStorefrontPhotoSources] = useState(false);
@@ -681,7 +682,20 @@ export function RestaurantDiscoveryScreen({
   const showNearbyPlaces = search.showNearbyPlaces;
   const triggerSavedRestaurantsRefetch = savedSuggestions.refetch;
   const isMapSheetOpen = selectedMapGroupId !== null;
-  const { defaultListDetailQuery, defaultListId, defaultListQuery } = useWantToTryListRead();
+  const wantToTryRestaurantTargets = useMemo(
+    () => [...displayedSavedRestaurants, ...displayedNearbyRestaurants]
+      .map(({ restaurant }) => createWantToTryRestaurantTarget(restaurant.id)),
+    [displayedNearbyRestaurants, displayedSavedRestaurants],
+  );
+  const wantToTryMembership = useWantToTryMembership({
+    targets: wantToTryRestaurantTargets,
+    userId: user?.id ?? actualUser?.id,
+  });
+  const {
+    defaultListId,
+    hasBlockingError: hasBlockingWantToTryError,
+    isSaved: isWantToTryTargetSaved,
+  } = wantToTryMembership;
   const storefrontScanIdentityKey = useMemo(() => {
     const userId = user?.id ?? actualUser?.id;
     const trimmedUserId = typeof userId === 'string' ? userId.trim() : '';
@@ -699,16 +713,11 @@ export function RestaurantDiscoveryScreen({
     setLatestStorefrontScanEntry(null);
     setVisibleStorefrontScanCount(STOREFRONT_SCAN_HISTORY_PAGE_SIZE);
   }, [storefrontScanIdentityKey]);
-  const savedRestaurantIds = useMemo(() => {
-    const ids = new Set(locallySavedRestaurantIds);
-    for (const item of defaultListDetailQuery.data?.items ?? []) {
-      ids.add(item.restaurantId);
-    }
-    for (const restaurantId of locallyRemovedRestaurantIds) {
-      ids.delete(restaurantId);
-    }
-    return ids;
-  }, [defaultListDetailQuery.data?.items, locallyRemovedRestaurantIds, locallySavedRestaurantIds]);
+  const isRestaurantSavedToWantToTry = useCallback(
+    (restaurantId: string) =>
+      isWantToTryTargetSaved(createWantToTryRestaurantTarget(restaurantId).bookmarkKey),
+    [isWantToTryTargetSaved],
+  );
 
   const isBusyWithImage = isExtractingStorefront;
   const isStorefrontReadDisabled = !isOnline || isBusyWithImage || isStorefrontQuotaReached;
@@ -783,39 +792,25 @@ export function RestaurantDiscoveryScreen({
   }, [navigation]);
 
   const handleToggleRestaurantWantToTry = useCallback(async (restaurant: RestaurantRecord) => {
-    if (savedRestaurantIds.has(restaurant.id)) {
+    const membershipTarget = createWantToTryRestaurantTarget(restaurant.id);
+    if (isRestaurantSavedToWantToTry(restaurant.id)) {
       if (!defaultListId) {
         return;
       }
 
       setBookmarkErrorMessage(null);
       setIsBookmarkSubmitting(true);
-      setLocallyRemovedRestaurantIds((current) => new Set(current).add(restaurant.id));
-      setLocallySavedRestaurantIds((current) => {
-        const next = new Set(current);
-        next.delete(restaurant.id);
-        return next;
-      });
 
       try {
-        const result = await restaurantListWrites.removeBookmarkFromDefaultList({
+        await restaurantListWrites.removeBookmarkFromDefaultList({
           bookmark: {
             restaurantId: restaurant.id,
           },
           defaultListId,
+          membershipTarget,
           sourceListId: defaultListId,
         });
-
-        if (result.status === 'completed') {
-          void defaultListQuery.refetch();
-          void defaultListDetailQuery.refetch();
-        }
       } catch (error) {
-        setLocallyRemovedRestaurantIds((current) => {
-          const next = new Set(current);
-          next.delete(restaurant.id);
-          return next;
-        });
         setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not remove bookmark.');
       } finally {
         setIsBookmarkSubmitting(false);
@@ -825,15 +820,11 @@ export function RestaurantDiscoveryScreen({
 
     setBookmarkErrorMessage(null);
     setIsBookmarkSubmitting(true);
-    setLocallySavedRestaurantIds((current) => new Set(current).add(restaurant.id));
-    setLocallyRemovedRestaurantIds((current) => {
-      const next = new Set(current);
-      next.delete(restaurant.id);
-      return next;
-    });
 
     try {
       const result = await restaurantListWrites.saveRestaurantToDefaultList({
+        defaultListId,
+        membershipTarget,
         restaurant: {
           restaurantId: restaurant.id,
         },
@@ -850,34 +841,20 @@ export function RestaurantDiscoveryScreen({
         sourceListId: defaultListId ?? 'default',
       });
 
-      if (result.status === 'completed') {
-        void defaultListQuery.refetch();
-        if (defaultListId) {
-          void defaultListDetailQuery.refetch();
-        }
-      }
-
       trackObservabilityEvent('FOOD_DISCOVERY_RESTAURANT_BOOKMARK_SAVED', {
         isGooglePlace: restaurant.isGooglePlace === true,
         status: result.status,
         source: 'RestaurantDiscoveryScreen',
       });
     } catch (error) {
-      setLocallySavedRestaurantIds((current) => {
-        const next = new Set(current);
-        next.delete(restaurant.id);
-        return next;
-      });
       setBookmarkErrorMessage(error instanceof Error ? error.message : 'Could not save bookmark.');
     } finally {
       setIsBookmarkSubmitting(false);
     }
   }, [
-    defaultListDetailQuery,
     defaultListId,
-    defaultListQuery,
+    isRestaurantSavedToWantToTry,
     restaurantListWrites,
-    savedRestaurantIds,
   ]);
 
   const handleSearchViewModeChange = useCallback((nextViewMode: DiscoverySearchViewMode) => {
@@ -959,15 +936,16 @@ export function RestaurantDiscoveryScreen({
             <VisitRestaurantOptionTrailing restaurant={restaurant} selected={false} />
             <WantToTryBookmarkButton
               accessibilityLabel={
-                savedRestaurantIds.has(restaurant.id)
+                isRestaurantSavedToWantToTry(restaurant.id)
                   ? `Remove ${restaurant.name} from Want to Try`
                   : `Save ${restaurant.name} to Want to Try`
               }
+              disabled={hasBlockingWantToTryError}
               loading={isBookmarkSubmitting}
               onPress={() => {
                 void handleToggleRestaurantWantToTry(restaurant);
               }}
-              saved={savedRestaurantIds.has(restaurant.id)}
+              saved={isRestaurantSavedToWantToTry(restaurant.id)}
               testID={`restaurant-discovery-${source}-restaurant-bookmark-${index}`}
               variant="inline"
             />
@@ -978,8 +956,9 @@ export function RestaurantDiscoveryScreen({
     [
       handleToggleRestaurantWantToTry,
       handleSelectRestaurant,
+      hasBlockingWantToTryError,
       isBookmarkSubmitting,
-      savedRestaurantIds,
+      isRestaurantSavedToWantToTry,
       styles.row,
     ],
   );
@@ -1935,7 +1914,7 @@ export function RestaurantDiscoveryScreen({
             }
           />
           <PageErrorToast
-            errorMessage={bookmarkErrorMessage}
+            errorMessage={bookmarkErrorMessage ?? wantToTryMembership.errorMessage}
             title="Could not save bookmark"
           />
         </View>
@@ -2070,7 +2049,7 @@ export function RestaurantDiscoveryScreen({
                 }
               />
               <PageErrorToast
-                errorMessage={bookmarkErrorMessage}
+                errorMessage={bookmarkErrorMessage ?? wantToTryMembership.errorMessage}
                 title="Could not save bookmark"
               />
             </>

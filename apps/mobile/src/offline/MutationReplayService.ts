@@ -204,6 +204,7 @@ export class MutationReplayService {
     const replayAbortController = new AbortController();
     let replayError: unknown = null;
     let lastSuccessfulReplayAt: number | null = null;
+    const successfulMutationsThisReplay: QueuedMutation[] = [];
 
     this.activeReplayAbortController = replayAbortController;
     this.activeReplayQueueDepthEstimate = this.snapshot.queueDepth;
@@ -267,6 +268,7 @@ export class MutationReplayService {
             await this.queueStore.remove(nextMutation.id);
             lastSuccessfulReplayAt = resolvedAt;
             successfulMutationsSinceRefresh += 1;
+            successfulMutationsThisReplay.push(nextMutation);
             if (this.activeReplayQueueDepthEstimate !== null) {
               this.activeReplayQueueDepthEstimate = Math.max(
                 0,
@@ -316,6 +318,9 @@ export class MutationReplayService {
           await this.refreshSnapshot({
             isSyncing: true,
             ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
+            ...(successfulMutationsThisReplay.length > 0
+              ? { lastReplayedMutations: [...successfulMutationsThisReplay] }
+              : {}),
             lastTrigger: trigger,
           });
           successfulMutationsSinceRefresh = 0;
@@ -353,6 +358,7 @@ export class MutationReplayService {
           await this.refreshSnapshot({
             isSyncing: true,
             ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
+            lastReplayedMutations: [...successfulMutationsThisReplay],
             lastTrigger: trigger,
           });
         }

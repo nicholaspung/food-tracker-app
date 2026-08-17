@@ -37,6 +37,13 @@ import {
 } from './restaurantListQuery';
 import type { OfflineAwareFeatureWriteResult } from './useOfflineAwareFeatureWrite';
 import { useFeatureWriteSubmit } from './useFeatureWriteSubmit';
+import {
+  cacheResolvedWantToTryList,
+  invalidateWantToTryMembershipTarget,
+  projectWantToTryMembership,
+  type WantToTryTargetInput,
+  wantToTryQueryKeys,
+} from './useWantToTryState';
 
 interface DeleteRestaurantListWriteInput {
   listId: string;
@@ -60,6 +67,7 @@ interface RemoveRestaurantListUserRatingWriteInput {
 
 interface SaveBookmarkToListsWriteInput {
   listIds: string[];
+  membershipTarget?: WantToTryTargetInput;
   sourceListId: string;
   bookmark: Omit<SaveRestaurantFoodItemToListInput, 'listId'>;
   optimisticDefaultListBookmark?: OptimisticDefaultListBookmark;
@@ -67,12 +75,15 @@ interface SaveBookmarkToListsWriteInput {
 
 interface SaveBookmarkToDefaultListWriteInput {
   defaultListId?: string;
+  membershipTarget?: WantToTryTargetInput;
   sourceListId: string;
   bookmark: Omit<SaveRestaurantFoodItemToListInput, 'listId'>;
   optimisticDefaultListBookmark?: OptimisticDefaultListBookmark;
 }
 
 interface SaveRestaurantToDefaultListWriteInput {
+  defaultListId?: string;
+  membershipTarget?: WantToTryTargetInput;
   sourceListId: string;
   restaurant: SaveRestaurantToDefaultListInput;
   optimisticRestaurant?: OptimisticRestaurantBookmark;
@@ -80,6 +91,7 @@ interface SaveRestaurantToDefaultListWriteInput {
 
 interface RemoveBookmarkFromDefaultListWriteInput {
   defaultListId: string;
+  membershipTarget?: WantToTryTargetInput;
   sourceListId: string;
   bookmark: Omit<RemoveRestaurantFoodItemBookmarkFromListInput, 'listId'>;
 }
@@ -307,6 +319,40 @@ async function syncRestaurantListSaveTargetCaches(
   ]);
 }
 
+function projectWantToTryMembershipTarget(
+  queryClient: QueryClient,
+  input: {
+    listId: string;
+    saved: boolean;
+    target?: WantToTryTargetInput;
+  },
+): void {
+  if (!input.target) {
+    return;
+  }
+
+  projectWantToTryMembership(queryClient, {
+    listId: input.listId,
+    saved: input.saved,
+    target: input.target,
+  });
+}
+
+async function syncWantToTryMembershipTarget(
+  queryClient: QueryClient,
+  input: {
+    listId: string;
+    saved: boolean;
+    target?: WantToTryTargetInput;
+  },
+): Promise<void> {
+  projectWantToTryMembershipTarget(queryClient, input);
+  if (!input.target) {
+    return;
+  }
+  await invalidateWantToTryMembershipTarget(queryClient, input.listId, input.target);
+}
+
 export function useRestaurantListWrites() {
   const queryClient = useQueryClient();
   const { submitFeatureWrite } = useFeatureWriteSubmit();
@@ -364,6 +410,7 @@ export function useRestaurantListWrites() {
         },
         execute: createDefaultRestaurantList,
         fallbackErrorMessage: 'Could not create Want to Try list.',
+        onSuccess: (createdList) => cacheResolvedWantToTryList(queryClient, createdList),
         onSettledInvalidate: () => invalidateRestaurantListCollectionQueries(queryClient, 'my'),
         queuedToast: 'Want to Try list',
       }),
@@ -450,6 +497,7 @@ export function useRestaurantListWrites() {
     async ({
       bookmark,
       listIds,
+      membershipTarget,
       optimisticDefaultListBookmark,
       sourceListId,
     }: SaveBookmarkToListsWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[][]>> => {
@@ -480,6 +528,25 @@ export function useRestaurantListWrites() {
       }
 
       await syncRestaurantListSaveTargetCaches(queryClient, sourceListId, listIds);
+      if (queued) {
+        listIds.forEach((listId) =>
+          projectWantToTryMembershipTarget(queryClient, {
+            listId,
+            saved: true,
+            target: membershipTarget,
+          }),
+        );
+      } else {
+        await Promise.all(
+          listIds.map((listId) =>
+            syncWantToTryMembershipTarget(queryClient, {
+              listId,
+              saved: true,
+              target: membershipTarget,
+            }),
+          ),
+        );
+      }
 
       if (queued) {
         patchQueuedDefaultListBookmark(
@@ -502,6 +569,7 @@ export function useRestaurantListWrites() {
     async ({
       bookmark,
       defaultListId,
+      membershipTarget,
       optimisticDefaultListBookmark,
       sourceListId,
     }: SaveBookmarkToDefaultListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[][]>> => {
@@ -509,6 +577,7 @@ export function useRestaurantListWrites() {
         return saveBookmarkToListsWrite({
           bookmark,
           listIds: [defaultListId],
+          membershipTarget,
           optimisticDefaultListBookmark,
           sourceListId,
         });
@@ -534,12 +603,31 @@ export function useRestaurantListWrites() {
           return [savedItems];
         },
         fallbackErrorMessage: 'Could not save bookmark to Want to Try.',
-        onQueued: () => patchQueuedDefaultListBookmark(queryClient, defaultListId, optimisticDefaultListBookmark),
-        onSuccess: (savedItemsByList) => {
+        onQueued: () => {
+          patchQueuedDefaultListBookmark(queryClient, defaultListId, optimisticDefaultListBookmark);
+          if (defaultListId) {
+            projectWantToTryMembershipTarget(queryClient, {
+              listId: defaultListId,
+              saved: true,
+              target: membershipTarget,
+            });
+          }
+        },
+        onSuccess: async (savedItemsByList) => {
           const savedListIds = savedItemsByList
             .flatMap((savedItems) => savedItems.map((savedItem) => savedItem.listId))
             .filter((savedListId) => savedListId.length > 0);
-          return syncRestaurantListTargetContentCaches(queryClient, savedListIds);
+          await Promise.all([
+            syncRestaurantListTargetContentCaches(queryClient, savedListIds),
+            ...savedListIds.map((listId) =>
+              syncWantToTryMembershipTarget(queryClient, {
+                listId,
+                saved: true,
+                target: membershipTarget,
+              }),
+            ),
+          ]);
+          await queryClient.invalidateQueries({ queryKey: wantToTryQueryKeys.resolverRoot });
         },
         onSettledInvalidate: () => syncRestaurantListSaveTargetCaches(queryClient, sourceListId),
         queuedToast: 'Want to Try bookmark',
@@ -551,6 +639,8 @@ export function useRestaurantListWrites() {
   const saveRestaurantToDefaultListWrite = useCallback(
     async ({
       restaurant,
+      defaultListId,
+      membershipTarget,
       optimisticRestaurant,
       sourceListId,
     }: SaveRestaurantToDefaultListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[]>> => {
@@ -562,20 +652,38 @@ export function useRestaurantListWrites() {
         },
         execute: saveRestaurantToDefaultList.bind(null, restaurant),
         fallbackErrorMessage: 'Could not save restaurant to Want to Try.',
-        onQueued: () =>
+        onQueued: () => {
           patchQueuedDefaultListBookmark(
             queryClient,
-            sourceListId === 'default' ? undefined : sourceListId,
+            defaultListId,
             optimisticRestaurant
               ? {
                   restaurant: optimisticRestaurant,
                   type: 'restaurant',
                 }
               : undefined,
-          ),
-        onSuccess: (savedItems) => {
+          );
+          if (defaultListId) {
+            projectWantToTryMembershipTarget(queryClient, {
+              listId: defaultListId,
+              saved: true,
+              target: membershipTarget,
+            });
+          }
+        },
+        onSuccess: async (savedItems) => {
           const savedListIds = savedItems.map((savedItem) => savedItem.listId).filter((listId) => listId.length > 0);
-          return syncRestaurantListTargetContentCaches(queryClient, savedListIds);
+          await Promise.all([
+            syncRestaurantListTargetContentCaches(queryClient, savedListIds),
+            ...savedListIds.map((listId) =>
+              syncWantToTryMembershipTarget(queryClient, {
+                listId,
+                saved: true,
+                target: membershipTarget,
+              }),
+            ),
+          ]);
+          await queryClient.invalidateQueries({ queryKey: wantToTryQueryKeys.resolverRoot });
         },
         onSettledInvalidate: () => syncRestaurantListSaveTargetCaches(queryClient, sourceListId),
         queuedToast: 'Want to Try restaurant',
@@ -588,6 +696,7 @@ export function useRestaurantListWrites() {
     async ({
       bookmark,
       defaultListId,
+      membershipTarget,
       sourceListId,
     }: RemoveBookmarkFromDefaultListWriteInput): Promise<OfflineAwareFeatureWriteResult<RestaurantListItemRecord[]>> => {
       const input: RemoveRestaurantFoodItemBookmarkFromListInput = {
@@ -602,6 +711,18 @@ export function useRestaurantListWrites() {
         },
         execute: removeRestaurantFoodItemBookmarkFromList.bind(null, input),
         fallbackErrorMessage: 'Could not remove bookmark.',
+        onQueued: () =>
+          projectWantToTryMembershipTarget(queryClient, {
+            listId: defaultListId,
+            saved: false,
+            target: membershipTarget,
+          }),
+        onSuccess: () =>
+          syncWantToTryMembershipTarget(queryClient, {
+            listId: defaultListId,
+            saved: false,
+            target: membershipTarget,
+          }),
         onSettledInvalidate: async () => {
           await syncRestaurantListMembershipCaches(queryClient, defaultListId);
           await syncRestaurantListSaveTargetCaches(queryClient, sourceListId);

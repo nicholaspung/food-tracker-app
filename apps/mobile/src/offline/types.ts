@@ -87,5 +87,6 @@ export interface SyncSnapshot {
   nextRetryAt: number | null;
   lastError: string | null;
   lastSyncedAt: number | null;
+  lastReplayedMutations?: readonly QueuedMutation[];
   lastTrigger: ReplayTrigger | null;
 }

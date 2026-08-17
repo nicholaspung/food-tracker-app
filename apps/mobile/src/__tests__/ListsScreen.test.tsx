@@ -5,6 +5,7 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { useAuth } from '../providers/AuthProvider';
+import { useWantToTryResolver } from '../features/store/useWantToTryState';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { ListsScreen } from '../screens/ListsScreen';
 
@@ -61,6 +62,10 @@ jest.mock('react-native', () => {
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
   useQueryClient: jest.fn(),
+}));
+
+jest.mock('../features/store/useWantToTryState', () => ({
+  useWantToTryResolver: jest.fn(),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -262,6 +267,9 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
   typeof useOfflineAwareFeatureWrite
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseWantToTryResolver = useWantToTryResolver as jest.MockedFunction<
+  typeof useWantToTryResolver
+>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
 function buildQueryResult(overrides: Record<string, unknown> = {}, items: Record<string, unknown>[] = []) {
@@ -355,6 +363,15 @@ describe('ListsScreen', () => {
       getQueriesData: jest.fn(() => []),
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
+    } as never);
+    mockedUseWantToTryResolver.mockReturnValue({
+      defaultList: { id: 'default-list', userId: 'user-1' },
+      defaultListId: 'default-list',
+      defaultListQuery: {
+        error: null,
+        isError: false,
+        isLoading: false,
+      },
     } as never);
     mockedUseOfflineAwareFeatureWrite.mockReset();
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as never);
@@ -519,23 +536,23 @@ describe('ListsScreen', () => {
     expect(renderer.root.findByProps({ testID: 'lists-search-input' }).props.value).toBe('');
   });
 
-  it('surfaces default Want to Try list auto-create failures', async () => {
-    const createDefaultList = jest.fn().mockRejectedValue(new Error('Could not create Want to Try'));
-    mockedUseOfflineAwareFeatureWrite.mockReturnValue(createDefaultList as never);
-    mockedUseAuth.mockReturnValue({
-      user: { id: 'user-1' },
+  it('surfaces Want to Try resolver failures', async () => {
+    mockedUseWantToTryResolver.mockReturnValue({
+      defaultList: null,
+      defaultListId: undefined,
+      defaultListQuery: {
+        error: new Error('Could not create Want to Try'),
+        isError: true,
+        isLoading: false,
+      },
     } as never);
 
     let renderer: any = null;
     await act(async () => {
       renderer = renderListsScreen();
-      await Promise.resolve();
     });
 
     const toastMessages = renderer.root.findAllByType('PageErrorToast').map((toast: any) => toast.props.errorMessage);
-    expect(createDefaultList).toHaveBeenCalledWith(expect.objectContaining({
-      operationName: 'list.default.create',
-    }));
     expect(toastMessages).toContain('Could not create Want to Try');
   });
 

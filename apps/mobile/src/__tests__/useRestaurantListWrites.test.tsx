@@ -53,6 +53,10 @@ jest.mock('../features/store/restaurantListQuery', () => ({
   invalidateRestaurantListMetadataQueries: jest.fn(),
   invalidateRestaurantListSaveTargetQueries: jest.fn(),
   removeRestaurantListQueries: jest.fn(),
+  restaurantListQueryKeys: {
+    defaultListRoot: ['feature', 'restaurantLists', 'my', 'default'],
+    defaultList: (userId: string) => ['feature', 'restaurantLists', 'my', 'default', userId],
+  },
   upsertRestaurantListInCollectionCaches: jest.fn(),
 }));
 

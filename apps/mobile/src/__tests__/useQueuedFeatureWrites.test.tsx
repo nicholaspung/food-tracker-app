@@ -2,8 +2,14 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 import { useSync } from '../providers/SyncProvider';
+import type { QueuedMutation } from '../offline';
 import { parseQueuedFeatureWrites } from '../features/store/queuedFeatureWrites';
-import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
+import {
+  refreshQueuedFeatureWriteSnapshot,
+  useQueuedFeatureWrites,
+} from '../features/store/useQueuedFeatureWrites';
+
+jest.unmock('../features/store/useQueuedFeatureWrites');
 
 jest.mock('../providers/SyncProvider', () => ({
   useSync: jest.fn(),
@@ -38,9 +44,16 @@ describe('useQueuedFeatureWrites', () => {
   let latestHook: ReturnType<typeof useQueuedFeatureWrites<'note.create'>> | null = null;
   let renderer: ReactTestRenderer | null = null;
 
-  function Harness({ enabled }: { enabled?: boolean }) {
-    latestHook = useQueuedFeatureWrites<'note.create'>(['note.create'], 100, { enabled });
+  function Harness({
+    enabled,
+    limit = 100,
+  }: {
+    enabled?: boolean;
+    limit?: number | 'all';
+  }) {
+    latestHook = useQueuedFeatureWrites<'note.create'>(['note.create'], limit, { enabled });
     return React.createElement('HookState', {
+      replayedWriteIds: latestHook.lastReplayedWrites?.map((write) => write.id) ?? [],
       queuedWrites: latestHook.queuedWrites.length,
     });
   }
@@ -87,7 +100,7 @@ describe('useQueuedFeatureWrites', () => {
     expect(getQueuedMutations).not.toHaveBeenCalled();
   });
 
-  it('renders enabled without requiring a query client or projecting browse caches', async () => {
+  it('loads queued writes without requiring a query client or projecting browse caches', async () => {
     expect(parseQueuedFeatureWrites([queuedNoteMutation])).toHaveLength(1);
     getQueuedMutations.mockResolvedValue([queuedNoteMutation]);
 
@@ -95,6 +108,89 @@ describe('useQueuedFeatureWrites', () => {
       renderer = create(React.createElement(EnabledHarness));
     });
 
-    expect(latestHook?.queuedWrites).toEqual([]);
+    expect(latestHook?.queuedWrites.map((write) => write.id)).toEqual(['queue-1']);
   });
+
+  it('keeps the newest full-depth queue snapshot across out-of-order reads and read failures', async () => {
+    let resolveFirstRead: ((value: QueuedMutation[]) => void) | undefined;
+    let resolveSecondRead: ((value: QueuedMutation[]) => void) | undefined;
+    const firstRead = new Promise<QueuedMutation[]>((resolve) => {
+      resolveFirstRead = resolve;
+    });
+    const secondRead = new Promise<QueuedMutation[]>((resolve) => {
+      resolveSecondRead = resolve;
+    });
+    const secondQueuedNoteMutation = {
+      ...queuedNoteMutation,
+      id: 'queue-2',
+      idempotencyKey: 'idem-2',
+    } as const;
+    const readQueuedMutations = jest.fn()
+      .mockReturnValueOnce(firstRead)
+      .mockReturnValueOnce(secondRead)
+      .mockRejectedValueOnce(new Error('Queue read failed'));
+    const generationRef = { current: 0 };
+    let latestWrites: ReturnType<typeof parseQueuedFeatureWrites> = [];
+    const refresh = (readLimit: number) => refreshQueuedFeatureWriteSnapshot({
+      applyLatest: (writes) => {
+        latestWrites = writes;
+      },
+      generationRef,
+      onError: jest.fn(),
+      readLimit,
+      readQueuedMutations,
+    });
+
+    const firstRefresh = refresh(1);
+    const secondRefresh = refresh(2);
+    expect(readQueuedMutations).toHaveBeenNthCalledWith(1, 1);
+    expect(readQueuedMutations).toHaveBeenNthCalledWith(2, 2);
+
+    resolveSecondRead?.([secondQueuedNoteMutation, queuedNoteMutation]);
+    await secondRefresh;
+    expect(latestWrites.map((write) => write.id)).toEqual(['queue-2', 'queue-1']);
+
+    resolveFirstRead?.([queuedNoteMutation]);
+    await firstRefresh;
+    expect(latestWrites.map((write) => write.id)).toEqual(['queue-2', 'queue-1']);
+
+    await refresh(2);
+    expect(latestWrites.map((write) => write.id)).toEqual(['queue-2', 'queue-1']);
+  });
+
+  it('observes every immutable replay batch through the real hook', async () => {
+    getQueuedMutations.mockResolvedValue([]);
+    let replayRenderer: any = null;
+    let lastReplayedMutations: QueuedMutation[] = Array.from({ length: 10 }, (_value, index) => ({
+      ...queuedNoteMutation,
+      id: `queue-${index + 1}`,
+      idempotencyKey: `idem-${index + 1}`,
+    }));
+    mockedUseSync.mockImplementation(() => ({
+      failedCount: 0,
+      getQueuedMutations,
+      isSyncing: false,
+      lastReplayedMutations,
+      queueDepth: 0,
+    } as unknown as ReturnType<typeof useSync>));
+
+    await act(async () => {
+      replayRenderer = create(React.createElement(Harness, { enabled: true }));
+      await Promise.resolve();
+    });
+    expect(replayRenderer.root.findByType('HookState').props.replayedWriteIds).toHaveLength(10);
+
+    lastReplayedMutations = Array.from({ length: 20 }, (_value, index) => ({
+      ...queuedNoteMutation,
+      id: `queue-${index + 1}`,
+      idempotencyKey: `idem-${index + 1}`,
+    }));
+    await act(async () => {
+      replayRenderer.update(React.createElement(Harness, { enabled: true }));
+      await Promise.resolve();
+    });
+    expect(replayRenderer.root.findByType('HookState').props.replayedWriteIds).toHaveLength(20);
+    renderer = replayRenderer;
+  });
+
 });

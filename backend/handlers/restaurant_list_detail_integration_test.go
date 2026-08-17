@@ -14,6 +14,69 @@ import (
 	"myapp/hooks"
 )
 
+func TestRestaurantListBookmarkStateEndpointMatchesRestaurantOnlyTargets(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+
+	user, token := createAuthUser(t, server.app, false, false)
+	savedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Saved Restaurant",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	unsavedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Unsaved Restaurant",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+	})
+	defaultList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       user.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       defaultList.Id,
+		"restaurant": savedRestaurant.Id,
+		"addedBy":    user.Id,
+		"position":   1,
+	})
+
+	body := fmt.Sprintf(`{"targets":[{"bookmarkKey":"restaurant:%s","restaurantId":"%s"},{"bookmarkKey":"restaurant:%s","restaurantId":"%s"}]}`,
+		savedRestaurant.Id,
+		savedRestaurant.Id,
+		unsavedRestaurant.Id,
+		unsavedRestaurant.Id,
+	)
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurant-lists/"+defaultList.Id+"/bookmark-state",
+		token,
+		body,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bookmark state response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		SavedTargetsByBookmarkKey map[string]struct {
+			RestaurantID string `json:"restaurantId"`
+		} `json:"savedTargetsByBookmarkKey"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode bookmark state response: %v", err)
+	}
+	if got := payload.SavedTargetsByBookmarkKey["restaurant:"+savedRestaurant.Id].RestaurantID; got != savedRestaurant.Id {
+		t.Fatalf("expected saved restaurant target %q, got %q", savedRestaurant.Id, got)
+	}
+	if _, exists := payload.SavedTargetsByBookmarkKey["restaurant:"+unsavedRestaurant.Id]; exists {
+		t.Fatalf("unexpected unsaved restaurant target in response: %#v", payload.SavedTargetsByBookmarkKey)
+	}
+}
+
 func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerLists(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureSummaryHandlers(se, app)

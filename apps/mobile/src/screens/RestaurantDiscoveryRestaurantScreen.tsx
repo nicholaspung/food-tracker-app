@@ -17,11 +17,15 @@ import {
 import { type AllLocationsHistoryRecord } from "../features";
 import { useFoodDiscoveryRestaurantDetailReadModel } from "../features/store/useFoodDiscoveryMapReadModel";
 import { useRestaurantListWrites } from "../features/store/useRestaurantListWrites";
-import { useWantToTryListRead } from "../features/store/useWantToTryListRead";
+import {
+  createWantToTryMenuItemTarget,
+  useWantToTryMembership,
+} from "../features/store/useWantToTryState";
 import type { MenuItemRecord } from "../features/store/featureStore";
 import { buildVisitRestaurantDescription } from "../lib/visitRestaurantSearch";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useConnectivity } from "../providers/ConnectivityProvider";
+import { useAuth } from "../providers/AuthProvider";
 import { createThemedStyles, useTheme } from "../theme";
 import { Button, Card, ListItem, Text } from "../ui";
 
@@ -138,6 +142,7 @@ export function RestaurantDiscoveryRestaurantScreen({
 }: RestaurantDiscoveryRestaurantScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const restaurantListWrites = useRestaurantListWrites();
   const restaurant = useMemo(
@@ -146,12 +151,6 @@ export function RestaurantDiscoveryRestaurantScreen({
   );
   const [detailScope, setDetailScope] =
     useState<RestaurantDetailScope>("location");
-  const [locallySavedMenuItemIds, setLocallySavedMenuItemIds] = useState<
-    Set<string>
-  >(() => new Set());
-  const [locallyRemovedMenuItemIds, setLocallyRemovedMenuItemIds] = useState<
-    Set<string>
-  >(() => new Set());
   const [bookmarkErrorMessage, setBookmarkErrorMessage] = useState<
     string | null
   >(null);
@@ -180,33 +179,21 @@ export function RestaurantDiscoveryRestaurantScreen({
     isOnline,
     restaurant,
   });
-  const { defaultListDetailQuery, defaultListId, defaultListQuery } =
-    useWantToTryListRead();
-  const savedMenuItemIds = useMemo(() => {
-    const ids = new Set(locallySavedMenuItemIds);
-    for (const item of defaultListDetailQuery.data?.items ?? []) {
-      if (item.restaurantId !== restaurant.id) {
-        continue;
-      }
-      for (const bookmarkedItem of item.bookmarkedItems) {
-        if (bookmarkedItem.menuItemId) {
-          ids.add(bookmarkedItem.menuItemId);
-        }
-        if (bookmarkedItem.userFoodItemId) {
-          ids.add(bookmarkedItem.userFoodItemId);
-        }
-      }
-    }
-    for (const menuItemId of locallyRemovedMenuItemIds) {
-      ids.delete(menuItemId);
-    }
-    return ids;
-  }, [
-    defaultListDetailQuery.data?.items,
-    locallyRemovedMenuItemIds,
-    locallySavedMenuItemIds,
-    restaurant.id,
-  ]);
+  const wantToTryMenuItemTargets = useMemo(
+    () => restaurantDetail.menuItems.map((item) =>
+      createWantToTryMenuItemTarget(restaurant.id, item.id),
+    ),
+    [restaurant.id, restaurantDetail.menuItems],
+  );
+  const wantToTryMembership = useWantToTryMembership({
+    targets: wantToTryMenuItemTargets,
+    userId: user?.id,
+  });
+  const { defaultListId } = wantToTryMembership;
+  const isMenuItemSavedToWantToTry = (menuItemId: string) =>
+    wantToTryMembership.isSaved(
+      createWantToTryMenuItemTarget(restaurant.id, menuItemId).bookmarkKey,
+    );
 
   const allLocationsHistory = restaurantDetail.allLocationsHistory;
   const relatedMenuSuggestions = restaurantDetail.relatedMenuSuggestions;
@@ -223,44 +210,28 @@ export function RestaurantDiscoveryRestaurantScreen({
       relatedMenuSuggestions.length > 0);
 
   async function handleToggleMenuItemWantToTry(menuItem: MenuItemRecord) {
-    if (savedMenuItemIds.has(menuItem.id)) {
+    const membershipTarget = createWantToTryMenuItemTarget(restaurant.id, menuItem.id);
+    if (isMenuItemSavedToWantToTry(menuItem.id)) {
       if (!defaultListId) {
         return;
       }
 
       setBookmarkErrorMessage(null);
       setIsBookmarkSubmitting(true);
-      setLocallyRemovedMenuItemIds((current) =>
-        new Set(current).add(menuItem.id),
-      );
-      setLocallySavedMenuItemIds((current) => {
-        const next = new Set(current);
-        next.delete(menuItem.id);
-        return next;
-      });
 
       try {
-        const result = await restaurantListWrites.removeBookmarkFromDefaultList(
+        await restaurantListWrites.removeBookmarkFromDefaultList(
           {
             bookmark: {
               restaurantId: restaurant.id,
               menuItemId: menuItem.id,
             },
             defaultListId,
+            membershipTarget,
             sourceListId: defaultListId,
           },
         );
-
-        if (result.status === "completed") {
-          void defaultListQuery.refetch();
-          void defaultListDetailQuery.refetch();
-        }
       } catch (error) {
-        setLocallyRemovedMenuItemIds((current) => {
-          const next = new Set(current);
-          next.delete(menuItem.id);
-          return next;
-        });
         setBookmarkErrorMessage(
           error instanceof Error ? error.message : "Could not remove bookmark.",
         );
@@ -272,20 +243,15 @@ export function RestaurantDiscoveryRestaurantScreen({
 
     setBookmarkErrorMessage(null);
     setIsBookmarkSubmitting(true);
-    setLocallySavedMenuItemIds((current) => new Set(current).add(menuItem.id));
-    setLocallyRemovedMenuItemIds((current) => {
-      const next = new Set(current);
-      next.delete(menuItem.id);
-      return next;
-    });
 
     try {
-      const result = await restaurantListWrites.saveBookmarkToDefaultList({
+      await restaurantListWrites.saveBookmarkToDefaultList({
         bookmark: {
           restaurantId: restaurant.id,
           menuItemId: menuItem.id,
         },
         defaultListId,
+        membershipTarget,
         optimisticDefaultListBookmark: {
           menuItem: {
             id: menuItem.id,
@@ -306,18 +272,7 @@ export function RestaurantDiscoveryRestaurantScreen({
         sourceListId: defaultListId ?? "default",
       });
 
-      if (result.status === "completed") {
-        void defaultListQuery.refetch();
-        if (defaultListId) {
-          void defaultListDetailQuery.refetch();
-        }
-      }
     } catch (error) {
-      setLocallySavedMenuItemIds((current) => {
-        const next = new Set(current);
-        next.delete(menuItem.id);
-        return next;
-      });
       setBookmarkErrorMessage(
         error instanceof Error ? error.message : "Could not save bookmark.",
       );
@@ -480,7 +435,7 @@ export function RestaurantDiscoveryRestaurantScreen({
                 if (!item) {
                   return null;
                 }
-                const isSaved = savedMenuItemIds.has(item.id);
+                const isSaved = isMenuItemSavedToWantToTry(item.id);
                 const orderedHistoryLabel = row.meta.find(
                   (meta) => meta.label,
                 )?.label;
@@ -521,6 +476,7 @@ export function RestaurantDiscoveryRestaurantScreen({
                               ? `Remove ${row.name} from Want to Try`
                               : `Save ${row.name} to Want to Try`
                           }
+                          disabled={wantToTryMembership.hasBlockingError}
                           loading={isBookmarkSubmitting}
                           onPress={() => {
                             void handleToggleMenuItemWantToTry(item);
@@ -556,7 +512,7 @@ export function RestaurantDiscoveryRestaurantScreen({
             />
           )}
           <PageErrorToast
-            errorMessage={bookmarkErrorMessage}
+            errorMessage={bookmarkErrorMessage ?? wantToTryMembership.errorMessage}
             title="Could not save bookmark"
           />
         </Card>

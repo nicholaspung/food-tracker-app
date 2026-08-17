@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 
 import { RestaurantDiscoveryRestaurantScreen } from "../screens/RestaurantDiscoveryRestaurantScreen";
 import { menuItemsQueryKeys } from "../features/store/menuItemsQuery";
+import { useWantToTryMembership } from "../features/store/useWantToTryState";
 
 const mockReact = React;
 const mockNavigate = jest.fn();
@@ -27,6 +28,23 @@ jest.mock("@tanstack/react-query", () => ({
   useInfiniteQuery: jest.fn(),
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
+}));
+
+jest.mock("../features/store/useOfflineAwareFeatureWrite", () => ({
+  useOfflineAwareFeatureWrite: jest.fn(() => jest.fn()),
+}));
+
+jest.mock("../features/store/useQueuedFeatureWrites", () => ({
+  useQueuedFeatureWrites: jest.fn(() => ({ queuedWrites: [], refreshQueuedWrites: jest.fn() })),
+}));
+
+jest.mock("../features/store/useWantToTryState", () => ({
+  ...jest.requireActual("../features/store/useWantToTryState"),
+  useWantToTryMembership: jest.fn(),
+}));
+
+jest.mock("../providers/AuthProvider", () => ({
+  useAuth: jest.fn(() => ({ user: { id: "user-1" } })),
 }));
 
 jest.mock("../components/shared", () => ({
@@ -157,6 +175,9 @@ const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<
   typeof useQueryClient
 >;
+const mockedUseWantToTryMembership = useWantToTryMembership as jest.MockedFunction<
+  typeof useWantToTryMembership
+>;
 
 function collectText(node: any): string {
   if (typeof node === "string" || typeof node === "number") {
@@ -244,6 +265,11 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
       invalidateQueries: jest.fn(),
       setQueryData: jest.fn(),
     } as never);
+    mockedUseWantToTryMembership.mockReturnValue({
+      defaultListId: undefined,
+      isSaved: jest.fn(() => false),
+      savedTargetsByBookmarkKey: {},
+    } as never);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("allLocationsHistory")) {
@@ -306,6 +332,11 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
     setMockMenuItems([
       { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
     ]);
+    mockedUseWantToTryMembership.mockReturnValue({
+      defaultListId: "default_list",
+      isSaved: jest.fn(() => false),
+      savedTargetsByBookmarkKey: {},
+    } as never);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("default")) {
@@ -379,6 +410,11 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
         restaurantId: "restaurant-1",
       },
       defaultListId: "default_list",
+      membershipTarget: {
+        bookmarkKey: "menu-item:restaurant-1:menu-item-1",
+        menuItemId: "menu-item-1",
+        restaurantId: "restaurant-1",
+      },
       optimisticDefaultListBookmark: {
         menuItem: {
           id: "menu-item-1",
@@ -400,6 +436,17 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
     setMockMenuItems([
       { id: "menu-item-1", name: "Tonic Bar Smoothie", restaurant: "restaurant-1" },
     ]);
+    mockedUseWantToTryMembership.mockReturnValue({
+      defaultListId: "default_list",
+      isSaved: jest.fn(() => true),
+      savedTargetsByBookmarkKey: {
+        "menu-item:restaurant-1:menu-item-1": {
+          bookmarkKey: "menu-item:restaurant-1:menu-item-1",
+          menuItemId: "menu-item-1",
+          restaurantId: "restaurant-1",
+        },
+      },
+    } as never);
     mockedUseQuery.mockImplementation((options: any) => {
       const queryKey = options.queryKey as readonly unknown[];
       if (queryKey.includes("default")) {
@@ -485,6 +532,11 @@ describe("RestaurantDiscoveryRestaurantScreen", () => {
         restaurantId: "restaurant-1",
       },
       defaultListId: "default_list",
+      membershipTarget: {
+        bookmarkKey: "menu-item:restaurant-1:menu-item-1",
+        menuItemId: "menu-item-1",
+        restaurantId: "restaurant-1",
+      },
       sourceListId: "default_list",
     });
   });

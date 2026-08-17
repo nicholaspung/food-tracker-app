@@ -8,6 +8,7 @@ import { extractRestaurantNamesFromImage, parseLimitExceededError, useMonthlyUsa
 import { usageQueryKeys } from '../features/store/usageQuery';
 import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
+import { useWantToTryMembership } from '../features/store/useWantToTryState';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
 import { captureObservabilityError, trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -60,6 +61,19 @@ jest.mock('@tanstack/react-query', () => ({
     invalidateQueries: mockInvalidateQueries,
     setQueryData: mockSetQueryData,
   })),
+}));
+
+jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
+  useOfflineAwareFeatureWrite: jest.fn(() => jest.fn()),
+}));
+
+jest.mock('../features/store/useQueuedFeatureWrites', () => ({
+  useQueuedFeatureWrites: jest.fn(() => ({ queuedWrites: [], refreshQueuedWrites: jest.fn() })),
+}));
+
+jest.mock('../features/store/useWantToTryState', () => ({
+  ...jest.requireActual('../features/store/useWantToTryState'),
+  useWantToTryMembership: jest.fn(),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -263,6 +277,9 @@ const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunc
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseWantToTryMembership = useWantToTryMembership as jest.MockedFunction<
+  typeof useWantToTryMembership
+>;
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedClipboard = Clipboard as jest.Mocked<typeof Clipboard>;
 
@@ -371,6 +388,17 @@ describe('RestaurantDiscoveryScreen', () => {
     mockedTrackObservabilityEvent.mockReset();
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
+    } as never);
+    mockedUseWantToTryMembership.mockReturnValue({
+      defaultList: null,
+      defaultListId: undefined,
+      defaultListQuery: { isLoading: false },
+      hasBlockingError: false,
+      hasRefreshError: false,
+      isLoading: false,
+      isSaved: jest.fn(() => false),
+      membershipQueries: [],
+      savedTargetsByBookmarkKey: {},
     } as never);
     mockedUseRestaurantSelectionFlow.mockReturnValue({
       quotaDisplay: {
@@ -628,6 +656,11 @@ describe('RestaurantDiscoveryScreen', () => {
     });
 
     expect(mockSaveRestaurantToDefaultList).toHaveBeenCalledWith({
+      defaultListId: undefined,
+      membershipTarget: {
+        bookmarkKey: 'restaurant:restaurant-1',
+        restaurantId: 'restaurant-1',
+      },
       optimisticRestaurant: expect.objectContaining({
         cuisineType: 'Cafe',
         id: 'restaurant-1',
@@ -644,38 +677,16 @@ describe('RestaurantDiscoveryScreen', () => {
   });
 
   it('removes existing default-list restaurant bookmarks', async () => {
-    mockedUseQuery.mockImplementation((options: any) => {
-      const queryKey = options.queryKey as readonly unknown[];
-      if (queryKey.includes('default')) {
-        return {
-          data: { id: 'default_list', isDefault: true },
-          error: null,
-          isPending: false,
-          refetch: jest.fn(),
-        } as never;
-      }
-      if (queryKey.includes('restaurantListDetail')) {
-        return {
-          data: {
-            items: [
-              {
-                restaurantId: 'restaurant-1',
-                bookmarkedItems: [],
-              },
-            ],
-          },
-          error: null,
-          isPending: false,
-          refetch: jest.fn(),
-        } as never;
-      }
-      return {
-        data: [],
-        error: null,
-        isPending: false,
-        refetch: jest.fn(),
-      } as never;
-    });
+    mockedUseWantToTryMembership.mockReturnValue({
+      defaultListId: 'default_list',
+      isSaved: jest.fn(() => true),
+      savedTargetsByBookmarkKey: {
+        'restaurant:restaurant-1': {
+          bookmarkKey: 'restaurant:restaurant-1',
+          restaurantId: 'restaurant-1',
+        },
+      },
+    } as never);
     const renderer = renderScreen();
 
     let trailingRenderer: any;
@@ -697,6 +708,10 @@ describe('RestaurantDiscoveryScreen', () => {
         restaurantId: 'restaurant-1',
       },
       defaultListId: 'default_list',
+      membershipTarget: {
+        bookmarkKey: 'restaurant:restaurant-1',
+        restaurantId: 'restaurant-1',
+      },
       sourceListId: 'default_list',
     });
   });

@@ -433,7 +433,7 @@ describe('restaurantListsStore.getRestaurantListBookmarkState', () => {
     };
   });
 
-  it('posts only normalized visible bookmark targets to the bounded state endpoint', async () => {
+  it('posts normalized recommendation, menu-item, and restaurant targets to the bounded state endpoint', async () => {
     mockedSendApiRequest.mockResolvedValue({
       savedTargetsByBookmarkKey: {
         'restaurant-item:restaurant-1:friend noodles': {
@@ -488,6 +488,12 @@ describe('restaurantListsStore.getRestaurantListBookmarkState', () => {
               bookmarkKey: 'menu-item-1',
               foodItemId: undefined,
               menuItemId: 'menu-item-1',
+              restaurantId: 'restaurant-1',
+            },
+            {
+              bookmarkKey: 'missing-target',
+              foodItemId: undefined,
+              menuItemId: undefined,
               restaurantId: 'restaurant-1',
             },
           ],

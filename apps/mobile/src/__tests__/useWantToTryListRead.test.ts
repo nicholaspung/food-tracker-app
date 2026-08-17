@@ -1,24 +1,29 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
-import {
-  getDefaultRestaurantList,
-  getRestaurantListDetail,
-} from '../features/store/restaurantListsStore';
+import { getRestaurantListDetail } from '../features/store/restaurantListsStore';
 import { useWantToTryListRead } from '../features/store/useWantToTryListRead';
+import { useWantToTryResolver } from '../features/store/useWantToTryState';
 
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
 }));
 
+jest.mock('../providers/AuthProvider', () => ({
+  useAuth: jest.fn(() => ({ user: { id: 'user-1' } })),
+}));
+
+jest.mock('../features/store/useWantToTryState', () => ({
+  useWantToTryResolver: jest.fn(),
+}));
+
 jest.mock('../features/store/restaurantListsStore', () => ({
-  getDefaultRestaurantList: jest.fn(),
   getRestaurantListDetail: jest.fn(),
 }));
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
-const mockedGetDefaultRestaurantList = getDefaultRestaurantList as jest.MockedFunction<
-  typeof getDefaultRestaurantList
+const mockedUseWantToTryResolver = useWantToTryResolver as jest.MockedFunction<
+  typeof useWantToTryResolver
 >;
 const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunction<
   typeof getRestaurantListDetail
@@ -27,44 +32,41 @@ const mockedGetRestaurantListDetail = getRestaurantListDetail as jest.MockedFunc
 describe('useWantToTryListRead', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedUseWantToTryResolver.mockReturnValue({
+      defaultList: { id: 'list_1' },
+      defaultListId: 'list_1',
+      defaultListQuery: { data: { id: 'list_1' } },
+    } as never);
+    mockedUseQuery.mockReturnValue({ data: { items: [] } } as ReturnType<typeof useQuery>);
   });
 
-  it('uses the existing default list and dependent detail query keys', () => {
-    mockedUseQuery
-      .mockReturnValueOnce({ data: { id: 'list_1' } } as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: { items: [] } } as ReturnType<typeof useQuery>);
-
+  it('keeps full List Detail pagination behind the resolved default-list id', () => {
     const result = useWantToTryListRead();
 
     expect(result.defaultListId).toBe('list_1');
-    expect(mockedUseQuery).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      queryKey: restaurantListQueryKeys.defaultList,
-    }));
-    expect(mockedUseQuery).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(mockedUseQuery).toHaveBeenCalledWith(expect.objectContaining({
       enabled: true,
       queryKey: restaurantListQueryKeys.detail('list_1'),
     }));
   });
 
-  it('keeps the pending detail key and disabled state until the default list is known', () => {
-    mockedUseQuery
-      .mockReturnValueOnce({ data: null } as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: null } as ReturnType<typeof useQuery>);
+  it('keeps the pending detail key disabled until the resolver has a list id', () => {
+    mockedUseWantToTryResolver.mockReturnValue({
+      defaultList: null,
+      defaultListId: undefined,
+      defaultListQuery: { data: null },
+    } as never);
 
     const result = useWantToTryListRead();
 
     expect(result.defaultListId).toBeUndefined();
-    expect(mockedUseQuery).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(mockedUseQuery).toHaveBeenCalledWith(expect.objectContaining({
       enabled: false,
       queryKey: restaurantListQueryKeys.detail('__default_list_pending__'),
     }));
   });
 
-  it('loads every default-list detail page with AbortSignals', async () => {
-    mockedUseQuery
-      .mockReturnValueOnce({ data: { id: 'list_1' } } as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: { items: [] } } as ReturnType<typeof useQuery>);
-    mockedGetDefaultRestaurantList.mockResolvedValue({ id: 'list_1' } as Awaited<ReturnType<typeof getDefaultRestaurantList>>);
+  it('loads every List Detail page with the query AbortSignal', async () => {
     mockedGetRestaurantListDetail
       .mockResolvedValueOnce({
         bookmarkState: { savedListIdsByBookmarkLookupId: { lookup_1: ['list_1'] } },
@@ -94,16 +96,11 @@ describe('useWantToTryListRead', () => {
 
     useWantToTryListRead();
 
-    const defaultListOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
+    const detailOptions = mockedUseQuery.mock.calls[0]?.[0] as unknown as {
       queryFn: (input: { signal: AbortSignal }) => Promise<unknown>;
     };
-    const detailOptions = mockedUseQuery.mock.calls[1]?.[0] as unknown as {
-      queryFn: (input: { signal: AbortSignal }) => Promise<unknown>;
-    };
-    await defaultListOptions.queryFn({ signal: abortController.signal });
     const detail = await detailOptions.queryFn({ signal: abortController.signal });
 
-    expect(mockedGetDefaultRestaurantList).toHaveBeenCalledWith({ signal: abortController.signal });
     expect(mockedGetRestaurantListDetail).toHaveBeenNthCalledWith(1, 'list_1', {
       page: 1,
       pageSize: 50,

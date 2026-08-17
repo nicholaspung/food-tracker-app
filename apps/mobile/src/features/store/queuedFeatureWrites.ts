@@ -15,6 +15,7 @@ export interface QueuedFeatureWrite<
   createdAt: number;
   idempotencyKey: string;
   lastError: string | null;
+  originAccountId?: string | null;
 }
 
 export function getQueuedMutationOperationName(
@@ -71,6 +72,7 @@ export function parseQueuedFeatureWrite(
     createdAt: mutation.createdAt,
     idempotencyKey: mutation.idempotencyKey,
     lastError: mutation.lastError,
+    originAccountId: mutation.originAccountId,
   };
 }
 

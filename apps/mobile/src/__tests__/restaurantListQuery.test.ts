@@ -100,27 +100,6 @@ describe('restaurantListQuery', () => {
     ]);
   });
 
-  it('includes concrete bookmark lookup targets in bounded hydration keys', () => {
-    expect(restaurantListQueryKeys.bookmarkStateChunk('list_1', [
-      {
-        bookmarkKey: 'restaurant-item:restaurant_1:noodles',
-        restaurantId: 'restaurant_1',
-        foodItemId: 'food_2',
-      },
-      {
-        bookmarkKey: 'restaurant-item:restaurant_1:noodles',
-        restaurantId: 'restaurant_1',
-        foodItemId: 'food_1',
-      },
-    ])).toEqual([
-      'feature',
-      'restaurantListBookmarkState',
-      'list_1',
-      'restaurant-item:restaurant_1:noodles',
-      'restaurant-item:restaurant_1:noodles:restaurant_1:food_1:|restaurant-item:restaurant_1:noodles:restaurant_1:food_2:',
-    ]);
-  });
-
   it('builds content invalidation keys with optional candidate queries', () => {
     expect(getRestaurantListContentInvalidationKeys('list_1')).toEqual([
       restaurantListQueryKeys.list('list_1'),

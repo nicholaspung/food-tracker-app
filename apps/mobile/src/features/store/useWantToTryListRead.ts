@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { useAuth } from '../../providers/AuthProvider';
 import { restaurantListQueryKeys } from './restaurantListQuery';
 import type { RestaurantListDetailRecord } from './featureStore';
-import {
-  getDefaultRestaurantList,
-  getRestaurantListDetail,
-} from './restaurantListsStore';
+import { getRestaurantListDetail } from './restaurantListsStore';
+import { useWantToTryResolver } from './useWantToTryState';
 
 const PENDING_DEFAULT_LIST_ID = '__default_list_pending__';
 const WANT_TO_TRY_DETAIL_PAGE_SIZE = 50;
@@ -57,12 +56,9 @@ async function getCompleteRestaurantListDetail(
 }
 
 export function useWantToTryListRead(options: UseWantToTryListReadOptions = {}) {
+  const { user } = useAuth();
   const includeDetail = options.includeDetail ?? true;
-  const defaultListQuery = useQuery({
-    queryKey: restaurantListQueryKeys.defaultList,
-    queryFn: ({ signal }) => getDefaultRestaurantList({ signal }),
-  });
-  const defaultListId = defaultListQuery.data?.id;
+  const { defaultList, defaultListId, defaultListQuery } = useWantToTryResolver(user?.id);
   const defaultListDetailQuery = useQuery({
     enabled: includeDetail && Boolean(defaultListId),
     queryKey: defaultListId
@@ -73,7 +69,7 @@ export function useWantToTryListRead(options: UseWantToTryListReadOptions = {}) 
   });
 
   return {
-    defaultList: defaultListQuery.data ?? null,
+    defaultList,
     defaultListDetail: defaultListDetailQuery.data ?? null,
     defaultListDetailQuery,
     defaultListId,

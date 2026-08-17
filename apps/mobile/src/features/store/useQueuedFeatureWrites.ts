@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { logger } from '../../lib/logger';
+import type { QueuedMutation } from '../../offline/types';
 import { useSync } from '../../providers/SyncProvider';
 import {
   filterQueuedFeatureWrites,
@@ -9,32 +10,62 @@ import {
 } from './queuedFeatureWrites';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 
+export async function refreshQueuedFeatureWriteSnapshot(input: {
+  applyLatest: (writes: QueuedFeatureWrite[]) => void;
+  generationRef: { current: number };
+  onError: (error: unknown) => void;
+  readLimit: number;
+  readQueuedMutations: (limit: number) => Promise<QueuedMutation[]>;
+}): Promise<void> {
+  const refreshGeneration = input.generationRef.current + 1;
+  input.generationRef.current = refreshGeneration;
+  try {
+    const queuedMutations = await input.readQueuedMutations(input.readLimit);
+    const parsedQueuedWrites = parseQueuedFeatureWrites(queuedMutations);
+    if (refreshGeneration === input.generationRef.current) {
+      input.applyLatest(parsedQueuedWrites);
+    }
+  } catch (error) {
+    input.onError(error);
+  }
+}
+
 export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>(
   operationNames?: readonly TName[],
-  limit = 100,
+  limit: number | 'all' = 100,
   options: { enabled?: boolean } = {},
 ): {
   queuedWrites: QueuedFeatureWrite<TName>[];
+  lastReplayedWrites?: QueuedFeatureWrite<TName>[];
   refreshQueuedWrites: () => Promise<void>;
 } {
   const enabled = options.enabled ?? true;
-  const { failedCount, getQueuedMutations, isSyncing, queueDepth } = useSync();
+  const {
+    failedCount,
+    getQueuedMutations,
+    isSyncing,
+    lastReplayedMutations = [],
+    queueDepth,
+  } = useSync();
+  const readLimit = limit === 'all' ? Math.max(1, queueDepth) : limit;
   const [allQueuedWrites, setAllQueuedWrites] = useState<QueuedFeatureWrite[]>([]);
+  const refreshGenerationRef = useRef(0);
 
   const refreshQueuedWrites = useCallback(async () => {
     if (!enabled) {
       return;
     }
 
-    try {
-      const queuedMutations = await getQueuedMutations(limit);
-      const parsedQueuedWrites = parseQueuedFeatureWrites(queuedMutations);
-      setAllQueuedWrites(parsedQueuedWrites);
-    } catch (error) {
-      logger.warn('[useQueuedFeatureWrites] Failed to load queued feature writes:', error);
-      setAllQueuedWrites([]);
-    }
-  }, [enabled, getQueuedMutations, limit]);
+    await refreshQueuedFeatureWriteSnapshot({
+      applyLatest: setAllQueuedWrites,
+      generationRef: refreshGenerationRef,
+      onError: (error) => {
+        logger.warn('[useQueuedFeatureWrites] Failed to load queued feature writes:', error);
+      },
+      readLimit,
+      readQueuedMutations: getQueuedMutations,
+    });
+  }, [enabled, getQueuedMutations, readLimit]);
 
   useEffect(() => {
     if (!enabled) {
@@ -55,8 +86,15 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
 
     return filterQueuedFeatureWrites(allQueuedWrites, operationNames);
   }, [allQueuedWrites, enabled, operationNames]);
+  const lastReplayedWrites = useMemo(() => {
+    const parsedWrites = parseQueuedFeatureWrites([...lastReplayedMutations]);
+    return operationNames
+      ? filterQueuedFeatureWrites(parsedWrites, operationNames)
+      : parsedWrites as QueuedFeatureWrite<TName>[];
+  }, [lastReplayedMutations, operationNames]);
 
   return {
+    lastReplayedWrites,
     queuedWrites,
     refreshQueuedWrites,
   };
