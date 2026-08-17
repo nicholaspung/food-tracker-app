@@ -159,7 +159,7 @@ export async function deleteVisitActionWithOfflineSupport({
       strategy: 'outbox',
       payload: { visitId },
     },
-    execute: () => deleteVisit(visitId),
+    execute: deleteVisit.bind(null, visitId),
   });
 
   await syncVisitMutationCaches(queryClient, {
@@ -194,7 +194,7 @@ export async function deleteVisitItemActionWithOfflineSupport({
         updates,
       },
     },
-    execute: () => updateVisit(visitId, updates),
+    execute: updateVisit.bind(null, visitId, updates),
   });
 
   if (result.status === 'queued') {
@@ -266,11 +266,10 @@ export async function moveVisitItemActionWithOfflineSupport({
         strategy: 'api',
         input: moveVisitItemApiMutationInput(item.id, destinationVisit.id),
       },
-      execute: () =>
-        moveVisitItem({
-          itemId: item.id,
-          destinationVisitId: destinationVisit.id,
-        }),
+      execute: moveVisitItem.bind(null, {
+        itemId: item.id,
+        destinationVisitId: destinationVisit.id,
+      }),
     });
 
     await invalidateMoveVisitItemQueries(queryClient, sourceVisitId, destinationVisit.id);
@@ -316,7 +315,7 @@ export async function convertVisitItemToFoodProductActionWithOfflineSupport({
         itemId,
       },
     },
-    execute: () => convertVisitItemToFoodProduct({ itemId }),
+    execute: convertVisitItemToFoodProduct.bind(null, { itemId }),
   });
 
   if (result.status === 'queued') {

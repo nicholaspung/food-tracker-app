@@ -93,7 +93,7 @@ async function createFeedbackWithOfflineSupport({
       strategy: 'outbox',
       payload: input,
     },
-    execute: () => createFeedback(input),
+    execute: createFeedback.bind(null, input),
   });
 
   if (result.status === 'queued') {
@@ -132,7 +132,7 @@ async function sendFeedbackMessageWithOfflineSupport({
       strategy: 'outbox',
       payload: input,
     },
-    execute: () => sendFeedbackMessage(input),
+    execute: sendFeedbackMessage.bind(null, input),
   });
 
   const messagesQueryKey = feedbackQueryKeys.messages(feedbackId);

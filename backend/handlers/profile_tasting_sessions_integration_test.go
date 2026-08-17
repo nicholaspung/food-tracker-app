@@ -216,6 +216,167 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 	}
 }
 
+func TestTastingSessionLifecycleReplaysIdempotencyKeysWithoutDuplicateWrites(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
+
+	createHeaders := map[string]string{"Idempotency-Key": "tasting-create-response-loss-1"}
+	createBody := `{"name":"Replay Tasting","joinDurationMinutes":60,"invitedUserIds":["` + participant.Id + `"]}`
+	firstCreate := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/tasting-sessions", leaderToken, createBody, createHeaders,
+	)
+	if firstCreate.Code != http.StatusOK {
+		t.Fatalf("expected first create attempt to return 200, got %d: %s", firstCreate.Code, firstCreate.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, firstCreate.Body.Bytes())
+	deliveryLogs, err := server.app.FindRecordsByFilter(
+		"notification_delivery_logs",
+		"signal_type = 'tasting_invite' && source_record = {:sessionId} && user = {:userId}",
+		"",
+		10,
+		0,
+		map[string]any{"sessionId": createdSession.ID, "userId": participant.Id},
+	)
+	if err != nil || len(deliveryLogs) != 1 {
+		t.Fatalf("expected first create to persist one invite delivery intent, got %d: %v", len(deliveryLogs), err)
+	}
+	if err := server.app.Delete(deliveryLogs[0]); err != nil {
+		t.Fatalf("failed to simulate pre-delivery persistence failure: %v", err)
+	}
+
+	secondCreate := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/tasting-sessions", leaderToken, createBody, createHeaders,
+	)
+	thirdCreate := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/tasting-sessions", leaderToken, createBody, createHeaders,
+	)
+	if secondCreate.Code != http.StatusOK || thirdCreate.Code != http.StatusOK {
+		t.Fatalf(
+			"expected retry and replay create attempts to return 200, got second=%d third=%d: %s",
+			secondCreate.Code,
+			thirdCreate.Code,
+			thirdCreate.Body.String(),
+		)
+	}
+	replayedSession := parseJSONResponse[tastingSessionResponse](t, secondCreate.Body.Bytes())
+	if replayedSession.ID != createdSession.ID {
+		t.Fatalf("expected replayed create to return session %q, got %q", createdSession.ID, replayedSession.ID)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"tasting_sessions",
+		"leader = {:leaderId}",
+		map[string]any{"leaderId": leader.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 tasting session after replay, got %d", count)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"notification_delivery_logs",
+		"signal_type = 'tasting_invite' && source_record = {:sessionId} && user = {:userId}",
+		map[string]any{"sessionId": createdSession.ID, "userId": participant.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 invite delivery intent after retry and replay, got %d", count)
+	}
+
+	joinHeaders := map[string]string{"Idempotency-Key": "tasting-join-response-loss-1"}
+	joinBody := `{"code":"` + createdSession.InviteCode + `"}`
+	for attempt := 0; attempt < 2; attempt++ {
+		response := performJSONRequestWithHeaders(
+			t, server.mux, http.MethodPost, "/api/tasting-sessions/join", participantToken, joinBody, joinHeaders,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected keyed join attempt %d to return 200, got %d: %s", attempt+1, response.Code, response.Body.String())
+		}
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"tasting_session_participants",
+		"session = {:sessionId} && user = {:userId}",
+		map[string]any{"sessionId": createdSession.ID, "userId": participant.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 tasting participant after replay, got %d", count)
+	}
+
+	lockPath := "/api/tasting-sessions/" + createdSession.ID + "/lock-membership"
+	lockHeaders := map[string]string{"Idempotency-Key": "tasting-lock-response-loss-1"}
+	for attempt := 0; attempt < 2; attempt++ {
+		response := performJSONRequestWithHeaders(
+			t, server.mux, http.MethodPost, lockPath, leaderToken, `{}`, lockHeaders,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected keyed lock attempt %d to return 200, got %d: %s", attempt+1, response.Code, response.Body.String())
+		}
+	}
+
+	restaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		leaderToken,
+		`{"restaurantName":"Replay Cafe"}`,
+	)
+	if restaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected restaurant setup to return 200, got %d: %s", restaurantResponse.Code, restaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, restaurantResponse.Body.Bytes())
+	restaurantSuggestion := sessionWithRestaurant.Restaurants[0]
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantSuggestion.RestaurantID,
+		"name":       "Replay Bite",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+	itemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+restaurantSuggestion.ID+"/items",
+		leaderToken,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
+	)
+	if itemResponse.Code != http.StatusOK {
+		t.Fatalf("expected item setup to return 200, got %d: %s", itemResponse.Code, itemResponse.Body.String())
+	}
+
+	for _, transition := range []struct {
+		key  string
+		path string
+	}{
+		{key: "tasting-start-response-loss-1", path: "/start"},
+		{key: "tasting-complete-response-loss-1", path: "/complete"},
+	} {
+		headers := map[string]string{"Idempotency-Key": transition.key}
+		for attempt := 0; attempt < 2; attempt++ {
+			response := performJSONRequestWithHeaders(
+				t,
+				server.mux,
+				http.MethodPost,
+				"/api/tasting-sessions/"+createdSession.ID+transition.path,
+				leaderToken,
+				`{}`,
+				headers,
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf(
+					"expected keyed %s attempt %d to return 200, got %d: %s",
+					transition.path,
+					attempt+1,
+					response.Code,
+					response.Body.String(),
+				)
+			}
+		}
+	}
+}
+
 func TestTastingSessionSummaryPageReturnsBoundedListRows(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterTastingSessionHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

@@ -1088,6 +1088,75 @@ func TestVisitCreateEndpointReplaysSourceListItemCreateWithoutDuplicateItemsOrUs
 	}
 }
 
+func TestVisitCreateEndpointReplaysIdempotencyKeyWithoutDuplicateItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	body := `{
+		"restaurantName":"Replay Cafe",
+		"visitedAt":"2026-04-05T18:00:00Z",
+		"visibility":"friends",
+		"items":[{"name":"Latte","rating":5}]
+	}`
+	headers := map[string]string{"Idempotency-Key": "visit-response-loss-1"}
+	seedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantName":"Replay Cafe",
+			"visitedAt":"2026-04-05T12:00:00Z",
+			"visibility":"friends",
+			"items":[{"name":"Tea","rating":4}]
+		}`,
+	)
+	if seedResponse.Code != http.StatusOK {
+		t.Fatalf("expected seed create 200, got %d: %s", seedResponse.Code, seedResponse.Body.String())
+	}
+
+	firstResponse := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/visits", token, body, headers,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	secondResponse := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/visits", token, body, headers,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected replay create 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var firstPayload visitResponsePayload
+	var secondPayload visitResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visit payload: %v", err)
+	}
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse replay visit payload: %v", err)
+	}
+	if secondPayload.ID != firstPayload.ID {
+		t.Fatalf("expected replay to return visit %q, got %q", firstPayload.ID, secondPayload.ID)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"food_items",
+		"visit = {:visitId}",
+		map[string]any{"visitId": firstPayload.ID},
+	); count != 2 {
+		t.Fatalf("expected idempotent replay to add one item to the merged visit, got %d", count)
+	}
+
+	if visit, err := server.app.FindRecordById("visits", firstPayload.ID); err != nil {
+		t.Fatalf("expected replayed visit to remain available: %v", err)
+	} else if visit.GetString("user") != user.Id {
+		t.Fatalf("expected replayed visit owner %q, got %q", user.Id, visit.GetString("user"))
+	}
+}
+
 func TestVisitCreateEndpointDoesNotReplayLiveSourceListItemCreate(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)
@@ -2484,6 +2553,54 @@ func TestVisitUpdateEndpointDeletesOmittedVisitItems(t *testing.T) {
 	}
 }
 
+func TestVisitUpdateEndpointReplaysIdempotencyKeyWithoutReplacingNestedItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Replay Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	existingItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Soup", 4)
+	body := `{
+		"items":[
+			{"id":"` + existingItem.Id + `","name":"Soup","rating":4},
+			{"id":"draft-new-item","name":"Tea","rating":5}
+		]
+	}`
+	headers := map[string]string{"Idempotency-Key": "visit-update-response-loss-1"}
+	path := "/api/visits/" + visit.Id
+
+	firstResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, token, body, headers)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first update to return 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	firstPayload := parseJSONResponse[visitResponsePayload](t, firstResponse.Body.Bytes())
+	if len(firstPayload.Items) != 2 {
+		t.Fatalf("expected 2 visit items after first update, got %#v", firstPayload.Items)
+	}
+	createdItemID := firstPayload.Items[1].ID
+	photoID := insertVisitPhotoRowRaw(t, server.app, user.Id, visit.Id, createdItemID)
+
+	secondResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, token, body, headers)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected replayed update to return 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	secondPayload := parseJSONResponse[visitResponsePayload](t, secondResponse.Body.Bytes())
+	if len(secondPayload.Items) != 2 || secondPayload.Items[1].ID != createdItemID {
+		t.Fatalf("expected replay to retain nested item id %q, got %#v", createdItemID, secondPayload.Items)
+	}
+	if _, err := server.app.FindRecordById("visit_photos", photoID); err != nil {
+		t.Fatalf("expected replay to preserve the nested item's photo: %v", err)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"food_items",
+		"visit = {:visitId}",
+		map[string]any{"visitId": visit.Id},
+	); count != 2 {
+		t.Fatalf("expected exactly 2 visit items after replay, got %d", count)
+	}
+}
+
 func TestMoveVisitItemEndpointMovesItemAndPhotos(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)
@@ -2734,6 +2851,63 @@ func TestConvertVisitItemToFoodProductDeletesSingleItemSourceVisitAndCarriesFiel
 	}
 	if _, err := server.app.FindRecordById("visits", visit.Id); err == nil {
 		t.Fatal("expected source visit to be deleted")
+	}
+}
+
+func TestConvertVisitItemToFoodProductReplaysIdempotencyKeyAfterResponseLoss(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Replay Market")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "private")
+	item := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Sparkling Water", 4)
+	headers := map[string]string{"Idempotency-Key": "convert-response-loss-1"}
+	path := "/api/visit-items/" + item.Id + "/convert-to-food-product"
+
+	firstResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		path,
+		token,
+		`{}`,
+		headers,
+	)
+	secondResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		path,
+		token,
+		`{}`,
+		headers,
+	)
+
+	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"expected both keyed conversions to return 200, got first=%d second=%d: %s",
+			firstResponse.Code,
+			secondResponse.Code,
+			secondResponse.Body.String(),
+		)
+	}
+	var replayPayload struct {
+		FoodProductID string `json:"foodProductId"`
+	}
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &replayPayload); err != nil {
+		t.Fatalf("failed to parse replay conversion payload: %v", err)
+	}
+	if replayPayload.FoodProductID != item.Id {
+		t.Fatalf("expected replay to return food product id %q, got %q", item.Id, replayPayload.FoodProductID)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"food_items",
+		"id = {:itemId} && itemType = 'food-product'",
+		map[string]any{"itemId": item.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 converted food product after replay, got %d", count)
 	}
 }
 
@@ -3043,6 +3217,79 @@ func TestBillCreateEndpointCreatesNestedRecords(t *testing.T) {
 	}
 }
 
+func TestBillCreateEndpointReplaysIdempotencyKeyWithoutDuplicateBills(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	friend, _ := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+	body := `{
+		"title":"Replay Dinner",
+		"totalAmount":10,
+		"tax":0,
+		"tip":0,
+		"fees":0,
+		"extrasSplitMode":"equal",
+		"participants":[{
+			"id":"temp_person_1",
+			"name":"Alex",
+			"userId":"` + friend.Id + `",
+			"amountOwed":10,
+			"paidStatus":"pending"
+		}],
+		"items":[{
+			"id":"temp_item_1",
+			"itemName":"Noodles",
+			"price":10,
+			"assignedToParticipantIds":["temp_person_1"],
+			"splitMode":"simple"
+		}]
+	}`
+	headers := map[string]string{"X-Idempotency-Key": "bill-response-loss-1"}
+
+	firstResponse := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/bills", token, body, headers,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	secondResponse := performJSONRequestWithHeaders(
+		t, server.mux, http.MethodPost, "/api/bills", token, body, headers,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected replay create 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var firstPayload billResponsePayload
+	var secondPayload billResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first bill payload: %v", err)
+	}
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse replay bill payload: %v", err)
+	}
+	if secondPayload.ID != firstPayload.ID {
+		t.Fatalf("expected replay to return bill %q, got %q", firstPayload.ID, secondPayload.ID)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"bills",
+		"creator_user = {:userId}",
+		map[string]any{"userId": user.Id},
+	); count != 1 {
+		t.Fatalf("expected idempotent replay to keep one bill, got %d", count)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"notification_delivery_logs",
+		"signal_type = 'bill_owed' && source_record = {:billId} && user = {:userId}",
+		map[string]any{"billId": firstPayload.ID, "userId": friend.Id},
+	); count != 1 {
+		t.Fatalf("expected response-loss replay to keep one Bill notification intent, got %d", count)
+	}
+}
+
 func TestBillCreateEndpointMakesUserParticipantsVisibleInBillSummary(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureWriteHandlers(se, app)
@@ -3149,6 +3396,142 @@ func TestBillCreateEndpointRejectsNonFriendParticipant(t *testing.T) {
 	}
 	if count := countRecordsByFilter(t, server.app, "bill_participants", "user = {:userId}", map[string]any{"userId": nonFriend.Id}); count != 0 {
 		t.Fatalf("expected rejected enrollment to create no participant relation, got %d", count)
+	}
+}
+
+func TestBillUpdateEndpointReplaysIdempotencyKeyWithoutReplacingNestedRecords(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+	friend, _ := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, creator.Id, friend.Id, "accepted")
+	bill := seedBillRecord(t, server.app, creator.Id, "Replay Dinner")
+	existingParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Existing Guest", 10, "pending")
+	existingItem := seedBillItemRecord(
+		t,
+		server.app,
+		bill.Id,
+		"Existing Plate",
+		10,
+		[]string{existingParticipant.Id},
+		"simple",
+		nil,
+	)
+	body := `{
+		"title":"Replay Dinner",
+		"participants":[
+			{"id":"` + existingParticipant.Id + `","name":"Existing Guest","amountOwed":10,"paidStatus":"pending"},
+			{"id":"draft-new-participant","name":"New Guest","userId":"` + friend.Id + `","amountOwed":5,"paidStatus":"pending"}
+		],
+		"items":[
+			{
+				"id":"` + existingItem.Id + `",
+				"itemName":"Existing Plate",
+				"price":10,
+				"assignedToParticipantIds":["` + existingParticipant.Id + `","draft-new-participant"],
+				"splitMode":"simple"
+			},
+			{
+				"id":"draft-new-item",
+				"itemName":"New Side",
+				"price":5,
+				"assignedToParticipantIds":["draft-new-participant"],
+				"splitMode":"simple"
+			}
+		]
+	}`
+	headers := map[string]string{"Idempotency-Key": "bill-update-response-loss-1"}
+	path := "/api/bills/" + bill.Id
+
+	firstResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, creatorToken, body, headers)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first Bill update to return 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	firstPayload := parseJSONResponse[billResponsePayload](t, firstResponse.Body.Bytes())
+	newParticipantID := ""
+	newItemID := ""
+	for _, participant := range firstPayload.Participants {
+		if participant.Name == "New Guest" {
+			newParticipantID = participant.ID
+		}
+	}
+	for _, item := range firstPayload.Items {
+		if item.ItemName == "New Side" {
+			newItemID = item.ID
+		}
+	}
+	if newParticipantID == "" || newItemID == "" {
+		t.Fatalf("expected first update to create stable nested records, got %#v", firstPayload)
+	}
+
+	deliveryLogs, err := server.app.FindRecordsByFilter(
+		"notification_delivery_logs",
+		"signal_type = 'bill_owed' && source_record = {:billId} && user = {:userId}",
+		"created",
+		10,
+		0,
+		map[string]any{"billId": bill.Id, "userId": friend.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load Bill notification logs: %v", err)
+	}
+	if len(deliveryLogs) != 2 {
+		t.Fatalf("expected an atomic intent and delivery result, got %d logs", len(deliveryLogs))
+	}
+	deletedDeliveryResult := false
+	for _, deliveryLog := range deliveryLogs {
+		if deliveryLog.GetString("error_code") == "delivery_intent" {
+			continue
+		}
+		if err := server.app.Delete(deliveryLog); err != nil {
+			t.Fatalf("failed to simulate pre-delivery interruption: %v", err)
+		}
+		deletedDeliveryResult = true
+	}
+	if !deletedDeliveryResult {
+		t.Fatal("expected a delivery result to remove before replay")
+	}
+
+	secondResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, creatorToken, body, headers)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected replayed Bill update to return 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+	secondPayload := parseJSONResponse[billResponsePayload](t, secondResponse.Body.Bytes())
+	matchedParticipant := false
+	matchedItem := false
+	for _, participant := range secondPayload.Participants {
+		matchedParticipant = matchedParticipant || (participant.Name == "New Guest" && participant.ID == newParticipantID)
+	}
+	for _, item := range secondPayload.Items {
+		if item.ItemName == "New Side" && item.ID == newItemID {
+			matchedItem = len(item.AssignedToParticipantIDs) == 1 && item.AssignedToParticipantIDs[0] == newParticipantID
+		}
+	}
+	if !matchedParticipant || !matchedItem {
+		t.Fatalf(
+			"expected replay to preserve participant %q and item %q relationships, got %#v",
+			newParticipantID,
+			newItemID,
+			secondPayload,
+		)
+	}
+	thirdResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, creatorToken, body, headers)
+	if thirdResponse.Code != http.StatusOK {
+		t.Fatalf("expected second replayed Bill update to return 200, got %d: %s", thirdResponse.Code, thirdResponse.Body.String())
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_participants", "bill = {:billId}", map[string]any{"billId": bill.Id}); count != 2 {
+		t.Fatalf("expected exactly 2 Bill participants after replay, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_items", "bill = {:billId}", map[string]any{"billId": bill.Id}); count != 2 {
+		t.Fatalf("expected exactly 2 Bill items after replay, got %d", count)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"notification_delivery_logs",
+		"signal_type = 'bill_owed' && source_record = {:billId} && user = {:userId}",
+		map[string]any{"billId": bill.Id, "userId": friend.Id},
+	); count != 2 {
+		t.Fatalf("expected one durable intent and one deduplicated delivery result after replay, got %d", count)
 	}
 }
 

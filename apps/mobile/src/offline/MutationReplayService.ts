@@ -34,6 +34,7 @@ export class MutationReplayService {
   private activeReplayAbortController: AbortController | null = null;
   private activeReplayQueueDepthEstimate: number | null = null;
   private snapshot: SyncSnapshot = DEFAULT_SNAPSHOT;
+  private startPromise: Promise<void> | null = null;
   private started = false;
 
   constructor(
@@ -56,6 +57,27 @@ export class MutationReplayService {
   }
 
   async start(): Promise<void> {
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+
+    if (this.started) {
+      return;
+    }
+
+    const startPromise = this.initialize();
+    this.startPromise = startPromise;
+
+    try {
+      await startPromise;
+    } finally {
+      if (this.startPromise === startPromise) {
+        this.startPromise = null;
+      }
+    }
+  }
+
+  private async initialize(): Promise<void> {
     if (this.started) {
       return;
     }
@@ -75,6 +97,7 @@ export class MutationReplayService {
   }
 
   async enqueue(input: EnqueueMutationInput): Promise<QueuedMutation> {
+    await this.start();
     const operationName = resolveOperationNameFromInput(input);
 
     try {
@@ -109,6 +132,32 @@ export class MutationReplayService {
       });
       throw error;
     }
+  }
+
+  async beginDelivery(id: string): Promise<void> {
+    await this.queueStore.markInFlight(id, this.now());
+    await this.refreshSnapshot();
+  }
+
+  async completeDelivery(id: string): Promise<void> {
+    await this.queueStore.remove(id);
+    await this.refreshSnapshot();
+  }
+
+  async deferDelivery(id: string, errorMessage: string): Promise<void> {
+    const resolvedAt = this.now();
+    await this.queueStore.markRetryableFailure(
+      id,
+      errorMessage,
+      resolvedAt + computeRetryDelayMs(1),
+      resolvedAt,
+    );
+    await this.refreshSnapshot();
+  }
+
+  async discardDelivery(id: string): Promise<void> {
+    await this.queueStore.remove(id);
+    await this.refreshSnapshot();
   }
 
   async retryAllFailed(): Promise<number> {

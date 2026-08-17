@@ -90,7 +90,7 @@ export function createFetchMutationTransport(
           signal,
         });
 
-        if (response.ok) {
+        if (response.ok || (mutation.method === 'DELETE' && response.status === 404)) {
           return {
             ok: true,
             retryable: false,
@@ -218,11 +218,14 @@ async function trySendLocalFeatureMutation(
       };
     }
 
+    const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE;
     return {
       ok: false,
-      retryable: true,
+      retryable:
+        error instanceof TypeError ||
+        /network|fetch|timed? out|timeout|connection|offline/i.test(message),
       statusCode: null,
-      errorMessage: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+      errorMessage: message,
     };
   }
 }

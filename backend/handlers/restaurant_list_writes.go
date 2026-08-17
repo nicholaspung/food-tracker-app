@@ -31,8 +31,9 @@ type restaurantListAddRatingsRequest struct {
 }
 
 type restaurantListReorderRequest struct {
-	RestaurantID string `json:"restaurantId"`
-	Direction    string `json:"direction"`
+	AnchorRestaurantID string `json:"anchorRestaurantId"`
+	RestaurantID       string `json:"restaurantId"`
+	Direction          string `json:"direction"`
 }
 
 type restaurantListRemoveSourceRatingRequest struct {
@@ -1237,15 +1238,49 @@ func reorderRestaurantListTransaction(
 		return nil
 	}
 
-	targetIndex := currentIndex - 1
-	if direction == "down" {
-		targetIndex = currentIndex + 1
-	}
-	if targetIndex < 0 || targetIndex >= len(restaurantOrder) {
-		return nil
-	}
+	anchorRestaurantID := strings.TrimSpace(requestBody.AnchorRestaurantID)
+	if anchorRestaurantID != "" {
+		anchorIndex := -1
+		for index, orderedRestaurantID := range restaurantOrder {
+			if orderedRestaurantID == anchorRestaurantID {
+				anchorIndex = index
+				break
+			}
+		}
+		if anchorIndex == -1 || anchorRestaurantID == restaurantID {
+			return apis.NewBadRequestError("anchorRestaurantId must identify an adjacent restaurant", nil)
+		}
 
-	restaurantOrder[currentIndex], restaurantOrder[targetIndex] = restaurantOrder[targetIndex], restaurantOrder[currentIndex]
+		if (direction == "up" && currentIndex+1 == anchorIndex) ||
+			(direction == "down" && anchorIndex+1 == currentIndex) {
+			return nil
+		}
+
+		restaurantOrder = append(restaurantOrder[:currentIndex], restaurantOrder[currentIndex+1:]...)
+		for index, orderedRestaurantID := range restaurantOrder {
+			if orderedRestaurantID == anchorRestaurantID {
+				anchorIndex = index
+				break
+			}
+		}
+		insertIndex := anchorIndex
+		if direction == "down" {
+			insertIndex++
+		}
+		restaurantOrder = append(restaurantOrder, "")
+		copy(restaurantOrder[insertIndex+1:], restaurantOrder[insertIndex:])
+		restaurantOrder[insertIndex] = restaurantID
+	} else {
+		targetIndex := currentIndex - 1
+		if direction == "down" {
+			targetIndex = currentIndex + 1
+		}
+		if targetIndex < 0 || targetIndex >= len(restaurantOrder) {
+			return nil
+		}
+
+		restaurantOrder[currentIndex], restaurantOrder[targetIndex] = restaurantOrder[targetIndex], restaurantOrder[currentIndex]
+	}
 
 	reorderedItems := make([]*core.Record, 0, len(listItems))
 	for _, orderedRestaurantID := range restaurantOrder {

@@ -30,8 +30,10 @@ import type {
 import {
   buildOrFilter,
   createEmptyPaginatedResult,
+  deriveFeatureWriteRecordId,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
+  isRetryableFeatureStoreError,
   isNotFoundError,
   resolveFeatureWriteHeaders,
   resolvePaginationInput,
@@ -1120,19 +1122,52 @@ export async function createRestaurantList(
         throw new Error('List name is required.');
       }
 
-      const createdRecord = await createCollectionRecord<RestaurantListCollectionRecord>(
-        'restaurant_lists',
-        {
-          name: trimmedName,
-          description: input.description?.trim() || '',
-          visibility,
-          user: currentUserId,
-        },
-        {
-          expand: 'user',
-          headers: resolveFeatureWriteHeaders(requestOptions),
-        },
-      );
+      const replayRecordId = deriveFeatureWriteRecordId(requestOptions, 'restaurant-list');
+      const payload: Record<string, unknown> = {
+        name: trimmedName,
+        description: input.description?.trim() || '',
+        visibility,
+        user: currentUserId,
+      };
+      if (replayRecordId) {
+        payload.id = replayRecordId;
+      }
+
+      const collectionOptions = {
+        expand: 'user',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+      };
+
+      let createdRecord: RestaurantListCollectionRecord;
+      try {
+        createdRecord = await createCollectionRecord<RestaurantListCollectionRecord>(
+          'restaurant_lists',
+          payload,
+          collectionOptions,
+        );
+      } catch (createError) {
+        if (!replayRecordId) {
+          throw createError;
+        }
+
+        try {
+          const existingRecord = await getCollectionRecord<RestaurantListCollectionRecord>(
+            'restaurant_lists',
+            replayRecordId,
+            collectionOptions,
+          );
+          if (existingRecord.user !== currentUserId) {
+            throw createError;
+          }
+          createdRecord = existingRecord;
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
+          throw createError;
+        }
+      }
 
       return mapRestaurantListCollectionRecord(createdRecord);
     },
@@ -1469,6 +1504,7 @@ export async function moveRestaurantListRestaurant(
     async () => {
       getAuthenticatedUserId();
       const listId = input.listId.trim();
+      const anchorRestaurantId = input.anchorRestaurantId.trim();
       const restaurantId = input.restaurantId.trim();
       const direction = input.direction;
 
@@ -1478,6 +1514,10 @@ export async function moveRestaurantListRestaurant(
 
       if (!restaurantId) {
         throw new Error('Restaurant is required.');
+      }
+
+      if (!anchorRestaurantId || anchorRestaurantId === restaurantId) {
+        throw new Error('Adjacent restaurant is required.');
       }
 
       if (direction !== 'up' && direction !== 'down') {
@@ -1490,6 +1530,7 @@ export async function moveRestaurantListRestaurant(
           method: 'POST',
           headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
+            anchorRestaurantId,
             restaurantId,
             direction,
           },

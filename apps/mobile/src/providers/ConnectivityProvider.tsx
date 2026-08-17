@@ -10,9 +10,12 @@ import { env } from '../config/env';
 import { logger } from '../lib/logger';
 import { setObservabilityContext, trackObservabilityEvent } from '../observability';
 
-interface ConnectivitySnapshot {
+export type ConnectivityStatus = 'unknown' | 'offline' | 'online';
+
+export interface ConnectivitySnapshot {
+  status: ConnectivityStatus;
   isConnected: boolean;
-  isInternetReachable: boolean;
+  isInternetReachable: boolean | null;
   isOnline: boolean;
   connectionType: NetInfoState['type'];
   isConnectionExpensive: boolean;
@@ -20,9 +23,10 @@ interface ConnectivitySnapshot {
 }
 
 const DEFAULT_CONNECTIVITY_SNAPSHOT: ConnectivitySnapshot = {
-  isConnected: true,
-  isInternetReachable: true,
-  isOnline: true,
+  status: 'unknown',
+  isConnected: false,
+  isInternetReachable: null,
+  isOnline: false,
   connectionType: NetInfoStateType.unknown,
   isConnectionExpensive: false,
   updatedAt: Date.now(),
@@ -111,6 +115,7 @@ export function ConnectivityProvider({ children }: { children: React.ReactNode }
       if (probeResult.isReachable) {
         applySnapshot({
           ...netInfoSnapshot,
+          status: 'online',
           isInternetReachable: true,
           isOnline: true,
           updatedAt: Date.now(),
@@ -176,10 +181,18 @@ export function useConnectivity(): ConnectivitySnapshot {
 
 export function resolveSnapshot(state: NetInfoState): ConnectivitySnapshot {
   const isConnected = Boolean(state.isConnected);
-  const isInternetReachable = state.isInternetReachable ?? true;
-  const isOnline = isConnected && isInternetReachable;
+  const isInternetReachable = state.isInternetReachable;
+  const status: ConnectivityStatus = !isConnected
+    ? 'offline'
+    : isInternetReachable === null
+      ? 'unknown'
+      : isInternetReachable
+        ? 'online'
+        : 'offline';
+  const isOnline = status === 'online';
 
   return {
+    status,
     isConnected,
     isInternetReachable,
     isOnline,

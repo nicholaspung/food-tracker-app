@@ -67,6 +67,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
       { key: 'restaurantId', type: 'string' },
     ]),
     'list.restaurant.reorder': createFeatureOutboxPayloadDecoder('list.restaurant.reorder', [
+      { key: 'anchorRestaurantId', type: 'string' },
       { key: 'listId', type: 'string' },
       { key: 'restaurantId', type: 'string' },
       { key: 'direction', type: 'string', allowedValues: ['up', 'down'] },

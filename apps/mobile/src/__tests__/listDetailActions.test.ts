@@ -140,6 +140,7 @@ describe('listDetailActions', () => {
 
     await expect(
       reorderRestaurantAction({
+        anchorRestaurantId: 'restaurant_2',
         deps,
         direction: 'up',
         isOwner: true,
@@ -148,6 +149,7 @@ describe('listDetailActions', () => {
     ).resolves.toEqual({ queued: false });
 
     expect(deps.restaurantListWrites.reorderRestaurant).toHaveBeenCalledWith({
+      anchorRestaurantId: 'restaurant_2',
       listId: 'list_1',
       restaurantId: 'restaurant_1',
       direction: 'up',

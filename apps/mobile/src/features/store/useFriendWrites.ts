@@ -92,11 +92,13 @@ async function sendFriendRequestWithOfflineSupport({
       strategy: 'outbox',
       payload: { code },
     },
-    execute: async () => {
+    execute: async (requestOptions) => {
       if (isQrScan) {
         await trackWriteTelemetry('friend.qr.scan');
       }
-      return inviteFriend({ code });
+      return requestOptions
+        ? inviteFriend({ code }, requestOptions)
+        : inviteFriend({ code });
     },
   });
 
@@ -124,7 +126,7 @@ async function acceptFriendRequestWithOfflineSupport({
       strategy: 'outbox',
       payload: { friendId: friend.id },
     },
-    execute: () => markFriendInviteAccepted(friend.id),
+    execute: markFriendInviteAccepted.bind(null, friend.id),
   });
 
   acceptCachedFriendRequest(
@@ -159,7 +161,7 @@ async function acceptFriendSuggestionWithWriteTelemetry({
       strategy: 'outbox',
       payload: { inviterId },
     },
-    execute: () => createFriendSuggestionAcceptance({ inviterId }),
+    execute: createFriendSuggestionAcceptance.bind(null, { inviterId }),
   });
 
   await Promise.all([
@@ -194,7 +196,7 @@ async function removeFriendWithOfflineSupport({
       strategy: 'outbox',
       payload: { friendId: friend.id },
     },
-    execute: () => removeFriendRecord(friend.id),
+    execute: removeFriendRecord.bind(null, friend.id),
   });
 
   removeCachedFriend(queryClient, userId, friend);

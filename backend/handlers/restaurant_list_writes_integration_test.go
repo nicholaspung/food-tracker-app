@@ -1404,6 +1404,66 @@ func TestRestaurantListReorderEndpointUpdatesGroupedPositions(t *testing.T) {
 	}
 }
 
+func TestRestaurantListReorderEndpointReplaysAbsoluteMoveWithoutMovingTwice(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name": "Replay Order Test", "visibility": "private", "user": user.Id,
+	})
+
+	restaurants := []*core.Record{
+		seedRestaurantRecord(t, server.app, user.Id, "Alpha"),
+		seedRestaurantRecord(t, server.app, user.Id, "Bravo"),
+		seedRestaurantRecord(t, server.app, user.Id, "Charlie"),
+	}
+	listItems := make([]*core.Record, 0, len(restaurants))
+	for index, restaurant := range restaurants {
+		visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+		foodItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, restaurant.GetString("name"), 4)
+		listItems = append(listItems, createCollectionRecord(t, server.app, "list_items", map[string]any{
+			"list":       list.Id,
+			"restaurant": restaurant.Id,
+			"addedBy":    user.Id,
+			"foodItem":   foodItem.Id,
+			"position":   index + 1,
+		}))
+	}
+
+	path := fmt.Sprintf("/api/restaurant-lists/%s/restaurants/reorder", list.Id)
+	body := fmt.Sprintf(`{
+		"anchorRestaurantId":"%s",
+		"restaurantId":"%s",
+		"direction":"up"
+	}`, restaurants[1].Id, restaurants[2].Id)
+	headers := map[string]string{"Idempotency-Key": "list-reorder-response-loss-1"}
+	firstResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPost, path, token, body, headers)
+	secondResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPost, path, token, body, headers)
+	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"expected both reorder attempts to return 200, got first=%d second=%d: %s",
+			firstResponse.Code,
+			secondResponse.Code,
+			secondResponse.Body.String(),
+		)
+	}
+
+	wantPositions := []int{1, 3, 2}
+	for index, listItem := range listItems {
+		reloaded, err := server.app.FindRecordById("list_items", listItem.Id)
+		if err != nil {
+			t.Fatalf("failed to reload list item %s: %v", listItem.Id, err)
+		}
+		if reloaded.GetInt("position") != wantPositions[index] {
+			t.Fatalf(
+				"expected restaurant %s at position %d after replay, got %d",
+				restaurants[index].GetString("name"),
+				wantPositions[index],
+				reloaded.GetInt("position"),
+			)
+		}
+	}
+}
+
 func TestRestaurantListRemoveSourceRatingEndpointPromotesUserRating(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

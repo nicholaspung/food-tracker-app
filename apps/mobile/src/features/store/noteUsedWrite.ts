@@ -36,6 +36,6 @@ export async function writeNoteUsedWithOfflineSupport(
       strategy: 'outbox',
       payload: input,
     },
-    execute: () => markNoteUsed(input),
+    execute: markNoteUsed.bind(null, input),
   });
 }

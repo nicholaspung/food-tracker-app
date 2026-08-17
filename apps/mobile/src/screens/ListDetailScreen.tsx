@@ -832,11 +832,21 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    const restaurantIndex = visibleRestaurantRows.findIndex(
+      (row) => row.group.restaurantId === restaurantId,
+    );
+    const anchorIndex = direction === 'up' ? restaurantIndex - 1 : restaurantIndex + 1;
+    const anchorRestaurantId = visibleRestaurantRows[anchorIndex]?.group.restaurantId;
+    if (!anchorRestaurantId) {
+      return;
+    }
+
     setErrorMessage(null);
     setMovingRestaurantId(restaurantId);
 
     try {
       await reorderRestaurantAction({
+        anchorRestaurantId,
         deps: listDetailActionDependencies,
         isOwner,
         restaurantId,

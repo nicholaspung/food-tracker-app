@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ const (
 )
 
 type visitCreateRequest struct {
+	IdempotencyKey   string                  `json:"-"`
 	RestaurantID     string                  `json:"restaurantId"`
 	RestaurantName   string                  `json:"restaurantName"`
 	SourceListItemID string                  `json:"sourceListItemId"`
@@ -33,6 +35,7 @@ type visitCreateRequest struct {
 }
 
 type visitUpdateRequest struct {
+	IdempotencyKey string                   `json:"-"`
 	RestaurantID   *string                  `json:"restaurantId"`
 	RestaurantName *string                  `json:"restaurantName"`
 	Items          *[]visitItemWriteRequest `json:"items"`
@@ -114,6 +117,7 @@ type visitCreateTransactionResult struct {
 }
 
 type billCreateRequest struct {
+	IdempotencyKey  string                        `json:"-"`
 	Title           string                        `json:"title"`
 	Items           []billItemWriteRequest        `json:"items"`
 	Participants    []billParticipantWriteRequest `json:"participants"`
@@ -125,6 +129,7 @@ type billCreateRequest struct {
 }
 
 type billUpdateRequest struct {
+	IdempotencyKey  string                         `json:"-"`
 	Title           *string                        `json:"title"`
 	Items           *[]billItemWriteRequest        `json:"items"`
 	Participants    *[]billParticipantWriteRequest `json:"participants"`
@@ -252,6 +257,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		if err := e.BindBody(&requestBody); err != nil {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
+		requestBody.IdempotencyKey = resolveFeatureWriteIdempotencyKey(e)
 
 		var responsePayload visitResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
@@ -289,6 +295,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		if err := e.BindBody(&requestBody); err != nil {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
+		requestBody.IdempotencyKey = resolveFeatureWriteIdempotencyKey(e)
 
 		var responsePayload visitResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
@@ -351,9 +358,15 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("itemId is required", nil)
 		}
 
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		var responsePayload convertVisitItemToFoodProductResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
-			convertResult, err := convertVisitItemToFoodProductTransaction(txApp, e.Auth, itemID)
+			convertResult, err := convertVisitItemToFoodProductTransaction(
+				txApp,
+				e.Auth,
+				itemID,
+				idempotencyKey,
+			)
 			if err != nil {
 				return err
 			}
@@ -376,6 +389,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		if err := e.BindBody(&requestBody); err != nil {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
+		requestBody.IdempotencyKey = resolveFeatureWriteIdempotencyKey(e)
 
 		var responsePayload billResponse
 		var createdBillID string
@@ -402,6 +416,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 			BillID:           createdBillID,
 			BillTitle:        createdBillTitle,
 			ActorUserID:      e.Auth.Id,
+			IdempotencyKey:   requestBody.IdempotencyKey,
 			NextParticipants: billResponseParticipantsToNotificationSignals(responsePayload.Participants),
 		}); err != nil {
 			return apis.NewApiError(500, "failed to deliver bill notifications", err)
@@ -424,10 +439,12 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		if err := e.BindBody(&requestBody); err != nil {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
+		requestBody.IdempotencyKey = resolveFeatureWriteIdempotencyKey(e)
 
 		var responsePayload billResponse
 		var previousParticipantSignals []billNotificationParticipantSignal
 		var updatedBillTitle string
+		var notificationInput billOwedNotificationSignalInput
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			existingParticipants, err := listBillParticipants(txApp, billID)
 			if err != nil {
@@ -446,18 +463,24 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to load updated bill", err)
 			}
 
+			notificationInput = billOwedNotificationSignalInput{
+				BillID:               billID,
+				BillTitle:            updatedBillTitle,
+				ActorUserID:          e.Auth.Id,
+				IdempotencyKey:       requestBody.IdempotencyKey,
+				PreviousParticipants: previousParticipantSignals,
+				NextParticipants:     billResponseParticipantsToNotificationSignals(responsePayload.Participants),
+			}
+			if err := reserveBillOwedNotificationIntents(txApp, notificationInput); err != nil {
+				return apis.NewApiError(500, "failed to reserve bill notification intents", err)
+			}
+
 			return nil
 		}); err != nil {
 			return err
 		}
 
-		if err := deliverBillOwedNotifications(app, billOwedNotificationSignalInput{
-			BillID:               billID,
-			BillTitle:            updatedBillTitle,
-			ActorUserID:          e.Auth.Id,
-			PreviousParticipants: previousParticipantSignals,
-			NextParticipants:     billResponseParticipantsToNotificationSignals(responsePayload.Participants),
-		}); err != nil {
+		if err := deliverBillOwedNotifications(app, notificationInput); err != nil {
 			return apis.NewApiError(500, "failed to deliver bill notifications", err)
 		}
 
@@ -623,6 +646,35 @@ func createVisitTransaction(
 		return result, apis.NewBadRequestError("at least one item is required", nil)
 	}
 
+	idempotentVisitID := deriveFeatureWriteRecordID(
+		"visit:"+authRecord.Id,
+		requestBody.IdempotencyKey,
+	)
+	if idempotentVisitID != "" {
+		existingVisit, findErr := app.FindRecordById("visits", idempotentVisitID)
+		if findErr == nil {
+			if existingVisit.GetString("user") != authRecord.Id {
+				return result, apis.NewForbiddenError("visit idempotency key belongs to another user", nil)
+			}
+			result.VisitRecord = existingVisit
+			return result, nil
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return result, apis.NewApiError(500, "failed to load replayed visit", findErr)
+		}
+
+		for index := range requestBody.Items {
+			requestBody.Items[index].ID = deriveFeatureWriteRecordID(
+				fmt.Sprintf("visit-item:%s:%d", authRecord.Id, index),
+				requestBody.IdempotencyKey,
+			)
+		}
+	} else {
+		for index := range requestBody.Items {
+			requestBody.Items[index].ID = ""
+		}
+	}
+
 	normalizedVisitedAt := normalizeVisitDate(requestBody.VisitedAt)
 	visitLocalDate, err := resolveVisitLocalDate(requestBody.VisitedOn, normalizedVisitedAt)
 	if err != nil {
@@ -676,6 +728,9 @@ func createVisitTransaction(
 		}
 
 		visitRecord = core.NewRecord(visitsCollection)
+		if idempotentVisitID != "" {
+			visitRecord.SetRaw("id", idempotentVisitID)
+		}
 		visitRecord.Set("restaurant", restaurantRecord.Id)
 		visitRecord.Set("user", authRecord.Id)
 		visitRecord.Set("visitDate", normalizedVisitedAt)
@@ -691,9 +746,20 @@ func createVisitTransaction(
 		}
 	}
 
-	createdItemIDs, err := appendVisitItems(app, authRecord, restaurantRecord.Id, visitRecord.Id, requestBody.Items)
+	createdItemIDs, createdItemCount, err := appendVisitItems(
+		app,
+		authRecord,
+		restaurantRecord.Id,
+		visitRecord.Id,
+		requestBody.Items,
+	)
 	if err != nil {
 		return result, err
+	}
+	if idempotentVisitID != "" && createdItemCount == 0 {
+		result.VisitRecord = visitRecord
+		result.PrioritizedItemIDs = createdItemIDs
+		return result, nil
 	}
 
 	recordSuggestionProvenanceForVisitItems(
@@ -1062,7 +1128,15 @@ func updateVisitTransaction(
 		if listErr != nil {
 			return nil, apis.NewApiError(500, "failed to load visit items", listErr)
 		}
-		if err := syncVisitItems(app, authRecord, visitRecord.GetString("restaurant"), visitID, existingItems, *requestBody.Items); err != nil {
+		if err := syncVisitItems(
+			app,
+			authRecord,
+			visitRecord.GetString("restaurant"),
+			visitID,
+			existingItems,
+			*requestBody.Items,
+			requestBody.IdempotencyKey,
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -1076,27 +1150,46 @@ func appendVisitItems(
 	restaurantID string,
 	visitID string,
 	requestItems []visitItemWriteRequest,
-) ([]string, error) {
+) ([]string, int, error) {
 	foodItemsCollection, err := app.FindCollectionByNameOrId("food_items")
 	if err != nil {
-		return nil, apis.NewApiError(500, "internal error", err)
+		return nil, 0, apis.NewApiError(500, "internal error", err)
 	}
 
 	createdItemIDs := make([]string, 0, len(requestItems))
+	createdItemCount := 0
 	for _, item := range requestItems {
 		trimmedName := strings.TrimSpace(item.Name)
 		if trimmedName == "" {
-			return nil, apis.NewBadRequestError("item name is required", nil)
+			return nil, createdItemCount, apis.NewBadRequestError("item name is required", nil)
 		}
 
 		description := strings.TrimSpace(item.Description)
 		notes := strings.TrimSpace(item.Notes)
 		menuItemID, err := resolveVisitItemMenuItemID(app, authRecord, restaurantID, item.MenuItemID)
 		if err != nil {
-			return nil, err
+			return nil, createdItemCount, err
+		}
+
+		trimmedItemID := strings.TrimSpace(item.ID)
+		if trimmedItemID != "" {
+			existingItem, findErr := app.FindRecordById("food_items", trimmedItemID)
+			if findErr == nil {
+				if existingItem.GetString("visit") != visitID || existingItem.GetString("user") != authRecord.Id {
+					return nil, createdItemCount, apis.NewApiError(409, "visit item idempotency key conflict", nil)
+				}
+				createdItemIDs = append(createdItemIDs, existingItem.Id)
+				continue
+			}
+			if !errors.Is(findErr, sql.ErrNoRows) {
+				return nil, createdItemCount, apis.NewApiError(500, "failed to load replayed visit item", findErr)
+			}
 		}
 
 		createdItem := core.NewRecord(foodItemsCollection)
+		if trimmedItemID != "" {
+			createdItem.SetRaw("id", trimmedItemID)
+		}
 		createdItem.Set("name", trimmedName)
 		createdItem.Set("rating", item.Rating)
 		createdItem.Set("description", emptyStringToNil(description))
@@ -1107,16 +1200,17 @@ func appendVisitItems(
 		createdItem.Set("itemType", foodItemTypeVisitItem)
 		applyPreReviewModerationPolicy(authRecord, createdItem)
 		if err := app.Save(createdItem); err != nil {
-			return nil, apis.NewApiError(500, "failed to create visit item", err)
+			return nil, createdItemCount, apis.NewApiError(500, "failed to create visit item", err)
 		}
 		if err := registerPreReviewModerationCase(app, authRecord, createdItem); err != nil {
-			return nil, err
+			return nil, createdItemCount, err
 		}
 
 		createdItemIDs = append(createdItemIDs, createdItem.Id)
+		createdItemCount++
 	}
 
-	return createdItemIDs, nil
+	return createdItemIDs, createdItemCount, nil
 }
 
 type qualifiedSuggestionProvenanceSource struct {
@@ -1264,6 +1358,7 @@ func syncVisitItems(
 	visitID string,
 	existingItems []*core.Record,
 	requestItems []visitItemWriteRequest,
+	idempotencyKey string,
 ) error {
 	foodItemsCollection, err := app.FindCollectionByNameOrId("food_items")
 	if err != nil {
@@ -1276,7 +1371,7 @@ func syncVisitItems(
 	}
 
 	retainedItemIDs := make(map[string]struct{}, len(requestItems))
-	for _, item := range requestItems {
+	for itemIndex, item := range requestItems {
 		trimmedName := strings.TrimSpace(item.Name)
 		if trimmedName == "" {
 			return apis.NewBadRequestError("item name is required", nil)
@@ -1289,7 +1384,19 @@ func syncVisitItems(
 			return err
 		}
 
-		if existingItem, ok := existingItemsByID[item.ID]; ok {
+		requestedItemID := strings.TrimSpace(item.ID)
+		durableItemID := ""
+		if _, exists := existingItemsByID[requestedItemID]; !exists {
+			durableItemID = deriveFeatureWriteRecordID(
+				fmt.Sprintf("visit-update-item:%s:%s:%s:%d", authRecord.Id, visitID, requestedItemID, itemIndex),
+				idempotencyKey,
+			)
+		}
+		existingItem, existingItemFound := existingItemsByID[requestedItemID]
+		if !existingItemFound && durableItemID != "" {
+			existingItem, existingItemFound = existingItemsByID[durableItemID]
+		}
+		if existingItemFound {
 			existingItem.Set("name", trimmedName)
 			existingItem.Set("rating", item.Rating)
 			existingItem.Set("description", description)
@@ -1303,6 +1410,9 @@ func syncVisitItems(
 		}
 
 		createdItem := core.NewRecord(foodItemsCollection)
+		if durableItemID != "" {
+			createdItem.SetRaw("id", durableItemID)
+		}
 		createdItem.Set("name", trimmedName)
 		createdItem.Set("rating", item.Rating)
 		createdItem.Set("description", emptyStringToNil(description))
@@ -1417,6 +1527,7 @@ func convertVisitItemToFoodProductTransaction(
 	app core.App,
 	authRecord *core.Record,
 	itemID string,
+	idempotencyKey string,
 ) (convertVisitItemToFoodProductResponse, error) {
 	response := convertVisitItemToFoodProductResponse{}
 
@@ -1427,6 +1538,14 @@ func convertVisitItemToFoodProductTransaction(
 
 	if itemRecord.GetString("user") != authRecord.Id {
 		return response, apis.NewForbiddenError("you can only convert your own visit items", nil)
+	}
+
+	if strings.TrimSpace(idempotencyKey) != "" &&
+		itemRecord.GetString("itemType") == foodItemTypeFoodProduct &&
+		strings.TrimSpace(itemRecord.GetString("visit")) == "" {
+		return convertVisitItemToFoodProductResponse{
+			FoodProductID: itemRecord.Id,
+		}, nil
 	}
 
 	sourceVisitID := strings.TrimSpace(itemRecord.GetString("visit"))
@@ -1530,6 +1649,23 @@ func createBillTransaction(app core.App, authRecord *core.Record, requestBody bi
 		return nil, apis.NewBadRequestError("bill title is required", nil)
 	}
 
+	idempotentBillID := deriveFeatureWriteRecordID(
+		"bill:"+authRecord.Id,
+		requestBody.IdempotencyKey,
+	)
+	if idempotentBillID != "" {
+		existingBill, findErr := app.FindRecordById("bills", idempotentBillID)
+		if findErr == nil {
+			if existingBill.GetString("creator_user") != authRecord.Id {
+				return nil, apis.NewForbiddenError("bill idempotency key belongs to another user", nil)
+			}
+			return existingBill, nil
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return nil, apis.NewApiError(500, "failed to load replayed bill", findErr)
+		}
+	}
+
 	billsCollection, err := app.FindCollectionByNameOrId("bills")
 	if err != nil {
 		return nil, apis.NewApiError(500, "internal error", err)
@@ -1549,6 +1685,9 @@ func createBillTransaction(app core.App, authRecord *core.Record, requestBody bi
 	}
 
 	billRecord := core.NewRecord(billsCollection)
+	if idempotentBillID != "" {
+		billRecord.SetRaw("id", idempotentBillID)
+	}
 	billRecord.Set("creator_user", authRecord.Id)
 	billRecord.Set("bill_name", trimmedTitle)
 	billRecord.Set("total_amount", totalAmount)
@@ -1563,11 +1702,55 @@ func createBillTransaction(app core.App, authRecord *core.Record, requestBody bi
 		return nil, apis.NewApiError(500, "failed to create bill", err)
 	}
 
-	if _, _, err := syncBillChildren(app, authRecord.Id, billRecord.Id, nil, nil, requestBody.Participants, requestBody.Items); err != nil {
+	if _, _, err := syncBillChildren(
+		app,
+		authRecord.Id,
+		billRecord.Id,
+		nil,
+		nil,
+		requestBody.Participants,
+		requestBody.Items,
+		requestBody.IdempotencyKey,
+	); err != nil {
 		return nil, err
 	}
 
 	return billRecord, nil
+}
+
+func resolveFeatureWriteIdempotencyKey(e *core.RequestEvent) string {
+	if e == nil || e.Request == nil {
+		return ""
+	}
+
+	if key := strings.TrimSpace(e.Request.Header.Get("Idempotency-Key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(e.Request.Header.Get("X-Idempotency-Key"))
+}
+
+func deriveFeatureWriteRecordID(scope string, idempotencyKey string) string {
+	trimmedKey := strings.TrimSpace(idempotencyKey)
+	if trimmedKey == "" {
+		return ""
+	}
+
+	firstHash := uint32(0x811c9dc5)
+	secondHash := uint32(0x9e3779b9)
+	for _, character := range []byte(scope + ":" + trimmedKey) {
+		firstHash = (firstHash ^ uint32(character)) * uint32(0x01000193)
+		secondHash = (secondHash ^ uint32(character)) * uint32(0x85ebca6b)
+	}
+
+	return "i" + leftPadBase36(firstHash) + leftPadBase36(secondHash)
+}
+
+func leftPadBase36(value uint32) string {
+	encoded := strconv.FormatUint(uint64(value), 36)
+	if len(encoded) >= 7 {
+		return encoded
+	}
+	return strings.Repeat("0", 7-len(encoded)) + encoded
 }
 
 func updateBillTransaction(
@@ -1678,6 +1861,7 @@ func updateBillTransaction(
 		existingItems,
 		requestedParticipants,
 		requestedItems,
+		requestBody.IdempotencyKey,
 	); err != nil {
 		return nil, err
 	}
@@ -1795,6 +1979,7 @@ func syncBillChildren(
 	existingItems []*core.Record,
 	requestParticipants []billParticipantWriteRequest,
 	requestItems []billItemWriteRequest,
+	idempotencyKey string,
 ) (map[string]string, []string, error) {
 	participantsCollection, err := app.FindCollectionByNameOrId("bill_participants")
 	if err != nil {
@@ -1820,7 +2005,7 @@ func syncBillChildren(
 		}
 
 		retainedParticipantIDs := make(map[string]struct{}, len(requestParticipants))
-		for _, participant := range requestParticipants {
+		for participantIndex, participant := range requestParticipants {
 			participantName := strings.TrimSpace(participant.Name)
 			participantUserID := strings.TrimSpace(participant.UserID)
 			if participantName == "" && participantUserID == "" {
@@ -1839,7 +2024,19 @@ func syncBillChildren(
 			customTipContribution := sanitizeOptionalCurrency(participant.CustomTipContribution)
 			paidStatus := normalizePaidStatus(participant.PaidStatus)
 
-			if existingParticipant, ok := existingParticipantsByID[participant.ID]; ok {
+			requestedParticipantID := strings.TrimSpace(participant.ID)
+			durableParticipantID := ""
+			if _, exists := existingParticipantsByID[requestedParticipantID]; !exists {
+				durableParticipantID = deriveFeatureWriteRecordID(
+					fmt.Sprintf("bill-participant:%s:%s:%s:%d", actorUserID, billID, requestedParticipantID, participantIndex),
+					idempotencyKey,
+				)
+			}
+			existingParticipant, existingParticipantFound := existingParticipantsByID[requestedParticipantID]
+			if !existingParticipantFound && durableParticipantID != "" {
+				existingParticipant, existingParticipantFound = existingParticipantsByID[durableParticipantID]
+			}
+			if existingParticipantFound {
 				existingParticipant.Set("bill", billID)
 				existingParticipant.Set("user", emptyStringToNil(participantUserID))
 				existingParticipant.Set("participant_name", emptyStringToNil(participantName))
@@ -1858,6 +2055,9 @@ func syncBillChildren(
 			}
 
 			createdParticipant := core.NewRecord(participantsCollection)
+			if durableParticipantID != "" {
+				createdParticipant.SetRaw("id", durableParticipantID)
+			}
 			createdParticipant.Set("bill", billID)
 			createdParticipant.Set("user", emptyStringToNil(participantUserID))
 			createdParticipant.Set("participant_name", emptyStringToNil(participantName))
@@ -1894,7 +2094,7 @@ func syncBillChildren(
 		}
 
 		retainedItemIDs := make(map[string]struct{}, len(requestItems))
-		for _, item := range requestItems {
+		for itemIndex, item := range requestItems {
 			trimmedName := strings.TrimSpace(item.ItemName)
 			if trimmedName == "" {
 				return nil, nil, apis.NewBadRequestError("bill item name is required", nil)
@@ -1911,7 +2111,19 @@ func syncBillChildren(
 				normalizedAssignedToIDs = append(normalizedAssignedToIDs, allParticipantIDs...)
 			}
 
-			if existingItem, ok := existingItemsByID[item.ID]; ok {
+			requestedItemID := strings.TrimSpace(item.ID)
+			durableItemID := ""
+			if _, exists := existingItemsByID[requestedItemID]; !exists {
+				durableItemID = deriveFeatureWriteRecordID(
+					fmt.Sprintf("bill-item:%s:%s:%s:%d", actorUserID, billID, requestedItemID, itemIndex),
+					idempotencyKey,
+				)
+			}
+			existingItem, existingItemFound := existingItemsByID[requestedItemID]
+			if !existingItemFound && durableItemID != "" {
+				existingItem, existingItemFound = existingItemsByID[durableItemID]
+			}
+			if existingItemFound {
 				existingItem.Set("bill", billID)
 				existingItem.Set("item_name", trimmedName)
 				existingItem.Set("price", sanitizeCurrency(item.Price))
@@ -1928,6 +2140,9 @@ func syncBillChildren(
 			}
 
 			createdItem := core.NewRecord(billItemsCollection)
+			if durableItemID != "" {
+				createdItem.SetRaw("id", durableItemID)
+			}
 			createdItem.Set("bill", billID)
 			createdItem.Set("item_name", trimmedName)
 			createdItem.Set("price", sanitizeCurrency(item.Price))

@@ -92,15 +92,27 @@ export function useSettingsPreferencesWrites() {
             ...settingsUpdate,
           },
         },
-        execute: () =>
-          updateCollectionRecord<RecordModel & UserSettingsRecord>(
-            'users',
-            input.userId,
-            buildUserSettingsRecordUpdate(settingsUpdate),
-          ).then(async (updatedUserRecord) => {
+        execute: async (requestOptions) => {
+          const settingsRecordUpdate = buildUserSettingsRecordUpdate(settingsUpdate);
+          const updatedUserRecord = requestOptions
+            ? await updateCollectionRecord<RecordModel & UserSettingsRecord>(
+                'users',
+                input.userId,
+                settingsRecordUpdate,
+                { headers: requestOptions.headers },
+              )
+            : await updateCollectionRecord<RecordModel & UserSettingsRecord>(
+                'users',
+                input.userId,
+                settingsRecordUpdate,
+              );
+          if (requestOptions) {
+            await saveNotificationPreferences(input.notificationPreferences, requestOptions);
+          } else {
             await saveNotificationPreferences(input.notificationPreferences);
-            return updatedUserRecord;
-          }),
+          }
+          return updatedUserRecord;
+        },
       });
 
       if (result.status === 'queued') {

@@ -121,6 +121,7 @@ type billOwedNotificationSignalInput struct {
 	BillID               string
 	BillTitle            string
 	ActorUserID          string
+	IdempotencyKey       string
 	PreviousParticipants []billNotificationParticipantSignal
 	NextParticipants     []billNotificationParticipantSignal
 }
@@ -331,7 +332,7 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 
 		results := make([]adminNotificationTestRecipientResult, 0, len(userIDs))
 		for _, userID := range userIDs {
-			status, err := deliverBillOwedNotification(app, billID, actorUserID, userID)
+			status, err := deliverBillOwedNotification(app, billID, actorUserID, userID, "")
 			if err != nil {
 				return apis.NewApiError(500, "failed to deliver bill notification test", err)
 			}
@@ -387,7 +388,7 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			sessionID = fmt.Sprintf("admin-test-session-%d", time.Now().UTC().UnixNano())
 		}
 
-		status, err := deliverTastingInviteNotification(app, sessionID, actorUserID, userID)
+		status, err := deliverTastingInviteNotification(app, sessionID, actorUserID, userID, "")
 		if err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notification test", err)
 		}
@@ -1382,11 +1383,57 @@ func monthlyFriendsActivityDeliveryKey(userID string, monthStart time.Time) stri
 	return fmt.Sprintf("%s:%s:%s", monthlyFriendsActivitySignalType, monthStart.UTC().Format("2006-01"), strings.TrimSpace(userID))
 }
 
+func durableNotificationDeliveryKey(
+	signalType string,
+	sourceRecordID string,
+	userID string,
+	idempotencyKey string,
+) string {
+	trimmedIdempotencyKey := strings.TrimSpace(idempotencyKey)
+	if trimmedIdempotencyKey != "" {
+		return fmt.Sprintf(
+			"%s:%s:%s:%s",
+			strings.TrimSpace(signalType),
+			strings.TrimSpace(sourceRecordID),
+			strings.TrimSpace(userID),
+			trimmedIdempotencyKey,
+		)
+	}
+
+	return fmt.Sprintf(
+		"%s:%s:%s:%d",
+		strings.TrimSpace(signalType),
+		strings.TrimSpace(sourceRecordID),
+		strings.TrimSpace(userID),
+		time.Now().UTC().UnixNano(),
+	)
+}
+
+func billOwedNotificationIntentDeliveryKey(
+	billID string,
+	userID string,
+	idempotencyKey string,
+) string {
+	return fmt.Sprintf(
+		"%s:intent:%s:%s:%s",
+		billOwedNotificationSignalType,
+		strings.TrimSpace(billID),
+		strings.TrimSpace(userID),
+		strings.TrimSpace(idempotencyKey),
+	)
+}
+
 func formatPocketBaseDateTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
-func deliverTastingInviteNotifications(app core.App, sessionID string, actorUserID string, invitedUserIDs []string) error {
+func deliverTastingInviteNotifications(
+	app core.App,
+	sessionID string,
+	actorUserID string,
+	invitedUserIDs []string,
+	idempotencyKey string,
+) error {
 	if len(invitedUserIDs) == 0 {
 		return nil
 	}
@@ -1406,7 +1453,13 @@ func deliverTastingInviteNotifications(app core.App, sessionID string, actorUser
 		}
 		seen[userID] = struct{}{}
 
-		if _, err := deliverTastingInviteNotification(app, sessionRecord.Id, actorUserID, userID); err != nil {
+		if _, err := deliverTastingInviteNotification(
+			app,
+			sessionRecord.Id,
+			actorUserID,
+			userID,
+			idempotencyKey,
+		); err != nil {
 			return err
 		}
 	}
@@ -1414,20 +1467,41 @@ func deliverTastingInviteNotifications(app core.App, sessionID string, actorUser
 	return nil
 }
 
-func deliverTastingInviteNotification(app core.App, sessionID string, actorUserID string, userID string) (string, error) {
-	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", tastingInviteNotificationSignalType, sessionID, strings.TrimSpace(userID), time.Now().UTC().UnixNano())
+func deliverTastingInviteNotification(
+	app core.App,
+	sessionID string,
+	actorUserID string,
+	userID string,
+	idempotencyKey string,
+) (string, error) {
+	deliveryKey := durableNotificationDeliveryKey(
+		tastingInviteNotificationSignalType,
+		sessionID,
+		userID,
+		idempotencyKey,
+	)
+	baseLog := notificationDeliveryLogInput{
+		UserID:           userID,
+		SignalType:       tastingInviteNotificationSignalType,
+		SourceCollection: "tasting_sessions",
+		SourceRecord:     sessionID,
+		ActorUserID:      actorUserID,
+		DeliveryKey:      deliveryKey,
+	}
+	if strings.TrimSpace(idempotencyKey) != "" {
+		alreadyReserved, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
+		if err != nil {
+			return "", err
+		}
+		if alreadyReserved {
+			return "already_processed", nil
+		}
+	}
 
 	if strings.TrimSpace(actorUserID) != "" && strings.TrimSpace(actorUserID) == strings.TrimSpace(userID) {
-		status := "skipped_actor"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           userID,
-			SignalType:       tastingInviteNotificationSignalType,
-			SourceCollection: "tasting_sessions",
-			SourceRecord:     sessionID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_actor"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
 	}
 
 	enabled, err := isTastingInviteNotificationPreferenceEnabled(app, userID)
@@ -1435,16 +1509,9 @@ func deliverTastingInviteNotification(app core.App, sessionID string, actorUserI
 		return "", err
 	}
 	if !enabled {
-		status := "skipped_preference_disabled"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           userID,
-			SignalType:       tastingInviteNotificationSignalType,
-			SourceCollection: "tasting_sessions",
-			SourceRecord:     sessionID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_preference_disabled"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
 	}
 
 	devices, err := listActiveNotificationDevices(app, userID)
@@ -1452,16 +1519,19 @@ func deliverTastingInviteNotification(app core.App, sessionID string, actorUserI
 		return "", err
 	}
 	if len(devices) == 0 {
-		status := "skipped_no_active_device"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           userID,
-			SignalType:       tastingInviteNotificationSignalType,
-			SourceCollection: "tasting_sessions",
-			SourceRecord:     sessionID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_no_active_device"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
+	}
+
+	baseLog.Status = "provider_failed"
+	baseLog.ErrorCode = "delivery_reserved"
+	logRecord, created, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+	if err != nil {
+		return "", err
+	}
+	if !created {
+		return "already_processed", nil
 	}
 
 	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
@@ -1471,33 +1541,24 @@ func deliverTastingInviteNotification(app core.App, sessionID string, actorUserI
 
 	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
 	if sendResult.Err != nil {
-		status := "provider_failed"
-		return status, createNotificationDeliveryLogWithReceipts(app, notificationDeliveryLogInput{
-			UserID:           userID,
-			SignalType:       tastingInviteNotificationSignalType,
-			SourceCollection: "tasting_sessions",
-			SourceRecord:     sessionID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-			DeviceCount:      sendResult.DeviceCount,
-			ErrorCode:        sendResult.ErrorCode,
-		}, sendResult)
+		if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
+			Status:               "provider_failed",
+			DeviceCount:          sendResult.DeviceCount,
+			ErrorCode:            sendResult.ErrorCode,
+			NotificationDeviceID: sendResult.NotificationDeviceID,
+			ProviderMessageID:    sendResult.ProviderMessageID,
+		}); err != nil {
+			return "", err
+		}
+		return "provider_failed", createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
 	}
 
-	logRecord, err := createNotificationDeliveryLogRecord(app, notificationDeliveryLogInput{
-		UserID:               userID,
-		SignalType:           tastingInviteNotificationSignalType,
-		SourceCollection:     "tasting_sessions",
-		SourceRecord:         sessionID,
-		ActorUserID:          actorUserID,
-		DeliveryKey:          deliveryKey,
+	if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
 		Status:               "sent",
 		DeviceCount:          sendResult.DeviceCount,
-		ProviderMessageID:    sendResult.ProviderMessageID,
 		NotificationDeviceID: sendResult.NotificationDeviceID,
-	})
-	if err != nil {
+		ProviderMessageID:    sendResult.ProviderMessageID,
+	}); err != nil {
 		return "", err
 	}
 	return "sent", createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
@@ -1510,17 +1571,100 @@ func deliverBillOwedNotifications(app core.App, input billOwedNotificationSignal
 	}
 
 	recipientUserIDs := billOwedNotificationRecipientUserIDs(input)
+	if strings.TrimSpace(input.IdempotencyKey) != "" {
+		persistedRecipientUserIDs, err := billOwedNotificationIntentRecipientUserIDs(app, input)
+		if err != nil {
+			return err
+		}
+		if len(persistedRecipientUserIDs) > 0 {
+			recipientUserIDs = persistedRecipientUserIDs
+		}
+	}
 	if len(recipientUserIDs) == 0 {
 		return nil
 	}
 
 	for _, userID := range recipientUserIDs {
-		if _, err := deliverBillOwedNotification(app, billID, input.ActorUserID, userID); err != nil {
+		if _, err := deliverBillOwedNotification(
+			app,
+			billID,
+			input.ActorUserID,
+			userID,
+			input.IdempotencyKey,
+		); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func reserveBillOwedNotificationIntents(app core.App, input billOwedNotificationSignalInput) error {
+	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
+	if idempotencyKey == "" {
+		return nil
+	}
+
+	for _, userID := range billOwedNotificationRecipientUserIDs(input) {
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, notificationDeliveryLogInput{
+			UserID:           userID,
+			SignalType:       billOwedNotificationSignalType,
+			SourceCollection: "bills",
+			SourceRecord:     strings.TrimSpace(input.BillID),
+			ActorUserID:      strings.TrimSpace(input.ActorUserID),
+			DeliveryKey: billOwedNotificationIntentDeliveryKey(
+				input.BillID,
+				userID,
+				idempotencyKey,
+			),
+			Status:    "provider_failed",
+			ErrorCode: "delivery_intent",
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func billOwedNotificationIntentRecipientUserIDs(
+	app core.App,
+	input billOwedNotificationSignalInput,
+) ([]string, error) {
+	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
+	if idempotencyKey == "" {
+		return nil, nil
+	}
+
+	recipients := []string{}
+	seen := map[string]struct{}{}
+	actorUserID := strings.TrimSpace(input.ActorUserID)
+	for _, participant := range input.NextParticipants {
+		userID := strings.TrimSpace(participant.UserID)
+		if userID == "" || userID == actorUserID || !billParticipantOwesMoney(participant) {
+			continue
+		}
+		if _, alreadyIncluded := seen[userID]; alreadyIncluded {
+			continue
+		}
+
+		hasIntent, err := hasNotificationDeliveryLogWithKey(
+			app,
+			billOwedNotificationIntentDeliveryKey(input.BillID, userID, idempotencyKey),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !hasIntent {
+			continue
+		}
+
+		seen[userID] = struct{}{}
+		recipients = append(recipients, userID)
+	}
+
+	return recipients, nil
 }
 
 func billOwedNotificationRecipientUserIDs(input billOwedNotificationSignalInput) []string {
@@ -1558,21 +1702,42 @@ func billParticipantOwesMoney(participant billNotificationParticipantSignal) boo
 	return sanitizeCurrency(participant.AmountOwed) > 0 && normalizePaidStatus(participant.PaidStatus) == "pending"
 }
 
-func deliverBillOwedNotification(app core.App, billID string, actorUserID string, userID string) (string, error) {
+func deliverBillOwedNotification(
+	app core.App,
+	billID string,
+	actorUserID string,
+	userID string,
+	idempotencyKey string,
+) (string, error) {
 	trimmedUserID := strings.TrimSpace(userID)
-	deliveryKey := fmt.Sprintf("%s:%s:%s:%d", billOwedNotificationSignalType, billID, trimmedUserID, time.Now().UTC().UnixNano())
+	deliveryKey := durableNotificationDeliveryKey(
+		billOwedNotificationSignalType,
+		billID,
+		trimmedUserID,
+		idempotencyKey,
+	)
+	baseLog := notificationDeliveryLogInput{
+		UserID:           trimmedUserID,
+		SignalType:       billOwedNotificationSignalType,
+		SourceCollection: "bills",
+		SourceRecord:     billID,
+		ActorUserID:      actorUserID,
+		DeliveryKey:      deliveryKey,
+	}
+	if strings.TrimSpace(idempotencyKey) != "" {
+		alreadyReserved, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
+		if err != nil {
+			return "", err
+		}
+		if alreadyReserved {
+			return "already_processed", nil
+		}
+	}
 
 	if strings.TrimSpace(actorUserID) != "" && strings.TrimSpace(actorUserID) == trimmedUserID {
-		status := "skipped_actor"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           trimmedUserID,
-			SignalType:       billOwedNotificationSignalType,
-			SourceCollection: "bills",
-			SourceRecord:     billID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_actor"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
 	}
 
 	enabled, err := isBillOwedNotificationPreferenceEnabled(app, trimmedUserID)
@@ -1580,16 +1745,9 @@ func deliverBillOwedNotification(app core.App, billID string, actorUserID string
 		return "", err
 	}
 	if !enabled {
-		status := "skipped_preference_disabled"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           trimmedUserID,
-			SignalType:       billOwedNotificationSignalType,
-			SourceCollection: "bills",
-			SourceRecord:     billID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_preference_disabled"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
 	}
 
 	devices, err := listActiveNotificationDevices(app, trimmedUserID)
@@ -1597,16 +1755,19 @@ func deliverBillOwedNotification(app core.App, billID string, actorUserID string
 		return "", err
 	}
 	if len(devices) == 0 {
-		status := "skipped_no_active_device"
-		return status, createNotificationDeliveryLog(app, notificationDeliveryLogInput{
-			UserID:           trimmedUserID,
-			SignalType:       billOwedNotificationSignalType,
-			SourceCollection: "bills",
-			SourceRecord:     billID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-		})
+		baseLog.Status = "skipped_no_active_device"
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return baseLog.Status, err
+	}
+
+	baseLog.Status = "provider_failed"
+	baseLog.ErrorCode = "delivery_reserved"
+	logRecord, created, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+	if err != nil {
+		return "", err
+	}
+	if !created {
+		return "already_processed", nil
 	}
 
 	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{
@@ -1616,33 +1777,24 @@ func deliverBillOwedNotification(app core.App, billID string, actorUserID string
 
 	sendResult := sendRemoteNotificationToActiveDevices(app, devices, payload)
 	if sendResult.Err != nil {
-		status := "provider_failed"
-		return status, createNotificationDeliveryLogWithReceipts(app, notificationDeliveryLogInput{
-			UserID:           trimmedUserID,
-			SignalType:       billOwedNotificationSignalType,
-			SourceCollection: "bills",
-			SourceRecord:     billID,
-			ActorUserID:      actorUserID,
-			DeliveryKey:      deliveryKey,
-			Status:           status,
-			DeviceCount:      sendResult.DeviceCount,
-			ErrorCode:        sendResult.ErrorCode,
-		}, sendResult)
+		if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
+			Status:               "provider_failed",
+			DeviceCount:          sendResult.DeviceCount,
+			ErrorCode:            sendResult.ErrorCode,
+			NotificationDeviceID: sendResult.NotificationDeviceID,
+			ProviderMessageID:    sendResult.ProviderMessageID,
+		}); err != nil {
+			return "", err
+		}
+		return "provider_failed", createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
 	}
 
-	logRecord, err := createNotificationDeliveryLogRecord(app, notificationDeliveryLogInput{
-		UserID:               trimmedUserID,
-		SignalType:           billOwedNotificationSignalType,
-		SourceCollection:     "bills",
-		SourceRecord:         billID,
-		ActorUserID:          actorUserID,
-		DeliveryKey:          deliveryKey,
+	if err := updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
 		Status:               "sent",
 		DeviceCount:          sendResult.DeviceCount,
-		ProviderMessageID:    sendResult.ProviderMessageID,
 		NotificationDeviceID: sendResult.NotificationDeviceID,
-	})
-	if err != nil {
+		ProviderMessageID:    sendResult.ProviderMessageID,
+	}); err != nil {
 		return "", err
 	}
 	return "sent", createNotificationDeliveryReceiptRecords(app, logRecord.Id, sendResult.Receipts)
@@ -1877,13 +2029,25 @@ func createNotificationDeliveryLogRecord(app core.App, input notificationDeliver
 		record.Set("receipt_status", "pending")
 		record.Set("receipt_next_check_at", time.Now().UTC().Add(notificationReceiptPendingDelay))
 	}
-	if strings.TrimSpace(input.ErrorCode) != "" {
-		record.Set("error_code", input.ErrorCode)
-	}
+	record.Set("error_code", input.ErrorCode)
 	if err := app.Save(record); err != nil {
 		return nil, err
 	}
 	return record, nil
+}
+
+func createNotificationDeliveryLogRecordOnce(
+	app core.App,
+	input notificationDeliveryLogInput,
+) (*core.Record, bool, error) {
+	record, err := createNotificationDeliveryLogRecord(app, input)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return record, true, nil
 }
 
 func updateNotificationDeliveryLogAfterSend(app core.App, record *core.Record, input notificationDeliveryLogSendUpdate) error {
@@ -1900,9 +2064,7 @@ func updateNotificationDeliveryLogAfterSend(app core.App, record *core.Record, i
 		record.Set("receipt_status", "pending")
 		record.Set("receipt_next_check_at", time.Now().UTC().Add(notificationReceiptPendingDelay))
 	}
-	if strings.TrimSpace(input.ErrorCode) != "" {
-		record.Set("error_code", input.ErrorCode)
-	}
+	record.Set("error_code", input.ErrorCode)
 	return app.Save(record)
 }
 

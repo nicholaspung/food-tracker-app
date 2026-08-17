@@ -1,6 +1,7 @@
 import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
+import { isRetryableStatus } from '../../offline/retryPolicy';
 import { trackObservabilityEvent } from '../../observability';
 import { buildSafeTelemetryErrorProperties } from '../../observability/telemetryError';
 import type { ModerationContentStatus } from '../models';
@@ -151,6 +152,19 @@ export function getAuthenticatedUserId(): string {
 
 export function isNotFoundError(error: unknown): boolean {
   return error instanceof ClientResponseError && error.status === 404;
+}
+
+export function isRetryableFeatureStoreError(error: unknown): boolean {
+  if (error instanceof ClientResponseError) {
+    return error.status === 0 || isRetryableStatus(error.status);
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return /network|fetch|timed? out|timeout|connection|offline/.test(message);
 }
 
 export async function deleteCollectionRecordsIgnoringNotFound(

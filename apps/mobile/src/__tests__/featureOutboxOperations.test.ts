@@ -609,7 +609,12 @@ describe('featureOutboxOperations', () => {
     ],
     [
       'list.restaurant.reorder',
-      { listId: 'list-1', restaurantId: 'restaurant-1', direction: 'sideways' },
+      {
+        anchorRestaurantId: 'restaurant-2',
+        listId: 'list-1',
+        restaurantId: 'restaurant-1',
+        direction: 'sideways',
+      },
       'Invalid payload for list.restaurant.reorder: direction must be one of up, down.',
     ],
     [

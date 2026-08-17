@@ -11,11 +11,16 @@ import type { EnqueueMutationInput, QueuedMutation, SyncSnapshot } from '../offl
 import { useConnectivity } from './ConnectivityProvider';
 
 interface SyncContextValue extends SyncSnapshot {
+  beginMutationDelivery: (id: string) => Promise<void>;
+  completeMutationDelivery: (id: string) => Promise<void>;
+  deferMutationDelivery: (id: string, errorMessage: string) => Promise<void>;
+  discardMutationDelivery: (id: string) => Promise<void>;
   discardQueuedMutations: (trigger?: 'auth_change' | 'logout') => Promise<number>;
   enqueueMutation: (input: EnqueueMutationInput) => Promise<QueuedMutation>;
   getQueuedMutations: (limit?: number) => Promise<QueuedMutation[]>;
   retryAllFailed: () => Promise<number>;
   replayNow: () => Promise<void>;
+  stageMutation: (input: EnqueueMutationInput) => Promise<QueuedMutation>;
 }
 
 const INITIAL_SYNC_CONTEXT: SyncSnapshot = {
@@ -142,6 +147,36 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     [isOnline],
   );
 
+  const stageMutation = useCallback(
+    async (input: EnqueueMutationInput): Promise<QueuedMutation> =>
+      syncEngine.enqueue({
+        ...input,
+        originAccountId: pb.authStore.record?.id ?? null,
+      }),
+    [],
+  );
+
+  const beginMutationDelivery = useCallback(
+    async (id: string): Promise<void> => syncEngine.beginDelivery(id),
+    [],
+  );
+
+  const completeMutationDelivery = useCallback(
+    async (id: string): Promise<void> => syncEngine.completeDelivery(id),
+    [],
+  );
+
+  const deferMutationDelivery = useCallback(
+    async (id: string, errorMessage: string): Promise<void> =>
+      syncEngine.deferDelivery(id, errorMessage),
+    [],
+  );
+
+  const discardMutationDelivery = useCallback(
+    async (id: string): Promise<void> => syncEngine.discardDelivery(id),
+    [],
+  );
+
   const retryAllFailed = useCallback(async (): Promise<number> => {
     const resetCount = await syncEngine.retryAllFailed();
     if (isOnline && hasReplayableSession() && !shouldBlockReplayForEmailVerification()) {
@@ -171,13 +206,30 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SyncContextValue>(
     () => ({
       ...snapshot,
+      beginMutationDelivery,
+      completeMutationDelivery,
+      deferMutationDelivery,
+      discardMutationDelivery,
       discardQueuedMutations,
       enqueueMutation,
       getQueuedMutations,
       retryAllFailed,
       replayNow,
+      stageMutation,
     }),
-    [discardQueuedMutations, enqueueMutation, getQueuedMutations, replayNow, retryAllFailed, snapshot],
+    [
+      beginMutationDelivery,
+      completeMutationDelivery,
+      deferMutationDelivery,
+      discardMutationDelivery,
+      discardQueuedMutations,
+      enqueueMutation,
+      getQueuedMutations,
+      replayNow,
+      retryAllFailed,
+      snapshot,
+      stageMutation,
+    ],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

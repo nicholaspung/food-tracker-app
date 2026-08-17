@@ -173,6 +173,10 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 		response := feedbackReplyResponse{
 			Success: true,
 		}
+		replayRecordID := deriveFeatureWriteRecordID(
+			"feedback-message:"+threadID+":"+e.Auth.Id,
+			resolveFeatureWriteIdempotencyKey(e),
+		)
 		err := app.RunInTransaction(func(txApp core.App) error {
 			thread, err := txApp.FindRecordById("feedback", threadID)
 			if err != nil {
@@ -183,6 +187,17 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewNotFoundError("feedback thread not found", nil)
 			}
 
+			if replayRecordID != "" {
+				if existingMessage, findErr := txApp.FindRecordById("feedback_messages", replayRecordID); findErr == nil {
+					if existingMessage.GetString("feedback") != threadID || existingMessage.GetString("user") != e.Auth.Id {
+						return apis.NewApiError(409, "idempotency key is already in use", nil)
+					}
+					response.Feedback = serializeFeedbackThreadResponse(thread, e.Auth)
+					response.Message = serializeFeedbackMessageResponse(existingMessage, e.Auth)
+					return nil
+				}
+			}
+
 			messagesCollection, err := txApp.FindCollectionByNameOrId("feedback_messages")
 			if err != nil {
 				return apis.NewApiError(500, "feedback_messages collection missing", err)
@@ -191,6 +206,9 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 			now := time.Now().UTC()
 			beforeThreadSnapshot := lib.RecordAuditSnapshot(thread)
 			messageRecord := core.NewRecord(messagesCollection)
+			if replayRecordID != "" {
+				messageRecord.SetRaw("id", replayRecordID)
+			}
 			messageRecord.Set("feedback", threadID)
 			messageRecord.Set("user", e.Auth.Id)
 			messageRecord.Set("message", trimmedMessage)

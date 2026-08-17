@@ -72,6 +72,18 @@ func performJSONRequest(
 	authToken string,
 	body string,
 ) *httptest.ResponseRecorder {
+	return performJSONRequestWithHeaders(t, mux, method, path, authToken, body, nil)
+}
+
+func performJSONRequestWithHeaders(
+	t *testing.T,
+	mux http.Handler,
+	method string,
+	path string,
+	authToken string,
+	body string,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var reader *bytes.Reader
@@ -85,6 +97,9 @@ func performJSONRequest(
 	req.Header.Set("Content-Type", "application/json")
 	if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	for headerName, headerValue := range headers {
+		req.Header.Set(headerName, headerValue)
 	}
 
 	recorder := httptest.NewRecorder()

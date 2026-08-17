@@ -429,6 +429,7 @@ export async function updateVisit(
 
 export async function moveVisitItem(
   input: MoveVisitItemInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<MoveVisitItemResult> {
   return trackFeatureMutation(
     'visit.item.move',
@@ -448,6 +449,7 @@ export async function moveVisitItem(
         `/api/visit-items/${encodeURIComponent(trimmedItemId)}/move`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             destinationVisitId: trimmedDestinationVisitId,
           },

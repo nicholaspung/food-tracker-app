@@ -10,9 +10,11 @@ import type {
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
+  deriveFeatureWriteRecordId,
   escapeFilterValue,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
+  isRetryableFeatureStoreError,
   mapPaginatedResult,
   nowIso,
   resolveFeatureWriteHeaders,
@@ -21,7 +23,12 @@ import {
   trackFeatureMutation,
 } from './featureStoreShared';
 import type { CollectionUserExpand } from './pocketbaseRecordTypes';
-import { createCollectionRecord, listCollectionPage, sendApiRequest } from './pocketbaseGateway';
+import {
+  createCollectionRecord,
+  getCollectionRecord,
+  listCollectionPage,
+  sendApiRequest,
+} from './pocketbaseGateway';
 
 export type {
   CreateFeedbackInput,
@@ -244,23 +251,55 @@ export async function createFeedback(
     async () => {
       const userId = getAuthenticatedUserId();
 
-      const createdRecord = await createCollectionRecord<FeedbackCollectionRecord>(
-        'feedback',
-        {
-          user: userId,
-          title: input.title.trim(),
-          description: input.description.trim(),
-          status: 'open',
-          admin_unread_count: 1,
-          user_unread_count: 0,
-          last_message_at: nowIso(),
-        },
-        {
-          expand: 'user',
-          headers: resolveFeatureWriteHeaders(requestOptions),
-          signal: requestOptions?.signal,
-        },
-      );
+      const replayRecordId = deriveFeatureWriteRecordId(requestOptions, 'feedback');
+      const payload: Record<string, unknown> = {
+        user: userId,
+        title: input.title.trim(),
+        description: input.description.trim(),
+        status: 'open',
+        admin_unread_count: 1,
+        user_unread_count: 0,
+        last_message_at: nowIso(),
+      };
+      if (replayRecordId) {
+        payload.id = replayRecordId;
+      }
+
+      const collectionOptions = {
+        expand: 'user',
+        headers: resolveFeatureWriteHeaders(requestOptions),
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+      };
+
+      let createdRecord: FeedbackCollectionRecord;
+      try {
+        createdRecord = await createCollectionRecord<FeedbackCollectionRecord>(
+          'feedback',
+          payload,
+          collectionOptions,
+        );
+      } catch (createError) {
+        if (!replayRecordId) {
+          throw createError;
+        }
+
+        try {
+          const existingRecord = await getCollectionRecord<FeedbackCollectionRecord>(
+            'feedback',
+            replayRecordId,
+            collectionOptions,
+          );
+          if (existingRecord.user !== userId) {
+            throw createError;
+          }
+          createdRecord = existingRecord;
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
+          throw createError;
+        }
+      }
 
       return mapFeedbackRecord(createdRecord);
     },

@@ -281,6 +281,27 @@ describe('MutationReplayService', () => {
     mockedTrackObservabilityEvent.mockClear();
   });
 
+  it('initializes storage before an early durable submission', async () => {
+    let initialized = false;
+    const store = new InMemoryQueueStore(undefined, () => {
+      initialized = true;
+    });
+    const service = new MutationReplayService(store, createTransport([]), () => 1000);
+
+    const mutation = await service.enqueue({
+      method: 'POST',
+      url: 'local://feature/feedback.create',
+      body: { description: 'Body', title: 'Subject' },
+    });
+
+    expect(initialized).toBe(true);
+    expect(mutation.status).toBe('pending');
+    expect(service.getSnapshot()).toMatchObject({
+      isInitialized: true,
+      queueDepth: 1,
+    });
+  });
+
   it('replays retryable failures after backoff and eventually succeeds', async () => {
     let now = 1000;
     const store = new InMemoryQueueStore();
@@ -318,6 +339,35 @@ describe('MutationReplayService', () => {
 
     expect(service.getSnapshot().queueDepth).toBe(0);
     expect(service.getSnapshot().failedCount).toBe(0);
+  });
+
+  it('replays an ambiguous initial delivery with the same idempotency key', async () => {
+    let now = 1000;
+    const store = new InMemoryQueueStore();
+    const transport = createTransport([]);
+    const service = new MutationReplayService(store, transport, () => now);
+
+    await service.start();
+    const mutation = await service.enqueue({
+      method: 'POST',
+      url: 'local://feature/feedback.create',
+      body: { description: 'Body', title: 'Subject' },
+      idempotencyKey: 'idem_initial_delivery_1',
+    });
+    await service.beginDelivery(mutation.id);
+    await service.deferDelivery(mutation.id, 'Response was lost');
+
+    now += 1000 * 60 * 2;
+    await service.replay('manual');
+
+    expect(transport.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: mutation.id,
+        idempotencyKey: 'idem_initial_delivery_1',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(service.getSnapshot().queueDepth).toBe(0);
   });
 
   it('keeps conflicts as failed until retry-all resets them', async () => {

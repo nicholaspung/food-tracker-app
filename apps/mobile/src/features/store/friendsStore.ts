@@ -8,6 +8,7 @@ import type {
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
+  deleteCollectionRecordsIgnoringNotFound,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   mapPaginatedResult,
@@ -15,7 +16,7 @@ import {
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { deleteCollectionRecord, sendApiRequest, updateCollectionRecord } from './pocketbaseGateway';
+import { sendApiRequest, updateCollectionRecord } from './pocketbaseGateway';
 
 export type {
   FriendsCountSummary,
@@ -260,9 +261,7 @@ export async function removeFriend(
 ): Promise<void> {
   return trackFeatureMutation('friend.remove', async () => {
     getAuthenticatedUserId();
-    await deleteCollectionRecord('friendships', friendId, {
-      headers: resolveFeatureWriteHeaders(requestOptions),
-    });
+    await deleteCollectionRecordsIgnoringNotFound('friendships', [friendId], requestOptions);
   });
 }
 

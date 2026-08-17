@@ -162,6 +162,73 @@ func TestUserFeedbackReplyEndpointCreatesBoundUserMessage(t *testing.T) {
 	}
 }
 
+func TestUserFeedbackReplyEndpointReplaysIdempotencyKeyWithoutDuplicateMessage(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeedbackHandlers(se, app)
+		hooks.RegisterFeedbackMessageSecurityHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	thread := createCollectionRecord(t, server.app, "feedback", map[string]any{
+		"user":               owner.Id,
+		"title":              "Response loss test",
+		"description":        "The same reply should be stored once",
+		"status":             "open",
+		"admin_unread_count": 2,
+		"user_unread_count":  0,
+		"last_message_at":    time.Now().UTC(),
+	})
+	headers := map[string]string{"Idempotency-Key": "feedback-reply-response-loss-1"}
+
+	firstResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback/"+thread.Id+"/reply",
+		ownerToken,
+		`{"message":"Please take another look."}`,
+		headers,
+	)
+	secondResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback/"+thread.Id+"/reply",
+		ownerToken,
+		`{"message":"Please take another look."}`,
+		headers,
+	)
+
+	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"expected both keyed replies to return 200, got first=%d second=%d: %s",
+			firstResponse.Code,
+			secondResponse.Code,
+			secondResponse.Body.String(),
+		)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"feedback_messages",
+		"feedback = {:feedbackId}",
+		map[string]any{"feedbackId": thread.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 feedback message after replay, got %d", count)
+	}
+
+	updatedThread, err := server.app.FindRecordById("feedback", thread.Id)
+	if err != nil {
+		t.Fatalf("failed to reload feedback thread: %v", err)
+	}
+	if updatedThread.GetInt("admin_unread_count") != 3 {
+		t.Fatalf(
+			"expected admin_unread_count to increment once to 3, got %d",
+			updatedThread.GetInt("admin_unread_count"),
+		)
+	}
+}
+
 func TestUserFeedbackReplyEndpointRejectsOtherUsers(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeedbackHandlers(se, app)

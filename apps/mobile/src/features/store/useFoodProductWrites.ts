@@ -59,7 +59,7 @@ export async function createFoodProductWithOfflineSupport({
       strategy: 'outbox',
       payload: input,
     },
-    execute: () => createFoodProduct(input),
+    execute: createFoodProduct.bind(null, input),
   });
 
   if (sourceNote?.noteId && sourceNote.usedAt) {
@@ -114,7 +114,7 @@ export function useFoodProductWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => createFoodProduct(input),
+        execute: createFoodProduct.bind(null, input),
         fallbackErrorMessage: 'Could not save food product.',
         onQueued: async () => {
           if (sourceNote?.noteId && sourceNote.usedAt) {
@@ -177,7 +177,7 @@ export function useFoodProductWrites() {
             updates,
           },
         },
-        execute: () => updateFoodProduct(foodProductId, updates),
+        execute: updateFoodProduct.bind(null, foodProductId, updates),
         fallbackErrorMessage: 'Could not update food product.',
         onQueued: () =>
           syncFoodProductMutationCaches(queryClient, {
@@ -213,7 +213,7 @@ export function useFoodProductWrites() {
           strategy: 'outbox',
           payload: { foodProductId },
         },
-        execute: () => deleteFoodProduct(foodProductId),
+        execute: deleteFoodProduct.bind(null, foodProductId),
         fallbackErrorMessage: 'Could not delete food product.',
         onQueued: () =>
           syncFoodProductMutationCaches(queryClient, {

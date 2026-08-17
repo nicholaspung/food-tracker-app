@@ -306,4 +306,88 @@ describe('notesStore note photo uploads', () => {
       }),
     ).rejects.toThrow('Could not upload large-photo.jpg: File is too large.');
   });
+
+  it('preserves retryable photo errors and reuses the deterministic photo id', async () => {
+    const notesCollection = {
+      create: jest.fn().mockResolvedValue({
+        id: 'note-1',
+        user: 'user-1',
+        content: 'Test note',
+        status: 'draft',
+        created: '2026-04-28T12:00:00.000Z',
+        updated: '2026-04-28T12:00:00.000Z',
+      }),
+    };
+    mockUpload.mockResolvedValue({
+      body: JSON.stringify({
+        data: {},
+        message: 'Service Unavailable.',
+      }),
+      headers: {},
+      status: 503,
+    });
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'notes') {
+        return notesCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+    const input = {
+      title: '',
+      content: 'Test note',
+      photos: [{
+        uri: 'file:///photo.jpg',
+        name: 'photo.jpg',
+        mimeType: 'image/jpeg',
+      }],
+    };
+    const requestOptions = {
+      headers: {
+        'Idempotency-Key': 'note-photo-response-loss-1',
+      },
+    };
+
+    await expect(createNote(input, requestOptions)).rejects.toMatchObject({ status: 503 });
+    await expect(createNote(input, requestOptions)).rejects.toMatchObject({ status: 503 });
+
+    const firstPhotoId = mockUpload.mock.calls[0]?.[1]?.parameters?.id;
+    const replayPhotoId = mockUpload.mock.calls[1]?.[1]?.parameters?.id;
+    expect(firstPhotoId).toMatch(/^i[a-z0-9]{14}$/);
+    expect(replayPhotoId).toBe(firstPhotoId);
+  });
+
+  it('keeps duplicate create recovery retryable when the verification lookup fails', async () => {
+    const notesCollection = {
+      create: jest.fn().mockRejectedValue(buildClientResponseError(400)),
+      getOne: jest.fn().mockRejectedValue(buildClientResponseError(503)),
+    };
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'notes') {
+        return notesCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await expect(
+      createNote(
+        {
+          title: '',
+          content: 'Response loss note',
+          photos: [{
+            uri: 'file:///photo.jpg',
+            name: 'photo.jpg',
+            mimeType: 'image/jpeg',
+          }],
+        },
+        {
+          headers: {
+            'Idempotency-Key': 'note-create-response-loss-1',
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+
+    expect(notesCollection.getOne).toHaveBeenCalledTimes(1);
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
 });

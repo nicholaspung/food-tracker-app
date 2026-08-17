@@ -282,13 +282,41 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 
 		sessionID := ""
 		notificationUserIDs := []string{}
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
+		idempotentSessionID := deriveFeatureWriteRecordID(
+			"tasting-session:"+authRecord.Id,
+			idempotencyKey,
+		)
 		err = app.RunInTransaction(func(txApp core.App) error {
+			if idempotentSessionID != "" {
+				if existingSession, findErr := txApp.FindRecordById("tasting_sessions", idempotentSessionID); findErr == nil {
+					if existingSession.GetString("leader") != authRecord.Id {
+						return apis.NewApiError(409, "tasting session idempotency key conflict", nil)
+					}
+					sessionID = existingSession.Id
+					var inviteErr error
+					notificationUserIDs, inviteErr = listPendingTastingInviteUserIDs(
+						txApp,
+						existingSession.Id,
+					)
+					if inviteErr != nil {
+						return inviteErr
+					}
+					return nil
+				} else if !errors.Is(findErr, sql.ErrNoRows) {
+					return apis.NewApiError(500, "failed to load replayed tasting session", findErr)
+				}
+			}
+
 			sessionsCollection, collectionErr := txApp.FindCollectionByNameOrId("tasting_sessions")
 			if collectionErr != nil {
 				return apis.NewApiError(500, "internal error", collectionErr)
 			}
 
 			sessionRecord := core.NewRecord(sessionsCollection)
+			if idempotentSessionID != "" {
+				sessionRecord.SetRaw("id", idempotentSessionID)
+			}
 			sessionRecord.Set("name", sessionName)
 			sessionRecord.Set("leader", authRecord.Id)
 			sessionRecord.Set("status", tastingSessionStatusLobby)
@@ -326,7 +354,13 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return err
 		}
-		if err := deliverTastingInviteNotifications(app, sessionID, authRecord.Id, notificationUserIDs); err != nil {
+		if err := deliverTastingInviteNotifications(
+			app,
+			sessionID,
+			authRecord.Id,
+			notificationUserIDs,
+			idempotencyKey,
+		); err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 
@@ -350,6 +384,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		sessionID := ""
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, findErr := txApp.FindFirstRecordByFilter(
 				"tasting_sessions",
@@ -361,6 +396,18 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 					return apis.NewNotFoundError("invalid invite code", nil)
 				}
 				return apis.NewApiError(500, "failed to load tasting session", findErr)
+			}
+			if strings.TrimSpace(idempotencyKey) != "" {
+				if existingParticipant, participantErr := findTastingParticipantRecord(
+					txApp,
+					sessionRecord.Id,
+					authRecord.Id,
+				); participantErr != nil {
+					return apis.NewApiError(500, "failed to load replayed tasting participant", participantErr)
+				} else if existingParticipant != nil {
+					sessionID = sessionRecord.Id
+					return nil
+				}
 			}
 			if joinErr := validateTastingJoin(txApp, sessionRecord, authRecord.Id); joinErr != nil {
 				return joinErr
@@ -498,7 +545,13 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return err
 		}
-		if err := deliverTastingInviteNotifications(app, sessionID, authRecord.Id, notificationUserIDs); err != nil {
+		if err := deliverTastingInviteNotifications(
+			app,
+			sessionID,
+			authRecord.Id,
+			notificationUserIDs,
+			resolveFeatureWriteIdempotencyKey(e),
+		); err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
@@ -628,6 +681,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return err
 		}
 		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
 			if loadErr != nil {
@@ -635,6 +689,10 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			}
 			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
 				return apis.NewForbiddenError("only the leader can lock membership", nil)
+			}
+			if strings.TrimSpace(idempotencyKey) != "" &&
+				strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusPlanning {
+				return nil
 			}
 			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusLobby {
 				return apis.NewBadRequestError("only lobby sessions can be locked", nil)
@@ -851,6 +909,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return err
 		}
 		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
 			if loadErr != nil {
@@ -858,6 +917,10 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			}
 			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
 				return apis.NewForbiddenError("only the leader can start tasting", nil)
+			}
+			if strings.TrimSpace(idempotencyKey) != "" &&
+				strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusTasting {
+				return nil
 			}
 			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusPlanning {
 				return apis.NewBadRequestError("only planning sessions can start tasting", nil)
@@ -902,6 +965,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return err
 		}
 		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
 			if loadErr != nil {
@@ -909,6 +973,10 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			}
 			if strings.TrimSpace(sessionRecord.GetString("leader")) != authRecord.Id {
 				return apis.NewForbiddenError("only the leader can complete the session", nil)
+			}
+			if strings.TrimSpace(idempotencyKey) != "" &&
+				strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusCompleted {
+				return nil
 			}
 			if strings.TrimSpace(sessionRecord.GetString("status")) != tastingSessionStatusTasting {
 				return apis.NewBadRequestError("only tasting sessions can be completed", nil)
@@ -1593,6 +1661,31 @@ func findTastingInvite(app core.App, sessionID string, userID string) (*core.Rec
 		return nil, err
 	}
 	return record, nil
+}
+
+func listPendingTastingInviteUserIDs(app core.App, sessionID string) ([]string, error) {
+	records, err := app.FindRecordsByFilter(
+		"tasting_session_invites",
+		"session = {:session} && status = {:status}",
+		"created",
+		200,
+		0,
+		dbx.Params{
+			"session": strings.TrimSpace(sessionID),
+			"status":  tastingInviteStatusPending,
+		},
+	)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to load replayed tasting invites", err)
+	}
+
+	userIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		if userID := strings.TrimSpace(record.GetString("invited_user")); userID != "" {
+			userIDs = append(userIDs, userID)
+		}
+	}
+	return userIDs, nil
 }
 
 func upsertTastingInvites(app core.App, sessionID string, userIDs []string) ([]string, error) {

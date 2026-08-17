@@ -105,6 +105,10 @@ func RegisterFriendHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		responsePayload := friendsListItem{}
+		idempotentFriendshipID := deriveFeatureWriteRecordID(
+			"friend-request:"+e.Auth.Id,
+			resolveFeatureWriteIdempotencyKey(e),
+		)
 		err := app.RunInTransaction(func(txApp core.App) error {
 			targetUser, err := txApp.FindFirstRecordByFilter(
 				"users",
@@ -130,6 +134,19 @@ func RegisterFriendHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to resolve friendship", err)
 			}
 			if existing != nil {
+				if idempotentFriendshipID != "" &&
+					existing.Id == idempotentFriendshipID &&
+					existing.GetString("user") == e.Auth.Id &&
+					existing.GetString("friend") == targetUser.Id {
+					responsePayload = friendsListItem{
+						ID:          existing.Id,
+						UserID:      targetUser.Id,
+						DisplayName: lib.ResolveUserDisplayName(targetUser),
+						Status:      friendsSectionStatus(friendsSectionSent),
+						CreatedAt:   existing.GetString("created"),
+					}
+					return nil
+				}
 				return apis.NewBadRequestError("Friend request already exists.", nil)
 			}
 
@@ -139,6 +156,9 @@ func RegisterFriendHandlers(se *core.ServeEvent, app core.App) {
 			}
 
 			record := core.NewRecord(collection)
+			if idempotentFriendshipID != "" {
+				record.SetRaw("id", idempotentFriendshipID)
+			}
 			record.Set("user", e.Auth.Id)
 			record.Set("friend", targetUser.Id)
 			record.Set("status", "pending")

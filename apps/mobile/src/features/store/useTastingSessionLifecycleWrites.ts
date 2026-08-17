@@ -318,7 +318,7 @@ export function createTastingSessionLifecycleWriteActions({
       name: input.name,
     };
     const result = await writeReplaySafe({
-      execute: () => createTastingSession(payload),
+      execute: createTastingSession.bind(null, payload),
       offline: {
         payload,
         strategy: 'outbox',
@@ -336,7 +336,7 @@ export function createTastingSessionLifecycleWriteActions({
   ): Promise<TastingSessionLifecycleWriteResult<TastingSessionRecord>> => {
     const payload = { inviteCode: input.inviteCode };
     const result = await writeReplaySafe({
-      execute: () => joinTastingSession(payload),
+      execute: joinTastingSession.bind(null, payload),
       offline: {
         payload,
         strategy: 'outbox',
@@ -409,7 +409,7 @@ export function createTastingSessionLifecycleWriteActions({
     sessionId,
   }: TastingSessionIdWriteInput): Promise<TastingSessionLifecycleWriteResult<TastingSessionRecord>> => {
     const result = await writeReplaySafe({
-      execute: () => lockTastingSessionMembership(sessionId),
+      execute: lockTastingSessionMembership.bind(null, sessionId),
       offline: {
         payload: {
           sessionId,
@@ -491,7 +491,7 @@ export function createTastingSessionLifecycleWriteActions({
     sessionId,
   }: TastingSessionIdWriteInput): Promise<TastingSessionLifecycleWriteResult<TastingSessionRecord>> => {
     const result = await writeReplaySafe({
-      execute: () => startTastingSession(sessionId),
+      execute: startTastingSession.bind(null, sessionId),
       offline: {
         payload: {
           sessionId,
@@ -547,7 +547,7 @@ export function createTastingSessionLifecycleWriteActions({
     sessionId,
   }: TastingSessionIdWriteInput): Promise<TastingSessionLifecycleWriteResult<TastingSessionRecord>> => {
     const result = await writeReplaySafe({
-      execute: () => completeTastingSession(sessionId),
+      execute: completeTastingSession.bind(null, sessionId),
       offline: {
         payload: {
           sessionId,

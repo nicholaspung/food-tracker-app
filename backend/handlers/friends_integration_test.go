@@ -296,7 +296,7 @@ func TestFriendsListEndpointIncludesSummaryOnFirstUnfilteredPageOnly(t *testing.
 	}
 }
 
-func TestInviteFriendEndpointCreatesPendingRequestFromFriendCode(t *testing.T) {
+func TestInviteFriendEndpointReplaysIdempotencyKeyWithoutDuplicateRequest(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFriendHandlers(se, app)
 	})
@@ -309,16 +309,30 @@ func TestInviteFriendEndpointCreatesPendingRequestFromFriendCode(t *testing.T) {
 		t.Fatalf("failed to update target user: %v", err)
 	}
 
-	response := performJSONRequest(
+	headers := map[string]string{"Idempotency-Key": "friend-invite-response-loss-1"}
+	response := performJSONRequestWithHeaders(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/friends/invite",
 		requesterToken,
 		`{"code":" frnd1234 "}`,
+		headers,
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	replayResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/friends/invite",
+		requesterToken,
+		`{"code":" frnd1234 "}`,
+		headers,
+	)
+	if replayResponse.Code != http.StatusOK {
+		t.Fatalf("expected replay to return 200, got %d: %s", replayResponse.Code, replayResponse.Body.String())
 	}
 
 	payload := parseJSONMap(t, response.Body.Bytes())
@@ -352,6 +366,15 @@ func TestInviteFriendEndpointCreatesPendingRequestFromFriendCode(t *testing.T) {
 	}
 	if friendship.GetString("status") != "pending" {
 		t.Fatalf("expected pending friendship, got %q", friendship.GetString("status"))
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"friendships",
+		"user = {:userId} && friend = {:friendId}",
+		map[string]any{"userId": requester.Id, "friendId": target.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 friend request after replay, got %d", count)
 	}
 }
 

@@ -7,7 +7,11 @@ import {
   type MoreOnboardingCardId,
 } from '../../types/auth';
 import { getAuthRecord, getCollectionRecord, saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
-import { getAuthenticatedUserId, trackFeatureMutation } from './featureStoreShared';
+import {
+  type FeatureWriteRequestOptions,
+  getAuthenticatedUserId,
+  trackFeatureMutation,
+} from './featureStoreShared';
 
 export const MAIN_ONBOARDING_VERSION = 1;
 
@@ -113,6 +117,7 @@ export function saveOptimisticMobileOnboardingState(nextState: MobileOnboardingS
 async function updateUserOnboardingState(
   userId: string,
   buildNextState: (currentState: MobileOnboardingState) => MobileOnboardingState,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RecordModel & MobileOnboardingRecord> {
   const currentRecord = await getCollectionRecord<RecordModel & MobileOnboardingRecord>('users', userId);
   const currentState = getMobileOnboardingState(currentRecord);
@@ -124,6 +129,7 @@ async function updateUserOnboardingState(
     {
       mobileOnboardingState: nextState,
     },
+    { headers: requestOptions?.headers },
   );
   saveAuthRecord(updatedRecord);
   return updatedRecord;
@@ -132,12 +138,15 @@ async function updateUserOnboardingState(
 export async function completeMainOnboarding(
   userId: string,
   input: CompleteMainOnboardingInput = {},
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RecordModel & MobileOnboardingRecord> {
   return trackFeatureMutation('onboarding.main.complete', async () => {
     getAuthenticatedUserId();
 
-    return updateUserOnboardingState(userId, (currentState) =>
-      buildMainOnboardingCompletedState(currentState, input),
+    return updateUserOnboardingState(
+      userId,
+      (currentState) => buildMainOnboardingCompletedState(currentState, input),
+      requestOptions,
     );
   });
 }
@@ -145,12 +154,15 @@ export async function completeMainOnboarding(
 export async function dismissMoreOnboardingCard(
   userId: string,
   input: DismissMoreOnboardingCardInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RecordModel & MobileOnboardingRecord> {
   return trackFeatureMutation('onboarding.more-card.dismiss', async () => {
     getAuthenticatedUserId();
 
-    return updateUserOnboardingState(userId, (currentState) =>
-      buildMoreOnboardingCardDismissedState(currentState, input),
+    return updateUserOnboardingState(
+      userId,
+      (currentState) => buildMoreOnboardingCardDismissedState(currentState, input),
+      requestOptions,
     );
   });
 }
@@ -158,12 +170,15 @@ export async function dismissMoreOnboardingCard(
 export async function dismissAddOnboardingCard(
   userId: string,
   input: DismissAddOnboardingCardInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RecordModel & MobileOnboardingRecord> {
   return trackFeatureMutation('onboarding.add-card.dismiss', async () => {
     getAuthenticatedUserId();
 
-    return updateUserOnboardingState(userId, (currentState) =>
-      buildAddOnboardingCardDismissedState(currentState, input),
+    return updateUserOnboardingState(
+      userId,
+      (currentState) => buildAddOnboardingCardDismissedState(currentState, input),
+      requestOptions,
     );
   });
 }

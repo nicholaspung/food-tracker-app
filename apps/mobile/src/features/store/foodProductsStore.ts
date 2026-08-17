@@ -12,6 +12,7 @@ import {
   deriveFeatureWriteRecordId,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
+  isRetryableFeatureStoreError,
   getDefaultVisitVisibility,
   isNotFoundError,
   nowIso,
@@ -222,7 +223,10 @@ export async function createFoodProduct(
             throw createError;
           }
           record = existingRecord;
-        } catch {
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
           throw createError;
         }
       }

@@ -123,11 +123,13 @@ export async function disableShareLinkAction({
 }
 
 export async function reorderRestaurantAction({
+  anchorRestaurantId,
   deps,
   direction,
   isOwner,
   restaurantId,
 }: ListDetailActionInput & {
+  anchorRestaurantId: string;
   direction: 'up' | 'down';
   restaurantId: string;
 }): Promise<ListDetailActionResult | null> {
@@ -148,6 +150,7 @@ export async function reorderRestaurantAction({
 
   try {
     const result = await deps.restaurantListWrites.reorderRestaurant({
+      anchorRestaurantId,
       listId: deps.listId,
       restaurantId,
       direction,

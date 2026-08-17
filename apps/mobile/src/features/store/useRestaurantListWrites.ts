@@ -322,7 +322,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => createRestaurantList(input),
+        execute: createRestaurantList.bind(null, input),
         fallbackErrorMessage: 'Could not create list.',
         onQueued: () => syncCreatedRestaurantListCaches(queryClient, { optimisticQueuedList }),
         onSuccess: (createdList) => syncCreatedRestaurantListCaches(queryClient, { createdList }),
@@ -346,7 +346,7 @@ export function useRestaurantListWrites() {
             updates,
           },
         },
-        execute: () => updateRestaurantList(listId, updates, currentList),
+        execute: updateRestaurantList.bind(null, listId, updates, currentList),
         fallbackErrorMessage: 'Could not update list.',
         onSettledInvalidate: () => syncUpdatedRestaurantListCaches(queryClient, listId),
         queuedToast: 'List update',
@@ -362,7 +362,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: {},
         },
-        execute: () => createDefaultRestaurantList(),
+        execute: createDefaultRestaurantList,
         fallbackErrorMessage: 'Could not create Want to Try list.',
         onSettledInvalidate: () => invalidateRestaurantListCollectionQueries(queryClient, 'my'),
         queuedToast: 'Want to Try list',
@@ -380,7 +380,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: { listId },
         },
-        execute: () => deleteRestaurantList(listId),
+        execute: deleteRestaurantList.bind(null, listId),
         fallbackErrorMessage: 'Could not delete list.',
         onSettledInvalidate: () => syncDeletedRestaurantListCaches(queryClient, listId),
         queuedToast: 'List delete',
@@ -398,7 +398,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => moveRestaurantListRestaurant(input),
+        execute: moveRestaurantListRestaurant.bind(null, input),
         fallbackErrorMessage: 'Could not reorder list.',
         onSettledInvalidate: () => syncRestaurantListMembershipCaches(queryClient, input.listId),
         queuedToast: 'List reorder',
@@ -417,7 +417,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => removeRestaurantListSourceRating(input),
+        execute: removeRestaurantListSourceRating.bind(null, input),
         fallbackErrorMessage: 'Could not remove rating.',
         onSettledInvalidate: () => syncRestaurantListMembershipCaches(queryClient, input.listId),
         queuedToast: 'List update',
@@ -437,7 +437,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: { listId, listItemId },
         },
-        execute: () => removeRestaurantListUserRating(listId, listItemId),
+        execute: removeRestaurantListUserRating.bind(null, listId, listItemId),
         fallbackErrorMessage: 'Could not remove rating.',
         onSettledInvalidate: () => syncRestaurantListMembershipCaches(queryClient, listId),
         queuedToast: 'List update',
@@ -467,7 +467,7 @@ export function useRestaurantListWrites() {
             strategy: 'outbox',
             payload: input,
           },
-          execute: () => saveRestaurantFoodItemToList(input),
+          execute: saveRestaurantFoodItemToList.bind(null, input),
           fallbackErrorMessage: 'Could not save bookmark.',
           queuedToast: 'Bookmark save',
         });
@@ -520,12 +520,17 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: bookmark,
         },
-        execute: async () => {
-          const defaultList = await createDefaultRestaurantList();
-          const savedItems = await saveRestaurantFoodItemToList({
+        execute: async (requestOptions) => {
+          const defaultList = requestOptions
+            ? await createDefaultRestaurantList(requestOptions)
+            : await createDefaultRestaurantList();
+          const savedItemsInput = {
             ...bookmark,
             listId: defaultList.id,
-          });
+          };
+          const savedItems = requestOptions
+            ? await saveRestaurantFoodItemToList(savedItemsInput, requestOptions)
+            : await saveRestaurantFoodItemToList(savedItemsInput);
           return [savedItems];
         },
         fallbackErrorMessage: 'Could not save bookmark to Want to Try.',
@@ -555,7 +560,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: restaurant,
         },
-        execute: () => saveRestaurantToDefaultList(restaurant),
+        execute: saveRestaurantToDefaultList.bind(null, restaurant),
         fallbackErrorMessage: 'Could not save restaurant to Want to Try.',
         onQueued: () =>
           patchQueuedDefaultListBookmark(
@@ -595,7 +600,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => removeRestaurantFoodItemBookmarkFromList(input),
+        execute: removeRestaurantFoodItemBookmarkFromList.bind(null, input),
         fallbackErrorMessage: 'Could not remove bookmark.',
         onSettledInvalidate: async () => {
           await syncRestaurantListMembershipCaches(queryClient, defaultListId);
@@ -617,7 +622,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => addRestaurantVisitRatingsToList(input),
+        execute: addRestaurantVisitRatingsToList.bind(null, input),
         fallbackErrorMessage: 'Could not add restaurant to list.',
         onSettledInvalidate: () => syncRestaurantListMembershipCaches(queryClient, input.listId),
         queuedToast: 'List updates',
@@ -640,7 +645,7 @@ export function useRestaurantListWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => organizeRestaurantListItem(input),
+        execute: organizeRestaurantListItem.bind(null, input),
         fallbackErrorMessage: 'Could not organize this item.',
         onSettledInvalidate: async () => {
           await Promise.all(

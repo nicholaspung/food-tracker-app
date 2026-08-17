@@ -66,7 +66,7 @@ export async function createVisitWithOfflineSupport({
           strategy: 'api',
           input: createVisitApiMutationInput(input),
         },
-        execute: () => createVisit(input),
+        execute: createVisit.bind(null, input),
       })
     : await writeFeature({
         operationName: 'visit.create',
@@ -74,7 +74,7 @@ export async function createVisitWithOfflineSupport({
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => createVisit(input),
+        execute: createVisit.bind(null, input),
       });
 
   if (sourceNote?.noteId && sourceNote.usedAt) {
@@ -143,7 +143,7 @@ export function useVisitWrites() {
             updates,
           },
         },
-        execute: () => updateVisit(visitId, updates),
+        execute: updateVisit.bind(null, visitId, updates),
       });
 
       if (result.status === 'queued') {

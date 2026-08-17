@@ -3,10 +3,12 @@ import { ClientResponseError } from 'pocketbase';
 
 import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
+import { isRetryableStatus } from '../../offline/retryPolicy';
 import type { VisitPhotoUploadInput } from './featureStore';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
   deriveFeatureWriteRecordId,
+  isRetryableFeatureStoreError,
   resolveFeatureWriteHeaders,
 } from './featureStoreShared';
 import { getCollectionRecord } from './pocketbaseGateway';
@@ -75,19 +77,29 @@ export async function uploadVisitPhotos(
       );
       assertVisitPhotoUploadSucceeded(uploadResult);
     } catch (error) {
-      if (
-        replayRecordId &&
-        await isMatchingVisitPhotoRecord(
-          replayRecordId,
-          foodItemId,
-          userId,
-          requestOptions,
-        )
-      ) {
-        continue;
+      if (replayRecordId) {
+        try {
+          if (
+            await isMatchingVisitPhotoRecord(
+              replayRecordId,
+              foodItemId,
+              userId,
+              requestOptions,
+            )
+          ) {
+            continue;
+          }
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
+        }
       }
 
-      if (error instanceof ClientResponseError && error.status !== 429) {
+      if (error instanceof ClientResponseError) {
+        if (error.status === 0 || isRetryableStatus(error.status)) {
+          throw error;
+        }
         throw normalizeVisitPhotoUploadError(error, photo);
       }
 
@@ -133,20 +145,16 @@ async function isMatchingVisitPhotoRecord(
   userId: string,
   requestOptions?: FeatureWriteRequestOptions,
 ): Promise<boolean> {
-  try {
-    const record = await getCollectionRecord<VisitPhotoCollectionRecord>(
-      'visit_photos',
-      recordId,
-      {
-        fields: 'id,food_item,user',
-        headers: resolveFeatureWriteHeaders(requestOptions),
-        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
-      },
-    );
-    return record.food_item === foodItemId && record.user === userId;
-  } catch {
-    return false;
-  }
+  const record = await getCollectionRecord<VisitPhotoCollectionRecord>(
+    'visit_photos',
+    recordId,
+    {
+      fields: 'id,food_item,user',
+      headers: resolveFeatureWriteHeaders(requestOptions),
+      ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+    },
+  );
+  return record.food_item === foodItemId && record.user === userId;
 }
 
 function resolveVisitPhotoUploadHeaders(

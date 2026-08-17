@@ -6,6 +6,7 @@ import {
   type FeatureOutboxOperationName,
   type FeatureOutboxOperationPayload,
 } from './featureOutboxOperations';
+import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import { useOfflineAwareFeatureWrite } from './useOfflineAwareFeatureWrite';
 
 type FeatureWriteSubmitOffline<TName extends FeatureOutboxOperationName> =
@@ -19,7 +20,7 @@ type FeatureWriteSubmitOffline<TName extends FeatureOutboxOperationName> =
     };
 
 export interface FeatureWriteSubmitOptions<TName extends FeatureOutboxOperationName, TResult> {
-  execute: () => Promise<TResult>;
+  execute: (requestOptions: FeatureWriteRequestOptions) => Promise<TResult>;
   fallbackErrorMessage: string;
   offline: FeatureWriteSubmitOffline<TName>;
   onQueued?: () => Promise<void> | void;

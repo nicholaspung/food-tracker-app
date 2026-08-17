@@ -63,7 +63,7 @@ export function useOnboardingProgressWrites() {
             ...input,
           },
         },
-        execute: () => completeMainOnboardingRecord(userId, input),
+        execute: completeMainOnboardingRecord.bind(null, userId, input),
       });
 
       if (result.status === 'queued') {
@@ -99,7 +99,7 @@ export function useOnboardingProgressWrites() {
             dismissedAt,
           },
         },
-        execute: () => dismissAddOnboardingCardRecord(userId, input),
+        execute: dismissAddOnboardingCardRecord.bind(null, userId, input),
       });
 
       if (result.status === 'queued') {
@@ -135,7 +135,7 @@ export function useOnboardingProgressWrites() {
             dismissedAt,
           },
         },
-        execute: () => dismissMoreOnboardingCardRecord(userId, input),
+        execute: dismissMoreOnboardingCardRecord.bind(null, userId, input),
       });
 
       if (result.status === 'queued') {

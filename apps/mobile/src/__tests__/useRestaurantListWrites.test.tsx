@@ -498,6 +498,7 @@ describe('useRestaurantListWrites', () => {
     let result: Awaited<ReturnType<typeof hook.reorderRestaurant>> | undefined;
     await act(async () => {
       result = await hook.reorderRestaurant({
+        anchorRestaurantId: 'restaurant_2',
         listId: 'list_1',
         restaurantId: 'restaurant_1',
         direction: 'up',
@@ -510,6 +511,7 @@ describe('useRestaurantListWrites', () => {
         offline: {
           strategy: 'outbox',
           payload: {
+            anchorRestaurantId: 'restaurant_2',
             listId: 'list_1',
             restaurantId: 'restaurant_1',
             direction: 'up',
@@ -518,6 +520,7 @@ describe('useRestaurantListWrites', () => {
       }),
     );
     expect(mockedMoveRestaurantListRestaurant).toHaveBeenCalledWith({
+      anchorRestaurantId: 'restaurant_2',
       listId: 'list_1',
       restaurantId: 'restaurant_1',
       direction: 'up',

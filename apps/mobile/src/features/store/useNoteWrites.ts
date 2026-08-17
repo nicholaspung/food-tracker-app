@@ -84,7 +84,7 @@ export function useNoteWrites() {
           strategy: 'outbox',
           payload: input,
         },
-        execute: () => createNote(input),
+        execute: createNote.bind(null, input),
         fallbackErrorMessage: 'Could not create note.',
         onQueued: () => invalidateNoteBrowseQueries(queryClient),
         onSuccess: (note) =>
@@ -115,7 +115,7 @@ export function useNoteWrites() {
             updates,
           },
         },
-        execute: () => updateNote(noteId, updates),
+        execute: updateNote.bind(null, noteId, updates),
         fallbackErrorMessage: 'Could not update note.',
         onQueued: () => invalidateNoteBrowseQueries(queryClient),
         onSuccess: (note) =>
@@ -145,7 +145,7 @@ export function useNoteWrites() {
           strategy: 'outbox',
           payload: { noteId },
         },
-        execute: () => deleteNote(noteId),
+        execute: deleteNote.bind(null, noteId),
         fallbackErrorMessage: 'Could not delete note.',
         onQueued: syncDeletedNoteCaches,
         onSuccess: syncDeletedNoteCaches,

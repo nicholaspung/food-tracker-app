@@ -40,12 +40,13 @@ function createNetInfoState(
 }
 
 describe('ConnectivityProvider helpers', () => {
-  it('keeps connected networks online while reachability is still unknown', () => {
+  it('keeps connectivity unknown while reachability is still unknown', () => {
     const snapshot = resolveSnapshot(createNetInfoState({ isInternetReachable: null }));
 
     expect(snapshot.isConnected).toBe(true);
-    expect(snapshot.isInternetReachable).toBe(true);
-    expect(snapshot.isOnline).toBe(true);
+    expect(snapshot.isInternetReachable).toBeNull();
+    expect(snapshot.isOnline).toBe(false);
+    expect(snapshot.status).toBe('unknown');
   });
 
   it('treats connected but unreachable NetInfo states as offline before recovery probing', () => {
@@ -54,6 +55,7 @@ describe('ConnectivityProvider helpers', () => {
     expect(snapshot.isConnected).toBe(true);
     expect(snapshot.isInternetReachable).toBe(false);
     expect(snapshot.isOnline).toBe(false);
+    expect(snapshot.status).toBe('offline');
   });
 
   it('treats app responses as proof that the app network path is reachable', async () => {

@@ -269,6 +269,7 @@ export interface OrganizeRestaurantListItemInput {
 }
 
 export interface MoveRestaurantListRestaurantInput {
+  anchorRestaurantId: string;
   listId: string;
   restaurantId: string;
   direction: 'up' | 'down';

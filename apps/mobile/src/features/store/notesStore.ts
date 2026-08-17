@@ -3,6 +3,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
+import { isRetryableStatus } from '../../offline/retryPolicy';
 import type { NoteRecord } from '../models';
 import type {
   CreateNoteInput,
@@ -20,9 +21,11 @@ import {
   buildOrFilter,
   createEmptyPaginatedResult,
   deleteCollectionRecordsIgnoringNotFound,
+  deriveFeatureWriteRecordId,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   isNotFoundError,
+  isRetryableFeatureStoreError,
   nowIso,
   resolveFeatureWriteHeaders,
   resolvePaginationInput,
@@ -74,6 +77,12 @@ interface NoteCollectionRecord {
   expand?: {
     restaurant?: RestaurantCollectionRecord;
   };
+}
+
+interface NotePhotoCollectionRecord {
+  id: string;
+  note: string;
+  user: string;
 }
 
 interface NoteOverviewPhotoPreviewApiRecord {
@@ -206,11 +215,16 @@ function buildNotePhotoUploadParameters(
   noteId: string,
   userId: string,
   photo: NotePhotoUploadInput,
+  recordId?: string,
 ): Record<string, string> {
   const parameters: Record<string, string> = {
     note: noteId,
     user: userId,
   };
+
+  if (recordId) {
+    parameters.id = recordId;
+  }
 
   const trimmedCapturedAt = photo.capturedAt?.trim();
   if (trimmedCapturedAt) {
@@ -230,13 +244,43 @@ async function uploadNotePhotos(
     return;
   }
 
-  for (const photo of photos) {
-    const uploadResult = await uploadNotePhotoFile(noteId, userId, photo, requestOptions);
-
+  for (const [photoIndex, photo] of photos.entries()) {
+    const replayRecordId = deriveFeatureWriteRecordId(
+      requestOptions,
+      `note-photo:${noteId}:${photoIndex}`,
+    );
     try {
+      const uploadResult = await uploadNotePhotoFile(
+        noteId,
+        userId,
+        photo,
+        replayRecordId,
+        requestOptions,
+      );
       assertNotePhotoUploadSucceeded(uploadResult);
     } catch (error) {
-      if (error instanceof ClientResponseError && error.status !== 429) {
+      if (replayRecordId) {
+        try {
+          const existingPhoto = await getCollectionRecord<NotePhotoCollectionRecord>(
+            'note_photos',
+            replayRecordId,
+            { headers: resolveFeatureWriteHeaders(requestOptions) },
+          );
+          if (existingPhoto.note === noteId && existingPhoto.user === userId) {
+            continue;
+          }
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
+          // Preserve the original upload error when the deterministic record is absent.
+        }
+      }
+
+      if (error instanceof ClientResponseError) {
+        if (error.status === 0 || isRetryableStatus(error.status)) {
+          throw error;
+        }
         throw normalizeNotePhotoUploadError(error, photo);
       }
 
@@ -249,6 +293,7 @@ async function uploadNotePhotoFile(
   noteId: string,
   userId: string,
   photo: NotePhotoUploadInput,
+  recordId: string | undefined,
   requestOptions?: FeatureWriteRequestOptions,
 ): Promise<UploadResult> {
   const file = new File(photo.uri);
@@ -257,7 +302,7 @@ async function uploadNotePhotoFile(
     headers: resolveNotePhotoUploadHeaders(requestOptions),
     httpMethod: 'POST',
     mimeType: photo.mimeType,
-    parameters: buildNotePhotoUploadParameters(noteId, userId, photo),
+    parameters: buildNotePhotoUploadParameters(noteId, userId, photo, recordId),
     sessionType: 'foreground',
     uploadType: UploadType.MULTIPART,
   });
@@ -414,10 +459,42 @@ export async function createNote(
         status: 'draft',
       };
 
-      const record = await createCollectionRecord<NoteCollectionRecord>('notes', payload, {
+      const replayRecordId = deriveFeatureWriteRecordId(requestOptions, 'note');
+      if (replayRecordId) {
+        payload.id = replayRecordId;
+      }
+
+      const collectionOptions = {
         expand: 'restaurant',
         headers: resolveFeatureWriteHeaders(requestOptions),
-      });
+        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+      };
+
+      let record: NoteCollectionRecord;
+      try {
+        record = await createCollectionRecord<NoteCollectionRecord>('notes', payload, collectionOptions);
+      } catch (createError) {
+        if (!replayRecordId) {
+          throw createError;
+        }
+
+        try {
+          const existingRecord = await getCollectionRecord<NoteCollectionRecord>(
+            'notes',
+            replayRecordId,
+            collectionOptions,
+          );
+          if (existingRecord.user !== currentUserId) {
+            throw createError;
+          }
+          record = existingRecord;
+        } catch (recoveryError) {
+          if (isRetryableFeatureStoreError(recoveryError)) {
+            throw recoveryError;
+          }
+          throw createError;
+        }
+      }
 
       await uploadNotePhotos(record.id, currentUserId, input.photos ?? [], requestOptions);
 
