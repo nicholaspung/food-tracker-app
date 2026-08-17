@@ -1,3 +1,5 @@
+import type { QueryClient } from '@tanstack/react-query';
+
 import type {
   FeatureOutboxOperationName,
   FeatureOutboxOperationPayloadMap,
@@ -5,7 +7,10 @@ import type {
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import {
   createFeatureOutboxDomainRegistration,
+  getReplayIdentityString,
+  pickFeatureOutboxReplayIdentity,
   type FeatureOutboxReplayAdapterMap,
+  type FeatureOutboxSuccessfulReplayOutcome,
 } from './featureOutboxDomainRegistration';
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import {
@@ -14,6 +19,9 @@ import {
   markBillParticipantPaid,
   updateBill,
 } from './billsStore';
+import { billsQueryKeys } from './billsQuery';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
+import { profileQueryKeys } from './profileQuery';
 
 type BillWriteOutboxOperationName =
   | 'bill.create'
@@ -67,7 +75,43 @@ export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistrat
     ),
   },
   replayAdapters: BILL_WRITE_OUTBOX_REPLAY_ADAPTERS,
+  replayIdentityResolvers: {
+    'bill.update': (payload) => pickFeatureOutboxReplayIdentity(payload, ['billId']),
+    'bill.delete': (payload) => pickFeatureOutboxReplayIdentity(payload, ['billId']),
+    'bill.status.toggle': (payload) => pickFeatureOutboxReplayIdentity(payload, ['billId']),
+    'bill.participant.toggle-paid': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['billId']),
+  },
+  replayCacheEffects: {
+    'bill.create': reconcileBillReplayCaches,
+    'bill.update': reconcileBillReplayCaches,
+    'bill.delete': reconcileBillReplayCaches,
+    'bill.status.toggle': reconcileBillReplayCaches,
+    'bill.participant.toggle-paid': reconcileBillReplayCaches,
+  },
 });
+
+async function reconcileBillReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<BillWriteOutboxOperationName>,
+): Promise<void> {
+  const billId = getReplayIdentityString(outcome, 'billId');
+  if (outcome.operationName === 'bill.delete' && billId) {
+    queryClient.removeQueries({ queryKey: billsQueryKeys.detail(billId) });
+  }
+
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: billsQueryKeys.root,
+      refetchType: outcome.operationName === 'bill.create' ? 'all' : 'active',
+    }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+    ...(billId && outcome.operationName !== 'bill.delete'
+      ? [queryClient.invalidateQueries({ queryKey: billsQueryKeys.detail(billId) })]
+      : []),
+  ]);
+}
 
 async function replayBillCreate(
   payload: FeatureOutboxOperationPayloadMap['bill.create'],

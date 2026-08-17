@@ -1,4 +1,9 @@
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import type { QueryClient } from '@tanstack/react-query';
+
+import {
+  createFeatureOutboxDomainRegistration,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import {
   createFeatureOutboxPayloadDecoder,
   terminalInvalidPayload,
@@ -11,6 +16,10 @@ import {
   markFriendInviteAccepted,
   removeFriend,
 } from './friendsStore';
+import { evictFriendshipDependentQueries, friendsQueryKeys } from './friendsQuery';
+import { invalidateHomeFeedQueries } from './homeFeedQuery';
+import { profileQueryKeys } from './profileQuery';
+import { restaurantListQueryKeys } from './restaurantListQuery';
 
 export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -47,7 +56,47 @@ export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistr
     'friend.request.reject': replayFriendRequestReject,
     'friend.request.cancel': replayFriendRequestCancel,
   },
+  replayCacheEffects: {
+    'friend.accept': reconcileFriendReplayCaches,
+    'friend.suggestion.accept': reconcileFriendReplayCaches,
+    'friend.remove': reconcileFriendReplayCaches,
+    'friend.request.send': reconcileFriendReplayCaches,
+    'friend.request.reject': reconcileFriendReplayCaches,
+    'friend.request.cancel': reconcileFriendReplayCaches,
+  },
 });
+
+type FriendReplayOperationName =
+  | 'friend.accept'
+  | 'friend.suggestion.accept'
+  | 'friend.remove'
+  | 'friend.request.send'
+  | 'friend.request.reject'
+  | 'friend.request.cancel';
+
+async function reconcileFriendReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<FriendReplayOperationName>,
+): Promise<void> {
+  const invalidations: Promise<unknown>[] = [
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+  ];
+  if (outcome.operationName === 'friend.remove') {
+    invalidations.push(evictFriendshipDependentQueries(queryClient));
+  } else {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root }));
+    if (
+      outcome.operationName === 'friend.accept' ||
+      outcome.operationName === 'friend.suggestion.accept'
+    ) {
+      invalidations.push(
+        invalidateHomeFeedQueries(queryClient),
+        queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
+      );
+    }
+  }
+  await Promise.all(invalidations);
+}
 
 async function replayFriendAccept(
   friendAcceptPayload: FeatureOutboxOperationPayloadMap['friend.accept'],

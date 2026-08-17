@@ -53,7 +53,6 @@ describe('useQueuedFeatureWrites', () => {
   }) {
     latestHook = useQueuedFeatureWrites<'note.create'>(['note.create'], limit, { enabled });
     return React.createElement('HookState', {
-      replayedWriteIds: latestHook.lastReplayedWrites?.map((write) => write.id) ?? [],
       queuedWrites: latestHook.queuedWrites.length,
     });
   }
@@ -156,41 +155,6 @@ describe('useQueuedFeatureWrites', () => {
 
     await refresh(2);
     expect(latestWrites.map((write) => write.id)).toEqual(['queue-2', 'queue-1']);
-  });
-
-  it('observes every immutable replay batch through the real hook', async () => {
-    getQueuedMutations.mockResolvedValue([]);
-    let replayRenderer: any = null;
-    let lastReplayedMutations: QueuedMutation[] = Array.from({ length: 10 }, (_value, index) => ({
-      ...queuedNoteMutation,
-      id: `queue-${index + 1}`,
-      idempotencyKey: `idem-${index + 1}`,
-    }));
-    mockedUseSync.mockImplementation(() => ({
-      failedCount: 0,
-      getQueuedMutations,
-      isSyncing: false,
-      lastReplayedMutations,
-      queueDepth: 0,
-    } as unknown as ReturnType<typeof useSync>));
-
-    await act(async () => {
-      replayRenderer = create(React.createElement(Harness, { enabled: true }));
-      await Promise.resolve();
-    });
-    expect(replayRenderer.root.findByType('HookState').props.replayedWriteIds).toHaveLength(10);
-
-    lastReplayedMutations = Array.from({ length: 20 }, (_value, index) => ({
-      ...queuedNoteMutation,
-      id: `queue-${index + 1}`,
-      idempotencyKey: `idem-${index + 1}`,
-    }));
-    await act(async () => {
-      replayRenderer.update(React.createElement(Harness, { enabled: true }));
-      await Promise.resolve();
-    });
-    expect(replayRenderer.root.findByType('HookState').props.replayedWriteIds).toHaveLength(20);
-    renderer = replayRenderer;
   });
 
 });

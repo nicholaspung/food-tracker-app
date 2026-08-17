@@ -41,6 +41,24 @@ export interface MutationQueueRetentionCleanupResult {
   removedCount: number;
 }
 
+export type SuccessfulReplayIdentity = Readonly<
+  Record<string, string | readonly string[] | undefined>
+>;
+
+export type SuccessfulReplayCacheHint =
+  | 'food-product-photos'
+  | 'note-photos'
+  | 'usage'
+  | 'visit-photos';
+
+export interface SuccessfulMutationReplayOutcome {
+  cacheHints?: readonly SuccessfulReplayCacheHint[];
+  idempotencyKey: string;
+  identity: SuccessfulReplayIdentity;
+  operationName: string;
+  originAccountId: string | null;
+}
+
 export interface MutationQueueStore {
   initialize(): Promise<void>;
   enqueue(input: EnqueueMutationInput): Promise<QueuedMutation>;
@@ -61,6 +79,7 @@ export interface MutationSendResult {
   retryable: boolean;
   statusCode: number | null;
   errorMessage: string | null;
+  successfulReplay?: SuccessfulMutationReplayOutcome;
   cancelled?: boolean;
   accountBindingState?: 'different_account' | 'missing_active' | 'missing_origin';
 }
@@ -87,6 +106,5 @@ export interface SyncSnapshot {
   nextRetryAt: number | null;
   lastError: string | null;
   lastSyncedAt: number | null;
-  lastReplayedMutations?: readonly QueuedMutation[];
   lastTrigger: ReplayTrigger | null;
 }

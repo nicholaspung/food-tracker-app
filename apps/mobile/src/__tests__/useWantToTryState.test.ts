@@ -11,7 +11,6 @@ import {
   createWantToTryRestaurantTarget,
   normalizeWantToTryTargets,
   projectWantToTryMembership,
-  reconcileWantToTryReplay,
   useWantToTryMembership,
   useWantToTryResolver,
   wantToTryQueryKeys,
@@ -268,75 +267,6 @@ describe('Want to Try state', () => {
 
     expect(state.hasBlockingError).toBe(true);
     expect(state.errorMessage).toBe(error.message);
-  });
-
-  it('refreshes an unresolved resolver after its queued default save replays', async () => {
-    const queryClient = buildQueryClient();
-
-    await reconcileWantToTryReplay(queryClient as never, {
-      defaultListId: undefined,
-      replayedWrites: [{
-        createdAt: 1,
-        id: 'queued-save',
-        idempotencyKey: 'idempotency-key',
-        lastError: null,
-        operationName: 'list.default.bookmark.save',
-        payload: { menuItemId: 'menu-1', restaurantId: 'restaurant-1' },
-        status: 'pending',
-      }],
-      targets: [createWantToTryMenuItemTarget('restaurant-1', 'menu-1')],
-      userId: 'user-1',
-    });
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: wantToTryQueryKeys.resolver('user-1'),
-    });
-  });
-
-  it('refreshes only the matching membership chunk after a known-list write replays', async () => {
-    const queryClient = buildQueryClient();
-    const target = createWantToTryMenuItemTarget('restaurant-1', 'menu-1');
-    const otherTarget = createWantToTryMenuItemTarget('restaurant-2', 'menu-2');
-
-    await reconcileWantToTryReplay(queryClient as never, {
-      defaultListId: 'default-list',
-      replayedWrites: [{
-        createdAt: 1,
-        id: 'queued-save',
-        idempotencyKey: 'idempotency-key',
-        lastError: null,
-        operationName: 'list.bookmark.save',
-        payload: { listId: 'default-list', menuItemId: 'menu-1', restaurantId: 'restaurant-1' },
-        status: 'pending',
-      }],
-      targets: [target, otherTarget],
-      userId: 'user-1',
-    });
-
-    const predicate = (queryClient.invalidateQueries.mock.calls[0]?.[0] as any)?.predicate;
-    expect(predicate?.({ queryKey: wantToTryQueryKeys.membershipChunk(
-      'default-list',
-      'user-1',
-      [target],
-    ) })).toBe(true);
-    expect(predicate?.({ queryKey: wantToTryQueryKeys.membershipChunk(
-      'default-list',
-      'user-1',
-      [otherTarget],
-    ) })).toBe(false);
-  });
-
-  it('does not reconcile a discarded or failed queued write without replay success', async () => {
-    const queryClient = buildQueryClient();
-
-    await reconcileWantToTryReplay(queryClient as never, {
-      defaultListId: undefined,
-      replayedWrites: [],
-      targets: [createWantToTryMenuItemTarget('restaurant-1', 'menu-1')],
-      userId: 'user-1',
-    });
-
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('projects queued saves and removals only into the matching target chunk', () => {

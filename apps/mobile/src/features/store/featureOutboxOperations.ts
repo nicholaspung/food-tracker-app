@@ -1,7 +1,14 @@
 import { env } from '../../config/env';
-import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
+import type {
+  EnqueueMutationInput,
+  QueuedMutation,
+  SuccessfulMutationReplayOutcome,
+  SuccessfulReplayCacheHint,
+  SuccessfulReplayIdentity,
+} from '../../offline/types';
 import {
   replayRegisteredFeatureOutboxOperation,
+  resolveRegisteredFeatureOutboxReplayMetadata,
   type FeatureOutboxReplayResult,
 } from './featureOutboxReplayAdapters';
 import { FEATURE_OUTBOX_OPERATION_NAMES } from './featureOutboxRegistry';
@@ -56,6 +63,11 @@ interface VisitDeleteOperationPayload {
 }
 
 type ConvertVisitItemToFoodProductOperationPayload = ConvertVisitItemToFoodProductInput;
+
+interface MoveVisitItemOperationPayload {
+  itemId: string;
+  destinationVisitId: string;
+}
 
 interface FoodProductUpdateOperationPayload {
   foodProductId: string;
@@ -173,6 +185,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
+  'visit.item.move': MoveVisitItemOperationPayload;
   'visit.item.convert-to-food-product': ConvertVisitItemToFoodProductOperationPayload;
   'food-product.create': CreateFoodProductInput;
   'food-product.update': FoodProductUpdateOperationPayload;
@@ -297,12 +310,13 @@ export function createBillApiMutationInput(payload: CreateBillInput): EnqueueMut
 export function updateBillApiMutationInput(
   billId: string,
   updates: UpdateBillInput,
+  operationName: 'bill.update' | 'bill.status.toggle' = 'bill.update',
 ): EnqueueMutationInput {
   return {
     method: 'PUT',
     url: `${env.pocketbaseUrl}/api/bills/${encodeURIComponent(billId)}`,
     headers: {
-      'X-Mobile-Write-Operation': 'bill.update',
+      'X-Mobile-Write-Operation': operationName,
     },
     body: updates,
   };
@@ -341,7 +355,7 @@ export async function replayFeatureOutboxMutation(
     authToken?: string | null;
     signal?: AbortSignal;
   },
-): Promise<FeatureOutboxReplayResult> {
+): Promise<FeatureOutboxMutationReplayResult> {
   const operationName = parseFeatureOutboxOperationName(mutation.url);
   if (!operationName) {
     return { status: 'unhandled' };
@@ -353,8 +367,143 @@ export async function replayFeatureOutboxMutation(
   }
 
   const requestOptions = createReplayFeatureWriteRequestOptions(mutation, options);
+  const replayResult = await replayRegisteredFeatureOutboxOperation(
+    operationName,
+    parsedPayload.payload,
+    requestOptions,
+  );
+  if (replayResult.status !== 'replayed') {
+    return replayResult;
+  }
 
-  return replayRegisteredFeatureOutboxOperation(operationName, parsedPayload.payload, requestOptions);
+  return {
+    identity: replayResult.identity,
+    status: 'replayed',
+    successfulReplay: createSuccessfulFeatureOutboxReplayOutcome(
+      mutation,
+      operationName,
+      {
+        cacheHints: replayResult.cacheHints,
+        identity: replayResult.identity,
+      },
+    ),
+  };
+}
+
+type FeatureOutboxMutationReplayResult =
+  | Exclude<FeatureOutboxReplayResult, { status: 'replayed' }>
+  | {
+      identity: SuccessfulReplayIdentity;
+      status: 'replayed';
+      successfulReplay: SuccessfulMutationReplayOutcome;
+    };
+
+export function createApiFeatureOutboxReplayOutcome(
+  mutation: QueuedMutation,
+): SuccessfulMutationReplayOutcome | null {
+  const operationName = getHeaderFeatureOutboxOperationName(mutation);
+  if (!operationName) {
+    return null;
+  }
+
+  return createSuccessfulFeatureOutboxReplayOutcome(
+    mutation,
+    operationName,
+    getApiFeatureOutboxReplayMetadata(mutation, operationName),
+  );
+}
+
+function createSuccessfulFeatureOutboxReplayOutcome(
+  mutation: QueuedMutation,
+  operationName: FeatureOutboxOperationName,
+  metadata: {
+    cacheHints: readonly SuccessfulReplayCacheHint[];
+    identity: SuccessfulReplayIdentity;
+  },
+): SuccessfulMutationReplayOutcome {
+  return {
+    ...(metadata.cacheHints.length > 0 ? { cacheHints: metadata.cacheHints } : {}),
+    idempotencyKey: mutation.idempotencyKey,
+    identity: metadata.identity,
+    operationName,
+    originAccountId: mutation.originAccountId,
+  };
+}
+
+function getHeaderFeatureOutboxOperationName(
+  mutation: QueuedMutation,
+): FeatureOutboxOperationName | null {
+  const rawOperationName =
+    mutation.headers['X-Mobile-Write-Operation'] ??
+    mutation.headers['x-mobile-write-operation'];
+  return rawOperationName && FEATURE_OUTBOX_OPERATION_NAMES.has(
+    rawOperationName as FeatureOutboxOperationName,
+  )
+    ? rawOperationName as FeatureOutboxOperationName
+    : null;
+}
+
+function getApiFeatureOutboxReplayMetadata(
+  mutation: QueuedMutation,
+  operationName: FeatureOutboxOperationName,
+): {
+  cacheHints: readonly SuccessfulReplayCacheHint[];
+  identity: SuccessfulReplayIdentity;
+} {
+  const pathSegments = getUrlPathSegments(mutation.url);
+  const body = getJsonBodyRecord(mutation.body);
+  const registeredMetadata = body
+    ? resolveRegisteredFeatureOutboxReplayMetadata(operationName, body)
+    : null;
+  if (
+    operationName === 'bill.update' ||
+    operationName === 'bill.status.toggle' ||
+    operationName === 'bill.delete'
+  ) {
+    return { cacheHints: [], identity: { billId: pathSegments.at(-1) } };
+  }
+  if (operationName === 'bill.participant.toggle-paid') {
+    return { cacheHints: [], identity: { billId: pathSegments.at(-4) } };
+  }
+  if (operationName === 'visit.item.move') {
+    return {
+      cacheHints: ['visit-photos'],
+      identity: {
+        destinationVisitId:
+          typeof body?.destinationVisitId === 'string' ? body.destinationVisitId : undefined,
+        itemId: pathSegments.at(-2),
+      },
+    };
+  }
+
+  return registeredMetadata ?? { cacheHints: [], identity: {} };
+}
+
+function getJsonBodyRecord(body: string | null): Record<string, unknown> | null {
+  if (!body) {
+    return null;
+  }
+
+  try {
+    const parsedBody: unknown = JSON.parse(body);
+    if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return null;
+    }
+    return parsedBody as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getUrlPathSegments(url: string): string[] {
+  try {
+    return new URL(url).pathname
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment));
+  } catch {
+    return [];
+  }
 }
 
 type ParsedMutationPayload =

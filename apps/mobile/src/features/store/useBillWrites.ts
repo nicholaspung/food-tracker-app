@@ -151,7 +151,7 @@ export function useBillWrites() {
         operationName: 'bill.status.toggle',
         offline: {
           strategy: 'api',
-          input: updateBillApiMutationInput(billId, { status }),
+          input: updateBillApiMutationInput(billId, { status }, 'bill.status.toggle'),
         },
         execute: updateBill.bind(null, billId, { status }),
         fallbackErrorMessage: 'Could not update bill status.',

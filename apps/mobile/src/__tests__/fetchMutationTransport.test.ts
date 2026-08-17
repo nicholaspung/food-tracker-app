@@ -146,6 +146,63 @@ describe('createFetchMutationTransport', () => {
     });
   });
 
+  it('decodes raw API identity into a successful replay outcome', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    }));
+    const transport = createFetchMutationTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({
+        headers: { 'X-Mobile-Write-Operation': 'bill.status.toggle' },
+        method: 'PUT',
+        url: 'https://api.example.com/api/bills/bill_1',
+      }),
+    );
+
+    expect(result.successfulReplay).toEqual({
+      idempotencyKey: 'idem_123',
+      identity: { billId: 'bill_1' },
+      operationName: 'bill.status.toggle',
+      originAccountId: 'user_1',
+    });
+  });
+
+  it('recognizes raw visit item moves and decodes their replay identity', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    }));
+    const transport = createFetchMutationTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({
+        body: JSON.stringify({ destinationVisitId: 'visit_destination' }),
+        headers: { 'X-Mobile-Write-Operation': 'visit.item.move' },
+        method: 'POST',
+        url: 'https://api.example.com/api/visit-items/item_1/move',
+      }),
+    );
+
+    expect(result.successfulReplay).toEqual({
+      cacheHints: ['visit-photos'],
+      idempotencyKey: 'idem_123',
+      identity: {
+        destinationVisitId: 'visit_destination',
+        itemId: 'item_1',
+      },
+      operationName: 'visit.item.move',
+      originAccountId: 'user_1',
+    });
+  });
+
   it('treats aborted sends as cancelled instead of retryable failures', async () => {
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';

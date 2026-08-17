@@ -1,4 +1,12 @@
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import type { QueryClient } from '@tanstack/react-query';
+
+import {
+  createFeatureOutboxDomainRegistration,
+  getReplayIdentityString,
+  getReplayIdentityStrings,
+  pickFeatureOutboxReplayIdentity,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import {
   createEmptyFeatureOutboxPayloadDecoder,
   createFeatureOutboxPayloadDecoder,
@@ -19,6 +27,17 @@ import {
   saveRestaurantToDefaultList,
   updateRestaurantList,
 } from './restaurantListsStore';
+import { profileQueryKeys } from './profileQuery';
+import {
+  invalidateRestaurantListCollectionQueries,
+  invalidateRestaurantListContentQueries,
+  invalidateRestaurantListMetadataQueries,
+  invalidateRestaurantListSaveTargetQueries,
+  removeRestaurantListQueries,
+  restaurantListQueryKeys,
+} from './restaurantListQuery';
+
+const WANT_TO_TRY_MEMBERSHIP_QUERY_ROOT = ['feature', 'wantToTryMembership'] as const;
 
 export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -111,7 +130,122 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.bookmark.save': replayRestaurantListBookmarkSave,
     'list.bookmark.remove': replayRestaurantListBookmarkRemove,
   },
+  replayIdentityResolvers: {
+    'list.update': (payload) => pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.delete': (payload) => pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.default.bookmark.save': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['sourceListId']),
+    'list.default.restaurant.save': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['sourceListId']),
+    'list.item.organize': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['currentListId', 'destinationListIds']),
+    'list.restaurant.add': (payload) => pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.restaurant.reorder': (payload) => pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.restaurant.remove.source': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.restaurant.remove.user': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['listId']),
+    'list.bookmark.save': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['listId', 'sourceListId']),
+    'list.bookmark.remove': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['listId', 'sourceListId']),
+  },
+  replayCacheEffects: {
+    'list.create': reconcileRestaurantListReplayCaches,
+    'list.update': reconcileRestaurantListReplayCaches,
+    'list.delete': reconcileRestaurantListReplayCaches,
+    'list.default.create': reconcileRestaurantListReplayCaches,
+    'list.default.bookmark.save': reconcileRestaurantListReplayCaches,
+    'list.default.restaurant.save': reconcileRestaurantListReplayCaches,
+    'list.item.organize': reconcileRestaurantListReplayCaches,
+    'list.restaurant.add': reconcileRestaurantListReplayCaches,
+    'list.restaurant.reorder': reconcileRestaurantListReplayCaches,
+    'list.restaurant.remove.source': reconcileRestaurantListReplayCaches,
+    'list.restaurant.remove.user': reconcileRestaurantListReplayCaches,
+    'list.bookmark.save': reconcileRestaurantListReplayCaches,
+    'list.bookmark.remove': reconcileRestaurantListReplayCaches,
+  },
 });
+
+type RestaurantListReplayOperationName =
+  | 'list.create'
+  | 'list.update'
+  | 'list.delete'
+  | 'list.default.create'
+  | 'list.default.bookmark.save'
+  | 'list.default.restaurant.save'
+  | 'list.item.organize'
+  | 'list.restaurant.add'
+  | 'list.restaurant.reorder'
+  | 'list.restaurant.remove.source'
+  | 'list.restaurant.remove.user'
+  | 'list.bookmark.save'
+  | 'list.bookmark.remove';
+
+async function reconcileRestaurantListReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<RestaurantListReplayOperationName>,
+): Promise<void> {
+  const listId = getReplayIdentityString(outcome, 'listId');
+  const sourceListId = getReplayIdentityString(outcome, 'sourceListId');
+  const invalidations: Promise<unknown>[] = [
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+  ];
+
+  if (outcome.operationName === 'list.create') {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: restaurantListQueryKeys.scope('my'),
+        refetchType: 'all',
+      }),
+    );
+  } else if (outcome.operationName === 'list.update' && listId) {
+    invalidations.push(invalidateRestaurantListMetadataQueries(queryClient, listId));
+  } else if (outcome.operationName === 'list.delete' && listId) {
+    removeRestaurantListQueries(queryClient, listId);
+    invalidations.push(invalidateRestaurantListCollectionQueries(queryClient));
+  } else if (outcome.operationName === 'list.item.organize') {
+    const affectedListIds = new Set([
+      ...getReplayIdentityStrings(outcome, 'currentListId'),
+      ...getReplayIdentityStrings(outcome, 'destinationListIds'),
+    ]);
+    invalidations.push(
+      ...Array.from(affectedListIds).map((affectedListId) =>
+        invalidateRestaurantListContentQueries(queryClient, affectedListId, {
+          includeCandidateRestaurants: true,
+        }),
+      ),
+    );
+  } else if (listId) {
+    invalidations.push(
+      invalidateRestaurantListContentQueries(queryClient, listId, {
+        includeCandidateRestaurants: true,
+      }),
+    );
+  } else {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.root }),
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultListRoot }),
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.detailRoot }),
+    );
+  }
+
+  if (sourceListId) {
+    invalidations.push(invalidateRestaurantListSaveTargetQueries(queryClient, sourceListId));
+  }
+  if (
+    outcome.operationName.startsWith('list.default.') ||
+    outcome.operationName === 'list.bookmark.save' ||
+    outcome.operationName === 'list.bookmark.remove'
+  ) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultListRoot }),
+      queryClient.invalidateQueries({ queryKey: WANT_TO_TRY_MEMBERSHIP_QUERY_ROOT }),
+    );
+  }
+
+  await Promise.all(invalidations);
+}
 
 async function replayRestaurantListCreate(
   payload: FeatureOutboxOperationPayloadMap['list.create'],

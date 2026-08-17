@@ -1,6 +1,9 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { replayFeatureOutboxMutation } from '../features/store/featureOutboxOperations';
+import {
+  createApiFeatureOutboxReplayOutcome,
+  replayFeatureOutboxMutation,
+} from '../features/store/featureOutboxOperations';
 import { logger } from '../lib/logger';
 import { isRequestAbortError } from '../lib/requestAbortError';
 import { isConflictStatus, isRetryableStatus } from './retryPolicy';
@@ -91,11 +94,13 @@ export function createFetchMutationTransport(
         });
 
         if (response.ok || (mutation.method === 'DELETE' && response.status === 404)) {
+          const successfulReplay = createApiFeatureOutboxReplayOutcome(mutation) ?? undefined;
           return {
             ok: true,
             retryable: false,
             statusCode: response.status,
             errorMessage: null,
+            successfulReplay,
           };
         }
 
@@ -202,6 +207,7 @@ async function trySendLocalFeatureMutation(
       retryable: false,
       statusCode: 200,
       errorMessage: null,
+      successfulReplay: replayResult.successfulReplay,
     };
   } catch (error) {
     if (isRequestAbortError(error) || signal?.aborted) {

@@ -1,4 +1,12 @@
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import type { QueryClient } from '@tanstack/react-query';
+
+import {
+  createFeatureOutboxDomainRegistration,
+  getReplayIdentityString,
+  hasReplayCacheHint,
+  pickFeatureOutboxReplayIdentity,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
@@ -7,6 +15,9 @@ import {
   deleteFoodProduct,
   updateFoodProduct,
 } from './foodProductsStore';
+import { syncFoodProductMutationCaches } from './foodProductsQuery';
+import { homeFeedQueryKeys } from './homeFeedQuery';
+import { profileQueryKeys } from './profileQuery';
 
 export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -32,7 +43,54 @@ export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainR
     'food-product.update': replayFoodProductUpdate,
     'food-product.delete': replayFoodProductDelete,
   },
+  replayIdentityResolvers: {
+    'food-product.update': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['foodProductId']),
+    'food-product.delete': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['foodProductId']),
+  },
+  replayCacheHintResolvers: {
+    'food-product.create': (payload) =>
+      payload.photo ? ['food-product-photos', 'usage'] : [],
+    'food-product.update': (payload) => [
+      ...(payload.updates.newPhoto ? ['food-product-photos' as const, 'usage' as const] : []),
+      ...((payload.updates.deletePhotoIds?.length ?? 0) > 0
+        ? ['food-product-photos' as const]
+        : []),
+    ],
+  },
+  replayCacheEffects: {
+    'food-product.create': reconcileFoodProductReplayCaches,
+    'food-product.update': reconcileFoodProductReplayCaches,
+    'food-product.delete': reconcileFoodProductReplayCaches,
+  },
 });
+
+async function reconcileFoodProductReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<
+    'food-product.create' | 'food-product.update' | 'food-product.delete'
+  >,
+): Promise<void> {
+  const foodProductId = getReplayIdentityString(outcome, 'foodProductId');
+  const invalidations: Promise<unknown>[] = [
+    syncFoodProductMutationCaches(queryClient, {
+      foodProductId,
+      includeFoodProductPhotos: hasReplayCacheHint(outcome, 'food-product-photos'),
+      includeUsage: hasReplayCacheHint(outcome, 'usage'),
+    }),
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+  ];
+  if (outcome.operationName === 'food-product.create') {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: homeFeedQueryKeys.root,
+        refetchType: 'all',
+      }),
+    );
+  }
+  await Promise.all(invalidations);
+}
 
 async function replayFoodProductCreate(
   payload: FeatureOutboxOperationPayloadMap['food-product.create'],

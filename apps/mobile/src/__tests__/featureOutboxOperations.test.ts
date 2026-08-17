@@ -218,7 +218,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateVisit).toHaveBeenCalledWith(
       {
         restaurantName: 'Noodle House',
@@ -288,7 +288,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateVisit).toHaveBeenCalledWith(
       input,
       expect.objectContaining({
@@ -318,7 +318,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedConvertVisitItemToFoodProduct).toHaveBeenCalledWith(
       {
         itemId: 'item-1',
@@ -359,7 +359,16 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual({
+      identity: { visitId: 'visit-1' },
+      status: 'replayed',
+      successfulReplay: {
+        idempotencyKey: 'idem_123',
+        identity: { visitId: 'visit-1' },
+        operationName: 'visit.update',
+        originAccountId: 'user_1',
+      },
+    });
     expect(mockedUpdateVisit).toHaveBeenCalledWith(
       'visit-1',
       {
@@ -404,7 +413,7 @@ describe('featureOutboxOperations', () => {
       },
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateFoodProduct).toHaveBeenCalledWith(
       {
         itemName: 'Chili Crisp',
@@ -438,7 +447,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedMarkNoteUsed).toHaveBeenCalledWith(
       {
         noteId: 'note-1',
@@ -469,7 +478,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateRestaurantList).toHaveBeenCalledWith(
       {
         name: 'Date Night',
@@ -502,7 +511,7 @@ describe('featureOutboxOperations', () => {
       },
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateFeedback).toHaveBeenCalledWith(
       offlineFeedbackCreatePayload,
       {
@@ -530,7 +539,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedInviteFriend).toHaveBeenCalledWith(
       {
         code: 'ABCD1234',
@@ -558,7 +567,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateFriendSuggestionAcceptance).toHaveBeenCalledWith(
       {
         inviterId: 'user_inviter',
@@ -694,7 +703,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateTastingSession).toHaveBeenCalledWith(
       {
         name: 'Team tasting',
@@ -750,7 +759,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedCreateBill).toHaveBeenCalledWith(payload, {
       headers: {
         'X-Mobile-Write-Operation': 'bill.create',
@@ -794,7 +803,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateBill).toHaveBeenCalledWith(
       'bill_1',
       {
@@ -826,7 +835,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedDeleteBill).toHaveBeenCalledWith('bill_1', {
       headers: {
         'X-Mobile-Write-Operation': 'bill.delete',
@@ -867,7 +876,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateBill).toHaveBeenCalledWith(
       'bill_1',
       {
@@ -915,7 +924,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedMarkBillParticipantPaid).toHaveBeenCalledWith(
       'bill_1',
       'participant_1',
@@ -959,7 +968,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1039,7 +1048,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1098,7 +1107,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1154,7 +1163,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',
@@ -1215,7 +1224,7 @@ describe('featureOutboxOperations', () => {
       }),
     );
 
-    expect(handled).toEqual({ status: 'replayed' });
+    expect(handled).toEqual(expect.objectContaining({ status: 'replayed' }));
     expect(mockedUpdateCollectionRecord).toHaveBeenCalledWith(
       'users',
       'user_1',

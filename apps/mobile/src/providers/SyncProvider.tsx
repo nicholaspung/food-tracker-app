@@ -1,7 +1,9 @@
 import { AppState } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { getAuthRecord } from '../features/store/pocketbaseGateway';
+import { reconcileSuccessfulFeatureOutboxReplay } from '../features/store/featureOutboxReplayAdapters';
 import { resolveEmailVerificationAccess } from '../lib/emailVerificationAccess';
 import { logger } from '../lib/logger';
 import { pb } from '../lib/pocketbase';
@@ -55,6 +57,7 @@ function hasReplayableSession(): boolean {
 }
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [snapshot, setSnapshot] = useState<SyncSnapshot>(syncEngine.getSnapshot());
   const { isOnline } = useConnectivity();
   const wasOnlineRef = useRef(isOnline);
@@ -72,6 +75,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         setSnapshot(nextSnapshot);
       }
     });
+    const unsubscribeSuccessfulReplay = syncEngine.subscribeSuccessfulReplay((outcome) =>
+      reconcileSuccessfulFeatureOutboxReplay(queryClient, outcome),
+    );
 
     const authReadyPromise = authStore.waitUntilReady().catch((error) => {
       logger.warn('[SyncProvider] Failed waiting for auth restore before startup replay:', error);
@@ -101,8 +107,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false;
       unsubscribe();
+      unsubscribeSuccessfulReplay();
     };
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     const wasOnline = wasOnlineRef.current;

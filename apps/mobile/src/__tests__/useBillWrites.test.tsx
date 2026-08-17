@@ -334,7 +334,11 @@ describe('useBillWrites', () => {
       result = await hook.updateBillStatus({ billId: 'bill_1', status: 'settled' });
     });
 
-    expect(mockedUpdateBillApiMutationInput).toHaveBeenCalledWith('bill_1', { status: 'settled' });
+    expect(mockedUpdateBillApiMutationInput).toHaveBeenCalledWith(
+      'bill_1',
+      { status: 'settled' },
+      'bill.status.toggle',
+    );
     expect(mockedUpdateBill).not.toHaveBeenCalled();
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: billsQueryKeys.root });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: billsQueryKeys.detail('bill_1') });

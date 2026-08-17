@@ -1,6 +1,12 @@
 import type { RecordModel } from 'pocketbase';
+import type { QueryClient } from '@tanstack/react-query';
 
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import {
+  createFeatureOutboxDomainRegistration,
+  getReplayIdentityString,
+  pickFeatureOutboxReplayIdentity,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
@@ -13,6 +19,8 @@ import {
   saveAuthRecord,
   updateCollectionRecord,
 } from './pocketbaseGateway';
+import { profileQueryKeys } from './profileQuery';
+import { invalidateSettingsQueries } from './settingsQuery';
 
 export const SETTINGS_PREFERENCES_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: ['settings.visibility.save'] as const,
@@ -30,7 +38,27 @@ export const SETTINGS_PREFERENCES_OUTBOX_REGISTRATION = createFeatureOutboxDomai
   replayAdapters: {
     'settings.visibility.save': replaySettingsPreferencesSave,
   },
+  replayIdentityResolvers: {
+    'settings.visibility.save': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['userId']),
+  },
+  replayCacheEffects: {
+    'settings.visibility.save': reconcileSettingsReplayCaches,
+  },
 });
+
+async function reconcileSettingsReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<'settings.visibility.save'>,
+): Promise<void> {
+  await Promise.all([
+    invalidateSettingsQueries(
+      queryClient,
+      getReplayIdentityString(outcome, 'userId') ?? outcome.originAccountId,
+    ),
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+  ]);
+}
 
 async function replaySettingsPreferencesSave(
   settingsPayload: FeatureOutboxOperationPayloadMap['settings.visibility.save'],

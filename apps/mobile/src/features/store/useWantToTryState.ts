@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   type QueryClient,
   type QueryKey,
@@ -9,7 +9,6 @@ import {
 
 import type { RestaurantListRecord } from '../models';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
-import type { QueuedFeatureWrite } from './queuedFeatureWrites';
 import type { OfflineAwareFeatureWriteResult } from './useOfflineAwareFeatureWrite';
 import { useOfflineAwareFeatureWrite } from './useOfflineAwareFeatureWrite';
 import { useQueuedFeatureWrites } from './useQueuedFeatureWrites';
@@ -37,8 +36,6 @@ const WANT_TO_TRY_PENDING_OPERATION_NAMES = [
   'list.default.create',
   ...WANT_TO_TRY_MEMBERSHIP_OPERATION_NAMES,
 ] as const satisfies readonly FeatureOutboxOperationName[];
-type WantToTryPendingOperationName = (typeof WANT_TO_TRY_PENDING_OPERATION_NAMES)[number];
-
 const resolverPromisesByUserId = new Map<string, Promise<RestaurantListRecord | null>>();
 
 function normalizeRequiredId(value: string): string {
@@ -270,66 +267,6 @@ function chunkWantToTryTargets(
   return chunks;
 }
 
-export async function reconcileWantToTryReplay(
-  queryClient: QueryClient,
-  input: {
-    defaultListId: string | undefined;
-    replayedWrites: readonly QueuedFeatureWrite<WantToTryPendingOperationName>[];
-    targets: readonly WantToTryTargetInput[];
-    userId: string;
-  },
-): Promise<void> {
-  const invalidations: Promise<unknown>[] = [];
-  const invalidatedTargets = new Set<string>();
-  let shouldRefreshResolver = false;
-
-  for (const replayedWrite of input.replayedWrites) {
-    if (
-      replayedWrite.operationName === 'list.default.create' ||
-      (!input.defaultListId && replayedWrite.operationName.startsWith('list.default.'))
-    ) {
-      shouldRefreshResolver = true;
-    }
-    if (replayedWrite.operationName === 'list.default.create') {
-      continue;
-    }
-
-    const payload = replayedWrite.payload as unknown as Record<string, unknown>;
-    const listId = replayedWrite.operationName.startsWith('list.default.')
-      ? input.defaultListId
-      : typeof payload.listId === 'string'
-        ? payload.listId.trim()
-        : undefined;
-    if (!listId) {
-      continue;
-    }
-
-    for (const target of input.targets) {
-      if (!queuedWriteMatchesTarget(
-        replayedWrite.operationName,
-        payload,
-        target,
-        input.defaultListId,
-      )) {
-        continue;
-      }
-      const invalidationIdentity = `${listId}:${getWantToTryTargetIdentity(target)}`;
-      if (invalidatedTargets.has(invalidationIdentity)) {
-        continue;
-      }
-      invalidatedTargets.add(invalidationIdentity);
-      invalidations.push(invalidateWantToTryMembershipTarget(queryClient, listId, target));
-    }
-  }
-
-  if (shouldRefreshResolver && input.userId) {
-    invalidations.push(queryClient.invalidateQueries({
-      queryKey: wantToTryQueryKeys.resolver(input.userId),
-    }));
-  }
-  await Promise.all(invalidations);
-}
-
 export function useWantToTryMembership(input: {
   enabled?: boolean;
   targets: readonly WantToTryTargetInput[];
@@ -337,15 +274,13 @@ export function useWantToTryMembership(input: {
 }) {
   const enabled = input.enabled ?? true;
   const resolver = useWantToTryResolver(input.userId, { enabled });
-  const queryClient = useQueryClient();
-  const { lastReplayedWrites = [], queuedWrites } = useQueuedFeatureWrites(
+  const { queuedWrites } = useQueuedFeatureWrites(
     WANT_TO_TRY_PENDING_OPERATION_NAMES,
     'all',
     {
       enabled,
     },
   );
-  const previousReplayedWriteIdsRef = useRef<Set<string>>(new Set());
   const normalizedUserId = input.userId?.trim() || '';
   const normalizedTargets = useMemo(
     () => normalizeWantToTryTargets(input.targets),
@@ -354,10 +289,6 @@ export function useWantToTryMembership(input: {
   const accountQueuedWrites = useMemo(
     () => queuedWrites.filter((write) => write.originAccountId === normalizedUserId),
     [normalizedUserId, queuedWrites],
-  );
-  const accountReplayedWrites = useMemo(
-    () => lastReplayedWrites.filter((write) => write.originAccountId === normalizedUserId),
-    [lastReplayedWrites, normalizedUserId],
   );
   const targetChunks = useMemo(
     () => chunkWantToTryTargets(normalizedTargets),
@@ -411,29 +342,6 @@ export function useWantToTryMembership(input: {
     }
     return savedTargets;
   }, [accountQueuedWrites, normalizedTargets, queries, resolver.defaultListId]);
-  useEffect(() => {
-    const replayedWrites = accountReplayedWrites.filter(
-      (write) => !previousReplayedWriteIdsRef.current.has(write.id),
-    );
-    previousReplayedWriteIdsRef.current = new Set(accountReplayedWrites.map((write) => write.id));
-    if (!enabled || replayedWrites.length === 0) {
-      return;
-    }
-
-    void reconcileWantToTryReplay(queryClient, {
-      defaultListId: resolver.defaultListId,
-      replayedWrites,
-      targets: normalizedTargets,
-      userId: normalizedUserId,
-    });
-  }, [
-    enabled,
-    accountReplayedWrites,
-    normalizedTargets,
-    normalizedUserId,
-    queryClient,
-    resolver.defaultListId,
-  ]);
   const getSavedTarget = useCallback(
     (bookmarkKey: string) => savedTargetsByBookmarkKey[bookmarkKey],
     [savedTargetsByBookmarkKey],

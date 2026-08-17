@@ -6,7 +6,10 @@ import { SyncProvider } from '../providers/SyncProvider';
 const mockReplay = jest.fn();
 const mockStart = jest.fn();
 const mockSubscribe = jest.fn();
+const mockSubscribeSuccessfulReplay = jest.fn();
 const mockWaitUntilReady = jest.fn();
+const mockReconcileSuccessfulReplay = jest.fn();
+const mockQueryClient = {};
 
 const mockAuthStoreState = {
   isValid: false,
@@ -40,6 +43,15 @@ jest.mock('react-native', () => ({
     OS: 'ios',
     select: jest.fn((options: Record<string, unknown>) => options.ios ?? options.default),
   },
+}));
+
+jest.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => mockQueryClient,
+}));
+
+jest.mock('../features/store/featureOutboxReplayAdapters', () => ({
+  reconcileSuccessfulFeatureOutboxReplay: (...args: unknown[]) =>
+    mockReconcileSuccessfulReplay(...args),
 }));
 
 jest.mock('../features', () => ({
@@ -98,6 +110,8 @@ jest.mock('../offline', () => ({
     retryAllFailed: jest.fn(),
     start: (...args: unknown[]) => mockStart(...args),
     subscribe: (...args: unknown[]) => mockSubscribe(...args),
+    subscribeSuccessfulReplay: (...args: unknown[]) =>
+      mockSubscribeSuccessfulReplay(...args),
   },
 }));
 
@@ -123,6 +137,10 @@ describe('SyncProvider', () => {
     mockStart.mockResolvedValue(undefined);
     mockSubscribe.mockReset();
     mockSubscribe.mockImplementation(() => jest.fn());
+    mockSubscribeSuccessfulReplay.mockReset();
+    mockSubscribeSuccessfulReplay.mockImplementation(() => jest.fn());
+    mockReconcileSuccessfulReplay.mockReset();
+    mockReconcileSuccessfulReplay.mockResolvedValue(undefined);
     mockWaitUntilReady.mockReset();
 
     mockedUseConnectivity.mockReturnValue({
@@ -170,6 +188,22 @@ describe('SyncProvider', () => {
     });
 
     expect(mockReplay).toHaveBeenCalledWith('foreground');
+    expect(mockSubscribeSuccessfulReplay).toHaveBeenCalledTimes(1);
+
+    const successfulReplayListener = mockSubscribeSuccessfulReplay.mock.calls[0]?.[0];
+    const replayOutcome = {
+      idempotencyKey: 'idem_1',
+      identity: {},
+      operationName: 'visit.create',
+      originAccountId: 'user_1',
+    };
+    await act(async () => {
+      await successfulReplayListener(replayOutcome);
+    });
+    expect(mockReconcileSuccessfulReplay).toHaveBeenCalledWith(
+      mockQueryClient,
+      replayOutcome,
+    );
 
     await act(async () => {
       renderer?.unmount();

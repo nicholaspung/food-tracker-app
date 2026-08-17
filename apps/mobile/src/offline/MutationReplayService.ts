@@ -8,10 +8,14 @@ import type {
   MutationTransport,
   QueuedMutation,
   ReplayTrigger,
+  SuccessfulMutationReplayOutcome,
   SyncSnapshot,
 } from './types';
 
 type SyncListener = (snapshot: SyncSnapshot) => void;
+type SuccessfulReplayListener = (
+  outcome: SuccessfulMutationReplayOutcome,
+) => Promise<void> | void;
 type QueueClearTrigger = 'auth_change' | 'logout';
 
 const OFFLINE_QUEUE_FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -30,6 +34,7 @@ const DEFAULT_SNAPSHOT: SyncSnapshot = {
 
 export class MutationReplayService {
   private listeners = new Set<SyncListener>();
+  private successfulReplayListeners = new Set<SuccessfulReplayListener>();
   private replayPromise: Promise<void> | null = null;
   private activeReplayAbortController: AbortController | null = null;
   private activeReplayQueueDepthEstimate: number | null = null;
@@ -49,6 +54,14 @@ export class MutationReplayService {
 
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  subscribeSuccessfulReplay(listener: SuccessfulReplayListener): () => void {
+    this.successfulReplayListeners.add(listener);
+
+    return () => {
+      this.successfulReplayListeners.delete(listener);
     };
   }
 
@@ -204,7 +217,6 @@ export class MutationReplayService {
     const replayAbortController = new AbortController();
     let replayError: unknown = null;
     let lastSuccessfulReplayAt: number | null = null;
-    const successfulMutationsThisReplay: QueuedMutation[] = [];
 
     this.activeReplayAbortController = replayAbortController;
     this.activeReplayQueueDepthEstimate = this.snapshot.queueDepth;
@@ -265,10 +277,12 @@ export class MutationReplayService {
           const resolvedAt = this.now();
 
           if (sendResult.ok) {
+            await this.notifySuccessfulReplay(
+              sendResult.successfulReplay ?? createSuccessfulReplayOutcome(nextMutation),
+            );
             await this.queueStore.remove(nextMutation.id);
             lastSuccessfulReplayAt = resolvedAt;
             successfulMutationsSinceRefresh += 1;
-            successfulMutationsThisReplay.push(nextMutation);
             if (this.activeReplayQueueDepthEstimate !== null) {
               this.activeReplayQueueDepthEstimate = Math.max(
                 0,
@@ -318,9 +332,6 @@ export class MutationReplayService {
           await this.refreshSnapshot({
             isSyncing: true,
             ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
-            ...(successfulMutationsThisReplay.length > 0
-              ? { lastReplayedMutations: [...successfulMutationsThisReplay] }
-              : {}),
             lastTrigger: trigger,
           });
           successfulMutationsSinceRefresh = 0;
@@ -358,7 +369,6 @@ export class MutationReplayService {
           await this.refreshSnapshot({
             isSyncing: true,
             ...(lastSuccessfulReplayAt !== null ? { lastSyncedAt: lastSuccessfulReplayAt } : {}),
-            lastReplayedMutations: [...successfulMutationsThisReplay],
             lastTrigger: trigger,
           });
         }
@@ -449,6 +459,35 @@ export class MutationReplayService {
       listener(this.snapshot);
     }
   }
+
+  private async notifySuccessfulReplay(
+    outcome: SuccessfulMutationReplayOutcome,
+  ): Promise<void> {
+    for (const listener of this.successfulReplayListeners) {
+      try {
+        await listener(outcome);
+      } catch (error) {
+        trackObservabilityEvent('SYNC_REPLAY_CACHE_RECONCILIATION_FAILED', {
+          operationName: outcome.operationName,
+          ...buildSafeTelemetryErrorProperties({
+            error,
+            sourceOperation: outcome.operationName,
+          }),
+        });
+      }
+    }
+  }
+}
+
+function createSuccessfulReplayOutcome(
+  mutation: QueuedMutation,
+): SuccessfulMutationReplayOutcome {
+  return {
+    idempotencyKey: mutation.idempotencyKey,
+    identity: {},
+    operationName: resolveOperationNameFromQueuedMutation(mutation),
+    originAccountId: mutation.originAccountId,
+  };
 }
 
 function resolveOperationNameFromInput(input: EnqueueMutationInput): string {

@@ -61,12 +61,14 @@ export async function syncFoodProductMutationCaches(
     );
   }
 
-  if (options.includeFoodProductPhotos && foodProductId) {
+  if (options.includeFoodProductPhotos) {
     invalidations.push(
-      invalidateVisitPhotoQuery(
-        queryClient,
-        visitPhotosQueryKeys.foodProduct(foodProductId),
-      ),
+      foodProductId
+        ? invalidateVisitPhotoQuery(
+            queryClient,
+            visitPhotosQueryKeys.foodProduct(foodProductId),
+          )
+        : queryClient.invalidateQueries({ queryKey: visitPhotosQueryKeys.root }),
     );
   }
 

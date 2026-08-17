@@ -1,6 +1,10 @@
 import type { RecordModel } from 'pocketbase';
+import type { QueryClient } from '@tanstack/react-query';
 
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import {
+  createFeatureOutboxDomainRegistration,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
@@ -15,6 +19,8 @@ import {
   saveAuthRecord,
   updateCollectionRecord,
 } from './pocketbaseGateway';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
+import { profileQueryKeys } from './profileQuery';
 
 export const ONBOARDING_PROGRESS_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -46,7 +52,27 @@ export const ONBOARDING_PROGRESS_OUTBOX_REGISTRATION = createFeatureOutboxDomain
     'onboarding.more-card.dismiss': replayMoreOnboardingCardDismiss,
     'onboarding.add-card.dismiss': replayAddOnboardingCardDismiss,
   },
+  replayCacheEffects: {
+    'onboarding.main.complete': reconcileOnboardingReplayCaches,
+    'onboarding.more-card.dismiss': reconcileOnboardingReplayCaches,
+    'onboarding.add-card.dismiss': reconcileOnboardingReplayCaches,
+  },
 });
+
+type OnboardingReplayOperationName =
+  | 'onboarding.main.complete'
+  | 'onboarding.more-card.dismiss'
+  | 'onboarding.add-card.dismiss';
+
+async function reconcileOnboardingReplayCaches(
+  queryClient: QueryClient,
+  _outcome: FeatureOutboxSuccessfulReplayOutcome<OnboardingReplayOperationName>,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+    queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
+  ]);
+}
 
 async function replayMainOnboardingComplete(
   onboardingPayload: FeatureOutboxOperationPayloadMap['onboarding.main.complete'],

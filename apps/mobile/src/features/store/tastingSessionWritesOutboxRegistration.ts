@@ -1,4 +1,11 @@
-import { createFeatureOutboxDomainRegistration } from './featureOutboxDomainRegistration';
+import type { QueryClient } from '@tanstack/react-query';
+
+import {
+  createFeatureOutboxDomainRegistration,
+  getReplayIdentityString,
+  pickFeatureOutboxReplayIdentity,
+  type FeatureOutboxSuccessfulReplayOutcome,
+} from './featureOutboxDomainRegistration';
 import { createFeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationPayloadMap } from './featureOutboxOperations';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
@@ -7,6 +14,8 @@ import {
   joinTastingSession,
   setTastingSessionStatus,
 } from './tastingSessionsApiStore';
+import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
+import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
 
 export const TASTING_SESSION_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
@@ -39,7 +48,35 @@ export const TASTING_SESSION_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'tasting-session.join': replayTastingSessionJoin,
     'tasting-session.status.update': replayTastingSessionStatusUpdate,
   },
+  replayIdentityResolvers: {
+    'tasting-session.status.update': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['sessionId']),
+  },
+  replayCacheEffects: {
+    'tasting-session.create': reconcileTastingSessionReplayCaches,
+    'tasting-session.join': reconcileTastingSessionReplayCaches,
+    'tasting-session.status.update': reconcileTastingSessionReplayCaches,
+  },
 });
+
+type TastingSessionReplayOperationName =
+  | 'tasting-session.create'
+  | 'tasting-session.join'
+  | 'tasting-session.status.update';
+
+async function reconcileTastingSessionReplayCaches(
+  queryClient: QueryClient,
+  outcome: FeatureOutboxSuccessfulReplayOutcome<TastingSessionReplayOperationName>,
+): Promise<void> {
+  const sessionId = getReplayIdentityString(outcome, 'sessionId');
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.summariesRoot }),
+    queryClient.invalidateQueries({ queryKey: moreFeatureSignalQueryKeys.summary }),
+    ...(sessionId
+      ? [queryClient.invalidateQueries({ queryKey: tastingSessionsQueryKeys.detail(sessionId) })]
+      : []),
+  ]);
+}
 
 async function replayTastingSessionCreate(
   payload: FeatureOutboxOperationPayloadMap['tasting-session.create'],

@@ -2,6 +2,9 @@ import { BILL_WRITE_OUTBOX_REGISTRATION } from './billWritesOutboxReplayAdapter'
 import type {
   FeatureOutboxDomainRegistration,
   FeatureOutboxReplayAdapter,
+  FeatureOutboxReplayCacheEffect,
+  FeatureOutboxReplayCacheHintResolver,
+  FeatureOutboxReplayIdentityResolver,
 } from './featureOutboxDomainRegistration';
 import type { FeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
@@ -37,6 +40,31 @@ export const FEATURE_OUTBOX_REPLAY_ADAPTERS: Partial<
 > = Object.assign(
   {},
   ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map((registration) => registration.replayAdapters),
+);
+
+export const FEATURE_OUTBOX_REPLAY_CACHE_EFFECTS: Partial<
+  Record<FeatureOutboxOperationName, FeatureOutboxReplayCacheEffect>
+> = Object.assign(
+  {},
+  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map((registration) => registration.replayCacheEffects),
+);
+
+export const FEATURE_OUTBOX_REPLAY_CACHE_HINT_RESOLVERS: Partial<
+  Record<FeatureOutboxOperationName, FeatureOutboxReplayCacheHintResolver>
+> = Object.assign(
+  {},
+  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map(
+    (registration) => registration.replayCacheHintResolvers,
+  ),
+);
+
+export const FEATURE_OUTBOX_REPLAY_IDENTITY_RESOLVERS: Partial<
+  Record<FeatureOutboxOperationName, FeatureOutboxReplayIdentityResolver>
+> = Object.assign(
+  {},
+  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map(
+    (registration) => registration.replayIdentityResolvers,
+  ),
 );
 
 export const FEATURE_OUTBOX_PAYLOAD_DECODERS: Partial<

@@ -36,7 +36,6 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
   options: { enabled?: boolean } = {},
 ): {
   queuedWrites: QueuedFeatureWrite<TName>[];
-  lastReplayedWrites?: QueuedFeatureWrite<TName>[];
   refreshQueuedWrites: () => Promise<void>;
 } {
   const enabled = options.enabled ?? true;
@@ -44,7 +43,6 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
     failedCount,
     getQueuedMutations,
     isSyncing,
-    lastReplayedMutations = [],
     queueDepth,
   } = useSync();
   const readLimit = limit === 'all' ? Math.max(1, queueDepth) : limit;
@@ -86,15 +84,7 @@ export function useQueuedFeatureWrites<TName extends FeatureOutboxOperationName>
 
     return filterQueuedFeatureWrites(allQueuedWrites, operationNames);
   }, [allQueuedWrites, enabled, operationNames]);
-  const lastReplayedWrites = useMemo(() => {
-    const parsedWrites = parseQueuedFeatureWrites([...lastReplayedMutations]);
-    return operationNames
-      ? filterQueuedFeatureWrites(parsedWrites, operationNames)
-      : parsedWrites as QueuedFeatureWrite<TName>[];
-  }, [lastReplayedMutations, operationNames]);
-
   return {
-    lastReplayedWrites,
     queuedWrites,
     refreshQueuedWrites,
   };

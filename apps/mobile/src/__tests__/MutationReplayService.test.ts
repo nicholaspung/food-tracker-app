@@ -322,7 +322,7 @@ describe('MutationReplayService', () => {
     const service = new MutationReplayService(store, transport, () => now);
 
     await service.start();
-    const mutation = await service.enqueue({
+    await service.enqueue({
       method: 'POST',
       url: 'https://api.example.com/visits',
       body: { note: 'queued offline' },
@@ -339,9 +339,6 @@ describe('MutationReplayService', () => {
 
     expect(service.getSnapshot().queueDepth).toBe(0);
     expect(service.getSnapshot().failedCount).toBe(0);
-    expect(service.getSnapshot().lastReplayedMutations?.map((item) => item.id)).toEqual([
-      mutation.id,
-    ]);
   });
 
   it('does not report discarded or terminally failed mutations as successful replays', async () => {
@@ -356,10 +353,65 @@ describe('MutationReplayService', () => {
     const discarded = await service.enqueue({ method: 'POST', url: 'https://api.example.com/discarded' });
     await service.discardDelivery(discarded.id);
     await service.enqueue({ method: 'POST', url: 'https://api.example.com/failed' });
+    const successfulReplayListener = jest.fn();
+    service.subscribeSuccessfulReplay(successfulReplayListener);
 
     await service.replay('manual');
 
-    expect(service.getSnapshot().lastReplayedMutations).toBeUndefined();
+    expect(successfulReplayListener).not.toHaveBeenCalled();
+  });
+
+  it('waits for successful replay reconciliation before removing the queued projection', async () => {
+    const reconciliationStarted = createDeferredPromise<void>();
+    const allowReconciliationToFinish = createDeferredPromise<void>();
+    const store = new InMemoryQueueStore();
+    const successfulReplay = {
+      idempotencyKey: 'idem_reconcile_1',
+      identity: { visitId: 'visit_1' },
+      operationName: 'visit.update',
+      originAccountId: 'user_1',
+    } as const;
+    const service = new MutationReplayService(
+      store,
+      createTransport([{
+        errorMessage: null,
+        ok: true,
+        retryable: false,
+        statusCode: 200,
+        successfulReplay,
+      }]),
+      () => 1000,
+    );
+    await service.start();
+    await service.enqueue({
+      body: { updates: { notes: 'Updated' }, visitId: 'visit_1' },
+      idempotencyKey: successfulReplay.idempotencyKey,
+      method: 'POST',
+      originAccountId: 'user_1',
+      url: 'local://feature/visit.update',
+    });
+    service.subscribeSuccessfulReplay(async (outcome) => {
+      expect(outcome).toEqual(successfulReplay);
+      reconciliationStarted.resolve();
+      await allowReconciliationToFinish.promise;
+    });
+
+    const replayPromise = service.replay('reconnect');
+    await reconciliationStarted.promise;
+
+    expect(await service.getQueuedMutations(1)).toHaveLength(1);
+    expect(service.getSnapshot()).toMatchObject({
+      isSyncing: true,
+      queueDepth: 1,
+    });
+    allowReconciliationToFinish.resolve();
+    await replayPromise;
+
+    expect(await service.getQueuedMutations(1)).toHaveLength(0);
+    expect(service.getSnapshot()).toMatchObject({
+      isSyncing: false,
+      queueDepth: 0,
+    });
   });
 
   it('replays an ambiguous initial delivery with the same idempotency key', async () => {
@@ -823,14 +875,6 @@ describe('MutationReplayService', () => {
 
     expect(transport.send).toHaveBeenCalledTimes(25);
     expect(service.getSnapshot().queueDepth).toBe(0);
-    expect(service.getSnapshot().lastReplayedMutations?.map((mutation) => mutation.id)).toEqual(
-      Array.from({ length: 25 }, (_value, index) => `mut_seeded_${index + 1}`),
-    );
-    const replaySuccessSnapshots = emittedSnapshots
-      .map((snapshot) => snapshot.lastReplayedMutations)
-      .filter((mutations): mutations is readonly QueuedMutation[] => Boolean(mutations));
-    expect(replaySuccessSnapshots.map((mutations) => mutations.length)).toEqual([10, 20, 25, 25]);
-    expect(new Set(replaySuccessSnapshots).size).toBe(3);
     expect(store.getStatsCallCount).toBeLessThanOrEqual(6);
     expect(emittedSnapshots.length - 1).toBeLessThanOrEqual(6);
   });
