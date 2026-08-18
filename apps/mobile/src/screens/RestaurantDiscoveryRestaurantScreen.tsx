@@ -15,7 +15,7 @@ import {
   WantToTryBookmarkButton,
 } from "../components/shared";
 import { type AllLocationsHistoryRecord } from "../features";
-import { useFoodDiscoveryRestaurantDetailReadModel } from "../features/store/useFoodDiscoveryMapReadModel";
+import { useFoodDiscoveryRestaurantReadModel } from "../features/store/useFoodDiscoveryRestaurantReadModel";
 import { useRestaurantListWrites } from "../features/store/useRestaurantListWrites";
 import {
   createWantToTryMenuItemTarget,
@@ -175,7 +175,7 @@ export function RestaurantDiscoveryRestaurantScreen({
     return parts.filter(Boolean).join(" • ");
   }, [restaurant]);
 
-  const restaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
+  const restaurantDetail = useFoodDiscoveryRestaurantReadModel({
     isOnline,
     restaurant,
   });
@@ -430,15 +430,12 @@ export function RestaurantDiscoveryRestaurantScreen({
             />
           ) : restaurantDetail.menuItems.length > 0 ? (
             <View style={styles.menuItemList}>
-              {restaurantDetail.menuCatalogRows.map((row, index) => {
+              {restaurantDetail.menuCatalogItems.map((row, index) => {
                 const item = menuItemById.get(row.id);
                 if (!item) {
                   return null;
                 }
                 const isSaved = isMenuItemSavedToWantToTry(item.id);
-                const orderedHistoryLabel = row.meta.find(
-                  (meta) => meta.label,
-                )?.label;
                 const orderedHistory = row.orderedHistory;
                 const exactHistoryOrderCount =
                   orderedHistory?.kind === "exactLocation" &&
@@ -461,9 +458,9 @@ export function RestaurantDiscoveryRestaurantScreen({
                               {buildHadCountLabel(exactHistoryOrderCount)}
                             </Text>
                           </View>
-                        ) : orderedHistoryLabel ? (
+                        ) : orderedHistory?.kind === "relatedLocation" ? (
                           <Text tone="secondary" variant="bodySm">
-                            {orderedHistoryLabel}
+                            Had at related locations
                           </Text>
                         ) : undefined
                       }

@@ -11,10 +11,12 @@ import {
   listMenuItemsForRestaurant,
 } from '../features/store/restaurantsStore';
 import {
-  canShowFoodDiscoveryAllLocationsHistory,
   useFoodDiscoveryMapReadModel,
-  useFoodDiscoveryRestaurantDetailReadModel,
 } from '../features/store/useFoodDiscoveryMapReadModel';
+import {
+  canShowFoodDiscoveryAllLocationsHistory,
+  useFoodDiscoveryRestaurantReadModel,
+} from '../features/store/useFoodDiscoveryRestaurantReadModel';
 import type { RestaurantRecord } from '../features/models';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 
@@ -392,12 +394,12 @@ describe('useFoodDiscoveryMapReadModel', () => {
   });
 });
 
-describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
+describe('useFoodDiscoveryRestaurantReadModel', () => {
   const queryClient = {
     getQueryData: jest.fn(),
     getQueriesData: jest.fn(() => []),
   };
-  let detailHook: ReturnType<typeof useFoodDiscoveryRestaurantDetailReadModel> | null;
+  let detailHook: ReturnType<typeof useFoodDiscoveryRestaurantReadModel> | null;
   let renderer: ReturnType<typeof create> | null;
 
   beforeEach(() => {
@@ -458,7 +460,7 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
     restaurant?: RestaurantRecord | null;
   } = {}) {
     function TestComponent() {
-      detailHook = useFoodDiscoveryRestaurantDetailReadModel({
+      detailHook = useFoodDiscoveryRestaurantReadModel({
         isOnline,
         restaurant,
       });
@@ -479,18 +481,12 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
   it('normalizes online restaurant detail menu catalog and all-locations rows', async () => {
     const model = await renderDetailHook();
 
-    expect(model.menuCatalogRows.map((item) => item.name)).toEqual(['Aguachile', 'Ziti']);
-    expect(model.yourOrderedItemsRows).toEqual([
-      expect.objectContaining({
-        name: 'Double Double',
-        meta: [
-          {
-            dateLabel: 'Latest at In-N-Out Burger • 333 Jefferson St',
-            label: '2 orders',
-            rating: 5,
-          },
-        ],
-      }),
+    expect(model.menuCatalogItems.map((item) => item.name)).toEqual(['Aguachile', 'Ziti']);
+    expect(model.allLocationsHistory?.items).toEqual([
+      expect.objectContaining({ displayName: 'Double Double', orderCount: 2 }),
+    ]);
+    expect(model.yourOrderedItems).toEqual([
+      expect.objectContaining({ name: 'Double Double', orderCount: 2 }),
     ]);
     expect(model.canShowAllLocations).toBe(true);
   });
@@ -541,16 +537,16 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
 
     const model = await renderDetailHook();
 
-    expect(model.menuCatalogRows).toEqual([
+    expect(model.menuCatalogItems).toEqual([
       expect.objectContaining({
         name: 'Aguachile',
-        meta: [{ label: 'Had here' }],
+        orderedHistory: { kind: 'exactLocation', orderCount: 1 },
       }),
       expect.objectContaining({
         name: 'Ziti',
-        meta: [],
       }),
     ]);
+    expect(model.menuCatalogItems[1]?.orderedHistory).toBeUndefined();
   });
 
   it('labels related-location menu rows without implying exact-location history', async () => {
@@ -601,11 +597,10 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
 
     const model = await renderDetailHook();
 
-    expect(model.menuCatalogRows[0]).toMatchObject({
+    expect(model.menuCatalogItems[0]).toMatchObject({
       name: 'Coconut Yogurt',
-      meta: [{ label: 'Had at related locations' }],
+      orderedHistory: { kind: 'relatedLocation', orderCount: 2 },
     });
-    expect(model.menuCatalogRows[0]?.meta).not.toEqual([{ label: 'Had here' }]);
   });
 
   it('uses linked catalog contribution counts for approved menu item history labels', async () => {
@@ -668,11 +663,11 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
 
     const model = await renderDetailHook();
 
-    expect(model.menuCatalogRows[0]).toMatchObject({
+    expect(model.menuCatalogItems[0]).toMatchObject({
       name: 'Spicy Miso Ramen',
-      meta: [{ label: 'Had here' }],
+      orderedHistory: { kind: 'exactLocation', orderCount: 1 },
     });
-    expect(model.menuCatalogRows[0]?.name).not.toBe('User typed ramen text');
+    expect(model.menuCatalogItems[0]?.name).not.toBe('User typed ramen text');
   });
 
   it('labels related-location suggestions when matching user history is from grouped restaurants', async () => {
@@ -752,7 +747,6 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
         name: 'Granola Bowl',
         orderedHistory: {
           kind: 'relatedLocation',
-          label: 'Had at related locations',
           orderCount: 1,
         },
       }),
@@ -836,9 +830,10 @@ describe('useFoodDiscoveryRestaurantDetailReadModel', () => {
 
     const model = await renderDetailHook();
 
-    expect(model.menuCatalogRows).toHaveLength(2);
+    expect(model.menuCatalogItems).toHaveLength(2);
     expect(model.menuCatalogErrorMessage).toBeNull();
-    expect(model.yourOrderedItemsRows).toHaveLength(1);
+    expect(model.allLocationsHistory?.items).toHaveLength(1);
+    expect(model.yourOrderedItems).toHaveLength(1);
     expect(model.allLocationsHistoryErrorMessage).toBeNull();
   });
 });

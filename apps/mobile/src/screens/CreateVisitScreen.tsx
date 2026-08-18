@@ -56,7 +56,7 @@ import {
 } from '../features/restaurants/restaurantSelection';
 import { buildPhotoFileUrl, buildPhotoThumbnailUrl } from '../lib/photoUrls';
 import { notesQueryKeys } from '../features/store/notesQuery';
-import { useFoodDiscoveryRestaurantDetailReadModel } from '../features/store/useFoodDiscoveryMapReadModel';
+import { useFoodDiscoveryRestaurantReadModel } from '../features/store/useFoodDiscoveryRestaurantReadModel';
 import { useVisitWrites } from '../features/store/useVisitWrites';
 import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { visitsQueryKeys } from '../features/store/visitsQuery';
@@ -615,7 +615,7 @@ export function CreateVisitScreen({
       name: trimmedRestaurantName,
     };
   }, [restaurantName, selectedRestaurantId]);
-  const selectedRestaurantDetail = useFoodDiscoveryRestaurantDetailReadModel({
+  const selectedRestaurantDetail = useFoodDiscoveryRestaurantReadModel({
     enabled: step === 1 && Boolean(selectedRestaurantId),
     isOnline,
     menuSelectionSearchQuery: menuItemSearchQuery,

@@ -112,6 +112,7 @@ export * from './useBillWrites';
 export * from './useFeedbackWrites';
 export * from './useFriendWrites';
 export * from './useFoodDiscoveryMapReadModel';
+export * from './useFoodDiscoveryRestaurantReadModel';
 export * from './useMenuScanFlow';
 export * from './useReceiptScanFlow';
 export * from './useMenuItemCatalogWrites';
