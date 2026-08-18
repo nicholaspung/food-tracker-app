@@ -271,6 +271,13 @@ export async function invalidateRestaurantListSaveTargetQueries(
   await invalidateQueryKeys(queryClient, getRestaurantListSaveTargetInvalidationKeys(listId));
 }
 
+export async function invalidateSharedRestaurantListQueries(
+  queryClient: QueryClient,
+  shareToken: string,
+): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.shared(shareToken) });
+}
+
 export function upsertRestaurantListInCollectionCaches(
   queryClient: QueryClient,
   list: RestaurantListRecord,

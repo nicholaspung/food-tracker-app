@@ -533,6 +533,7 @@ describe('ListDetailScreen', () => {
     saveBookmarkToDefaultList: jest.fn(),
     saveBookmarkToLists: jest.fn(),
     saveRestaurantToDefaultList: jest.fn(),
+    saveSharedRecommendation: jest.fn(),
     setErrorMessage: jest.fn(),
     updateRestaurantList: jest.fn(),
   };

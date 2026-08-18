@@ -14,6 +14,7 @@ import {
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
   saveRestaurantToDefaultList,
+  saveSharedRestaurantListRecommendation,
   updateRestaurantList,
   type AddRestaurantVisitRatingsToListInput,
   type CreateRestaurantListInput,
@@ -24,6 +25,7 @@ import {
   type RestaurantListDetailRecord,
   type SaveRestaurantFoodItemToListInput,
   type SaveRestaurantToDefaultListInput,
+  type SaveSharedRestaurantListRecommendationInput,
   type UpdateRestaurantListInput,
 } from './restaurantListsStore';
 import {
@@ -31,6 +33,7 @@ import {
   invalidateRestaurantListContentQueries,
   invalidateRestaurantListMetadataQueries,
   invalidateRestaurantListSaveTargetQueries,
+  invalidateSharedRestaurantListQueries,
   removeRestaurantListQueries,
   restaurantListQueryKeys,
   upsertRestaurantListInCollectionCaches,
@@ -95,6 +98,9 @@ interface RemoveBookmarkFromDefaultListWriteInput {
   sourceListId: string;
   bookmark: Omit<RemoveRestaurantFoodItemBookmarkFromListInput, 'listId'>;
 }
+
+type SaveSharedRestaurantListRecommendationWriteInput =
+  SaveSharedRestaurantListRecommendationInput;
 
 export interface OptimisticRestaurantBookmark {
   city?: string;
@@ -316,6 +322,21 @@ async function syncRestaurantListSaveTargetCaches(
   await Promise.all([
     invalidateRestaurantListSaveTargetQueries(queryClient, sourceListId),
     syncRestaurantListTargetContentCaches(queryClient, targetListIds),
+  ]);
+}
+
+async function syncSharedRestaurantListRecommendationCaches(
+  queryClient: QueryClient,
+  input: Pick<
+    SaveSharedRestaurantListRecommendationWriteInput,
+    'shareToken' | 'targetListIds'
+  >,
+): Promise<void> {
+  await Promise.all([
+    invalidateSharedRestaurantListQueries(queryClient, input.shareToken),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultListRoot }),
+    queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.scope('my') }),
+    syncRestaurantListTargetContentCaches(queryClient, input.targetListIds ?? []),
   ]);
 }
 
@@ -781,6 +802,31 @@ export function useRestaurantListWrites() {
     [queryClient, submitFeatureWrite],
   );
 
+  const saveSharedRecommendationWrite = useCallback(
+    async (
+      input: SaveSharedRestaurantListRecommendationWriteInput,
+    ): Promise<OfflineAwareFeatureWriteResult<void>> => {
+      const payload = {
+        ...input,
+        targetListIds: input.targetListIds ?? [],
+      };
+
+      return submitFeatureWrite({
+        operationName: 'list.shared-recommendation.save',
+        offline: {
+          strategy: 'outbox',
+          payload,
+        },
+        execute: saveSharedRestaurantListRecommendation.bind(null, payload),
+        fallbackErrorMessage: 'Could not save this recommendation.',
+        onSettledInvalidate: () =>
+          syncSharedRestaurantListRecommendationCaches(queryClient, payload),
+        queuedToast: 'Recommendation save',
+      });
+    },
+    [queryClient, submitFeatureWrite],
+  );
+
   return {
     addRestaurant: addRestaurantWrite,
     createDefaultRestaurantList: createDefaultListWrite,
@@ -794,6 +840,7 @@ export function useRestaurantListWrites() {
     saveBookmarkToDefaultList: saveBookmarkToDefaultListWrite,
     saveBookmarkToLists: saveBookmarkToListsWrite,
     saveRestaurantToDefaultList: saveRestaurantToDefaultListWrite,
+    saveSharedRecommendation: saveSharedRecommendationWrite,
     updateRestaurantList: updateListWrite,
   };
 }

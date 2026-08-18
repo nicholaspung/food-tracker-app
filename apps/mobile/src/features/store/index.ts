@@ -164,7 +164,6 @@ export {
   listRestaurantListCandidateFoodItemPhotos,
   listRestaurantListsPage,
   regenerateRestaurantListShareLink,
-  saveSharedRestaurantListRecommendation,
 } from './restaurantListsStore';
 export {
   createNote,

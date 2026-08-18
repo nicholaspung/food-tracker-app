@@ -15,6 +15,7 @@ import {
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
   saveRestaurantToDefaultList,
+  saveSharedRestaurantListRecommendation,
   updateRestaurantList,
 } from '../features/store/restaurantListsStore';
 import {
@@ -22,6 +23,7 @@ import {
   invalidateRestaurantListContentQueries,
   invalidateRestaurantListMetadataQueries,
   invalidateRestaurantListSaveTargetQueries,
+  invalidateSharedRestaurantListQueries,
   removeRestaurantListQueries,
   upsertRestaurantListInCollectionCaches,
 } from '../features/store/restaurantListQuery';
@@ -44,6 +46,7 @@ jest.mock('../features/store/restaurantListsStore', () => ({
   removeRestaurantListUserRating: jest.fn(),
   saveRestaurantFoodItemToList: jest.fn(),
   saveRestaurantToDefaultList: jest.fn(),
+  saveSharedRestaurantListRecommendation: jest.fn(),
   updateRestaurantList: jest.fn(),
 }));
 
@@ -52,10 +55,12 @@ jest.mock('../features/store/restaurantListQuery', () => ({
   invalidateRestaurantListContentQueries: jest.fn(),
   invalidateRestaurantListMetadataQueries: jest.fn(),
   invalidateRestaurantListSaveTargetQueries: jest.fn(),
+  invalidateSharedRestaurantListQueries: jest.fn(),
   removeRestaurantListQueries: jest.fn(),
   restaurantListQueryKeys: {
     defaultListRoot: ['feature', 'restaurantLists', 'my', 'default'],
     defaultList: (userId: string) => ['feature', 'restaurantLists', 'my', 'default', userId],
+    scope: (scope: string) => ['feature', 'restaurantLists', scope],
   },
   upsertRestaurantListInCollectionCaches: jest.fn(),
 }));
@@ -89,6 +94,10 @@ const mockedSaveRestaurantFoodItemToList =
   saveRestaurantFoodItemToList as jest.MockedFunction<typeof saveRestaurantFoodItemToList>;
 const mockedSaveRestaurantToDefaultList =
   saveRestaurantToDefaultList as jest.MockedFunction<typeof saveRestaurantToDefaultList>;
+const mockedSaveSharedRestaurantListRecommendation =
+  saveSharedRestaurantListRecommendation as jest.MockedFunction<
+    typeof saveSharedRestaurantListRecommendation
+  >;
 const mockedUpdateRestaurantList = updateRestaurantList as jest.MockedFunction<typeof updateRestaurantList>;
 const mockedInvalidateRestaurantListCollectionQueries =
   invalidateRestaurantListCollectionQueries as jest.MockedFunction<typeof invalidateRestaurantListCollectionQueries>;
@@ -98,6 +107,10 @@ const mockedInvalidateRestaurantListMetadataQueries =
   invalidateRestaurantListMetadataQueries as jest.MockedFunction<typeof invalidateRestaurantListMetadataQueries>;
 const mockedInvalidateRestaurantListSaveTargetQueries =
   invalidateRestaurantListSaveTargetQueries as jest.MockedFunction<typeof invalidateRestaurantListSaveTargetQueries>;
+const mockedInvalidateSharedRestaurantListQueries =
+  invalidateSharedRestaurantListQueries as jest.MockedFunction<
+    typeof invalidateSharedRestaurantListQueries
+  >;
 const mockedRemoveRestaurantListQueries =
   removeRestaurantListQueries as jest.MockedFunction<typeof removeRestaurantListQueries>;
 const mockedUpsertRestaurantListInCollectionCaches =
@@ -128,11 +141,13 @@ describe('useRestaurantListWrites', () => {
     mockedRemoveRestaurantListUserRating.mockResolvedValue([]);
     mockedSaveRestaurantFoodItemToList.mockResolvedValue([]);
     mockedSaveRestaurantToDefaultList.mockResolvedValue([]);
+    mockedSaveSharedRestaurantListRecommendation.mockResolvedValue(undefined);
     mockedUpdateRestaurantList.mockResolvedValue({ id: 'list_1' } as never);
     mockedInvalidateRestaurantListCollectionQueries.mockResolvedValue(undefined);
     mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
     mockedInvalidateRestaurantListMetadataQueries.mockResolvedValue(undefined);
     mockedInvalidateRestaurantListSaveTargetQueries.mockResolvedValue(undefined);
+    mockedInvalidateSharedRestaurantListQueries.mockResolvedValue(undefined);
     mockedRemoveRestaurantListQueries.mockImplementation(() => undefined);
     mockedUpsertRestaurantListInCollectionCaches.mockImplementation(() => undefined);
   });
@@ -621,6 +636,54 @@ describe('useRestaurantListWrites', () => {
       });
     }
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('List organization');
+    expect(result).toEqual({ status: 'queued' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('queues shared recommendation saves and owns shared and target cache effects', async () => {
+    const writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(
+      writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>,
+    );
+    const { hook, renderer } = await renderHook();
+    const input = {
+      shareToken: 'share-token-1',
+      restaurantId: 'restaurant-1',
+      foodItemId: 'food-item-1',
+      sourceListItemId: 'source-list-item-1',
+      targetListIds: ['target-list-1'],
+    };
+
+    let result: Awaited<ReturnType<typeof hook.saveSharedRecommendation>> | undefined;
+    await act(async () => {
+      result = await hook.saveSharedRecommendation(input);
+    });
+
+    expect(writeFeature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationName: 'list.shared-recommendation.save',
+        offline: {
+          strategy: 'outbox',
+          payload: input,
+        },
+      }),
+    );
+    expect(mockedSaveSharedRestaurantListRecommendation).not.toHaveBeenCalled();
+    expect(mockedInvalidateSharedRestaurantListQueries).toHaveBeenCalledWith(
+      queryClient,
+      'share-token-1',
+    );
+    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(
+      queryClient,
+      'target-list-1',
+    );
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['feature', 'restaurantLists', 'my', 'default'],
+    });
+    expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith('Recommendation save');
     expect(result).toEqual({ status: 'queued' });
 
     await act(async () => {

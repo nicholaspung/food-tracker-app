@@ -1074,13 +1074,18 @@ export async function disableRestaurantListShareLink(
   });
 }
 
-export async function saveSharedRestaurantListRecommendation(input: {
+export interface SaveSharedRestaurantListRecommendationInput {
   shareToken: string;
   restaurantId: string;
   foodItemId: string;
   sourceListItemId: string;
   targetListIds?: string[];
-}, requestOptions?: FeatureWriteRequestOptions): Promise<void> {
+}
+
+export async function saveSharedRestaurantListRecommendation(
+  input: SaveSharedRestaurantListRecommendationInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('restaurant_list.shared_recommendation.save', async () => {
     getAuthenticatedUserId();
 

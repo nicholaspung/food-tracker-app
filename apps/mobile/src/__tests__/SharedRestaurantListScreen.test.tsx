@@ -1,12 +1,11 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
   getSharedRestaurantList,
-  invalidateRestaurantListContentQueries,
   restaurantListQueryKeys,
-  saveSharedRestaurantListRecommendation,
+  useRestaurantListWrites,
 } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { SharedRestaurantListScreen } from '../screens/SharedRestaurantListScreen';
@@ -36,7 +35,6 @@ const mockTheme = {
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
-  useQueryClient: jest.fn(),
 }));
 
 jest.mock('react-native', () => {
@@ -98,11 +96,10 @@ jest.mock('../config/env', () => ({
 
 jest.mock('../features', () => ({
   getSharedRestaurantList: jest.fn(),
-  invalidateRestaurantListContentQueries: jest.fn(),
   restaurantListQueryKeys: {
     sharedPages: (shareToken: string) => ['feature', 'restaurantLists', 'shared', shareToken, 'pages'],
   },
-  saveSharedRestaurantListRecommendation: jest.fn(),
+  useRestaurantListWrites: jest.fn(),
 }));
 
 jest.mock('../lib/pendingAuthRedirect', () => ({
@@ -157,22 +154,16 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
-const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
 const mockedGetSharedRestaurantList = getSharedRestaurantList as jest.MockedFunction<
   typeof getSharedRestaurantList
 >;
-const mockedInvalidateRestaurantListContentQueries =
-  invalidateRestaurantListContentQueries as jest.MockedFunction<typeof invalidateRestaurantListContentQueries>;
-const mockedSaveSharedRestaurantListRecommendation =
-  saveSharedRestaurantListRecommendation as jest.MockedFunction<
-    typeof saveSharedRestaurantListRecommendation
-  >;
+const mockedUseRestaurantListWrites = useRestaurantListWrites as jest.MockedFunction<
+  typeof useRestaurantListWrites
+>;
+const mockedSaveSharedRecommendation = jest.fn();
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 
 describe('SharedRestaurantListScreen', () => {
-  const queryClient = {
-    invalidateQueries: jest.fn(),
-  };
   const navigation = {
     canGoBack: jest.fn(() => true),
     goBack: jest.fn(),
@@ -188,8 +179,6 @@ describe('SharedRestaurantListScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedUseQueryClient.mockReturnValue(queryClient as unknown as ReturnType<typeof useQueryClient>);
-    mockedInvalidateRestaurantListContentQueries.mockResolvedValue(undefined);
     mockedGetSharedRestaurantList.mockResolvedValue({
       bookmarkState: {
         savedListIdsByBookmarkLookupId: {},
@@ -210,7 +199,10 @@ describe('SharedRestaurantListScreen', () => {
       totalPages: 1,
       viewerLists: [],
     });
-    mockedSaveSharedRestaurantListRecommendation.mockResolvedValue(undefined);
+    mockedSaveSharedRecommendation.mockResolvedValue({ status: 'queued' });
+    mockedUseRestaurantListWrites.mockReturnValue({
+      saveSharedRecommendation: mockedSaveSharedRecommendation,
+    } as unknown as ReturnType<typeof useRestaurantListWrites>);
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
     } as ReturnType<typeof useAuth>);
@@ -315,14 +307,13 @@ describe('SharedRestaurantListScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockedSaveSharedRestaurantListRecommendation).toHaveBeenCalledWith({
+    expect(mockedSaveSharedRecommendation).toHaveBeenCalledWith({
       shareToken: 'share-token-1',
       restaurantId: 'restaurant-1',
       foodItemId: 'food-1',
       sourceListItemId: 'list-item-1',
       targetListIds: ['default-list-1'],
     });
-    expect(mockedInvalidateRestaurantListContentQueries).toHaveBeenCalledWith(queryClient, 'default-list-1');
     expect(renderer.root.findByType('ListDetailBookmarkedItemRow').props.isSaved).toBe(true);
   });
 
@@ -500,6 +491,6 @@ describe('SharedRestaurantListScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockedSaveSharedRestaurantListRecommendation).not.toHaveBeenCalled();
+    expect(mockedSaveSharedRecommendation).not.toHaveBeenCalled();
   });
 });

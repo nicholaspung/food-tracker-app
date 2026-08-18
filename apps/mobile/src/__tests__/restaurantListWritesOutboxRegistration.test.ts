@@ -2,8 +2,10 @@ import {
   createDefaultRestaurantList,
   organizeRestaurantListItem,
   saveRestaurantFoodItemToList,
+  saveSharedRestaurantListRecommendation,
 } from '../features/store/restaurantListsStore';
 import { RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION } from '../features/store/restaurantListWritesOutboxRegistration';
+import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
 
 jest.mock('../features/store/restaurantListsStore', () => ({
   addRestaurantVisitRatingsToList: jest.fn(),
@@ -17,6 +19,7 @@ jest.mock('../features/store/restaurantListsStore', () => ({
   removeRestaurantListUserRating: jest.fn(),
   saveRestaurantFoodItemToList: jest.fn(),
   saveRestaurantToDefaultList: jest.fn(),
+  saveSharedRestaurantListRecommendation: jest.fn(),
   updateRestaurantList: jest.fn(),
 }));
 
@@ -29,6 +32,10 @@ const mockedSaveRestaurantFoodItemToList = saveRestaurantFoodItemToList as jest.
 const mockedOrganizeRestaurantListItem = organizeRestaurantListItem as jest.MockedFunction<
   typeof organizeRestaurantListItem
 >;
+const mockedSaveSharedRestaurantListRecommendation =
+  saveSharedRestaurantListRecommendation as jest.MockedFunction<
+    typeof saveSharedRestaurantListRecommendation
+  >;
 
 describe('RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION', () => {
   beforeEach(() => {
@@ -102,5 +109,57 @@ describe('RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION', () => {
 
     expect(mockedOrganizeRestaurantListItem).toHaveBeenCalledTimes(1);
     expect(mockedOrganizeRestaurantListItem).toHaveBeenCalledWith(payload, requestOptions);
+  });
+
+  it('replays shared recommendation saves through the revocable-link adapter', async () => {
+    const payload = {
+      shareToken: 'share-token-1',
+      restaurantId: 'restaurant-1',
+      foodItemId: 'food-item-1',
+      sourceListItemId: 'source-list-item-1',
+      targetListIds: ['target-list-1'],
+    };
+    const requestOptions = {
+      headers: {
+        'X-Idempotency-Key': 'queued-shared-save-1',
+      },
+    };
+
+    await RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION.replayAdapters[
+      'list.shared-recommendation.save'
+    ]?.(payload, requestOptions);
+
+    expect(mockedSaveSharedRestaurantListRecommendation).toHaveBeenCalledWith(
+      payload,
+      requestOptions,
+    );
+  });
+
+  it('reconciles shared and target caches after replay', async () => {
+    const queryClient = {
+      invalidateQueries: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION.replayCacheEffects[
+      'list.shared-recommendation.save'
+    ]?.(queryClient as never, {
+      idempotencyKey: 'queued-shared-save-1',
+      identity: {
+        shareToken: 'share-token-1',
+        targetListIds: ['target-list-1'],
+      },
+      operationName: 'list.shared-recommendation.save',
+      originAccountId: 'user-1',
+    });
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.shared('share-token-1'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.detail('target-list-1'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: restaurantListQueryKeys.defaultListRoot,
+    });
   });
 });

@@ -25,6 +25,7 @@ import {
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
   saveRestaurantToDefaultList,
+  saveSharedRestaurantListRecommendation,
   updateRestaurantList,
 } from './restaurantListsStore';
 import { profileQueryKeys } from './profileQuery';
@@ -33,6 +34,7 @@ import {
   invalidateRestaurantListContentQueries,
   invalidateRestaurantListMetadataQueries,
   invalidateRestaurantListSaveTargetQueries,
+  invalidateSharedRestaurantListQueries,
   removeRestaurantListQueries,
   restaurantListQueryKeys,
 } from './restaurantListQuery';
@@ -47,6 +49,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.create',
     'list.default.bookmark.save',
     'list.default.restaurant.save',
+    'list.shared-recommendation.save',
     'list.item.organize',
     'list.restaurant.add',
     'list.restaurant.reorder',
@@ -74,6 +77,16 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.restaurant.save': createFeatureOutboxPayloadDecoder(
       'list.default.restaurant.save',
       [{ key: 'restaurantId', type: 'string' }],
+    ),
+    'list.shared-recommendation.save': createFeatureOutboxPayloadDecoder(
+      'list.shared-recommendation.save',
+      [
+        { key: 'shareToken', type: 'string' },
+        { key: 'restaurantId', type: 'string' },
+        { key: 'foodItemId', type: 'string' },
+        { key: 'sourceListItemId', type: 'string' },
+        { key: 'targetListIds', type: 'array' },
+      ],
     ),
     'list.item.organize': createFeatureOutboxPayloadDecoder('list.item.organize', [
       { key: 'currentListId', type: 'string' },
@@ -122,6 +135,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.create': replayDefaultRestaurantListCreate,
     'list.default.bookmark.save': replayDefaultRestaurantListBookmarkSave,
     'list.default.restaurant.save': replayDefaultRestaurantListRestaurantSave,
+    'list.shared-recommendation.save': replaySharedRestaurantListRecommendationSave,
     'list.item.organize': replayRestaurantListItemOrganization,
     'list.restaurant.add': replayRestaurantListRestaurantAdd,
     'list.restaurant.reorder': replayRestaurantListRestaurantReorder,
@@ -137,6 +151,8 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
       pickFeatureOutboxReplayIdentity(payload, ['sourceListId']),
     'list.default.restaurant.save': (payload) =>
       pickFeatureOutboxReplayIdentity(payload, ['sourceListId']),
+    'list.shared-recommendation.save': (payload) =>
+      pickFeatureOutboxReplayIdentity(payload, ['shareToken', 'targetListIds']),
     'list.item.organize': (payload) =>
       pickFeatureOutboxReplayIdentity(payload, ['currentListId', 'destinationListIds']),
     'list.restaurant.add': (payload) => pickFeatureOutboxReplayIdentity(payload, ['listId']),
@@ -157,6 +173,7 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.default.create': reconcileRestaurantListReplayCaches,
     'list.default.bookmark.save': reconcileRestaurantListReplayCaches,
     'list.default.restaurant.save': reconcileRestaurantListReplayCaches,
+    'list.shared-recommendation.save': reconcileRestaurantListReplayCaches,
     'list.item.organize': reconcileRestaurantListReplayCaches,
     'list.restaurant.add': reconcileRestaurantListReplayCaches,
     'list.restaurant.reorder': reconcileRestaurantListReplayCaches,
@@ -174,6 +191,7 @@ type RestaurantListReplayOperationName =
   | 'list.default.create'
   | 'list.default.bookmark.save'
   | 'list.default.restaurant.save'
+  | 'list.shared-recommendation.save'
   | 'list.item.organize'
   | 'list.restaurant.add'
   | 'list.restaurant.reorder'
@@ -188,6 +206,7 @@ async function reconcileRestaurantListReplayCaches(
 ): Promise<void> {
   const listId = getReplayIdentityString(outcome, 'listId');
   const sourceListId = getReplayIdentityString(outcome, 'sourceListId');
+  const shareToken = getReplayIdentityString(outcome, 'shareToken');
   const invalidations: Promise<unknown>[] = [
     queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile }),
   ];
@@ -204,6 +223,18 @@ async function reconcileRestaurantListReplayCaches(
   } else if (outcome.operationName === 'list.delete' && listId) {
     removeRestaurantListQueries(queryClient, listId);
     invalidations.push(invalidateRestaurantListCollectionQueries(queryClient));
+  } else if (outcome.operationName === 'list.shared-recommendation.save') {
+    const targetListIds = getReplayIdentityStrings(outcome, 'targetListIds');
+    if (shareToken) {
+      invalidations.push(invalidateSharedRestaurantListQueries(queryClient, shareToken));
+    }
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.defaultListRoot }),
+      queryClient.invalidateQueries({ queryKey: restaurantListQueryKeys.scope('my') }),
+      ...targetListIds.map((targetListId) =>
+        invalidateRestaurantListContentQueries(queryClient, targetListId),
+      ),
+    );
   } else if (outcome.operationName === 'list.item.organize') {
     const affectedListIds = new Set([
       ...getReplayIdentityStrings(outcome, 'currentListId'),
@@ -305,6 +336,13 @@ async function replayDefaultRestaurantListRestaurantSave(
   requestOptions: FeatureWriteRequestOptions,
 ): Promise<void> {
   await saveRestaurantToDefaultList(payload, requestOptions);
+}
+
+async function replaySharedRestaurantListRecommendationSave(
+  payload: FeatureOutboxOperationPayloadMap['list.shared-recommendation.save'],
+  requestOptions: FeatureWriteRequestOptions,
+): Promise<void> {
+  await saveSharedRestaurantListRecommendation(payload, requestOptions);
 }
 
 async function replayRestaurantListItemOrganization(

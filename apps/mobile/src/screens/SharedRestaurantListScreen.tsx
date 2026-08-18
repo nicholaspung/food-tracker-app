@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Platform, Pressable, View } from 'react-native';
@@ -13,9 +13,8 @@ import {
 } from '../components/shared';
 import {
   getSharedRestaurantList,
-  invalidateRestaurantListContentQueries,
   restaurantListQueryKeys,
-  saveSharedRestaurantListRecommendation,
+  useRestaurantListWrites,
 } from '../features';
 import { buildRestaurantListDetailReadModel } from '../features/restaurantLists/restaurantListDetailReadModel';
 import type {
@@ -86,7 +85,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function SharedRestaurantListScreen({ navigation, route }: SharedRestaurantListScreenProps) {
   const { shareToken } = route.params;
   const { status } = useAuth();
-  const queryClient = useQueryClient();
+  const restaurantListWrites = useRestaurantListWrites();
   const styles = useStyles();
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [locallySavedDefaultBookmarkLookupIds, setLocallySavedDefaultBookmarkLookupIds] = useState<Set<string>>(
@@ -224,7 +223,7 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         sourceListItemId: item.listItemId,
         sourceUserId: item.sourceUserId,
       });
-      await saveSharedRestaurantListRecommendation({
+      await restaurantListWrites.saveSharedRecommendation({
         shareToken,
         restaurantId: item.foodItemRestaurantId ?? group.restaurantId,
         foodItemId: item.foodItemId,
@@ -238,10 +237,6 @@ export function SharedRestaurantListScreen({ navigation, route }: SharedRestaura
         }
         return next;
       });
-      await Promise.all([
-        query.refetch(),
-        ...targetListIds.map((targetListId) => invalidateRestaurantListContentQueries(queryClient, targetListId)),
-      ]);
       trackProductEvent('social.recommendation_saved', {
         source: 'SharedRestaurantListScreen',
         entryMethod: 'quick_default',

@@ -44,6 +44,7 @@ import {
   type UpdateVisitInput,
   type UpdateNoteInput,
 } from './featureStore';
+import type { SaveSharedRestaurantListRecommendationInput } from './restaurantListsStore';
 import type {
   CreateTastingSessionInput,
   JoinTastingSessionInput,
@@ -109,6 +110,11 @@ interface SaveBookmarkToDefaultListOperationPayload {
 }
 
 type SaveRestaurantToDefaultListOperationPayload = SaveRestaurantToDefaultListInput;
+
+interface SaveSharedRestaurantListRecommendationOperationPayload
+  extends SaveSharedRestaurantListRecommendationInput {
+  targetListIds: string[];
+}
 
 interface RemoveRestaurantListUserRatingOperationPayload {
   listId: string;
@@ -200,6 +206,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'list.default.create': EmptyOperationPayload;
   'list.default.bookmark.save': SaveBookmarkToDefaultListOperationPayload;
   'list.default.restaurant.save': SaveRestaurantToDefaultListOperationPayload;
+  'list.shared-recommendation.save': SaveSharedRestaurantListRecommendationOperationPayload;
   'list.item.organize': OrganizeRestaurantListItemInput;
   'list.restaurant.add': AddRestaurantVisitRatingsToListInput;
   'list.restaurant.reorder': MoveRestaurantListRestaurantInput;
