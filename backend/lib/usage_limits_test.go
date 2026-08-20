@@ -2,10 +2,14 @@ package lib
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/testutil"
 )
 
 func TestResolveUserTier(t *testing.T) {
@@ -111,5 +115,113 @@ func TestAsLimitExceededError(t *testing.T) {
 	}
 	if parsed.Metric != UsageMetricMenuScans {
 		t.Fatalf("expected metric menu_scans, got %q", parsed.Metric)
+	}
+}
+
+func TestRecordReceiptScanDispatchEnforcesRollingAccountWindow(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	createReceiptScanAttemptsTestCollection(t, app)
+	user := createUsageLimitTestUser(t, app)
+	now := time.Date(2026, time.August, 19, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < receiptScanBurstMaxAttempts; i++ {
+		if err := recordReceiptScanDispatchAt(app, user, now); err != nil {
+			t.Fatalf("attempt %d should be allowed: %v", i+1, err)
+		}
+	}
+
+	err := recordReceiptScanDispatchAt(app, user, now.Add(59*time.Second))
+	limitErr, ok := AsReceiptScanRateLimitError(err)
+	if !ok {
+		t.Fatalf("expected sixth attempt to be rate limited, got %v", err)
+	}
+	if limitErr.Limit != receiptScanBurstMaxAttempts || limitErr.RetryAfterSeconds != 1 {
+		t.Fatalf("unexpected rate limit payload: %#v", limitErr)
+	}
+
+	if err := recordReceiptScanDispatchAt(app, user, now.Add(receiptScanBurstWindow)); err != nil {
+		t.Fatalf("expected attempt at the rolling-window boundary to be allowed: %v", err)
+	}
+
+	otherUser := createUsageLimitTestUser(t, app)
+	if err := recordReceiptScanDispatchAt(app, otherUser, now); err != nil {
+		t.Fatalf("expected another account to have an independent budget: %v", err)
+	}
+}
+
+func TestRecordReceiptScanDispatchConcurrentAttemptsCannotExceedBudget(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	createReceiptScanAttemptsTestCollection(t, app)
+	user := createUsageLimitTestUser(t, app)
+	now := time.Date(2026, time.August, 19, 12, 0, 0, 0, time.UTC)
+
+	const attempts = 12
+	results := make(chan error, attempts)
+	var waitGroup sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			results <- recordReceiptScanDispatchAt(app, user, now)
+		}()
+	}
+	waitGroup.Wait()
+	close(results)
+
+	allowed := 0
+	limited := 0
+	for err := range results {
+		if err == nil {
+			allowed++
+			continue
+		}
+		if _, ok := AsReceiptScanRateLimitError(err); ok {
+			limited++
+			continue
+		}
+		t.Fatalf("unexpected concurrent rate-limit error: %v", err)
+	}
+	if allowed != receiptScanBurstMaxAttempts || limited != attempts-receiptScanBurstMaxAttempts {
+		t.Fatalf("expected %d allowed and %d limited attempts, got %d and %d", receiptScanBurstMaxAttempts, attempts-receiptScanBurstMaxAttempts, allowed, limited)
+	}
+}
+
+func createUsageLimitTestUser(t *testing.T, app core.App) *core.Record {
+	t.Helper()
+
+	collection, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatalf("failed to find users collection: %v", err)
+	}
+	user := core.NewRecord(collection)
+	user.Set("email", fmt.Sprintf("usage_%d@example.com", time.Now().UnixNano()))
+	user.Set("name", "Usage Test User")
+	user.Set("defaultRestaurantVisibility", "friends")
+	user.Set("defaultVisitVisibility", "friends")
+	user.SetPassword("password123")
+	user.SetVerified(true)
+	if err := app.Save(user); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	return user
+}
+
+func createReceiptScanAttemptsTestCollection(t *testing.T, app core.App) {
+	t.Helper()
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatalf("failed to find users collection: %v", err)
+	}
+	collection := core.NewBaseCollection("receipt_scan_attempts")
+	collection.Fields.Add(&core.RelationField{
+		Name:          "user",
+		CollectionId:  users.Id,
+		MaxSelect:     1,
+		Required:      true,
+		CascadeDelete: true,
+	})
+	collection.Fields.Add(&core.DateField{Name: "attempted_at", Required: true})
+	if err := app.Save(collection); err != nil {
+		t.Fatalf("failed to create Receipt Scan attempts collection: %v", err)
 	}
 }

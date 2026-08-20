@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -84,6 +85,19 @@ type geminiGenerationOptions struct {
 	MaxOutputTokens  int32
 	Model            string
 }
+
+type geminiContentGenerator func(
+	context.Context,
+	*genai.Client,
+	string,
+	genai.Part,
+	geminiGenerationOptions,
+) geminiGenerationResult
+
+var receiptScanContentGenerator = struct {
+	sync.RWMutex
+	generate geminiContentGenerator
+}{generate: generateGeminiContentWithFallbackOptions}
 
 type savedMenuImageResult struct {
 	ID string
@@ -272,6 +286,32 @@ func generateGeminiContentWithFallbackOptions(
 		Model:      lastModel,
 		DurationMs: totalDurationMs,
 		Attempts:   attempts,
+	}
+}
+
+func generateReceiptScanContent(
+	ctx context.Context,
+	client *genai.Client,
+	prompt string,
+	imagePart genai.Part,
+	options geminiGenerationOptions,
+) geminiGenerationResult {
+	receiptScanContentGenerator.RLock()
+	generate := receiptScanContentGenerator.generate
+	receiptScanContentGenerator.RUnlock()
+	return generate(ctx, client, prompt, imagePart, options)
+}
+
+func setReceiptScanContentGeneratorForTests(generate geminiContentGenerator) func() {
+	receiptScanContentGenerator.Lock()
+	previous := receiptScanContentGenerator.generate
+	receiptScanContentGenerator.generate = generate
+	receiptScanContentGenerator.Unlock()
+
+	return func() {
+		receiptScanContentGenerator.Lock()
+		receiptScanContentGenerator.generate = previous
+		receiptScanContentGenerator.Unlock()
 	}
 }
 
@@ -934,10 +974,20 @@ Rules:
 			return apis.NewApiError(500, "failed to initialize Gemini API", err)
 		}
 		defer client.Close()
-
 		imagePart := genai.ImageData(format, imageData)
 		prompt := receiptScanPrompt()
-		generationResult := generateGeminiContentWithFallbackOptions(ctx, client, prompt, imagePart, geminiGenerationOptions{
+
+		if err := lib.RecordReceiptScanDispatch(e.App, authRecord); err != nil {
+			if limitErr, ok := lib.AsReceiptScanRateLimitError(err); ok {
+				e.Response.Header().Set("Retry-After", fmt.Sprintf("%d", limitErr.RetryAfterSeconds))
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to enforce Receipt Scan rate limit for user %s requestId=%s: %v", authRecord.Id, requestID, err)
+			return apis.NewApiError(500, "failed to process Receipt Scan rate limit", err)
+		}
+
+		usageReservation.Commit()
+		generationResult := generateReceiptScanContent(ctx, client, prompt, imagePart, geminiGenerationOptions{
 			ResponseMIMEType: "application/json",
 			MaxOutputTokens:  4096,
 			Model:            selectedModel,
@@ -2238,6 +2288,7 @@ type usageReservation struct {
 	user      *core.Record
 	metric    lib.UsageMetric
 	amount    int
+	mu        sync.Mutex
 	committed bool
 }
 
@@ -2264,11 +2315,18 @@ func (r *usageReservation) Commit() {
 		return
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.committed = true
 }
 
 func (r *usageReservation) ReleaseIfNeeded() {
-	if r == nil || r.committed {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.committed {
 		return
 	}
 

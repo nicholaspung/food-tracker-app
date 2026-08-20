@@ -12,6 +12,7 @@ const (
 	convertHeicRouteLabel    = "POST /api/convert-heic"
 	findRestaurantRouteLabel = "POST /api/find-restaurant-name"
 	parseMenuRouteLabel      = "POST /api/parse-menu"
+	parseReceiptRouteLabel   = "POST /api/parse-receipt"
 	menuReviewRouteLabel     = "POST /api/menu-review-requests"
 	menuItemsFromScanLabel   = "POST /api/menu-items/from-scan"
 	placesRoutesPrefixLabel  = "POST /api/places/"
@@ -39,6 +40,7 @@ func configureSecurityRateLimitRules(app core.App) {
 		{Label: convertHeicRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 20},
 		{Label: findRestaurantRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: parseMenuRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
+		{Label: parseReceiptRouteLabel, Audience: authAudience, Duration: 60, MaxRequests: 5},
 		{Label: menuReviewRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: menuItemsFromScanLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: placesRoutesPrefixLabel, Audience: authAudience, Duration: 60, MaxRequests: 30},

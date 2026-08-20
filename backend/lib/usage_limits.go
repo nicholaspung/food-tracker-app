@@ -86,6 +86,30 @@ type LimitExceededError struct {
 	Message   string
 }
 
+const (
+	receiptScanBurstMaxAttempts = 5
+	receiptScanBurstWindow      = time.Minute
+)
+
+type ReceiptScanRateLimitError struct {
+	Limit             int
+	RetryAfterSeconds int
+}
+
+func (e *ReceiptScanRateLimitError) Error() string {
+	return "Receipt Scan rate limit reached. Please try again shortly."
+}
+
+func (e *ReceiptScanRateLimitError) Payload() map[string]any {
+	return map[string]any{
+		"success":           false,
+		"code":              "RATE_LIMITED",
+		"message":           e.Error(),
+		"limit":             e.Limit,
+		"retryAfterSeconds": e.RetryAfterSeconds,
+	}
+}
+
 func (e *LimitExceededError) Error() string {
 	return e.Message
 }
@@ -111,6 +135,78 @@ func AsLimitExceededError(err error) (*LimitExceededError, bool) {
 	}
 
 	return nil, false
+}
+
+func AsReceiptScanRateLimitError(err error) (*ReceiptScanRateLimitError, bool) {
+	var limitErr *ReceiptScanRateLimitError
+	if errors.As(err, &limitErr) {
+		return limitErr, true
+	}
+
+	return nil, false
+}
+
+// RecordReceiptScanDispatch consumes one account-bound rolling-window attempt.
+// Call it immediately before handing a validated Receipt Scan to the provider.
+func RecordReceiptScanDispatch(app core.App, user *core.Record) error {
+	return recordReceiptScanDispatchAt(app, user, time.Now().UTC())
+}
+
+func recordReceiptScanDispatchAt(app core.App, user *core.Record, now time.Time) error {
+	if user == nil || user.Id == "" {
+		return errors.New("missing authenticated user")
+	}
+
+	cutoff := now.UTC().Add(-receiptScanBurstWindow)
+	return app.RunInTransaction(func(txApp core.App) error {
+		storedAttempts, err := txApp.FindRecordsByFilter(
+			"receipt_scan_attempts",
+			"user = {:user}",
+			"attempted_at",
+			100,
+			0,
+			dbx.Params{"user": user.Id},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to load Receipt Scan rate limit: %w", err)
+		}
+
+		attempts := make([]*core.Record, 0, receiptScanBurstMaxAttempts)
+		for _, attempt := range storedAttempts {
+			if attempt.GetDateTime("attempted_at").Time().After(cutoff) {
+				attempts = append(attempts, attempt)
+				continue
+			}
+			if err := txApp.Delete(attempt); err != nil {
+				return fmt.Errorf("failed to clean Receipt Scan rate limit: %w", err)
+			}
+		}
+
+		if len(attempts) >= receiptScanBurstMaxAttempts {
+			remaining := attempts[0].GetDateTime("attempted_at").Time().Add(receiptScanBurstWindow).Sub(now.UTC())
+			retryAfter := int((remaining + time.Second - 1) / time.Second)
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			return &ReceiptScanRateLimitError{
+				Limit:             receiptScanBurstMaxAttempts,
+				RetryAfterSeconds: retryAfter,
+			}
+		}
+
+		collection, err := txApp.FindCollectionByNameOrId("receipt_scan_attempts")
+		if err != nil {
+			return fmt.Errorf("failed to find Receipt Scan rate limit collection: %w", err)
+		}
+		attempt := core.NewRecord(collection)
+		attempt.Set("user", user.Id)
+		attempt.Set("attempted_at", now.UTC())
+		if err := txApp.Save(attempt); err != nil {
+			return fmt.Errorf("failed to record Receipt Scan attempt: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func ResolveUserTier(user *core.Record) UserTier {
