@@ -1,7 +1,6 @@
 package hooks
 
 import (
-	"log"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/apis"
@@ -20,24 +19,15 @@ func RegisterModerationHooks(app core.App) {
 		shouldCreateCase := shouldCreatePreReviewCase(e)
 		if shouldCreateCase {
 			e.Record.Set("moderationStatus", lib.ContentModerationStatusUnderReview)
-		} else if field := e.Record.Collection().Fields.GetByName("moderationStatus"); field != nil {
-			if strings.TrimSpace(e.Record.GetString("moderationStatus")) == "" {
-				e.Record.Set("moderationStatus", lib.ContentModerationStatusActive)
-			}
+			e.Record.Set("moderatedAt", "")
+			e.Record.Set("moderatedBy", "")
+		} else if isNonSuperuserModeratedContentRequest(e) {
+			e.Record.Set("moderationStatus", lib.ContentModerationStatusActive)
+			e.Record.Set("moderatedAt", "")
+			e.Record.Set("moderatedBy", "")
 		}
 
-		err := e.Next()
-		if err != nil {
-			return err
-		}
-
-		if shouldCreateCase {
-			if _, caseErr := lib.UpsertPreReviewModerationCase(e.App, e.Record); caseErr != nil {
-				log.Printf("Failed to create pre-review moderation case for %s/%s: %v", e.Collection.Name, e.Record.Id, caseErr)
-			}
-		}
-
-		return nil
+		return persistModeratedContentRequest(e, shouldCreateCase)
 	})
 
 	app.OnRecordUpdateRequest().BindFunc(func(e *core.RecordRequestEvent) error {
@@ -45,7 +35,82 @@ func RegisterModerationHooks(app core.App) {
 			return err
 		}
 
+		if !isNonSuperuserModeratedContentRequest(e) {
+			return e.Next()
+		}
+
+		original := e.Record.Original()
+		if original == nil {
+			return apis.NewBadRequestError("existing content record is required", nil)
+		}
+		if moderationMetadataChanged(e.Record, original) {
+			return apis.NewForbiddenError("content moderation fields are admin controlled", nil)
+		}
+
+		shouldCreateCase := shouldCreatePreReviewCase(e) && !hasProtectedModerationStatus(original)
+		if shouldCreateCase {
+			e.Record.Set("moderationStatus", lib.ContentModerationStatusUnderReview)
+			e.Record.Set("moderatedAt", "")
+			e.Record.Set("moderatedBy", "")
+		}
+
+		return persistModeratedContentRequest(e, shouldCreateCase)
+	})
+}
+
+func isNonSuperuserModeratedContentRequest(e *core.RecordRequestEvent) bool {
+	return e != nil &&
+		e.Auth != nil &&
+		e.Collection != nil &&
+		!e.HasSuperuserAuth() &&
+		e.Collection.Fields.GetByName("moderationStatus") != nil
+}
+
+func moderationMetadataChanged(record *core.Record, original *core.Record) bool {
+	for _, fieldName := range []string{"moderationStatus", "moderatedAt", "moderatedBy"} {
+		if strings.TrimSpace(record.GetString(fieldName)) != strings.TrimSpace(original.GetString(fieldName)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasProtectedModerationStatus(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	switch strings.TrimSpace(record.GetString("moderationStatus")) {
+	case lib.ContentModerationStatusHidden,
+		lib.ContentModerationStatusRemoved,
+		lib.ContentModerationStatusEscalated:
+		return true
+	default:
+		return false
+	}
+}
+
+func persistModeratedContentRequest(e *core.RecordRequestEvent, shouldCreateCase bool) error {
+	if !shouldCreateCase {
 		return e.Next()
+	}
+
+	originalApp := e.App
+	return e.App.RunInTransaction(func(txApp core.App) error {
+		e.App = txApp
+		defer func() {
+			e.App = originalApp
+		}()
+
+		if err := e.Next(); err != nil {
+			return err
+		}
+		if _, err := lib.UpsertPreReviewModerationCase(txApp, e.Record); err != nil {
+			return apis.NewApiError(500, "failed to record pre-review moderation case", err)
+		}
+
+		return nil
 	})
 }
 
