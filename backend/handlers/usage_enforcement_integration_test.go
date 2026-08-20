@@ -266,8 +266,8 @@ func TestConvertHEICReleasesUsageWhenDecodeFails(t *testing.T) {
 		"broken.heic",
 		[]byte("\x00\x00\x00\x18ftypheic"),
 	)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 from /api/convert-heic decode failure, got %d, body=%s", response.Code, response.Body.String())
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 from /api/convert-heic invalid metadata, got %d, body=%s", response.Code, response.Body.String())
 	}
 
 	snapshot, err := lib.GetMonthlyUsageSnapshot(server.app, user)

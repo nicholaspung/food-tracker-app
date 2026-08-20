@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/disintegration/imaging"
 	"github.com/google/generative-ai-go/genai"
-	"github.com/jdeng/goheif"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
@@ -370,28 +370,35 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, app core.App) {
 
 		log.Printf("Converting HEIC image upload (size=%d mime=%s)", len(heicData), detectedMimeType)
 
-		// Decode HEIC image
-		img, err := goheif.Decode(bytes.NewReader(heicData))
+		heicConfig, err := inspectHEICGeometry(heicData)
 		if err != nil {
-			log.Printf("HEIC decode error: %v", err)
-			return apis.NewApiError(500, "failed to decode HEIC image", err)
+			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		// Convert to JPEG
-		var jpegBuffer bytes.Buffer
-		if err := jpeg.Encode(&jpegBuffer, img, &jpeg.Options{Quality: 90}); err != nil {
-			log.Printf("JPEG encode error: %v", err)
-			return apis.NewApiError(500, "failed to encode JPEG", err)
+		conversionContext, cancelConversion := requestContextWithTimeout(e, heicConversionTimeout)
+		defer cancelConversion()
+		if err := acquireHEICConversionSlot(conversionContext, heicConversionSlots); err != nil {
+			return apis.NewApiError(503, "HEIC conversion is currently unavailable", err)
+		}
+		defer releaseHEICConversionSlot(heicConversionSlots)
+
+		jpegData, err := runHEICConversionWorker(conversionContext, heicData, heicConfig)
+		if err != nil {
+			log.Printf("HEIC conversion error: %v", err)
+			if errors.Is(err, errInvalidHEICInput) {
+				return apis.NewBadRequestError("unable to safely convert HEIC image", nil)
+			}
+			return apis.NewApiError(500, "failed to convert HEIC image", err)
 		}
 
-		log.Printf("Successfully converted HEIC image to JPEG (outputSize=%d)", jpegBuffer.Len())
+		log.Printf("Successfully converted HEIC image to JPEG (outputSize=%d)", len(jpegData))
 		usageReservation.Commit()
 
 		// Return JPEG image
 		e.Response.Header().Set("Content-Type", "image/jpeg")
-		e.Response.Header().Set("Content-Length", fmt.Sprintf("%d", jpegBuffer.Len()))
+		e.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(jpegData)))
 		e.Response.WriteHeader(200)
-		_, err = e.Response.Write(jpegBuffer.Bytes())
+		_, err = e.Response.Write(jpegData)
 		return err
 	})
 

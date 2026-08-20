@@ -21,6 +21,10 @@ import (
 )
 
 func main() {
+	if handled, exitCode := handlers.RunHEICConversionWorker(os.Args, os.Stdin, os.Stdout, os.Stderr); handled {
+		os.Exit(exitCode)
+	}
+
 	// Load environment variables from .env file
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Warning: Error loading .env file: %v", err)
