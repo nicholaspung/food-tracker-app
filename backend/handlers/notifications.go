@@ -388,7 +388,7 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			sessionID = fmt.Sprintf("admin-test-session-%d", time.Now().UTC().UnixNano())
 		}
 
-		status, err := deliverTastingInviteNotification(app, sessionID, actorUserID, userID, "")
+		status, err := deliverTastingInviteNotification(app, sessionID, actorUserID, userID, "", nil)
 		if err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notification test", err)
 		}
@@ -1427,6 +1427,79 @@ func formatPocketBaseDateTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
+type tastingInviteNotificationReservation struct {
+	LogID       string
+	SessionID   string
+	ActorUserID string
+	UserID      string
+	DeliveryKey string
+}
+
+func reserveTastingInviteNotifications(
+	app core.App,
+	sessionID string,
+	actorUserID string,
+	invitedUserIDs []string,
+	idempotencyKey string,
+) ([]tastingInviteNotificationReservation, error) {
+	reservations := make([]tastingInviteNotificationReservation, 0, len(invitedUserIDs))
+	for _, rawUserID := range invitedUserIDs {
+		userID := strings.TrimSpace(rawUserID)
+		if userID == "" {
+			continue
+		}
+		deliveryKey := durableNotificationDeliveryKey(
+			tastingInviteNotificationSignalType,
+			sessionID,
+			userID,
+			idempotencyKey,
+		)
+		logRecord, created, err := createNotificationDeliveryLogRecordOnce(app, notificationDeliveryLogInput{
+			UserID:           userID,
+			SignalType:       tastingInviteNotificationSignalType,
+			SourceCollection: "tasting_sessions",
+			SourceRecord:     strings.TrimSpace(sessionID),
+			ActorUserID:      strings.TrimSpace(actorUserID),
+			DeliveryKey:      deliveryKey,
+			Status:           "provider_failed",
+			ErrorCode:        "delivery_reserved",
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !created || logRecord == nil {
+			return nil, fmt.Errorf("tasting invite delivery was already reserved")
+		}
+		reservations = append(reservations, tastingInviteNotificationReservation{
+			LogID:       logRecord.Id,
+			SessionID:   strings.TrimSpace(sessionID),
+			ActorUserID: strings.TrimSpace(actorUserID),
+			UserID:      userID,
+			DeliveryKey: deliveryKey,
+		})
+	}
+	return reservations, nil
+}
+
+func deliverReservedTastingInviteNotifications(
+	app core.App,
+	reservations []tastingInviteNotificationReservation,
+) error {
+	for _, reservation := range reservations {
+		if _, err := deliverTastingInviteNotification(
+			app,
+			reservation.SessionID,
+			reservation.ActorUserID,
+			reservation.UserID,
+			"",
+			&reservation,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func deliverTastingInviteNotifications(
 	app core.App,
 	sessionID string,
@@ -1459,6 +1532,7 @@ func deliverTastingInviteNotifications(
 			actorUserID,
 			userID,
 			idempotencyKey,
+			nil,
 		); err != nil {
 			return err
 		}
@@ -1473,13 +1547,19 @@ func deliverTastingInviteNotification(
 	actorUserID string,
 	userID string,
 	idempotencyKey string,
+	reservation *tastingInviteNotificationReservation,
 ) (string, error) {
-	deliveryKey := durableNotificationDeliveryKey(
-		tastingInviteNotificationSignalType,
-		sessionID,
-		userID,
-		idempotencyKey,
-	)
+	deliveryKey := ""
+	if reservation != nil {
+		deliveryKey = strings.TrimSpace(reservation.DeliveryKey)
+	} else {
+		deliveryKey = durableNotificationDeliveryKey(
+			tastingInviteNotificationSignalType,
+			sessionID,
+			userID,
+			idempotencyKey,
+		)
+	}
 	baseLog := notificationDeliveryLogInput{
 		UserID:           userID,
 		SignalType:       tastingInviteNotificationSignalType,
@@ -1488,7 +1568,19 @@ func deliverTastingInviteNotification(
 		ActorUserID:      actorUserID,
 		DeliveryKey:      deliveryKey,
 	}
-	if strings.TrimSpace(idempotencyKey) != "" {
+	var logRecord *core.Record
+	if reservation != nil {
+		reservedRecord, err := app.FindRecordById("notification_delivery_logs", strings.TrimSpace(reservation.LogID))
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(reservedRecord.GetString("delivery_key")) != deliveryKey ||
+			strings.TrimSpace(reservedRecord.GetString("actor")) != strings.TrimSpace(actorUserID) ||
+			strings.TrimSpace(reservedRecord.GetString("user")) != strings.TrimSpace(userID) {
+			return "", fmt.Errorf("invalid tasting invite delivery reservation")
+		}
+		logRecord = reservedRecord
+	} else if strings.TrimSpace(idempotencyKey) != "" {
 		alreadyReserved, err := hasNotificationDeliveryLogWithKey(app, deliveryKey)
 		if err != nil {
 			return "", err
@@ -1497,11 +1589,20 @@ func deliverTastingInviteNotification(
 			return "already_processed", nil
 		}
 	}
+	persistSkippedStatus := func(status string) error {
+		baseLog.Status = status
+		if logRecord != nil {
+			return updateNotificationDeliveryLogAfterSend(app, logRecord, notificationDeliveryLogSendUpdate{
+				Status:      status,
+				DeliveryKey: deliveryKey,
+			})
+		}
+		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
+		return err
+	}
 
 	if strings.TrimSpace(actorUserID) != "" && strings.TrimSpace(actorUserID) == strings.TrimSpace(userID) {
-		baseLog.Status = "skipped_actor"
-		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
-		return baseLog.Status, err
+		return "skipped_actor", persistSkippedStatus("skipped_actor")
 	}
 
 	enabled, err := isTastingInviteNotificationPreferenceEnabled(app, userID)
@@ -1509,9 +1610,7 @@ func deliverTastingInviteNotification(
 		return "", err
 	}
 	if !enabled {
-		baseLog.Status = "skipped_preference_disabled"
-		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
-		return baseLog.Status, err
+		return "skipped_preference_disabled", persistSkippedStatus("skipped_preference_disabled")
 	}
 
 	devices, err := listActiveNotificationDevices(app, userID)
@@ -1519,19 +1618,20 @@ func deliverTastingInviteNotification(
 		return "", err
 	}
 	if len(devices) == 0 {
-		baseLog.Status = "skipped_no_active_device"
-		_, _, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
-		return baseLog.Status, err
+		return "skipped_no_active_device", persistSkippedStatus("skipped_no_active_device")
 	}
 
-	baseLog.Status = "provider_failed"
-	baseLog.ErrorCode = "delivery_reserved"
-	logRecord, created, err := createNotificationDeliveryLogRecordOnce(app, baseLog)
-	if err != nil {
-		return "", err
-	}
-	if !created {
-		return "already_processed", nil
+	if logRecord == nil {
+		baseLog.Status = "provider_failed"
+		baseLog.ErrorCode = "delivery_reserved"
+		var created bool
+		logRecord, created, err = createNotificationDeliveryLogRecordOnce(app, baseLog)
+		if err != nil {
+			return "", err
+		}
+		if !created {
+			return "already_processed", nil
+		}
 	}
 
 	payload := remoteDeviceNotificationPayloadForSignal(remoteNotificationSignalPayloadInput{

@@ -222,6 +222,7 @@ func TestTastingSessionLifecycleReplaysIdempotencyKeysWithoutDuplicateWrites(t *
 	})
 	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, participant.Id, leader.Id, "accepted")
 
 	createHeaders := map[string]string{"Idempotency-Key": "tasting-create-response-loss-1"}
 	createBody := `{"name":"Replay Tasting","joinDurationMinutes":60,"invitedUserIds":["` + participant.Id + `"]}`
@@ -532,8 +533,9 @@ func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T)
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	joiner, joinerToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, joiner.Id, "accepted")
 
 	createResponse := performJSONRequest(
 		t,
@@ -969,8 +971,9 @@ func TestTastingSessionLeaderCanResendDismissedInviteDuringOpenLobby(t *testing.
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 
 	createResponse := performJSONRequest(
 		t,
@@ -984,6 +987,8 @@ func TestTastingSessionLeaderCanResendDismissedInviteDuringOpenLobby(t *testing.
 		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
 	}
 	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	deliveryLog := assertNotificationDeliveryLog(t, server.app, invitee.Id, "skipped_no_active_device", 0)
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", deliveryLog.Id, "2020-01-01 00:00:00.000Z")
 	if len(createdSession.Invites) != 1 || createdSession.Invites[0].Status != "pending" {
 		t.Fatalf("expected pending invite, got %#v", createdSession.Invites)
 	}
@@ -1034,8 +1039,9 @@ func TestTastingSessionLeaderCanResendRevokedInviteAfterRemovingParticipant(t *t
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, invitee.Id, leader.Id, "accepted")
 
 	createResponse := performJSONRequest(
 		t,
@@ -1049,6 +1055,8 @@ func TestTastingSessionLeaderCanResendRevokedInviteAfterRemovingParticipant(t *t
 		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
 	}
 	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	deliveryLog := assertNotificationDeliveryLog(t, server.app, invitee.Id, "skipped_no_active_device", 0)
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", deliveryLog.Id, "2020-01-01 00:00:00.000Z")
 	if len(createdSession.Invites) != 1 {
 		t.Fatalf("expected invite to be created, got %#v", createdSession.Invites)
 	}
@@ -1137,8 +1145,9 @@ func TestTastingSessionParticipantCanLeaveLobby(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 
 	createResponse := performJSONRequest(
 		t,
@@ -1697,6 +1706,7 @@ func TestTastingSessionParticipantListReflectsLeaderCompletion(t *testing.T) {
 
 	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	participant, participantToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, participant.Id, "accepted")
 
 	createResponse := performJSONRequest(
 		t,

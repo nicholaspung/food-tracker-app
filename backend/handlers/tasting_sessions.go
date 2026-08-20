@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -36,11 +37,28 @@ const (
 	tastingRoleLeader                 = "leader"
 	tastingRoleParticipant            = "participant"
 	defaultTastingMaxParticipants     = 12
+	maxTastingDirectInvitees          = defaultTastingMaxParticipants - 1
 	defaultTastingMaxRestaurants      = 5
 	defaultTastingMaxApprovedItems    = 30
 	defaultTastingSessionListPageSize = 20
 	maxTastingSessionListPageSize     = 50
+	tastingSessionCreateBudgetMax     = 5
+	tastingInviteResendBudgetMax      = 10
 )
+
+const (
+	tastingSessionCreateBudgetDuration = time.Hour
+	tastingInviteResendBudgetDuration  = time.Hour
+	tastingInviteCooldownDuration      = 15 * time.Minute
+	tastingActorBudgetStoreKey         = "tastingActorRequestBudgets"
+)
+
+type tastingActorBudgetStore struct {
+	mu              sync.Mutex
+	inviteProcessMu sync.Mutex
+	attempts        map[string][]time.Time
+	lastCleanup     time.Time
+}
 
 type tastingSessionCreateRequest struct {
 	Name                string   `json:"name"`
@@ -264,6 +282,16 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return err
 		}
+		if err := enforceTastingActorRequestBudget(
+			app,
+			authRecord.Id,
+			"create",
+			tastingSessionCreateBudgetMax,
+			tastingSessionCreateBudgetDuration,
+			time.Now().UTC(),
+		); err != nil {
+			return err
+		}
 
 		requestBody := tastingSessionCreateRequest{}
 		if err := e.BindBody(&requestBody); err != nil {
@@ -279,9 +307,18 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		if durationErr != nil {
 			return apis.NewBadRequestError(durationErr.Error(), nil)
 		}
+		invitedUserIDs, inviteErr := normalizeTastingInviteUserIDs(requestBody.InvitedUserIDs)
+		if inviteErr != nil {
+			return apis.NewBadRequestError(inviteErr.Error(), nil)
+		}
+		unlockInviteProcessing, lockErr := lockTastingInviteProcessing(app, len(invitedUserIDs) > 0)
+		if lockErr != nil {
+			return lockErr
+		}
 
 		sessionID := ""
 		notificationUserIDs := []string{}
+		notificationReservations := []tastingInviteNotificationReservation{}
 		idempotencyKey := resolveFeatureWriteIdempotencyKey(e)
 		idempotentSessionID := deriveFeatureWriteRecordID(
 			"tasting-session:"+authRecord.Id,
@@ -306,6 +343,12 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 				} else if !errors.Is(findErr, sql.ErrNoRows) {
 					return apis.NewApiError(500, "failed to load replayed tasting session", findErr)
 				}
+			}
+			if inviteErr := validateTastingInviteRecipients(txApp, authRecord.Id, invitedUserIDs); inviteErr != nil {
+				return inviteErr
+			}
+			if cooldownErr := enforceTastingInviteCooldown(txApp, authRecord.Id, invitedUserIDs, time.Now().UTC()); cooldownErr != nil {
+				return cooldownErr
 			}
 
 			sessionsCollection, collectionErr := txApp.FindCollectionByNameOrId("tasting_sessions")
@@ -342,7 +385,17 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 				return participantErr
 			}
 
-			invitedUserIDs, inviteErr := upsertTastingInvites(txApp, sessionRecord.Id, requestBody.InvitedUserIDs)
+			invitedUserIDs, inviteErr := upsertTastingInvites(txApp, sessionRecord.Id, invitedUserIDs)
+			if inviteErr != nil {
+				return inviteErr
+			}
+			notificationReservations, inviteErr = reserveTastingInviteNotifications(
+				txApp,
+				sessionRecord.Id,
+				authRecord.Id,
+				invitedUserIDs,
+				idempotencyKey,
+			)
 			if inviteErr != nil {
 				return inviteErr
 			}
@@ -351,16 +404,22 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			notificationUserIDs = invitedUserIDs
 			return nil
 		})
+		unlockInviteProcessing()
 		if err != nil {
 			return err
 		}
-		if err := deliverTastingInviteNotifications(
-			app,
-			sessionID,
-			authRecord.Id,
-			notificationUserIDs,
-			idempotencyKey,
-		); err != nil {
+		if len(notificationReservations) > 0 {
+			err = deliverReservedTastingInviteNotifications(app, notificationReservations)
+		} else {
+			err = deliverTastingInviteNotifications(
+				app,
+				sessionID,
+				authRecord.Id,
+				notificationUserIDs,
+				idempotencyKey,
+			)
+		}
+		if err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 
@@ -505,9 +564,23 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return err
 		}
+		if err := enforceTastingActorRequestBudget(
+			app,
+			authRecord.Id,
+			"resend",
+			tastingInviteResendBudgetMax,
+			tastingInviteResendBudgetDuration,
+			time.Now().UTC(),
+		); err != nil {
+			return err
+		}
 		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
 		inviteID := strings.TrimSpace(e.Request.PathValue("inviteId"))
-		notificationUserIDs := []string{}
+		notificationReservations := []tastingInviteNotificationReservation{}
+		unlockInviteProcessing, lockErr := lockTastingInviteProcessing(app, true)
+		if lockErr != nil {
+			return lockErr
+		}
 		err = app.RunInTransaction(func(txApp core.App) error {
 			sessionRecord, loadErr := loadAccessibleTastingSession(txApp, sessionID, authRecord.Id)
 			if loadErr != nil {
@@ -530,8 +603,15 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			if inviteStatus != tastingInviteStatusDismissed && inviteStatus != tastingInviteStatusRevoked {
 				return apis.NewBadRequestError("only dismissed or revoked invites can be resent", nil)
 			}
+			invitedUserID := strings.TrimSpace(inviteRecord.GetString("invited_user"))
+			if inviteErr := validateTastingInviteRecipients(txApp, authRecord.Id, []string{invitedUserID}); inviteErr != nil {
+				return inviteErr
+			}
+			if cooldownErr := enforceTastingInviteCooldown(txApp, authRecord.Id, []string{invitedUserID}, time.Now().UTC()); cooldownErr != nil {
+				return cooldownErr
+			}
 			if inviteStatus == tastingInviteStatusRevoked {
-				if err := clearTastingBlock(txApp, sessionID, strings.TrimSpace(inviteRecord.GetString("invited_user"))); err != nil {
+				if err := clearTastingBlock(txApp, sessionID, invitedUserID); err != nil {
 					return err
 				}
 			}
@@ -539,19 +619,23 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			if err := txApp.Save(inviteRecord); err != nil {
 				return apis.NewApiError(500, "failed to resend invite", err)
 			}
-			notificationUserIDs = append(notificationUserIDs, strings.TrimSpace(inviteRecord.GetString("invited_user")))
+			notificationReservations, inviteErr = reserveTastingInviteNotifications(
+				txApp,
+				sessionID,
+				authRecord.Id,
+				[]string{invitedUserID},
+				resolveFeatureWriteIdempotencyKey(e),
+			)
+			if inviteErr != nil {
+				return inviteErr
+			}
 			return nil
 		})
+		unlockInviteProcessing()
 		if err != nil {
 			return err
 		}
-		if err := deliverTastingInviteNotifications(
-			app,
-			sessionID,
-			authRecord.Id,
-			notificationUserIDs,
-			resolveFeatureWriteIdempotencyKey(e),
-		); err != nil {
+		if err := deliverReservedTastingInviteNotifications(app, notificationReservations); err != nil {
 			return apis.NewApiError(500, "failed to deliver tasting invite notifications", err)
 		}
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
@@ -1686,6 +1770,137 @@ func listPendingTastingInviteUserIDs(app core.App, sessionID string) ([]string, 
 		}
 	}
 	return userIDs, nil
+}
+
+func normalizeTastingInviteUserIDs(rawUserIDs []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	userIDs := make([]string, 0, len(rawUserIDs))
+	for _, rawUserID := range rawUserIDs {
+		userID := strings.TrimSpace(rawUserID)
+		if userID == "" {
+			continue
+		}
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		userIDs = append(userIDs, userID)
+	}
+	if len(userIDs) > maxTastingDirectInvitees {
+		return nil, fmt.Errorf("no more than %d users can be invited", maxTastingDirectInvitees)
+	}
+	return userIDs, nil
+}
+
+func validateTastingInviteRecipients(app core.App, actorUserID string, invitedUserIDs []string) error {
+	actorUserID = strings.TrimSpace(actorUserID)
+	for _, invitedUserID := range invitedUserIDs {
+		invitedUserID = strings.TrimSpace(invitedUserID)
+		if invitedUserID == "" || invitedUserID == actorUserID {
+			return apis.NewForbiddenError("direct tasting invites require an accepted friend", nil)
+		}
+
+		accepted, err := usersAreAcceptedFriends(app, actorUserID, invitedUserID)
+		if err != nil {
+			return apis.NewApiError(500, "failed to validate tasting invite recipient", err)
+		}
+		if !accepted {
+			return apis.NewForbiddenError("direct tasting invites require an accepted friend", nil)
+		}
+	}
+	return nil
+}
+
+func enforceTastingInviteCooldown(app core.App, actorUserID string, invitedUserIDs []string, now time.Time) error {
+	cooldownStartsAt := formatPocketBaseDateTime(now.UTC().Add(-tastingInviteCooldownDuration))
+	for _, invitedUserID := range invitedUserIDs {
+		records, err := app.FindRecordsByFilter(
+			"notification_delivery_logs",
+			"signal_type = 'tasting_invite' && actor = {:actor} && user = {:user} && created >= {:since}",
+			"-created",
+			1,
+			0,
+			dbx.Params{
+				"actor": strings.TrimSpace(actorUserID),
+				"user":  strings.TrimSpace(invitedUserID),
+				"since": cooldownStartsAt,
+			},
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to enforce tasting invite cooldown", err)
+		}
+		if len(records) > 0 {
+			return apis.NewTooManyRequestsError("please wait before inviting this friend again", nil)
+		}
+	}
+	return nil
+}
+
+func enforceTastingActorRequestBudget(
+	app core.App,
+	actorUserID string,
+	scope string,
+	maxAttempts int,
+	duration time.Duration,
+	now time.Time,
+) error {
+	storeValue := app.Store().GetOrSet(tastingActorBudgetStoreKey, func() any {
+		return &tastingActorBudgetStore{attempts: map[string][]time.Time{}}
+	})
+	store, ok := storeValue.(*tastingActorBudgetStore)
+	if !ok || store == nil {
+		return apis.NewApiError(503, "tasting request budget is unavailable", nil)
+	}
+
+	key := strings.TrimSpace(scope) + ":" + strings.TrimSpace(actorUserID)
+	cutoff := now.UTC().Add(-duration)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.lastCleanup.IsZero() || now.UTC().Sub(store.lastCleanup) >= time.Hour {
+		for existingKey, attempts := range store.attempts {
+			kept := attempts[:0]
+			for _, attemptedAt := range attempts {
+				if attemptedAt.After(now.UTC().Add(-time.Hour)) {
+					kept = append(kept, attemptedAt)
+				}
+			}
+			if len(kept) == 0 {
+				delete(store.attempts, existingKey)
+			} else {
+				store.attempts[existingKey] = kept
+			}
+		}
+		store.lastCleanup = now.UTC()
+	}
+
+	recentAttempts := store.attempts[key][:0]
+	for _, attemptedAt := range store.attempts[key] {
+		if attemptedAt.After(cutoff) {
+			recentAttempts = append(recentAttempts, attemptedAt)
+		}
+	}
+	if len(recentAttempts) >= maxAttempts {
+		store.attempts[key] = recentAttempts
+		return apis.NewTooManyRequestsError("too many tasting requests, please try again later", nil)
+	}
+
+	store.attempts[key] = append(recentAttempts, now.UTC())
+	return nil
+}
+
+func lockTastingInviteProcessing(app core.App, required bool) (func(), error) {
+	if !required {
+		return func() {}, nil
+	}
+	storeValue := app.Store().GetOrSet(tastingActorBudgetStoreKey, func() any {
+		return &tastingActorBudgetStore{attempts: map[string][]time.Time{}}
+	})
+	store, ok := storeValue.(*tastingActorBudgetStore)
+	if !ok || store == nil {
+		return nil, apis.NewApiError(503, "tasting invite protection is unavailable", nil)
+	}
+	store.inviteProcessMu.Lock()
+	return store.inviteProcessMu.Unlock, nil
 }
 
 func upsertTastingInvites(app core.App, sessionID string, userIDs []string) ([]string, error) {

@@ -316,8 +316,9 @@ func TestTastingInviteNotificationDeliveryCreateAndResend(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
 
 	createResponse := performJSONRequest(
@@ -350,6 +351,8 @@ func TestTastingInviteNotificationDeliveryCreateAndResend(t *testing.T) {
 	if err := server.app.Save(inviteRecord); err != nil {
 		t.Fatalf("failed to mark invite dismissed: %v", err)
 	}
+	deliveryLog := assertNotificationDeliveryLog(t, server.app, invitee.Id, "sent", 1)
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", deliveryLog.Id, "2020-01-01 00:00:00.000Z")
 
 	resendResponse := performJSONRequest(
 		t,
@@ -378,6 +381,8 @@ func TestTastingInviteNotificationDeliverySuppressionsAndMinimalLog(t *testing.T
 	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	preferenceDisabled, _ := createAuthUser(t, server.app, false, false)
 	inactiveDevice, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, preferenceDisabled.Id, "accepted")
+	createFriendshipRecord(t, server.app, inactiveDevice.Id, leader.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, leader.Id, "leader-device", "ExponentPushToken[leader]", true)
 	createNotificationDeviceRecord(t, server.app, preferenceDisabled.Id, "disabled-device", "ExponentPushToken[disabled]", true)
 	createNotificationPreferenceRecord(t, server.app, preferenceDisabled.Id, false)
@@ -389,7 +394,7 @@ func TestTastingInviteNotificationDeliverySuppressionsAndMinimalLog(t *testing.T
 		http.MethodPost,
 		"/api/tasting-sessions",
 		leaderToken,
-		`{"name":"No Send Flight","joinDurationMinutes":60,"invitedUserIds":["`+leader.Id+`","`+preferenceDisabled.Id+`","`+inactiveDevice.Id+`"]}`,
+		`{"name":"No Send Flight","joinDurationMinutes":60,"invitedUserIds":["`+preferenceDisabled.Id+`","`+inactiveDevice.Id+`"]}`,
 	)
 	if createResponse.Code != http.StatusOK {
 		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
@@ -398,7 +403,6 @@ func TestTastingInviteNotificationDeliverySuppressionsAndMinimalLog(t *testing.T
 		t.Fatalf("expected suppressions to skip provider sends, got %#v", sender.calls)
 	}
 
-	assertNotificationDeliveryLog(t, server.app, leader.Id, "skipped_actor", 0)
 	assertNotificationDeliveryLog(t, server.app, preferenceDisabled.Id, "skipped_preference_disabled", 0)
 	logRecord := assertNotificationDeliveryLog(t, server.app, inactiveDevice.Id, "skipped_no_active_device", 0)
 	for _, fieldName := range []string{"signal_type", "source_collection", "source_record", "delivery_key", "status", "provider_message_id", "error_code"} {
@@ -417,8 +421,9 @@ func TestTastingInviteNotificationProviderFailureIsLogged(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
 
 	createResponse := performJSONRequest(
@@ -443,8 +448,9 @@ func TestNotificationProviderInvalidTokenDeactivatesDeviceAndSuppressesFutureSen
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
 
 	firstResponse := performJSONRequest(
@@ -472,6 +478,7 @@ func TestNotificationProviderInvalidTokenDeactivatesDeviceAndSuppressesFutureSen
 	if strings.Contains(logRecord.GetString("error_code"), "ExponentPushToken") {
 		t.Fatalf("expected provider error log to omit push token, got %q", logRecord.GetString("error_code"))
 	}
+	setCollectionRecordCreatedAt(t, server.app, "notification_delivery_logs", logRecord.Id, "2020-01-01 00:00:00.000Z")
 
 	sender.err = nil
 	secondResponse := performJSONRequest(
@@ -499,8 +506,9 @@ func TestAcceptedNotificationSendPersistsPendingReceiptMetadata(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
 
 	response := performJSONRequest(
@@ -541,8 +549,9 @@ func TestAcceptedNotificationSendCreatesPerDeviceReceiptRecord(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[invitee]", true)
 
 	response := performJSONRequest(
@@ -582,8 +591,9 @@ func TestAcceptedNotificationSendCreatesReceiptRecordPerSuccessfulDevice(t *test
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	firstDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[one]", true)
 	secondDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-2", "ExponentPushToken[two]", true)
 
@@ -631,8 +641,9 @@ func TestPartialProviderSendFailurePreservesAcceptedPerDeviceReceipts(t *testing
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
 	firstDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-1", "ExponentPushToken[one]", true)
 	secondDevice := createNotificationDeviceRecord(t, server.app, invitee.Id, "device-2", "ExponentPushToken[two]", true)
 
