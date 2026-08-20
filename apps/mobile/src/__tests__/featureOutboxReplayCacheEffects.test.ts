@@ -29,7 +29,14 @@ describe('feature outbox replay cache effects', () => {
       'visit.update',
       {
         updates: {
-          items: [{ id: 'item_1', name: 'Pie', rating: 5, newPhotos: [{ uri: 'photo' }] }],
+          items: [
+            {
+              id: 'item_1',
+              name: 'Pie',
+              rating: 5,
+              newPhotos: [{ uri: 'photo', name: 'pie.jpg', mimeType: 'image/jpeg' }],
+            },
+          ],
         },
         visitId: 'visit_1',
       },

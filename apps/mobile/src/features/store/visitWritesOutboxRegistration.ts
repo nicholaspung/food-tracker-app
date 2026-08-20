@@ -21,6 +21,92 @@ import { homeFeedQueryKeys } from './homeFeedQuery';
 import { profileQueryKeys } from './profileQuery';
 import { syncVisitMutationCaches } from './visitsQuery';
 
+const VISIT_PHOTO_FIELDS = [
+  { key: 'uri', type: 'string' as const },
+  { key: 'name', type: 'string' as const },
+  { key: 'mimeType', type: 'string' as const },
+] as const;
+
+const VISIT_CREATE_ITEM_FIELDS = [
+  { key: 'name', type: 'string' as const },
+  { key: 'rating', type: 'number' as const },
+  { key: 'menuItemId', type: 'string' as const, optional: true },
+  {
+    key: 'suggestionSource',
+    type: 'record' as const,
+    optional: true,
+    rejectUnknownFields: true,
+    fields: [
+      {
+        key: 'type',
+        type: 'string' as const,
+        allowedValues: ['groupMenuSuggestion'],
+      },
+      { key: 'sourceMenuItemId', type: 'string' as const },
+      { key: 'sourceRestaurantId', type: 'string' as const, optional: true },
+      { key: 'restaurantGroupId', type: 'string' as const, optional: true },
+      { key: 'normalizedItemName', type: 'string' as const, optional: true },
+    ],
+  },
+  { key: 'description', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'notes', type: 'string' as const, allowEmpty: true, optional: true },
+  {
+    key: 'photos',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      fields: VISIT_PHOTO_FIELDS,
+      rejectUnknownFields: true,
+    },
+  },
+] as const;
+
+const VISIT_UPDATE_FIELDS = [
+  { key: 'restaurantId', type: 'string' as const, optional: true },
+  { key: 'restaurantName', type: 'string' as const, optional: true },
+  {
+    key: 'items',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      rejectUnknownFields: true,
+      fields: [
+        { key: 'id', type: 'string' as const },
+        { key: 'name', type: 'string' as const },
+        { key: 'rating', type: 'number' as const },
+        { key: 'description', type: 'string' as const, allowEmpty: true, optional: true },
+        { key: 'notes', type: 'string' as const, allowEmpty: true, optional: true },
+        {
+          key: 'newPhotos',
+          type: 'array' as const,
+          optional: true,
+          items: {
+            type: 'record' as const,
+            fields: VISIT_PHOTO_FIELDS,
+            rejectUnknownFields: true,
+          },
+        },
+        {
+          key: 'deletePhotoIds',
+          type: 'array' as const,
+          optional: true,
+          items: { type: 'string' as const },
+        },
+      ],
+    },
+  },
+  { key: 'visitedAt', type: 'string' as const, optional: true },
+  { key: 'visitedOn', type: 'string' as const, optional: true },
+  {
+    key: 'visibility',
+    type: 'string' as const,
+    allowedValues: ['friends', 'private'],
+    optional: true,
+  },
+] as const;
+
 export const VISIT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'visit.create',
@@ -29,14 +115,45 @@ export const VISIT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistra
     'visit.item.move',
     'visit.item.convert-to-food-product',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'visit.create': createFeatureOutboxPayloadDecoder('visit.create', [
+      { key: 'restaurantId', type: 'string', optional: true },
       { key: 'restaurantName', type: 'string' },
-      { key: 'items', type: 'array' },
+      { key: 'sourceListItemId', type: 'string', optional: true },
+      {
+        key: 'items',
+        type: 'array',
+        items: {
+          type: 'record',
+          fields: VISIT_CREATE_ITEM_FIELDS,
+          rejectUnknownFields: true,
+        },
+      },
+      { key: 'visitedAt', type: 'string', optional: true },
+      { key: 'visitedOn', type: 'string', optional: true },
+      {
+        key: 'visibility',
+        type: 'string',
+        allowedValues: ['friends', 'private'],
+        optional: true,
+      },
+      {
+        key: 'source',
+        type: 'string',
+        allowedValues: ['visit', 'food-product', 'tasting-result'],
+        optional: true,
+      },
+      { key: 'sourceNoteId', type: 'string', optional: true },
     ]),
     'visit.update': createFeatureOutboxPayloadDecoder('visit.update', [
       { key: 'visitId', type: 'string' },
-      { key: 'updates', type: 'record' },
+      {
+        key: 'updates',
+        type: 'record',
+        fields: VISIT_UPDATE_FIELDS,
+        rejectUnknownFields: true,
+      },
     ]),
     'visit.delete': createFeatureOutboxPayloadDecoder('visit.delete', [
       { key: 'visitId', type: 'string' },

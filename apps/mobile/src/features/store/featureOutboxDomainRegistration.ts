@@ -9,7 +9,12 @@ import type {
   FeatureOutboxOperationName,
   FeatureOutboxOperationPayload,
 } from './featureOutboxOperations';
-import type { FeatureOutboxPayloadDecoderMap } from './featureOutboxPayloadDecoders';
+import {
+  createPersistedFeatureOutboxPayloadDecoderMap,
+  type FeatureOutboxLegacyPayloadPolicy,
+  type FeatureOutboxPayloadDecoderMap,
+  type FeatureOutboxPersistedPayloadDecoderMap,
+} from './featureOutboxPayloadDecoders';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 
 export type FeatureOutboxReplayAdapter<
@@ -58,7 +63,9 @@ export interface FeatureOutboxDomainRegistration<
   TName extends FeatureOutboxOperationName = FeatureOutboxOperationName,
 > {
   operationNames: readonly TName[];
-  payloadDecoders: Partial<FeatureOutboxPayloadDecoderMap<FeatureOutboxOperationName>>;
+  persistedPayloadDecoders: Partial<
+    FeatureOutboxPersistedPayloadDecoderMap<FeatureOutboxOperationName>
+  >;
   replayAdapters: Partial<FeatureOutboxReplayAdapterMap<FeatureOutboxOperationName>>;
   replayCacheEffects: Partial<FeatureOutboxReplayCacheEffectMap<FeatureOutboxOperationName>>;
   replayCacheHintResolvers: Partial<
@@ -74,6 +81,8 @@ export function createFeatureOutboxDomainRegistration<
 >(
   registration: {
     operationNames: readonly TName[];
+    legacyPayloadPolicy: FeatureOutboxLegacyPayloadPolicy;
+    legacyPayloadDecoders?: Partial<FeatureOutboxPayloadDecoderMap<TName>>;
     payloadDecoders: FeatureOutboxPayloadDecoderMap<TName>;
     replayAdapters?: Partial<FeatureOutboxReplayAdapterMap<TName>>;
     replayCacheEffects?: Partial<FeatureOutboxReplayCacheEffectMap<TName>>;
@@ -83,7 +92,11 @@ export function createFeatureOutboxDomainRegistration<
 ): FeatureOutboxDomainRegistration<TName> {
   return {
     operationNames: registration.operationNames,
-    payloadDecoders: registration.payloadDecoders,
+    persistedPayloadDecoders: createPersistedFeatureOutboxPayloadDecoderMap(
+      registration.payloadDecoders,
+      registration.legacyPayloadPolicy,
+      registration.legacyPayloadDecoders,
+    ),
     replayAdapters: registration.replayAdapters ?? {},
     replayCacheEffects: registration.replayCacheEffects ?? {},
     replayCacheHintResolvers: registration.replayCacheHintResolvers ?? {},

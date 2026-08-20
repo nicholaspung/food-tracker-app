@@ -6,7 +6,7 @@ import type {
   FeatureOutboxReplayCacheHintResolver,
   FeatureOutboxReplayIdentityResolver,
 } from './featureOutboxDomainRegistration';
-import type { FeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
+import type { FeatureOutboxPersistedPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
 import { FEEDBACK_WRITE_OUTBOX_REGISTRATION } from './feedbackWritesOutboxRegistration';
 import { FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION } from './foodProductWritesOutboxRegistration';
@@ -68,8 +68,13 @@ export const FEATURE_OUTBOX_REPLAY_IDENTITY_RESOLVERS: Partial<
 );
 
 export const FEATURE_OUTBOX_PAYLOAD_DECODERS: Partial<
-  Record<FeatureOutboxOperationName, FeatureOutboxPayloadDecoder<FeatureOutboxOperationName>>
+  Record<
+    FeatureOutboxOperationName,
+    FeatureOutboxPersistedPayloadDecoder<FeatureOutboxOperationName>
+  >
 > = Object.assign(
   {},
-  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map((registration) => registration.payloadDecoders),
+  ...FEATURE_OUTBOX_DOMAIN_REGISTRATIONS.map(
+    (registration) => registration.persistedPayloadDecoders,
+  ),
 );

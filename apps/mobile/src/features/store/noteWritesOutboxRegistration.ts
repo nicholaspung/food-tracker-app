@@ -20,6 +20,34 @@ import { notesQueryKeys } from './notesQuery';
 import { profileQueryKeys } from './profileQuery';
 import { usageQueryKeys } from './usageQuery';
 
+const NOTE_UPDATE_FIELDS = [
+  { key: 'title', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'content', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'locationText', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'rating', type: 'number' as const, optional: true },
+  {
+    key: 'newPhotos',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      rejectUnknownFields: true,
+      fields: [
+        { key: 'uri', type: 'string' as const },
+        { key: 'name', type: 'string' as const },
+        { key: 'mimeType', type: 'string' as const },
+        { key: 'capturedAt', type: 'string' as const, optional: true },
+      ],
+    },
+  },
+  {
+    key: 'deletePhotoIds',
+    type: 'array' as const,
+    optional: true,
+    items: { type: 'string' as const },
+  },
+] as const;
+
 export const NOTE_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'note.create',
@@ -27,6 +55,7 @@ export const NOTE_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistrat
     'note.delete',
     'note.mark-used',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'note.create': createFeatureOutboxPayloadDecoder('note.create', [
       { key: 'content', type: 'string' },
@@ -34,7 +63,12 @@ export const NOTE_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistrat
     ]),
     'note.update': createFeatureOutboxPayloadDecoder('note.update', [
       { key: 'noteId', type: 'string' },
-      { key: 'updates', type: 'record' },
+      {
+        key: 'updates',
+        type: 'record',
+        fields: NOTE_UPDATE_FIELDS,
+        rejectUnknownFields: true,
+      },
     ]),
     'note.delete': createFeatureOutboxPayloadDecoder('note.delete', [
       { key: 'noteId', type: 'string' },

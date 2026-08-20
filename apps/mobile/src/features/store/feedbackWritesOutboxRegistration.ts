@@ -15,6 +15,7 @@ import { profileQueryKeys } from './profileQuery';
 
 export const FEEDBACK_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: ['feedback.create', 'feedback.message.send'] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'feedback.create': createFeatureOutboxPayloadDecoder('feedback.create', [
       { key: 'title', type: 'string' },

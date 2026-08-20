@@ -107,8 +107,11 @@ describe('useOfflineAwareFeatureWrite', () => {
         'X-Mobile-Write-Operation': 'feedback.create',
       },
       body: {
-        title: 'Subject',
-        description: 'Body',
+        schemaVersion: 1,
+        payload: {
+          title: 'Subject',
+          description: 'Body',
+        },
       },
     });
     expect(stageMutation.mock.invocationCallOrder[0]).toBeLessThan(

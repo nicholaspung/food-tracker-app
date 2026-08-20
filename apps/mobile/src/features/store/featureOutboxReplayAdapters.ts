@@ -19,7 +19,7 @@ import {
   FEATURE_OUTBOX_OPERATION_NAMES,
 } from './featureOutboxRegistry';
 import type { FeatureOutboxOperationName } from './featureOutboxOperations';
-import type { FeatureOutboxPayloadDecoder } from './featureOutboxPayloadDecoders';
+import type { FeatureOutboxPersistedPayloadDecoder } from './featureOutboxPayloadDecoders';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
 
 export type FeatureOutboxReplayResult =
@@ -45,7 +45,7 @@ export async function replayRegisteredFeatureOutboxOperation<TName extends Featu
     | FeatureOutboxReplayAdapter<TName>
     | undefined;
   const decoder = FEATURE_OUTBOX_PAYLOAD_DECODERS[operationName] as
-    | FeatureOutboxPayloadDecoder<TName>
+    | FeatureOutboxPersistedPayloadDecoder<TName>
     | undefined;
   if (!adapter || !decoder) {
     return { status: 'unhandled' };
@@ -74,7 +74,7 @@ export function resolveRegisteredFeatureOutboxReplayMetadata<
   identity: SuccessfulReplayIdentity;
 } | null {
   const decoder = FEATURE_OUTBOX_PAYLOAD_DECODERS[operationName] as
-    | FeatureOutboxPayloadDecoder<TName>
+    | FeatureOutboxPersistedPayloadDecoder<TName>
     | undefined;
   if (!decoder) {
     return null;

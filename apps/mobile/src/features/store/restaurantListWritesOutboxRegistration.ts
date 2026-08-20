@@ -41,6 +41,17 @@ import {
 
 const WANT_TO_TRY_MEMBERSHIP_QUERY_ROOT = ['feature', 'wantToTryMembership'] as const;
 
+const RESTAURANT_LIST_UPDATE_FIELDS = [
+  { key: 'name', type: 'string' as const, optional: true },
+  { key: 'description', type: 'string' as const, allowEmpty: true, optional: true },
+  {
+    key: 'visibility',
+    type: 'string' as const,
+    allowedValues: ['private', 'friends'],
+    optional: true,
+  },
+] as const;
+
 export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'list.create',
@@ -58,13 +69,19 @@ export const RESTAURANT_LIST_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'list.bookmark.save',
     'list.bookmark.remove',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'list.create': createFeatureOutboxPayloadDecoder('list.create', [
       { key: 'name', type: 'string' },
     ]),
     'list.update': createFeatureOutboxPayloadDecoder('list.update', [
       { key: 'listId', type: 'string' },
-      { key: 'updates', type: 'record' },
+      {
+        key: 'updates',
+        type: 'record',
+        fields: RESTAURANT_LIST_UPDATE_FIELDS,
+        rejectUnknownFields: true,
+      },
     ]),
     'list.delete': createFeatureOutboxPayloadDecoder('list.delete', [
       { key: 'listId', type: 'string' },

@@ -1,8 +1,11 @@
 import {
+  createFeatureOutboxMutationInput,
   createVisitApiMutationInput,
   parseFeatureOutboxOperationName,
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
+import { FEATURE_OUTBOX_PAYLOAD_DECODERS } from '../features/store/featureOutboxRegistry';
+import { createFeatureOutboxPayloadEnvelope } from '../features/store/featureOutboxPayloadDecoders';
 import {
   getCollectionRecord,
   saveAuthRecord,
@@ -196,6 +199,239 @@ describe('featureOutboxOperations', () => {
     mockedSendApiRequest.mockReset();
     mockedUpdateCollectionRecord.mockReset();
     mockedSendApiRequest.mockResolvedValue({ success: true } as never);
+  });
+
+  it('wraps every newly queued feature command in the current schema envelope', () => {
+    expect(
+      createFeatureOutboxMutationInput('feedback.create', offlineFeedbackCreatePayload),
+    ).toEqual({
+      method: 'POST',
+      url: 'local://feature/feedback.create',
+      headers: {
+        'X-Mobile-Write-Operation': 'feedback.create',
+      },
+      body: {
+        schemaVersion: 1,
+        payload: offlineFeedbackCreatePayload,
+      },
+    });
+  });
+
+  it.each([
+    {
+      domain: 'Settings Preferences',
+      operationName: 'settings.visibility.save',
+      payload: {
+        userId: 'user-1',
+        defaultVisitVisibility: 'friends',
+        defaultRestaurantVisibility: 'private',
+        defaultListVisibility: 'friends',
+        tasting_invites_enabled: true,
+        bill_owed_enabled: false,
+        monthly_friends_activity_enabled: true,
+        defaultHomeFeedMode: 'friends',
+        defaultHomeFeedTypeFilter: 'all',
+        defaultHomeFeedSort: 'tracked',
+      },
+    },
+    {
+      domain: 'Onboarding Progress',
+      operationName: 'onboarding.main.complete',
+      payload: { userId: 'user-1' },
+    },
+    {
+      domain: 'Visit Writes',
+      operationName: 'visit.create',
+      payload: {
+        restaurantName: 'Noodle House',
+        items: [{ name: 'Spicy Wontons', rating: 5 }],
+      },
+    },
+    {
+      domain: 'Food Product Writes',
+      operationName: 'food-product.create',
+      payload: { itemName: 'Chili Crisp', rating: 5 },
+    },
+    {
+      domain: 'Note Writes',
+      operationName: 'note.create',
+      payload: { title: 'Dinner', content: 'Try the noodles' },
+    },
+    {
+      domain: 'Restaurant List Writes',
+      operationName: 'list.create',
+      payload: { name: 'Date Night' },
+    },
+    {
+      domain: 'Bill Writes',
+      operationName: 'bill.delete',
+      payload: { billId: 'bill-1' },
+    },
+    {
+      domain: 'Feedback Writes',
+      operationName: 'feedback.create',
+      payload: offlineFeedbackCreatePayload,
+    },
+    {
+      domain: 'Friend Writes',
+      operationName: 'friend.accept',
+      payload: { friendId: 'friend-1' },
+    },
+    {
+      domain: 'Tasting Session Writes',
+      operationName: 'tasting-session.join',
+      payload: { inviteCode: 'ABC123' },
+    },
+  ] as const)(
+    'decodes golden legacy and current persisted fixtures for $domain',
+    ({ operationName, payload }) => {
+      const decoder = FEATURE_OUTBOX_PAYLOAD_DECODERS[operationName] as
+        | ((value: unknown) => unknown)
+        | undefined;
+
+      expect(decoder).toBeDefined();
+      expect(decoder?.(payload)).toEqual({ status: 'ok', payload });
+      expect(decoder?.(createFeatureOutboxPayloadEnvelope(payload))).toEqual({
+        status: 'ok',
+        payload,
+      });
+    },
+  );
+
+  it('rejects unknown future payload schema versions visibly', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        body: JSON.stringify({
+          schemaVersion: 2,
+          payload: {
+            restaurantName: 'Noodle House',
+            items: [{ name: 'Spicy Wontons', rating: 5 }],
+          },
+        }),
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message: 'Invalid payload for visit.create: unsupported schema version 2.',
+    });
+    expect(mockedCreateVisit).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid nested Visit items before replay', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        body: JSON.stringify({
+          schemaVersion: 1,
+          payload: {
+            restaurantName: 'Noodle House',
+            items: [{ name: 'Spicy Wontons', rating: 'five' }],
+          },
+        }),
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message: 'Invalid payload for visit.create: items.0.rating must be a number.',
+    });
+    expect(mockedCreateVisit).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported update fields before replay', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/food-product.update',
+        headers: {
+          'X-Mobile-Write-Operation': 'food-product.update',
+        },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          payload: {
+            foodProductId: 'food-product-1',
+            updates: { forgedOwnerId: 'user-2' },
+          },
+        }),
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message:
+        'Invalid payload for food-product.update: updates.forgedOwnerId is not supported.',
+    });
+  });
+
+  it('rejects malformed nested Bill update records before replay', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/bill.update',
+        headers: {
+          'X-Mobile-Write-Operation': 'bill.update',
+        },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          payload: {
+            billId: 'bill-1',
+            updates: {
+              items: [
+                {
+                  id: 'item-1',
+                  itemName: 'Noodles',
+                  price: 24,
+                  assignedToParticipantIds: ['participant-1'],
+                  splitMode: 'advanced',
+                  splitConfig: [
+                    {
+                      participantId: 'participant-1',
+                      type: 'percentage',
+                      value: 'all',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message: 'Invalid payload for bill.update: updates.items.0.splitConfig.0.value must be a number.',
+    });
+    expect(mockedUpdateBill).not.toHaveBeenCalled();
+  });
+
+  it('validates every Settings Preferences field consumed during replay', async () => {
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        url: 'local://feature/settings.visibility.save',
+        headers: {
+          'X-Mobile-Write-Operation': 'settings.visibility.save',
+        },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          payload: {
+            userId: 'user-1',
+            defaultVisitVisibility: 'friends',
+            defaultRestaurantVisibility: 'private',
+            defaultListVisibility: 'friends',
+            tasting_invites_enabled: true,
+            bill_owed_enabled: true,
+            monthly_friends_activity_enabled: true,
+            defaultHomeFeedMode: 'friends',
+            defaultHomeFeedTypeFilter: 'all',
+          },
+        }),
+      }),
+    );
+
+    expect(handled).toEqual({
+      status: 'terminalInvalidPayload',
+      message: 'Invalid payload for settings.visibility.save: defaultHomeFeedSort is required.',
+    });
+    expect(mockedUpdateCollectionRecord).not.toHaveBeenCalled();
   });
 
   it('passes queued idempotency headers into replayed local feature writes', async () => {

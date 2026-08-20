@@ -30,6 +30,7 @@ export const FRIEND_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistr
     'friend.request.reject',
     'friend.request.cancel',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'friend.accept': createFeatureOutboxPayloadDecoder('friend.accept', [
       { key: 'friendId', type: 'string' },

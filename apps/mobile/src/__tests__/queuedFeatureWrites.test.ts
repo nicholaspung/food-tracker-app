@@ -19,9 +19,12 @@ function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMu
     url: 'local://feature/tasting-session.create',
     originAccountId: 'user_1',
     body: JSON.stringify({
-      name: 'Friday noodles',
-      joinDurationMinutes: 60,
-      invitedUserIds: ['user_2'],
+      schemaVersion: 1,
+      payload: {
+        name: 'Friday noodles',
+        joinDurationMinutes: 60,
+        invitedUserIds: ['user_2'],
+      },
     }),
     headers: {
       'X-Mobile-Write-Operation': 'tasting-session.create',
@@ -57,6 +60,28 @@ describe('queuedFeatureWrites', () => {
       lastError: null,
       originAccountId: 'user_1',
     });
+  });
+
+  it('unwraps current envelopes for pending create projections', () => {
+    const payload = {
+      title: 'Queued note',
+      content: 'Try the noodles',
+    };
+
+    expect(
+      parseQueuedFeatureWrite(
+        createQueuedMutation({
+          url: 'local://feature/note.create',
+          headers: {
+            'X-Mobile-Write-Operation': 'note.create',
+          },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            payload,
+          }),
+        }),
+      ),
+    ).toEqual(expect.objectContaining({ operationName: 'note.create', payload }));
   });
 
   it('falls back to the local feature URL when the operation header is missing', () => {
@@ -208,7 +233,7 @@ describe('queuedFeatureWrites', () => {
         id: 'mut_friend',
         url: 'local://feature/friend.request.send',
         body: JSON.stringify({
-          friendCode: 'ABCD1234',
+          code: 'ABCD1234',
         }),
         headers: {
           'X-Mobile-Write-Operation': 'friend.request.send',

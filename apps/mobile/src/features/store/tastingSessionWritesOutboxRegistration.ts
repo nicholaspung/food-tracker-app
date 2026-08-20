@@ -23,6 +23,7 @@ export const TASTING_SESSION_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDoma
     'tasting-session.join',
     'tasting-session.status.update',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'tasting-session.create': createFeatureOutboxPayloadDecoder('tasting-session.create', [
       { key: 'name', type: 'string' },

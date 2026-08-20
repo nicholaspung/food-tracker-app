@@ -30,6 +30,100 @@ type BillWriteOutboxOperationName =
   | 'bill.status.toggle'
   | 'bill.participant.toggle-paid';
 
+const BILL_ITEM_SPLIT_FIELDS = [
+  { key: 'participantId', type: 'string' as const },
+  {
+    key: 'type',
+    type: 'string' as const,
+    allowedValues: ['percentage', 'amount'],
+  },
+  { key: 'value', type: 'number' as const },
+] as const;
+
+const BILL_ITEM_FIELDS = [
+  { key: 'id', type: 'string' as const },
+  { key: 'itemName', type: 'string' as const },
+  { key: 'price', type: 'number' as const },
+  {
+    key: 'assignedToParticipantIds',
+    type: 'array' as const,
+    items: { type: 'string' as const },
+  },
+  {
+    key: 'splitMode',
+    type: 'string' as const,
+    allowedValues: ['simple', 'advanced'],
+    optional: true,
+  },
+  {
+    key: 'splitConfig',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      fields: BILL_ITEM_SPLIT_FIELDS,
+      rejectUnknownFields: true,
+    },
+  },
+] as const;
+
+const BILL_PARTICIPANT_FIELDS = [
+  { key: 'id', type: 'string' as const },
+  { key: 'name', type: 'string' as const },
+  { key: 'userId', type: 'string' as const, optional: true },
+  { key: 'friendshipId', type: 'string' as const, optional: true },
+  { key: 'amountOwed', type: 'number' as const },
+  { key: 'customTipContribution', type: 'number' as const, optional: true },
+  {
+    key: 'paidStatus',
+    type: 'string' as const,
+    allowedValues: ['pending', 'paid'],
+  },
+  { key: 'paymentReminderAvailable', type: 'boolean' as const, optional: true },
+  { key: 'paymentReminderAvailableAt', type: 'string' as const, optional: true },
+] as const;
+
+const BILL_UPDATE_FIELDS = [
+  { key: 'title', type: 'string' as const, optional: true },
+  { key: 'restaurantName', type: 'string' as const, optional: true },
+  {
+    key: 'items',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      fields: BILL_ITEM_FIELDS,
+      rejectUnknownFields: true,
+    },
+  },
+  {
+    key: 'participants',
+    type: 'array' as const,
+    optional: true,
+    items: {
+      type: 'record' as const,
+      fields: BILL_PARTICIPANT_FIELDS,
+      rejectUnknownFields: true,
+    },
+  },
+  { key: 'totalAmount', type: 'number' as const, optional: true },
+  { key: 'tax', type: 'number' as const, optional: true },
+  { key: 'tip', type: 'number' as const, optional: true },
+  { key: 'fees', type: 'number' as const, optional: true },
+  {
+    key: 'extrasSplitMode',
+    type: 'string' as const,
+    allowedValues: ['equal', 'proportional'],
+    optional: true,
+  },
+  {
+    key: 'status',
+    type: 'string' as const,
+    allowedValues: ['open', 'settled'],
+    optional: true,
+  },
+] as const;
+
 const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
   'bill.create': replayBillCreate,
   'bill.update': replayBillUpdate,
@@ -39,6 +133,34 @@ const BILL_WRITE_OUTBOX_REPLAY_ADAPTERS = {
 } satisfies Partial<FeatureOutboxReplayAdapterMap<FeatureOutboxOperationName>> &
   FeatureOutboxReplayAdapterMap<BillWriteOutboxOperationName>;
 
+const BILL_LEGACY_PAYLOAD_DECODERS = {
+  'bill.create': createFeatureOutboxPayloadDecoder('bill.create', [
+    { key: 'title', type: 'string' },
+    { key: 'restaurantName', type: 'string' },
+    { key: 'items', type: 'array' },
+    { key: 'participants', type: 'array' },
+  ]),
+  'bill.update': createFeatureOutboxPayloadDecoder('bill.update', [
+    { key: 'billId', type: 'string' },
+    { key: 'updates', type: 'record' },
+  ]),
+  'bill.delete': createFeatureOutboxPayloadDecoder('bill.delete', [
+    { key: 'billId', type: 'string' },
+  ]),
+  'bill.status.toggle': createFeatureOutboxPayloadDecoder('bill.status.toggle', [
+    { key: 'billId', type: 'string' },
+    { key: 'status', type: 'string', allowedValues: ['open', 'settled'] },
+  ]),
+  'bill.participant.toggle-paid': createFeatureOutboxPayloadDecoder(
+    'bill.participant.toggle-paid',
+    [
+      { key: 'billId', type: 'string' },
+      { key: 'participantId', type: 'string' },
+      { key: 'paidStatus', type: 'string', allowedValues: ['pending', 'paid'] },
+    ],
+  ),
+};
+
 export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'bill.create',
@@ -47,16 +169,49 @@ export const BILL_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistrat
     'bill.status.toggle',
     'bill.participant.toggle-paid',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
+  legacyPayloadDecoders: BILL_LEGACY_PAYLOAD_DECODERS,
   payloadDecoders: {
     'bill.create': createFeatureOutboxPayloadDecoder('bill.create', [
       { key: 'title', type: 'string' },
       { key: 'restaurantName', type: 'string' },
-      { key: 'items', type: 'array' },
-      { key: 'participants', type: 'array' },
+      { key: 'createdByUserId', type: 'string' },
+      {
+        key: 'items',
+        type: 'array',
+        items: {
+          type: 'record',
+          fields: BILL_ITEM_FIELDS,
+          rejectUnknownFields: true,
+        },
+      },
+      {
+        key: 'participants',
+        type: 'array',
+        items: {
+          type: 'record',
+          fields: BILL_PARTICIPANT_FIELDS,
+          rejectUnknownFields: true,
+        },
+      },
+      { key: 'totalAmount', type: 'number', optional: true },
+      { key: 'tax', type: 'number' },
+      { key: 'tip', type: 'number' },
+      { key: 'fees', type: 'number' },
+      {
+        key: 'extrasSplitMode',
+        type: 'string',
+        allowedValues: ['equal', 'proportional'],
+      },
     ]),
     'bill.update': createFeatureOutboxPayloadDecoder('bill.update', [
       { key: 'billId', type: 'string' },
-      { key: 'updates', type: 'record' },
+      {
+        key: 'updates',
+        type: 'record',
+        fields: BILL_UPDATE_FIELDS,
+        rejectUnknownFields: true,
+      },
     ]),
     'bill.delete': createFeatureOutboxPayloadDecoder('bill.delete', [
       { key: 'billId', type: 'string' },

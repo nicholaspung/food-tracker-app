@@ -12,8 +12,13 @@ import {
   type FeatureOutboxReplayResult,
 } from './featureOutboxReplayAdapters';
 import { FEATURE_OUTBOX_OPERATION_NAMES } from './featureOutboxRegistry';
+import { createFeatureOutboxPayloadEnvelope } from './featureOutboxPayloadDecoders';
 import type { FeatureWriteRequestOptions } from './featureStoreShared';
-import type { HomeFeedDefaultsRecord } from './homeFeedPreferences';
+import type {
+  HomeFeedDefaultMode,
+  HomeFeedDefaultSort,
+  HomeFeedDefaultTypeFilter,
+} from './homeFeedPreferences';
 import type {
   CompleteMainOnboardingInput,
   DismissAddOnboardingCardInput,
@@ -161,11 +166,14 @@ interface TastingSessionStatusUpdateOperationPayload {
   status: TastingSessionStatus;
 }
 
-interface SettingsSaveOperationPayload extends HomeFeedDefaultsRecord {
+interface SettingsSaveOperationPayload {
   userId: string;
   defaultVisitVisibility: 'friends' | 'private';
   defaultRestaurantVisibility: 'private' | 'friends';
   defaultListVisibility: 'private' | 'friends';
+  defaultHomeFeedMode: HomeFeedDefaultMode;
+  defaultHomeFeedTypeFilter: HomeFeedDefaultTypeFilter;
+  defaultHomeFeedSort: HomeFeedDefaultSort;
   tasting_invites_enabled: boolean;
   bill_owed_enabled: boolean;
   monthly_friends_activity_enabled: boolean;
@@ -263,7 +271,7 @@ export function createFeatureOutboxMutationInput<TName extends FeatureOutboxOper
     headers: {
       'X-Mobile-Write-Operation': operationName,
     },
-    body: payload,
+    body: createFeatureOutboxPayloadEnvelope(payload),
   };
 }
 

@@ -28,6 +28,7 @@ export const ONBOARDING_PROGRESS_OUTBOX_REGISTRATION = createFeatureOutboxDomain
     'onboarding.more-card.dismiss',
     'onboarding.add-card.dismiss',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'onboarding.main.complete': createFeatureOutboxPayloadDecoder('onboarding.main.complete', [
       { key: 'userId', type: 'string' },

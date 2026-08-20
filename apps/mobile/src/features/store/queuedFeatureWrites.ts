@@ -4,6 +4,8 @@ import {
   type FeatureOutboxOperationName,
   type FeatureOutboxOperationPayload,
 } from './featureOutboxOperations';
+import { FEATURE_OUTBOX_PAYLOAD_DECODERS } from './featureOutboxRegistry';
+import type { FeatureOutboxPersistedPayloadDecoder } from './featureOutboxPayloadDecoders';
 
 export interface QueuedFeatureWrite<
   TName extends FeatureOutboxOperationName = FeatureOutboxOperationName,
@@ -78,13 +80,24 @@ export function parseQueuedFeatureWrite(
 
 function decodeQueuedFeatureWriteDisplayPayload<TName extends FeatureOutboxOperationName>(
   operationName: TName,
-  payload: object,
+  persistedPayload: object,
 ): FeatureOutboxOperationPayload<TName> | null {
-  if (!isDisplayableQueuedFeaturePayload(operationName, payload)) {
+  const decoder = FEATURE_OUTBOX_PAYLOAD_DECODERS[operationName] as
+    | FeatureOutboxPersistedPayloadDecoder<TName>
+    | undefined;
+  if (!decoder) {
     return null;
   }
 
-  return payload as FeatureOutboxOperationPayload<TName>;
+  const decoded = decoder(persistedPayload);
+  if (
+    decoded.status !== 'ok' ||
+    !isDisplayableQueuedFeaturePayload(operationName, decoded.payload)
+  ) {
+    return null;
+  }
+
+  return decoded.payload;
 }
 
 function isDisplayableQueuedFeaturePayload(

@@ -22,8 +22,41 @@ import {
 import { profileQueryKeys } from './profileQuery';
 import { invalidateSettingsQueries } from './settingsQuery';
 
+const decodeLegacySettingsPreferences = createFeatureOutboxPayloadDecoder(
+  'settings.visibility.save',
+  [
+    { key: 'userId', type: 'string' },
+    { key: 'defaultVisitVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+    { key: 'defaultRestaurantVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+    { key: 'defaultListVisibility', type: 'string', allowedValues: ['friends', 'private'] },
+    { key: 'tasting_invites_enabled', type: 'boolean' },
+    { key: 'bill_owed_enabled', type: 'boolean' },
+    { key: 'monthly_friends_activity_enabled', type: 'boolean' },
+  ],
+);
+
 export const SETTINGS_PREFERENCES_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: ['settings.visibility.save'] as const,
+  legacyPayloadPolicy: 'decode-as-current',
+  legacyPayloadDecoders: {
+    'settings.visibility.save': (payload) => {
+      const decoded = decodeLegacySettingsPreferences(payload);
+      if (decoded.status !== 'ok') {
+        return decoded;
+      }
+
+      const defaults = mapHomeFeedDefaultsFromRecord(decoded.payload);
+      return {
+        status: 'ok',
+        payload: {
+          ...decoded.payload,
+          defaultHomeFeedMode: defaults.homeFeedMode,
+          defaultHomeFeedTypeFilter: defaults.homeFeedTypeFilter,
+          defaultHomeFeedSort: defaults.homeFeedSort,
+        },
+      };
+    },
+  },
   payloadDecoders: {
     'settings.visibility.save': createFeatureOutboxPayloadDecoder('settings.visibility.save', [
       { key: 'userId', type: 'string' },
@@ -33,6 +66,21 @@ export const SETTINGS_PREFERENCES_OUTBOX_REGISTRATION = createFeatureOutboxDomai
       { key: 'tasting_invites_enabled', type: 'boolean' },
       { key: 'bill_owed_enabled', type: 'boolean' },
       { key: 'monthly_friends_activity_enabled', type: 'boolean' },
+      {
+        key: 'defaultHomeFeedMode',
+        type: 'string',
+        allowedValues: ['mine', 'friends'],
+      },
+      {
+        key: 'defaultHomeFeedTypeFilter',
+        type: 'string',
+        allowedValues: ['all', 'visits', 'food-products'],
+      },
+      {
+        key: 'defaultHomeFeedSort',
+        type: 'string',
+        allowedValues: ['created', 'tracked'],
+      },
     ]),
   },
   replayAdapters: {

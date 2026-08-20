@@ -19,12 +19,45 @@ import { syncFoodProductMutationCaches } from './foodProductsQuery';
 import { homeFeedQueryKeys } from './homeFeedQuery';
 import { profileQueryKeys } from './profileQuery';
 
+const FOOD_PRODUCT_UPDATE_FIELDS = [
+  { key: 'itemName', type: 'string' as const, optional: true },
+  { key: 'locationText', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'rating', type: 'number' as const, optional: true },
+  { key: 'itemCategory', type: 'string' as const, allowEmpty: true, optional: true },
+  { key: 'notes', type: 'string' as const, allowEmpty: true, optional: true },
+  {
+    key: 'visibility',
+    type: 'string' as const,
+    allowedValues: ['friends', 'private'],
+    optional: true,
+  },
+  { key: 'itemDate', type: 'string' as const, optional: true },
+  {
+    key: 'newPhoto',
+    type: 'record' as const,
+    optional: true,
+    rejectUnknownFields: true,
+    fields: [
+      { key: 'uri', type: 'string' as const },
+      { key: 'name', type: 'string' as const },
+      { key: 'mimeType', type: 'string' as const },
+    ],
+  },
+  {
+    key: 'deletePhotoIds',
+    type: 'array' as const,
+    optional: true,
+    items: { type: 'string' as const },
+  },
+] as const;
+
 export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainRegistration({
   operationNames: [
     'food-product.create',
     'food-product.update',
     'food-product.delete',
   ] as const,
+  legacyPayloadPolicy: 'decode-as-current',
   payloadDecoders: {
     'food-product.create': createFeatureOutboxPayloadDecoder('food-product.create', [
       { key: 'itemName', type: 'string' },
@@ -32,7 +65,12 @@ export const FOOD_PRODUCT_WRITE_OUTBOX_REGISTRATION = createFeatureOutboxDomainR
     ]),
     'food-product.update': createFeatureOutboxPayloadDecoder('food-product.update', [
       { key: 'foodProductId', type: 'string' },
-      { key: 'updates', type: 'record' },
+      {
+        key: 'updates',
+        type: 'record',
+        fields: FOOD_PRODUCT_UPDATE_FIELDS,
+        rejectUnknownFields: true,
+      },
     ]),
     'food-product.delete': createFeatureOutboxPayloadDecoder('food-product.delete', [
       { key: 'foodProductId', type: 'string' },
