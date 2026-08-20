@@ -198,6 +198,10 @@ _Avoid_: photo submit hook, process photos helper
 The mobile module that owns friend request and friendship mutation flows, including offline replay payloads, friendship cache effects, queued feedback, and request entry adapters such as manual code entry and QR scanning.
 _Avoid_: friend action helper, social mutation wrapper
 
+**Account Invite Code**:
+A server-owned, one-time code that grants account creation, is atomically reserved during signup, and is consumed by the successfully created account. It is distinct from a Tasting Session invite code, a Friend Code, and a Waitlist Approval Link.
+_Avoid_: Invite code where the account-access context is ambiguous, Friend Code, tasting invite
+
 **Friend Invite Handoff**:
 The TTL-bounded post-signup handoff that stores inviter identity and the invited app-user id locally so signup can complete the inviter relationship after authentication without persisting the invited email.
 _Avoid_: friend suggestion, friend recommendation, pending friendship
@@ -428,7 +432,10 @@ _Avoid_: notification inbox, user notification history
 - Queued Visit replay may preserve **Suggestion Provenance**, but stale provenance must not block creating the **Visit Item**.
 - **Photo Processing Submission** uses **Visit Writes** and **Food Product Writes** to create entries from processed photos.
 - **Friend Writes** preserve the write lifecycle for friend request send, accept, decline, cancel, and remove actions.
-- A **Friend Invite Handoff** is created when signup receives a valid inviter code and needs to complete the inviter relationship after auth.
+- An **Account Invite Code** is owned and consumed through server-owned interfaces; raw `invite_codes` collection access remains admin-only.
+- Account creation uses either an **Account Invite Code** or a **Waitlist Approval Link** with its one-time **Waitlist Approval Token**.
+- An **Account Invite Code** is not a Tasting Session invite code or a Friend Code; those codes join an authenticated user to a Tasting Session or identify an authenticated user for friendship, respectively.
+- A **Friend Invite Handoff** may be created when signup receives a valid inviter-backed **Account Invite Code** and the best-effort inviter lookup succeeds.
 - A **Friend Invite Handoff** is a local auth/friendship handoff, not a friend recommendation surface or a normal friend request.
 - A **Friend Invite Handoff** stores inviter identity, invited app-user id, created timestamp, and expiry timestamp, but not the invited user's email.
 - A **Friend Invite Handoff** expires after 24 hours and must be cleared on accept, dismiss, invalid parse or shape, account mismatch, or expiry.
@@ -437,7 +444,7 @@ _Avoid_: notification inbox, user notification history
 - Admin approval sends a **Waitlist Approval Link** for the approved email address.
 - A **Waitlist Approval Link** is a token-backed account-access path, not a statement that email identity alone can create an account.
 - Account creation from the waitlist requires a valid unused **Waitlist Approval Token**; an approved email address by itself is insufficient.
-- Invite-code signup and **Waitlist Approval Link** signup are separate account-access paths.
+- **Account Invite Code** signup and **Waitlist Approval Link** signup are separate account-access paths.
 - Technical aliases / route names such as `waitlist_approved`, `waitlistApprovalToken`, and `waitlist_approval` refer to **Waitlist Approval Link** and **Waitlist Approval Token** implementation details, not canonical product language.
 - **Feedback Writes** preserve the write lifecycle for creating feedback and replying in a feedback thread.
 - **Visit Action Writes** build on **Visit Writes** for actions that change existing visits or visit items.

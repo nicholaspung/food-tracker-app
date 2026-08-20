@@ -1,189 +1,84 @@
-# Invite Code System - Viral Network
+# Account Invite Codes
 
-This application uses a viral invite code system where users can only sign up with an invite code, and each new user receives 5 invite codes to share with others.
+An **Account Invite Code** is a server-owned, one-time credential for creating a Yummy Recs account. Successful account creation generates five new Account Invite Codes for the new user. Account creation can instead use a valid **Waitlist Approval Link**; the two paths are separate.
 
-## How It Works
+## Canonical language
 
-1. **Private Network**: Sign-up requires a valid invite code
-2. **One-Time Use**: Each code can only be used once
-3. **Auto-Generation**: New users automatically receive 5 invite codes
-4. **Viral Growth**: Each invited user can invite 5 more people, creating exponential network growth
-5. **Code Ownership**: Users can view and manage their own codes
+- **Account Invite Code**: authorizes one successful account creation and is consumed when that account is created.
+- **Waitlist Approval Link**: a separate account-access path containing an approved email and one-time **Waitlist Approval Token**. An approved email without the token is insufficient.
+- **Tasting Session invite code**: joins an authenticated user to a Tasting Session. It does not grant account access.
+- **Friend Code**: identifies an existing authenticated user for a friend request. It does not grant account access.
+- **Friend Invite Handoff**: the 24-hour local handoff that lets a newly created account act on its inviter relationship. The implementation still uses `pendingFriendSuggestion` names for compatibility; new product and domain language must not call this a friend suggestion.
 
-## Backend Implementation
+Use “invite code” without a qualifier only in nearby UI copy where the account-access context is already unambiguous.
 
-The backend uses PocketBase event hooks to manage the invite system:
+## Access boundary
 
-### 1. Validation Hook (`OnRecordCreateRequest`)
-- Validates invite code from JSON request body
-- Checks if code exists and hasn't been used
-- Blocks registration if code is invalid or already used
+The `invite_codes` PocketBase collection is admin-only. Its `ListRule`, `ViewRule`, `CreateRule`, `UpdateRule`, and `DeleteRule` are all `nil` in the current production migration. Mobile and other clients must not read or write the collection through `/api/collections/invite_codes/records`.
 
-### 2. Post-Creation Hook (`OnRecordAfterCreateSuccess`)
-- Marks the used invite code as consumed
-- Records which user used the code (`usedBy` field)
-- **Auto-generates 5 new invite codes** for the new user
-- Links codes to user via `createdBy` field
+The supported server-owned interfaces are:
 
-### 3. Code Generation
-- Generates cryptographically random 12-character codes
-- Uses base32 encoding for URL-safe, unambiguous characters
-- Format: lowercase alphanumeric (e.g., `a3b4c5d6e7f8`)
+| Interface | Access | Behavior |
+| --- | --- | --- |
+| `GET /api/invite-codes/inviter/{code}` | Guest/public, rate-limited | Returns only whether an owning inviter exists and, when present, that inviter's id and display name. This best-effort lookup supports the Friend Invite Handoff; it is not authoritative validation that the code remains available. |
+| `GET /api/invite-codes` | Authenticated | Lists only unused Account Invite Codes whose `createdBy` matches the authenticated user, including their current sharing-lock state. |
+| `POST /api/invite-codes/lock` | Authenticated owner | Verifies the code exists, is unused, and belongs to the caller, then records `locked_until` seven days in the future. Re-sharing extends the window. |
+| `POST /api/invite-codes/generate` | Authenticated initial user only | Generates five additional Account Invite Codes. Ordinary users receive their five codes as part of successful account creation and cannot call this endpoint. |
 
-## Database Schema
+The seven-day sharing lock is a recent-sharing marker, not a redemption lock. A shared code remains redeemable and can be shared again. The Profile screen renders the marker as **Copied recently**; otherwise it renders **Available**.
 
-The `invite_codes` collection is automatically created via migrations. It includes:
+## Account creation lifecycle
 
-**Collection: invite_codes**
+The active account-access enforcement is attached to PocketBase user creation in `backend/main.go` and `backend/signup_security.go`:
 
-**Fields:**
-- `code` (Text): The invite code (6-50 characters, no whitespace)
-- `used` (Bool): Whether the code has been used (default: false)
-- `usedBy` (Relation): User who used this code
-- `createdBy` (Relation): User who owns this code
+1. The request supplies either a non-empty `inviteCode` or the approved email and `waitlistApprovalToken` from a Waitlist Approval Link.
+2. For an Account Invite Code, the backend resolves the code case-insensitively and atomically changes `used` from false to true. A concurrent or repeated attempt cannot reserve the same code.
+3. For a Waitlist Approval Link, the backend validates and reserves the one-time token instead. It does not reserve an Account Invite Code.
+4. If user creation fails, the backend releases whichever reservation it made.
+5. After user creation succeeds, an Account Invite Code reservation remains consumed and its `usedBy` relation is finalized with the new user id. A Waitlist Entry is marked signed up on the token-backed path.
+6. The backend generates five Account Invite Codes owned by the new user. Codes generated from a `TEST` parent retain the `TEST` prefix.
 
-**API Rules:**
-- `ListRule`: `"createdBy = @request.auth.id"` - Users can list their own codes
-- `ViewRule`: `"createdBy = @request.auth.id"` - Users can view their own codes
-- `CreateRule`: `null` - Only server can create (via hooks)
-- `UpdateRule`: `null` - Only server can update
-- `DeleteRule`: `null` - Only admins can delete
+Failed Account Invite Code and Waitlist Approval Token validations share server-side account-access throttling by client IP. The fifth failed attempt starts a 15-minute lockout; repeated failures increase the lockout exponentially up to 24 hours. PocketBase route limits also bound signup requests and public inviter lookups. Successful validation clears the failed-attempt counter.
 
-## Bootstrap: Creating the First Invite Code
+## Mobile flows
 
-To bootstrap your network, manually create the first invite code as an admin:
+### Sign Up screen
 
-### Via Admin UI
+`apps/mobile/src/screens/SignUpScreen.tsx` presents distinct account-access modes:
 
-1. Go to http://localhost:8090/_/
-2. Select the `invite_codes` collection
-3. Click "New Record"
-4. Enter fields:
-   - `code`: "WELCOME2024" (or any code you want)
-   - `used`: unchecked (false)
-   - `createdBy`: leave empty (admin-created)
-5. Save
+- **Have invite code** requires an Account Invite Code and submits it as `inviteCode`.
+- A Waitlist Approval Link opens the token-backed mode with the approved email and `waitlistApprovalToken`; the Account Invite Code field is hidden.
+- Joining the waitlist is not account creation and does not accept either credential.
 
-### Via Go Migration (Recommended)
+Before an Account Invite Code signup, mobile makes a best-effort call to the inviter endpoint. When that lookup returns an inviter and the server creates the user, mobile stores the inviter id, optional display name, and invited user id as a Friend Invite Handoff. It does not persist the invited email. The handoff expires after 24 hours, is bound to the newly created account, and is cleared after acceptance, dismissal, invalid data, account mismatch, or expiry. Failure to look up the inviter does not bypass server validation and does not block otherwise valid account creation.
 
-Create a migration to insert initial invite codes:
+### Profile screen
 
-```go
-// migrations/XXXXX_seed_initial_codes.go
-func init() {
-    m.Register(func(app core.App) error {
-        collection, _ := app.FindCollectionByNameOrId("invite_codes")
+`apps/mobile/src/screens/ProfileScreen.tsx` loads unused owned Account Invite Codes through `GET /api/invite-codes`. Selecting **Share Invite** opens the platform share sheet with the app signup deep link, iOS App Store link, and plain-text code. Only a completed share calls the lock endpoint; canceling the share does not change the code.
 
-        codes := []string{"WELCOME2024", "BETA2024", "LAUNCH2024"}
-        for _, code := range codes {
-            record := core.NewRecord(collection)
-            record.Set("code", code)
-            record.Set("used", false)
-            app.Save(record)
-        }
-        return nil
-    }, func(app core.App) error { return nil })
-}
-```
+The Profile screen intentionally does not show consumed codes. Unused codes show **Available** or **Copied recently** based on their seven-day sharing marker. Only the initial user sees **Generate 5 More**.
 
-## Frontend Implementation
+## Storage
 
-### Signup Flow (`SignUpPage.tsx`)
-- Includes required invite code field
-- Validates code on client before submission
-- Sends code to backend via JSON payload
-- Displays appropriate error messages
+The `invite_codes` collection contains:
 
-### Profile Page (`ProfilePage.tsx`)
-- Displays user's 5 invite codes
-- Shows status: "Available" or "Used"
-- **Smart Copy**: Copies a personalized invitation message with pre-populated signup link
-- Invitation message includes:
-  - Friendly greeting
-  - Direct signup link with code parameter
-  - Plain text invite code as backup
-- Real-time updates via PocketBase API
+- `code`: required unique code, matched case-insensitively by the current lookup index.
+- `used`: reservation and consumption state.
+- `usedBy`: the account created with the code.
+- `createdBy`: the account that owns and can share the code; empty only for a controlled bootstrap code.
+- `locked_until`: optional recent-sharing timestamp used by Profile status.
 
-## User Experience Flow
+Collection access stays admin-only even though `createdBy` records ownership. Ownership checks belong in the custom endpoints, and reservation belongs in the user-creation hook.
 
-### For New Users (Invited):
-1. Receive invitation message from existing user via copy/paste
-2. **Click the pre-populated signup link** (e.g., `/signup?code=abc123xyz456`)
-3. Signup page displays:
-   - 🎉 Welcome message: "You've been invited!"
-   - Pre-filled invite code in green banner
-   - Invite code field auto-populated
-4. Enter only email and password
-5. Upon successful signup:
-   - Automatically logged in
-   - **Receive 5 new invite codes** automatically
-   - Redirected to profile page to view codes
+## Controlled bootstrap and verification
 
-### For Existing Users (Inviters):
-1. Navigate to profile page
-2. View list of 5 invite codes with status
-3. Click **"Copy Invite"** button on any available code
-4. **Personalized invitation message copied to clipboard**:
-   ```
-   Hey! You're invited to join our app! 🎉
+Creating a bootstrap Account Invite Code is an administrative operation, not a client API pattern. An administrator may create one `invite_codes` record in the PocketBase Admin UI with a unique code, `used` false, and no `createdBy`. The account that successfully redeems such a code is marked as the initial user and may use the generate endpoint. Do not add a client-readable collection rule or a public seed migration to bootstrap production.
 
-   Use this link to sign up:
-   http://yourapp.com/signup?code=abc123xyz456
+The older migrations that temporarily allowed raw public or owner reads document historical states only. Migration `1760367121_make_invite_codes_admin_only.go` is the current access boundary; rolling it back is not a supported production procedure.
 
-   Your invite code: abc123xyz456
+Relevant automated coverage includes:
 
-   Looking forward to seeing you there!
-   ```
-5. Share message via any platform (SMS, email, WhatsApp, etc.)
-6. Track which codes have been used (shown with strikethrough)
-
-## Testing the Viral Network
-
-### Test Scenario 1: Bootstrap & First User
-1. Create admin invite code "BOOTSTRAP" in admin UI
-2. Sign up User A with "BOOTSTRAP"
-3. Verify User A receives 5 codes automatically
-4. Check profile page shows 5 available codes
-
-### Test Scenario 2: Viral Growth with Smart Invite
-1. User A clicks "Copy Invite" on one of their codes
-2. Verify clipboard contains personalized message with signup link
-3. Open the signup link (e.g., `http://localhost:1420/signup?code=abc123xyz456`)
-4. Verify signup page shows:
-   - "🎉 You've been invited!" message
-   - Green banner with pre-populated code
-   - Invite code field auto-filled
-5. Sign up User B with just email and password
-6. Verify User B receives 5 new codes automatically
-7. Check User A's profile shows "abc123xyz456" as "Used"
-8. User B can now invite 5 more users with their codes
-
-### Test Scenario 3: Code Validation
-1. Try signup without code → Error: "Invite code is required"
-2. Try invalid code → Error: "Invalid or already used invite code"
-3. Try already-used code → Error: "Invalid or already used invite code"
-4. Try valid code → Success, 5 new codes generated
-
-## Growth Analytics
-
-To track your invite network growth:
-
-```bash
-# Count total users
-curl http://localhost:8090/api/collections/users/records | jq '.totalItems'
-
-# Count used vs. available codes
-curl http://localhost:8090/api/collections/invite_codes/records | jq '[.items[] | .used] | group_by(.) | map({used: .[0], count: length})'
-```
-
-## Scalability
-
-This system scales to **unlimited network size**:
-
-- **Generation 1**: 1 user → 5 codes
-- **Generation 2**: 5 users → 25 codes
-- **Generation 3**: 25 users → 125 codes
-- **Generation 4**: 125 users → 625 codes
-- **Generation 5**: 625 users → 3,125 codes
-
-Each generation multiplies by 5x, enabling exponential viral growth.
+- `backend/signup_security_test.go` for reservation, release/finalization behavior, waitlist-token account access, duplicate codes, and signup throttling.
+- `backend/handlers/invite_code_security_integration_test.go` for inviter lookup disclosure and rate limiting.
+- `apps/mobile/src/__tests__/SignUpScreen.test.tsx` for separate Account Invite Code and Waitlist Approval Link modes plus Friend Invite Handoff creation.
+- `apps/mobile/src/__tests__/TabRootContentSections.test.tsx` for platform sharing and the post-share lock call.
