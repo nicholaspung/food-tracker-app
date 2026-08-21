@@ -833,7 +833,13 @@ func getRestaurantListDetailResponse(
 	friendOverlapCountsByRestaurantID := map[string]int{}
 	friendMatchesByRestaurantID := map[string][]restaurantListDetailFriendMatchResponse{}
 	if listRecord.GetBool("isDefault") {
-		friendMatchesByRestaurantID, err = buildWantToTryFriendMatches(app, userID, restaurantIDs)
+		friendMatchesByRestaurantID, err = buildWantToTryFriendMatches(
+			app,
+			userID,
+			isAdmin,
+			acceptedFriendIDs,
+			restaurantIDs,
+		)
 		if err != nil {
 			return response, err
 		}
@@ -2218,9 +2224,21 @@ func listRestaurantListDetailItemRecords(
 func buildWantToTryFriendOverlapCounts(
 	app core.App,
 	userID string,
+	isAdmin bool,
 	restaurantIDs []string,
 ) (map[string]int, error) {
-	friendMatchesByRestaurantID, err := buildWantToTryFriendMatches(app, userID, restaurantIDs)
+	acceptedFriendIDs, err := listAcceptedFriendIDs(app, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	friendMatchesByRestaurantID, err := buildWantToTryFriendMatches(
+		app,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+		restaurantIDs,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -2251,6 +2269,8 @@ func buildFriendOverlapCountsFromMatches(
 func buildWantToTryFriendMatches(
 	app core.App,
 	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
 	restaurantIDs []string,
 ) (map[string][]restaurantListDetailFriendMatchResponse, error) {
 	result := map[string][]restaurantListDetailFriendMatchResponse{}
@@ -2278,37 +2298,27 @@ func buildWantToTryFriendMatches(
 	}
 
 	rows := []struct {
-		RestaurantID          string  `db:"restaurantId"`
-		FriendID              string  `db:"friendId"`
-		FriendName            string  `db:"friendName"`
-		FriendEmail           string  `db:"friendEmail"`
-		FoodItemID            string  `db:"foodItemId"`
-		FoodItemName          string  `db:"foodItemName"`
-		FoodItemRating        float64 `db:"foodItemRating"`
-		UserFoodItemID        string  `db:"userFoodItemId"`
-		UserFoodItemName      string  `db:"userFoodItemName"`
-		UserFoodItemRating    float64 `db:"userFoodItemRating"`
-		MenuItemID            string  `db:"menuItemId"`
-		MenuItemName          string  `db:"menuItemName"`
-		RecommendedItemIDsRaw string  `db:"recommendedItemIdsRaw"`
-		SavedAt               string  `db:"savedAt"`
+		ListItemID     string `db:"listItemId"`
+		RestaurantID   string `db:"restaurantId"`
+		FriendID       string `db:"friendId"`
+		FriendName     string `db:"friendName"`
+		FriendEmail    string `db:"friendEmail"`
+		FoodItemID     string `db:"foodItemId"`
+		UserFoodItemID string `db:"userFoodItemId"`
+		MenuItemID     string `db:"menuItemId"`
+		SavedAt        string `db:"savedAt"`
 	}{}
 
 	err := app.DB().NewQuery(fmt.Sprintf(`
 		SELECT
+			li.id AS [[listItemId]],
 			li.restaurant AS [[restaurantId]],
 			rl.user AS [[friendId]],
 			users.name AS [[friendName]],
 			users.email AS [[friendEmail]],
 			COALESCE(li.foodItem, '') AS [[foodItemId]],
-			COALESCE(food_items.name, '') AS [[foodItemName]],
-			COALESCE(food_items.rating, 0) AS [[foodItemRating]],
 			COALESCE(li.userFoodItem, '') AS [[userFoodItemId]],
-			COALESCE(user_food_items.name, '') AS [[userFoodItemName]],
-			COALESCE(user_food_items.rating, 0) AS [[userFoodItemRating]],
 			COALESCE(li.menuItem, '') AS [[menuItemId]],
-			COALESCE(menu_items.name, '') AS [[menuItemName]],
-			COALESCE(li.recommendedItems, '') AS [[recommendedItemIdsRaw]],
 			li.created AS [[savedAt]]
 		FROM list_items li
 		INNER JOIN restaurant_lists rl ON rl.id = li.list
@@ -2319,9 +2329,6 @@ func buildWantToTryFriendMatches(
 				(f.user = {:userId} AND f.friend = rl.user) OR
 				(f.friend = {:userId} AND f.user = rl.user)
 			)
-		LEFT JOIN food_items ON food_items.id = li.foodItem
-		LEFT JOIN food_items user_food_items ON user_food_items.id = li.userFoodItem
-		LEFT JOIN menu_items ON menu_items.id = li.menuItem
 		WHERE rl.isDefault = true
 			AND rl.user != {:userId}
 			AND COALESCE(rl.moderationStatus, '') IN ('', 'active', 'reviewed')
@@ -2335,6 +2342,53 @@ func buildWantToTryFriendMatches(
 		return result, err
 	}
 
+	listItemIDs := make([]string, 0, len(rows))
+	listItemIDSet := map[string]struct{}{}
+	foodItemIDs := make([]string, 0, len(rows)*3)
+	foodItemIDSet := map[string]struct{}{}
+	menuItemIDs := make([]string, 0, len(rows))
+	menuItemIDSet := map[string]struct{}{}
+	for _, row := range rows {
+		listItemIDs = appendUniqueTrimmedID(listItemIDs, listItemIDSet, row.ListItemID)
+		foodItemIDs = appendUniqueTrimmedID(foodItemIDs, foodItemIDSet, row.FoodItemID)
+		foodItemIDs = appendUniqueTrimmedID(foodItemIDs, foodItemIDSet, row.UserFoodItemID)
+		menuItemIDs = appendUniqueTrimmedID(menuItemIDs, menuItemIDSet, row.MenuItemID)
+	}
+
+	listItemRecords, err := findRecordsByIDs(app, "list_items", listItemIDs)
+	if err != nil {
+		return result, err
+	}
+	listItemsByID := mapRecordsByID(listItemRecords)
+	for _, listItem := range listItemRecords {
+		for _, recommendedItemID := range listItem.GetStringSlice("recommendedItems") {
+			foodItemIDs = appendUniqueTrimmedID(foodItemIDs, foodItemIDSet, recommendedItemID)
+		}
+	}
+
+	foodItemRecords, err := findRecordsByIDs(app, "food_items", foodItemIDs)
+	if err != nil {
+		return result, err
+	}
+	foodItemsByID := mapRecordsByID(foodItemRecords)
+	visitIDs := make([]string, 0, len(foodItemRecords))
+	visitIDSet := map[string]struct{}{}
+	for _, foodItem := range foodItemRecords {
+		visitIDs = appendUniqueTrimmedID(visitIDs, visitIDSet, foodItem.GetString("visit"))
+	}
+	visitRecords, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return result, err
+	}
+	visitsByID := mapRecordsByID(visitRecords)
+
+	menuItemRecords, err := findRecordsByIDs(app, "menu_items", menuItemIDs)
+	if err != nil {
+		return result, err
+	}
+	menuItemsByID := mapRecordsByID(menuItemRecords)
+
+	coarseMatchFriendIDsByRestaurantID := map[string]map[string]struct{}{}
 	for _, row := range rows {
 		restaurantID := strings.TrimSpace(row.RestaurantID)
 		friendID := strings.TrimSpace(row.FriendID)
@@ -2357,23 +2411,64 @@ func buildWantToTryFriendMatches(
 			FriendID:   friendID,
 			FriendName: friendName,
 			Kind:       "restaurant",
-			SavedAt:    strings.TrimSpace(row.SavedAt),
 		}
 
-		if itemName := strings.TrimSpace(row.FoodItemName); strings.TrimSpace(row.FoodItemID) != "" && itemName != "" {
+		nestedAccessAllowed := false
+		foodItem := foodItemsByID[strings.TrimSpace(row.FoodItemID)]
+		userFoodItem := foodItemsByID[strings.TrimSpace(row.UserFoodItemID)]
+		menuItem := menuItemsByID[strings.TrimSpace(row.MenuItemID)]
+		setFoodItemMatch := func(record *core.Record) bool {
+			if !canAccessFoodItemRecord(record, visitsByID, userID, isAdmin, acceptedFriendIDs) {
+				return false
+			}
+			itemName := strings.TrimSpace(record.GetString("name"))
+			if itemName == "" {
+				return false
+			}
 			match.Kind = "menu_item"
 			match.ItemName = itemName
-			match.Rating = row.FoodItemRating
-		} else if itemName := strings.TrimSpace(row.UserFoodItemName); strings.TrimSpace(row.UserFoodItemID) != "" && itemName != "" {
+			match.Rating = record.GetFloat("rating")
+			return true
+		}
+		setMenuItemMatch := func(record *core.Record) bool {
+			if !canAccessMenuItemRecord(record, userID, isAdmin, acceptedFriendIDs) {
+				return false
+			}
+			itemName := strings.TrimSpace(record.GetString("name"))
+			if itemName == "" {
+				return false
+			}
 			match.Kind = "menu_item"
 			match.ItemName = itemName
-			match.Rating = row.UserFoodItemRating
-		} else if itemName := strings.TrimSpace(row.MenuItemName); strings.TrimSpace(row.MenuItemID) != "" && itemName != "" {
-			match.Kind = "menu_item"
-			match.ItemName = itemName
-		} else if strings.TrimSpace(row.RecommendedItemIDsRaw) != "" && strings.TrimSpace(row.RecommendedItemIDsRaw) != "[]" {
-			match.Kind = "menu_item"
-			match.ItemName = "recommended items"
+			return true
+		}
+		if setFoodItemMatch(foodItem) || setFoodItemMatch(userFoodItem) || setMenuItemMatch(menuItem) {
+			nestedAccessAllowed = true
+		} else if listItem := listItemsByID[strings.TrimSpace(row.ListItemID)]; listItem != nil {
+			for _, recommendedItemID := range listItem.GetStringSlice("recommendedItems") {
+				recommendedItem := foodItemsByID[strings.TrimSpace(recommendedItemID)]
+				if !canAccessFoodItemRecord(recommendedItem, visitsByID, userID, isAdmin, acceptedFriendIDs) {
+					continue
+				}
+
+				match.Kind = "menu_item"
+				match.ItemName = "recommended items"
+				nestedAccessAllowed = true
+				break
+			}
+		}
+		if nestedAccessAllowed {
+			match.SavedAt = strings.TrimSpace(row.SavedAt)
+		} else {
+			coarseMatchFriendIDs := coarseMatchFriendIDsByRestaurantID[restaurantID]
+			if coarseMatchFriendIDs == nil {
+				coarseMatchFriendIDs = map[string]struct{}{}
+				coarseMatchFriendIDsByRestaurantID[restaurantID] = coarseMatchFriendIDs
+			}
+			if _, exists := coarseMatchFriendIDs[friendID]; exists {
+				continue
+			}
+			coarseMatchFriendIDs[friendID] = struct{}{}
 		}
 
 		result[restaurantID] = append(result[restaurantID], match)

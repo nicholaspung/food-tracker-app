@@ -1006,6 +1006,264 @@ func TestRestaurantListDetailEndpointReturnsWantToTryFriendOverlapCounts(t *test
 	}
 }
 
+func TestRestaurantListDetailEndpointAuthorizesWantToTryFriendMatchDetails(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
+
+	viewer, viewerToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	hiddenListFriend, _ := createAuthUser(t, server.app, false, false)
+	pendingFriend, _ := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+	friend.Set("name", "Overlap Friend")
+	if err := server.app.Save(friend); err != nil {
+		t.Fatalf("failed to name overlap friend: %v", err)
+	}
+	createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+	createFriendshipRecord(t, server.app, viewer.Id, hiddenListFriend.Id, "accepted")
+	createFriendshipRecord(t, server.app, viewer.Id, pendingFriend.Id, "pending")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Policy Overlap Cafe",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	viewerList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       viewer.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	viewerListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       viewerList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    viewer.Id,
+		"position":   1,
+	})
+
+	friendList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Want to Try",
+		"user":       friend.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	createFriendListItem := func(position int, relations map[string]any) *core.Record {
+		data := map[string]any{
+			"list":       friendList.Id,
+			"restaurant": restaurant.Id,
+			"addedBy":    friend.Id,
+			"position":   position,
+		}
+		for key, value := range relations {
+			data[key] = value
+		}
+		return createCollectionRecord(t, server.app, "list_items", data)
+	}
+
+	visibleVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-07-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	privateVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-07-02 18:30:00.000Z",
+		"visibility": "private",
+	})
+	visiblePrimaryItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visibleVisit.Id,
+		"user":   friend.Id,
+		"name":   "Visible Primary Item",
+		"rating": 4,
+	})
+	privateVisitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  privateVisit.Id,
+		"user":   friend.Id,
+		"name":   "Private Visit Secret",
+		"rating": 5,
+	})
+	hiddenFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":            visibleVisit.Id,
+		"user":             friend.Id,
+		"name":             "Hidden Food Secret",
+		"rating":           5,
+		"moderationStatus": "hidden",
+	})
+	visibleUserFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visibleVisit.Id,
+		"user":   friend.Id,
+		"name":   "Visible User Item",
+		"rating": 3,
+	})
+	privateUserFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  privateVisit.Id,
+		"user":   friend.Id,
+		"name":   "Private User Item Secret",
+		"rating": 2,
+	})
+	visibleRecommendedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visibleVisit.Id,
+		"user":   friend.Id,
+		"name":   "Visible Recommended Item",
+		"rating": 4,
+	})
+	privateRecommendedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  privateVisit.Id,
+		"user":   friend.Id,
+		"name":   "Private Recommended Secret",
+		"rating": 5,
+	})
+	hiddenListItemFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visibleVisit.Id,
+		"user":   friend.Id,
+		"name":   "Hidden List Item Detail",
+		"rating": 4,
+	})
+	visibleMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"createdBy":  friend.Id,
+		"name":       "Visible Menu Item",
+		"visibility": "friends",
+	})
+	privateMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"createdBy":  friend.Id,
+		"name":       "Private Menu Secret",
+		"visibility": "private",
+	})
+
+	createFriendListItem(1, nil)
+	createFriendListItem(2, map[string]any{"foodItem": visiblePrimaryItem.Id})
+	createFriendListItem(3, map[string]any{"foodItem": privateVisitItem.Id})
+	createFriendListItem(4, map[string]any{"foodItem": hiddenFoodItem.Id})
+	createFriendListItem(5, map[string]any{"userFoodItem": visibleUserFoodItem.Id})
+	createFriendListItem(6, map[string]any{"userFoodItem": privateUserFoodItem.Id})
+	createFriendListItem(7, map[string]any{"menuItem": visibleMenuItem.Id})
+	createFriendListItem(8, map[string]any{"menuItem": privateMenuItem.Id})
+	createFriendListItem(9, map[string]any{"recommendedItems": []string{visibleRecommendedItem.Id}})
+	createFriendListItem(10, map[string]any{"recommendedItems": []string{privateRecommendedItem.Id}})
+	createFriendListItem(11, map[string]any{
+		"foodItem":         hiddenListItemFoodItem.Id,
+		"moderationStatus": "hidden",
+	})
+
+	hiddenFriendList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":             "Want to Try",
+		"user":             hiddenListFriend.Id,
+		"visibility":       "friends",
+		"isDefault":        true,
+		"moderationStatus": "hidden",
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       hiddenFriendList.Id,
+		"restaurant": restaurant.Id,
+		"addedBy":    hiddenListFriend.Id,
+		"foodItem":   visiblePrimaryItem.Id,
+		"position":   1,
+	})
+	for _, user := range []*core.Record{pendingFriend, stranger} {
+		list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+			"name":       "Want to Try",
+			"user":       user.Id,
+			"visibility": "friends",
+			"isDefault":  true,
+		})
+		createCollectionRecord(t, server.app, "list_items", map[string]any{
+			"list":       list.Id,
+			"restaurant": restaurant.Id,
+			"addedBy":    user.Id,
+			"foodItem":   visiblePrimaryItem.Id,
+			"position":   1,
+		})
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+viewerList.Id+"/detail",
+		viewerToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected response 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, secret := range []string{
+		"Private Visit Secret",
+		"Hidden Food Secret",
+		"Private User Item Secret",
+		"Private Menu Secret",
+		"Private Recommended Secret",
+	} {
+		if strings.Contains(response.Body.String(), secret) {
+			t.Fatalf("expected inaccessible nested detail %q to be absent: %s", secret, response.Body.String())
+		}
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                 string           `json:"id"`
+			FriendOverlapCount int              `json:"friendOverlapCount"`
+			FriendMatches      []map[string]any `json:"friendMatches"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v; body=%s", err, response.Body.String())
+	}
+	if len(payload.Items) != 1 || payload.Items[0].ID != viewerListItem.Id {
+		t.Fatalf("expected the viewer's restaurant bookmark, got %#v", payload.Items)
+	}
+	if payload.Items[0].FriendOverlapCount != 1 {
+		t.Fatalf("expected only the accepted friend to count, got %#v", payload.Items[0])
+	}
+	if len(payload.Items[0].FriendMatches) != 5 {
+		t.Fatalf("expected hidden list/list-item and non-friends excluded, got %#v", payload.Items[0].FriendMatches)
+	}
+
+	coarseMatches := 0
+	visibleDetails := map[string]bool{}
+	for _, match := range payload.Items[0].FriendMatches {
+		if match["friendId"] != friend.Id || match["friendName"] != "Overlap Friend" {
+			t.Fatalf("expected only the accepted friend's identity, got %#v", match)
+		}
+		kind, _ := match["kind"].(string)
+		if kind == "restaurant" {
+			coarseMatches++
+			if len(match) != 3 || match["itemName"] != nil || match["rating"] != nil || match["savedAt"] != nil {
+				t.Fatalf("expected coarse Restaurant match without nested detail or precise time, got %#v", match)
+			}
+			continue
+		}
+
+		itemName, _ := match["itemName"].(string)
+		if savedAt, _ := match["savedAt"].(string); savedAt == "" {
+			t.Fatalf("expected authorized nested detail to retain save time, got %#v", match)
+		}
+		switch itemName {
+		case "Visible Primary Item":
+			visibleDetails[itemName] = match["rating"] == float64(4)
+		case "Visible User Item":
+			visibleDetails[itemName] = match["rating"] == float64(3)
+		case "Visible Menu Item", "recommended items":
+			visibleDetails[itemName] = true
+		default:
+			t.Fatalf("unexpected nested detail in friend match: %#v", match)
+		}
+	}
+	if coarseMatches != 1 {
+		t.Fatalf("expected inaccessible nested rows to collapse into one coarse Restaurant match, got %d", coarseMatches)
+	}
+	for _, itemName := range []string{"Visible Primary Item", "Visible User Item", "Visible Menu Item", "recommended items"} {
+		if !visibleDetails[itemName] {
+			t.Fatalf("expected authorized nested detail %q, got %#v", itemName, payload.Items[0].FriendMatches)
+		}
+	}
+}
+
 func TestRestaurantListCandidateRestaurantsEndpointSplitsSummaryFromPaginatedItems(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

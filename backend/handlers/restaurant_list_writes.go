@@ -1936,7 +1936,7 @@ func buildRestaurantListDetailItemResponses(
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	friendOverlapCountsByRestaurantID := map[string]int{}
 	if includeFriendOverlap {
-		friendOverlapCountsByRestaurantID, err = buildWantToTryFriendOverlapCounts(app, userID, restaurantIDs)
+		friendOverlapCountsByRestaurantID, err = buildWantToTryFriendOverlapCounts(app, userID, isAdmin, restaurantIDs)
 		if err != nil {
 			return nil, err
 		}
