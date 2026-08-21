@@ -13,10 +13,10 @@ func init() {
 		// Create menu_images collection
 		collection := core.NewBaseCollection("menu_images")
 
-		// Set collection rules (all authenticated users can view, only creators can manage)
+		// Menu Scan Source Images are created only by the trusted parse-menu workflow.
 		collection.ListRule = types.Pointer("@request.auth.id != ''") // Any authenticated user can list
 		collection.ViewRule = types.Pointer("@request.auth.id != ''") // Any authenticated user can view
-		collection.CreateRule = types.Pointer("@request.auth.id != ''")
+		collection.CreateRule = nil
 		collection.UpdateRule = types.Pointer("uploadedBy = @request.auth.id")
 		collection.DeleteRule = types.Pointer("uploadedBy = @request.auth.id")
 
