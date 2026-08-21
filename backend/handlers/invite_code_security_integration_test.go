@@ -108,17 +108,23 @@ func TestFriendCodeLookupReturnsIndexedMinimalUserInfo(t *testing.T) {
 	}
 }
 
-func TestUsersViewRuleAllowsAdminsAndFriendsButNotStrangers(t *testing.T) {
+func TestUsersViewRuleAllowsOwnersAndAdminsButRejectsOtherViewers(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 
 	owner, ownerToken := createAuthUser(t, server.app, false, false)
-	friend, friendToken := createAuthUser(t, server.app, false, false)
+	ownerToFriend, ownerToFriendToken := createAuthUser(t, server.app, false, false)
+	friendToOwner, friendToOwnerToken := createAuthUser(t, server.app, false, false)
 	_, strangerToken := createAuthUser(t, server.app, false, false)
 	_, adminToken := createAuthUser(t, server.app, true, false)
 
 	createCollectionRecord(t, server.app, "friendships", map[string]any{
 		"user":   owner.Id,
-		"friend": friend.Id,
+		"friend": ownerToFriend.Id,
+		"status": "accepted",
+	})
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   friendToOwner.Id,
+		"friend": owner.Id,
 		"status": "accepted",
 	})
 
@@ -134,18 +140,6 @@ func TestUsersViewRuleAllowsAdminsAndFriendsButNotStrangers(t *testing.T) {
 		t.Fatalf("expected owner self-view to succeed, got %d: %s", ownerSelfResponse.Code, ownerSelfResponse.Body.String())
 	}
 
-	friendResponse := performJSONRequest(
-		t,
-		server.mux,
-		http.MethodGet,
-		"/api/collections/users/records/"+owner.Id,
-		friendToken,
-		"",
-	)
-	if friendResponse.Code != http.StatusOK {
-		t.Fatalf("expected friend view to succeed, got %d: %s", friendResponse.Code, friendResponse.Body.String())
-	}
-
 	adminResponse := performJSONRequest(
 		t,
 		server.mux,
@@ -158,16 +152,28 @@ func TestUsersViewRuleAllowsAdminsAndFriendsButNotStrangers(t *testing.T) {
 		t.Fatalf("expected admin view to succeed, got %d: %s", adminResponse.Code, adminResponse.Body.String())
 	}
 
-	strangerResponse := performJSONRequest(
-		t,
-		server.mux,
-		http.MethodGet,
-		"/api/collections/users/records/"+owner.Id,
-		strangerToken,
-		"",
-	)
-	if strangerResponse.Code == http.StatusOK {
-		t.Fatalf("expected stranger view to be denied, got 200: %s", strangerResponse.Body.String())
+	for _, scenario := range []struct {
+		name  string
+		token string
+	}{
+		{name: "owner-to-friend accepted friendship", token: ownerToFriendToken},
+		{name: "friend-to-owner accepted friendship", token: friendToOwnerToken},
+		{name: "stranger", token: strangerToken},
+		{name: "anonymous"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodGet,
+				"/api/collections/users/records/"+owner.Id,
+				scenario.token,
+				"",
+			)
+			if response.Code == http.StatusOK {
+				t.Fatalf("expected raw user view to be denied, got 200: %s", response.Body.String())
+			}
+		})
 	}
 }
 

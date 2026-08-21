@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -95,9 +96,100 @@ func TestFriendsListEndpointReturnsMinimalDisplayDataAcrossSections(t *testing.T
 		if item["status"] != scenario.expectedStatus {
 			t.Fatalf("expected status %q for section %s, got %#v", scenario.expectedStatus, scenario.section, item["status"])
 		}
-		if _, exists := item["email"]; exists {
-			t.Fatalf("did not expect email in section %s payload: %#v", scenario.section, item)
-		}
+		assertExactJSONKeys(t, item, "createdAt", "displayName", "id", "status", "userId")
+	}
+}
+
+func TestFriendsListEndpointReturnsAcceptedFriendProjectionInBothDirections(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFriendHandlers(se, app)
+	})
+
+	requester, requesterToken := createAuthUser(t, server.app, false, false)
+	recipient, recipientToken := createAuthUser(t, server.app, false, false)
+	requester.Set("name", "Friendship Requester")
+	recipient.Set("name", "Friendship Recipient")
+	requester.Set("friendCode", "REQS1234")
+	recipient.Set("friendCode", "RCPT1234")
+	requester.Set("moderationNotes", "requester internal notes")
+	recipient.Set("moderationNotes", "recipient internal notes")
+	if err := server.app.Save(requester); err != nil {
+		t.Fatalf("failed to update requester: %v", err)
+	}
+	if err := server.app.Save(recipient); err != nil {
+		t.Fatalf("failed to update recipient: %v", err)
+	}
+
+	friendship := createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   requester.Id,
+		"friend": recipient.Id,
+		"status": "accepted",
+	})
+
+	for _, scenario := range []struct {
+		name                string
+		token               string
+		expectedUserID      string
+		expectedDisplayName string
+	}{
+		{
+			name:                "requester reads recipient",
+			token:               requesterToken,
+			expectedUserID:      recipient.Id,
+			expectedDisplayName: "Friendship Recipient",
+		},
+		{
+			name:                "recipient reads requester",
+			token:               recipientToken,
+			expectedUserID:      requester.Id,
+			expectedDisplayName: "Friendship Requester",
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodGet,
+				"/api/friends?section=friends&page=1&pageSize=20",
+				scenario.token,
+				"",
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+			}
+
+			payload := parseJSONMap(t, response.Body.Bytes())
+			items, ok := payload["items"].([]any)
+			if !ok || len(items) != 1 {
+				t.Fatalf("expected one accepted friend, got %#v", payload["items"])
+			}
+			item, ok := items[0].(map[string]any)
+			if !ok {
+				t.Fatalf("expected object item, got %#v", items[0])
+			}
+
+			assertExactJSONKeys(t, item, "createdAt", "displayName", "id", "status", "userId")
+			if item["id"] != friendship.Id || item["status"] != "friend" {
+				t.Fatalf("unexpected friendship metadata: %#v", item)
+			}
+			if item["userId"] != scenario.expectedUserID || item["displayName"] != scenario.expectedDisplayName {
+				t.Fatalf("unexpected friend profile projection: %#v", item)
+			}
+		})
+	}
+}
+
+func assertExactJSONKeys(t *testing.T, payload map[string]any, expected ...string) {
+	t.Helper()
+
+	actual := make([]string, 0, len(payload))
+	for key := range payload {
+		actual = append(actual, key)
+	}
+	sort.Strings(actual)
+	sort.Strings(expected)
+	if fmt.Sprint(actual) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected response keys: got %v, want %v", actual, expected)
 	}
 }
 
