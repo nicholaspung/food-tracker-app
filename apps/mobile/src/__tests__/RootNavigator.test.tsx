@@ -224,6 +224,32 @@ jest.mock('../screens', () => {
   );
 });
 
+jest.mock('../navigation/lazyScreens', () => {
+  const screenNames = [
+    'BillDetailScreen',
+    'BillsScreen',
+    'CreateBillScreen',
+    'CreateTastingSessionScreen',
+    'JoinTastingSessionScreen',
+    'QRScannerScreen',
+    'ReceiptScanScreen',
+    'TastingSessionLobbyScreen',
+    'TastingSessionPlanningScreen',
+    'TastingSessionResultsScreen',
+    'TastingSessionTastingScreen',
+    'TastingSessionsScreen',
+    'TipCalculatorScreen',
+    'TutorialsScreen',
+  ];
+
+  return Object.fromEntries(
+    screenNames.map((name) => [
+      name,
+      () => mockReact.createElement('MockScreen', { screenName: name }, name),
+    ]),
+  );
+});
+
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent

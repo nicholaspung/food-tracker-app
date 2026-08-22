@@ -36,9 +36,6 @@ import {
   AddFeatureOnboardingScreen,
   AddVisitScreen,
   AboutScreen,
-  BillDetailScreen,
-  BillsScreen,
-  CreateBillScreen,
   CreateRestaurantListScreen,
   CreateVisitAddRestaurantScreen,
   CreateVisitAddMenuItemScreen,
@@ -69,8 +66,6 @@ import {
   PhotoProcessingScreen,
   PrivacyPolicyScreen,
   ProfileScreen,
-  QRScannerScreen,
-  ReceiptScanScreen,
   FoodProductScreen,
   ResetPasswordScreen,
   SettingsScreen,
@@ -78,15 +73,6 @@ import {
   SharedRestaurantListScreen,
   SplashScreen,
   TermsOfServiceScreen,
-  TipCalculatorScreen,
-  TutorialsScreen,
-  CreateTastingSessionScreen,
-  JoinTastingSessionScreen,
-  TastingSessionLobbyScreen,
-  TastingSessionPlanningScreen,
-  TastingSessionResultsScreen,
-  TastingSessionTastingScreen,
-  TastingSessionsScreen,
   VisitShareCustomizationScreen,
   VerifyEmailScreen,
   WaitlistConfirmationScreen,
@@ -94,6 +80,22 @@ import {
 import { useTheme } from '../theme';
 import type { VisitItemSuggestionSourceInput } from '../features/store/featureStore';
 import type { ReceiptScanDraftResult } from '../features/store/receiptParsingGateway';
+import {
+  BillDetailScreen,
+  BillsScreen,
+  CreateBillScreen,
+  CreateTastingSessionScreen,
+  JoinTastingSessionScreen,
+  QRScannerScreen,
+  ReceiptScanScreen,
+  TastingSessionLobbyScreen,
+  TastingSessionPlanningScreen,
+  TastingSessionResultsScreen,
+  TastingSessionTastingScreen,
+  TastingSessionsScreen,
+  TipCalculatorScreen,
+  TutorialsScreen,
+} from './lazyScreens';
 
 export type RestaurantDiscoveryRestaurantRouteParams = {
   restaurantId: string;
