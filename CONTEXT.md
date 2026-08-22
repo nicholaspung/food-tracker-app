@@ -234,6 +234,28 @@ _Avoid_: settings form values
 The saved mobile onboarding state for first-run completion and per-feature intro dismissal.
 _Avoid_: tutorial flags
 
+**Pre-review Account**:
+An account mode that requires eligible authored content writes to await administrator review before becoming visible to other users.
+_Avoid_: Pre-review user, pre-review mode
+
+**Posting Suspension**:
+A time-limited account restriction that rejects covered content writes until the restriction expires.
+_Avoid_: Posting ban, banned account
+
+**Under-review Content**:
+An authored content record in a server-controlled review state pending an administrator decision.
+_Avoid_: Quarantined content, moderation queue item
+
+**Quarantine Action**:
+The server-controlled moderation action that places eligible authored content under review and associates it with a current **Moderation Case**.
+_Avoid_: Quarantine state, queue quarantine
+
+**Moderation Case**:
+A durable workflow record for one moderated target that tracks its current action, review state, reason, assignment, and resolution.
+_Avoid_: Moderation queue, quarantine record
+
+Technical aliases / storage names: `contentModerationMode = pre_review` identifies a **Pre-review Account**; `postingSuspendedUntil` stores a **Posting Suspension** expiry; `moderationStatus = under_review` identifies **Under-review Content**; `action = quarantine` identifies the **Quarantine Action**; and `moderation_cases` stores **Moderation Cases**. Use these aliases at code and storage boundaries without replacing the canonical domain terms.
+
 **Notification Signal**:
 A product event or state that should draw a user's attention through a device notification, an in-app indicator, or both.
 _Avoid_: alert, notification everywhere
@@ -454,6 +476,12 @@ _Avoid_: notification inbox, user notification history
 - **Onboarding Progress** writes are part of the offline mutation queue for first-run completion and supported feature-intro dismissals.
 - Current queued **Tasting Session Writes** cover creating sessions, joining sessions, and session status updates into planning, tasting, and completed. Queued completion replays only the lifecycle status transition; it does not replay a participant's **Tasting Rating Submission** payload.
 - **Tasting Plan Writes** and **Tasting Rating Submission Writes** are separate online-only write modules and should not be described as covered by the tasting-session outbox unless their own replay registrations exist.
+- A **Pre-review Account** is an account content mode, not a banned account state, **Posting Suspension**, or photo-upload suspension.
+- A **Posting Suspension** must reject covered writes before persistence; it is distinct from the separate photo-upload suspension and from a banned account state.
+- An eligible write from a **Pre-review Account** must receive a **Quarantine Action**, become **Under-review Content**, and receive a current **Moderation Case** in the same persistence boundary.
+- Content moderation fields and approval transitions must remain server controlled; ordinary account-authored writes must not select or clear them.
+- Raw collection request hooks and custom write handlers are intended to enforce the same posting restriction, pre-review, moderation-field ownership, and case-creation policy.
+- That cross-route relationship states the intended invariant, not current implementation completeness: open security findings remain explicit deviations, and the relationship does not establish that every update, reparenting, or moderation-field write path already conforms.
 - A **Notification Signal** may appear as a **Device Notification**, an **In-App Indicator**, or both.
 - A **Device Notification** is either a **Remote Device Notification** or a **Local Device Notification**.
 - An **In-App Indicator** stays tied to the unresolved product state it represents.
@@ -530,6 +558,15 @@ _Avoid_: notification inbox, user notification history
 > **Dev:** "Is **Want to Try** just another editable **Restaurant List**?"
 > **Domain expert:** "No - it is the user's system-managed default list for bookmarks and cannot be deleted or manually edited like curated lists."
 
+> **Dev:** "Is a **Pre-review Account** the same as an account under a **Posting Suspension**?"
+> **Domain expert:** "No - a Posting Suspension rejects covered writes, while a Pre-review Account may write and the server places eligible records into **Under-review Content** with a **Moderation Case**."
+
+> **Dev:** "Is `quarantine` the content state or the review record?"
+> **Domain expert:** "Neither - it is the **Quarantine Action**; `under_review` is the technical state for Under-review Content, and `moderation_cases` stores the durable workflow record."
+
+> **Dev:** "Can a custom write handler skip that policy because it does not use a raw collection route?"
+> **Domain expert:** "No - both paths share the same intended invariant, although open security findings still identify implementation deviations."
+
 ## Flagged ambiguities
 
 - "lists feature" was used to mean both the top-level list index and the detail for one list - resolved: this map belongs to **List Detail**.
@@ -548,3 +585,7 @@ _Avoid_: notification inbox, user notification history
 - "Saved list" was ambiguous with generic saved states - resolved: the default Restaurant List is **Want to Try**.
 - "receipt review" was ambiguous between extraction preview and draft editing - resolved: **Receipt Scan** only previews extraction results; **Bill Draft** owns editing and assignment.
 - "pending friend suggestion" was used for the signup inviter handoff - resolved: use **Friend Invite Handoff** in product and domain docs, reserving `pending_friend_suggestion_v1` and friend-suggestion API copy for legacy implementation naming.
+- "pre-review user", "pre-review account", and "pre-review mode" described the same account-level content mode - resolved: use **Pre-review Account**, reserving `contentModerationMode = pre_review` for technical boundaries.
+- "posting ban" conflated a temporary write restriction with the separate banned account state and photo-upload restriction - resolved: use **Posting Suspension** only for the time-limited covered-write restriction.
+- "quarantine" was used for a content state, an administrative workflow, and unrelated queue isolation - resolved: use **Quarantine Action** for the moderation action, **Under-review Content** for the content state, **Moderation Case** for the workflow record, and terminal failure or isolation language for queues.
+- "moderation queue" and "moderation case" were used interchangeably - resolved: use **Moderation Case** for the durable workflow record and describe under-review records as **Under-review Content**.
