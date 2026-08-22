@@ -1,5 +1,8 @@
 import { logger } from '../../lib/logger';
-import { unregisterCurrentNotificationDevice } from '../../notifications/notificationInteraction';
+import {
+  NotificationDeviceCleanupNotDurableError,
+  unregisterCurrentNotificationDevice,
+} from '../../notifications/notificationInteraction';
 
 export interface NotificationDeviceLifecycle {
   deactivateForSignOut: (userId: string | null | undefined) => Promise<void>;
@@ -20,6 +23,9 @@ function createNotificationDeviceLifecycle({
 
       await unregisterCurrentDevice().catch((error) => {
         logger.warn('[NotificationDeviceLifecycle] Failed to unregister notification device on sign-out:', error);
+        if (error instanceof NotificationDeviceCleanupNotDurableError) {
+          throw error;
+        }
       });
     },
   };

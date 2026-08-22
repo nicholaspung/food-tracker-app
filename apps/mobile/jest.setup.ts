@@ -150,3 +150,7 @@ jest.mock('expo-secure-store', () => ({
     mockSecureStoreState.set(key, value);
   }),
 }));
+
+jest.mock('expo-crypto', () => ({
+  getRandomBytesAsync: jest.fn(async (length: number) => new Uint8Array(length).fill(1)),
+}));

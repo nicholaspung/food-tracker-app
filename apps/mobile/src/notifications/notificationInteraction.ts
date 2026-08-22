@@ -1,19 +1,29 @@
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import type * as ExpoNotifications from 'expo-notifications';
+import * as SecureStore from 'expo-secure-store';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import {
   deactivateNotificationDevice,
   registerNotificationDevice,
+  revokeNotificationDevice,
 } from '../features/store/notificationDevicesStore';
+import { getEnvironmentStorageKey } from '../config/persistence';
 import { localPersistence } from '../localPersistence';
 import { logger } from '../lib/logger';
 import { trackObservabilityEvent } from '../observability';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 const NOTIFICATION_DEVICE_ID_STORAGE_KEY = localPersistence.notifications.keys.deviceId;
+const NOTIFICATION_DEVICE_REVOCATION_STORAGE_KEY = getEnvironmentStorageKey(
+  'food_tracker_notification_device_revocation_v1',
+);
+const NOTIFICATION_DEVICE_REVOCATION_KEYCHAIN_SERVICE = getEnvironmentStorageKey(
+  'food_tracker_notification_device_revocation',
+);
 const NOTIFICATION_REGISTRATION_RETRY_DELAY_MS = 30_000;
 const NOTIFICATION_TAP_ROUTE_RETRY_DELAY_MS = 250;
 const NOTIFICATION_TAP_ROUTE_MAX_ATTEMPTS = 20;
@@ -25,6 +35,20 @@ const MONTHLY_FRIENDS_ACTIVITY_NOTIFICATION_TYPE = 'monthly_friends_activity';
 type NotificationAuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type NotificationsModule = typeof ExpoNotifications;
 export type VisitReminderMinutes = 15 | 30 | 60;
+
+interface NotificationDeviceRevocationState {
+  deviceId: string;
+  pendingDeactivation: boolean;
+  revocationCapability: string;
+  revocationId: string;
+}
+
+export class NotificationDeviceCleanupNotDurableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'NotificationDeviceCleanupNotDurableError';
+  }
+}
 
 export type ScheduleVisitReminderResult =
   | {
@@ -57,6 +81,9 @@ interface NavigationRefLike {
 
 let cachedNotificationsModule: NotificationsModule | null | undefined;
 let hasLoggedNotificationsModuleUnavailable = false;
+let notificationDeviceDeactivationCount = 0;
+let notificationDeviceRegistrationTail: Promise<void> = Promise.resolve();
+const pendingNotificationDeviceRegistrations = new Set<Promise<unknown>>();
 let notificationsNativeAvailabilityChecker = hasNotificationsNativeModule;
 let notificationsModuleLoader: () => Promise<NotificationsModule> = async () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -91,17 +118,76 @@ async function resolveNotificationDeviceId(): Promise<string> {
 }
 
 export async function clearNotificationDeviceIdentity(): Promise<void> {
-  await localPersistence.notifications.storage.removeItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+  await Promise.all([
+    localPersistence.notifications.storage.removeItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY),
+    clearNotificationDeviceRevocationState(),
+  ]);
 }
 
 export async function unregisterCurrentNotificationDevice(): Promise<void> {
-  const deviceId = await localPersistence.notifications.storage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
-  if (!deviceId?.trim()) {
-    return;
-  }
+  notificationDeviceDeactivationCount += 1;
+  try {
+    await waitForPendingNotificationDeviceRegistrations();
+    const deviceId = await localPersistence.notifications.storage.getItem(NOTIFICATION_DEVICE_ID_STORAGE_KEY);
+    if (!deviceId?.trim()) {
+      return;
+    }
 
-  await deactivateNotificationDevice(deviceId);
-  await clearNotificationDeviceIdentity();
+    let revocationState: NotificationDeviceRevocationState | null;
+    try {
+      revocationState = await readNotificationDeviceRevocationState();
+    } catch (error) {
+      await deactivateNotificationDeviceWithoutTombstone(deviceId, error);
+      return;
+    }
+    if (!revocationState) {
+      await deactivateNotificationDeviceWithoutTombstone(deviceId);
+      return;
+    }
+    if (revocationState.deviceId !== deviceId) {
+      throw new NotificationDeviceCleanupNotDurableError(
+        'Stored notification device cleanup does not match the current device.',
+      );
+    }
+
+    if (revocationState.pendingDeactivation) {
+      try {
+        await revokeNotificationDevice({
+          revocationCapability: revocationState.revocationCapability,
+          revocationId: revocationState.revocationId,
+        });
+      } catch (error) {
+        logger.warn('[NotificationInteraction] Notification device revocation remains queued:', error);
+        return;
+      }
+
+      await clearNotificationDeviceIdentity();
+      return;
+    }
+
+    try {
+      await writeNotificationDeviceRevocationState({
+        ...revocationState,
+        pendingDeactivation: true,
+      });
+    } catch (error) {
+      throw new NotificationDeviceCleanupNotDurableError(
+        'Could not persist notification device cleanup before sign-out.',
+        { cause: error },
+      );
+    }
+
+    try {
+      await deactivateNotificationDevice(deviceId);
+    } catch (error) {
+      logger.warn('[NotificationInteraction] Notification device deactivation queued for retry:', error);
+      return;
+    }
+
+    await clearNotificationDeviceIdentity();
+  } finally {
+    notificationDeviceDeactivationCount -= 1;
+  }
 }
 
 export function useRemoteNotificationRegistration(status: NotificationAuthStatus, userId: string | null | undefined) {
@@ -134,7 +220,10 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
         return;
       }
 
-      activeAttempt = registerRemoteNotificationDevice(trigger)
+      activeAttempt = runNotificationDeviceRegistrationWorkflow(() =>
+        registerRemoteNotificationDevice(trigger),
+      )
+        .then(() => undefined)
         .catch((error) => {
           if (isIosSimulatorMissingApnsEntitlementError(error)) {
             trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
@@ -168,6 +257,7 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
     };
 
     const registerRemoteNotificationDevice = async (trigger: 'auth' | 'foreground' | 'retry') => {
+      await replayPendingNotificationDeviceDeactivation();
       const notifications = await loadNotificationsModule();
       if (!notifications) {
         trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
@@ -200,8 +290,8 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
         return;
       }
 
-      const [deviceId, pushToken] = await Promise.all([
-        resolveNotificationDeviceId(),
+      const [registrationState, pushToken] = await Promise.all([
+        resolveNotificationDeviceRegistrationState(),
         notifications.getExpoPushTokenAsync({ projectId }),
       ]);
       if (isCancelled) {
@@ -209,9 +299,11 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
       }
 
       await registerNotificationDevice({
-        deviceId,
+        deviceId: registrationState.deviceId,
         platform: Platform.OS,
         pushToken: pushToken.data,
+        revocationCapability: registrationState.revocationCapability,
+        revocationId: registrationState.revocationId,
       });
       trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SUCCEEDED', {
         platform: Platform.OS,
@@ -236,7 +328,19 @@ export function useRemoteNotificationRegistration(status: NotificationAuthStatus
   }, [status, userId]);
 }
 
-export async function registerCurrentRemoteNotificationDevice(trigger: 'settings' | 'auth' | 'foreground' | 'retry' = 'settings'): Promise<boolean> {
+export async function registerCurrentRemoteNotificationDevice(
+  trigger: 'settings' | 'auth' | 'foreground' | 'retry' = 'settings',
+): Promise<boolean> {
+  const result = await runNotificationDeviceRegistrationWorkflow(() =>
+    registerCurrentRemoteNotificationDeviceWorkflow(trigger),
+  );
+  return result ?? false;
+}
+
+async function registerCurrentRemoteNotificationDeviceWorkflow(
+  trigger: 'settings' | 'auth' | 'foreground' | 'retry',
+): Promise<boolean> {
+  await replayPendingNotificationDeviceDeactivation();
   const notifications = await loadNotificationsModule();
   if (!notifications) {
     trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SKIPPED', {
@@ -267,14 +371,16 @@ export async function registerCurrentRemoteNotificationDevice(trigger: 'settings
     return false;
   }
 
-  const [deviceId, pushToken] = await Promise.all([
-    resolveNotificationDeviceId(),
+  const [registrationState, pushToken] = await Promise.all([
+    resolveNotificationDeviceRegistrationState(),
     notifications.getExpoPushTokenAsync({ projectId }),
   ]);
   await registerNotificationDevice({
-    deviceId,
+    deviceId: registrationState.deviceId,
     platform: Platform.OS,
     pushToken: pushToken.data,
+    revocationCapability: registrationState.revocationCapability,
+    revocationId: registrationState.revocationId,
   });
   trackObservabilityEvent('NOTIFICATION_DEVICE_REGISTRATION_SUCCEEDED', {
     platform: Platform.OS,
@@ -282,6 +388,161 @@ export async function registerCurrentRemoteNotificationDevice(trigger: 'settings
     trigger,
   });
   return true;
+}
+
+function runNotificationDeviceRegistrationWorkflow<T>(
+  workflow: () => Promise<T>,
+): Promise<T | undefined> {
+  if (notificationDeviceDeactivationCount > 0) {
+    return Promise.resolve(undefined);
+  }
+
+  const previousRegistration = notificationDeviceRegistrationTail.catch(() => undefined);
+  let releaseRegistration = () => {};
+  const registrationGate = new Promise<void>((resolve) => {
+    releaseRegistration = resolve;
+  });
+  notificationDeviceRegistrationTail = previousRegistration.then(() => registrationGate);
+
+  const registration = (async () => {
+    await previousRegistration;
+    try {
+      if (notificationDeviceDeactivationCount > 0) {
+        return undefined;
+      }
+      return await workflow();
+    } finally {
+      releaseRegistration();
+    }
+  })();
+  pendingNotificationDeviceRegistrations.add(registration);
+  void registration.then(() => {
+    pendingNotificationDeviceRegistrations.delete(registration);
+  }, () => {
+    pendingNotificationDeviceRegistrations.delete(registration);
+  });
+  return registration;
+}
+
+async function waitForPendingNotificationDeviceRegistrations(): Promise<void> {
+  while (pendingNotificationDeviceRegistrations.size > 0) {
+    await Promise.allSettled(Array.from(pendingNotificationDeviceRegistrations));
+  }
+}
+
+async function deactivateNotificationDeviceWithoutTombstone(
+  deviceId: string,
+  stateError?: unknown,
+): Promise<void> {
+  try {
+    await deactivateNotificationDevice(deviceId);
+  } catch (error) {
+    throw new NotificationDeviceCleanupNotDurableError(
+      'Notification device cleanup failed without a durable tombstone.',
+      { cause: stateError ?? error },
+    );
+  }
+
+  try {
+    await clearNotificationDeviceIdentity();
+  } catch (error) {
+    logger.warn('[NotificationInteraction] Failed to clear inactive notification device state:', error);
+  }
+}
+
+async function replayPendingNotificationDeviceDeactivation(): Promise<void> {
+  const state = await readNotificationDeviceRevocationState();
+  if (!state?.pendingDeactivation) {
+    return;
+  }
+
+  await revokeNotificationDevice({
+    revocationCapability: state.revocationCapability,
+    revocationId: state.revocationId,
+  });
+  await clearNotificationDeviceIdentity();
+}
+
+async function resolveNotificationDeviceRegistrationState(): Promise<NotificationDeviceRevocationState> {
+  const existingState = await readNotificationDeviceRevocationState();
+  if (existingState) {
+    if (existingState.pendingDeactivation) {
+      throw new Error('Pending notification device cleanup must complete before registration.');
+    }
+    await localPersistence.notifications.storage.setItem(
+      NOTIFICATION_DEVICE_ID_STORAGE_KEY,
+      existingState.deviceId,
+    );
+    return existingState;
+  }
+
+  const deviceId = await resolveNotificationDeviceId();
+  const [revocationCapability, revocationId] = await Promise.all([
+    createSecureRandomHex(),
+    createSecureRandomHex(),
+  ]);
+  const state: NotificationDeviceRevocationState = {
+    deviceId,
+    pendingDeactivation: false,
+    revocationCapability,
+    revocationId,
+  };
+  await writeNotificationDeviceRevocationState(state);
+  return state;
+}
+
+async function createSecureRandomHex(): Promise<string> {
+  const bytes = await Crypto.getRandomBytesAsync(32);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+async function readNotificationDeviceRevocationState(): Promise<NotificationDeviceRevocationState | null> {
+  const serialized = await SecureStore.getItemAsync(
+    NOTIFICATION_DEVICE_REVOCATION_STORAGE_KEY,
+    notificationDeviceSecureStoreOptions(),
+  );
+  if (!serialized) {
+    return null;
+  }
+
+  const parsed = JSON.parse(serialized) as Partial<NotificationDeviceRevocationState>;
+  if (
+    typeof parsed.deviceId !== 'string' ||
+    !parsed.deviceId.trim() ||
+    typeof parsed.pendingDeactivation !== 'boolean' ||
+    typeof parsed.revocationCapability !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(parsed.revocationCapability) ||
+    typeof parsed.revocationId !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(parsed.revocationId)
+  ) {
+    throw new Error('Stored notification device revocation state is invalid.');
+  }
+
+  return parsed as NotificationDeviceRevocationState;
+}
+
+async function writeNotificationDeviceRevocationState(
+  state: NotificationDeviceRevocationState,
+): Promise<void> {
+  await SecureStore.setItemAsync(
+    NOTIFICATION_DEVICE_REVOCATION_STORAGE_KEY,
+    JSON.stringify(state),
+    notificationDeviceSecureStoreOptions(),
+  );
+}
+
+async function clearNotificationDeviceRevocationState(): Promise<void> {
+  await SecureStore.deleteItemAsync(
+    NOTIFICATION_DEVICE_REVOCATION_STORAGE_KEY,
+    notificationDeviceSecureStoreOptions(),
+  );
+}
+
+function notificationDeviceSecureStoreOptions() {
+  return {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    keychainService: NOTIFICATION_DEVICE_REVOCATION_KEYCHAIN_SERVICE,
+  };
 }
 
 function isIosSimulatorMissingApnsEntitlementError(error: unknown): boolean {

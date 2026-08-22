@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -34,7 +36,10 @@ const (
 	expoPushReceiptsEndpoint  = "https://exp.host/--/api/v2/push/getReceipts"
 )
 
-var expoPushTokenPattern = regexp.MustCompile(`(?:ExponentPushToken|ExpoPushToken)\[[^\]]+\]`)
+var (
+	expoPushTokenPattern                     = regexp.MustCompile(`(?:ExponentPushToken|ExpoPushToken)\[[^\]]+\]`)
+	notificationDeviceRevocationValuePattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+)
 
 type remoteNotificationPreferenceCategory string
 
@@ -45,9 +50,16 @@ const (
 )
 
 type notificationDeviceRegistrationRequest struct {
-	DeviceID  string `json:"deviceId"`
-	Platform  string `json:"platform"`
-	PushToken string `json:"pushToken"`
+	DeviceID             string `json:"deviceId"`
+	Platform             string `json:"platform"`
+	PushToken            string `json:"pushToken"`
+	RevocationCapability string `json:"revocationCapability"`
+	RevocationID         string `json:"revocationId"`
+}
+
+type notificationDeviceRevocationRequest struct {
+	RevocationCapability string `json:"revocationCapability"`
+	RevocationID         string `json:"revocationId"`
 }
 
 type notificationPreferencesRequest struct {
@@ -439,6 +451,13 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 		platform := normalizeNotificationDevicePlatform(requestBody.Platform)
+		revocationCapability, revocationID, err := normalizeNotificationDeviceRevocationCredentials(
+			requestBody.RevocationCapability,
+			requestBody.RevocationID,
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
 		now := time.Now().UTC()
 
 		if err := app.RunInTransaction(func(txApp core.App) error {
@@ -463,12 +482,16 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 			record.Set("push_token", pushToken)
 			record.Set("platform", platform)
 			record.Set("active", true)
+			record.Set("auth_token_key_hash", hashNotificationDeviceSecret(authRecord.TokenKey()))
 			record.Set("last_registered_at", now)
 			record.Set("last_seen_at", now)
+			if revocationID != "" {
+				record.Set("revocation_id", revocationID)
+				record.Set("revocation_capability_hash", hashNotificationDeviceSecret(revocationCapability))
+			}
 			if err := txApp.Save(record); err != nil {
 				return err
 			}
-
 			return deactivateOtherNotificationDevicesForRegistration(txApp, authRecord.Id, deviceID, pushToken)
 		}); err != nil {
 			return apis.NewApiError(500, "failed to save notification device", err)
@@ -476,6 +499,44 @@ func RegisterNotificationHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, map[string]any{"success": true})
 	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/notification-devices/revoke", func(e *core.RequestEvent) error {
+		requestBody := notificationDeviceRevocationRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		revocationCapability, revocationID, err := normalizeNotificationDeviceRevocationCredentials(
+			requestBody.RevocationCapability,
+			requestBody.RevocationID,
+		)
+		if err != nil || revocationID == "" {
+			return apis.NewBadRequestError("valid revocation credentials are required", nil)
+		}
+
+		record, findErr := app.FindFirstRecordByFilter(
+			"notification_devices",
+			"revocation_id = {:revocationID}",
+			dbx.Params{"revocationID": revocationID},
+		)
+		if findErr != nil {
+			if errors.Is(findErr, sql.ErrNoRows) {
+				return e.JSON(200, map[string]any{"success": true})
+			}
+			return apis.NewApiError(500, "failed to load notification device", findErr)
+		}
+
+		expectedHash := record.GetString("revocation_capability_hash")
+		providedHash := hashNotificationDeviceSecret(revocationCapability)
+		if subtle.ConstantTimeCompare([]byte(expectedHash), []byte(providedHash)) != 1 {
+			return e.JSON(200, map[string]any{"success": true})
+		}
+		if err := deactivateNotificationDeviceRecord(app, record); err != nil {
+			return apis.NewApiError(500, "failed to deactivate notification device", err)
+		}
+
+		return e.JSON(200, map[string]any{"success": true})
+	})
 
 	se.Router.GET("/api/notification-preferences", func(e *core.RequestEvent) error {
 		authRecord, err := requireTastingAuth(e)
@@ -2289,14 +2350,43 @@ func billPaymentReminderDeliveryAttemptKey(participantID string, recipientID str
 }
 
 func listActiveNotificationDevices(app core.App, userID string) ([]*core.Record, error) {
-	return app.FindRecordsByFilter(
+	trimmedUserID := strings.TrimSpace(userID)
+	user, err := app.FindRecordById("users", trimmedUserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []*core.Record{}, nil
+		}
+		return nil, err
+	}
+	currentAuthTokenKeyHash := hashNotificationDeviceSecret(user.TokenKey())
+	records, err := app.FindRecordsByFilter(
 		"notification_devices",
 		"user = {:user} && active = true",
 		"updated",
 		100,
 		0,
-		dbx.Params{"user": strings.TrimSpace(userID)},
+		dbx.Params{"user": trimmedUserID},
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	eligible := make([]*core.Record, 0, len(records))
+	for _, record := range records {
+		registeredAuthTokenKeyHash := record.GetString("auth_token_key_hash")
+		if registeredAuthTokenKeyHash == "" || subtle.ConstantTimeCompare(
+			[]byte(registeredAuthTokenKeyHash),
+			[]byte(currentAuthTokenKeyHash),
+		) != 1 {
+			if err := deactivateNotificationDeviceRecord(app, record); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		eligible = append(eligible, record)
+	}
+
+	return eligible, nil
 }
 
 type remoteNotificationSendResult struct {
@@ -2456,6 +2546,24 @@ func normalizeNotificationDevicePlatform(platform string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func normalizeNotificationDeviceRevocationCredentials(capability string, revocationID string) (string, string, error) {
+	trimmedCapability := strings.TrimSpace(capability)
+	trimmedRevocationID := strings.TrimSpace(revocationID)
+	if trimmedCapability == "" && trimmedRevocationID == "" {
+		return "", "", nil
+	}
+	if !notificationDeviceRevocationValuePattern.MatchString(trimmedCapability) ||
+		!notificationDeviceRevocationValuePattern.MatchString(trimmedRevocationID) {
+		return "", "", errors.New("revocationCapability and revocationId must be 64 lowercase hexadecimal characters")
+	}
+	return trimmedCapability, trimmedRevocationID, nil
+}
+
+func hashNotificationDeviceSecret(value string) string {
+	hash := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return fmt.Sprintf("%x", hash[:])
 }
 
 func isInvalidProviderTokenErrorCode(errorCode string) bool {

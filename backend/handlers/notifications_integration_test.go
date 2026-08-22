@@ -1,8 +1,10 @@
 package handlers_test
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -247,6 +249,106 @@ func TestNotificationDeviceEndpointsRequireAuthentication(t *testing.T) {
 	}
 }
 
+func TestNotificationDeviceRevocationCapabilityIsScopedAndIdempotent(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	_, token := createAuthUser(t, server.app, false, false)
+	capability := strings.Repeat("a", 64)
+	revocationID := strings.Repeat("b", 64)
+
+	registerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices",
+		token,
+		`{"deviceId":"device-1","platform":"ios","pushToken":"ExponentPushToken[first]","revocationCapability":"`+capability+`","revocationId":"`+revocationID+`"}`,
+	)
+	if registerResponse.Code != http.StatusOK {
+		t.Fatalf("expected notification device registration to succeed, got %d: %s", registerResponse.Code, registerResponse.Body.String())
+	}
+	record, err := server.app.FindFirstRecordByFilter(
+		"notification_devices",
+		"revocation_id = {:revocationID}",
+		map[string]any{"revocationID": revocationID},
+	)
+	if err != nil {
+		t.Fatalf("failed to load registered notification device: %v", err)
+	}
+	if record.GetString("revocation_capability_hash") == capability ||
+		record.GetString("revocation_capability_hash") != hashNotificationDeviceTestSecret(capability) {
+		t.Fatalf("expected only a capability hash to be stored, got %q", record.GetString("revocation_capability_hash"))
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		revokeResponse := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/notification-devices/revoke",
+			"",
+			`{"revocationCapability":"`+capability+`","revocationId":"`+revocationID+`"}`,
+		)
+		if revokeResponse.Code != http.StatusOK {
+			t.Fatalf("expected capability revocation attempt %d to succeed, got %d: %s", attempt+1, revokeResponse.Code, revokeResponse.Body.String())
+		}
+	}
+	assertNotificationDeviceActiveState(t, server.app, record.Id, false)
+}
+
+func TestNotificationDeviceRevocationCapabilityCannotDeactivateAnotherRecord(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterNotificationHandlers(se, app)
+	})
+	firstUser, _ := createAuthUser(t, server.app, false, false)
+	secondUser, _ := createAuthUser(t, server.app, false, false)
+	firstCapability := strings.Repeat("c", 64)
+	firstRevocationID := strings.Repeat("d", 64)
+	secondCapability := strings.Repeat("e", 64)
+	secondRevocationID := strings.Repeat("f", 64)
+	firstDevice := createNotificationDeviceRecord(t, server.app, firstUser.Id, "shared-device", "ExponentPushToken[first]", true)
+	firstDevice.Set("revocation_id", firstRevocationID)
+	firstDevice.Set("revocation_capability_hash", hashNotificationDeviceTestSecret(firstCapability))
+	if err := server.app.Save(firstDevice); err != nil {
+		t.Fatalf("failed to add first revocation credential: %v", err)
+	}
+	secondDevice := createNotificationDeviceRecord(t, server.app, secondUser.Id, "shared-device", "ExponentPushToken[second]", true)
+	secondDevice.Set("revocation_id", secondRevocationID)
+	secondDevice.Set("revocation_capability_hash", hashNotificationDeviceTestSecret(secondCapability))
+	if err := server.app.Save(secondDevice); err != nil {
+		t.Fatalf("failed to add second revocation credential: %v", err)
+	}
+
+	wrongCapabilityResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices/revoke",
+		"",
+		`{"revocationCapability":"`+secondCapability+`","revocationId":"`+firstRevocationID+`"}`,
+	)
+	if wrongCapabilityResponse.Code != http.StatusOK {
+		t.Fatalf("expected invalid capability to use a non-enumerating response, got %d: %s", wrongCapabilityResponse.Code, wrongCapabilityResponse.Body.String())
+	}
+	assertNotificationDeviceActiveState(t, server.app, firstDevice.Id, true)
+	assertNotificationDeviceActiveState(t, server.app, secondDevice.Id, true)
+
+	revokeResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/notification-devices/revoke",
+		"",
+		`{"revocationCapability":"`+firstCapability+`","revocationId":"`+firstRevocationID+`"}`,
+	)
+	if revokeResponse.Code != http.StatusOK {
+		t.Fatalf("expected scoped revocation to succeed, got %d: %s", revokeResponse.Code, revokeResponse.Body.String())
+	}
+	assertNotificationDeviceActiveState(t, server.app, firstDevice.Id, false)
+	assertNotificationDeviceActiveState(t, server.app, secondDevice.Id, true)
+}
+
 func TestNotificationPreferencesApiDefaultsAndSavesForAuthenticatedUser(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterNotificationHandlers(se, app)
@@ -368,6 +470,40 @@ func TestTastingInviteNotificationDeliveryCreateAndResend(t *testing.T) {
 	if len(sender.calls) != 2 {
 		t.Fatalf("expected resend to send another notification, got %#v", sender.calls)
 	}
+}
+
+func TestTastingInviteNotificationExcludesDevicesFromRevokedSessions(t *testing.T) {
+	sender := &recordingNotificationPushSender{}
+	restore := handlers.SetNotificationPushSenderForTests(sender)
+	defer restore()
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, _ := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
+	device := createNotificationDeviceRecord(t, server.app, invitee.Id, "revoked-device", "ExponentPushToken[revoked]", true)
+	invitee.RefreshTokenKey()
+	if err := server.app.Save(invitee); err != nil {
+		t.Fatalf("failed to revoke invitee sessions: %v", err)
+	}
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Revoked Session Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected tasting session creation to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected revoked-session device to be excluded, got %#v", sender.calls)
+	}
+	assertNotificationDeviceActiveState(t, server.app, device.Id, false)
 }
 
 func TestTastingInviteNotificationDeliverySuppressionsAndMinimalLog(t *testing.T) {
@@ -1938,13 +2074,23 @@ func TestAdminTastingInviteNotificationTestEndpointSendsWithoutSession(t *testin
 
 func createNotificationDeviceRecord(t *testing.T, app core.App, userID string, deviceID string, token string, active bool) *core.Record {
 	t.Helper()
+	user, err := app.FindRecordById("users", userID)
+	if err != nil {
+		t.Fatalf("failed to load notification device owner: %v", err)
+	}
 	return createCollectionRecord(t, app, "notification_devices", map[string]any{
-		"user":       userID,
-		"device_id":  deviceID,
-		"push_token": token,
-		"platform":   "ios",
-		"active":     active,
+		"user":                userID,
+		"device_id":           deviceID,
+		"push_token":          token,
+		"platform":            "ios",
+		"active":              active,
+		"auth_token_key_hash": hashNotificationDeviceTestSecret(user.TokenKey()),
 	})
+}
+
+func hashNotificationDeviceTestSecret(value string) string {
+	hash := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return fmt.Sprintf("%x", hash[:])
 }
 
 func createNotificationDeliveryLogRecord(t *testing.T, app core.App, userID string, deliveryKey string, status string) *core.Record {

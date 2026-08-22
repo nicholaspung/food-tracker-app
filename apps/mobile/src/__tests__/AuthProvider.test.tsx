@@ -405,6 +405,28 @@ describe('AuthProvider', () => {
     expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
   });
 
+  it('keeps authentication when notification cleanup cannot be made durable', async () => {
+    mockDeactivateNotificationDeviceForSignOut.mockRejectedValueOnce(
+      new Error('notification cleanup is not durable'),
+    );
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await expect(renderer.root.findByType('AuthState').props.signOut()).rejects.toThrow(
+      'notification cleanup is not durable',
+    );
+
+    expect(mockClear).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('AuthState').props.status).toBe('authenticated');
+  });
+
   it('clears authenticated local state when the active auth session disappears', async () => {
     let renderer: any;
     await act(async () => {

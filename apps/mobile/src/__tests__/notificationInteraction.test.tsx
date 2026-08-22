@@ -1,9 +1,12 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
+import * as SecureStore from 'expo-secure-store';
 
 import {
+  NotificationDeviceCleanupNotDurableError,
   clearNotificationDeviceIdentity,
   getVisitReminderNotificationStatus,
+  registerCurrentRemoteNotificationDevice,
   routeNotificationResponse,
   scheduleVisitReminderNotification,
   setNotificationsModuleLoaderForTests,
@@ -15,7 +18,9 @@ import {
 import {
   deactivateNotificationDevice,
   registerNotificationDevice,
+  revokeNotificationDevice,
 } from '../features/store/notificationDevicesStore';
+import { getEnvironmentStorageKey } from '../config/persistence';
 import { logger } from '../lib/logger';
 import { trackObservabilityEvent } from '../observability';
 
@@ -32,6 +37,10 @@ const mockRemoveAppStateListener = jest.fn();
 let mockAppStateListener: ((state: string) => void) | null = null;
 const mockAsyncStorageState = new Map<string, string>();
 let mockIsDevice = true;
+const mockGetRandomBytesAsync = jest.fn();
+const notificationDeviceRevocationStorageKey = getEnvironmentStorageKey(
+  'food_tracker_notification_device_revocation_v1',
+);
 
 jest.mock('react-native', () => ({
   AppState: {
@@ -63,6 +72,10 @@ jest.mock('expo-device', () => ({
   },
 }));
 
+jest.mock('expo-crypto', () => ({
+  getRandomBytesAsync: (...args: unknown[]) => mockGetRandomBytesAsync(...args),
+}));
+
 jest.mock('expo-notifications', () => ({
   addNotificationResponseReceivedListener: (...args: unknown[]) =>
     mockAddNotificationResponseReceivedListener(...args),
@@ -88,6 +101,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('../features/store/notificationDevicesStore', () => ({
   deactivateNotificationDevice: jest.fn(),
   registerNotificationDevice: jest.fn(),
+  revokeNotificationDevice: jest.fn(),
 }));
 
 jest.mock('../lib/logger', () => ({
@@ -105,6 +119,9 @@ const mockedRegisterNotificationDevice = registerNotificationDevice as jest.Mock
 >;
 const mockedDeactivateNotificationDevice = deactivateNotificationDevice as jest.MockedFunction<
   typeof deactivateNotificationDevice
+>;
+const mockedRevokeNotificationDevice = revokeNotificationDevice as jest.MockedFunction<
+  typeof revokeNotificationDevice
 >;
 const mockedLogger = logger as jest.Mocked<typeof logger>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
@@ -131,7 +148,7 @@ async function flushNotificationEffects(): Promise<void> {
 }
 
 describe('notificationInteraction', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-28T12:00:00.000Z'));
     mockAsyncStorageState.clear();
@@ -150,6 +167,8 @@ describe('notificationInteraction', () => {
     mockIsDevice = true;
     mockedRegisterNotificationDevice.mockReset();
     mockedDeactivateNotificationDevice.mockReset();
+    mockedRevokeNotificationDevice.mockReset();
+    mockGetRandomBytesAsync.mockReset();
     mockedLogger.warn.mockReset();
     mockedTrackObservabilityEvent.mockReset();
 
@@ -162,8 +181,12 @@ describe('notificationInteraction', () => {
     mockRequestPermissionsAsync.mockResolvedValue({ granted: true });
     mockScheduleNotificationAsync.mockResolvedValue('notification_1');
     mockGetExpoPushTokenAsync.mockResolvedValue({ data: 'ExponentPushToken[test]' });
+    let randomByte = 1;
+    mockGetRandomBytesAsync.mockImplementation(async () => new Uint8Array(32).fill(randomByte++));
     mockedRegisterNotificationDevice.mockResolvedValue(undefined);
     mockedDeactivateNotificationDevice.mockResolvedValue(undefined);
+    mockedRevokeNotificationDevice.mockResolvedValue(undefined);
+    await SecureStore.deleteItemAsync(notificationDeviceRevocationStorageKey);
     setNotificationsModuleLoaderForTests(async () => ({
       addNotificationResponseReceivedListener: mockAddNotificationResponseReceivedListener,
       getExpoPushTokenAsync: mockGetExpoPushTokenAsync,
@@ -349,9 +372,246 @@ describe('notificationInteraction', () => {
     globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
     mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('server failed'));
 
-    await expect(unregisterCurrentNotificationDevice()).rejects.toThrow('server failed');
+    await expect(unregisterCurrentNotificationDevice()).rejects.toBeInstanceOf(
+      NotificationDeviceCleanupNotDurableError,
+    );
 
     expect(mockedDeactivateNotificationDevice).toHaveBeenCalledWith('device_1');
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBe('device_1');
+  });
+
+  it('persists a bearer-free tombstone on failed sign-out cleanup and replays it before another registration', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    const firstRegistration = mockedRegisterNotificationDevice.mock.calls[0][0];
+    mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('network unavailable'));
+
+    await expect(unregisterCurrentNotificationDevice()).resolves.toBeUndefined();
+
+    const serializedTombstone = await SecureStore.getItemAsync(notificationDeviceRevocationStorageKey);
+    expect(serializedTombstone).not.toContain('token_1');
+    expect(JSON.parse(serializedTombstone ?? '{}')).toEqual({
+      deviceId: firstRegistration.deviceId,
+      pendingDeactivation: true,
+      revocationCapability: firstRegistration.revocationCapability,
+      revocationId: firstRegistration.revocationId,
+    });
+
+    await act(async () => {
+      renderer.unmount();
+      create(<RegistrationHarness userId="user_2" />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRevokeNotificationDevice).toHaveBeenCalledWith({
+      revocationCapability: firstRegistration.revocationCapability,
+      revocationId: firstRegistration.revocationId,
+    });
+    expect(mockedRevokeNotificationDevice.mock.invocationCallOrder[0]).toBeLessThan(
+      mockedRegisterNotificationDevice.mock.invocationCallOrder[1],
+    );
+    expect(mockedRegisterNotificationDevice.mock.calls[1][0].revocationId).not.toBe(
+      firstRegistration.revocationId,
+    );
+  });
+
+  it('uses the pending scoped tombstone when another account signs out after replay fails', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+
+    const firstRegistration = mockedRegisterNotificationDevice.mock.calls[0][0];
+    mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('network unavailable'));
+    await unregisterCurrentNotificationDevice();
+
+    mockedRevokeNotificationDevice.mockRejectedValueOnce(new Error('replay unavailable'));
+    await act(async () => {
+      renderer.unmount();
+      renderer = create(<RegistrationHarness userId="user_2" />);
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledTimes(1);
+    expect(mockedRevokeNotificationDevice).toHaveBeenCalledWith({
+      revocationCapability: firstRegistration.revocationCapability,
+      revocationId: firstRegistration.revocationId,
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+    mockedDeactivateNotificationDevice.mockClear();
+
+    await unregisterCurrentNotificationDevice();
+
+    expect(mockedRevokeNotificationDevice).toHaveBeenCalledTimes(2);
+    expect(mockedRevokeNotificationDevice).toHaveBeenLastCalledWith({
+      revocationCapability: firstRegistration.revocationCapability,
+      revocationId: firstRegistration.revocationId,
+    });
+    expect(mockedDeactivateNotificationDevice).not.toHaveBeenCalled();
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBeNull();
+    await expect(SecureStore.getItemAsync(notificationDeviceRevocationStorageKey)).resolves.toBeNull();
+  });
+
+  it('does not attempt sign-out deactivation when the cleanup tombstone cannot be persisted', async () => {
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+    mockedDeactivateNotificationDevice.mockClear();
+    (SecureStore.setItemAsync as jest.MockedFunction<typeof SecureStore.setItemAsync>)
+      .mockRejectedValueOnce(new Error('secure storage unavailable'));
+
+    await expect(unregisterCurrentNotificationDevice()).rejects.toBeInstanceOf(
+      NotificationDeviceCleanupNotDurableError,
+    );
+
+    expect(mockedDeactivateNotificationDevice).not.toHaveBeenCalled();
+  });
+
+  it('waits for an in-flight registration before deactivating during sign-out', async () => {
+    const events: string[] = [];
+    let completeRegistration = () => {};
+    mockedRegisterNotificationDevice.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          events.push('registration_started');
+          completeRegistration = () => {
+            events.push('registration_completed');
+            resolve();
+          };
+        }),
+    );
+    mockedDeactivateNotificationDevice.mockImplementationOnce(async () => {
+      events.push('deactivated');
+    });
+
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+    expect(events).toEqual(['registration_started']);
+
+    const unregisterPromise = unregisterCurrentNotificationDevice();
+    await Promise.resolve();
+    expect(mockedDeactivateNotificationDevice).not.toHaveBeenCalled();
+
+    completeRegistration();
+    await unregisterPromise;
+
+    expect(events).toEqual(['registration_started', 'registration_completed', 'deactivated']);
+  });
+
+  it('waits for registration preflight before deactivating during sign-out', async () => {
+    const events: string[] = [];
+    let completePermissionCheck = () => {};
+    mockGetPermissionsAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          events.push('permission_started');
+          completePermissionCheck = () => {
+            events.push('permission_completed');
+            resolve({ granted: true });
+          };
+        }),
+    );
+    mockedRegisterNotificationDevice.mockImplementationOnce(async () => {
+      events.push('registered');
+    });
+    mockedDeactivateNotificationDevice.mockImplementationOnce(async () => {
+      events.push('deactivated');
+    });
+
+    await act(async () => {
+      create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+    const unregisterPromise = unregisterCurrentNotificationDevice();
+    await Promise.resolve();
+    expect(mockedDeactivateNotificationDevice).not.toHaveBeenCalled();
+
+    completePermissionCheck();
+    await unregisterPromise;
+
+    expect(events).toEqual([
+      'permission_started',
+      'permission_completed',
+      'registered',
+      'deactivated',
+    ]);
+  });
+
+  it('serializes concurrent registration preflights onto one revocation identity', async () => {
+    let completePushTokenRequest = () => {};
+    mockGetExpoPushTokenAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completePushTokenRequest = () => resolve({ data: 'ExponentPushToken[first]' });
+        }),
+    );
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RegistrationHarness />);
+      await flushNotificationEffects();
+    });
+    const imperativeRegistration = registerCurrentRemoteNotificationDevice('settings');
+    await Promise.resolve();
+
+    expect(mockGetPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockedRegisterNotificationDevice).not.toHaveBeenCalled();
+
+    await act(async () => {
+      completePushTokenRequest();
+      await imperativeRegistration;
+      await flushNotificationEffects();
+    });
+
+    expect(mockedRegisterNotificationDevice).toHaveBeenCalledTimes(2);
+    expect(mockedRegisterNotificationDevice.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        deviceId: mockedRegisterNotificationDevice.mock.calls[0][0].deviceId,
+        revocationCapability:
+          mockedRegisterNotificationDevice.mock.calls[0][0].revocationCapability,
+        revocationId: mockedRegisterNotificationDevice.mock.calls[0][0].revocationId,
+      }),
+    );
+    expect(mockGetRandomBytesAsync).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('blocks sign-out when secure revocation state cannot be read and server cleanup fails', async () => {
+    globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
+    (SecureStore.getItemAsync as jest.MockedFunction<typeof SecureStore.getItemAsync>)
+      .mockRejectedValueOnce(new Error('secure storage unavailable'));
+    mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('network unavailable'));
+
+    await expect(unregisterCurrentNotificationDevice()).rejects.toBeInstanceOf(
+      NotificationDeviceCleanupNotDurableError,
+    );
+
+    expect(globalThis.localStorage.getItem('notifications.deviceId')).toBe('device_1');
+  });
+
+  it('blocks sign-out when stored revocation state is corrupt and server cleanup fails', async () => {
+    globalThis.localStorage.setItem('notifications.deviceId', 'device_1');
+    await SecureStore.setItemAsync(notificationDeviceRevocationStorageKey, 'not-json');
+    mockedDeactivateNotificationDevice.mockRejectedValueOnce(new Error('network unavailable'));
+
+    await expect(unregisterCurrentNotificationDevice()).rejects.toBeInstanceOf(
+      NotificationDeviceCleanupNotDurableError,
+    );
+
     expect(globalThis.localStorage.getItem('notifications.deviceId')).toBe('device_1');
   });
 
