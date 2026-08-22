@@ -1,6 +1,17 @@
 import { createFetchMutationTransport } from '../offline/fetchMutationTransport';
 import type { QueuedMutation } from '../offline/types';
 
+const BACKEND_URL = 'https://api.example.com';
+
+function createTestTransport(
+  options: Omit<Parameters<typeof createFetchMutationTransport>[0], 'backendUrl'> = {},
+) {
+  return createFetchMutationTransport({
+    backendUrl: BACKEND_URL,
+    ...options,
+  });
+}
+
 function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMutation {
   return {
     id: 'mut_1',
@@ -30,7 +41,7 @@ describe('createFetchMutationTransport', () => {
       text: async () => '',
     }));
 
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
       getActiveAccountId: () => 'user_1',
       getAuthToken: () => 'jwt_value',
@@ -52,7 +63,7 @@ describe('createFetchMutationTransport', () => {
 
   it('rejects a queued write when its origin account no longer matches', async () => {
     const fetchMock = jest.fn();
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
       getActiveAccountId: () => 'user_2',
       getAuthToken: () => 'user_2_token',
@@ -72,7 +83,7 @@ describe('createFetchMutationTransport', () => {
 
   it('quarantines cross-account food product payloads before decoding or photo upload', async () => {
     const fetchMock = jest.fn();
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
       getActiveAccountId: () => 'user_2',
       getAuthToken: () => 'user_2_token',
@@ -109,7 +120,7 @@ describe('createFetchMutationTransport', () => {
       text: async () => 'Duplicate write',
     }));
 
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
     });
 
@@ -127,7 +138,7 @@ describe('createFetchMutationTransport', () => {
       status: 404,
       text: async () => 'Not found',
     }));
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
     });
 
@@ -152,7 +163,7 @@ describe('createFetchMutationTransport', () => {
       status: 200,
       text: async () => '',
     }));
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
     });
 
@@ -178,7 +189,7 @@ describe('createFetchMutationTransport', () => {
       status: 200,
       text: async () => '',
     }));
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
     });
 
@@ -212,7 +223,7 @@ describe('createFetchMutationTransport', () => {
       throw abortError;
     });
 
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: fetchMock as unknown as typeof fetch,
     });
 
@@ -226,7 +237,7 @@ describe('createFetchMutationTransport', () => {
   });
 
   it('marks invalid local feature outbox payloads as non-retryable terminal failures', async () => {
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: jest.fn() as unknown as typeof fetch,
     });
 
@@ -249,7 +260,7 @@ describe('createFetchMutationTransport', () => {
   });
 
   it('marks local domain validation errors as non-retryable terminal failures', async () => {
-    const transport = createFetchMutationTransport({
+    const transport = createTestTransport({
       fetchImplementation: jest.fn() as unknown as typeof fetch,
     });
 
@@ -273,4 +284,67 @@ describe('createFetchMutationTransport', () => {
       statusCode: null,
     });
   });
+
+  it('normalizes default ports when comparing queued and configured origins', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    }));
+    const transport = createFetchMutationTransport({
+      backendUrl: 'https://api.example.com:443/base-path',
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({ url: 'https://api.example.com/visits' }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates foreign-origin destinations before reading or attaching the active token', async () => {
+    const fetchMock = jest.fn();
+    const getAuthToken = jest.fn(() => 'live-token');
+    const transport = createTestTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+      getActiveAccountId: () => 'user_1',
+      getAuthToken,
+    });
+
+    const result = await transport.send(
+      createQueuedMutation({ url: 'https://attacker.example/collect' }),
+    );
+
+    expect(result).toEqual({
+      destinationBindingState: 'foreign_origin',
+      errorMessage: 'Queued write targets a different backend origin and was isolated.',
+      ok: false,
+      retryable: false,
+      statusCode: null,
+    });
+    expect(getAuthToken).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['not a URL', '/relative/path', 'local://feature/not-registered'])(
+    'isolates invalid destination %s before local or network replay',
+    async (url) => {
+      const fetchMock = jest.fn();
+      const getAuthToken = jest.fn(() => 'live-token');
+      const transport = createTestTransport({
+        fetchImplementation: fetchMock as unknown as typeof fetch,
+        getActiveAccountId: () => 'user_1',
+        getAuthToken,
+      });
+
+      const result = await transport.send(createQueuedMutation({ url }));
+
+      expect(result.destinationBindingState).toBe('invalid_destination');
+      expect(result.retryable).toBe(false);
+      expect(getAuthToken).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });

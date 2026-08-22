@@ -1,13 +1,15 @@
 import { SQLiteMutationQueueStore as NativeSQLiteMutationQueueStore } from '../offline/SQLiteMutationQueueStore';
 import { SQLiteMutationQueueStore as WebSQLiteMutationQueueStore } from '../offline/SQLiteMutationQueueStore.web';
+import { createFetchMutationTransport } from '../offline/fetchMutationTransport';
 import type { MutationStatus, QueuedMutation } from '../offline/types';
 
 const mockRunAsync = jest.fn();
+const mockGetAllAsync = jest.fn();
 
 jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(async () => ({
     execAsync: jest.fn(),
-    getAllAsync: jest.fn(),
+    getAllAsync: mockGetAllAsync,
     getFirstAsync: jest.fn(),
     runAsync: mockRunAsync,
   })),
@@ -17,6 +19,8 @@ describe('SQLiteMutationQueueStore retention cleanup', () => {
   beforeEach(() => {
     mockRunAsync.mockReset();
     mockRunAsync.mockResolvedValue({ changes: 0 });
+    mockGetAllAsync.mockReset();
+    mockGetAllAsync.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -190,7 +194,77 @@ describe('SQLiteMutationQueueStore retention cleanup', () => {
       'recent_failed',
     ]);
   });
+
+  describe.each(['native', 'web'] as const)('%s queue destination binding', (platform) => {
+    it.each([
+      ['same origin', 'https://api.example.com/api/visits', true],
+      ['normalized default port', 'https://api.example.com:443/api/visits', true],
+      ['foreign origin', 'https://attacker.example/collect', false],
+      ['malformed URL', '/api/visits', false],
+    ])('%s', async (_caseName, url, shouldSend) => {
+      const queuedMutation = buildQueuedMutation({ url });
+      const loadedMutation = await loadQueueRow(platform, queuedMutation);
+      const fetchMock = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => '',
+      }));
+      const getAuthToken = jest.fn(() => 'live-token');
+      const transport = createFetchMutationTransport({
+        backendUrl: 'https://api.example.com',
+        fetchImplementation: fetchMock as unknown as typeof fetch,
+        getActiveAccountId: () => 'user_1',
+        getAuthToken,
+      });
+
+      const result = await transport.send(loadedMutation);
+
+      expect(result.ok).toBe(shouldSend);
+      expect(fetchMock).toHaveBeenCalledTimes(shouldSend ? 1 : 0);
+      expect(getAuthToken).toHaveBeenCalledTimes(shouldSend ? 1 : 0);
+    });
+  });
 });
+
+async function loadQueueRow(
+  platform: 'native' | 'web',
+  mutation: QueuedMutation,
+): Promise<QueuedMutation> {
+  if (platform === 'native') {
+    mockGetAllAsync.mockResolvedValueOnce([buildNativeQueueRow(mutation)]);
+    const store = new NativeSQLiteMutationQueueStore();
+    const loaded = await store.getReadyMutations(Date.now(), 1);
+    return loaded[0] as QueuedMutation;
+  }
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: createLocalStorageMock([mutation]),
+  });
+  const store = new WebSQLiteMutationQueueStore();
+  const loaded = await store.getReadyMutations(Date.now(), 1);
+  return loaded[0] as QueuedMutation;
+}
+
+function buildNativeQueueRow(mutation: QueuedMutation) {
+  return {
+    id: mutation.id,
+    method: mutation.method,
+    url: mutation.url,
+    origin_account_id: mutation.originAccountId,
+    body: mutation.body,
+    headers: JSON.stringify(mutation.headers),
+    status: mutation.status,
+    idempotency_key: mutation.idempotencyKey,
+    attempt_count: mutation.attemptCount,
+    max_attempts: mutation.maxAttempts,
+    next_retry_at: mutation.nextRetryAt,
+    last_error: mutation.lastError,
+    created_at: mutation.createdAt,
+    updated_at: mutation.updatedAt,
+    last_attempt_at: mutation.lastAttemptAt,
+  };
+}
 
 function createLocalStorageMock(initialMutations: QueuedMutation[]): Storage {
   const state = new Map<string, string>();

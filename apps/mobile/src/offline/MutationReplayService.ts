@@ -316,6 +316,12 @@ export class MutationReplayService {
           const fallbackStatus = sendResult.statusCode ? `HTTP ${sendResult.statusCode}` : 'Request failed';
           const errorMessage = sendResult.errorMessage ?? fallbackStatus;
           const shouldStopRetrying = !sendResult.retryable || nextAttempt >= nextMutation.maxAttempts;
+          const safeMutationTarget = sendResult.destinationBindingState
+            ? 'isolated_destination'
+            : resolveMutationTarget(nextMutation.url);
+          const safeOperationName = sendResult.destinationBindingState
+            ? 'isolated_destination'
+            : resolveOperationNameFromQueuedMutation(nextMutation);
 
           if (shouldStopRetrying) {
             await this.queueStore.markTerminalFailure(nextMutation.id, errorMessage, resolvedAt);
@@ -341,13 +347,13 @@ export class MutationReplayService {
               attempt: nextAttempt,
               maxAttempts: nextMutation.maxAttempts,
               mutationId: nextMutation.id,
-              mutationTarget: resolveMutationTarget(nextMutation.url),
-              operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              mutationTarget: safeMutationTarget,
+              operationName: safeOperationName,
               queueDepth: this.snapshot.queueDepth,
               trigger,
               ...buildSafeTelemetryErrorProperties({
                 retryable: sendResult.retryable,
-                sourceOperation: resolveOperationNameFromQueuedMutation(nextMutation),
+                sourceOperation: safeOperationName,
                 statusCode: sendResult.statusCode,
                 unsafeErrorMessage: errorMessage,
               }),
@@ -359,6 +365,16 @@ export class MutationReplayService {
               mutationId: nextMutation.id,
               mutationTarget: resolveMutationTarget(nextMutation.url),
               operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+              queueDepth: this.snapshot.queueDepth,
+              trigger,
+            });
+          }
+          if (sendResult.destinationBindingState) {
+            trackObservabilityEvent('SYNC_MUTATION_DESTINATION_ISOLATED', {
+              destinationBindingState: sendResult.destinationBindingState,
+              mutationId: nextMutation.id,
+              mutationTarget: safeMutationTarget,
+              operationName: safeOperationName,
               queueDepth: this.snapshot.queueDepth,
               trigger,
             });

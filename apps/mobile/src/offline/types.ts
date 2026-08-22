@@ -82,6 +82,10 @@ export interface MutationSendResult {
   successfulReplay?: SuccessfulMutationReplayOutcome;
   cancelled?: boolean;
   accountBindingState?: 'different_account' | 'missing_active' | 'missing_origin';
+  destinationBindingState?:
+    | 'foreign_origin'
+    | 'invalid_backend_origin'
+    | 'invalid_destination';
 }
 
 export interface MutationTransportSendOptions {

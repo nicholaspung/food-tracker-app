@@ -2,6 +2,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import {
   createApiFeatureOutboxReplayOutcome,
+  parseFeatureOutboxOperationName,
   replayFeatureOutboxMutation,
 } from '../features/store/featureOutboxOperations';
 import { logger } from '../lib/logger';
@@ -20,8 +21,15 @@ const MISSING_ORIGIN_ACCOUNT_ERROR =
   'Queued write has no origin account and was quarantined.';
 const ACCOUNT_MISMATCH_ERROR =
   'Queued write belongs to a different account and was quarantined.';
+const INVALID_DESTINATION_ERROR =
+  'Queued write has an invalid destination and was isolated.';
+const ORIGIN_MISMATCH_ERROR =
+  'Queued write targets a different backend origin and was isolated.';
+const INVALID_BACKEND_ORIGIN_ERROR =
+  'Offline replay is unavailable because the configured backend origin is invalid.';
 
 interface CreateFetchMutationTransportOptions {
+  backendUrl: string;
   cancelPendingRequests?: () => void;
   fetchImplementation?: typeof fetch;
   getActiveAccountId?: () => string | null;
@@ -29,8 +37,10 @@ interface CreateFetchMutationTransportOptions {
 }
 
 export function createFetchMutationTransport(
-  options: CreateFetchMutationTransportOptions = {},
+  options: CreateFetchMutationTransportOptions,
 ): MutationTransport {
+  const backendOrigin = resolveHttpOrigin(options.backendUrl);
+
   return {
     cancelPendingRequests: options.cancelPendingRequests,
     send: async (
@@ -55,6 +65,24 @@ export function createFetchMutationTransport(
           statusCode: null,
           errorMessage: accountBindingFailure.errorMessage,
           accountBindingState: accountBindingFailure.state,
+        };
+      }
+
+      const destinationBindingFailure = resolveDestinationBindingFailure(
+        mutation.url,
+        backendOrigin,
+      );
+      if (destinationBindingFailure) {
+        logger.warn(
+          '[OfflineSync] Queued write destination was isolated:',
+          destinationBindingFailure.state,
+        );
+        return {
+          ok: false,
+          retryable: false,
+          statusCode: null,
+          errorMessage: destinationBindingFailure.errorMessage,
+          destinationBindingState: destinationBindingFailure.state,
         };
       }
 
@@ -137,6 +165,64 @@ export function createFetchMutationTransport(
       }
     },
   };
+}
+
+function resolveDestinationBindingFailure(
+  mutationUrl: string,
+  backendOrigin: string | null,
+):
+  | {
+      errorMessage: string;
+      state: 'foreign_origin' | 'invalid_backend_origin' | 'invalid_destination';
+    }
+  | null {
+  if (isRegisteredLocalFeatureMutation(mutationUrl)) {
+    return null;
+  }
+
+  if (!backendOrigin) {
+    return {
+      errorMessage: INVALID_BACKEND_ORIGIN_ERROR,
+      state: 'invalid_backend_origin',
+    };
+  }
+
+  const mutationOrigin = resolveHttpOrigin(mutationUrl);
+  if (!mutationOrigin) {
+    return {
+      errorMessage: INVALID_DESTINATION_ERROR,
+      state: 'invalid_destination',
+    };
+  }
+
+  if (mutationOrigin !== backendOrigin) {
+    return {
+      errorMessage: ORIGIN_MISMATCH_ERROR,
+      state: 'foreign_origin',
+    };
+  }
+
+  return null;
+}
+
+function isRegisteredLocalFeatureMutation(url: string): boolean {
+  try {
+    return parseFeatureOutboxOperationName(url) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function resolveHttpOrigin(url: string): string | null {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return null;
+    }
+    return parsedUrl.origin;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {

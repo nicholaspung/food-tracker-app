@@ -666,6 +666,7 @@ describe('MutationReplayService', () => {
     };
     const fetchImplementation = jest.fn() as unknown as typeof fetch;
     const transport = createFetchMutationTransport({
+      backendUrl: 'https://api.example.com',
       fetchImplementation,
       getActiveAccountId: () => activeAccountId,
       getAuthToken: () => `${activeAccountId}_token`,
@@ -728,6 +729,56 @@ describe('MutationReplayService', () => {
     expect(transport.send).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot().queueDepth).toBe(0);
     expect(service.getSnapshot().failedCount).toBe(0);
+  });
+
+  it('terminally isolates foreign destinations with non-secret telemetry', async () => {
+    const store = new InMemoryQueueStore({
+      rows: new Map([
+        [
+          'mut_foreign_destination',
+          buildQueuedMutation({
+            id: 'mut_foreign_destination',
+            url: 'https://attacker.example/collect?value=queue-secret',
+            originAccountId: 'account_a',
+          }),
+        ],
+      ]),
+    });
+    const fetchImplementation = jest.fn() as unknown as typeof fetch;
+    const getAuthToken = jest.fn(() => 'live-token');
+    const transport = createFetchMutationTransport({
+      backendUrl: 'https://api.example.com',
+      fetchImplementation,
+      getActiveAccountId: () => 'account_a',
+      getAuthToken,
+    });
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.replay('foreground');
+
+    expect(fetchImplementation).not.toHaveBeenCalled();
+    expect(getAuthToken).not.toHaveBeenCalled();
+    expect((await service.getQueuedMutations(1))[0]).toEqual(
+      expect.objectContaining({
+        lastError: 'Queued write targets a different backend origin and was isolated.',
+        status: 'failed',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'SYNC_MUTATION_DESTINATION_ISOLATED',
+      expect.objectContaining({
+        destinationBindingState: 'foreign_origin',
+        mutationTarget: 'isolated_destination',
+        operationName: 'isolated_destination',
+      }),
+    );
+    expect(JSON.stringify(mockedTrackObservabilityEvent.mock.calls)).not.toContain(
+      'queue-secret',
+    );
+    expect(JSON.stringify(mockedTrackObservabilityEvent.mock.calls)).not.toContain(
+      'attacker.example',
+    );
   });
 
   it('cancels an in-flight replay before clearing queued writes', async () => {
