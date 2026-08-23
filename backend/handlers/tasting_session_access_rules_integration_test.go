@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -272,6 +273,9 @@ func TestTastingSessionRawCollectionRulesDenyInviteOnlyUsers(t *testing.T) {
 	for path, expectedCount := range expectedParticipantCounts {
 		response := performJSONRequest(t, server.mux, http.MethodGet, path, participantToken, "")
 		requireListItemCount(t, response.Code, response.Body.Bytes(), expectedCount)
+		if path == "/api/collections/tasting_sessions/records" {
+			requireRawTastingSessionsOmitInviteCode(t, response.Body.Bytes())
+		}
 	}
 
 	expectedLeaderCounts := map[string]int{
@@ -285,6 +289,45 @@ func TestTastingSessionRawCollectionRulesDenyInviteOnlyUsers(t *testing.T) {
 	for path, expectedCount := range expectedLeaderCounts {
 		response := performJSONRequest(t, server.mux, http.MethodGet, path, leaderToken, "")
 		requireListItemCount(t, response.Code, response.Body.Bytes(), expectedCount)
+		if path == "/api/collections/tasting_sessions/records" {
+			requireRawTastingSessionsOmitInviteCode(t, response.Body.Bytes())
+		}
+	}
+
+	for actor, token := range map[string]string{
+		"leader":      leaderToken,
+		"participant": participantToken,
+	} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodGet,
+			"/api/collections/tasting_sessions/records/"+activeSession.Id,
+			token,
+			"",
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s raw session detail to load, got %d: %s", actor, response.Code, response.Body.String())
+		}
+		if _, exposed := parseJSONMap(t, response.Body.Bytes())["invite_code"]; exposed {
+			t.Fatalf("expected %s raw session detail to omit invite_code, got %s", actor, response.Body.String())
+		}
+	}
+}
+
+func requireRawTastingSessionsOmitInviteCode(t *testing.T, body []byte) {
+	t.Helper()
+
+	var payload struct {
+		Items []map[string]json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to decode raw tasting session list: %v; body=%s", err, string(body))
+	}
+	for _, item := range payload.Items {
+		if _, exposed := item["invite_code"]; exposed {
+			t.Fatalf("expected raw tasting session list to omit invite_code, got %s", string(body))
+		}
 	}
 }
 

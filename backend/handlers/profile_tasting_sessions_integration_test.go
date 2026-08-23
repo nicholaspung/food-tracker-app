@@ -553,6 +553,7 @@ func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T)
 	if len(oldCode) != 6 {
 		t.Fatalf("expected create response to include invite code, got %#v", createdSession)
 	}
+	assertRawTastingSessionOmitsCodes(t, server.mux, leaderToken, createdSession.ID, oldCode)
 
 	sessionRecord, err := server.app.FindRecordById("tasting_sessions", createdSession.ID)
 	if err != nil {
@@ -673,6 +674,7 @@ func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T)
 		reopenedSession.Invites[0].Status != "pending" {
 		t.Fatalf("expected reopen to reactivate dismissed invite, got %#v", reopenedSession.Invites)
 	}
+	assertRawTastingSessionOmitsCodes(t, server.mux, leaderToken, createdSession.ID, oldCode, reopenedSession.InviteCode)
 
 	reopenedInviteeDetailResponse := performJSONRequest(
 		t,
@@ -708,6 +710,42 @@ func TestTastingSessionReopenInviteWindowRefreshesExpiredLobbyCode(t *testing.T)
 	)
 	if newCodeJoinResponse.Code != http.StatusOK {
 		t.Fatalf("expected fresh code join to succeed, got %d: %s", newCodeJoinResponse.Code, newCodeJoinResponse.Body.String())
+	}
+	joinedSession := parseJSONResponse[tastingSessionResponse](t, newCodeJoinResponse.Body.Bytes())
+	if joinedSession.InviteCode != "" {
+		t.Fatalf("expected participant custom response to omit invite code, got %#v", joinedSession)
+	}
+	assertRawTastingSessionOmitsCodes(t, server.mux, joinerToken, createdSession.ID, oldCode, reopenedSession.InviteCode)
+}
+
+func assertRawTastingSessionOmitsCodes(
+	t *testing.T,
+	mux http.Handler,
+	token string,
+	sessionID string,
+	codes ...string,
+) {
+	t.Helper()
+
+	response := performJSONRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/api/collections/tasting_sessions/records/"+sessionID,
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected authorized raw session detail to load, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := parseJSONMap(t, response.Body.Bytes())
+	if _, exposed := payload["invite_code"]; exposed {
+		t.Fatalf("expected raw session detail to omit invite_code, got %s", response.Body.String())
+	}
+	for _, code := range codes {
+		if code != "" && strings.Contains(response.Body.String(), code) {
+			t.Fatalf("expected raw session detail to omit invite code %q, got %s", code, response.Body.String())
+		}
 	}
 }
 
