@@ -2805,6 +2805,87 @@ func TestMoveVisitItemEndpointMovesItemAndPhotos(t *testing.T) {
 	}
 }
 
+func TestMoveVisitItemEndpointRejectsPostingSuspendedOwnerWithoutPublishing(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, owner.Id, friend.Id, "accepted")
+
+	sourceRestaurant := seedRestaurantRecord(t, server.app, owner.Id, "Private Source Bistro")
+	destinationRestaurant := seedRestaurantRecord(t, server.app, owner.Id, "Friends Destination Bistro")
+	sourceVisit := seedVisitRecord(t, server.app, sourceRestaurant.Id, owner.Id, "private")
+	destinationVisit := seedVisitRecord(t, server.app, destinationRestaurant.Id, owner.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, sourceVisit.Id, owner.Id, "Private Dumplings", 4)
+	photoID := insertVisitPhotoRowRaw(t, server.app, owner.Id, sourceVisit.Id, item.Id)
+
+	for _, path := range []string{
+		"/api/collections/food_items/records/" + item.Id,
+		"/api/collections/visit_photos/records/" + photoID,
+	} {
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, friendToken, "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected private source content to be hidden at %s, got %d: %s", path, response.Code, response.Body.String())
+		}
+	}
+
+	owner.Set("postingSuspendedUntil", time.Now().UTC().Add(time.Hour))
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to suspend owner: %v", err)
+	}
+
+	movePath := "/api/visit-items/" + item.Id + "/move"
+	moveBody := `{"destinationVisitId":"` + destinationVisit.Id + `"}`
+	response := performJSONRequest(t, server.mux, http.MethodPost, movePath, ownerToken, moveBody)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected suspended move to return 403, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload rejected item: %v", err)
+	}
+	if reloadedItem.GetString("visit") != sourceVisit.Id {
+		t.Fatalf("expected rejected item to remain on source visit %q, got %q", sourceVisit.Id, reloadedItem.GetString("visit"))
+	}
+	reloadedPhoto, err := server.app.FindRecordById("visit_photos", photoID)
+	if err != nil {
+		t.Fatalf("failed to reload rejected photo: %v", err)
+	}
+	if reloadedPhoto.GetString("visit") != sourceVisit.Id {
+		t.Fatalf("expected rejected photo to remain on source visit %q, got %q", sourceVisit.Id, reloadedPhoto.GetString("visit"))
+	}
+
+	for _, path := range []string{
+		"/api/collections/food_items/records/" + item.Id,
+		"/api/collections/visit_photos/records/" + photoID,
+	} {
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, friendToken, "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected rejected content to remain hidden at %s, got %d: %s", path, response.Code, response.Body.String())
+		}
+	}
+
+	owner.Set("postingSuspendedUntil", "")
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to clear owner suspension: %v", err)
+	}
+
+	response = performJSONRequest(t, server.mux, http.MethodPost, movePath, ownerToken, moveBody)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected cleared owner move to return 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	for _, path := range []string{
+		"/api/collections/food_items/records/" + item.Id,
+		"/api/collections/visit_photos/records/" + photoID,
+	} {
+		response := performJSONRequest(t, server.mux, http.MethodGet, path, friendToken, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected moved content to be visible at %s, got %d: %s", path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestMoveVisitItemEndpointIsIdempotent(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)

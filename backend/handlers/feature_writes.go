@@ -1475,6 +1475,10 @@ func moveVisitItemTransaction(
 	requestBody moveVisitItemRequest,
 ) (moveVisitItemResponse, error) {
 	response := moveVisitItemResponse{}
+	if err := enforcePostingWritePolicy(authRecord); err != nil {
+		return response, err
+	}
+
 	destinationVisitID := strings.TrimSpace(requestBody.DestinationVisitID)
 	if destinationVisitID == "" {
 		return response, apis.NewBadRequestError("destinationVisitId is required", nil)
