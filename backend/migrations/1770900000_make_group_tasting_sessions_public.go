@@ -12,6 +12,7 @@ const (
 	tastingSessionPublicReadRule       = "@request.auth.id != '' && (leader = @request.auth.id || tasting_session_participants_via_session.user ?= @request.auth.id)"
 	tastingSessionPublicCreateRule     = "@request.auth.id != '' && leader = @request.auth.id"
 	tastingSessionScopedPublicReadRule = "@request.auth.id != '' && (session.leader = @request.auth.id || session.tasting_session_participants_via_session.user ?= @request.auth.id)"
+	tastingRatingPublicReadRule        = "@request.auth.id != '' && (session.leader = @request.auth.id || session.tasting_session_participants_via_session.user ?= @request.auth.id) && (user = @request.auth.id || session.status = 'completed')"
 	tastingInvitePublicReadRule        = "@request.auth.id != '' && session.leader = @request.auth.id"
 	tastingLeaderScopedPublicReadRule  = "@request.auth.id != '' && session.leader = @request.auth.id"
 )
@@ -26,11 +27,13 @@ func init() {
 			"tasting_session_participants",
 			"tasting_session_restaurants",
 			"tasting_session_items",
-			"tasting_session_ratings",
 		} {
 			if err := setTastingCollectionRules(app, collectionName, tastingSessionScopedPublicReadRule, tastingSessionScopedPublicReadRule, nil, nil, nil); err != nil {
 				return err
 			}
+		}
+		if err := setTastingCollectionRules(app, "tasting_session_ratings", tastingRatingPublicReadRule, tastingRatingPublicReadRule, nil, nil, nil); err != nil {
+			return err
 		}
 
 		if err := setTastingCollectionRules(app, "tasting_session_invites", tastingInvitePublicReadRule, tastingInvitePublicReadRule, nil, nil, nil); err != nil {

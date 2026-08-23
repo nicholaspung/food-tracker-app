@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -284,7 +285,7 @@ func TestTastingSessionRawCollectionRulesDenyInviteOnlyUsers(t *testing.T) {
 		"/api/collections/tasting_session_invites/records":      4,
 		"/api/collections/tasting_session_restaurants/records":  1,
 		"/api/collections/tasting_session_items/records":        1,
-		"/api/collections/tasting_session_ratings/records":      1,
+		"/api/collections/tasting_session_ratings/records":      0,
 	}
 	for path, expectedCount := range expectedLeaderCounts {
 		response := performJSONRequest(t, server.mux, http.MethodGet, path, leaderToken, "")
@@ -327,6 +328,257 @@ func requireRawTastingSessionsOmitInviteCode(t *testing.T, body []byte) {
 	for _, item := range payload.Items {
 		if _, exposed := item["invite_code"]; exposed {
 			t.Fatalf("expected raw tasting session list to omit invite_code, got %s", string(body))
+		}
+	}
+}
+
+func TestTastingSessionRawRatingsMatchBlindDetailVisibility(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
+	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+	otherLeader, otherLeaderToken := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Blind Rating Counter",
+		"location":   "San Francisco, CA",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurant.Id,
+		"name":       "Blind Rating Bite",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+	session := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":            "Blind Rating Session",
+		"leader":          leader.Id,
+		"status":          "planning",
+		"invite_code":     "BLIND1",
+		"join_expires_at": time.Now().UTC().Add(time.Hour),
+	})
+	leaderParticipant := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": session.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	participantRecord := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": session.Id,
+		"user":    participant.Id,
+		"role":    "participant",
+	})
+	restaurantSuggestion := createCollectionRecord(t, server.app, "tasting_session_restaurants", map[string]any{
+		"session":                  session.Id,
+		"restaurant":               restaurant.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	item := createCollectionRecord(t, server.app, "tasting_session_items", map[string]any{
+		"session":                  session.Id,
+		"restaurant_suggestion":    restaurantSuggestion.Id,
+		"menu_item":                menuItem.Id,
+		"suggested_by_participant": leaderParticipant.Id,
+		"status":                   "approved",
+	})
+	leaderRating := createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
+		"session":               session.Id,
+		"restaurant_suggestion": restaurantSuggestion.Id,
+		"item":                  item.Id,
+		"participant":           leaderParticipant.Id,
+		"user":                  leader.Id,
+		"rating":                5,
+		"note":                  "Leader blind note",
+	})
+	participantRating := createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
+		"session":               session.Id,
+		"restaurant_suggestion": restaurantSuggestion.Id,
+		"item":                  item.Id,
+		"participant":           participantRecord.Id,
+		"user":                  participant.Id,
+		"rating":                2,
+		"note":                  "Participant blind note",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":      session.Id,
+		"invited_user": invitee.Id,
+		"status":       "pending",
+	})
+
+	otherSession := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":   "Other Completed Session",
+		"leader": otherLeader.Id,
+		"status": "completed",
+	})
+	otherParticipant := createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": otherSession.Id,
+		"user":    otherLeader.Id,
+		"role":    "leader",
+	})
+	otherRestaurantSuggestion := createCollectionRecord(t, server.app, "tasting_session_restaurants", map[string]any{
+		"session":                  otherSession.Id,
+		"restaurant":               restaurant.Id,
+		"suggested_by_participant": otherParticipant.Id,
+		"status":                   "approved",
+	})
+	otherItem := createCollectionRecord(t, server.app, "tasting_session_items", map[string]any{
+		"session":                  otherSession.Id,
+		"restaurant_suggestion":    otherRestaurantSuggestion.Id,
+		"menu_item":                menuItem.Id,
+		"suggested_by_participant": otherParticipant.Id,
+		"status":                   "approved",
+	})
+	otherRating := createCollectionRecord(t, server.app, "tasting_session_ratings", map[string]any{
+		"session":               otherSession.Id,
+		"restaurant_suggestion": otherRestaurantSuggestion.Id,
+		"item":                  otherItem.Id,
+		"participant":           otherParticipant.Id,
+		"user":                  otherLeader.Id,
+		"rating":                4,
+		"note":                  "Other session note",
+	})
+
+	ratingsCollection, err := server.app.FindCollectionByNameOrId("tasting_session_ratings")
+	if err != nil {
+		t.Fatalf("failed to load tasting rating collection: %v", err)
+	}
+	if ratingsCollection.CreateRule != nil || ratingsCollection.UpdateRule != nil || ratingsCollection.DeleteRule != nil {
+		t.Fatalf("expected raw tasting rating writes to remain disabled, got create=%v update=%v delete=%v", ratingsCollection.CreateRule, ratingsCollection.UpdateRule, ratingsCollection.DeleteRule)
+	}
+
+	for _, status := range []string{"planning", "tasting"} {
+		session.Set("status", status)
+		if err := server.app.Save(session); err != nil {
+			t.Fatalf("failed to set tasting session status to %s: %v", status, err)
+		}
+
+		requireRawTastingRatingIDs(t, server.mux, session.Id, leaderToken, leaderRating.Id)
+		requireCustomTastingRatingParticipantIDs(t, server.mux, session.Id, leaderToken, leaderParticipant.Id)
+		requireRawTastingRatingView(t, server.mux, leaderRating.Id, leaderToken, true)
+		requireRawTastingRatingView(t, server.mux, participantRating.Id, leaderToken, false)
+
+		requireRawTastingRatingIDs(t, server.mux, session.Id, participantToken, participantRating.Id)
+		requireCustomTastingRatingParticipantIDs(t, server.mux, session.Id, participantToken, participantRecord.Id)
+		requireRawTastingRatingView(t, server.mux, participantRating.Id, participantToken, true)
+		requireRawTastingRatingView(t, server.mux, leaderRating.Id, participantToken, false)
+	}
+
+	for actor, token := range map[string]string{
+		"invite-only user": inviteeToken,
+		"nonmember":        otherLeaderToken,
+	} {
+		requireRawTastingRatingIDs(t, server.mux, session.Id, token)
+		requireRawTastingRatingView(t, server.mux, leaderRating.Id, token, false)
+		requireRawTastingRatingView(t, server.mux, participantRating.Id, token, false)
+		t.Logf("verified raw ratings are hidden from %s", actor)
+	}
+
+	session.Set("status", "completed")
+	if err := server.app.Save(session); err != nil {
+		t.Fatalf("failed to complete tasting session: %v", err)
+	}
+	for actor, token := range map[string]string{
+		"leader":      leaderToken,
+		"participant": participantToken,
+	} {
+		requireRawTastingRatingIDs(t, server.mux, session.Id, token, leaderRating.Id, participantRating.Id)
+		requireCustomTastingRatingParticipantIDs(t, server.mux, session.Id, token, leaderParticipant.Id, participantRecord.Id)
+		requireRawTastingRatingView(t, server.mux, leaderRating.Id, token, true)
+		requireRawTastingRatingView(t, server.mux, participantRating.Id, token, true)
+		t.Logf("verified completed ratings are visible to %s", actor)
+	}
+	for actor, token := range map[string]string{
+		"invite-only user": inviteeToken,
+		"nonmember":        otherLeaderToken,
+	} {
+		requireRawTastingRatingIDs(t, server.mux, session.Id, token)
+		requireRawTastingRatingView(t, server.mux, leaderRating.Id, token, false)
+		requireRawTastingRatingView(t, server.mux, participantRating.Id, token, false)
+		t.Logf("verified completed raw ratings are hidden from %s", actor)
+	}
+
+	requireRawTastingRatingIDs(t, server.mux, "", leaderToken, leaderRating.Id, participantRating.Id)
+	requireRawTastingRatingIDs(t, server.mux, otherSession.Id, otherLeaderToken, otherRating.Id)
+}
+
+func requireRawTastingRatingIDs(t *testing.T, mux http.Handler, sessionID string, token string, expectedIDs ...string) {
+	t.Helper()
+
+	path := "/api/collections/tasting_session_ratings/records"
+	if sessionID != "" {
+		path += "?filter=" + url.QueryEscape("session = '"+sessionID+"'")
+	}
+	response := performJSONRequest(t, mux, http.MethodGet, path, token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected raw tasting rating list to return 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode raw tasting rating list: %v; body=%s", err, response.Body.String())
+	}
+	actualIDs := make(map[string]bool, len(payload.Items))
+	for _, item := range payload.Items {
+		actualIDs[item.ID] = true
+	}
+	if len(actualIDs) != len(expectedIDs) {
+		t.Fatalf("expected raw tasting rating ids %v, got %v", expectedIDs, actualIDs)
+	}
+	for _, expectedID := range expectedIDs {
+		if !actualIDs[expectedID] {
+			t.Fatalf("expected raw tasting rating %s, got %v", expectedID, actualIDs)
+		}
+	}
+}
+
+func requireRawTastingRatingView(t *testing.T, mux http.Handler, ratingID string, token string, allowed bool) {
+	t.Helper()
+
+	response := performJSONRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/api/collections/tasting_session_ratings/records/"+ratingID,
+		token,
+		"",
+	)
+	if allowed && response.Code != http.StatusOK {
+		t.Fatalf("expected raw tasting rating %s to be visible, got %d: %s", ratingID, response.Code, response.Body.String())
+	}
+	if !allowed && response.Code != http.StatusNotFound {
+		t.Fatalf("expected raw tasting rating %s to return 404, got %d: %s", ratingID, response.Code, response.Body.String())
+	}
+}
+
+func requireCustomTastingRatingParticipantIDs(t *testing.T, mux http.Handler, sessionID string, token string, expectedIDs ...string) {
+	t.Helper()
+
+	response := performJSONRequest(t, mux, http.MethodGet, "/api/tasting-sessions/"+sessionID, token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected custom tasting detail to return 200, got %d: %s", response.Code, response.Body.String())
+	}
+	session := parseJSONResponse[tastingSessionResponse](t, response.Body.Bytes())
+	actualIDs := map[string]bool{}
+	for _, restaurant := range session.Restaurants {
+		for _, item := range restaurant.Items {
+			for _, rating := range item.Ratings {
+				actualIDs[rating.ParticipantID] = true
+			}
+		}
+	}
+	if len(actualIDs) != len(expectedIDs) {
+		t.Fatalf("expected custom tasting rating participant ids %v, got %v", expectedIDs, actualIDs)
+	}
+	for _, expectedID := range expectedIDs {
+		if !actualIDs[expectedID] {
+			t.Fatalf("expected custom tasting rating participant %s, got %v", expectedID, actualIDs)
 		}
 	}
 }

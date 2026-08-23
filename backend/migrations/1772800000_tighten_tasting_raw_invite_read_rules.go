@@ -45,11 +45,13 @@ func applyTastingRawInviteReadRules(
 		"tasting_session_participants",
 		"tasting_session_restaurants",
 		"tasting_session_items",
-		"tasting_session_ratings",
 	} {
 		if err := setTastingCollectionReadRules(app, collectionName, scopedReadRule, scopedReadRule); err != nil {
 			return err
 		}
+	}
+	if err := setTastingCollectionReadRules(app, "tasting_session_ratings", tastingRatingPublicReadRule, tastingRatingPublicReadRule); err != nil {
+		return err
 	}
 
 	return setTastingCollectionReadRules(app, "tasting_session_invites", inviteReadRule, inviteReadRule)
