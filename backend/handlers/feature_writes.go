@@ -1111,8 +1111,14 @@ func updateVisitTransaction(
 		visitRecord.Set("visibility", normalizeVisitVisibility(strings.TrimSpace(*requestBody.Visibility)))
 	}
 
+	shouldCreateVisitCase := applyPreReviewModerationPolicy(authRecord, visitRecord)
 	if err := app.Save(visitRecord); err != nil {
 		return nil, apis.NewApiError(500, "failed to update visit", err)
+	}
+	if shouldCreateVisitCase {
+		if err := registerPreReviewModerationCase(app, authRecord, visitRecord); err != nil {
+			return nil, err
+		}
 	}
 
 	if requestBody.Items != nil {
@@ -1394,8 +1400,14 @@ func syncVisitItems(
 			existingItem.Set("description", description)
 			existingItem.Set("notes", notes)
 			existingItem.Set("menuItem", emptyStringToNil(menuItemID))
+			shouldCreateCase := applyPreReviewModerationPolicy(authRecord, existingItem)
 			if err := app.Save(existingItem); err != nil {
 				return apis.NewApiError(500, "failed to update visit item", err)
+			}
+			if shouldCreateCase {
+				if err := registerPreReviewModerationCase(app, authRecord, existingItem); err != nil {
+					return err
+				}
 			}
 			retainedItemIDs[existingItem.Id] = struct{}{}
 			continue
@@ -1413,8 +1425,14 @@ func syncVisitItems(
 		createdItem.Set("user", authRecord.Id)
 		createdItem.Set("menuItem", emptyStringToNil(menuItemID))
 		createdItem.Set("itemType", foodItemTypeVisitItem)
+		shouldCreateCase := applyPreReviewModerationPolicy(authRecord, createdItem)
 		if err := app.Save(createdItem); err != nil {
 			return apis.NewApiError(500, "failed to create visit item", err)
+		}
+		if shouldCreateCase {
+			if err := registerPreReviewModerationCase(app, authRecord, createdItem); err != nil {
+				return err
+			}
 		}
 		retainedItemIDs[createdItem.Id] = struct{}{}
 	}

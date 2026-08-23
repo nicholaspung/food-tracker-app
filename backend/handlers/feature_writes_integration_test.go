@@ -2389,6 +2389,195 @@ func TestVisitUpdateEndpointRejectsPostingSuspendedOwnerWithoutMutations(t *test
 	}
 }
 
+func TestVisitUpdateEndpointQuarantinesPreReviewChanges(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, owner.Id, friend.Id, "accepted")
+
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Pre-review Update Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+	visit.Set("moderationStatus", lib.ContentModerationStatusReviewed)
+	visit.Set("moderatedAt", "2026-07-31 12:00:00.000Z")
+	visit.Set("moderatedBy", friend.Id)
+	if err := server.app.Save(visit); err != nil {
+		t.Fatalf("failed to seed reviewed visit: %v", err)
+	}
+	existingItem := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Original Soup", 4)
+	existingItem.Set("moderationStatus", lib.ContentModerationStatusReviewed)
+	existingItem.Set("moderatedAt", "2026-07-31 12:00:00.000Z")
+	existingItem.Set("moderatedBy", friend.Id)
+	if err := server.app.Save(existingItem); err != nil {
+		t.Fatalf("failed to seed reviewed visit item: %v", err)
+	}
+
+	owner.Set("contentModerationMode", lib.ContentModerationModePreReview)
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to enable pre-review mode: %v", err)
+	}
+
+	body := fmt.Sprintf(`{
+		"visibility":"friends",
+		"items":[
+			{"id":"%s","name":"Edited Soup","rating":5},
+			{"id":"draft-new-item","name":"New Tea","rating":4}
+		]
+	}`, existingItem.Id)
+	headers := map[string]string{"Idempotency-Key": "pre-review-visit-update-1"}
+	path := "/api/visits/" + visit.Id
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		response := performJSONRequestWithHeaders(t, server.mux, http.MethodPut, path, ownerToken, body, headers)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected update attempt %d to return 200, got %d: %s", attempt, response.Code, response.Body.String())
+		}
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+	if err != nil {
+		t.Fatalf("failed to reload quarantined visit: %v", err)
+	}
+	items, err := server.app.FindRecordsByFilter(
+		"food_items",
+		"visit = {:visitId}",
+		"name",
+		10,
+		0,
+		map[string]any{"visitId": visit.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to reload quarantined visit items: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected edited and new visit items, got %d", len(items))
+	}
+
+	targets := []struct {
+		record     *core.Record
+		targetType string
+	}{
+		{record: reloadedVisit, targetType: "visit"},
+		{record: items[0], targetType: "food-item"},
+		{record: items[1], targetType: "food-item"},
+	}
+	for _, target := range targets {
+		if target.record.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview ||
+			target.record.GetString("moderatedBy") != "" ||
+			!target.record.GetDateTime("moderatedAt").IsZero() {
+			t.Fatalf("expected %s %s to be under review without stale moderator metadata", target.targetType, target.record.Id)
+		}
+
+		cases, err := server.app.FindRecordsByFilter(
+			"moderation_cases",
+			"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+			"",
+			10,
+			0,
+			map[string]any{
+				"targetType":     target.targetType,
+				"targetRecordId": target.record.Id,
+			},
+		)
+		if err != nil {
+			t.Fatalf("failed to load moderation case for %s %s: %v", target.targetType, target.record.Id, err)
+		}
+		if len(cases) != 1 ||
+			cases[0].GetString("status") != lib.ModerationCaseStatusUnderReview ||
+			cases[0].GetString("action") != lib.ModerationActionQuarantine ||
+			cases[0].GetString("reasonCode") != "pre_review" {
+			t.Fatalf("expected one current quarantine case for %s %s, got %#v", target.targetType, target.record.Id, cases)
+		}
+	}
+
+	friendResponse := performJSONRequest(t, server.mux, http.MethodGet, path, friendToken, "")
+	if friendResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected quarantined visit to be hidden from accepted friend, got %d: %s", friendResponse.Code, friendResponse.Body.String())
+	}
+	ownerResponse := performJSONRequest(t, server.mux, http.MethodGet, path, ownerToken, "")
+	if ownerResponse.Code != http.StatusOK {
+		t.Fatalf("expected owner to retain access to quarantined visit, got %d: %s", ownerResponse.Code, ownerResponse.Body.String())
+	}
+}
+
+func TestVisitUpdateEndpointPreservesAdministrativeModerationStates(t *testing.T) {
+	for _, status := range []string{
+		lib.ContentModerationStatusHidden,
+		lib.ContentModerationStatusRemoved,
+		lib.ContentModerationStatusEscalated,
+	} {
+		t.Run(status, func(t *testing.T) {
+			server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+			owner, ownerToken := createAuthUser(t, server.app, false, true)
+			owner.Set("contentModerationMode", lib.ContentModerationModePreReview)
+			if err := server.app.Save(owner); err != nil {
+				t.Fatalf("failed to enable pre-review mode: %v", err)
+			}
+
+			restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Protected Update Bistro "+status)
+			visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+			visit.Set("moderationStatus", status)
+			if err := server.app.Save(visit); err != nil {
+				t.Fatalf("failed to seed %s visit: %v", status, err)
+			}
+			visit, err := server.app.FindRecordById("visits", visit.Id)
+			if err != nil {
+				t.Fatalf("failed to reload %s visit before applying policy: %v", status, err)
+			}
+			if shouldCreateCase := lib.ApplyPreReviewModerationPolicy(owner, visit); shouldCreateCase {
+				t.Fatalf("expected shared policy to preserve %s visit", status)
+			}
+			if visit.GetString("moderationStatus") != status {
+				t.Fatalf("expected shared policy to keep visit %s, got %q", status, visit.GetString("moderationStatus"))
+			}
+			visit.Set("moderationStatus", lib.ContentModerationStatusActive)
+			if err := server.app.Save(visit); err != nil {
+				t.Fatalf("failed to reset visit moderation status: %v", err)
+			}
+			item := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Protected Soup", 4)
+			item.Set("moderationStatus", status)
+			if err := server.app.Save(item); err != nil {
+				t.Fatalf("failed to seed %s visit item: %v", status, err)
+			}
+
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodPut,
+				"/api/visits/"+visit.Id,
+				ownerToken,
+				fmt.Sprintf(`{"items":[{"id":"%s","name":"Edited Protected Soup","rating":5}]}`, item.Id),
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected %s update to return 200, got %d: %s", status, response.Code, response.Body.String())
+			}
+
+			reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+			if err != nil {
+				t.Fatalf("failed to reload quarantined visit: %v", err)
+			}
+			if reloadedVisit.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
+				t.Fatalf("expected ordinary visit to become under review, got %q", reloadedVisit.GetString("moderationStatus"))
+			}
+			reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+			if err != nil {
+				t.Fatalf("failed to reload protected visit item: %v", err)
+			}
+			if reloadedItem.GetString("moderationStatus") != status {
+				t.Fatalf("expected visit item %s to remain %s, got %q", item.Id, status, reloadedItem.GetString("moderationStatus"))
+			}
+			if count := countRecordsByFilter(
+				t,
+				server.app,
+				"moderation_cases",
+				"targetRecordId = {:itemId}",
+				map[string]any{"itemId": item.Id},
+			); count != 0 {
+				t.Fatalf("expected protected %s item not to receive a quarantine case, got %d", status, count)
+			}
+		})
+	}
+}
+
 func TestVisitCollectionUpdateRejectsPostingSuspendedOwner(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
 		hooks.RegisterModerationHooks(app)

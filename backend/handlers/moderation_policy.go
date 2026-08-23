@@ -19,19 +19,14 @@ func enforcePostingWritePolicy(authRecord *core.Record) error {
 	return nil
 }
 
-func applyPreReviewModerationPolicy(authRecord *core.Record, record *core.Record) {
-	if authRecord == nil || record == nil {
-		return
-	}
-
-	if lib.ContentWriteRequiresPreReview(authRecord, record.Collection().Name) {
-		record.Set("moderationStatus", lib.ContentModerationStatusUnderReview)
-	}
+func applyPreReviewModerationPolicy(authRecord *core.Record, record *core.Record) bool {
+	return lib.ApplyPreReviewModerationPolicy(authRecord, record)
 }
 
 func registerPreReviewModerationCase(app core.App, authRecord *core.Record, record *core.Record) error {
 	if authRecord == nil || record == nil ||
-		!lib.ContentWriteRequiresPreReview(authRecord, record.Collection().Name) {
+		!lib.ContentWriteRequiresPreReview(authRecord, record.Collection().Name) ||
+		record.GetString("moderationStatus") != lib.ContentModerationStatusUnderReview {
 		return nil
 	}
 

@@ -16,12 +16,8 @@ func RegisterModerationHooks(app core.App) {
 			return err
 		}
 
-		shouldCreateCase := shouldCreatePreReviewCase(e)
-		if shouldCreateCase {
-			e.Record.Set("moderationStatus", lib.ContentModerationStatusUnderReview)
-			e.Record.Set("moderatedAt", "")
-			e.Record.Set("moderatedBy", "")
-		} else if isNonSuperuserModeratedContentRequest(e) {
+		shouldCreateCase := lib.ApplyPreReviewModerationPolicy(e.Auth, e.Record)
+		if !shouldCreateCase && isNonSuperuserModeratedContentRequest(e) {
 			e.Record.Set("moderationStatus", lib.ContentModerationStatusActive)
 			e.Record.Set("moderatedAt", "")
 			e.Record.Set("moderatedBy", "")
@@ -47,12 +43,7 @@ func RegisterModerationHooks(app core.App) {
 			return apis.NewForbiddenError("content moderation fields are admin controlled", nil)
 		}
 
-		shouldCreateCase := shouldCreatePreReviewCase(e) && !hasProtectedModerationStatus(original)
-		if shouldCreateCase {
-			e.Record.Set("moderationStatus", lib.ContentModerationStatusUnderReview)
-			e.Record.Set("moderatedAt", "")
-			e.Record.Set("moderatedBy", "")
-		}
+		shouldCreateCase := lib.ApplyPreReviewModerationPolicy(e.Auth, e.Record)
 
 		return persistModeratedContentRequest(e, shouldCreateCase)
 	})
@@ -74,21 +65,6 @@ func moderationMetadataChanged(record *core.Record, original *core.Record) bool 
 	}
 
 	return false
-}
-
-func hasProtectedModerationStatus(record *core.Record) bool {
-	if record == nil {
-		return false
-	}
-
-	switch strings.TrimSpace(record.GetString("moderationStatus")) {
-	case lib.ContentModerationStatusHidden,
-		lib.ContentModerationStatusRemoved,
-		lib.ContentModerationStatusEscalated:
-		return true
-	default:
-		return false
-	}
 }
 
 func persistModeratedContentRequest(e *core.RecordRequestEvent, shouldCreateCase bool) error {
@@ -137,12 +113,4 @@ func enforceModerationWriteRestrictions(e *core.RecordRequestEvent) error {
 	}
 
 	return nil
-}
-
-func shouldCreatePreReviewCase(e *core.RecordRequestEvent) bool {
-	if e == nil || e.Auth == nil || e.Collection == nil {
-		return false
-	}
-
-	return lib.ContentWriteRequiresPreReview(e.Auth, e.Collection.Name)
 }

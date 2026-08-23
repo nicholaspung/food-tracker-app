@@ -107,6 +107,33 @@ func ContentWriteRequiresPreReview(user *core.Record, collectionName string) boo
 		(IsPostingModerationCollection(collectionName) || IsPhotoModerationCollection(collectionName))
 }
 
+func ApplyPreReviewModerationPolicy(user *core.Record, record *core.Record) bool {
+	if user == nil || record == nil || !ContentWriteRequiresPreReview(user, record.Collection().Name) {
+		return false
+	}
+
+	original := record.Original()
+	if original.Id != "" && isProtectedContentModerationStatus(original.GetString("moderationStatus")) {
+		return false
+	}
+
+	record.Set("moderationStatus", ContentModerationStatusUnderReview)
+	record.Set("moderatedAt", "")
+	record.Set("moderatedBy", "")
+	return true
+}
+
+func isProtectedContentModerationStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case ContentModerationStatusHidden,
+		ContentModerationStatusRemoved,
+		ContentModerationStatusEscalated:
+		return true
+	default:
+		return false
+	}
+}
+
 func IsVisibleContentModerationStatus(status string) bool {
 	switch strings.TrimSpace(status) {
 	case "", ContentModerationStatusActive, ContentModerationStatusReviewed:
