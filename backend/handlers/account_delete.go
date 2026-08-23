@@ -1,17 +1,30 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
+	"github.com/pocketbase/pocketbase/tools/router"
 
 	"myapp/lib"
 )
 
-const accountDeleteBatchSize = 200
+const (
+	accountDeleteBatchSize              = 200
+	accountDeleteReauthMaxAttempts      = 5
+	accountDeleteReauthWindow           = 15 * time.Minute
+	accountDeleteReauthRateLimitKeyBase = "account-delete:"
+	accountDeleteRoutePath              = "/api/account/delete"
+)
 
 type deleteAccountRequest struct {
 	CurrentPassword string `json:"currentPassword"`
@@ -23,7 +36,25 @@ type accountDeleteCleanupSummary struct {
 }
 
 func registerAccountDeletionHandler(se *core.ServeEvent, app core.App) {
-	se.Router.POST("/api/account/delete", func(e *core.RequestEvent) error {
+	se.Router.Bind(&hook.Handler[*core.RequestEvent]{
+		Id:       "accountDeleteRetryAfter",
+		Priority: apis.DefaultRateLimitMiddlewarePriority - 1,
+		Func: func(e *core.RequestEvent) error {
+			err := e.Next()
+			if e.Request.Method != http.MethodPost || e.Request.URL.Path != accountDeleteRoutePath {
+				return err
+			}
+
+			var apiErr *router.ApiError
+			if errors.As(err, &apiErr) && apiErr.Status == http.StatusTooManyRequests && e.Response.Header().Get("Retry-After") == "" {
+				e.Response.Header().Set("Retry-After", fmt.Sprintf("%d", int(accountDeleteReauthWindow/time.Second)))
+			}
+
+			return err
+		},
+	})
+
+	se.Router.POST(accountDeleteRoutePath, func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
@@ -40,6 +71,16 @@ func registerAccountDeletionHandler(se *core.ServeEvent, app core.App) {
 
 		if _, err := app.FindRecordById("users", e.Auth.Id); err != nil {
 			return apis.NewUnauthorizedError("account not found", err)
+		}
+
+		retryAfter, limited, err := consumeAccountDeleteReauthAttempt(app, e.Auth.Id, time.Now().UTC())
+		if err != nil {
+			return apis.NewApiError(http.StatusInternalServerError, "failed to validate account deletion limits", err)
+		}
+		if limited {
+			e.Response.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+			log.Printf("Account deletion reauthentication rate limit reached for user %s", e.Auth.Id)
+			return apis.NewTooManyRequestsError("too many account deletion attempts; please try again later", nil)
 		}
 
 		if err := app.RunInTransaction(func(txApp core.App) error {
@@ -94,6 +135,66 @@ func registerAccountDeletionHandler(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, map[string]any{"success": true})
 	})
+}
+
+func consumeAccountDeleteReauthAttempt(app core.App, userID string, now time.Time) (int, bool, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return 0, false, errors.New("user id is required")
+	}
+
+	retryAfter := 0
+	limited := false
+	err := app.RunInTransaction(func(txApp core.App) error {
+		key := accountDeleteReauthRateLimitKeyBase + userID
+		record, err := txApp.FindFirstRecordByFilter(
+			"rate_limits",
+			"ip_address = {:key}",
+			map[string]any{"key": key},
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to load account deletion rate limit: %w", err)
+		}
+
+		now = now.UTC()
+		windowEndsAt := now.Add(accountDeleteReauthWindow)
+		attempts := 0
+		if record == nil {
+			collection, err := txApp.FindCollectionByNameOrId("rate_limits")
+			if err != nil {
+				return fmt.Errorf("failed to find account deletion rate limit collection: %w", err)
+			}
+			record = core.NewRecord(collection)
+			record.Set("ip_address", key)
+		} else {
+			storedWindowEnd := time.Unix(int64(record.GetInt("locked_until")), 0)
+			if storedWindowEnd.After(now) {
+				windowEndsAt = storedWindowEnd
+				attempts = record.GetInt("attempts")
+			}
+		}
+
+		if attempts >= accountDeleteReauthMaxAttempts {
+			remaining := windowEndsAt.Sub(now)
+			retryAfter = int((remaining + time.Second - 1) / time.Second)
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			limited = true
+			return nil
+		}
+
+		record.Set("attempts", attempts+1)
+		record.Set("locked_until", windowEndsAt.Unix())
+		record.Set("last_attempt_at", now)
+		if err := txApp.Save(record); err != nil {
+			return fmt.Errorf("failed to record account deletion attempt: %w", err)
+		}
+
+		return nil
+	})
+
+	return retryAfter, limited, err
 }
 
 func cleanupForAccountDeletion(app core.App, user *core.Record) (*accountDeleteCleanupSummary, error) {

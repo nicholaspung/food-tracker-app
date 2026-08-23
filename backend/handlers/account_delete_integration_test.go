@@ -2,8 +2,11 @@ package handlers_test
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -83,6 +86,208 @@ func TestDeleteAccountRejectsIncorrectPassword(t *testing.T) {
 
 	if _, err := server.app.FindRecordById("users", user.Id); err != nil {
 		t.Fatalf("expected user to remain after rejected delete, got error: %v", err)
+	}
+}
+
+func TestDeleteAccountReauthenticationLimitPersistsAcrossBearerAndAddressChanges(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+	server.app.Settings().TrustedProxy.Headers = []string{"X-Forwarded-For"}
+
+	user, token := createAuthUser(t, server.app, false, false)
+	for attempt := 1; attempt <= 5; attempt++ {
+		response := performJSONRequestWithHeaders(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/account/delete",
+			token,
+			`{"currentPassword":"wrong-password"}`,
+			map[string]string{"X-Forwarded-For": "198.51.100." + strconv.Itoa(attempt)},
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected attempt %d to reach password validation, got %d: %s", attempt, response.Code, response.Body.String())
+		}
+	}
+
+	user.RefreshTokenKey()
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to rotate bearer token: %v", err)
+	}
+	refreshedToken, err := user.NewAuthToken()
+	if err != nil {
+		t.Fatalf("failed to create refreshed bearer token: %v", err)
+	}
+
+	limitedResponse := performJSONRequestWithHeaders(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		refreshedToken,
+		`{"currentPassword":"password123"}`,
+		map[string]string{"X-Forwarded-For": "203.0.113.50"},
+	)
+	if limitedResponse.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected refreshed bearer to remain rate limited, got %d: %s", limitedResponse.Code, limitedResponse.Body.String())
+	}
+	if retryAfter := limitedResponse.Header().Get("Retry-After"); retryAfter == "" {
+		t.Fatal("expected account-bound rate limit to set Retry-After")
+	}
+	if _, err := server.app.FindRecordById("users", user.Id); err != nil {
+		t.Fatalf("expected rate-limited user to remain, got error: %v", err)
+	}
+}
+
+func TestDeleteAccountReauthenticationLimitsAreIsolatedAndExpire(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	limitedUser, limitedToken := createAuthUser(t, server.app, false, false)
+	otherUser, otherToken := createAuthUser(t, server.app, false, false)
+	for attempt := 1; attempt <= 5; attempt++ {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/account/delete",
+			limitedToken,
+			`{"currentPassword":"wrong-password"}`,
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected attempt %d to reach password validation, got %d: %s", attempt, response.Code, response.Body.String())
+		}
+	}
+
+	otherResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		otherToken,
+		`{"currentPassword":"password123"}`,
+	)
+	if otherResponse.Code != http.StatusOK {
+		t.Fatalf("expected separate user to delete below the limit, got %d: %s", otherResponse.Code, otherResponse.Body.String())
+	}
+	if _, err := server.app.FindRecordById("users", otherUser.Id); err == nil {
+		t.Fatal("expected separate user to be deleted")
+	}
+
+	rateLimitRecord, err := server.app.FindFirstRecordByFilter(
+		"rate_limits",
+		"ip_address = {:key}",
+		map[string]any{"key": "account-delete:" + limitedUser.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load account deletion rate limit: %v", err)
+	}
+	rateLimitRecord.Set("locked_until", time.Now().Add(-time.Second).Unix())
+	if err := server.app.Save(rateLimitRecord); err != nil {
+		t.Fatalf("failed to expire account deletion rate limit: %v", err)
+	}
+
+	afterExpiryResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		limitedToken,
+		`{"currentPassword":"password123"}`,
+	)
+	if afterExpiryResponse.Code != http.StatusOK {
+		t.Fatalf("expected deletion after rate limit expiry, got %d: %s", afterExpiryResponse.Code, afterExpiryResponse.Body.String())
+	}
+}
+
+func TestDeleteAccountReauthenticationLimitIsAtomic(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, token := createAuthUser(t, server.app, false, false)
+	const requestCount = 8
+	responses := make(chan int, requestCount)
+	start := make(chan struct{})
+	var requests sync.WaitGroup
+	for range requestCount {
+		requests.Add(1)
+		go func() {
+			defer requests.Done()
+			<-start
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodPost,
+				"/api/account/delete",
+				token,
+				`{"currentPassword":"wrong-password"}`,
+			)
+			responses <- response.Code
+		}()
+	}
+	close(start)
+	requests.Wait()
+	close(responses)
+
+	badRequestCount := 0
+	rateLimitedCount := 0
+	for responseCode := range responses {
+		switch responseCode {
+		case http.StatusBadRequest:
+			badRequestCount++
+		case http.StatusTooManyRequests:
+			rateLimitedCount++
+		default:
+			t.Fatalf("unexpected response status %d", responseCode)
+		}
+	}
+	if badRequestCount != 5 || rateLimitedCount != requestCount-5 {
+		t.Fatalf("expected 5 password validations and %d rate limits, got %d and %d", requestCount-5, badRequestCount, rateLimitedCount)
+	}
+}
+
+func TestDeleteAccountRouteRateLimitBlocksBeforePasswordVerification(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	user, token := createAuthUser(t, server.app, false, false)
+	server.app.Settings().RateLimits.Enabled = true
+	server.app.Settings().RateLimits.Rules = []core.RateLimitRule{
+		{Label: "POST /api/account/delete", Audience: "@auth", Duration: 60, MaxRequests: 1},
+	}
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		token,
+		`{"currentPassword":"wrong-password"}`,
+	)
+	if firstResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected first request to reach password validation, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	limitedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/account/delete",
+		token,
+		`{"currentPassword":"password123"}`,
+	)
+	if limitedResponse.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected route rate limit to return 429, got %d: %s", limitedResponse.Code, limitedResponse.Body.String())
+	}
+	if retryAfter := limitedResponse.Header().Get("Retry-After"); retryAfter == "" {
+		t.Fatal("expected route rate limit to set Retry-After")
+	}
+	if _, err := server.app.FindRecordById("users", user.Id); err != nil {
+		t.Fatalf("expected route-limited user to remain, got error: %v", err)
 	}
 }
 

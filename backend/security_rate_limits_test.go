@@ -26,6 +26,7 @@ func TestConfigureSecurityRateLimitRulesAddsExpectedRules(t *testing.T) {
 		findRestaurantRouteLabel: {audience: authAudience},
 		parseMenuRouteLabel:      {audience: authAudience},
 		parseReceiptRouteLabel:   {audience: authAudience, duration: 60, maxRequests: 5},
+		accountDeleteRouteLabel:  {audience: authAudience, duration: 15 * 60, maxRequests: 10},
 		menuReviewRouteLabel:     {audience: authAudience},
 		menuItemsFromScanLabel:   {audience: authAudience},
 		placesRoutesPrefixLabel:  {audience: authAudience},
