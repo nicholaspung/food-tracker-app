@@ -12,6 +12,7 @@ describe('SecureStoreAuthStore', () => {
     await SecureStore.deleteItemAsync('test_auth_key_backend_mismatch');
     await SecureStore.deleteItemAsync('test_auth_key_clear');
     await SecureStore.deleteItemAsync('test_auth_key_legacy');
+    await SecureStore.deleteItemAsync('test_auth_key_stale_fallback');
   });
 
   it('persists auth state and restores it for a fresh store instance', async () => {
@@ -54,7 +55,7 @@ describe('SecureStoreAuthStore', () => {
     expect(restoredStore.getFileAccessToken('user_2')).toBe('');
   });
 
-  it('ignores legacy AsyncStorage auth state when SecureStore is available', async () => {
+  it('scrubs a prior fallback when a fresh process finds SecureStore available but empty', async () => {
     await AsyncStorage.setItem(
       'test_auth_key_legacy',
       JSON.stringify({
@@ -74,8 +75,39 @@ describe('SecureStoreAuthStore', () => {
     expect(store.token).toBe('');
     expect(store.record).toBeNull();
     expect(mockedAsyncStorage.getItem).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem('test_auth_key_legacy')).toContain('legacy_jwt');
+    expect(await AsyncStorage.getItem('test_auth_key_legacy')).toBeNull();
     expect(await SecureStore.getItemAsync('test_auth_key_legacy')).toBeNull();
+  });
+
+  it('restores protected auth state and scrubs a stale plaintext fallback', async () => {
+    await SecureStore.setItemAsync(
+      'test_auth_key_stale_fallback',
+      JSON.stringify({
+        token: 'secure_jwt',
+        record: {
+          id: 'user_secure',
+          email: 'secure@example.com',
+          verified: true,
+        },
+      }),
+    );
+    await AsyncStorage.setItem(
+      'test_auth_key_stale_fallback',
+      JSON.stringify({
+        token: 'stale_fallback_jwt',
+        record: {
+          id: 'user_stale',
+        },
+      }),
+    );
+
+    const store = new SecureStoreAuthStore('test_auth_key_stale_fallback');
+    await store.waitUntilReady();
+
+    expect(store.token).toBe('secure_jwt');
+    expect(store.record?.id).toBe('user_secure');
+    expect(await AsyncStorage.getItem('test_auth_key_stale_fallback')).toBeNull();
+    expect(await SecureStore.getItemAsync('test_auth_key_stale_fallback')).toContain('secure_jwt');
   });
 
   it('clears persisted auth state on clear', async () => {

@@ -174,9 +174,7 @@ export class SecureStoreAuthStore extends BaseAuthStore {
 
     if (secureStore) {
       const secureValue = await secureStore.getItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
-      if (secureValue) {
-        await localPersistence.authFallback.storage.removeItem(this.storageKey);
-      }
+      await localPersistence.authFallback.storage.removeItem(this.storageKey);
 
       return secureValue;
     }
