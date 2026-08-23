@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,6 +313,121 @@ func TestTastingSessionRawCollectionRulesDenyInviteOnlyUsers(t *testing.T) {
 		}
 		if _, exposed := parseJSONMap(t, response.Body.Bytes())["invite_code"]; exposed {
 			t.Fatalf("expected %s raw session detail to omit invite_code, got %s", actor, response.Body.String())
+		}
+	}
+}
+
+func TestTastingSessionDetailRestrictsInviteRosterToLeader(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
+	pendingInvitee, pendingInviteeToken := createAuthUser(t, server.app, false, false)
+	dismissedInvitee, dismissedInviteeToken := createAuthUser(t, server.app, false, false)
+	revokedInvitee, revokedInviteeToken := createAuthUser(t, server.app, false, false)
+	emailFallbackInvitee, _ := createAuthUser(t, server.app, false, false)
+	_, strangerToken := createAuthUser(t, server.app, false, false)
+
+	emailFallbackInvitee.Set("name", "")
+	if err := server.app.Save(emailFallbackInvitee); err != nil {
+		t.Fatalf("failed to clear invitee display name: %v", err)
+	}
+
+	session := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":            "Private Invite Roster",
+		"leader":          leader.Id,
+		"status":          "lobby",
+		"join_expires_at": time.Now().UTC().Add(time.Hour),
+		"invite_code":     "SECRET",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": session.Id,
+		"user":    leader.Id,
+		"role":    "leader",
+	})
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"session": session.Id,
+		"user":    participant.Id,
+		"role":    "participant",
+	})
+
+	for _, invite := range []struct {
+		userID string
+		status string
+	}{
+		{userID: pendingInvitee.Id, status: "pending"},
+		{userID: dismissedInvitee.Id, status: "dismissed"},
+		{userID: revokedInvitee.Id, status: "revoked"},
+		{userID: emailFallbackInvitee.Id, status: "pending"},
+	} {
+		createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+			"session":      session.Id,
+			"invited_user": invite.userID,
+			"status":       invite.status,
+		})
+	}
+
+	leaderResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/tasting-sessions/"+session.Id,
+		leaderToken,
+		"",
+	)
+	if leaderResponse.Code != http.StatusOK {
+		t.Fatalf("expected leader detail to load, got %d: %s", leaderResponse.Code, leaderResponse.Body.String())
+	}
+	leaderPayload := parseJSONMap(t, leaderResponse.Body.Bytes())
+	leaderInvites, ok := leaderPayload["invites"].([]any)
+	if !ok || len(leaderInvites) != 4 {
+		t.Fatalf("expected leader to receive complete invite roster, got %s", leaderResponse.Body.String())
+	}
+	if !strings.Contains(leaderResponse.Body.String(), emailFallbackInvitee.Email()) {
+		t.Fatalf("expected leader roster to retain email fallback, got %s", leaderResponse.Body.String())
+	}
+
+	for role, token := range map[string]string{
+		"participant":     participantToken,
+		"pending invitee": pendingInviteeToken,
+	} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodGet,
+			"/api/tasting-sessions/"+session.Id,
+			token,
+			"",
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s detail to load, got %d: %s", role, response.Code, response.Body.String())
+		}
+		invites, ok := parseJSONMap(t, response.Body.Bytes())["invites"].([]any)
+		if !ok || len(invites) != 0 {
+			t.Fatalf("expected %s to receive a stable empty invite roster, got %s", role, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), emailFallbackInvitee.Email()) {
+			t.Fatalf("expected %s response to hide invitee email fallback, got %s", role, response.Body.String())
+		}
+	}
+
+	for role, token := range map[string]string{
+		"dismissed invitee": dismissedInviteeToken,
+		"revoked invitee":   revokedInviteeToken,
+		"stranger":          strangerToken,
+	} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodGet,
+			"/api/tasting-sessions/"+session.Id,
+			token,
+			"",
+		)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected %s detail to remain hidden, got %d: %s", role, response.Code, response.Body.String())
 		}
 	}
 }

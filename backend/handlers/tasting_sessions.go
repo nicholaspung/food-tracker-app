@@ -1458,16 +1458,20 @@ func buildTastingSessionResponse(app core.App, sessionRecord *core.Record, viewe
 	if err != nil {
 		return tastingSessionResponse{}, err
 	}
-	invites, err := buildTastingInvites(app, sessionRecord.Id)
-	if err != nil {
-		return tastingSessionResponse{}, err
+	isLeader := strings.TrimSpace(sessionRecord.GetString("leader")) == strings.TrimSpace(viewerUserID)
+	invites := []tastingInviteResponse{}
+	if isLeader {
+		invites, err = buildTastingInvites(app, sessionRecord.Id)
+		if err != nil {
+			return tastingSessionResponse{}, err
+		}
 	}
 	restaurants, err := buildTastingRestaurants(app, sessionRecord, viewerUserID, participantByUserID, participantByID)
 	if err != nil {
 		return tastingSessionResponse{}, err
 	}
 	inviteCode := ""
-	if strings.TrimSpace(sessionRecord.GetString("leader")) == strings.TrimSpace(viewerUserID) &&
+	if isLeader &&
 		strings.TrimSpace(sessionRecord.GetString("status")) == tastingSessionStatusLobby &&
 		isTastingJoinWindowOpen(sessionRecord, time.Now().UTC()) {
 		inviteCode = strings.TrimSpace(sessionRecord.GetString("invite_code"))
