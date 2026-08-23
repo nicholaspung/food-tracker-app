@@ -9,6 +9,8 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 func listAcceptedFriendIDs(app core.App, userID string) (map[string]struct{}, error) {
@@ -79,23 +81,28 @@ func canAccessRestaurantRecord(
 		return false
 	}
 
-	if isAdmin {
-		return true
-	}
+	return lib.CanAccessRestaurant(
+		record.GetString("createdBy"),
+		record.GetString("visibility"),
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
+}
 
-	ownerID := strings.TrimSpace(record.GetString("createdBy"))
-	if ownerID != "" && ownerID == userID {
-		return true
+func filterAccessibleRestaurantRecords(
+	records []*core.Record,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+) []*core.Record {
+	result := make([]*core.Record, 0, len(records))
+	for _, record := range records {
+		if canAccessRestaurantRecord(record, userID, isAdmin, acceptedFriendIDs) {
+			result = append(result, record)
+		}
 	}
-
-	switch strings.TrimSpace(record.GetString("visibility")) {
-	case "public":
-		return true
-	case "friends":
-		return ownerID != "" && hasAcceptedFriend(acceptedFriendIDs, ownerID)
-	default:
-		return false
-	}
+	return result
 }
 
 func findAccessibleRestaurantByID(

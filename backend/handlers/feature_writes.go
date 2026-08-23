@@ -866,15 +866,7 @@ func resolveVisitCreateRestaurant(
 		}
 	}
 
-	restaurantRecord, err := app.FindRecordById("restaurants", restaurantID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apis.NewNotFoundError("restaurant not found", err)
-		}
-		return nil, apis.NewApiError(500, "failed to load restaurant", err)
-	}
-
-	return restaurantRecord, nil
+	return resolveRestaurantForWrite(app, authRecord, restaurantResolveInput{RestaurantID: restaurantID})
 }
 
 func syncRestaurantListBookmarksAfterVisitCreate(
@@ -2220,7 +2212,7 @@ func buildVisitResponse(
 	isAdmin := viewerRecord.GetBool("isAdmin")
 	acceptedFriendIDs := map[string]struct{}{}
 	visitOwnerID := strings.TrimSpace(visitRecord.GetString("user"))
-	if !isAdmin && visitOwnerID != "" && visitOwnerID != viewerUserID {
+	if !isAdmin && viewerUserID != "" {
 		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
 		if err != nil {
 			return visitResponse{}, err
@@ -2244,6 +2236,9 @@ func buildVisitResponse(
 	restaurantRecord, err := app.FindRecordById("restaurants", visitRecord.GetString("restaurant"))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return visitResponse{}, err
+	}
+	if restaurantRecord != nil && !canAccessRestaurantRecord(restaurantRecord, viewerUserID, isAdmin, acceptedFriendIDs) {
+		restaurantRecord = nil
 	}
 
 	ownerRecord := viewerRecord
@@ -2322,7 +2317,6 @@ func buildVisitResponse(
 
 	response := visitResponse{
 		ID:                   visitRecord.Id,
-		RestaurantID:         visitRecord.GetString("restaurant"),
 		VisitedAt:            firstNonEmpty(visitRecord.GetString("visitDate"), visitRecord.GetString("created")),
 		Items:                responseItems,
 		Source:               "visit",
@@ -2339,6 +2333,7 @@ func buildVisitResponse(
 	}
 
 	if restaurantRecord != nil {
+		response.RestaurantID = restaurantRecord.Id
 		response.RestaurantName = strings.TrimSpace(restaurantRecord.GetString("name"))
 		response.RestaurantLocation = strings.TrimSpace(restaurantRecord.GetString("location"))
 		response.RestaurantCuisineType = strings.TrimSpace(restaurantRecord.GetString("cuisineType"))

@@ -7,6 +7,8 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 var ownerBoundCollectionFields = map[string]string{
@@ -58,7 +60,7 @@ func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
 		return apis.NewForbiddenError(fmt.Sprintf("%s must match the authenticated user", ownerField), nil)
 	}
 
-	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
+	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Auth.GetBool("isAdmin"), e.Record); err != nil {
 		return err
 	}
 	if err := enforceMenuItemTrustCreateSecurity(e.Record); err != nil {
@@ -185,7 +187,7 @@ func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 		return apis.NewForbiddenError(fmt.Sprintf("%s cannot be modified", ownerField), nil)
 	}
 
-	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
+	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Auth.GetBool("isAdmin"), e.Record); err != nil {
 		return err
 	}
 	if err := enforceMenuItemTrustUpdateSecurity(e.Record, original); err != nil {
@@ -278,7 +280,7 @@ func menuItemHasAdminTrustState(record *core.Record) bool {
 		record.GetBool("groupSuitable")
 }
 
-func validateOwnerBoundRelations(app core.App, authUserID string, record *core.Record) error {
+func validateOwnerBoundRelations(app core.App, authUserID string, isAdmin bool, record *core.Record) error {
 	if app == nil || record == nil || record.Collection() == nil {
 		return nil
 	}
@@ -286,6 +288,8 @@ func validateOwnerBoundRelations(app core.App, authUserID string, record *core.R
 	switch record.Collection().Name {
 	case "food_items":
 		return requireOwnedRelation(app, "visits", record.GetString("visit"), "visit", authUserID)
+	case "visits":
+		return validateVisitRestaurantRelation(app, authUserID, isAdmin, record)
 	case "notes":
 		if err := requireOwnedRelation(app, "visits", record.GetString("usedInVisit"), "usedInVisit", authUserID); err != nil {
 			return err
@@ -298,6 +302,59 @@ func validateOwnerBoundRelations(app core.App, authUserID string, record *core.R
 	default:
 		return nil
 	}
+}
+
+func validateVisitRestaurantRelation(app core.App, authUserID string, isAdmin bool, visit *core.Record) error {
+	restaurantID := strings.TrimSpace(visit.GetString("restaurant"))
+	if restaurantID == "" {
+		return nil
+	}
+
+	if original := visit.Original(); original != nil &&
+		restaurantID == strings.TrimSpace(original.GetString("restaurant")) {
+		return nil
+	}
+
+	restaurant, err := app.FindRecordById("restaurants", restaurantID)
+	if err != nil {
+		return apis.NewBadRequestError("restaurant is invalid", err)
+	}
+
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin {
+		rows := []struct {
+			FriendID string `db:"friendId"`
+		}{}
+		if err := app.DB().NewQuery(`
+			SELECT friend AS [[friendId]]
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS [[friendId]]
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		`).Bind(dbx.Params{"userId": authUserID}).All(&rows); err != nil {
+			return apis.NewApiError(500, "failed to validate restaurant visibility", err)
+		}
+		for _, row := range rows {
+			friendID := strings.TrimSpace(row.FriendID)
+			if friendID != "" {
+				acceptedFriendIDs[friendID] = struct{}{}
+			}
+		}
+	}
+
+	if !lib.CanAccessRestaurant(
+		restaurant.GetString("createdBy"),
+		restaurant.GetString("visibility"),
+		authUserID,
+		isAdmin,
+		acceptedFriendIDs,
+	) {
+		return apis.NewForbiddenError("restaurant is not accessible", nil)
+	}
+
+	return nil
 }
 
 func requireOwnedRelation(

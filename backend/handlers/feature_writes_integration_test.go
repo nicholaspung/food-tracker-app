@@ -795,7 +795,7 @@ func TestVisitCreateEndpointRejectsInaccessibleRestaurantID(t *testing.T) {
 	}
 }
 
-func TestVisitCreateEndpointAllowsSourceListItemRestaurantFromAccessibleFriendBookmark(t *testing.T) {
+func TestVisitCreateEndpointRejectsPrivateSourceListItemRestaurantFromFriendBookmark(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	owner, _ := createAuthUser(t, server.app, false, true)
 	requester, token := createAuthUser(t, server.app, false, true)
@@ -839,57 +839,14 @@ func TestVisitCreateEndpointAllowsSourceListItemRestaurantFromAccessibleFriendBo
 			]
 		}`,
 	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected private bookmarked Restaurant to remain inaccessible with 404, got %d: %s", response.Code, response.Body.String())
 	}
-
-	var payload visitResponsePayload
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse visit payload: %v", err)
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": requester.Id}); count != 0 {
+		t.Fatalf("expected no requester Visit to be created, got %d", count)
 	}
-	if payload.RestaurantID != restaurant.Id {
-		t.Fatalf("expected created visit to reuse restaurant %q, got %q", restaurant.Id, payload.RestaurantID)
-	}
-
-	reloadedVisit, err := server.app.FindRecordById("visits", payload.ID)
-	if err != nil {
-		t.Fatalf("failed to reload visit: %v", err)
-	}
-	if reloadedVisit.GetString("user") != requester.Id {
-		t.Fatalf("expected created visit user=%q, got %q", requester.Id, reloadedVisit.GetString("user"))
-	}
-	if reloadedVisit.GetString("restaurant") != restaurant.Id {
-		t.Fatalf("expected created visit restaurant=%q, got %q", restaurant.Id, reloadedVisit.GetString("restaurant"))
-	}
-
-	usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": requester.Id})
-	if len(usageRecords) != 2 {
-		t.Fatalf("expected tried and rated-after-try usage records, got %d", len(usageRecords))
-	}
-	kinds := map[string]*core.Record{}
-	for _, usage := range usageRecords {
-		kinds[usage.GetString("kind")] = usage
-		if usage.GetString("sourceUser") != owner.Id {
-			t.Fatalf("expected sourceUser=%q, got %q", owner.Id, usage.GetString("sourceUser"))
-		}
-		if usage.GetString("sourceFoodItem") != foodItem.Id {
-			t.Fatalf("expected sourceFoodItem=%q, got %q", foodItem.Id, usage.GetString("sourceFoodItem"))
-		}
-		if usage.GetString("sourceRestaurantList") != list.Id {
-			t.Fatalf("expected sourceRestaurantList=%q, got %q", list.Id, usage.GetString("sourceRestaurantList"))
-		}
-		if usage.GetString("sourceListItem") != listItem.Id {
-			t.Fatalf("expected sourceListItem=%q, got %q", listItem.Id, usage.GetString("sourceListItem"))
-		}
-		if usage.GetString("targetVisit") != payload.ID {
-			t.Fatalf("expected targetVisit=%q, got %q", payload.ID, usage.GetString("targetVisit"))
-		}
-	}
-	if kinds["tried_recommendation"] == nil || kinds["rated_after_try"] == nil {
-		t.Fatalf("expected tried and rated-after-try usage kinds, got %#v", kinds)
-	}
-	if kinds["rated_after_try"].GetString("targetVisitItem") != payload.Items[0].ID {
-		t.Fatalf("expected rated-after-try targetVisitItem=%q, got %q", payload.Items[0].ID, kinds["rated_after_try"].GetString("targetVisitItem"))
+	if usageRecords := findRecommendationUsageRecords(t, server.app, "actor = {:actorId}", map[string]any{"actorId": requester.Id}); len(usageRecords) != 0 {
+		t.Fatalf("expected no Recommendation Usage for rejected Visit, got %d", len(usageRecords))
 	}
 }
 

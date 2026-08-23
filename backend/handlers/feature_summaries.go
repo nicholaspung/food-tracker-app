@@ -1977,6 +1977,12 @@ func getVisitsPageResponse(
 	if err != nil {
 		return response, err
 	}
+	restaurantRecords = filterAccessibleRestaurantRecords(
+		restaurantRecords,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
 	userRecords, err := findRecordsByIDs(app, "users", userIDs)
 	if err != nil {
 		return response, err
@@ -2038,9 +2044,13 @@ func getVisitsPageResponse(
 			continue
 		}
 
+		responseRestaurantID := ""
+		if restaurant != nil {
+			responseRestaurantID = restaurant.Id
+		}
 		response.Items = append(response.Items, visitResponse{
 			ID:                    visit.Id,
-			RestaurantID:          visit.GetString("restaurant"),
+			RestaurantID:          responseRestaurantID,
 			RestaurantName:        defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant"),
 			RestaurantLocation:    resolveRestaurantLocation(restaurant),
 			RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
@@ -2403,6 +2413,12 @@ func getHomeFeedResponse(
 	if err != nil {
 		return response, err
 	}
+	restaurantRecords = filterAccessibleRestaurantRecords(
+		restaurantRecords,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
 	userRecords, err := findRecordsByIDs(app, "users", userIDs)
 	if err != nil {
 		return response, err
@@ -2487,12 +2503,16 @@ func getHomeFeedResponse(
 			if len(entryItems) == 0 && !isAdmin && strings.TrimSpace(visit.GetString("user")) != userID {
 				continue
 			}
+			responseRestaurantID := ""
+			if restaurant != nil {
+				responseRestaurantID = restaurant.Id
+			}
 			items = append(items, homeFeedEntryResponse{
 				Source:  "visit",
 				EventAt: row.EventAt,
 				Visit: &visitResponse{
 					ID:                    visit.Id,
-					RestaurantID:          visit.GetString("restaurant"),
+					RestaurantID:          responseRestaurantID,
 					RestaurantName:        defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant"),
 					RestaurantLocation:    resolveRestaurantLocation(restaurant),
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
@@ -2581,6 +2601,10 @@ func getHomeFeedMapPointsResponse(
 	if err != nil || len(rows) == 0 {
 		return response, err
 	}
+	rows, err = filterAccessibleHomeFeedMapRows(app, rows, userID, isAdmin)
+	if err != nil || len(rows) == 0 {
+		return response, err
+	}
 
 	markers := make([]homeFeedMapMarkerResponse, 0, len(rows))
 	for _, row := range rows {
@@ -2629,6 +2653,46 @@ func getHomeFeedMapPointsResponse(
 	return response, nil
 }
 
+func filterAccessibleHomeFeedMapRows(
+	app core.App,
+	rows []homeFeedMapEntryRow,
+	userID string,
+	isAdmin bool,
+) ([]homeFeedMapEntryRow, error) {
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin {
+		var err error
+		acceptedFriendIDs, err = listAcceptedFriendIDs(app, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	restaurantIDs := make([]string, 0, len(rows))
+	restaurantIDSet := map[string]struct{}{}
+	for _, row := range rows {
+		restaurantIDs = appendUniqueTrimmedID(restaurantIDs, restaurantIDSet, row.RestaurantID)
+	}
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return nil, err
+	}
+	accessibleRestaurantsByID := mapRecordsByID(filterAccessibleRestaurantRecords(
+		restaurantRecords,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	))
+
+	result := make([]homeFeedMapEntryRow, 0, len(rows))
+	for _, row := range rows {
+		if accessibleRestaurantsByID[strings.TrimSpace(row.RestaurantID)] != nil {
+			result = append(result, row)
+		}
+	}
+	return result, nil
+}
+
 func buildHomeFeedMapPointDetailsResponse(
 	app core.App,
 	userID string,
@@ -2639,6 +2703,11 @@ func buildHomeFeedMapPointDetailsResponse(
 	response := homeFeedMapPointDetailsResponse{
 		PhotoPreviews: []homeFeedPhotoPreviewResponse{},
 		Points:        []homeFeedMapPointResponse{},
+	}
+	var err error
+	rows, err = filterAccessibleHomeFeedMapRows(app, rows, userID, isAdmin)
+	if err != nil {
+		return response, err
 	}
 	if len(rows) == 0 {
 		return response, nil
@@ -2721,6 +2790,12 @@ func buildHomeFeedMapPointDetailsResponse(
 	if err != nil {
 		return response, err
 	}
+	restaurantRecords = filterAccessibleRestaurantRecords(
+		restaurantRecords,
+		userID,
+		isAdmin,
+		acceptedFriendIDs,
+	)
 	userRecords, err := findRecordsByIDs(app, "users", userIDs)
 	if err != nil {
 		return response, err
@@ -2809,6 +2884,9 @@ func buildHomeFeedMapPointDetailsResponse(
 			if len(entryItems) == 0 && !isAdmin && strings.TrimSpace(visit.GetString("user")) != userID {
 				continue
 			}
+			if restaurant == nil {
+				continue
+			}
 			restaurantName := defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant")
 			restaurantLocation := resolveRestaurantLocation(restaurant)
 			points = append(points, homeFeedMapPointResponse{
@@ -2817,13 +2895,13 @@ func buildHomeFeedMapPointDetailsResponse(
 				EventAt:            row.EventAt,
 				Latitude:           row.Latitude.Float64,
 				Longitude:          row.Longitude.Float64,
-				RestaurantID:       visit.GetString("restaurant"),
+				RestaurantID:       restaurant.Id,
 				RestaurantName:     restaurantName,
 				RestaurantLocation: restaurantLocation,
 				RatingSummaryLabel: formatHomeFeedVisitRatingSummary(entryItems),
 				Visit: &visitResponse{
 					ID:                    visit.Id,
-					RestaurantID:          visit.GetString("restaurant"),
+					RestaurantID:          restaurant.Id,
 					RestaurantName:        restaurantName,
 					RestaurantLocation:    restaurantLocation,
 					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
@@ -2857,6 +2935,9 @@ func buildHomeFeedMapPointDetailsResponse(
 			if linkedVisit != nil {
 				linkedRestaurant = restaurantsByID[linkedVisit.GetString("restaurant")]
 			}
+			if linkedRestaurant == nil {
+				continue
+			}
 
 			restaurantName := strings.TrimSpace(quickTrack.GetString("location_text"))
 			if restaurantName == "" {
@@ -2866,10 +2947,7 @@ func buildHomeFeedMapPointDetailsResponse(
 				restaurantName = "Food Product"
 			}
 
-			restaurantID := ""
-			if linkedVisit != nil {
-				restaurantID = linkedVisit.GetString("restaurant")
-			}
+			restaurantID := linkedRestaurant.Id
 			ratingSummaryLabel := formatHomeFeedSingleRatingSummary(quickTrack.GetFloat("rating"))
 			foodProduct := &homeFeedFoodProductResponse{
 				ID:               quickTrack.Id,
@@ -2935,7 +3013,7 @@ func countVisitsPageEntries(
 		SELECT COUNT(*) AS [[count]]
 		FROM visits
 		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search)
+		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search, isAdmin)
 
 	err := app.DB().NewQuery(query).
 		Bind(dbx.Params{
@@ -2972,7 +3050,7 @@ func listVisitPageRows(
 		SELECT visits.id AS [[recordId]]
 		FROM visits
 		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search) + `
+		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search, isAdmin) + `
 		ORDER BY
 			COALESCE(NULLIF(visits.visitDate, ''), visits.created) DESC,
 			visits.created DESC,
@@ -3015,7 +3093,7 @@ func countHomeFeedEntries(
 	if typeFilter != "food-products" {
 		visitCountExpr = `SELECT COUNT(*) FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-			WHERE ` + buildHomeFeedVisitAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search)
+			WHERE ` + buildHomeFeedVisitAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search, isAdmin)
 	}
 
 	quickTrackCountExpr := "0"
@@ -3023,7 +3101,7 @@ func countHomeFeedEntries(
 		quickTrackCountExpr = `SELECT COUNT(*) FROM food_items
 			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
 			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
-			WHERE ` + buildHomeFeedQuickTrackAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedQuickTrackSearchCondition(search)
+			WHERE ` + buildHomeFeedQuickTrackAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedQuickTrackSearchCondition(search, isAdmin)
 	}
 
 	query := fmt.Sprintf(`
@@ -3079,7 +3157,7 @@ func listHomeFeedEntryRows(
 				visits.created AS createdAt
 			FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search))
+			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search, isAdmin))
 	}
 	if typeFilter != "visits" {
 		selects = append(selects, `
@@ -3091,7 +3169,7 @@ func listHomeFeedEntryRows(
 			FROM food_items
 			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
 			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
-			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search))
+			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search, isAdmin))
 	}
 
 	if len(selects) == 0 {
@@ -3187,7 +3265,7 @@ func listHomeFeedMapEntryRows(
 				'' AS locationText
 			FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
-			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search)+`
+			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search, isAdmin)+`
 				`+visitPointFilterSQL+`
 				AND restaurants.latitude IS NOT NULL
 				AND restaurants.longitude IS NOT NULL
@@ -3226,7 +3304,7 @@ func listHomeFeedMapEntryRows(
 			FROM food_items
 			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
 			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
-			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search)+`
+			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search, isAdmin)+`
 				`+foodProductPointFilterSQL+`
 				AND linked_restaurants.latitude IS NOT NULL
 				AND linked_restaurants.longitude IS NOT NULL
@@ -3375,15 +3453,17 @@ func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
 	}
 }
 
-func buildHomeFeedVisitSearchCondition(search string) string {
+func buildHomeFeedVisitSearchCondition(search string, isAdmin bool) string {
 	if strings.TrimSpace(search) == "" {
 		return `1 = 1`
 	}
 
 	return `(
-		LOWER(COALESCE(restaurants.name, '')) LIKE {:searchLike}
-		OR LOWER(COALESCE(restaurants.location, '')) LIKE {:searchLike}
-		OR LOWER(COALESCE(restaurants.cuisineType, '')) LIKE {:searchLike}
+		((` + restaurantAccessConditionForAlias("restaurants", isAdmin) + `) AND (
+			LOWER(COALESCE(restaurants.name, '')) LIKE {:searchLike}
+			OR LOWER(COALESCE(restaurants.location, '')) LIKE {:searchLike}
+			OR LOWER(COALESCE(restaurants.cuisineType, '')) LIKE {:searchLike}
+		))
 		OR EXISTS (
 			SELECT 1
 			FROM food_items visit_items
@@ -3397,7 +3477,7 @@ func buildHomeFeedVisitSearchCondition(search string) string {
 	)`
 }
 
-func buildHomeFeedQuickTrackSearchCondition(search string) string {
+func buildHomeFeedQuickTrackSearchCondition(search string, isAdmin bool) string {
 	if strings.TrimSpace(search) == "" {
 		return `1 = 1`
 	}
@@ -3407,7 +3487,8 @@ func buildHomeFeedQuickTrackSearchCondition(search string) string {
 		OR LOWER(COALESCE(food_items.itemCategory, '')) LIKE {:searchLike}
 		OR LOWER(COALESCE(food_items.notes, '')) LIKE {:searchLike}
 		OR LOWER(COALESCE(food_items.location_text, '')) LIKE {:searchLike}
-		OR LOWER(COALESCE(linked_restaurants.name, '')) LIKE {:searchLike}
+		OR ((` + restaurantAccessConditionForAlias("linked_restaurants", isAdmin) + `)
+			AND LOWER(COALESCE(linked_restaurants.name, '')) LIKE {:searchLike})
 	)`
 }
 
@@ -4099,14 +4180,22 @@ func restaurantSearchFilterClause() string {
 }
 
 func restaurantAccessCondition() string {
-	return `
-		restaurants.visibility = 'public'
-		OR restaurants.createdBy = {:userId}
+	return restaurantAccessConditionForAlias("restaurants", false)
+}
+
+func restaurantAccessConditionForAlias(alias string, isAdmin bool) string {
+	if isAdmin {
+		return "1 = 1"
+	}
+
+	return fmt.Sprintf(`
+		TRIM(COALESCE(%[1]s.visibility, '')) = 'public'
+		OR TRIM(COALESCE(%[1]s.createdBy, '')) = {:userId}
 		OR (
-			restaurants.visibility = 'friends'
-			AND restaurants.createdBy IN (SELECT friendId FROM accepted_friends)
+			TRIM(COALESCE(%[1]s.visibility, '')) = 'friends'
+			AND TRIM(COALESCE(%[1]s.createdBy, '')) IN (SELECT friendId FROM accepted_friends)
 		)
-	`
+	`, alias)
 }
 
 func buildRestaurantSelectionSummaries(

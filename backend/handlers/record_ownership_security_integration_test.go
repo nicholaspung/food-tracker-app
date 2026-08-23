@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -36,6 +37,123 @@ func TestVisitCreateRejectsCrossUserSpoofing(t *testing.T) {
 	)
 	if response.Code == http.StatusOK {
 		t.Fatalf("expected cross-user visit create to be rejected, got 200: %s", response.Body.String())
+	}
+}
+
+func TestVisitRawWritesEnforceRestaurantVisibility(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, app core.App) {
+		hooks.RegisterRecordOwnershipHooks(app)
+	})
+
+	user, userToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	friendship := createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   user.Id,
+		"friend": friend.Id,
+		"status": "accepted",
+	})
+	friendRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Restaurant",
+		"location":   "Los Angeles",
+		"createdBy":  friend.Id,
+		"visibility": "friends",
+	})
+	privateFriendRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Private Friend Restaurant",
+		"location":   "Los Angeles",
+		"createdBy":  friend.Id,
+		"visibility": "private",
+	})
+	publicRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Public Restaurant",
+		"location":   "Los Angeles",
+		"createdBy":  friend.Id,
+		"visibility": "public",
+	})
+	ownedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Owned Restaurant",
+		"location":   "Los Angeles",
+		"createdBy":  user.Id,
+		"visibility": "private",
+	})
+
+	createVisit := func(token string, visitOwnerID string, restaurantID string) *httptest.ResponseRecorder {
+		t.Helper()
+		return performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/collections/visits/records",
+			token,
+			fmt.Sprintf(`{"restaurant":%q,"user":%q,"visitDate":"2026-07-25T18:00:00Z","visibility":"private"}`, restaurantID, visitOwnerID),
+		)
+	}
+
+	acceptedFriendResponse := createVisit(userToken, user.Id, friendRestaurant.Id)
+	if acceptedFriendResponse.Code != http.StatusOK {
+		t.Fatalf("expected accepted-friend Restaurant create 200, got %d: %s", acceptedFriendResponse.Code, acceptedFriendResponse.Body.String())
+	}
+	if response := createVisit(userToken, user.Id, publicRestaurant.Id); response.Code != http.StatusOK {
+		t.Fatalf("expected public Restaurant create 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if response := createVisit(userToken, user.Id, ownedRestaurant.Id); response.Code != http.StatusOK {
+		t.Fatalf("expected owned private Restaurant create 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if response := createVisit(userToken, user.Id, privateFriendRestaurant.Id); response.Code != http.StatusForbidden {
+		t.Fatalf("expected private foreign Restaurant create 403, got %d: %s", response.Code, response.Body.String())
+	}
+	if response := createVisit(adminToken, admin.Id, privateFriendRestaurant.Id); response.Code != http.StatusOK {
+		t.Fatalf("expected admin Restaurant create 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var acceptedFriendVisit struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(acceptedFriendResponse.Body.Bytes(), &acceptedFriendVisit); err != nil {
+		t.Fatalf("failed to decode accepted-friend Visit: %v", err)
+	}
+	friendship.Set("status", "pending")
+	if err := server.app.Save(friendship); err != nil {
+		t.Fatalf("failed to revoke friendship: %v", err)
+	}
+
+	if response := createVisit(userToken, user.Id, friendRestaurant.Id); response.Code != http.StatusForbidden {
+		t.Fatalf("expected cached revoked Restaurant create 403, got %d: %s", response.Code, response.Body.String())
+	}
+	publicVisits, err := server.app.FindRecordsByFilter(
+		"visits",
+		"user = {:userId} && restaurant = {:restaurantId}",
+		"created",
+		1,
+		0,
+		map[string]any{"userId": user.Id, "restaurantId": publicRestaurant.Id},
+	)
+	if err != nil || len(publicVisits) != 1 {
+		t.Fatalf("failed to find public Restaurant Visit for update test: records=%d err=%v", len(publicVisits), err)
+	}
+	updateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/visits/records/"+publicVisits[0].Id,
+		userToken,
+		fmt.Sprintf(`{"restaurant":%q}`, friendRestaurant.Id),
+	)
+	if updateResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected cached revoked Restaurant update 403, got %d: %s", updateResponse.Code, updateResponse.Body.String())
+	}
+
+	unrelatedUpdateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/visits/records/"+acceptedFriendVisit.ID,
+		userToken,
+		`{"visitDate":"2026-07-26T18:00:00Z"}`,
+	)
+	if unrelatedUpdateResponse.Code != http.StatusOK {
+		t.Fatalf("expected unrelated update of a previously valid Visit 200, got %d: %s", unrelatedUpdateResponse.Code, unrelatedUpdateResponse.Body.String())
 	}
 }
 

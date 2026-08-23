@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -3983,6 +3984,184 @@ func TestHomeFeedMapReturnsBoundedMarkersAndLazyDetail(t *testing.T) {
 	}
 	if strings.Contains(detailResponse.Body.String(), strangerVisit.Id) || strings.Contains(detailResponse.Body.String(), "Private Map Toast") {
 		t.Fatalf("expected inaccessible marker detail to remain excluded: %s", detailResponse.Body.String())
+	}
+}
+
+func TestVisitSummariesRedactRestaurantAfterFriendshipRevocation(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		handlers.RegisterFeatureWriteHandlers(se, app)
+	})
+	viewer, viewerToken := createAuthUser(t, server.app, false, false)
+	restaurantOwner, _ := createAuthUser(t, server.app, false, false)
+	friendship := createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   viewer.Id,
+		"friend": restaurantOwner.Id,
+		"status": "accepted",
+	})
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"createdBy":   restaurantOwner.Id,
+		"cuisineType": "Secret Cuisine",
+		"latitude":    37.78,
+		"location":    "Secret Location",
+		"longitude":   -122.42,
+		"name":        "Secret Restaurant",
+		"visibility":  "friends",
+	})
+	visit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       viewer.Id,
+		"visitDate":  "2026-07-25 18:00:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "Viewer Item",
+		"rating": 4,
+		"user":   viewer.Id,
+		"visit":  visit.Id,
+	})
+	linkedFoodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"itemType":      "food-product",
+		"location_text": "Generic Store",
+		"name":          "Viewer Product",
+		"rating":        3,
+		"user":          viewer.Id,
+		"visit":         visit.Id,
+		"visibility":    "private",
+	})
+
+	visitsPath := "/api/visits?page=1&pageSize=10&scope=mine"
+	mapPath := "/api/home-feed/map-points?scope=mine&typeFilter=visits&sort=created&north=38&south=37&west=-123&east=-122"
+	acceptedVisitsResponse := performJSONRequest(t, server.mux, http.MethodGet, visitsPath, viewerToken, "")
+	if acceptedVisitsResponse.Code != http.StatusOK ||
+		!strings.Contains(acceptedVisitsResponse.Body.String(), restaurant.Id) ||
+		!strings.Contains(acceptedVisitsResponse.Body.String(), "Secret Restaurant") {
+		t.Fatalf("expected accepted friend to receive Restaurant metadata, got %d: %s", acceptedVisitsResponse.Code, acceptedVisitsResponse.Body.String())
+	}
+	acceptedMapResponse := performJSONRequest(t, server.mux, http.MethodGet, mapPath, viewerToken, "")
+	if acceptedMapResponse.Code != http.StatusOK || !strings.Contains(acceptedMapResponse.Body.String(), "Secret Restaurant") {
+		t.Fatalf("expected accepted friend to receive Restaurant map marker, got %d: %s", acceptedMapResponse.Code, acceptedMapResponse.Body.String())
+	}
+
+	friendship.Set("status", "pending")
+	if err := server.app.Save(friendship); err != nil {
+		t.Fatalf("failed to revoke friendship: %v", err)
+	}
+
+	assertRestaurantRedacted := func(label string, response *httptest.ResponseRecorder) {
+		t.Helper()
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s response 200, got %d: %s", label, response.Code, response.Body.String())
+		}
+		for _, secret := range []string{restaurant.Id, "Secret Restaurant", "Secret Location", "Secret Cuisine", "37.78", "-122.42"} {
+			if strings.Contains(response.Body.String(), secret) {
+				t.Fatalf("expected %s to redact %q after revocation: %s", label, secret, response.Body.String())
+			}
+		}
+	}
+
+	revokedVisitsResponse := performJSONRequest(t, server.mux, http.MethodGet, visitsPath, viewerToken, "")
+	assertRestaurantRedacted("Visits summary", revokedVisitsResponse)
+	if !strings.Contains(revokedVisitsResponse.Body.String(), visit.Id) || !strings.Contains(revokedVisitsResponse.Body.String(), "Unknown Restaurant") {
+		t.Fatalf("expected Visit to remain with a redacted Restaurant, got %s", revokedVisitsResponse.Body.String())
+	}
+	detailResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/visits/"+visit.Id, viewerToken, "")
+	assertRestaurantRedacted("Visit detail", detailResponse)
+	if !strings.Contains(detailResponse.Body.String(), visit.Id) || !strings.Contains(detailResponse.Body.String(), "Unknown Restaurant") {
+		t.Fatalf("expected Visit detail to remain with a redacted Restaurant, got %s", detailResponse.Body.String())
+	}
+
+	secretVisitsSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=mine&search=Secret%20Cuisine",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("Visits Restaurant search", secretVisitsSearchResponse)
+	if strings.Contains(secretVisitsSearchResponse.Body.String(), visit.Id) || !strings.Contains(secretVisitsSearchResponse.Body.String(), `"totalItems":0`) {
+		t.Fatalf("expected revoked Restaurant fields not to match Visits search, got %s", secretVisitsSearchResponse.Body.String())
+	}
+	itemVisitsSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=mine&search=Viewer%20Item",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("Visits item search", itemVisitsSearchResponse)
+	if !strings.Contains(itemVisitsSearchResponse.Body.String(), visit.Id) {
+		t.Fatalf("expected legitimate Visit Item search to remain available, got %s", itemVisitsSearchResponse.Body.String())
+	}
+
+	homeFeedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=visits&sort=created",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("Home summary", homeFeedResponse)
+	if !strings.Contains(homeFeedResponse.Body.String(), visit.Id) || !strings.Contains(homeFeedResponse.Body.String(), "Unknown Restaurant") {
+		t.Fatalf("expected Home Visit to remain with a redacted Restaurant, got %s", homeFeedResponse.Body.String())
+	}
+	secretHomeSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=visits&sort=created&search=Secret%20Restaurant",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("Home Restaurant search", secretHomeSearchResponse)
+	if strings.Contains(secretHomeSearchResponse.Body.String(), visit.Id) || !strings.Contains(secretHomeSearchResponse.Body.String(), `"totalVisits":0`) {
+		t.Fatalf("expected revoked Restaurant fields not to match Home search, got %s", secretHomeSearchResponse.Body.String())
+	}
+	secretFoodProductSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=food-products&sort=created&search=Secret%20Restaurant",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("linked Food Product Restaurant search", secretFoodProductSearchResponse)
+	if strings.Contains(secretFoodProductSearchResponse.Body.String(), linkedFoodProduct.Id) || !strings.Contains(secretFoodProductSearchResponse.Body.String(), `"totalFoodProducts":0`) {
+		t.Fatalf("expected revoked linked Restaurant not to match Food Product search, got %s", secretFoodProductSearchResponse.Body.String())
+	}
+	foodProductNameSearchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&typeFilter=food-products&sort=created&search=Viewer%20Product",
+		viewerToken,
+		"",
+	)
+	assertRestaurantRedacted("Food Product name search", foodProductNameSearchResponse)
+	if !strings.Contains(foodProductNameSearchResponse.Body.String(), linkedFoodProduct.Id) {
+		t.Fatalf("expected legitimate Food Product name search to remain available, got %s", foodProductNameSearchResponse.Body.String())
+	}
+
+	revokedMapResponse := performJSONRequest(t, server.mux, http.MethodGet, mapPath, viewerToken, "")
+	assertRestaurantRedacted("map markers", revokedMapResponse)
+	if !strings.Contains(revokedMapResponse.Body.String(), `"totalEntries":0`) {
+		t.Fatalf("expected revoked Restaurant marker to be omitted, got %s", revokedMapResponse.Body.String())
+	}
+
+	mapDetailResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/home-feed/map-point-details",
+		viewerToken,
+		fmt.Sprintf(`{"scope":"mine","typeFilter":"visits","sort":"created","north":38,"south":37,"west":-123,"east":-122,"points":[{"source":"visit","recordId":%q}]}`, visit.Id),
+	)
+	assertRestaurantRedacted("map details", mapDetailResponse)
+	if !strings.Contains(mapDetailResponse.Body.String(), `"points":[]`) {
+		t.Fatalf("expected revoked Restaurant map detail to be omitted, got %s", mapDetailResponse.Body.String())
 	}
 }
 
