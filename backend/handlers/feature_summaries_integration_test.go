@@ -1923,6 +1923,143 @@ func TestVisitsPageEndpointSearchesAcrossRestaurantsAndItemsWithPagination(t *te
 	}
 }
 
+func TestVisitSearchOnlyMatchesItemsVisibleToViewer(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	viewer, viewerToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	menuItemOwner, _ := createAuthUser(t, server.app, false, false)
+	_, adminToken := createAuthUser(t, server.app, true, false)
+
+	createFriendshipRecord(t, server.app, viewer.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"latitude":   37.78,
+		"location":   "San Francisco, CA",
+		"longitude":  -122.42,
+		"name":       "Search Policy Cafe",
+		"visibility": "public",
+	})
+	privateMenuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"createdBy":  menuItemOwner.Id,
+		"name":       "Private Catalog Item",
+		"restaurant": restaurant.Id,
+		"visibility": "private",
+	})
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-07-25 18:00:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"name":   "VisibleNameNeedle",
+		"notes":  "VisibleNotesNeedle",
+		"rating": 4,
+		"user":   friend.Id,
+		"visit":  friendVisit.Id,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"moderationStatus": "hidden",
+		"name":             "HiddenNameNeedle",
+		"notes":            "HiddenNotesNeedle",
+		"rating":           1,
+		"user":             friend.Id,
+		"visit":            friendVisit.Id,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"menuItem": privateMenuItem.Id,
+		"name":     "PrivateMenuNameNeedle",
+		"notes":    "PrivateMenuNotesNeedle",
+		"rating":   2,
+		"user":     friend.Id,
+		"visit":    friendVisit.Id,
+	})
+
+	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       viewer.Id,
+		"visitDate":  "2026-07-24 18:00:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"moderationStatus": "under_review",
+		"name":             "OwnerReviewNameNeedle",
+		"notes":            "OwnerReviewNotesNeedle",
+		"rating":           3,
+		"user":             viewer.Id,
+		"visit":            ownerVisit.Id,
+	})
+
+	type searchEndpoint struct {
+		name       string
+		path       string
+		countField string
+	}
+	endpoints := []searchEndpoint{
+		{
+			name:       "Visits",
+			path:       "/api/visits?page=1&pageSize=10&scope=%s&search=%s",
+			countField: "totalItems",
+		},
+		{
+			name:       "Home feed",
+			path:       "/api/home-feed?page=1&pageSize=10&scope=%s&typeFilter=visits&search=%s",
+			countField: "totalVisits",
+		},
+		{
+			name:       "Home Feed Map",
+			path:       "/api/home-feed/map-points?scope=%s&typeFilter=visits&search=%s&north=38&south=37&west=-123&east=-122",
+			countField: "totalEntries",
+		},
+	}
+	assertSearch := func(label string, token string, scope string, search string, visitID string, wantMatch bool) {
+		t.Helper()
+		for _, endpoint := range endpoints {
+			t.Run(label+"/"+endpoint.name, func(t *testing.T) {
+				response := performJSONRequest(
+					t,
+					server.mux,
+					http.MethodGet,
+					fmt.Sprintf(endpoint.path, scope, search),
+					token,
+					"",
+				)
+				if response.Code != http.StatusOK {
+					t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+				}
+
+				body := response.Body.String()
+				expectedCount := 0
+				if wantMatch {
+					expectedCount = 1
+				}
+				if !strings.Contains(body, fmt.Sprintf("%q:%d", endpoint.countField, expectedCount)) {
+					t.Fatalf("expected %s=%d, got %s", endpoint.countField, expectedCount, body)
+				}
+				if strings.Contains(body, visitID) != wantMatch {
+					t.Fatalf("expected visit match=%v for %q, got %s", wantMatch, search, body)
+				}
+			})
+		}
+	}
+
+	for _, search := range []string{"VisibleNameNeedle", "VisibleNotesNeedle"} {
+		assertSearch("friend-visible-item-"+search, viewerToken, "friends", search, friendVisit.Id, true)
+	}
+	for _, search := range []string{
+		"HiddenNameNeedle",
+		"HiddenNotesNeedle",
+		"PrivateMenuNameNeedle",
+		"PrivateMenuNotesNeedle",
+	} {
+		assertSearch("friend-hidden-item-"+search, viewerToken, "friends", search, friendVisit.Id, false)
+		assertSearch("admin-item-"+search, adminToken, "all", search, friendVisit.Id, true)
+	}
+	for _, search := range []string{"OwnerReviewNameNeedle", "OwnerReviewNotesNeedle"} {
+		assertSearch("owner-under-review-item-"+search, viewerToken, "mine", search, ownerVisit.Id, true)
+	}
+}
+
 func TestVisitsPageEndpointAppliesScopeVisibilityAndModeration(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

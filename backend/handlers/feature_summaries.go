@@ -3414,18 +3414,38 @@ func buildVisibleVisitItemsExistCondition() string {
 		FROM food_items visible_visit_items
 		LEFT JOIN menu_items visible_menu_items ON visible_menu_items.id = visible_visit_items.menuItem
 		WHERE visible_visit_items.visit = visits.id
-			AND ` + visitItemSQL("visible_visit_items") + `
-			AND (visible_visit_items.moderationStatus = '' OR visible_visit_items.moderationStatus = 'active' OR visible_visit_items.moderationStatus = 'reviewed')
-			AND (
-				TRIM(COALESCE(visible_visit_items.menuItem, '')) = ''
-				OR visible_menu_items.visibility = 'public'
-				OR (
-					visible_menu_items.visibility = 'friends'
-					AND visible_menu_items.createdBy IN (SELECT friendId FROM accepted_friends)
-				)
-				OR visible_menu_items.createdBy = {:userId}
-			)
+			AND ` + buildVisitItemViewerAccessCondition("visible_visit_items", "visible_menu_items", false) + `
 	)`
+}
+
+// buildVisitItemViewerAccessCondition is the SQL equivalent of
+// filterHomeFeedVisitItemRecordsForViewer: the viewer must be allowed to see
+// both the Visit Item and any explicitly linked Menu Item.
+func buildVisitItemViewerAccessCondition(itemAlias string, menuItemAlias string, isAdmin bool) string {
+	if isAdmin {
+		return visitItemSQL(itemAlias)
+	}
+
+	return visitItemSQL(itemAlias) + `
+		AND (
+			(
+				TRIM(COALESCE(` + itemAlias + `.user, '')) = {:userId}
+				AND TRIM(COALESCE(` + itemAlias + `.moderationStatus, '')) IN ('', 'active', 'reviewed', 'under_review')
+			)
+			OR (
+				TRIM(COALESCE(` + itemAlias + `.user, '')) != {:userId}
+				AND TRIM(COALESCE(` + itemAlias + `.moderationStatus, '')) IN ('', 'active', 'reviewed')
+			)
+		)
+		AND (
+			TRIM(COALESCE(` + itemAlias + `.menuItem, '')) = ''
+			OR TRIM(COALESCE(` + menuItemAlias + `.createdBy, '')) = {:userId}
+			OR TRIM(COALESCE(` + menuItemAlias + `.visibility, '')) = 'public'
+			OR (
+				TRIM(COALESCE(` + menuItemAlias + `.visibility, '')) = 'friends'
+				AND TRIM(COALESCE(` + menuItemAlias + `.createdBy, '')) IN (SELECT friendId FROM accepted_friends)
+			)
+		)`
 }
 
 func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
@@ -3467,8 +3487,9 @@ func buildHomeFeedVisitSearchCondition(search string, isAdmin bool) string {
 		OR EXISTS (
 			SELECT 1
 			FROM food_items visit_items
+			LEFT JOIN menu_items visit_menu_items ON visit_menu_items.id = visit_items.menuItem
 			WHERE visit_items.visit = visits.id
-				AND ` + visitItemSQL("visit_items") + `
+				AND ` + buildVisitItemViewerAccessCondition("visit_items", "visit_menu_items", isAdmin) + `
 				AND (
 					LOWER(COALESCE(visit_items.name, '')) LIKE {:searchLike}
 					OR LOWER(COALESCE(visit_items.notes, '')) LIKE {:searchLike}
