@@ -42,6 +42,7 @@ const (
 	defaultTastingMaxApprovedItems    = 30
 	defaultTastingSessionListPageSize = 20
 	maxTastingSessionListPageSize     = 50
+	maxTastingMenuItemNameCandidates  = 100
 	tastingSessionCreateBudgetMax     = 5
 	tastingInviteResendBudgetMax      = 10
 )
@@ -945,7 +946,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			if err != nil || strings.TrimSpace(restaurantSuggestion.GetString("session")) != sessionID {
 				return apis.NewNotFoundError("restaurant suggestion not found", err)
 			}
-			menuItemRecord, resolveErr := resolveTastingMenuItem(txApp, authRecord.Id, strings.TrimSpace(restaurantSuggestion.GetString("restaurant")), requestBody)
+			menuItemRecord, resolveErr := resolveTastingMenuItem(txApp, authRecord, strings.TrimSpace(restaurantSuggestion.GetString("restaurant")), requestBody)
 			if resolveErr != nil {
 				return resolveErr
 			}
@@ -2116,14 +2117,20 @@ func setTastingSuggestionStatus(app core.App, leaderUserID string, sessionID str
 	})
 }
 
-func resolveTastingMenuItem(app core.App, userID string, restaurantID string, request tastingMenuItemSuggestRequest) (*core.Record, error) {
+func resolveTastingMenuItem(app core.App, authRecord *core.Record, restaurantID string, request tastingMenuItemSuggestRequest) (*core.Record, error) {
+	userID := strings.TrimSpace(authRecord.Id)
+	acceptedFriendIDs, err := listAcceptedFriendIDs(app, userID)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to verify menu item visibility", err)
+	}
+	canAccess := func(record *core.Record) bool {
+		return canAccessMenuItemRecord(record, userID, authRecord.GetBool("isAdmin"), acceptedFriendIDs)
+	}
+
 	if menuItemID := strings.TrimSpace(request.MenuItemID); menuItemID != "" {
 		record, err := app.FindRecordById("menu_items", menuItemID)
-		if err != nil {
+		if err != nil || strings.TrimSpace(record.GetString("restaurant")) != restaurantID || !canAccess(record) {
 			return nil, apis.NewNotFoundError("menu item not found", err)
-		}
-		if strings.TrimSpace(record.GetString("restaurant")) != restaurantID {
-			return nil, apis.NewBadRequestError("menu item does not belong to this restaurant", nil)
 		}
 		return record, nil
 	}
@@ -2131,12 +2138,30 @@ func resolveTastingMenuItem(app core.App, userID string, restaurantID string, re
 	if err != nil {
 		return nil, apis.NewBadRequestError(err.Error(), nil)
 	}
-	existing, err := app.FindFirstRecordByFilter("menu_items", "restaurant = {:restaurant} && LOWER(name) = {:name}", dbx.Params{"restaurant": restaurantID, "name": strings.ToLower(name)})
-	if err == nil && existing != nil {
-		return existing, nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	rows := []struct {
+		ID string `db:"id"`
+	}{}
+	query := fmt.Sprintf(`
+		SELECT id
+		FROM menu_items
+		WHERE restaurant = {:restaurant} AND LOWER(TRIM(name)) = {:name}
+		ORDER BY updated DESC, created DESC
+		LIMIT %d
+	`, maxTastingMenuItemNameCandidates)
+	if err := app.DB().NewQuery(query).Bind(dbx.Params{"restaurant": restaurantID, "name": strings.ToLower(name)}).All(&rows); err != nil {
 		return nil, apis.NewApiError(500, "failed to resolve menu item", err)
+	}
+	for _, row := range rows {
+		candidate, err := app.FindRecordById("menu_items", row.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, apis.NewApiError(500, "failed to resolve menu item", err)
+		}
+		if canAccess(candidate) {
+			return candidate, nil
+		}
 	}
 	collection, err := app.FindCollectionByNameOrId("menu_items")
 	if err != nil {

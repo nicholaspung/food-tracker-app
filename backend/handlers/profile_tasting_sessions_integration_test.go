@@ -54,6 +54,7 @@ type tastingSessionParticipantEntry struct {
 
 type tastingSessionItemEntry struct {
 	ID                     string                      `json:"id"`
+	MenuItemID             string                      `json:"menuItemId"`
 	Name                   string                      `json:"name"`
 	RestaurantSuggestionID string                      `json:"restaurantSuggestionId"`
 	Status                 string                      `json:"status"`
@@ -1892,7 +1893,7 @@ func TestTastingSessionPlanningAddEndpointsRequireLeader(t *testing.T) {
 		handlers.RegisterTastingSessionHandlers(se, app)
 	})
 
-	_, leaderToken := createAuthUser(t, server.app, false, false)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
 	_, participantToken := createAuthUser(t, server.app, false, false)
 
 	createResponse := performJSONRequest(
@@ -1977,6 +1978,7 @@ func TestTastingSessionPlanningAddEndpointsRequireLeader(t *testing.T) {
 	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
 		"restaurant": restaurantID,
 		"name":       "Leader Item",
+		"createdBy":  leader.Id,
 		"visibility": "friends",
 	})
 
@@ -1996,6 +1998,229 @@ func TestTastingSessionPlanningAddEndpointsRequireLeader(t *testing.T) {
 		len(sessionWithItem.Restaurants[0].Items) != 1 ||
 		sessionWithItem.Restaurants[0].Items[0].Status != "approved" {
 		t.Fatalf("expected leader item add to be approved, got %#v", sessionWithItem.Restaurants)
+	}
+}
+
+func TestTastingSessionPlanningAuthorizesReusedMenuItems(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	_, participantToken := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   leader.Id,
+		"friend": friend.Id,
+		"status": "accepted",
+	})
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Visibility Flight","joinDurationMinutes":60}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+
+	joinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		participantToken,
+		`{"code":"`+createdSession.InviteCode+`"}`,
+	)
+	if joinResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant join to succeed, got %d: %s", joinResponse.Code, joinResponse.Body.String())
+	}
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		leaderToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected lock membership to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+
+	addRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		leaderToken,
+		`{"restaurantName":"Visibility Counter"}`,
+	)
+	if addRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected restaurant add to succeed, got %d: %s", addRestaurantResponse.Code, addRestaurantResponse.Body.String())
+	}
+	sessionWithRestaurant := parseJSONResponse[tastingSessionResponse](t, addRestaurantResponse.Body.Bytes())
+	restaurantSuggestionID := sessionWithRestaurant.Restaurants[0].ID
+	restaurantID := sessionWithRestaurant.Restaurants[0].RestaurantID
+	itemPath := "/api/tasting-sessions/" + createdSession.ID + "/restaurants/" + restaurantSuggestionID + "/items"
+
+	publicItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Public Bite",
+		"createdBy":  stranger.Id,
+		"visibility": "public",
+	})
+	leaderPrivateItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Leader Bite",
+		"createdBy":  leader.Id,
+		"visibility": "private",
+	})
+	friendItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Friend Bite",
+		"createdBy":  friend.Id,
+		"visibility": "friends",
+	})
+	strangerPrivateItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Private Bite",
+		"createdBy":  stranger.Id,
+		"visibility": "private",
+	})
+	strangerFriendsItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Unfriended Bite",
+		"createdBy":  stranger.Id,
+		"visibility": "friends",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Other Counter",
+		"location":    "Los Angeles, CA",
+		"cuisineType": "Other",
+		"createdBy":   leader.Id,
+		"visibility":  "public",
+	})
+	wrongRestaurantItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": otherRestaurant.Id,
+		"name":       "Wrong Counter Bite",
+		"createdBy":  stranger.Id,
+		"visibility": "public",
+	})
+
+	for _, item := range []*core.Record{publicItem, leaderPrivateItem, friendItem} {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			itemPath,
+			leaderToken,
+			`{"menuItemId":"`+item.Id+`"}`,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected accessible menu item %q to be reused, got %d: %s", item.Id, response.Code, response.Body.String())
+		}
+		payload := parseJSONResponse[tastingSessionResponse](t, response.Body.Bytes())
+		found := false
+		for _, plannedItem := range payload.Restaurants[0].Items {
+			if plannedItem.MenuItemID == item.Id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected accessible menu item %q in Tasting Plan, got %#v", item.Id, payload.Restaurants[0].Items)
+		}
+	}
+
+	for _, item := range []*core.Record{strangerPrivateItem, strangerFriendsItem, wrongRestaurantItem} {
+		before := countRecordsByFilter(t, server.app, "tasting_session_items", "session = {:session}", map[string]any{"session": createdSession.ID})
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			itemPath,
+			leaderToken,
+			`{"menuItemId":"`+item.Id+`"}`,
+		)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected inaccessible or mismatched menu item %q to be hidden, got %d: %s", item.Id, response.Code, response.Body.String())
+		}
+		after := countRecordsByFilter(t, server.app, "tasting_session_items", "session = {:session}", map[string]any{"session": createdSession.ID})
+		if after != before {
+			t.Fatalf("expected rejected menu item %q not to be persisted, count changed from %d to %d", item.Id, before, after)
+		}
+	}
+
+	accessibleSameName := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Shared Plate",
+		"createdBy":  stranger.Id,
+		"visibility": "public",
+	})
+	hiddenSameName := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Shared Plate",
+		"createdBy":  stranger.Id,
+		"visibility": "private",
+	})
+	sharedNameResponse := performJSONRequest(t, server.mux, http.MethodPost, itemPath, leaderToken, `{"name":"Shared Plate"}`)
+	if sharedNameResponse.Code != http.StatusOK {
+		t.Fatalf("expected accessible same-name item to be reused, got %d: %s", sharedNameResponse.Code, sharedNameResponse.Body.String())
+	}
+	sharedNamePayload := parseJSONResponse[tastingSessionResponse](t, sharedNameResponse.Body.Bytes())
+	for _, plannedItem := range sharedNamePayload.Restaurants[0].Items {
+		if plannedItem.MenuItemID == hiddenSameName.Id {
+			t.Fatalf("expected hidden same-name item not to be reused, got %#v", plannedItem)
+		}
+	}
+	if count := countRecordsByFilter(t, server.app, "tasting_session_items", "session = {:session} && menu_item = {:menuItem}", map[string]any{"session": createdSession.ID, "menuItem": accessibleSameName.Id}); count != 1 {
+		t.Fatalf("expected accessible same-name item to be reused once, got %d", count)
+	}
+
+	privateOnlySameName := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": restaurantID,
+		"name":       "Private Recipe",
+		"createdBy":  stranger.Id,
+		"visibility": "private",
+	})
+	privateNameResponse := performJSONRequest(t, server.mux, http.MethodPost, itemPath, leaderToken, `{"name":"Private Recipe"}`)
+	if privateNameResponse.Code != http.StatusOK {
+		t.Fatalf("expected private-only same name to create a leader-owned item, got %d: %s", privateNameResponse.Code, privateNameResponse.Body.String())
+	}
+	privateNamePayload := parseJSONResponse[tastingSessionResponse](t, privateNameResponse.Body.Bytes())
+	createdMenuItemID := ""
+	for _, plannedItem := range privateNamePayload.Restaurants[0].Items {
+		if plannedItem.Name == "Private Recipe" && plannedItem.MenuItemID != privateOnlySameName.Id {
+			createdMenuItemID = plannedItem.MenuItemID
+			break
+		}
+	}
+	if createdMenuItemID == "" {
+		t.Fatalf("expected a new leader-owned same-name item, got %#v", privateNamePayload.Restaurants[0].Items)
+	}
+	createdMenuItem, err := server.app.FindRecordById("menu_items", createdMenuItemID)
+	if err != nil {
+		t.Fatalf("failed to load created same-name menu item: %v", err)
+	}
+	if createdMenuItem.GetString("restaurant") != restaurantID || createdMenuItem.GetString("createdBy") != leader.Id || createdMenuItem.GetString("visibility") != "friends" {
+		t.Fatalf("expected leader-owned friends-visible item at selected Restaurant, got %#v", createdMenuItem)
+	}
+
+	participantDetailResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/tasting-sessions/"+createdSession.ID, participantToken, "")
+	if participantDetailResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant detail to succeed, got %d: %s", participantDetailResponse.Code, participantDetailResponse.Body.String())
+	}
+	participantBody := participantDetailResponse.Body.String()
+	for _, hiddenID := range []string{strangerPrivateItem.Id, strangerFriendsItem.Id, wrongRestaurantItem.Id, hiddenSameName.Id, privateOnlySameName.Id} {
+		if strings.Contains(participantBody, hiddenID) {
+			t.Fatalf("expected participant projection to omit hidden menu item %q, got %s", hiddenID, participantBody)
+		}
 	}
 }
 
