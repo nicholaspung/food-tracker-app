@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -44,6 +45,7 @@ func ensureWaitlistCollection(t *testing.T, app core.App) {
 	collection.Fields.Add(&core.DateField{Name: "signedUpAt"})
 	collection.Fields.Add(&core.RelationField{Name: "signedUpUser", CollectionId: usersCollection.Id, MaxSelect: 1})
 	collection.Fields.Add(&core.TextField{Name: "loopsContactId", Max: 120})
+	collection.Fields.Add(&core.BoolField{Name: "loopsSyncPending"})
 	collection.Fields.Add(&core.TextField{Name: "lastLoopsSyncError", Max: 2000})
 	collection.Fields.Add(&core.DateField{Name: "joinedEmailSentAt"})
 	collection.Fields.Add(&core.TextField{Name: "lastJoinedEmailError", Max: 2000})
@@ -64,6 +66,7 @@ func ensureWaitlistApprovalTokenFields(t *testing.T, app core.App, collection *c
 
 	changed := false
 	for _, field := range []core.Field{
+		&core.BoolField{Name: "loopsSyncPending"},
 		&core.TextField{Name: "approvalTokenNonceHash", Max: 128},
 		&core.DateField{Name: "approvalTokenIssuedAt"},
 		&core.DateField{Name: "approvalTokenExpiresAt"},
@@ -110,11 +113,16 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	if got := normalizedRecord.GetString("status"); got != "pending" {
 		t.Fatalf("expected pending status, got %q", got)
 	}
-	if got := normalizedRecord.GetString("joinedEmailSentAt"); got == "" {
-		t.Fatal("expected joined email sent timestamp")
+	waitForWaitlistRecordField(t, server.app, normalizedRecord.Id, "joinedEmailSentAt")
+	normalizedRecord, err = server.app.FindRecordById("waitlist_entries", normalizedRecord.Id)
+	if err != nil {
+		t.Fatalf("failed to reload normalized waitlist record: %v", err)
 	}
 	if got := normalizedRecord.GetString("lastJoinedEmailError"); got != "" {
 		t.Fatalf("expected no joined email error after successful test send, got %q", got)
+	}
+	if normalizedRecord.GetBool("loopsSyncPending") {
+		t.Fatal("expected durable Loops sync work to complete")
 	}
 
 	record := createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{
@@ -142,6 +150,162 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	if got := reloaded.GetString("source"); got != "mobile_signup" {
 		t.Fatalf("expected source update, got %q", got)
 	}
+}
+
+func TestWaitlistJoinReturnsEquivalentResponsesWithoutDowngradingState(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		ensureWaitlistCollection(t, app)
+		handlers.RegisterWaitlistHandlers(se, app, lib.LoadRuntimeResourcesFromEnv())
+	})
+
+	testCases := []struct {
+		name           string
+		email          string
+		initialStatus  string
+		expectedStatus string
+	}{
+		{name: "absent", email: "absent@example.com", expectedStatus: "pending"},
+		{name: "pending", email: "pending@example.com", initialStatus: "pending", expectedStatus: "pending"},
+		{name: "rejected", email: "rejected@example.com", initialStatus: "rejected", expectedStatus: "pending"},
+		{name: "approved", email: "approved@example.com", initialStatus: "approved", expectedStatus: "approved"},
+		{name: "signed up", email: "signed-up@example.com", initialStatus: "signed_up", expectedStatus: "signed_up"},
+	}
+
+	var expectedBody string
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.initialStatus != "" {
+				createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{
+					"email":  testCase.email,
+					"status": testCase.initialStatus,
+					"source": "mobile_signup",
+				})
+			}
+
+			response := performJSONRequest(
+				t,
+				server.mux,
+				http.MethodPost,
+				"/api/waitlist",
+				"",
+				`{"email":"`+testCase.email+`","source":"mobile_signup"}`,
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", response.Code, response.Body.String())
+			}
+			if expectedBody == "" {
+				expectedBody = response.Body.String()
+			}
+			if got := response.Body.String(); got != expectedBody || got != "{\"success\":true}\n" {
+				t.Fatalf("expected generic response %q, got %q", expectedBody, got)
+			}
+
+			record, err := server.app.FindFirstRecordByFilter(
+				"waitlist_entries",
+				"email = {:email}",
+				map[string]any{"email": testCase.email},
+			)
+			if err != nil {
+				t.Fatalf("expected waitlist entry: %v", err)
+			}
+			if got := record.GetString("status"); got != testCase.expectedStatus {
+				t.Fatalf("expected status %q, got %q", testCase.expectedStatus, got)
+			}
+		})
+	}
+}
+
+func TestWaitlistJoinResponseDoesNotWaitForStateDependentEmail(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		ensureWaitlistCollection(t, app)
+		handlers.RegisterWaitlistHandlers(se, app, lib.LoadRuntimeResourcesFromEnv())
+	})
+
+	mailerStarted := make(chan struct{})
+	releaseMailer := make(chan struct{})
+	server.app.OnMailerSend().BindFunc(func(e *core.MailerEvent) error {
+		close(mailerStarted)
+		<-releaseMailer
+		return e.Next()
+	})
+	t.Cleanup(func() {
+		select {
+		case <-releaseMailer:
+		default:
+			close(releaseMailer)
+		}
+	})
+
+	responseReady := make(chan *http.Response, 1)
+	go func() {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/waitlist",
+			"",
+			`{"email":"timing@example.com","source":"mobile_signup"}`,
+		)
+		responseReady <- response.Result()
+	}()
+
+	select {
+	case <-mailerStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected joined email side effect to start")
+	}
+
+	select {
+	case response := <-responseReady:
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 while email was blocked, got %d", response.StatusCode)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("waitlist response was delayed by state-dependent email work")
+	}
+
+	record, err := server.app.FindFirstRecordByFilter(
+		"waitlist_entries",
+		"email = {:email}",
+		map[string]any{"email": "timing@example.com"},
+	)
+	if err != nil {
+		t.Fatalf("expected waitlist entry: %v", err)
+	}
+	record.Set("status", "approved")
+	record.Set("approvalTokenNonceHash", "approval-token-state")
+	if err := server.app.Save(record); err != nil {
+		t.Fatalf("failed to simulate concurrent approval: %v", err)
+	}
+
+	close(releaseMailer)
+	waitForWaitlistRecordField(t, server.app, record.Id, "joinedEmailSentAt")
+	record, err = server.app.FindRecordById("waitlist_entries", record.Id)
+	if err != nil {
+		t.Fatalf("failed to reload concurrently approved entry: %v", err)
+	}
+	if got := record.GetString("status"); got != "approved" {
+		t.Fatalf("expected joined email metadata update to preserve approved status, got %q", got)
+	}
+	if got := record.GetString("approvalTokenNonceHash"); got != "approval-token-state" {
+		t.Fatalf("expected joined email metadata update to preserve approval token state, got %q", got)
+	}
+}
+
+func waitForWaitlistRecordField(t *testing.T, app core.App, recordID string, fieldName string) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		record, err := app.FindRecordById("waitlist_entries", recordID)
+		if err == nil && record.GetString(fieldName) != "" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for waitlist field %s", fieldName)
 }
 
 func TestAdminWaitlistApproveAndReject(t *testing.T) {

@@ -45,6 +45,7 @@ func ensureWaitlistCollectionForUnitTest(t *testing.T, app core.App) {
 	collection.Fields.Add(&core.DateField{Name: "signedUpAt"})
 	collection.Fields.Add(&core.RelationField{Name: "signedUpUser", CollectionId: usersCollection.Id, MaxSelect: 1})
 	collection.Fields.Add(&core.TextField{Name: "loopsContactId", Max: 120})
+	collection.Fields.Add(&core.BoolField{Name: "loopsSyncPending"})
 	collection.Fields.Add(&core.TextField{Name: "lastLoopsSyncError", Max: 2000})
 	collection.Fields.Add(&core.DateField{Name: "joinedEmailSentAt"})
 	collection.Fields.Add(&core.TextField{Name: "lastJoinedEmailError", Max: 2000})
@@ -65,6 +66,7 @@ func ensureWaitlistApprovalTokenFieldsForUnitTest(t *testing.T, app core.App, co
 
 	changed := false
 	for _, field := range []core.Field{
+		&core.BoolField{Name: "loopsSyncPending"},
 		&core.TextField{Name: "approvalTokenNonceHash", Max: 128},
 		&core.DateField{Name: "approvalTokenIssuedAt"},
 		&core.DateField{Name: "approvalTokenExpiresAt"},
