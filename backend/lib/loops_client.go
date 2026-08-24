@@ -33,6 +33,7 @@ type LoopsEventInput struct {
 	Email           string
 	UserID          string
 	EventName       string
+	IdempotencyKey  string
 	EventProperties map[string]any
 	MailingLists    map[string]bool
 }
@@ -89,7 +90,7 @@ func (client LoopsClient) UpsertContact(input LoopsContactInput) (string, error)
 	}
 
 	var response loopsResponse
-	if err := client.doJSON(http.MethodPut, "/contacts/update", payload, &response); err != nil {
+	if err := client.doJSON(http.MethodPut, "/contacts/update", payload, &response, ""); err != nil {
 		return "", err
 	}
 
@@ -118,10 +119,10 @@ func (client LoopsClient) SendEvent(input LoopsEventInput) error {
 	}
 
 	var response loopsResponse
-	return client.doJSON(http.MethodPost, "/events/send", payload, &response)
+	return client.doJSON(http.MethodPost, "/events/send", payload, &response, input.IdempotencyKey)
 }
 
-func (client LoopsClient) doJSON(method string, path string, payload map[string]any, target *loopsResponse) error {
+func (client LoopsClient) doJSON(method string, path string, payload map[string]any, target *loopsResponse, idempotencyKey string) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -133,6 +134,9 @@ func (client LoopsClient) doJSON(method string, path string, payload map[string]
 	}
 	request.Header.Set("Authorization", "Bearer "+client.apiKey)
 	request.Header.Set("Content-Type", "application/json")
+	if key := strings.TrimSpace(idempotencyKey); key != "" {
+		request.Header.Set("Idempotency-Key", key)
+	}
 
 	httpClient := client.httpClient
 	if httpClient == nil {
@@ -150,6 +154,9 @@ func (client LoopsClient) doJSON(method string, path string, payload map[string]
 		_ = json.Unmarshal(responseBody, target)
 	}
 
+	if response.StatusCode == http.StatusConflict && strings.TrimSpace(idempotencyKey) != "" {
+		return nil
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		message := strings.TrimSpace(string(responseBody))
 		if target != nil && strings.TrimSpace(target.Message) != "" {

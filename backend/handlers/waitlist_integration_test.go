@@ -121,9 +121,7 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	if got := normalizedRecord.GetString("lastJoinedEmailError"); got != "" {
 		t.Fatalf("expected no joined email error after successful test send, got %q", got)
 	}
-	if normalizedRecord.GetBool("loopsSyncPending") {
-		t.Fatal("expected durable Loops sync work to complete")
-	}
+	waitForWaitlistTransitionCompletion(t, server.app, normalizedRecord.Id)
 
 	record := createCollectionRecord(t, server.app, "waitlist_entries", map[string]any{
 		"email":  "dupe@example.com",
@@ -147,8 +145,8 @@ func TestWaitlistJoinCreatesAndUpdatesPendingEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to reload waitlist entry: %v", err)
 	}
-	if got := reloaded.GetString("source"); got != "mobile_signup" {
-		t.Fatalf("expected source update, got %q", got)
+	if got := reloaded.GetString("source"); got != "old" {
+		t.Fatalf("expected pending replay to preserve source, got %q", got)
 	}
 }
 
@@ -306,6 +304,30 @@ func waitForWaitlistRecordField(t *testing.T, app core.App, recordID string, fie
 	}
 
 	t.Fatalf("timed out waiting for waitlist field %s", fieldName)
+}
+
+func waitForWaitlistTransitionCompletion(t *testing.T, app core.App, entryID string) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		transitions, err := app.FindRecordsByFilter(
+			"waitlist_join_transitions",
+			"waitlistEntry = {:entryID}",
+			"created",
+			10,
+			0,
+			map[string]any{"entryID": entryID},
+		)
+		if err == nil && len(transitions) == 1 &&
+			!transitions[0].GetBool("contactSyncPending") &&
+			!transitions[0].GetBool("joinedEventPending") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("timed out waiting for waitlist transition completion")
 }
 
 func TestAdminWaitlistApproveAndReject(t *testing.T) {

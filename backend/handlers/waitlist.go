@@ -37,6 +37,11 @@ const (
 	waitlistApprovalTokenType     = "waitlist_approval"
 	waitlistApprovalTokenDuration = 14 * 24 * time.Hour
 	waitlistWorkerShutdownTimeout = 2 * time.Second
+	waitlistJoinTransitionsName   = "waitlist_join_transitions"
+	waitlistWorkerBatchSize       = 500
+	// Loops only deduplicates event idempotency keys for 24 hours. Stop
+	// automatic retries an hour earlier so a request cannot cross that bound.
+	waitlistLoopsSafeRetryWindow = 23 * time.Hour
 )
 
 type waitlistRequest struct {
@@ -45,7 +50,15 @@ type waitlistRequest struct {
 }
 
 type waitlistUpsertResult struct {
+	PreviousStatus        string
+	CurrentStatus         string
+	DidTransition         bool
 	ShouldSendJoinedEmail bool
+}
+
+type waitlistLoopsClient interface {
+	UpsertContact(input lib.LoopsContactInput) (string, error)
+	SendEvent(input lib.LoopsEventInput) error
 }
 
 type waitlistJoinWorker struct {
@@ -55,6 +68,8 @@ type waitlistJoinWorker struct {
 	stop             chan struct{}
 	done             chan struct{}
 	stopOnce         sync.Once
+	newLoopsClient   func() waitlistLoopsClient
+	workBatchSize    int
 }
 
 type WaitlistEntry struct {
@@ -204,6 +219,10 @@ func newWaitlistJoinWorker(app core.App, runtimeResources lib.RuntimeResources) 
 		wake:             make(chan struct{}, 1),
 		stop:             make(chan struct{}),
 		done:             make(chan struct{}),
+		workBatchSize:    waitlistWorkerBatchSize,
+		newLoopsClient: func() waitlistLoopsClient {
+			return lib.NewLoopsClientFromEnv()
+		},
 	}
 
 	go worker.run()
@@ -244,61 +263,9 @@ func (w *waitlistJoinWorker) run() {
 }
 
 func (w *waitlistJoinWorker) drain() {
-	for {
-		if w.isStopping() {
-			return
-		}
-
-		record, err := findPendingWaitlistJoinWork(w.app)
-		if err != nil {
-			log.Printf("Waitlist join queue load failed: %v", err)
-			return
-		}
-		if record == nil {
-			return
-		}
-
-		email := record.GetString("email")
-		if record.GetBool("loopsSyncPending") {
-			contactID, err := syncWaitlistJoinedToLoops(w.runtimeResources, record)
-			if w.isStopping() {
-				return
-			}
-			lastError := ""
-			if err != nil {
-				lastError = err.Error()
-				log.Printf("Loops waitlist sync failed for %s: %v", email, err)
-			}
-			if saveErr := updateWaitlistLoopsSyncState(w.app, record.Id, contactID, lastError); saveErr != nil {
-				log.Printf("Loops waitlist sync state save failed for %s: %v", email, saveErr)
-				return
-			}
-		}
-
-		if record.GetString("status") == WaitlistStatusPending &&
-			strings.TrimSpace(record.GetString("joinedEmailSentAt")) == "" &&
-			strings.TrimSpace(record.GetString("lastJoinedEmailError")) == "" {
-			if err := sendWaitlistJoinedEmail(w.app, w.runtimeResources, record); err != nil {
-				if w.isStopping() {
-					return
-				}
-				log.Printf("Waitlist joined email failed for %s: %v", email, err)
-				if saveErr := updateWaitlistJoinedEmailState(w.app, record.Id, "", err.Error()); saveErr != nil {
-					log.Printf("Waitlist joined email error state save failed for %s: %v", email, saveErr)
-					return
-				}
-				continue
-			}
-			if w.isStopping() {
-				return
-			}
-
-			sentAt := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
-			if err := updateWaitlistJoinedEmailState(w.app, record.Id, sentAt, ""); err != nil {
-				log.Printf("Waitlist joined email sent state save failed for %s: %v", email, err)
-				return
-			}
-		}
+	w.drainLoopsTransitions()
+	if !w.isStopping() {
+		w.drainJoinedEmails()
 	}
 }
 
@@ -311,50 +278,285 @@ func (w *waitlistJoinWorker) isStopping() bool {
 	}
 }
 
-func findPendingWaitlistJoinWork(app core.App) (*core.Record, error) {
-	type row struct {
-		ID string `db:"id"`
-	}
+func (w *waitlistJoinWorker) drainLoopsTransitions() {
+	blockedEntries := map[string]bool{}
+	cursorCreated := ""
+	cursorID := ""
+	for {
+		transitions, err := findPendingWaitlistTransitionsPage(w.app, cursorCreated, cursorID, w.batchSize())
+		if err != nil {
+			log.Printf("Waitlist Loops queue load failed: %v", err)
+			return
+		}
+		if len(transitions) == 0 {
+			return
+		}
 
-	result := row{}
-	err := app.DB().NewQuery(`
-		SELECT id
-		FROM waitlist_entries
-		WHERE loopsSyncPending = TRUE
-			OR (
-				status = {:status}
-				AND TRIM(COALESCE(joinedEmailSentAt, '')) = ''
-				AND TRIM(COALESCE(lastJoinedEmailError, '')) = ''
-			)
-		ORDER BY created ASC
-		LIMIT 1
-	`).Bind(dbx.Params{"status": WaitlistStatusPending}).One(&result)
-	if errorsIsNoRows(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
+		for _, transition := range transitions {
+			if w.isStopping() {
+				return
+			}
+			entryID := transition.GetString("waitlistEntry")
+			if blockedEntries[entryID] {
+				continue
+			}
+			if !w.processLoopsTransition(transition) {
+				blockedEntries[entryID] = true
+			}
+		}
 
-	return app.FindRecordById("waitlist_entries", result.ID)
+		last := transitions[len(transitions)-1]
+		cursorCreated = last.GetString("created")
+		cursorID = last.Id
+	}
 }
 
-func updateWaitlistLoopsSyncState(app core.App, recordID string, contactID string, lastError string) error {
+func findPendingWaitlistTransitionsPage(app core.App, cursorCreated string, cursorID string, limit int) ([]*core.Record, error) {
+	filter := "(contactSyncPending = true || joinedEventPending = true)"
+	params := dbx.Params{}
+	if cursorCreated != "" {
+		filter += " && (created > {:cursorCreated} || (created = {:cursorCreated} && id > {:cursorID}))"
+		params["cursorCreated"] = cursorCreated
+		params["cursorID"] = cursorID
+	}
+	return app.FindRecordsByFilter(waitlistJoinTransitionsName, filter, "created,id", limit, 0, params)
+}
+
+func (w *waitlistJoinWorker) processLoopsTransition(transition *core.Record) bool {
+	record, err := w.app.FindRecordById("waitlist_entries", transition.GetString("waitlistEntry"))
+	if err != nil {
+		log.Printf("Waitlist transition %s entry load failed: %v", transition.Id, err)
+		return false
+	}
+
+	email := record.GetString("email")
+	client := w.newLoopsClient()
+	if transition.GetBool("contactSyncPending") {
+		contactID, err := syncWaitlistContactToLoops(w.runtimeResources, client, record)
+		if w.isStopping() {
+			return false
+		}
+		if err != nil {
+			log.Printf("Loops waitlist sync failed for %s: %v", email, err)
+			if saveErr := updateWaitlistTransitionError(w.app, transition.Id, record.Id, err.Error()); saveErr != nil {
+				log.Printf("Loops waitlist sync error state save failed for %s: %v", email, saveErr)
+			}
+			return false
+		}
+		if saveErr := completeWaitlistLoopsContactSync(w.app, transition.Id, record.Id, contactID); saveErr != nil {
+			log.Printf("Loops waitlist sync state save failed for %s: %v", email, saveErr)
+			return false
+		}
+	}
+
+	if transition.GetBool("joinedEventPending") {
+		attemptedAt := transition.GetDateTime("joinedEventAttemptedAt")
+		if !attemptedAt.IsZero() && !time.Now().UTC().Before(attemptedAt.Time().Add(waitlistLoopsSafeRetryWindow)) {
+			lastError := "Loops waitlist joined event delivery is uncertain beyond the safe idempotency retry window; manual reconciliation is required"
+			if saveErr := abandonWaitlistJoinedEvent(w.app, transition.Id, record.Id, lastError); saveErr != nil {
+				log.Printf("Loops waitlist event reconciliation state save failed for %s: %v", email, saveErr)
+				return false
+			}
+			return true
+		}
+		if attemptedAt.IsZero() {
+			attemptedAtValue := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
+			if saveErr := recordWaitlistJoinedEventAttempt(w.app, transition.Id, attemptedAtValue); saveErr != nil {
+				log.Printf("Loops waitlist event attempt state save failed for %s: %v", email, saveErr)
+				return false
+			}
+			transition.Set("joinedEventAttemptedAt", attemptedAtValue)
+		}
+		if err := sendWaitlistJoinedEventToLoops(w.runtimeResources, client, record, transition); err != nil {
+			log.Printf("Loops waitlist joined event failed for %s: %v", email, err)
+			if saveErr := updateWaitlistTransitionError(w.app, transition.Id, record.Id, err.Error()); saveErr != nil {
+				log.Printf("Loops waitlist event error state save failed for %s: %v", email, saveErr)
+			}
+			return false
+		}
+		if saveErr := completeWaitlistJoinedEvent(w.app, transition.Id, record.Id); saveErr != nil {
+			log.Printf("Loops waitlist event state save failed for %s: %v", email, saveErr)
+			return false
+		}
+	}
+
+	return true
+}
+
+func recordWaitlistJoinedEventAttempt(app core.App, transitionID string, attemptedAt string) error {
 	_, err := app.DB().NewQuery(`
-		UPDATE waitlist_entries
-		SET loopsSyncPending = FALSE,
-			lastLoopsSyncError = {:lastError},
-			loopsContactId = CASE
-				WHEN TRIM({:contactID}) != '' THEN {:contactID}
-				ELSE loopsContactId
-			END
-		WHERE id = {:id}
+		UPDATE waitlist_join_transitions
+		SET joinedEventAttemptedAt = CASE
+			WHEN TRIM(COALESCE(joinedEventAttemptedAt, '')) = '' THEN {:attemptedAt}
+			ELSE joinedEventAttemptedAt
+		END
+		WHERE id = {:transitionID}
 	`).Bind(dbx.Params{
-		"contactID": contactID,
-		"id":        recordID,
-		"lastError": lastError,
+		"attemptedAt":  attemptedAt,
+		"transitionID": transitionID,
 	}).Execute()
 	return err
+}
+
+func abandonWaitlistJoinedEvent(app core.App, transitionID string, recordID string, lastError string) error {
+	return app.RunInTransaction(func(txApp core.App) error {
+		_, err := txApp.DB().NewQuery(`
+			UPDATE waitlist_join_transitions
+			SET joinedEventPending = FALSE,
+				lastError = {:lastError}
+			WHERE id = {:transitionID}
+		`).Bind(dbx.Params{
+			"lastError":    lastError,
+			"transitionID": transitionID,
+		}).Execute()
+		if err != nil {
+			return err
+		}
+
+		_, err = txApp.DB().NewQuery(`
+			UPDATE waitlist_entries
+			SET lastLoopsSyncError = {:lastError}
+			WHERE id = {:recordID}
+		`).Bind(dbx.Params{
+			"lastError": lastError,
+			"recordID":  recordID,
+		}).Execute()
+		return err
+	})
+}
+
+func (w *waitlistJoinWorker) drainJoinedEmails() {
+	cursorCreated := ""
+	cursorID := ""
+	for {
+		records, err := findPendingWaitlistJoinedEmailsPage(w.app, cursorCreated, cursorID, w.batchSize())
+		if err != nil {
+			log.Printf("Waitlist joined email queue load failed: %v", err)
+			return
+		}
+		if len(records) == 0 {
+			return
+		}
+
+		for _, record := range records {
+			if w.isStopping() {
+				return
+			}
+			email := record.GetString("email")
+			if err := sendWaitlistJoinedEmail(w.app, w.runtimeResources, record); err != nil {
+				log.Printf("Waitlist joined email failed for %s: %v", email, err)
+				if saveErr := updateWaitlistJoinedEmailState(w.app, record.Id, "", err.Error()); saveErr != nil {
+					log.Printf("Waitlist joined email error state save failed for %s: %v", email, saveErr)
+				}
+				continue
+			}
+
+			sentAt := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
+			if err := updateWaitlistJoinedEmailState(w.app, record.Id, sentAt, ""); err != nil {
+				log.Printf("Waitlist joined email sent state save failed for %s: %v", email, err)
+			}
+		}
+
+		last := records[len(records)-1]
+		cursorCreated = last.GetString("created")
+		cursorID = last.Id
+	}
+}
+
+func findPendingWaitlistJoinedEmailsPage(app core.App, cursorCreated string, cursorID string, limit int) ([]*core.Record, error) {
+	filter := "status = {:status} && joinedEmailSentAt = '' && lastJoinedEmailError = ''"
+	params := dbx.Params{"status": WaitlistStatusPending}
+	if cursorCreated != "" {
+		filter += " && (created > {:cursorCreated} || (created = {:cursorCreated} && id > {:cursorID}))"
+		params["cursorCreated"] = cursorCreated
+		params["cursorID"] = cursorID
+	}
+	return app.FindRecordsByFilter("waitlist_entries", filter, "created,id", limit, 0, params)
+}
+
+func (w *waitlistJoinWorker) batchSize() int {
+	if w.workBatchSize > 0 {
+		return w.workBatchSize
+	}
+	return waitlistWorkerBatchSize
+}
+
+func completeWaitlistLoopsContactSync(app core.App, transitionID string, recordID string, contactID string) error {
+	return app.RunInTransaction(func(txApp core.App) error {
+		_, err := txApp.DB().NewQuery(`
+			UPDATE waitlist_join_transitions
+			SET contactSyncPending = FALSE, lastError = ''
+			WHERE id = {:transitionID}
+		`).Bind(dbx.Params{"transitionID": transitionID}).Execute()
+		if err != nil {
+			return err
+		}
+
+		_, err = txApp.DB().NewQuery(`
+			UPDATE waitlist_entries
+			SET lastLoopsSyncError = '',
+				loopsContactId = CASE
+					WHEN TRIM({:contactID}) != '' THEN {:contactID}
+					ELSE loopsContactId
+				END
+			WHERE id = {:recordID}
+		`).Bind(dbx.Params{
+			"contactID": contactID,
+			"recordID":  recordID,
+		}).Execute()
+		return err
+	})
+}
+
+func completeWaitlistJoinedEvent(app core.App, transitionID string, recordID string) error {
+	return app.RunInTransaction(func(txApp core.App) error {
+		_, err := txApp.DB().NewQuery(`
+			UPDATE waitlist_join_transitions
+			SET joinedEventPending = FALSE,
+				joinedEventSentAt = {:sentAt},
+				lastError = ''
+			WHERE id = {:transitionID}
+		`).Bind(dbx.Params{
+			"sentAt":       time.Now().UTC().Format("2006-01-02 15:04:05.000Z"),
+			"transitionID": transitionID,
+		}).Execute()
+		if err != nil {
+			return err
+		}
+
+		_, err = txApp.DB().NewQuery(`
+			UPDATE waitlist_entries
+			SET lastLoopsSyncError = ''
+			WHERE id = {:recordID}
+		`).Bind(dbx.Params{"recordID": recordID}).Execute()
+		return err
+	})
+}
+
+func updateWaitlistTransitionError(app core.App, transitionID string, recordID string, lastError string) error {
+	return app.RunInTransaction(func(txApp core.App) error {
+		_, err := txApp.DB().NewQuery(`
+			UPDATE waitlist_join_transitions
+			SET lastError = {:lastError}
+			WHERE id = {:transitionID}
+		`).Bind(dbx.Params{
+			"lastError":    lastError,
+			"transitionID": transitionID,
+		}).Execute()
+		if err != nil {
+			return err
+		}
+
+		_, err = txApp.DB().NewQuery(`
+			UPDATE waitlist_entries
+			SET lastLoopsSyncError = {:lastError}
+			WHERE id = {:recordID}
+		`).Bind(dbx.Params{
+			"lastError": lastError,
+			"recordID":  recordID,
+		}).Execute()
+		return err
+	})
 }
 
 func updateWaitlistJoinedEmailState(app core.App, recordID string, sentAt string, lastError string) error {
@@ -582,6 +784,16 @@ func normalizeEmail(raw string) (string, error) {
 }
 
 func upsertWaitlistEntry(app core.App, requestBody waitlistRequest, email string) (waitlistUpsertResult, error) {
+	result := waitlistUpsertResult{}
+	err := app.RunInTransaction(func(txApp core.App) error {
+		var upsertErr error
+		result, upsertErr = upsertWaitlistEntryInTransaction(txApp, requestBody, email)
+		return upsertErr
+	})
+	return result, err
+}
+
+func upsertWaitlistEntryInTransaction(app core.App, requestBody waitlistRequest, email string) (waitlistUpsertResult, error) {
 	collection, err := app.FindCollectionByNameOrId("waitlist_entries")
 	if err != nil {
 		return waitlistUpsertResult{}, err
@@ -591,36 +803,66 @@ func upsertWaitlistEntry(app core.App, requestBody waitlistRequest, email string
 	if err != nil {
 		return waitlistUpsertResult{}, err
 	}
-	shouldSendJoinedEmail := false
+	result := waitlistUpsertResult{}
 	if record == nil {
 		record = core.NewRecord(collection)
 		record.Set("email", email)
 		record.Set("status", WaitlistStatusPending)
-		shouldSendJoinedEmail = true
+		result.CurrentStatus = WaitlistStatusPending
+		result.DidTransition = true
+		result.ShouldSendJoinedEmail = true
 	} else if record.GetString("status") == WaitlistStatusRejected {
+		result.PreviousStatus = WaitlistStatusRejected
+		result.CurrentStatus = WaitlistStatusPending
+		result.DidTransition = true
+		result.ShouldSendJoinedEmail = true
 		record.Set("status", WaitlistStatusPending)
 		record.Set("rejectedAt", "")
 		record.Set("rejectedBy", "")
 		record.Set("joinedEmailSentAt", "")
-		shouldSendJoinedEmail = true
-	} else if record.GetString("status") == WaitlistStatusPending && strings.TrimSpace(record.GetString("joinedEmailSentAt")) == "" {
-		shouldSendJoinedEmail = true
-	}
-	if shouldSendJoinedEmail {
-		record.Set("lastJoinedEmailError", "")
+	} else {
+		result.PreviousStatus = record.GetString("status")
+		result.CurrentStatus = result.PreviousStatus
+		if result.CurrentStatus == WaitlistStatusPending && strings.TrimSpace(record.GetString("joinedEmailSentAt")) == "" {
+			result.ShouldSendJoinedEmail = true
+			if strings.TrimSpace(record.GetString("lastJoinedEmailError")) != "" {
+				if err := updateWaitlistJoinedEmailState(app, record.Id, "", ""); err != nil {
+					return waitlistUpsertResult{}, err
+				}
+			}
+		}
+		return result, nil
 	}
 
+	record.Set("lastJoinedEmailError", "")
 	record.Set("source", waitlistDefaultString(strings.TrimSpace(requestBody.Source), "mobile_signup"))
-	record.Set("loopsSyncPending", true)
 	record.Set("lastLoopsSyncError", "")
 
 	if err := app.Save(record); err != nil {
 		return waitlistUpsertResult{}, err
 	}
+	if err := createWaitlistJoinTransition(app, record, result); err != nil {
+		return waitlistUpsertResult{}, err
+	}
 
-	return waitlistUpsertResult{
-		ShouldSendJoinedEmail: shouldSendJoinedEmail,
-	}, nil
+	return result, nil
+}
+
+func createWaitlistJoinTransition(app core.App, record *core.Record, result waitlistUpsertResult) error {
+	collection, err := app.FindCollectionByNameOrId(waitlistJoinTransitionsName)
+	if err != nil {
+		return err
+	}
+
+	transition := core.NewRecord(collection)
+	transition.Set("waitlistEntry", record.Id)
+	transition.Set("previousStatus", result.PreviousStatus)
+	transition.Set("currentStatus", result.CurrentStatus)
+	transition.Set("source", record.GetString("source"))
+	transition.Set("contactSyncPending", true)
+	transition.Set("joinedEventPending", true)
+	transition.Set("idempotencyKey", security.RandomString(32))
+	return app.Save(transition)
 }
 
 func findWaitlistRecordByEmail(app core.App, email string) (*core.Record, error) {
@@ -759,23 +1001,22 @@ func updateWaitlistDecision(app core.App, entryID string, status string, adminID
 	return record, beforeSnapshot, nil
 }
 
-func syncWaitlistJoinedToLoops(runtimeResources lib.RuntimeResources, record *core.Record) (string, error) {
-	client := lib.NewLoopsClientFromEnv()
-	contactID, err := client.UpsertContact(waitlistContactInput(runtimeResources, record, WaitlistStatusPending, ""))
-	if err != nil {
-		return "", err
-	}
+func syncWaitlistContactToLoops(runtimeResources lib.RuntimeResources, client waitlistLoopsClient, record *core.Record) (string, error) {
+	status := record.GetString("status")
+	return client.UpsertContact(waitlistContactInput(runtimeResources, record, status, waitlistStatusDateField(status)))
+}
 
-	err = client.SendEvent(lib.LoopsEventInput{
-		Email:     record.GetString("email"),
-		EventName: WaitlistJoinedEventName,
+func sendWaitlistJoinedEventToLoops(runtimeResources lib.RuntimeResources, client waitlistLoopsClient, record *core.Record, transition *core.Record) error {
+	return client.SendEvent(lib.LoopsEventInput{
+		Email:          record.GetString("email"),
+		EventName:      WaitlistJoinedEventName,
+		IdempotencyKey: transition.GetString("idempotencyKey"),
 		EventProperties: map[string]any{
-			"source":         record.GetString("source"),
+			"source":         transition.GetString("source"),
 			"appEnvironment": string(runtimeResources.Environment),
 		},
 		MailingLists: waitlistMailingLists(record),
 	})
-	return contactID, err
 }
 
 func sendWaitlistApprovalEmail(app core.App, runtimeResources lib.RuntimeResources, record *core.Record) error {
@@ -901,9 +1142,23 @@ func waitlistContactInput(runtimeResources lib.RuntimeResources, record *core.Re
 
 	return lib.LoopsContactInput{
 		Email:        record.GetString("email"),
+		UserID:       record.GetString("signedUpUser"),
 		Source:       waitlistDefaultString(record.GetString("source"), "mobile_signup"),
 		MailingLists: waitlistMailingLists(record),
 		Properties:   properties,
+	}
+}
+
+func waitlistStatusDateField(status string) string {
+	switch status {
+	case WaitlistStatusApproved:
+		return "approvedAt"
+	case WaitlistStatusRejected:
+		return "rejectedAt"
+	case WaitlistStatusSignedUp:
+		return "signedUpAt"
+	default:
+		return ""
 	}
 }
 
