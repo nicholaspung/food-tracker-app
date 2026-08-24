@@ -4,6 +4,14 @@
     servers {
         protocols h1 h2 h3
     }
+
+    log default {
+        format filter {
+            request>uri regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            request>headers>Referer regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            wrap json
+        }
+    }
 }
 
 (common_security_headers) {
@@ -36,7 +44,11 @@
             roll_keep 5
             roll_keep_for 720h
         }
-        format json
+        format filter {
+            request>uri regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            request>headers>Referer regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            wrap json
+        }
     }
 }
 
@@ -47,7 +59,11 @@
             roll_keep 5
             roll_keep_for 720h
         }
-        format json
+        format filter {
+            request>uri regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            request>headers>Referer regexp "([?&;](t|%74)(o|%6[fF])(k|%6[bB])(e|%65)(n|%6[eE])=)[^&#;]*" "${1}REDACTED"
+            wrap json
+        }
     }
 }
 
