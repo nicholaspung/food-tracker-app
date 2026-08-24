@@ -13,6 +13,7 @@ import {
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { formatDateTime } from '@/lib/formatters';
 
 const MIN_ZOOM = 50;
@@ -232,6 +233,7 @@ function AttachedMenuItemEditor({
 }
 
 export function MenuImageInventoryDetailPage() {
+  const { fileAccessToken } = useAuth();
   const { imageId = '' } = useParams();
   const queryClient = useQueryClient();
   const [zoom, setZoom] = useState(100);
@@ -292,7 +294,7 @@ export function MenuImageInventoryDetailPage() {
 
   const menuImage = detailQuery.data?.menuImage;
   const restaurant = detailQuery.data?.restaurant;
-  const fullImageUrl = menuImage ? buildMenuImageUrl(menuImage) : '';
+  const fullImageUrl = menuImage ? buildMenuImageUrl(menuImage, fileAccessToken) : '';
 
   const filteredUnattachedItems = useMemo(() => {
     const query = attachSearch.trim().toLowerCase();

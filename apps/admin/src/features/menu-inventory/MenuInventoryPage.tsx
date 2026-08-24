@@ -28,6 +28,7 @@ import {
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { formatDateTime } from '@/lib/formatters';
 
 const inventoryTabs: Array<{ label: string; value: MenuInventoryType }> = [
@@ -561,7 +562,13 @@ function MenuItemInventoryTable({ rows }: { rows: MenuItemInventoryRow[] }) {
   );
 }
 
-function MenuImageInventoryTable({ rows }: { rows: MenuImageInventoryRow[] }) {
+function MenuImageInventoryTable({
+  fileAccessToken,
+  rows,
+}: {
+  fileAccessToken: string;
+  rows: MenuImageInventoryRow[];
+}) {
   return (
     <div className="table-wrap">
       <table>
@@ -576,8 +583,8 @@ function MenuImageInventoryTable({ rows }: { rows: MenuImageInventoryRow[] }) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const thumbUrl = buildMenuImageUrl(row, '160x160');
-            const fullUrl = buildMenuImageUrl(row);
+            const thumbUrl = buildMenuImageUrl(row, fileAccessToken, '160x160');
+            const fullUrl = buildMenuImageUrl(row, fileAccessToken);
 
             return (
               <tr key={row.id}>
@@ -622,6 +629,7 @@ function MenuImageInventoryTable({ rows }: { rows: MenuImageInventoryRow[] }) {
 }
 
 export function MenuInventoryPage() {
+  const { fileAccessToken } = useAuth();
   const [activeType, setActiveType] = useState<MenuInventoryType>('restaurants');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -846,7 +854,10 @@ export function MenuInventoryPage() {
               ) : activeType === 'menu-items' ? (
                 <MenuItemInventoryTable rows={inventoryQuery.data.items as MenuItemInventoryRow[]} />
               ) : (
-                <MenuImageInventoryTable rows={inventoryQuery.data.items as MenuImageInventoryRow[]} />
+                <MenuImageInventoryTable
+                  fileAccessToken={fileAccessToken}
+                  rows={inventoryQuery.data.items as MenuImageInventoryRow[]}
+                />
               )}
 
               <ServerPaginationControls

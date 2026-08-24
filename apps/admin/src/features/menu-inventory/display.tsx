@@ -132,7 +132,11 @@ export function renderLinkedMenuItemSummary(summary: LinkedMenuItemDisplaySummar
   );
 }
 
-export function buildMenuImageUrl(row: Pick<MenuImageInventoryRow, 'id' | 'image'>, thumb?: string) {
+export function buildMenuImageUrl(
+  row: Pick<MenuImageInventoryRow, 'id' | 'image'>,
+  fileAccessToken: string,
+  thumb?: string,
+) {
   if (!row.image?.trim()) {
     return '';
   }
@@ -143,6 +147,9 @@ export function buildMenuImageUrl(row: Pick<MenuImageInventoryRow, 'id' | 'image
       id: row.id,
     },
     row.image,
-    thumb ? { thumb } : {},
+    {
+      ...(thumb ? { thumb } : {}),
+      ...(fileAccessToken ? { token: fileAccessToken } : {}),
+    },
   );
 }

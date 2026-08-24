@@ -30,6 +30,7 @@ import {
   renderInventoryUser,
   renderInventoryVisibility,
 } from '@/features/menu-inventory/display';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { formatDateTime } from '@/lib/formatters';
 
 function formatCoordinates(latitude?: number, longitude?: number) {
@@ -407,7 +408,13 @@ function MenuItemsTable({ rows }: { rows: MenuItemInventoryRow[] }) {
   );
 }
 
-function MenuPhotosTable({ rows }: { rows: MenuImageInventoryRow[] }) {
+function MenuPhotosTable({
+  fileAccessToken,
+  rows,
+}: {
+  fileAccessToken: string;
+  rows: MenuImageInventoryRow[];
+}) {
   return (
     <PaginatedCollection items={rows} itemsPerPage={24} resetKey={rows.map((row) => row.id).join(':')}>
       {(pageRows) => (
@@ -423,8 +430,8 @@ function MenuPhotosTable({ rows }: { rows: MenuImageInventoryRow[] }) {
             </thead>
             <tbody>
               {pageRows.map((row) => {
-                const thumbUrl = buildMenuImageUrl(row, '160x160');
-                const fullUrl = buildMenuImageUrl(row);
+                const thumbUrl = buildMenuImageUrl(row, fileAccessToken, '160x160');
+                const fullUrl = buildMenuImageUrl(row, fileAccessToken);
 
                 return (
                   <tr key={row.id}>
@@ -463,6 +470,7 @@ function MenuPhotosTable({ rows }: { rows: MenuImageInventoryRow[] }) {
 }
 
 export function RestaurantInventoryDetailPage() {
+  const { fileAccessToken } = useAuth();
   const { restaurantId = '' } = useParams();
   const queryClient = useQueryClient();
   const [groupName, setGroupName] = useState('');
@@ -984,7 +992,10 @@ export function RestaurantInventoryDetailPage() {
                 <span className="text-muted">No menu photos found for this restaurant.</span>
               </div>
             ) : (
-              <MenuPhotosTable rows={detailQuery.data.menuImages} />
+              <MenuPhotosTable
+                fileAccessToken={fileAccessToken}
+                rows={detailQuery.data.menuImages}
+              />
             )}
           </section>
         </>
