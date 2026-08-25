@@ -138,7 +138,7 @@ yummyrecs.com {
     import prod_logging
 
     handle {
-        root * /opt/food-tracker-app/marketing_build
+        root * /opt/food-tracker-app-production/marketing_build
 
         @static {
             path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
@@ -173,7 +173,7 @@ app.yummyrecs.com {
     }
 
     handle {
-        root * /opt/food-tracker-app/app_build
+        root * /opt/food-tracker-app-production/app_build
 
         @static {
             path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
@@ -208,7 +208,7 @@ admin.yummyrecs.com {
     }
 
     handle {
-        root * /opt/food-tracker-app/admin_build
+        root * /opt/food-tracker-app-production/admin_build
 
         @static {
             path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp

@@ -89,17 +89,132 @@ class GitHubActionPinPolicyTest < Minitest::Test
     assert_includes violations.first, "@main"
   end
 
+  def test_rejects_mutable_references_inside_local_composite_actions
+    action = <<~YAML
+      runs:
+        using: composite
+        steps:
+          - uses: example/tagged@v1
+          - uses: example/branched@main
+          - uses: example/abbreviated@0123456
+          - uses: example/pinned@#{SHA}
+          - uses: ./.github/actions/nested
+    YAML
+
+    violations = violations_for({}, action_files: {"local/action.yml" => action})
+
+    assert_equal 3, violations.length
+    assert violations.all? { |violation| violation.include?("actions/local/action.yml") }
+    assert violations.any? { |violation| violation.include?("@v1") }
+    assert violations.any? { |violation| violation.include?("@main") }
+    assert violations.any? { |violation| violation.include?("@0123456") }
+  end
+
+  def test_follows_referenced_local_actions_outside_github_directory
+    workflow = <<~YAML
+      jobs:
+        local:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: ./actions/deploy
+    YAML
+    action = <<~YAML
+      runs:
+        using: composite
+        steps:
+          - uses: third-party/action@main
+    YAML
+
+    violations = violations_for(
+      {"local.yml" => workflow},
+      repository_files: {"actions/deploy/action.yaml" => action}
+    )
+
+    assert_equal 1, violations.length
+    assert_includes violations.first, "actions/deploy/action.yaml"
+    assert_includes violations.first, "@main"
+  end
+
+  def test_rejects_mutable_external_image_in_local_docker_action
+    workflow = <<~YAML
+      jobs:
+        local:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: ./actions/container
+    YAML
+    action = <<~YAML
+      runs:
+        using: docker
+        image: docker://example/image:latest
+    YAML
+
+    violations = violations_for(
+      {"local.yml" => workflow},
+      repository_files: {"actions/container/action.yml" => action}
+    )
+
+    assert_equal 1, violations.length
+    assert_includes violations.first, "runs.image"
+    assert_includes violations.first, "image:latest"
+  end
+
+  def test_accepts_local_dockerfile_and_digest_pinned_action_images
+    workflow = <<~YAML
+      jobs:
+        local:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: ./actions/local-image
+            - uses: ./actions/pinned-image
+    YAML
+    local_action = <<~YAML
+      runs:
+        using: docker
+        image: Dockerfile
+    YAML
+    pinned_action = <<~YAML
+      runs:
+        using: docker
+        image: docker://example/image@sha256:#{DIGEST}
+    YAML
+
+    violations = violations_for(
+      {"local.yml" => workflow},
+      repository_files: {
+        "actions/local-image/action.yml" => local_action,
+        "actions/pinned-image/action.yaml" => pinned_action
+      }
+    )
+
+    assert_empty violations
+  end
+
   private
 
-  def violations_for(files)
+  def violations_for(files, action_files: {}, repository_files: {})
     Dir.mktmpdir do |directory|
+      workflows_directory = File.join(directory, ".github", "workflows")
+
       files.each do |relative_path, contents|
+        path = File.join(workflows_directory, relative_path)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, contents)
+      end
+
+      action_files.each do |relative_path, contents|
+        path = File.join(directory, ".github", "actions", relative_path)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, contents)
+      end
+
+      repository_files.each do |relative_path, contents|
         path = File.join(directory, relative_path)
         FileUtils.mkdir_p(File.dirname(path))
         File.write(path, contents)
       end
 
-      return GitHubActionPinPolicy.violations(directory)
+      return GitHubActionPinPolicy.violations(workflows_directory)
     end
   end
 end

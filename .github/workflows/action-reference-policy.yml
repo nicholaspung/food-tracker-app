@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/**"
+      - ".github/actions/**"
+      - "**/action.yml"
+      - "**/action.yaml"
       - "scripts/check-github-action-pins.rb"
       - "scripts/check-github-action-pins.test.rb"
   push:
@@ -11,6 +14,9 @@ on:
       - main
     paths:
       - ".github/workflows/**"
+      - ".github/actions/**"
+      - "**/action.yml"
+      - "**/action.yaml"
       - "scripts/check-github-action-pins.rb"
       - "scripts/check-github-action-pins.test.rb"
   workflow_dispatch:

@@ -20,7 +20,11 @@ if [[ "$ENVIRONMENT" != "beta" && "$ENVIRONMENT" != "production" ]]; then
 fi
 load_food_tracker_env "$ENVIRONMENT"
 
-APP_DIR="/opt/food-tracker-app"
+if [ "$ENVIRONMENT" = "production" ]; then
+    umask 077
+fi
+
+APP_DIR="${FOOD_TRACKER_APP_DIR:-/opt/food-tracker-app}"
 MARKETING_SOURCE_DIR="$APP_DIR/apps/marketing/dist"
 APP_WEB_SOURCE_DIR="$APP_DIR/apps/mobile/web-dist"
 ADMIN_SOURCE_DIR="$APP_DIR/apps/admin/dist"
@@ -28,6 +32,7 @@ LOG_DIR="$APP_DIR/logs"
 LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
 LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
+PRIVILEGED_HELPER="/usr/local/sbin/food-tracker-deploy-privileged"
 MAX_BACKUPS=5
 DEFAULT_PNPM_PACKAGE_MANAGER="pnpm@11.1.2"
 PNPM_PACKAGE_MANAGER=""
@@ -77,34 +82,24 @@ step() {
 }
 
 run_sudo() {
-    local sudo_output
-    local exit_code
+    sudo -n "$@"
+}
 
-    if sudo_output=$(sudo -n "$@" 2>&1); then
-        if [ -n "$sudo_output" ]; then
-            printf '%s\n' "$sudo_output"
+ensure_privileged_helper() {
+    local helper_mode
+    local helper_permissions
+
+    if [ -x "$PRIVILEGED_HELPER" ] && [ "$(stat -c '%u' "$PRIVILEGED_HELPER")" = "0" ]; then
+        helper_mode=$(stat -c '%a' "$PRIVILEGED_HELPER")
+        helper_permissions=$((8#$helper_mode))
+        if (( (helper_permissions & 18) == 0 )); then
+            return
         fi
-        return 0
     fi
 
-    exit_code=$?
-
-    if printf '%s\n' "$sudo_output" | grep -qiE 'a password is required|authentication failed|incorrect authentication attempts|sorry, try again'; then
-        if [ -n "${SUDO_PASSWORD:-}" ]; then
-            printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
-            return $?
-        fi
-
-        error "This deployment requires sudo for: $*"
-        error "Run 'sudo bash $APP_DIR/scripts/setup-deploy-sudo.sh $USER' on the VPS, or add SUDO_PASSWORD to the GitHub environment secrets."
-        exit 1
-    fi
-
-    if [ -n "$sudo_output" ]; then
-        printf '%s\n' "$sudo_output" >&2
-    fi
-
-    return $exit_code
+    error "Privileged deployment helper is missing or not root-owned and non-writable: $PRIVILEGED_HELPER"
+    error "Run 'sudo bash $APP_DIR/scripts/setup-deploy-sudo.sh $USER $ENVIRONMENT' on the VPS before deploying."
+    exit 1
 }
 
 caddy_config_has_domain() {
@@ -117,9 +112,20 @@ caddy_config_has_domain() {
 validate_caddy_config() {
     local config_path="$1"
     local validation_output
+    local helper_command
+
+    case "$config_path" in
+        "$APP_DIR/Caddyfile") helper_command="caddy-validate-repo-${ENVIRONMENT}" ;;
+        "/etc/caddy/Caddyfile") helper_command="caddy-validate-live" ;;
+        *)
+            error "Refusing to validate unexpected Caddy config: $config_path"
+            return 1
+            ;;
+    esac
+
     validation_output=$(mktemp)
 
-    if run_sudo caddy validate --config "$config_path" --adapter caddyfile >"$validation_output" 2>&1; then
+    if run_sudo "$PRIVILEGED_HELPER" "$helper_command" >"$validation_output" 2>&1; then
         rm -f "$validation_output"
         return 0
     fi
@@ -135,23 +141,6 @@ ensure_live_caddy_config() {
     local missing_domains=()
     local domain
 
-    if [ ! -r "$caddy_config" ]; then
-        warn "Cannot read $caddy_config. Skipping domain presence checks."
-        return
-    fi
-
-    for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
-        if ! caddy_config_has_domain "$caddy_config" "$domain"; then
-            missing_domains+=("$domain")
-        fi
-    done
-
-    if [ "${#missing_domains[@]}" -eq 0 ]; then
-        return
-    fi
-
-    warn "Live Caddy config is missing environment domains: ${missing_domains[*]}"
-
     if [ ! -r "$repo_caddy_config" ]; then
         error "Repo Caddyfile is not readable: $repo_caddy_config"
         exit 1
@@ -165,30 +154,95 @@ ensure_live_caddy_config() {
         fi
     done
 
-    step "Syncing live Caddy config..."
-
-    if ! validate_caddy_config "$repo_caddy_config"; then
-        error "Repo Caddyfile failed validation: $repo_caddy_config"
-        error "Fix the checked-in Caddyfile before deploying."
-        exit 1
+    if [ "$ENVIRONMENT" = "production" ]; then
+        if ! validate_caddy_config "$repo_caddy_config"; then
+            error "Repo Caddyfile failed validation: $repo_caddy_config"
+            error "Fix the checked-in Caddyfile before deploying."
+            exit 1
+        fi
+        return
     fi
 
-    run_sudo cp "$repo_caddy_config" "$caddy_config"
-
-    if ! run_sudo systemctl reload caddy; then
-        error "Failed to reload Caddy after updating $caddy_config"
-        error "Check logs: sudo journalctl -u caddy -n 50"
+    if [ ! -r "$caddy_config" ]; then
+        error "Live Caddy config is not readable; Beta cannot verify the shared config."
         exit 1
     fi
 
     for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
         if ! caddy_config_has_domain "$caddy_config" "$domain"; then
-            error "Domain '$domain' is still missing from $caddy_config after sync"
+            missing_domains+=("$domain")
+        fi
+    done
+
+    if [ "${#missing_domains[@]}" -gt 0 ]; then
+        warn "Live Caddy config is missing environment domains: ${missing_domains[*]}"
+        error "Beta is not allowed to replace the shared Caddy config."
+        error "Have the Production operator install the reviewed Caddyfile, then retry Beta."
+        exit 1
+    fi
+
+    log "Live Caddy config verified ✓"
+}
+
+sync_production_caddy_config() {
+    if [ "$ENVIRONMENT" != "production" ]; then
+        return
+    fi
+
+    local site_key
+    local build_dir
+    for site_key in $(site_keys); do
+        build_dir=$(site_build_dir "$site_key")
+        if [ ! -f "$APP_DIR/$build_dir/index.html" ]; then
+            error "Refusing Production Caddy cutover without staged $build_dir/index.html"
             exit 1
         fi
     done
 
-    log "Live Caddy config synchronized ✓"
+    step "Installing reviewed Production Caddy config..."
+    run_sudo "$PRIVILEGED_HELPER" caddy-backup-live
+    CADDY_ROLLBACK_STAGED=true
+    run_sudo "$PRIVILEGED_HELPER" caddy-install-production
+    log "Reviewed Production Caddy config installed ✓"
+}
+
+prepare_production_caddy_assets() {
+    if [ "$ENVIRONMENT" != "production" ]; then
+        return
+    fi
+
+    step "Granting Caddy read access to Production static assets..."
+    run_sudo "$PRIVILEGED_HELPER" prepare-caddy-assets-production
+    log "Production static assets are readable by Caddy ✓"
+}
+
+recover_interrupted_caddy_cutover() {
+    if [ "$ENVIRONMENT" != "production" ]; then
+        return
+    fi
+
+    if ! run_sudo "$PRIVILEGED_HELPER" caddy-backup-exists; then
+        return
+    fi
+
+    warn "Found an unfinished Production Caddy cutover; restoring the last live config"
+    run_sudo "$PRIVILEGED_HELPER" caddy-restore-live
+    if ! validate_caddy_config "/etc/caddy/Caddyfile"; then
+        error "Restored Caddy config failed validation; rollback snapshot was preserved"
+        exit 1
+    fi
+    run_sudo "$PRIVILEGED_HELPER" caddy-reload
+    run_sudo "$PRIVILEGED_HELPER" caddy-clear-backup
+    log "Interrupted Caddy cutover recovered ✓"
+}
+
+clear_caddy_rollback() {
+    if [ "$CADDY_ROLLBACK_STAGED" != true ]; then
+        return
+    fi
+
+    run_sudo "$PRIVILEGED_HELPER" caddy-clear-backup
+    CADDY_ROLLBACK_STAGED=false
 }
 
 configure_package_manager() {
@@ -251,6 +305,7 @@ run_pnpm() {
 LOCK_ACQUIRED=false
 ROLLBACK_REQUIRED=false
 ROLLBACK_COMPLETED=false
+CADDY_ROLLBACK_STAGED=false
 
 site_keys() {
     echo "marketing app admin"
@@ -489,8 +544,17 @@ rollback() {
         fi
     done
 
+    if [ "$CADDY_ROLLBACK_STAGED" = true ]; then
+        run_sudo "$PRIVILEGED_HELPER" caddy-restore-live
+        run_sudo "$PRIVILEGED_HELPER" caddy-reload
+        run_sudo "$PRIVILEGED_HELPER" caddy-clear-backup
+        CADDY_ROLLBACK_STAGED=false
+        log "Live Caddy config rolled back successfully"
+    elif [ "$had_static_rollback" = true ]; then
+        run_sudo "$PRIVILEGED_HELPER" caddy-reload
+    fi
+
     if [ "$had_static_rollback" = true ]; then
-        run_sudo systemctl reload caddy
         log "Static sites rolled back successfully"
     fi
 
@@ -555,6 +619,7 @@ preflight_checks() {
         exit 1
     fi
 
+    recover_interrupted_caddy_cutover
     ensure_live_caddy_config
 
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
@@ -583,16 +648,14 @@ create_backup() {
     backup_path="$BACKUP_DIR/$backup_timestamp"
 
     if [ ! -d "$BACKUP_DIR" ]; then
-        run_sudo /bin/mkdir -p "$BACKUP_DIR"
-        run_sudo /bin/chown -R "$USER:$USER" /opt/food-tracker-backups
-        run_sudo /bin/chmod 755 /opt/food-tracker-backups
+        run_sudo "$PRIVILEGED_HELPER" "prepare-backups-${ENVIRONMENT}"
     fi
 
     # Older deploys/backups may have been created by root or copied with
     # root-owned files from containers. Normalize ownership before pruning so
     # retention cleanup doesn't fail the deployment before any app mutation.
     if ! [ -w "$BACKUP_DIR" ] || find "$BACKUP_DIR" -mindepth 1 -maxdepth 2 ! -user "$USER" -print -quit | grep -q .; then
-        if ! run_sudo /bin/chown -R "$USER:$USER" "$BACKUP_DIR"; then
+        if ! run_sudo "$PRIVILEGED_HELPER" "repair-backups-${ENVIRONMENT}"; then
             warn "Could not normalize backup ownership; old backup cleanup will be best-effort"
         fi
     fi
@@ -636,7 +699,7 @@ create_backup() {
             fi
 
             warn "Could not remove old backup $old_backup as $USER; retrying after ownership repair"
-            if run_sudo /bin/chown -R "$USER:$USER" "$BACKUP_DIR/$old_backup"; then
+            if run_sudo "$PRIVILEGED_HELPER" "repair-backups-${ENVIRONMENT}"; then
                 if rm -rf "$BACKUP_DIR/$old_backup" 2>"$cleanup_error"; then
                     log "Removed old backup: $old_backup"
                     rm -f "$cleanup_error"
@@ -798,6 +861,8 @@ deploy_static_sites() {
             exit 1
         fi
 
+        prepare_production_caddy_assets
+
         if [ -d "$build_dir" ]; then
             rm -rf "${build_dir}_old"
             mv "$build_dir" "${build_dir}_old"
@@ -823,10 +888,7 @@ configure_backend() {
             chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory without sudo"
         else
-            run_sudo mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
-            run_sudo chown -R "$USER:$USER" /opt/food-tracker-secrets
-            run_sudo chmod 700 /opt/food-tracker-secrets
-            run_sudo chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+            run_sudo "$PRIVILEGED_HELPER" "prepare-secrets-${ENVIRONMENT}"
             log "Created secrets directory with sudo"
         fi
     fi
@@ -1208,7 +1270,7 @@ reload_caddy() {
         warn "Caddy configuration validation failed, but continuing..."
     fi
 
-    if ! run_sudo systemctl reload caddy; then
+    if ! run_sudo "$PRIVILEGED_HELPER" caddy-reload; then
         error "Failed to reload Caddy"
         exit 1
     fi
@@ -1339,6 +1401,7 @@ main() {
     log "Started at $(date)"
     echo ""
 
+    ensure_privileged_helper
     preflight_checks
     create_backup
     update_source_code
@@ -1346,6 +1409,7 @@ main() {
     build_web_surfaces
     prepare_static_sites
     deploy_static_sites
+    sync_production_caddy_config
     reload_caddy
 
     local site_key
@@ -1358,6 +1422,7 @@ main() {
     health_check_pocketbase
     smoke_test
     cleanup_old_builds
+    clear_caddy_rollback
     print_summary
 }
 

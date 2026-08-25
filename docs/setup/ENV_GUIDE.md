@@ -152,7 +152,6 @@ GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://us.i.posthog.com
 EXPO_PUSH_ACCESS_TOKEN=
-SUDO_PASSWORD=
 FOOD_TRACKER_IOS_TEAM_ID=
 FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 ```
@@ -172,20 +171,16 @@ VPS_HOST=
 VPS_USER=
 VPS_SSH_KEY=
 VPS_PORT=
-GEMINI_API_KEY=
-GOOGLE_PLACES_API_KEY=
-POSTHOG_API_KEY=
-POSTHOG_HOST=https://us.i.posthog.com
-EXPO_PUSH_ACCESS_TOKEN=
-SUDO_PASSWORD=
-FOOD_TRACKER_IOS_TEAM_ID=
+VPS_SSH_KNOWN_HOSTS=
 FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 ```
 
 Notes:
 
-- Beta and production can point at the same VPS connection values if both environments deploy to the same server.
-- `GEMINI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `POSTHOG_API_KEY`, `POSTHOG_HOST`, and `EXPO_PUSH_ACCESS_TOKEN` should usually be scoped separately per GitHub environment so beta and production can diverge safely.
+- Beta and Production can use the same VPS host and port, but they must use distinct deploy accounts and SSH keys so neither environment can claim the other's secrets or backups.
+- `VPS_SSH_KNOWN_HOSTS` must contain the reviewed OpenSSH `known_hosts` entry for the Production host and port. Do not populate it with runtime `ssh-keyscan` output.
+- Production must use a dedicated account and an environment-specific SSH key whose `authorized_keys` entry is restricted to the root-owned `/usr/local/sbin/food-tracker-production-deploy` launcher described in `docs/setup/DEPLOYMENT.md`. The account can operate Docker and is therefore privileged; the forced command and separate Production checkout are the boundaries that limit this key.
+- Store Production application secrets in `/opt/food-tracker-secrets/production/deploy.env` on the VPS, not in the GitHub Actions environment. Do not configure `SUDO_PASSWORD` for either deployment; pre-provision each account's environment-specific fixed helper grants with `scripts/setup-deploy-sudo.sh`.
 - Attach `EXPO_TOKEN` to the `production` GitHub environment as well if you want to use the manual production-targeted mobile preview dispatch in `.github/workflows/mobile-preview.yml`.
 
 ### App Link Association Secrets
@@ -417,10 +412,11 @@ These run [scripts/mobile-expo.sh](/Users/developer/programming/food-tracker-app
 ## Production Workflow
 
 ```bash
-cd /opt/food-tracker-app
-bash scripts/post-setup.sh
-bash scripts/deploy.sh production
+sudo bash /opt/food-tracker-app-production/scripts/setup-deploy-sudo.sh production-deploy production
+sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
+
+Automated runs use the same root-owned launcher through the restricted Production SSH key. Do not run Production from `/opt/food-tracker-app`, which is the Beta checkout.
 
 ## Security Notes
 

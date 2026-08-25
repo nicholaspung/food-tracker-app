@@ -18,6 +18,9 @@ on:
           - production
         default: "production"
 
+permissions:
+  contents: read
+
 jobs:
   deploy-beta:
     name: Deploy to Beta
@@ -38,14 +41,13 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           command_timeout: 30m
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,EXPO_PUSH_ACCESS_TOKEN,SUDO_PASSWORD,FOOD_TRACKER_IOS_TEAM_ID,FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS
+          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,EXPO_PUSH_ACCESS_TOKEN,FOOD_TRACKER_IOS_TEAM_ID,FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS
           script: |
             export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
             export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
             export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
             export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
             export EXPO_PUSH_ACCESS_TOKEN="${{ secrets.EXPO_PUSH_ACCESS_TOKEN }}"
-            export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
             export FOOD_TRACKER_IOS_TEAM_ID="${{ secrets.FOOD_TRACKER_IOS_TEAM_ID }}"
             export FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS="${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}"
             cd /opt/food-tracker-app
@@ -109,26 +111,31 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Deploy to Production Environment
-        uses: appleboy/ssh-action@823bd89e131d8d508129f9443cad5855e9ba96f0 # v1.2.4
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          command_timeout: 30m
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,EXPO_PUSH_ACCESS_TOKEN,SUDO_PASSWORD,FOOD_TRACKER_IOS_TEAM_ID,FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS
-          script: |
-            export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
-            export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
-            export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
-            export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
-            export EXPO_PUSH_ACCESS_TOKEN="${{ secrets.EXPO_PUSH_ACCESS_TOKEN }}"
-            export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
-            export FOOD_TRACKER_IOS_TEAM_ID="${{ secrets.FOOD_TRACKER_IOS_TEAM_ID }}"
-            export FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS="${{ secrets.FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS }}"
-            cd /opt/food-tracker-app
-            git pull origin main
-            bash scripts/deploy.sh production
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+        run: |
+          ssh_directory="$RUNNER_TEMP/production-deploy-ssh"
+          install -m 700 -d "$ssh_directory"
+          trap 'rm -rf "$ssh_directory"' EXIT
+
+          printf '%s\n' "$VPS_SSH_KEY" > "$ssh_directory/key"
+          printf '%s\n' "$VPS_SSH_KNOWN_HOSTS" > "$ssh_directory/known_hosts"
+          chmod 600 "$ssh_directory/key" "$ssh_directory/known_hosts"
+
+          timeout 30m ssh \
+            -i "$ssh_directory/key" \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_directory/known_hosts" \
+            "$VPS_USER@$VPS_HOST"
 
       - name: Health check Production
         run: |

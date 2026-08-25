@@ -12,27 +12,19 @@ Production is split into four pieces:
 ## VPS Layout
 
 ```text
-/opt/food-tracker-app/
-├── apps/
-│   ├── admin/
-│   │   └── dist/                # Source of the admin web build
-│   ├── marketing/
-│   │   └── dist/                # Source of the marketing site
-│   └── mobile/
-│       └── web-dist/            # Source of the app web build
-├── backend/
-│   ├── pb_data_production/      # Production PocketBase data
-│   └── pb_data_beta/            # Beta PocketBase data
-├── docker-compose.yml
-├── docker-compose.beta.yml
-├── marketing_build/             # Production marketing site
-├── marketing_build_beta/        # Beta marketing site
-├── app_build/                   # Production app web site
-├── app_build_beta/              # Beta app web site
-├── admin_build/                 # Production admin web site
-├── admin_build_beta/            # Beta admin web site
-├── Caddyfile
-└── scripts/
+/opt/food-tracker-app-production/  # Production account only
+├── backend/pb_data_production/
+├── marketing_build/
+├── app_build/
+├── admin_build/
+└── source checkout
+
+/opt/food-tracker-app/             # Beta account only
+├── backend/pb_data_beta/
+├── marketing_build_beta/
+├── app_build_beta/
+├── admin_build_beta/
+└── source checkout
 ```
 
 ## Request Flow
@@ -61,11 +53,11 @@ Browser
 
 Caddy serves:
 
-- `yummyrecs.com` from `/opt/food-tracker-app/marketing_build`
+- `yummyrecs.com` from `/opt/food-tracker-app-production/marketing_build`
 - `beta.yummyrecs.com` from `/opt/food-tracker-app/marketing_build_beta`
-- `app.yummyrecs.com` from `/opt/food-tracker-app/app_build`
+- `app.yummyrecs.com` from `/opt/food-tracker-app-production/app_build`
 - `beta.app.yummyrecs.com` from `/opt/food-tracker-app/app_build_beta`
-- `admin.yummyrecs.com` from `/opt/food-tracker-app/admin_build`
+- `admin.yummyrecs.com` from `/opt/food-tracker-app-production/admin_build`
 - `beta.admin.yummyrecs.com` from `/opt/food-tracker-app/admin_build_beta`
 - PocketBase production on `localhost:8090`
 - PocketBase beta on `localhost:8091`
@@ -81,5 +73,5 @@ Backups live under `/opt/food-tracker-backups/{production,beta}` and include:
 ## Operational Notes
 
 - `scripts/setup-vps.sh` installs Docker, Docker Compose, Caddy, Node.js, pnpm, fail2ban, backups, and log rotation.
-- `scripts/post-setup.sh` configures Caddy, creates `.env`, starts PocketBase, and hands off to `scripts/deploy.sh production`.
+- `scripts/post-setup.sh` performs base host setup; provision the separate Production checkout and restricted launcher in `docs/setup/DEPLOYMENT.md` before enabling automated Production deploys.
 - `scripts/setup-beta.sh` prepares the beta PocketBase data directory and runs `scripts/deploy.sh beta`.

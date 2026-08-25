@@ -1,0 +1,12 @@
+# Production deployment and immutable-action policy changes require deployment/security review.
+/Caddyfile @nicholaspung
+/.github/CODEOWNERS @nicholaspung
+/.github/actions/ @nicholaspung
+**/action.yml @nicholaspung
+**/action.yaml @nicholaspung
+/.github/workflows/deploy.yml @nicholaspung
+/.github/workflows/action-reference-policy.yml @nicholaspung
+/scripts/check-github-action-pins.rb @nicholaspung
+/scripts/check-github-action-pins.test.rb @nicholaspung
+/scripts/deploy.sh @nicholaspung
+/scripts/setup-deploy-sudo.sh @nicholaspung
