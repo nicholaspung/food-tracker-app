@@ -53,6 +53,9 @@ func validateStartupConfiguration() (lib.RuntimeResources, error) {
 	}
 
 	if runtimeResources.Environment != lib.RuntimeEnvironmentLocal {
+		if !trustedProxyHeadersEnabled() {
+			problems = append(problems, fmt.Sprintf("%s must be enabled in %s", trustProxyHeadersEnvKey, runtimeResources.Environment))
+		}
 		problems = append(problems, validateNonLocalMailpitConfiguration(runtimeResources.Environment)...)
 	}
 

@@ -11,6 +11,9 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
+
+	"myapp/lib"
 )
 
 const (
@@ -18,10 +21,13 @@ const (
 	signupRateLimitBaseLockoutSeconds = 15 * 60
 	signupRateLimitUnavailableMessage = "signup rate limiting is temporarily unavailable, please try again shortly"
 	trustProxyHeadersEnvKey           = "TRUST_PROXY_HEADERS"
+	hostedTrustedProxyReloadHookID    = "foodTrackerHostedTrustedProxy"
+	hostedTrustedProxyUpdateHookID    = "foodTrackerHostedTrustedProxyUpdate"
 )
 
 var (
-	errInviteCodeUnavailable = errors.New("invite code is invalid or already used")
+	errInviteCodeUnavailable  = errors.New("invite code is invalid or already used")
+	hostedTrustedProxyHeaders = []string{"X-Forwarded-For", "X-Real-IP"}
 )
 
 type inviteCodeReservation struct {
@@ -31,17 +37,80 @@ type inviteCodeReservation struct {
 }
 
 func configureTrustedProxyHeaders(app core.App) {
-	settings := app.Settings()
-	if len(settings.TrustedProxy.Headers) > 0 {
+	if app == nil || !trustedProxyHeadersEnabled() {
 		return
+	}
+
+	configureHostedTrustedProxySettings(app.Settings())
+}
+
+func configureHostedTrustedProxySettings(settings *core.Settings) {
+	settings.TrustedProxy.Headers = append([]string(nil), hostedTrustedProxyHeaders...)
+	settings.TrustedProxy.UseLeftmostIP = false
+}
+
+func validateHostedTrustedProxyConfiguration(app core.App, environment lib.RuntimeEnvironment) error {
+	if environment == lib.RuntimeEnvironmentLocal {
+		return nil
 	}
 
 	if !trustedProxyHeadersEnabled() {
-		return
+		return fmt.Errorf("%s must be enabled in %s", trustProxyHeadersEnvKey, environment)
 	}
 
-	settings.TrustedProxy.Headers = []string{"X-Forwarded-For", "X-Real-IP"}
-	settings.TrustedProxy.UseLeftmostIP = false
+	if app == nil {
+		return errors.New("trusted proxy configuration requires an initialized app")
+	}
+
+	settings := app.Settings().TrustedProxy
+	if settings.UseLeftmostIP || len(settings.Headers) != len(hostedTrustedProxyHeaders) {
+		return errors.New("trusted proxy configuration does not match the hosted Caddy boundary")
+	}
+
+	for index, header := range hostedTrustedProxyHeaders {
+		if !strings.EqualFold(strings.TrimSpace(settings.Headers[index]), header) {
+			return errors.New("trusted proxy configuration does not match the hosted Caddy boundary")
+		}
+	}
+
+	return nil
+}
+
+func registerHostedTrustedProxyEnforcement(app core.App, environment lib.RuntimeEnvironment) error {
+	configureTrustedProxyHeaders(app)
+	if err := validateHostedTrustedProxyConfiguration(app, environment); err != nil {
+		return err
+	}
+
+	if environment == lib.RuntimeEnvironmentLocal {
+		return nil
+	}
+
+	app.OnSettingsUpdateRequest().Bind(&hook.Handler[*core.SettingsUpdateRequestEvent]{
+		Id: hostedTrustedProxyUpdateHookID,
+		Func: func(e *core.SettingsUpdateRequestEvent) error {
+			if e.NewSettings == nil {
+				return errors.New("hosted settings update requires new settings")
+			}
+
+			configureHostedTrustedProxySettings(e.NewSettings)
+			return e.Next()
+		},
+	})
+
+	app.OnSettingsReload().Bind(&hook.Handler[*core.SettingsReloadEvent]{
+		Id: hostedTrustedProxyReloadHookID,
+		Func: func(e *core.SettingsReloadEvent) error {
+			if err := e.Next(); err != nil {
+				return err
+			}
+
+			configureTrustedProxyHeaders(e.App)
+			return validateHostedTrustedProxyConfiguration(e.App, environment)
+		},
+	})
+
+	return nil
 }
 
 func resolveSignupClientIP(e *core.RecordRequestEvent) string {

@@ -160,7 +160,25 @@ func performSignupSecurityJSONRequest(
 	return recorder
 }
 
+func performSignupSecurityJSONRequestFromIP(
+	t *testing.T,
+	mux http.Handler,
+	clientIP string,
+	body string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/collections/users/records", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", clientIP)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, req)
+	return recorder
+}
+
 func TestResolveSignupClientIPDefaultsToRemoteAddr(t *testing.T) {
+	t.Setenv(trustProxyHeadersEnvKey, "false")
+
 	app := newSignupSecurityTestApp(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/collections/users/records", nil)
@@ -430,5 +448,49 @@ func TestIncrementSignupFailureLocksAfterThreshold(t *testing.T) {
 	}
 	if lockoutMinutes == 0 {
 		t.Fatalf("expected a non-zero lockout duration")
+	}
+}
+
+func TestSignupFailureBucketsUseForwardedClientIdentity(t *testing.T) {
+	t.Setenv(trustProxyHeadersEnvKey, "true")
+
+	server := newSignupSecurityPreparedServer(t)
+	configureTrustedProxyHeaders(server.app)
+
+	invalidSignup := `{
+		"email":"blocked@example.com",
+		"name":"Blocked Requester",
+		"password":"password123",
+		"passwordConfirm":"password123",
+		"inviteCode":"invalid-code"
+	}`
+
+	for attempt := 1; attempt <= signupRateLimitMaxAttempts; attempt++ {
+		response := performSignupSecurityJSONRequestFromIP(t, server.mux, "198.51.100.20", invalidSignup)
+		if response.Code == http.StatusOK {
+			t.Fatalf("expected client A invalid signup attempt %d to fail", attempt)
+		}
+	}
+
+	lockedResponse := performSignupSecurityJSONRequestFromIP(t, server.mux, "198.51.100.20", invalidSignup)
+	if !strings.Contains(strings.ToLower(lockedResponse.Body.String()), "too many failed attempts") {
+		t.Fatalf("expected client A to exhaust its signup budget, got %d: %s", lockedResponse.Code, lockedResponse.Body.String())
+	}
+
+	isolatedResponse := performSignupSecurityJSONRequestFromIP(t, server.mux, "198.51.100.21", invalidSignup)
+	if strings.Contains(strings.ToLower(isolatedResponse.Body.String()), "too many failed attempts") {
+		t.Fatalf("expected client B to retain an isolated signup budget, got %d: %s", isolatedResponse.Code, isolatedResponse.Body.String())
+	}
+
+	clientBRecord, err := server.app.FindFirstRecordByFilter(
+		"rate_limits",
+		"ip_address = {:ip}",
+		map[string]any{"ip": "198.51.100.21"},
+	)
+	if err != nil {
+		t.Fatalf("failed to load client B signup bucket: %v", err)
+	}
+	if attempts := clientBRecord.GetInt("attempts"); attempts != 1 {
+		t.Fatalf("expected client B to have one isolated failure, got %d", attempts)
 	}
 }

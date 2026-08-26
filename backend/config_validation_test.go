@@ -130,6 +130,7 @@ func TestValidateStartupConfigurationAcceptsProductionURLs(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "test-gemini")
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
 	t.Setenv("FOOD_TRACKER_ENV", "production")
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	t.Setenv("FOOD_TRACKER_APP_URL", "https://app.yummyrecs.com")
 	t.Setenv("FOOD_TRACKER_IOS_APP_STORE_URL", "https://apps.apple.com/us/app/yummy-recs/id6761597807")
 	t.Setenv("FOOD_TRACKER_API_BASE_URL", "https://app.yummyrecs.com")
@@ -141,6 +142,27 @@ func TestValidateStartupConfigurationAcceptsProductionURLs(t *testing.T) {
 
 	if _, err := validateStartupConfiguration(); err != nil {
 		t.Fatalf("expected production defaults to pass, got %v", err)
+	}
+}
+
+func TestValidateStartupConfigurationRequiresTrustedProxyHeadersForHostedEnvironments(t *testing.T) {
+	for _, environment := range []string{"beta", "production"} {
+		t.Run(environment, func(t *testing.T) {
+			t.Setenv("GEMINI_API_KEY", "test-gemini")
+			t.Setenv("GOOGLE_PLACES_API_KEY", "test-places")
+			t.Setenv("FOOD_TRACKER_ENV", environment)
+			t.Setenv("TRUST_PROXY_HEADERS", "")
+
+			_, err := validateStartupConfiguration()
+			if err == nil {
+				t.Fatalf("expected %s configuration without trusted proxy headers to fail", environment)
+			}
+
+			expected := "TRUST_PROXY_HEADERS must be enabled in " + environment
+			if !strings.Contains(err.Error(), expected) {
+				t.Fatalf("expected %q validation failure, got %v", expected, err)
+			}
+		})
 	}
 }
 

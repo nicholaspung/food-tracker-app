@@ -64,7 +64,9 @@ func main() {
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		configureTrustedProxyHeaders(app)
+		if err := registerHostedTrustedProxyEnforcement(app, runtimeResources.Environment); err != nil {
+			return err
+		}
 		configureSecurityRateLimitRules(app)
 
 		// Register all API handlers
