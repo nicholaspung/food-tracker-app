@@ -18,11 +18,13 @@ jest.mock('../lib/pocketbase', () => ({
       },
     },
     collection: jest.fn(),
+    send: jest.fn(),
   },
 }));
 
 const mockedPocketBase = pb as typeof pb & {
   collection: jest.Mock;
+  send: jest.Mock;
 };
 
 const requestOptions = {
@@ -48,6 +50,7 @@ function replayingCollection(record: Record<string, unknown>) {
 describe('durable collection creates', () => {
   beforeEach(() => {
     mockedPocketBase.collection.mockReset();
+    mockedPocketBase.send.mockReset();
   });
 
   it.each([
@@ -61,18 +64,6 @@ describe('durable collection creates', () => {
         updated: '2026-08-16T12:00:00.000Z',
       },
       submit: () => createNote({ title: '', content: 'Remember this' }, requestOptions),
-    },
-    {
-      collectionName: 'feedback',
-      record: {
-        user: 'user-1',
-        title: 'Offline feedback',
-        description: 'Details',
-        status: 'open',
-        created: '2026-08-16T12:00:00.000Z',
-        updated: '2026-08-16T12:00:00.000Z',
-      },
-      submit: () => createFeedback({ title: 'Offline feedback', description: 'Details' }, requestOptions),
     },
     {
       collectionName: 'restaurant_lists',
@@ -107,5 +98,36 @@ describe('durable collection creates', () => {
     expect(firstPayload.id).toEqual(expect.any(String));
     expect(replayPayload.id).toBe(firstPayload.id);
     expect(collection.getOne).toHaveBeenCalledWith(firstPayload.id, expect.any(Object));
+  });
+
+  it('sends only authored Feedback fields through the idempotent server endpoint', async () => {
+    mockedPocketBase.send.mockResolvedValue({
+      id: 'feedback-1',
+      user: 'user-1',
+      title: 'Offline feedback',
+      description: 'Details',
+      status: 'open',
+      admin_unread_count: 1,
+      user_unread_count: 0,
+      last_message_at: '2026-08-16T12:00:00.000Z',
+      created: '2026-08-16T12:00:00.000Z',
+      updated: '2026-08-16T12:00:00.000Z',
+    });
+
+    await createFeedback({ title: '  Offline feedback  ', description: '  Details  ' }, requestOptions);
+
+    expect(mockedPocketBase.send).toHaveBeenCalledWith('/api/feedback', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer auth-token-1',
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'response-loss-1',
+      },
+      body: {
+        title: 'Offline feedback',
+        description: 'Details',
+      },
+    });
+    expect(mockedPocketBase.collection).not.toHaveBeenCalledWith('feedback');
   });
 });

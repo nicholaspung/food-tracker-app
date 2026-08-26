@@ -10,13 +10,10 @@ import type {
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
-  deriveFeatureWriteRecordId,
   escapeFilterValue,
   type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
-  isRetryableFeatureStoreError,
   mapPaginatedResult,
-  nowIso,
   resolveFeatureWriteHeaders,
   resolvePaginationInput,
   resolveExpandedUserName,
@@ -24,8 +21,6 @@ import {
 } from './featureStoreShared';
 import type { CollectionUserExpand } from './pocketbaseRecordTypes';
 import {
-  createCollectionRecord,
-  getCollectionRecord,
   listCollectionPage,
   sendApiRequest,
 } from './pocketbaseGateway';
@@ -249,58 +244,15 @@ export async function createFeedback(
   return trackFeatureMutation(
     'feedback.create',
     async () => {
-      const userId = getAuthenticatedUserId();
-
-      const replayRecordId = deriveFeatureWriteRecordId(requestOptions, 'feedback');
-      const payload: Record<string, unknown> = {
-        user: userId,
-        title: input.title.trim(),
-        description: input.description.trim(),
-        status: 'open',
-        admin_unread_count: 1,
-        user_unread_count: 0,
-        last_message_at: nowIso(),
-      };
-      if (replayRecordId) {
-        payload.id = replayRecordId;
-      }
-
-      const collectionOptions = {
-        expand: 'user',
+      const createdRecord = await sendApiRequest<FeedbackCollectionRecord>('/api/feedback', {
+        method: 'POST',
         headers: resolveFeatureWriteHeaders(requestOptions),
-        ...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
-      };
-
-      let createdRecord: FeedbackCollectionRecord;
-      try {
-        createdRecord = await createCollectionRecord<FeedbackCollectionRecord>(
-          'feedback',
-          payload,
-          collectionOptions,
-        );
-      } catch (createError) {
-        if (!replayRecordId) {
-          throw createError;
-        }
-
-        try {
-          const existingRecord = await getCollectionRecord<FeedbackCollectionRecord>(
-            'feedback',
-            replayRecordId,
-            collectionOptions,
-          );
-          if (existingRecord.user !== userId) {
-            throw createError;
-          }
-          createdRecord = existingRecord;
-        } catch (recoveryError) {
-          if (isRetryableFeatureStoreError(recoveryError)) {
-            throw recoveryError;
-          }
-          throw createError;
-        }
-      }
-
+        body: {
+          title: input.title.trim(),
+          description: input.description.trim(),
+        },
+        signal: requestOptions?.signal,
+      });
       return mapFeedbackRecord(createdRecord);
     },
     {

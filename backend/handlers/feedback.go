@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
@@ -17,7 +20,14 @@ const (
 	feedbackReplyOwnershipWindow    = 24 * time.Hour
 	defaultFeedbackMessagesPageSize = 20
 	maxFeedbackMessagesPageSize     = 100
+	maxFeedbackTitleLength          = 100
+	maxFeedbackDescriptionLength    = 5000
 )
+
+type feedbackCreateRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
 
 type feedbackReplyRequest struct {
 	Message string `json:"message"`
@@ -79,6 +89,84 @@ type feedbackMarkReadResponse struct {
 
 // RegisterFeedbackHandlers registers feedback messaging, ownership, and read-state endpoints.
 func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
+	se.Router.POST("/api/feedback", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		data := feedbackCreateRequest{}
+		if err := e.BindBody(&data); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		title, err := normalizeFeedbackText(data.Title, "title", maxFeedbackTitleLength)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		description, err := normalizeFeedbackText(
+			data.Description,
+			"description",
+			maxFeedbackDescriptionLength,
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		replayRecordID := deriveFeatureWriteRecordID(
+			"feedback",
+			resolveFeatureWriteIdempotencyKey(e),
+		)
+		var createdThread *core.Record
+		err = app.RunInTransaction(func(txApp core.App) error {
+			if replayRecordID != "" {
+				existingThread, findErr := txApp.FindRecordById("feedback", replayRecordID)
+				if findErr == nil {
+					if existingThread.GetString("user") != e.Auth.Id ||
+						existingThread.GetString("title") != title ||
+						existingThread.GetString("description") != description {
+						return apis.NewApiError(409, "feedback idempotency key conflict", nil)
+					}
+					createdThread = existingThread
+					return nil
+				}
+				if !errors.Is(findErr, sql.ErrNoRows) {
+					return apis.NewApiError(500, "failed to load replayed feedback", findErr)
+				}
+			}
+
+			feedbackCollection, findErr := txApp.FindCollectionByNameOrId("feedback")
+			if findErr != nil {
+				return apis.NewApiError(500, "feedback collection missing", findErr)
+			}
+
+			now := time.Now().UTC()
+			thread := core.NewRecord(feedbackCollection)
+			if replayRecordID != "" {
+				thread.SetRaw("id", replayRecordID)
+			}
+			thread.Set("user", e.Auth.Id)
+			thread.Set("title", title)
+			thread.Set("description", description)
+			thread.Set("status", "open")
+			thread.Set("admin_unread_count", 1)
+			thread.Set("user_unread_count", 0)
+			thread.Set("last_message_at", now)
+			clearFeedbackAssignment(thread)
+
+			if saveErr := txApp.Save(thread); saveErr != nil {
+				return apis.NewApiError(500, "failed to create feedback", saveErr)
+			}
+
+			createdThread = thread
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, serializeFeedbackThreadResponse(createdThread, e.Auth))
+	}).Bind(apis.RequireAuth())
+
 	se.Router.GET("/api/feedback/{threadId}", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
@@ -220,7 +308,7 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 
 			thread.Set("last_message_at", now)
 			thread.Set("admin_unread_count", thread.GetInt("admin_unread_count")+1)
-			if activeFeedbackOwnerID(thread, now) != "" {
+			if activeFeedbackOwnerID(txApp, thread, now) != "" {
 				thread.Set("admin_reply_deadline_at", now.Add(feedbackReplyOwnershipWindow))
 			}
 
@@ -355,7 +443,7 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 			}
 
 			now := time.Now().UTC()
-			activeOwnerID := activeFeedbackOwnerID(thread, now)
+			activeOwnerID := activeFeedbackOwnerID(txApp, thread, now)
 			if activeOwnerID != "" && activeOwnerID != e.Auth.Id {
 				owner, _ := txApp.FindRecordById("users", activeOwnerID)
 				return apis.NewApiError(
@@ -425,7 +513,7 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 			}
 
 			now := time.Now().UTC()
-			activeOwnerID := activeFeedbackOwnerID(thread, now)
+			activeOwnerID := activeFeedbackOwnerID(txApp, thread, now)
 			rawOwnerID := strings.TrimSpace(thread.GetString("assigned_admin"))
 			if activeOwnerID != "" && activeOwnerID != e.Auth.Id {
 				return apis.NewForbiddenError("Only the owning admin can release this thread.", nil)
@@ -497,7 +585,7 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 			}
 
 			now := time.Now().UTC()
-			activeOwnerID := activeFeedbackOwnerID(thread, now)
+			activeOwnerID := activeFeedbackOwnerID(txApp, thread, now)
 			if activeOwnerID == "" {
 				return apis.NewBadRequestError("Pick up this thread before replying.", nil)
 			}
@@ -579,9 +667,13 @@ func RegisterFeedbackHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.POST("/api/admin/feedback/{threadId}/reply", adminMessageHandler)
 }
 
-func activeFeedbackOwnerID(thread *core.Record, now time.Time) string {
+func activeFeedbackOwnerID(app core.App, thread *core.Record, now time.Time) string {
 	rawOwnerID := strings.TrimSpace(thread.GetString("assigned_admin"))
 	if rawOwnerID == "" {
+		return ""
+	}
+	owner, err := app.FindRecordById("users", rawOwnerID)
+	if err != nil || !owner.GetBool("isAdmin") {
 		return ""
 	}
 
@@ -597,6 +689,17 @@ func clearFeedbackAssignment(thread *core.Record) {
 	thread.Set("assigned_admin", "")
 	thread.Set("assigned_at", "")
 	thread.Set("admin_reply_deadline_at", "")
+}
+
+func normalizeFeedbackText(raw string, fieldName string, maxLength int) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", fmt.Errorf("%s is required", fieldName)
+	}
+	if utf8.RuneCountInString(value) > maxLength {
+		return "", fmt.Errorf("%s must be %d characters or fewer", fieldName, maxLength)
+	}
+	return value, nil
 }
 
 func resolveFeedbackAdminLabel(user *core.Record, fallbackID string) string {

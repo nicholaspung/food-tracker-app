@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,236 @@ import (
 	"myapp/handlers"
 	"myapp/hooks"
 )
+
+func TestFeedbackCreatesDeriveWorkflowMetadataAndQueueOrderOnServer(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeedbackHandlers(se, app)
+		hooks.RegisterFeedbackSecurityHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	forgedTime := time.Now().UTC().Add(365 * 24 * time.Hour).Truncate(time.Second)
+	beforeCreate := time.Now().UTC().Add(-time.Second)
+	rawResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/collections/feedback/records",
+		ownerToken,
+		fmt.Sprintf(
+			`{"user":"%s","title":"Legacy client","description":"Raw collection create","status":"closed","admin_unread_count":99,"user_unread_count":88,"last_message_at":"%s","assigned_admin":"%s","assigned_at":"%s","admin_reply_deadline_at":"%s"}`,
+			owner.Id,
+			forgedTime.Format(time.RFC3339),
+			owner.Id,
+			forgedTime.Format(time.RFC3339),
+			forgedTime.Format(time.RFC3339),
+		),
+	)
+	if rawResponse.Code != http.StatusOK {
+		t.Fatalf("expected legacy raw create to return 200, got %d: %s", rawResponse.Code, rawResponse.Body.String())
+	}
+
+	rawPayload := parseJSONMap(t, rawResponse.Body.Bytes())
+	rawID, _ := rawPayload["id"].(string)
+	rawThread, err := server.app.FindRecordById("feedback", rawID)
+	if err != nil {
+		t.Fatalf("failed to reload raw-created feedback: %v", err)
+	}
+	assertCanonicalNewFeedback(t, rawThread, owner.Id, beforeCreate, forgedTime)
+
+	time.Sleep(10 * time.Millisecond)
+	customResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback",
+		ownerToken,
+		fmt.Sprintf(
+			`{"title":"  Current client  ","description":"  Authored fields only  ","user":"forged-owner","status":"resolved","admin_unread_count":77,"last_message_at":"%s","assigned_admin":"%s"}`,
+			forgedTime.Format(time.RFC3339),
+			owner.Id,
+		),
+	)
+	if customResponse.Code != http.StatusOK {
+		t.Fatalf("expected custom create to return 200, got %d: %s", customResponse.Code, customResponse.Body.String())
+	}
+
+	customPayload := parseJSONMap(t, customResponse.Body.Bytes())
+	customID, _ := customPayload["id"].(string)
+	customThread, err := server.app.FindRecordById("feedback", customID)
+	if err != nil {
+		t.Fatalf("failed to reload endpoint-created feedback: %v", err)
+	}
+	assertCanonicalNewFeedback(t, customThread, owner.Id, beforeCreate, forgedTime)
+	if customThread.GetString("title") != "Current client" || customThread.GetString("description") != "Authored fields only" {
+		t.Fatalf("expected authored content to be trimmed, got title=%q description=%q", customThread.GetString("title"), customThread.GetString("description"))
+	}
+
+	ordered, err := server.app.FindRecordsByFilter("feedback", "", "-last_message_at,-created", 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load ordered feedback queue: %v", err)
+	}
+	orderedIDs := make([]string, 0, len(ordered))
+	for _, thread := range ordered {
+		orderedIDs = append(orderedIDs, thread.Id)
+	}
+	if len(ordered) != 2 || ordered[0].Id != customThread.Id || ordered[1].Id != rawThread.Id {
+		t.Fatalf("expected server chronology to determine queue order, got ids %#v", orderedIDs)
+	}
+}
+
+func TestFeedbackCreateEndpointReplaysIdempotencyKeyWithoutDuplicateThread(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeedbackHandlers(se, app)
+	})
+
+	_, ownerToken := createAuthUser(t, server.app, false, false)
+	headers := map[string]string{"Idempotency-Key": "feedback-create-response-loss-1"}
+	body := `{"title":"Response loss","description":"Create this support thread once"}`
+	firstResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPost, "/api/feedback", ownerToken, body, headers)
+	secondResponse := performJSONRequestWithHeaders(t, server.mux, http.MethodPost, "/api/feedback", ownerToken, body, headers)
+	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected both keyed creates to return 200, got first=%d second=%d: %s", firstResponse.Code, secondResponse.Code, secondResponse.Body.String())
+	}
+
+	firstPayload := parseJSONMap(t, firstResponse.Body.Bytes())
+	secondPayload := parseJSONMap(t, secondResponse.Body.Bytes())
+	if firstPayload["id"] == "" || secondPayload["id"] != firstPayload["id"] {
+		t.Fatalf("expected replay to return the same feedback id, got first=%#v second=%#v", firstPayload["id"], secondPayload["id"])
+	}
+	if count := countRecordsByFilter(t, server.app, "feedback", "title = {:title}", map[string]any{"title": "Response loss"}); count != 1 {
+		t.Fatalf("expected exactly one feedback thread after replay, got %d", count)
+	}
+}
+
+func TestFeedbackCreateEndpointUsesCharacterLimitsForUnicodeContent(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeedbackHandlers(se, app)
+	})
+
+	_, ownerToken := createAuthUser(t, server.app, false, false)
+	acceptedTitle := strings.Repeat("🍜", 100)
+	acceptedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback",
+		ownerToken,
+		fmt.Sprintf(`{"title":"%s","description":"Unicode title"}`, acceptedTitle),
+	)
+	if acceptedResponse.Code != http.StatusOK {
+		t.Fatalf("expected 100-character Unicode title to return 200, got %d: %s", acceptedResponse.Code, acceptedResponse.Body.String())
+	}
+
+	rejectedTitle := strings.Repeat("🍜", 101)
+	rejectedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback",
+		ownerToken,
+		fmt.Sprintf(`{"title":"%s","description":"Unicode title"}`, rejectedTitle),
+	)
+	if rejectedResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected 101-character Unicode title to return 400, got %d: %s", rejectedResponse.Code, rejectedResponse.Body.String())
+	}
+}
+
+func TestFeedbackAssignmentRequiresHandlersAndClaimRepairsInvalidLegacyOwner(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeedbackHandlers(se, app)
+		hooks.RegisterFeedbackSecurityHooks(app)
+	})
+
+	_, ownerToken := createAuthUser(t, server.app, false, false)
+	nonAdmin, _ := createAuthUser(t, server.app, false, false)
+	admin, adminToken := createAuthUser(t, server.app, true, false)
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/feedback",
+		ownerToken,
+		`{"title":"Assignment validation","description":"Only current admins may own this thread"}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected new feedback create to return 200, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdPayload := parseJSONMap(t, createResponse.Body.Bytes())
+	threadID, _ := createdPayload["id"].(string)
+	thread, err := server.app.FindRecordById("feedback", threadID)
+	if err != nil {
+		t.Fatalf("failed to reload newly created feedback: %v", err)
+	}
+
+	directAssignment := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/collections/feedback/records/"+thread.Id,
+		adminToken,
+		fmt.Sprintf(`{"assigned_admin":"%s"}`, nonAdmin.Id),
+	)
+	if directAssignment.Code != http.StatusForbidden {
+		t.Fatalf("expected direct assignment to return 403, got %d: %s", directAssignment.Code, directAssignment.Body.String())
+	}
+
+	thread.Set("assigned_admin", nonAdmin.Id)
+	thread.Set("assigned_at", time.Now().UTC())
+	thread.Set("admin_reply_deadline_at", time.Now().UTC().Add(24*time.Hour))
+	if err := server.app.Save(thread); err != nil {
+		t.Fatalf("failed to seed invalid legacy assignment: %v", err)
+	}
+
+	claimResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/admin/feedback/"+thread.Id+"/claim",
+		adminToken,
+		"",
+	)
+	if claimResponse.Code != http.StatusOK {
+		t.Fatalf("expected valid admin claim to repair legacy assignment, got %d: %s", claimResponse.Code, claimResponse.Body.String())
+	}
+
+	reloadedThread, err := server.app.FindRecordById("feedback", thread.Id)
+	if err != nil {
+		t.Fatalf("failed to reload claimed feedback: %v", err)
+	}
+	if reloadedThread.GetString("assigned_admin") != admin.Id {
+		t.Fatalf("expected assigned admin %q, got %q", admin.Id, reloadedThread.GetString("assigned_admin"))
+	}
+	if reloadedThread.GetDateTime("assigned_at").IsZero() || reloadedThread.GetDateTime("admin_reply_deadline_at").IsZero() {
+		t.Fatalf("expected claim to derive assignment timestamps")
+	}
+}
+
+func assertCanonicalNewFeedback(
+	t *testing.T,
+	thread *core.Record,
+	ownerID string,
+	notBefore time.Time,
+	forgedTime time.Time,
+) {
+	t.Helper()
+
+	if thread.GetString("user") != ownerID {
+		t.Fatalf("expected server-owned user %q, got %q", ownerID, thread.GetString("user"))
+	}
+	if thread.GetString("status") != "open" || thread.GetInt("admin_unread_count") != 1 || thread.GetInt("user_unread_count") != 0 {
+		t.Fatalf("unexpected canonical workflow state: status=%q adminUnread=%d userUnread=%d", thread.GetString("status"), thread.GetInt("admin_unread_count"), thread.GetInt("user_unread_count"))
+	}
+	if strings.TrimSpace(thread.GetString("assigned_admin")) != "" ||
+		!thread.GetDateTime("assigned_at").IsZero() ||
+		!thread.GetDateTime("admin_reply_deadline_at").IsZero() {
+		t.Fatalf("expected new feedback to be unassigned")
+	}
+	activityAt := thread.GetDateTime("last_message_at").Time()
+	if activityAt.Before(notBefore) || !activityAt.Before(forgedTime) {
+		t.Fatalf("expected server-derived activity time between %s and %s, got %s", notBefore, forgedTime, activityAt)
+	}
+}
 
 func TestFeedbackMessageCollectionRejectsDirectCreateRequests(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {

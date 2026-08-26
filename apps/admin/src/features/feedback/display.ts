@@ -60,15 +60,19 @@ export function getFeedbackAssignmentState(
   currentAdminId?: string,
 ) {
   const assignedAdminId = thread.assigned_admin?.trim() || '';
-  const deadline = parseDate(thread.admin_reply_deadline_at);
+  const assignedAdmin = thread.expand?.assigned_admin;
+  const hasCurrentAdminOwner = Boolean(
+    assignedAdminId && assignedAdmin?.id === assignedAdminId && assignedAdmin.isAdmin,
+  );
+  const deadline = hasCurrentAdminOwner ? parseDate(thread.admin_reply_deadline_at) : null;
   const hasExpiredDeadline = deadline !== null && deadline.getTime() <= Date.now();
-  const isExpired = Boolean(assignedAdminId) && hasExpiredDeadline;
-  const activeAssignedAdminId = isExpired ? '' : assignedAdminId;
-  const ownerName = assignedAdminId
-    ? getFeedbackParticipantName(thread.expand?.assigned_admin, assignedAdminId)
+  const isExpired = hasCurrentAdminOwner && hasExpiredDeadline;
+  const activeAssignedAdminId = hasCurrentAdminOwner && !isExpired ? assignedAdminId : '';
+  const ownerName = hasCurrentAdminOwner
+    ? getFeedbackParticipantName(assignedAdmin, assignedAdminId)
     : null;
-  const ownerSubtitle = assignedAdminId
-    ? getFeedbackParticipantSubtitle(thread.expand?.assigned_admin, assignedAdminId)
+  const ownerSubtitle = hasCurrentAdminOwner
+    ? getFeedbackParticipantSubtitle(assignedAdmin, assignedAdminId)
     : null;
 
   return {
