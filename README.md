@@ -99,6 +99,6 @@ Useful scripts:
 ```bash
 bash scripts/setup-vps.sh
 bash scripts/post-setup.sh
-bash scripts/deploy.sh production
+printf '%s\n' "$(git rev-parse HEAD)" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 bash scripts/deploy.sh beta
 ```

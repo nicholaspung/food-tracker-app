@@ -25,6 +25,7 @@ SUDOERS_FILE="/etc/sudoers.d/${DEPLOY_USER}-${DEPLOY_ENVIRONMENT}-deployment"
 LEGACY_SUDOERS_FILE="/etc/sudoers.d/${DEPLOY_USER}-deployment"
 PRIVILEGED_HELPER="/usr/local/sbin/food-tracker-deploy-privileged"
 PRODUCTION_LAUNCHER="/usr/local/sbin/food-tracker-production-deploy"
+BACKUP_DIRECTORY="/opt/food-tracker-backups/${DEPLOY_ENVIRONMENT}"
 
 # Color output
 RED='\033[0;31m'
@@ -70,6 +71,16 @@ if [ "$DEPLOY_ENVIRONMENT" = "beta" ] && id -nG "$DEPLOY_USER" | tr ' ' '\n' | g
 fi
 
 log_info "Setting up passwordless sudo for user: $DEPLOY_USER"
+
+# The Production launcher must persist baseline provenance before repository
+# deployment code can call the privileged helper. Provision this directory now
+# so fresh hosts and deploy-account migrations can start fail-closed.
+mkdir -p "$BACKUP_DIRECTORY"
+chown -R "$DEPLOY_USER:$DEPLOY_USER" "$BACKUP_DIRECTORY"
+chown root:root /opt/food-tracker-backups
+chmod 0711 /opt/food-tracker-backups
+chmod 0700 "$BACKUP_DIRECTORY"
+log_info "Prepared deployment backup directory: $BACKUP_DIRECTORY"
 
 # Install a root-owned, fixed-argument helper so sudoers never needs wildcards.
 log_info "Installing privileged deployment helper at: $PRIVILEGED_HELPER"
@@ -215,9 +226,156 @@ umask 077
 
 readonly APP_DIRECTORY="/opt/food-tracker-app-production"
 readonly DEPLOY_ENV_FILE="/opt/food-tracker-secrets/production/deploy.env"
+readonly LOCK_FILE="/tmp/food-tracker-deploy-production.lock"
+readonly PROVENANCE_FILE="/opt/food-tracker-backups/production/current-provenance.env"
+BACKEND_MOUNT_STAGING=""
+
+compute_backend_mount_digest() {
+    local source_root="$1"
+    local artifact_manifest
+    artifact_manifest=$(mktemp)
+
+    for mount_dir in pb_migrations pb_hooks pb_public; do
+        source_dir="$source_root/$mount_dir"
+        if [ ! -d "$source_dir" ]; then
+            continue
+        fi
+        if find "$source_dir" -type l -print -quit | grep -q .; then
+            rm -f "$artifact_manifest"
+            echo "Backend mount artifact contains a symbolic link: $source_dir" >&2
+            return 1
+        fi
+        find "$source_dir" -type f -print
+    done | LC_ALL=C sort | while IFS= read -r artifact_path; do
+        relative_path="${artifact_path#"$source_root"/}"
+        printf '%s  %s\n' "$(sha256sum "$artifact_path" | awk '{print $1}')" "$relative_path"
+    done > "$artifact_manifest"
+
+    local digest
+    digest=$(sha256sum "$artifact_manifest" | awk '{print $1}')
+    rm -f "$artifact_manifest"
+    printf '%s\n' "$digest"
+}
+
+copy_backend_mounts() {
+    local source_root="$1"
+    local destination_root="$2"
+    mkdir -p "$destination_root"
+    for mount_dir in pb_migrations pb_hooks pb_public; do
+        if [ -d "$source_root/$mount_dir" ]; then
+            cp -a "$source_root/$mount_dir" "$destination_root/$mount_dir"
+        fi
+    done
+}
+
+cleanup_staging() {
+    if [ -n "$BACKEND_MOUNT_STAGING" ] && [ -d "$BACKEND_MOUNT_STAGING" ]; then
+        case "$BACKEND_MOUNT_STAGING" in
+            "$(dirname "$PROVENANCE_FILE")"/.backend-mount-staging.*)
+                rm -rf "$BACKEND_MOUNT_STAGING"
+                ;;
+            *)
+                echo "Refusing to remove unexpected backend staging path: $BACKEND_MOUNT_STAGING" >&2
+                ;;
+        esac
+    fi
+}
+
+cleanup_lock() {
+    if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$LOCK_FILE"
+    fi
+}
+
+cleanup_launcher() {
+    cleanup_staging
+    cleanup_lock
+}
+
+seed_current_provenance() {
+    if [ -f "$PROVENANCE_FILE" ]; then
+        return
+    fi
+
+    local current_sha
+    local backend_image
+    local artifact_manifest
+    local static_digest
+    local backend_mount_digest
+    local deployment_digest
+    local provenance_tmp
+    current_sha=$(git -C "$APP_DIRECTORY" rev-parse HEAD 2>/dev/null || true)
+    backend_image=$(docker inspect --format '{{.Image}}' pocketbase 2>/dev/null || true)
+
+    if [[ ! "$current_sha" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$backend_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Cannot seed Production rollback provenance without a current commit and running immutable image." >&2
+        exit 1
+    fi
+
+    if [ ! -d "$(dirname "$PROVENANCE_FILE")" ]; then
+        echo "Production backup directory is missing: $(dirname "$PROVENANCE_FILE")" >&2
+        exit 1
+    fi
+
+    artifact_manifest=$(mktemp)
+    for build_dir in marketing_build app_build admin_build; do
+        if [ ! -f "$APP_DIRECTORY/$build_dir/index.html" ]; then
+            rm -f "$artifact_manifest"
+            echo "Cannot seed Production rollback provenance without $build_dir/index.html." >&2
+            exit 1
+        fi
+        find "$APP_DIRECTORY/$build_dir" -type f -print
+    done | LC_ALL=C sort | while IFS= read -r artifact_path; do
+        relative_path="${artifact_path#"$APP_DIRECTORY"/}"
+        printf '%s  %s\n' "$(sha256sum "$artifact_path" | awk '{print $1}')" "$relative_path"
+    done > "$artifact_manifest"
+
+    static_digest=$(sha256sum "$artifact_manifest" | awk '{print $1}')
+    backend_mount_digest=$(compute_backend_mount_digest "$APP_DIRECTORY/backend")
+    rm -f "$artifact_manifest"
+    deployment_digest=$(printf 'approved_sha=%s\nstatic_sha256=%s\nbackend_mount_sha256=%s\nbackend_image=%s\n' \
+        "$current_sha" "$static_digest" "$backend_mount_digest" "$backend_image" | sha256sum | awk '{print $1}')
+
+    provenance_tmp=$(mktemp "$(dirname "$PROVENANCE_FILE")/.current-provenance.XXXXXX")
+    {
+        printf 'approved_sha=%s\n' "$current_sha"
+        printf 'deployment_digest=sha256:%s\n' "$deployment_digest"
+        printf 'static_digest=sha256:%s\n' "$static_digest"
+        printf 'backend_mount_digest=sha256:%s\n' "$backend_mount_digest"
+        printf 'backend_image=%s\n' "$backend_image"
+        printf 'deployed_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    } > "$provenance_tmp"
+    chmod 600 "$provenance_tmp"
+    mv "$provenance_tmp" "$PROVENANCE_FILE"
+    echo "Seeded Production rollback provenance for commit $current_sha."
+}
+
+trap cleanup_launcher EXIT
 
 if [ -n "${SSH_ORIGINAL_COMMAND:-}" ]; then
     echo "Production deploy key does not accept remote commands." >&2
+    exit 1
+fi
+
+if ! IFS= read -r approved_sha || [[ ! "$approved_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Production deploy requires one full approved commit SHA on stdin." >&2
+    exit 1
+fi
+
+if IFS= read -r extra_input; then
+    echo "Production deploy received unexpected input after the approved SHA." >&2
+    exit 1
+fi
+
+if [ -f "$LOCK_FILE" ]; then
+    existing_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
+    if [[ "$existing_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$existing_pid" 2>/dev/null; then
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+if ! (set -o noclobber; printf '%s\n' "$$" > "$LOCK_FILE") 2>/dev/null; then
+    echo "Production deployment already in progress." >&2
     exit 1
 fi
 
@@ -232,8 +390,65 @@ source "$DEPLOY_ENV_FILE"
 set +a
 
 cd "$APP_DIRECTORY"
-git pull --ff-only origin main
+git fetch --no-tags origin "$approved_sha"
+git cat-file -e "${approved_sha}^{commit}"
+
+if ! git diff --quiet HEAD -- . \
+    ':(exclude)backend/pb_migrations' ':(exclude)backend/pb_migrations/**' \
+    ':(exclude)backend/pb_hooks' ':(exclude)backend/pb_hooks/**' \
+    ':(exclude)backend/pb_public' ':(exclude)backend/pb_public/**'; then
+    echo "Production checkout contains source changes before approved source selection." >&2
+    exit 1
+fi
+while IFS= read -r untracked_path; do
+    case "$untracked_path" in
+        backend/pb_migrations/*|backend/pb_hooks/*|backend/pb_public/*) ;;
+        *)
+            echo "Production checkout contains untracked source before approved source selection: $untracked_path" >&2
+            exit 1
+            ;;
+    esac
+done < <(git ls-files --others --exclude-standard)
+
+seed_current_provenance
+
+BACKEND_MOUNT_STAGING=$(mktemp -d "$(dirname "$PROVENANCE_FILE")/.backend-mount-staging.XXXXXX")
+mkdir -p "$BACKEND_MOUNT_STAGING/live/backend"
+copy_backend_mounts "$APP_DIRECTORY/backend" "$BACKEND_MOUNT_STAGING/live/backend"
+live_backend_mount_digest=$(compute_backend_mount_digest "$APP_DIRECTORY/backend")
+staged_live_backend_mount_digest=$(compute_backend_mount_digest "$BACKEND_MOUNT_STAGING/live/backend")
+if [ "$live_backend_mount_digest" != "$staged_live_backend_mount_digest" ]; then
+    echo "Could not preserve the live Production backend mount artifact." >&2
+    exit 1
+fi
+if [ -f "$APP_DIRECTORY/docker-compose.yml" ]; then
+    cp "$APP_DIRECTORY/docker-compose.yml" "$BACKEND_MOUNT_STAGING/live/docker-compose.yml"
+fi
+
+# Update every approved source path except the live directories currently bind-mounted
+# into PocketBase. Moving HEAD and the index separately leaves those mounts untouched.
+git restore --source="$approved_sha" --worktree -- . \
+    ':(exclude)backend/pb_migrations' ':(exclude)backend/pb_migrations/**' \
+    ':(exclude)backend/pb_hooks' ':(exclude)backend/pb_hooks/**' \
+    ':(exclude)backend/pb_public' ':(exclude)backend/pb_public/**'
+git update-ref --no-deref HEAD "$approved_sha"
+git read-tree "$approved_sha"
+git clean -fd \
+    -e backend/pb_migrations/ \
+    -e backend/pb_hooks/ \
+    -e backend/pb_public/
+
+actual_sha=$(git rev-parse HEAD)
+if [ "$actual_sha" != "$approved_sha" ]; then
+    echo "Production checkout mismatch: approved $approved_sha, selected $actual_sha." >&2
+    exit 1
+fi
+
+export FOOD_TRACKER_DEPLOY_SHA="$approved_sha"
+export FOOD_TRACKER_DEPLOY_LOCK_OWNER="$$"
 export FOOD_TRACKER_APP_DIR="$APP_DIRECTORY"
+export FOOD_TRACKER_BACKEND_MOUNT_STAGING="$BACKEND_MOUNT_STAGING"
+export FOOD_TRACKER_STAGED_BACKEND_MOUNT_DIGEST="$staged_live_backend_mount_digest"
 exec bash "$APP_DIRECTORY/scripts/deploy.sh" production
 EOF
 

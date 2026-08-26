@@ -113,7 +113,8 @@ export EXPO_PUSH_ACCESS_TOKEN="your_expo_push_access_token_here" # only after en
 cd /opt/food-tracker-app
 bash scripts/deploy.sh beta    # For beta
 # OR
-bash scripts/deploy.sh production  # For production
+cd /opt/food-tracker-app-production
+printf '%s\n' "$(git rev-parse HEAD)" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
 
 The script will:

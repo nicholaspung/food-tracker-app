@@ -41,13 +41,13 @@ Browser
 
 `scripts/deploy.sh` performs:
 
-1. preflight checks
-2. git sync on the server
+1. Production launcher selection and verification of the environment-approved commit (Production only)
+2. preflight checks
 3. dependency install and web builds on the server
 4. blue-green deploy of marketing, app web, and admin web
 5. PocketBase environment/config refresh
 6. PocketBase container rollout
-7. Caddy reload and health checks
+7. Caddy reload, health checks, and immutable deployment provenance recording
 
 ## Caddy
 
@@ -69,6 +69,8 @@ Backups live under `/opt/food-tracker-backups/{production,beta}` and include:
 - the currently deployed marketing/app/admin static directories
 - the matching Docker compose file
 - a tarball of the PocketBase data directory
+- the bind-mounted PocketBase migration, hook, and public-file directories
+- the prior deployment's approved commit and immutable artifact digests
 
 ## Operational Notes
 

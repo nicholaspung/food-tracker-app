@@ -45,7 +45,8 @@ Migrate historical hosts to the separate Production checkout before enabling eit
 
 ```bash
 cd /opt/food-tracker-app-production
-FOOD_TRACKER_APP_DIR=/opt/food-tracker-app-production bash scripts/deploy.sh production
+approved_sha=$(git rev-parse HEAD)
+printf '%s\n' "$approved_sha" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
 
 ### Beta
@@ -83,7 +84,7 @@ bash scripts/deploy.sh beta
 
 ## GitHub Actions
 
-The Beta workflow runs `scripts/deploy.sh` in the Beta checkout. The Production workflow invokes a root-owned fixed launcher, which updates the isolated Production checkout and then runs the same script there.
+The Beta workflow runs `scripts/deploy.sh` in the Beta checkout. The Production workflow sends the environment-approved `github.sha` on SSH stdin to a root-owned fixed launcher. The launcher validates the full SHA, fetches only that object, checks it out detached, verifies `HEAD`, and only then runs the deployment script.
 
 ### Deployment security
 
@@ -125,6 +126,8 @@ done
 
 Production Caddy cutovers keep `/etc/caddy/Caddyfile.food-tracker-rollback` until deployment health checks pass. The helper refuses to replace an existing snapshot, and the next Production deploy restores and clears a snapshot left by an interrupted cutover before making new changes. Complete the normal Production health checks after verifying file access.
 
+Successful deploys record the approved commit, deterministic digests of the three static build directories and bind-mounted PocketBase runtime directories, the immutable running PocketBase image ID, and their combined deployment digest in `/opt/food-tracker-backups/production/current-provenance.env`. Each pre-deploy backup retains the prior provenance and copies `pb_migrations`, `pb_hooks`, and `pb_public` under `backend-runtime`. Automatic rollback preflights every saved component, restores and verifies the static and bind-mounted content, re-tags the saved image ID for Compose, starts it with builds disabled, verifies the running image ID, and only then restores the prior provenance record.
+
 Provision `/opt/food-tracker-secrets/production/deploy.env` as mode `0600`, owned by the deploy account, with the application and app-link values consumed by `scripts/deploy.sh`:
 
 ```bash
@@ -143,7 +146,7 @@ Install the matching public key in the deploy account's `authorized_keys` with t
 restrict,command="/usr/local/sbin/food-tracker-production-deploy" ssh-ed25519 AAAA... production-deploy
 ```
 
-The workflow opens a session without supplying a remote command. The root-owned forced entry point rejects `SSH_ORIGINAL_COMMAND`, loads the host-only environment, fast-forwards the Production-only checkout, and runs the Production deploy. Although the account needs Docker authority, a holder of this key can only trigger that fixed operation. Use no unrestricted key or password for this account.
+The workflow opens a session without supplying a remote command and sends exactly one validated full commit SHA on stdin. Before the first immutable deployment, the root-owned launcher records baseline provenance from the currently live checkout, static directories, and running PocketBase image; it refuses to continue if any baseline component is unavailable. It then rejects `SSH_ORIGINAL_COMMAND`, rejects missing, malformed, extra, or unreachable input, selects and verifies the exact approved commit, loads the host-only environment, and runs the Production deploy. Although the account needs Docker authority, a holder of this key can only trigger that fixed operation. Use no unrestricted key or password for this account.
 
 If an unreviewed or compromised action revision may have run:
 
@@ -178,7 +181,7 @@ ls -la /opt/food-tracker-app-production/marketing_build
 ls -la /opt/food-tracker-app-production/app_build
 ls -la /opt/food-tracker-app-production/admin_build
 sudo systemctl reload caddy
-bash scripts/deploy.sh production
+printf '%s\n' "$(git rev-parse HEAD)" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
 
 ### PocketBase not healthy

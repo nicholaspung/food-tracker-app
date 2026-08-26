@@ -413,10 +413,11 @@ These run [scripts/mobile-expo.sh](/Users/developer/programming/food-tracker-app
 
 ```bash
 sudo bash /opt/food-tracker-app-production/scripts/setup-deploy-sudo.sh production-deploy production
-sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
+printf '%s\n' '<approved-40-character-sha>' | \
+  sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
 
-Automated runs use the same root-owned launcher through the restricted Production SSH key. Do not run Production from `/opt/food-tracker-app`, which is the Beta checkout.
+Automated runs pass the environment-approved `github.sha` to the same root-owned launcher through the restricted Production SSH key. Do not run Production from `/opt/food-tracker-app`, which is the Beta checkout.
 
 ## Security Notes
 

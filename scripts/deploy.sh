@@ -32,11 +32,16 @@ LOG_DIR="$APP_DIR/logs"
 LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
 LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
+PROVENANCE_FILE="$BACKUP_DIR/current-provenance.env"
 PRIVILEGED_HELPER="/usr/local/sbin/food-tracker-deploy-privileged"
 MAX_BACKUPS=5
 DEFAULT_PNPM_PACKAGE_MANAGER="pnpm@11.1.2"
 PNPM_PACKAGE_MANAGER=""
 PNPM_CMD=()
+APPROVED_SHA="${FOOD_TRACKER_DEPLOY_SHA:-}"
+DEPLOYMENT_DIGEST=""
+BACKEND_MOUNT_STAGING="${FOOD_TRACKER_BACKEND_MOUNT_STAGING:-}"
+STAGED_BACKEND_MOUNT_DIGEST="${FOOD_TRACKER_STAGED_BACKEND_MOUNT_DIGEST:-}"
 
 if [[ "$ENVIRONMENT" == "beta" ]]; then
     POCKETBASE_PORT="$FOOD_TRACKER_POCKETBASE_PORT"
@@ -83,6 +88,129 @@ step() {
 
 run_sudo() {
     sudo -n "$@"
+}
+
+verify_approved_source() {
+    if [ "$ENVIRONMENT" != "production" ]; then
+        APPROVED_SHA=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)
+        return
+    fi
+
+    if [[ ! "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+        echo -e "${RED}ERROR: Production deploy requires FOOD_TRACKER_DEPLOY_SHA to be a full commit SHA${NC}" >&2
+        exit 1
+    fi
+
+    local actual_sha
+    actual_sha=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)
+    if [ "$actual_sha" != "$APPROVED_SHA" ]; then
+        echo -e "${RED}ERROR: Production checkout mismatch: approved $APPROVED_SHA, found ${actual_sha:-unavailable}${NC}" >&2
+        exit 1
+    fi
+
+    if ! git -C "$APP_DIR" diff --quiet HEAD -- . \
+        ':(exclude)backend/pb_migrations' ':(exclude)backend/pb_migrations/**' \
+        ':(exclude)backend/pb_hooks' ':(exclude)backend/pb_hooks/**' \
+        ':(exclude)backend/pb_public' ':(exclude)backend/pb_public/**'; then
+        echo -e "${RED}ERROR: Production checkout contains source changes outside approved commit $APPROVED_SHA${NC}" >&2
+        exit 1
+    fi
+
+    local untracked_path
+    while IFS= read -r untracked_path; do
+        case "$untracked_path" in
+            backend/pb_migrations/*|backend/pb_hooks/*|backend/pb_public/*) ;;
+            *)
+                echo -e "${RED}ERROR: Production checkout contains untracked source outside approved commit $APPROVED_SHA: $untracked_path${NC}" >&2
+                exit 1
+                ;;
+        esac
+    done < <(git -C "$APP_DIR" ls-files --others --exclude-standard)
+
+    case "$BACKEND_MOUNT_STAGING" in
+        "$BACKUP_DIR"/.backend-mount-staging.*) ;;
+        *)
+            echo -e "${RED}ERROR: Production deploy requires root-owned backend mount staging under $BACKUP_DIR${NC}" >&2
+            exit 1
+            ;;
+    esac
+    if [ ! -d "$BACKEND_MOUNT_STAGING/live/backend" ] || \
+        [[ ! "$STAGED_BACKEND_MOUNT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+        echo -e "${RED}ERROR: Production backend mount staging is incomplete${NC}" >&2
+        exit 1
+    fi
+
+    local staged_live_digest
+    local actual_live_digest
+    staged_live_digest=$(compute_backend_mount_digest "$BACKEND_MOUNT_STAGING/live/backend")
+    actual_live_digest=$(compute_backend_mount_digest "$APP_DIR/backend")
+    if [ "$staged_live_digest" != "$STAGED_BACKEND_MOUNT_DIGEST" ] || \
+        [ "$actual_live_digest" != "$STAGED_BACKEND_MOUNT_DIGEST" ]; then
+        echo -e "${RED}ERROR: Production backend runtime mounts changed during approved source selection${NC}" >&2
+        exit 1
+    fi
+}
+
+verify_rollback_baseline() {
+    if [ "$ENVIRONMENT" != "production" ]; then
+        return
+    fi
+
+    for cmd in docker find sha256sum; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            error "Required rollback-provenance command not found: $cmd"
+            exit 1
+        fi
+    done
+
+    if [ ! -f "$PROVENANCE_FILE" ]; then
+        error "Production deploy requires rollback baseline provenance: $PROVENANCE_FILE"
+        exit 1
+    fi
+
+    local baseline_sha
+    local baseline_digest
+    local baseline_static_digest
+    local baseline_backend_mount_digest
+    local baseline_backend_image
+    baseline_sha=$(awk -F= '$1 == "approved_sha" { print $2; exit }' "$PROVENANCE_FILE")
+    baseline_digest=$(awk -F= '$1 == "deployment_digest" { print $2; exit }' "$PROVENANCE_FILE")
+    baseline_static_digest=$(awk -F= '$1 == "static_digest" { print $2; exit }' "$PROVENANCE_FILE")
+    baseline_backend_mount_digest=$(awk -F= '$1 == "backend_mount_digest" { print $2; exit }' "$PROVENANCE_FILE")
+    baseline_backend_image=$(awk -F= '$1 == "backend_image" { print $2; exit }' "$PROVENANCE_FILE")
+
+    if [[ ! "$baseline_sha" =~ ^[0-9a-f]{40}$ ]] || \
+        [[ ! "$baseline_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+        [[ ! "$baseline_static_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+        [[ ! "$baseline_backend_mount_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+        [[ ! "$baseline_backend_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        error "Production rollback baseline is incomplete or malformed: $PROVENANCE_FILE"
+        exit 1
+    fi
+
+    local recomputed_digest
+    recomputed_digest=$(printf 'approved_sha=%s\nstatic_sha256=%s\nbackend_mount_sha256=%s\nbackend_image=%s\n' \
+        "$baseline_sha" "${baseline_static_digest#sha256:}" "${baseline_backend_mount_digest#sha256:}" \
+        "$baseline_backend_image" | sha256sum | awk '{print $1}')
+    if [ "sha256:$recomputed_digest" != "$baseline_digest" ]; then
+        error "Production rollback baseline component digest is invalid: $PROVENANCE_FILE"
+        exit 1
+    fi
+
+    local actual_static_digest
+    local actual_backend_mount_digest
+    local actual_backend_image
+    actual_static_digest="sha256:$(compute_static_artifact_digest)"
+    actual_backend_mount_digest="sha256:$(compute_backend_mount_digest "$APP_DIR/backend")"
+    actual_backend_image=$(docker inspect --format '{{.Image}}' "$POCKETBASE_CONTAINER")
+    if [ "$actual_static_digest" != "$baseline_static_digest" ] || \
+        [ "$actual_backend_mount_digest" != "$baseline_backend_mount_digest" ] || \
+        [ "$actual_backend_image" != "$baseline_backend_image" ]; then
+        error "Production rollback baseline does not match the currently deployed artifacts"
+        exit 1
+    fi
+
+    log "Rollback baseline verified: commit $baseline_sha, artifact $baseline_digest"
 }
 
 ensure_privileged_helper() {
@@ -486,8 +614,34 @@ cleanup_lock() {
     fi
 }
 
+cleanup_backend_mount_staging() {
+    if [ -z "$BACKEND_MOUNT_STAGING" ] || [ ! -d "$BACKEND_MOUNT_STAGING" ]; then
+        return
+    fi
+
+    case "$BACKEND_MOUNT_STAGING" in
+        "$BACKUP_DIR"/.backend-mount-staging.*)
+            rm -rf "$BACKEND_MOUNT_STAGING"
+            ;;
+        *)
+            warn "Refusing to remove unexpected backend staging path: $BACKEND_MOUNT_STAGING"
+            ;;
+    esac
+}
+
 acquire_lock() {
     local existing_pid=""
+
+    if [ "$LOCK_ACQUIRED" = true ]; then
+        return
+    fi
+
+    if [ "${FOOD_TRACKER_DEPLOY_LOCK_OWNER:-}" = "$$" ] && \
+        [ -f "$LOCK_FILE" ] && \
+        [ "$(cat "$LOCK_FILE" 2>/dev/null || true)" = "$$" ]; then
+        LOCK_ACQUIRED=true
+        return
+    fi
 
     if [ -f "$LOCK_FILE" ]; then
         existing_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
@@ -521,6 +675,7 @@ cleanup() {
         fi
     fi
 
+    cleanup_backend_mount_staging
     cleanup_lock
     exit $exit_code
 }
@@ -530,12 +685,93 @@ rollback() {
 
     cd "$APP_DIR"
 
+    local rollback_provenance="$BACKUP_DIR/latest/deployment-provenance.env"
+    local rollback_static_digest=""
+    local rollback_backend_mount_digest=""
+    local rollback_backend_image=""
+    local rollback_compose_image=""
+    if [ -f "$rollback_provenance" ]; then
+        local rollback_sha
+        local rollback_digest
+        rollback_sha=$(awk -F= '$1 == "approved_sha" { print $2; exit }' "$rollback_provenance")
+        rollback_digest=$(awk -F= '$1 == "deployment_digest" { print $2; exit }' "$rollback_provenance")
+        rollback_static_digest=$(awk -F= '$1 == "static_digest" { print $2; exit }' "$rollback_provenance")
+        rollback_backend_mount_digest=$(awk -F= '$1 == "backend_mount_digest" { print $2; exit }' "$rollback_provenance")
+        rollback_backend_image=$(awk -F= '$1 == "backend_image" { print $2; exit }' "$rollback_provenance")
+
+        if [[ ! "$rollback_sha" =~ ^[0-9a-f]{40}$ ]] || \
+            [[ ! "$rollback_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+            [[ ! "$rollback_static_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+            [[ ! "$rollback_backend_mount_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+            [[ ! "$rollback_backend_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            error "Rollback provenance is incomplete or malformed: $rollback_provenance"
+            return 1
+        fi
+
+        local recomputed_deployment_digest
+        recomputed_deployment_digest=$(printf 'approved_sha=%s\nstatic_sha256=%s\nbackend_mount_sha256=%s\nbackend_image=%s\n' \
+            "$rollback_sha" "${rollback_static_digest#sha256:}" "${rollback_backend_mount_digest#sha256:}" \
+            "$rollback_backend_image" | sha256sum | awk '{print $1}')
+        if [ "sha256:$recomputed_deployment_digest" != "$rollback_digest" ]; then
+            error "Rollback deployment digest does not match its recorded components"
+            return 1
+        fi
+
+        if [ ! -f "$BACKUP_DIR/latest/$COMPOSE_FILE" ]; then
+            error "Rollback Compose metadata is missing for recorded artifact $rollback_digest"
+            return 1
+        fi
+
+        local rollback_backend_mount_source="$BACKUP_DIR/latest/backend-runtime"
+        local rollback_backend_mount_source_digest
+        rollback_backend_mount_source_digest="sha256:$(compute_backend_mount_digest "$rollback_backend_mount_source")"
+        if [ "$rollback_backend_mount_source_digest" != "$rollback_backend_mount_digest" ]; then
+            error "Rollback backend mount artifact mismatch: expected $rollback_backend_mount_digest, found $rollback_backend_mount_source_digest"
+            return 1
+        fi
+
+        if ! docker image inspect "$rollback_backend_image" >/dev/null 2>&1; then
+            error "Rollback image is no longer available locally: $rollback_backend_image"
+            return 1
+        fi
+
+        rollback_compose_image=$(docker compose -f "$BACKUP_DIR/latest/$COMPOSE_FILE" config --images | head -n 1)
+        if [ -z "$rollback_compose_image" ]; then
+            error "Could not resolve the PocketBase image name from rollback Compose metadata"
+            return 1
+        fi
+
+        log "Rollback target: commit ${rollback_sha:-unknown}, artifact ${rollback_digest:-unknown}"
+    else
+        if [ "$ENVIRONMENT" = "production" ]; then
+            error "Production rollback requires verified baseline provenance: $rollback_provenance"
+            return 1
+        fi
+        warn "Rollback target predates deployment provenance metadata"
+    fi
+
+    if [ -n "$rollback_static_digest" ]; then
+        local rollback_source_digest
+        rollback_source_digest="sha256:$(compute_static_artifact_digest "$BACKUP_DIR/latest")"
+        if [ "$rollback_source_digest" != "$rollback_static_digest" ]; then
+            error "Rollback source artifact mismatch: expected $rollback_static_digest, found $rollback_source_digest"
+            return 1
+        fi
+        log "Rollback source artifact verified: $rollback_source_digest"
+    fi
+
     local had_static_rollback=false
     local site_key
     for site_key in $(site_keys); do
         local build_dir
         build_dir=$(site_build_dir "$site_key")
-        if [ -d "${build_dir}_old" ]; then
+        if [ -n "$rollback_static_digest" ]; then
+            log "Rolling back $(site_label "$site_key") from the verified backup..."
+            rm -rf "${build_dir}_new" 2>/dev/null || true
+            rm -rf "$build_dir" 2>/dev/null || true
+            cp -a "$BACKUP_DIR/latest/$build_dir" "$build_dir"
+            had_static_rollback=true
+        elif [ -d "${build_dir}_old" ]; then
             log "Rolling back $(site_label "$site_key")..."
             rm -rf "${build_dir}_new" 2>/dev/null || true
             rm -rf "$build_dir" 2>/dev/null || true
@@ -543,6 +779,16 @@ rollback() {
             had_static_rollback=true
         fi
     done
+
+    if [ -n "$rollback_static_digest" ]; then
+        local actual_static_digest
+        actual_static_digest="sha256:$(compute_static_artifact_digest)"
+        if [ "$actual_static_digest" != "$rollback_static_digest" ]; then
+            error "Rolled-back static artifact mismatch: expected $rollback_static_digest, found $actual_static_digest"
+            return 1
+        fi
+        log "Static rollback artifact verified: $actual_static_digest"
+    fi
 
     if [ "$CADDY_ROLLBACK_STAGED" = true ]; then
         run_sudo "$PRIVILEGED_HELPER" caddy-restore-live
@@ -560,27 +806,59 @@ rollback() {
 
     if [ -f "$BACKUP_DIR/latest/$COMPOSE_FILE" ]; then
         log "Rolling back PocketBase container..."
-        docker compose -f "$COMPOSE_FILE" down "$POCKETBASE_SERVICE"
+        if [ -n "$rollback_backend_image" ]; then
+            docker image tag "$rollback_backend_image" "$rollback_compose_image"
+        fi
+
+        docker compose --project-directory "$APP_DIR" -f "$BACKUP_DIR/latest/$COMPOSE_FILE" down "$POCKETBASE_SERVICE"
         cp "$BACKUP_DIR/latest/$COMPOSE_FILE" "$APP_DIR/$COMPOSE_FILE"
-        docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"
+        if [ -n "$rollback_backend_mount_digest" ]; then
+            for mount_dir in pb_migrations pb_hooks pb_public; do
+                rm -rf "$APP_DIR/backend/$mount_dir"
+                if [ -d "$BACKUP_DIR/latest/backend-runtime/$mount_dir" ]; then
+                    cp -a "$BACKUP_DIR/latest/backend-runtime/$mount_dir" "$APP_DIR/backend/$mount_dir"
+                fi
+            done
+
+            local actual_backend_mount_digest
+            actual_backend_mount_digest="sha256:$(compute_backend_mount_digest "$APP_DIR/backend")"
+            if [ "$actual_backend_mount_digest" != "$rollback_backend_mount_digest" ]; then
+                error "Restored backend mount artifact mismatch: expected $rollback_backend_mount_digest, found $actual_backend_mount_digest"
+                return 1
+            fi
+            log "Backend mount rollback artifact verified: $actual_backend_mount_digest"
+        fi
+
+        if [ -n "$rollback_backend_image" ]; then
+            docker compose -f "$COMPOSE_FILE" up -d --no-build "$POCKETBASE_SERVICE"
+            local actual_backend_image
+            actual_backend_image=$(docker inspect --format '{{.Image}}' "$POCKETBASE_CONTAINER")
+            if [ "$actual_backend_image" != "$rollback_backend_image" ]; then
+                error "Rolled-back PocketBase image mismatch: expected $rollback_backend_image, found $actual_backend_image"
+                return 1
+            fi
+            log "PocketBase rollback image verified: $actual_backend_image"
+        else
+            docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"
+        fi
         log "PocketBase rolled back successfully"
+    fi
+
+    if [ -f "$rollback_provenance" ]; then
+        cp "$rollback_provenance" "$PROVENANCE_FILE"
+    else
+        rm -f "$PROVENANCE_FILE"
     fi
 
     error "Rollback complete. System restored to previous state."
 }
-
-trap cleanup EXIT
-trap handle_interrupt INT
-trap 'handle_signal TERM 143' TERM
-trap 'handle_signal HUP 129' HUP
-trap 'handle_signal QUIT 131' QUIT
 
 preflight_checks() {
     step "Running pre-flight checks..."
 
     acquire_lock
 
-    for cmd in git docker curl systemctl node corepack; do
+    for cmd in git docker curl systemctl node corepack sha256sum; do
         if ! command -v "$cmd" &> /dev/null; then
             error "Required command not found: $cmd"
             exit 1
@@ -623,6 +901,10 @@ preflight_checks() {
     ensure_live_caddy_config
 
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
+        if [ "$ENVIRONMENT" = "production" ]; then
+            error "Production PocketBase must be running before deployment so the verified baseline remains active"
+            exit 1
+        fi
         warn "PocketBase container ($POCKETBASE_CONTAINER) is not running"
         log "Attempting to start PocketBase container..."
 
@@ -672,9 +954,22 @@ create_backup() {
         fi
     done
 
-    if [ -f "$APP_DIR/$COMPOSE_FILE" ]; then
+    if [ "$ENVIRONMENT" = "production" ] && [ -f "$BACKEND_MOUNT_STAGING/live/$COMPOSE_FILE" ]; then
+        cp "$BACKEND_MOUNT_STAGING/live/$COMPOSE_FILE" "$backup_path/$COMPOSE_FILE"
+    elif [ -f "$APP_DIR/$COMPOSE_FILE" ]; then
         cp "$APP_DIR/$COMPOSE_FILE" "$backup_path/"
     fi
+
+    if [ -f "$PROVENANCE_FILE" ]; then
+        cp "$PROVENANCE_FILE" "$backup_path/deployment-provenance.env"
+    fi
+
+    mkdir -p "$backup_path/backend-runtime"
+    for mount_dir in pb_migrations pb_hooks pb_public; do
+        if [ -d "$APP_DIR/backend/$mount_dir" ]; then
+            cp -a "$APP_DIR/backend/$mount_dir" "$backup_path/backend-runtime/$mount_dir"
+        fi
+    done
 
     local pb_data_dir="backend/pb_data_${ENVIRONMENT}"
     if [ -d "$APP_DIR/$pb_data_dir" ]; then
@@ -714,41 +1009,6 @@ create_backup() {
     fi
 
     log "Backup created successfully ✓"
-}
-
-update_source_code() {
-    step "Updating source code from Git..."
-
-    cd "$APP_DIR"
-    git fetch origin
-
-    local current_branch
-    local old_commit
-    local new_commit
-    current_branch=$(git rev-parse --abbrev-ref HEAD)
-    old_commit=$(git rev-parse HEAD)
-    log "Current branch: $current_branch"
-
-    if ! git diff-index --quiet HEAD --; then
-        warn "Local changes detected on server. Discarding them..."
-        git reset --hard HEAD
-        git clean -fd
-        log "Local changes discarded"
-    fi
-
-    if ! git reset --hard "origin/$current_branch"; then
-        error "Git reset failed. Check network or branch existence."
-        exit 1
-    fi
-
-    new_commit=$(git rev-parse HEAD)
-    if [ "$old_commit" = "$new_commit" ]; then
-        warn "No new commits. Source code is already up to date."
-    else
-        log "Updated from $old_commit to $new_commit"
-    fi
-
-    log "Source code updated ✓"
 }
 
 install_workspace_dependencies() {
@@ -1358,12 +1618,107 @@ cleanup_old_builds() {
     done
 }
 
+compute_static_artifact_digest() {
+    local artifact_root="${1:-$APP_DIR}"
+    local artifact_manifest
+    local artifact_paths
+    local site_key
+    artifact_manifest=$(mktemp)
+    artifact_paths=$(mktemp)
+
+    for site_key in $(site_keys); do
+        local build_dir
+        local source_dir
+        build_dir=$(site_build_dir "$site_key")
+        source_dir="$artifact_root/$build_dir"
+        if [ ! -d "$source_dir" ]; then
+            rm -f "$artifact_manifest" "$artifact_paths"
+            error "Static artifact directory is missing: $source_dir"
+            return 1
+        fi
+        find "$source_dir" -type f -print | while IFS= read -r artifact_path; do
+            printf '%s\t%s\n' "$build_dir/${artifact_path#"$source_dir"/}" "$artifact_path"
+        done
+    done > "$artifact_paths"
+
+    LC_ALL=C sort "$artifact_paths" | while IFS=$'\t' read -r relative_path artifact_path; do
+        printf '%s  %s\n' "$(sha256sum "$artifact_path" | awk '{print $1}')" "$relative_path"
+    done > "$artifact_manifest"
+
+    local digest
+    digest=$(sha256sum "$artifact_manifest" | awk '{print $1}')
+    rm -f "$artifact_manifest" "$artifact_paths"
+    printf '%s\n' "$digest"
+}
+
+compute_backend_mount_digest() {
+    local source_root="$1"
+    local artifact_manifest
+    artifact_manifest=$(mktemp)
+
+    for mount_dir in pb_migrations pb_hooks pb_public; do
+        local source_dir="$source_root/$mount_dir"
+        if [ ! -d "$source_dir" ]; then
+            continue
+        fi
+        if find "$source_dir" -type l -print -quit | grep -q .; then
+            rm -f "$artifact_manifest"
+            error "Backend mount artifact contains a symbolic link: $source_dir"
+            return 1
+        fi
+        find "$source_dir" -type f -print
+    done | LC_ALL=C sort | while IFS= read -r artifact_path; do
+        local relative_path="${artifact_path#"$source_root"/}"
+        printf '%s  %s\n' "$(sha256sum "$artifact_path" | awk '{print $1}')" "$relative_path"
+    done > "$artifact_manifest"
+
+    local digest
+    digest=$(sha256sum "$artifact_manifest" | awk '{print $1}')
+    rm -f "$artifact_manifest"
+    printf '%s\n' "$digest"
+}
+
+record_deployment_provenance() {
+    step "Recording deployment provenance ($ENVIRONMENT)..."
+
+    local static_digest
+    local backend_mount_digest
+    local backend_image
+    local provenance_tmp
+    static_digest=$(compute_static_artifact_digest)
+    backend_mount_digest=$(compute_backend_mount_digest "$APP_DIR/backend")
+
+    backend_image=$(docker inspect --format '{{.Image}}' "$POCKETBASE_CONTAINER")
+    if [[ ! "$backend_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        error "Could not resolve an immutable PocketBase image digest (found: ${backend_image:-none})"
+        exit 1
+    fi
+
+    DEPLOYMENT_DIGEST=$(printf 'approved_sha=%s\nstatic_sha256=%s\nbackend_mount_sha256=%s\nbackend_image=%s\n' \
+        "$APPROVED_SHA" "$static_digest" "$backend_mount_digest" "$backend_image" | sha256sum | awk '{print $1}')
+
+    provenance_tmp=$(mktemp "$BACKUP_DIR/.current-provenance.XXXXXX")
+    {
+        printf 'approved_sha=%s\n' "$APPROVED_SHA"
+        printf 'deployment_digest=sha256:%s\n' "$DEPLOYMENT_DIGEST"
+        printf 'static_digest=sha256:%s\n' "$static_digest"
+        printf 'backend_mount_digest=sha256:%s\n' "$backend_mount_digest"
+        printf 'backend_image=%s\n' "$backend_image"
+        printf 'deployed_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    } > "$provenance_tmp"
+    chmod 600 "$provenance_tmp"
+    mv "$provenance_tmp" "$PROVENANCE_FILE"
+
+    log "Approved commit: $APPROVED_SHA"
+    log "Deployment artifact: sha256:$DEPLOYMENT_DIGEST"
+}
+
 print_summary() {
     local db_size
     local git_commit
     local backup_location
     db_size=$(du -sh "$APP_DIR/backend/pb_data_${ENVIRONMENT}/" 2>/dev/null | cut -f1 || echo 'N/A')
-    git_commit=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo 'N/A')
+    git_commit=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo 'N/A')
     backup_location=$(readlink -f "$BACKUP_DIR/latest" 2>/dev/null || echo 'N/A')
 
     echo ""
@@ -1376,6 +1731,8 @@ print_summary() {
     echo "  - Database size: $db_size"
     echo "  - Backup location: $backup_location"
     echo "  - Git commit: $git_commit"
+    echo "  - Approved commit: ${APPROVED_SHA:-N/A}"
+    echo "  - Deployment artifact: ${DEPLOYMENT_DIGEST:+sha256:$DEPLOYMENT_DIGEST}"
     echo "  - PocketBase port: $POCKETBASE_PORT"
     echo "  - Marketing URL: https://$MARKETING_DOMAIN"
     echo "  - App URL: https://$APP_DOMAIN"
@@ -1387,6 +1744,15 @@ print_summary() {
 }
 
 main() {
+    trap cleanup EXIT
+    trap handle_interrupt INT
+    trap 'handle_signal TERM 143' TERM
+    trap 'handle_signal HUP 129' HUP
+    trap 'handle_signal QUIT 131' QUIT
+
+    acquire_lock
+    verify_approved_source
+
     mkdir -p "$LOG_DIR"
     chmod 755 "$LOG_DIR"
 
@@ -1402,9 +1768,9 @@ main() {
     echo ""
 
     ensure_privileged_helper
+    verify_rollback_baseline
     preflight_checks
     create_backup
-    update_source_code
     install_workspace_dependencies
     build_web_surfaces
     prepare_static_sites
@@ -1421,9 +1787,12 @@ main() {
     deploy_pocketbase
     health_check_pocketbase
     smoke_test
+    record_deployment_provenance
     cleanup_old_builds
     clear_caddy_rollback
     print_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

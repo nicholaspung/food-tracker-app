@@ -20,7 +20,7 @@
 4. Run `sudo bash scripts/setup-deploy-sudo.sh beta-deploy beta` and `sudo bash scripts/setup-deploy-sudo.sh production-deploy production` from a reviewed checkout.
 5. Restore Beta and Production PocketBase backups and the last good static build directories into their matching checkout. Restore `/opt/food-tracker-secrets/production/deploy.env` as mode `0600` owned by `production-deploy`, plus the other environment-specific application secrets.
 6. Install the restricted Production public key with `command="/usr/local/sbin/food-tracker-production-deploy",restrict`. Restore the reviewed host key in the `VPS_SSH_KNOWN_HOSTS` Production environment secret.
-7. Run the root-owned Production launcher as `production-deploy`; it installs the reviewed Caddyfile from the isolated checkout. Run the Beta deploy separately as `beta-deploy`.
+7. Pipe the exact approved 40-character commit SHA to the root-owned Production launcher as `production-deploy`; it selects that commit before installing the reviewed Caddyfile. Run the Beta deploy separately as `beta-deploy`.
 8. Complete the verification checklist below before restoring traffic or automated deployments.
 
 ## Scenario 2: PocketBase Data Corruption
@@ -38,12 +38,17 @@ curl http://localhost:8090/api/health
 
 ```bash
 cd /opt/food-tracker-app-production
+cat /opt/food-tracker-backups/production/latest/deployment-provenance.env
 rm -rf marketing_build app_build admin_build
 cp -r /opt/food-tracker-backups/production/latest/marketing_build marketing_build
 cp -r /opt/food-tracker-backups/production/latest/app_build app_build
 cp -r /opt/food-tracker-backups/production/latest/admin_build admin_build
+cp /opt/food-tracker-backups/production/latest/deployment-provenance.env \
+  /opt/food-tracker-backups/production/current-provenance.env
 sudo systemctl reload caddy
 ```
+
+Verify the restored directories against the recorded `static_digest` before restoring traffic. Use `approved_sha` as the exact source revision for a full application rollback; do not substitute the current branch tip.
 
 For beta, use the matching `marketing_build_beta`, `app_build_beta`, and `admin_build_beta` backups.
 

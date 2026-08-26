@@ -15,6 +15,9 @@ dist/
 build/
 .eas-artifacts/
 apps/mobile/web-dist/
+/marketing_build*/
+/app_build*/
+/admin_build*/
 apps/mobile/android/
 apps/mobile/e2e/artifacts/
 apps/mobile/e2e/baselines/

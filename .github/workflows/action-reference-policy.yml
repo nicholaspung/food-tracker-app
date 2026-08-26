@@ -1,24 +1,32 @@
-name: GitHub Action Reference Policy
+name: Deployment Security Policy
 
 on:
   pull_request:
     paths:
+      - ".gitignore"
       - ".github/workflows/**"
       - ".github/actions/**"
       - "**/action.yml"
       - "**/action.yaml"
       - "scripts/check-github-action-pins.rb"
       - "scripts/check-github-action-pins.test.rb"
+      - "scripts/deploy.sh"
+      - "scripts/setup-deploy-sudo.sh"
+      - "scripts/test-production-deploy-provenance.sh"
   push:
     branches:
       - main
     paths:
+      - ".gitignore"
       - ".github/workflows/**"
       - ".github/actions/**"
       - "**/action.yml"
       - "**/action.yaml"
       - "scripts/check-github-action-pins.rb"
       - "scripts/check-github-action-pins.test.rb"
+      - "scripts/deploy.sh"
+      - "scripts/setup-deploy-sudo.sh"
+      - "scripts/test-production-deploy-provenance.sh"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +34,7 @@ permissions:
 
 jobs:
   validate-action-references:
-    name: Validate Action References
+    name: Validate Deployment Security
     runs-on: ubuntu-latest
 
     steps:
@@ -38,3 +46,6 @@ jobs:
 
       - name: Validate action references
         run: ruby scripts/check-github-action-pins.rb
+
+      - name: Test Production deployment provenance
+        run: bash scripts/test-production-deploy-provenance.sh

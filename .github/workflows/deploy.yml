@@ -113,12 +113,18 @@ jobs:
       - name: Deploy to Production Environment
         shell: bash
         env:
+          APPROVED_SHA: ${{ github.sha }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
         run: |
+          if [[ ! "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Refusing Production deploy with invalid approved SHA: $APPROVED_SHA" >&2
+            exit 1
+          fi
+
           ssh_directory="$RUNNER_TEMP/production-deploy-ssh"
           install -m 700 -d "$ssh_directory"
           trap 'rm -rf "$ssh_directory"' EXIT
@@ -127,7 +133,7 @@ jobs:
           printf '%s\n' "$VPS_SSH_KNOWN_HOSTS" > "$ssh_directory/known_hosts"
           chmod 600 "$ssh_directory/key" "$ssh_directory/known_hosts"
 
-          timeout 30m ssh \
+          printf '%s\n' "$APPROVED_SHA" | timeout 30m ssh \
             -i "$ssh_directory/key" \
             -p "$VPS_PORT" \
             -o BatchMode=yes \

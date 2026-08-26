@@ -10,3 +10,4 @@
 /scripts/check-github-action-pins.test.rb @nicholaspung
 /scripts/deploy.sh @nicholaspung
 /scripts/setup-deploy-sudo.sh @nicholaspung
+/scripts/test-production-deploy-provenance.sh @nicholaspung

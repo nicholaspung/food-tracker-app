@@ -67,7 +67,7 @@ Do not substitute a global `eas` installation or `pnpm dlx eas-cli`; local relea
 Reference:
 
 ```sh
-bash scripts/deploy.sh production
+printf '%s\n' "$(git rev-parse HEAD)" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 ```
 
 ## 4. Mobile Release Candidate
