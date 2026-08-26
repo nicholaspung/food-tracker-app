@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import browserSync from 'browser-sync';
 import chokidar from 'chokidar';
+import { createServer as createViteServer } from 'vite';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { access } from 'node:fs/promises';
@@ -23,7 +23,6 @@ const port = Number.parseInt(process.env.MARKETING_DEV_PORT ?? '4173', 10);
 const appOpenUrl = process.env.APP_OPEN_URL ?? 'http://localhost:8081/';
 const iosAppStoreUrl =
   process.env.IOS_APP_STORE_URL ?? 'https://apps.apple.com/us/app/yummy-recs/id6761597807';
-const browserSyncServer = browserSync.create('marketing-dev');
 const ioniconsFontPath = require.resolve('@react-native-vector-icons/ionicons/fonts/Ionicons.ttf', {
   paths: [repoDir, path.join(repoDir, 'apps/mobile')],
 });
@@ -35,6 +34,7 @@ const watchTargets = [
 ];
 
 let watcher;
+let devServer;
 let debounceTimer;
 let rebuildInProgress = false;
 let rebuildQueued = false;
@@ -139,7 +139,7 @@ async function rebuildLoop(trigger) {
 
   try {
     await buildSite({ isInitialBuild: false, trigger });
-    browserSyncServer.reload();
+    devServer?.ws.send({ type: 'full-reload' });
   } catch (error) {
     logError(`rebuild failed: ${error.message}`);
   } finally {
@@ -183,33 +183,25 @@ function createWatcher() {
   });
 }
 
-function startServer() {
-  return new Promise((resolve, reject) => {
-    browserSyncServer.init(
-      {
-        server: liveDir,
-        port,
-        open: false,
-        notify: false,
-        ui: false,
-        ghostMode: false,
-        logPrefix: 'marketing',
-      },
-      (error, instance) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        const resolvedUrl =
-          instance?.options?.get('urls')?.get?.('local') ??
-          `http://localhost:${instance?.options?.get('port') ?? port}`;
-
-        log(`serving ${path.relative(repoDir, liveDir)} at ${resolvedUrl}`);
-        resolve();
-      },
-    );
+async function startServer() {
+  devServer = await createViteServer({
+    appType: 'mpa',
+    clearScreen: false,
+    configFile: false,
+    optimizeDeps: { noDiscovery: true },
+    root: liveDir,
+    server: {
+      host: 'localhost',
+      open: false,
+      port,
+      strictPort: true,
+    },
   });
+
+  await devServer.listen();
+
+  const resolvedUrl = devServer.resolvedUrls?.local?.[0] ?? `http://localhost:${port}/`;
+  log(`serving ${path.relative(repoDir, liveDir)} at ${resolvedUrl}`);
 }
 
 async function shutdown(exitCode = 0) {
@@ -224,10 +216,9 @@ async function shutdown(exitCode = 0) {
     await watcher.close();
   }
 
-  await new Promise((resolve) => {
-    browserSyncServer.exit();
-    resolve();
-  });
+  if (devServer) {
+    await devServer.close();
+  }
 
   process.exit(exitCode);
 }

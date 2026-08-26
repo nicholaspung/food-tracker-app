@@ -26,7 +26,7 @@ workspace_bin_exists() {
 ensure_workspace_deps() {
   if \
     workspace_bin_exists "turbo" && \
-    workspace_bin_exists "vite" "apps/admin" && \
+    workspace_bin_exists "vite" && \
     workspace_bin_exists "expo" "apps/mobile"; then
     return
   fi

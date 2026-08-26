@@ -61,9 +61,9 @@
     "ios": "pnpm mobile:ios"
   },
   "devDependencies": {
-    "browser-sync": "3.0.4",
     "chokidar": "^4.0.3",
     "concurrently": "^8.2.2",
-    "turbo": "^2.9.10"
+    "turbo": "^2.9.10",
+    "vite": "^7.3.5"
   }
 }
