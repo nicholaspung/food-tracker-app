@@ -38,10 +38,15 @@ import {
   suggestTastingMenuItem,
   suggestTastingRestaurant,
 } from './tastingSessionsApiStore';
-import type { FeatureOutboxOperationName } from './featureOutboxOperations';
+import type {
+  FeatureOutboxOperationName,
+  FeatureOutboxOperationPayload,
+} from './featureOutboxOperations';
 import { moreFeatureSignalQueryKeys } from './moreFeatureSignalsQuery';
 import { removeTastingSessionFromSummariesCache } from './tastingSessionSummariesCache';
 import { tastingSessionsQueryKeys } from './tastingSessionsQuery';
+import type { QueuedFeatureWrite } from './queuedFeatureWrites';
+import { useQueuedFeatureWrites } from './useQueuedFeatureWrites';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 import { syncVisitMutationCaches } from './visitsQuery';
 
@@ -603,3 +608,104 @@ export function useTastingSessionLifecycleWrites() {
 }
 
 export type TastingSessionLifecycleWrites = ReturnType<typeof useTastingSessionLifecycleWrites>;
+
+const PENDING_TASTING_SESSION_WRITE_OPERATION_NAMES = [
+  'tasting-session.create',
+  'tasting-session.join',
+  'tasting-session.status.update',
+] as const;
+
+export type PendingTastingSessionLifecycleWriteState =
+  | { status: 'idle' }
+  | { status: 'pending' }
+  | { message: string; status: 'failed' };
+
+function resolveMatchingTastingSessionWriteState(
+  writes: readonly QueuedFeatureWrite[],
+  matches: (write: QueuedFeatureWrite) => boolean,
+): PendingTastingSessionLifecycleWriteState {
+  const matchingWrites = writes.filter(matches);
+  if (matchingWrites.some((write) => write.status !== 'failed')) {
+    return { status: 'pending' };
+  }
+  const failedWrite = matchingWrites.find((write) => write.status === 'failed');
+  if (failedWrite) {
+    return {
+      message: failedWrite.lastError?.trim() || 'The queued write could not be synced.',
+      status: 'failed',
+    };
+  }
+  return { status: 'idle' };
+}
+
+function haveSameStringValues(left: readonly string[] = [], right: readonly string[] = []): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((value, index) => value === sortedRight[index]);
+}
+
+export function resolvePendingTastingSessionCreateState(
+  writes: readonly QueuedFeatureWrite[],
+  input: CreateTastingSessionInput,
+): PendingTastingSessionLifecycleWriteState {
+  return resolveMatchingTastingSessionWriteState(writes, (write) => {
+    if (write.operationName !== 'tasting-session.create') {
+      return false;
+    }
+    const payload = write.payload as FeatureOutboxOperationPayload<'tasting-session.create'>;
+    return (
+      payload.name.trim() === input.name.trim() &&
+      payload.joinDurationMinutes === input.joinDurationMinutes &&
+      haveSameStringValues(payload.invitedUserIds, input.invitedUserIds)
+    );
+  });
+}
+
+export function resolvePendingTastingSessionJoinState(
+  writes: readonly QueuedFeatureWrite[],
+  input: JoinTastingSessionInput,
+): PendingTastingSessionLifecycleWriteState {
+  return resolveMatchingTastingSessionWriteState(writes, (write) => {
+    if (write.operationName !== 'tasting-session.join') {
+      return false;
+    }
+    const payload = write.payload as FeatureOutboxOperationPayload<'tasting-session.join'>;
+    return payload.inviteCode.trim().toUpperCase() === input.inviteCode.trim().toUpperCase();
+  });
+}
+
+export function resolvePendingTastingSessionStatusState(
+  writes: readonly QueuedFeatureWrite[],
+  input: { sessionId: string; status: TastingSessionRecord['status'] },
+): PendingTastingSessionLifecycleWriteState {
+  return resolveMatchingTastingSessionWriteState(writes, (write) => {
+    if (write.operationName !== 'tasting-session.status.update') {
+      return false;
+    }
+    const payload = write.payload as FeatureOutboxOperationPayload<'tasting-session.status.update'>;
+    return payload.sessionId === input.sessionId && payload.status === input.status;
+  });
+}
+
+export function usePendingTastingSessionLifecycleWrites() {
+  const { queuedWrites, refreshQueuedWrites } = useQueuedFeatureWrites(
+    PENDING_TASTING_SESSION_WRITE_OPERATION_NAMES,
+    'all',
+  );
+
+  return useMemo(
+    () => ({
+      getCreateState: (input: CreateTastingSessionInput) =>
+        resolvePendingTastingSessionCreateState(queuedWrites, input),
+      getJoinState: (input: JoinTastingSessionInput) =>
+        resolvePendingTastingSessionJoinState(queuedWrites, input),
+      getStatusState: (sessionId: string, status: TastingSessionRecord['status']) =>
+        resolvePendingTastingSessionStatusState(queuedWrites, { sessionId, status }),
+      refreshPendingWrites: refreshQueuedWrites,
+    }),
+    [queuedWrites, refreshQueuedWrites],
+  );
+}

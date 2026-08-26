@@ -2,7 +2,11 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { useTastingSessionLifecycleWrites, type TastingSessionRecord } from '../features';
+import {
+  usePendingTastingSessionLifecycleWrites,
+  useTastingSessionLifecycleWrites,
+  type TastingSessionRecord,
+} from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionLobbyScreen } from '../screens/TastingSessionLobbyScreen';
@@ -49,6 +53,7 @@ jest.mock('../features', () => ({
     detail: (sessionId: string) => ['feature', 'tasting-sessions', sessionId],
     root: ['feature', 'tasting-sessions'],
   },
+  usePendingTastingSessionLifecycleWrites: jest.fn(),
   useTastingSessionLifecycleWrites: jest.fn(),
 }));
 
@@ -119,6 +124,10 @@ jest.mock('../ui', () => ({
 const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
   typeof useTastingSessionLifecycleWrites
 >;
+const mockedUsePendingTastingSessionLifecycleWrites =
+  usePendingTastingSessionLifecycleWrites as jest.MockedFunction<
+    typeof usePendingTastingSessionLifecycleWrites
+  >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
@@ -130,6 +139,8 @@ const reopenInviteWindow = jest.fn();
 const deleteSession = jest.fn();
 const leaveSession = jest.fn();
 const resendInvite = jest.fn();
+const lockLobby = jest.fn();
+const refreshPendingWrites = jest.fn();
 const invalidateQueries = jest.fn();
 const setQueryData = jest.fn();
 type TestRenderer = ReturnType<typeof create> & { root: any };
@@ -288,11 +299,17 @@ describe('TastingSessionLobbyScreen', () => {
       dismissInvite: jest.fn(),
       joinSession: jest.fn(),
       leaveSession,
-      lockLobby: jest.fn(),
+      lockLobby,
       removeParticipant: jest.fn(),
       reopenInviteWindow,
       resendInvite,
     } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites,
+    });
     reopenInviteWindow.mockResolvedValue({
       result: buildSession('2099-01-01T00:00:00.000Z'),
       status: 'completed',
@@ -309,6 +326,11 @@ describe('TastingSessionLobbyScreen', () => {
       result: buildSession('2099-01-01T00:00:00.000Z'),
       status: 'completed',
     });
+    lockLobby.mockResolvedValue({
+      result: { ...buildSession('2099-01-01T00:00:00.000Z'), status: 'planning' },
+      status: 'completed',
+    });
+    refreshPendingWrites.mockResolvedValue(undefined);
   });
 
   it('shows expired leader controls without exposing the stale invite code', () => {
@@ -530,6 +552,50 @@ describe('TastingSessionLobbyScreen', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'tasting-sessions'] });
     expect(navigation.navigate).toHaveBeenCalledWith('TastingSessions', {
       errorMessage: 'Your invite was revoked.',
+    });
+  });
+
+  it('queues starting planning offline and replaces the action with confirmation', async () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    lockLobby.mockResolvedValue({ status: 'queued' });
+    let planningPending = false;
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: planningPending ? 'pending' : 'idle' })),
+      refreshPendingWrites: jest.fn(async () => {
+        planningPending = true;
+      }),
+    });
+    const { navigation, renderer } = renderScreen(buildSession('2099-01-01T00:00:00.000Z'));
+
+    expect(findButton(renderer, 'Start Planning').props.disabled).toBe(false);
+    await act(async () => {
+      findButton(renderer, 'Start Planning').props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lockLobby).toHaveBeenCalledWith({ sessionId: 'session_1' });
+    expect(findButton(renderer, 'Planning Queued').props.disabled).toBe(true);
+    expect(renderer.root.findAllByType('Text').map(getTextContent)).toContain(
+      'Planning is queued and will start when you reconnect.',
+    );
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it('keeps online navigation after starting planning', async () => {
+    const { navigation, renderer } = renderScreen(buildSession('2099-01-01T00:00:00.000Z'));
+
+    await act(async () => {
+      findButton(renderer, 'Start Planning').props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(navigation.replace).toHaveBeenCalledWith('TastingSessionPlanning', {
+      sessionId: 'session_1',
     });
   });
 

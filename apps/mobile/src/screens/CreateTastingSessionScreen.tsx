@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
 import {
   type FriendRecord,
+  usePendingTastingSessionLifecycleWrites,
   useTastingSessionLifecycleWrites,
 } from '../features';
 import { useAcceptedFriendPickerState } from '../hooks/useAcceptedFriendPickerState';
@@ -22,10 +23,13 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
   const { isOnline } = useConnectivity();
   const userId = user?.id ?? null;
   const tastingSessionWrites = useTastingSessionLifecycleWrites();
+  const pendingTastingSessionWrites = usePendingTastingSessionLifecycleWrites();
   const [name, setName] = useState('');
   const [duration, setDuration] = useState<number>(60);
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [didQueueCreate, setDidQueueCreate] = useState(false);
   const friendPicker = useAcceptedFriendPickerState({
     currentUserId: userId,
     listStateEnabled: Boolean(userId),
@@ -37,32 +41,56 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
         .filter((friend): friend is FriendRecord => Boolean(friend)),
     [friendPicker.acceptedFriendById, selectedFriendIds],
   );
+  const invitedUserIds = useMemo(
+    () =>
+      selectedFriendIds
+        .map((friendId) => friendPicker.acceptedFriendById.get(friendId)?.userId)
+        .filter((friendUserId): friendUserId is string => Boolean(friendUserId?.trim())),
+    [friendPicker.acceptedFriendById, selectedFriendIds],
+  );
+  const createInput = useMemo(
+    () => ({ invitedUserIds, joinDurationMinutes: duration, name: name.trim() }),
+    [duration, invitedUserIds, name],
+  );
+  const createQueueState = pendingTastingSessionWrites.getCreateState(createInput);
+  const isCreatePending = didQueueCreate || createQueueState.status === 'pending';
+
+  useEffect(() => {
+    if (didQueueCreate && createQueueState.status !== 'idle') {
+      setDidQueueCreate(false);
+    }
+  }, [createQueueState.status, didQueueCreate]);
 
   const handleCreate = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setErrorMessage('Session name is required.');
+      return;
+    }
+    if (isCreatePending || isSubmitting) {
       return;
     }
     try {
       setErrorMessage(null);
-      const invitedUserIds = selectedFriendIds
-        .map((friendId) => friendPicker.acceptedFriendById.get(friendId)?.userId)
-        .filter((userId): userId is string => Boolean(userId?.trim()));
+      setIsSubmitting(true);
       const createResult = await tastingSessionWrites.createSession({
-        invitedUserIds,
-        joinDurationMinutes: duration,
-        name,
+        ...createInput,
+        name: trimmedName,
       });
       if (createResult.status === 'blocked') {
         setErrorMessage(createResult.message);
         return;
       }
       if (createResult.status === 'queued') {
+        setDidQueueCreate(true);
+        await pendingTastingSessionWrites.refreshPendingWrites();
         return;
       }
       navigateToTastingSession(navigation, createResult.result);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not create group tasting.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -70,8 +98,9 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
     <FeatureFormScreenScaffold
       onBackPress={() => navigation.goBack()}
       primaryAction={{
-        disabled: !name.trim() || !isOnline,
-        label: 'Create Lobby',
+        disabled: !name.trim() || isCreatePending || isSubmitting,
+        label: isCreatePending ? 'Create Queued' : 'Create Lobby',
+        loading: isSubmitting,
         onPress: () => {
           void handleCreate();
         },
@@ -79,7 +108,15 @@ export function CreateTastingSessionScreen({ navigation }: CreateTastingSessionS
       subtitle="Name the session, choose how long friends can join, and invite friends. You’ll open a lobby next."
       title="Create Tasting"
     >
-      {!isOnline ? <Text tone="warning">Creating a group tasting requires a connection.</Text> : null}
+      {isCreatePending ? (
+        <Text tone="success">Group tasting queued. It will be created when you reconnect.</Text>
+      ) : createQueueState.status === 'failed' ? (
+        <Text tone="danger">
+          Queued group tasting failed to sync: {createQueueState.message} Retry it from the sync banner.
+        </Text>
+      ) : !isOnline ? (
+        <Text tone="secondary">You can create this group tasting offline. It will sync when you reconnect.</Text>
+      ) : null}
       <PageErrorToast errorMessage={errorMessage} title="Create failed" />
       <Card>
         <Input label="Session name" onChangeText={setName} placeholder="Friday ramen tasting" value={name} />

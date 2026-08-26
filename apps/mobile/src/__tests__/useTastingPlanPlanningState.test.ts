@@ -141,7 +141,7 @@ describe('buildTastingPlanPlanningFacts', () => {
     });
   });
 
-  it('blocks leader planning actions while offline', () => {
+  it('keeps Tasting Plan actions offline-only while allowing the lifecycle start transition', () => {
     const facts = buildTastingPlanPlanningFacts({
       activeRestaurantSuggestionId: 'suggestion-1',
       isLeader: true,
@@ -154,8 +154,8 @@ describe('buildTastingPlanPlanningFacts', () => {
       message: 'Planning actions require a connection.',
     });
     expect(facts.startReadiness).toMatchObject({
-      canStart: false,
-      disabledReason: 'Planning actions require a connection.',
+      canStart: true,
+      disabledReason: null,
     });
     expect(facts.scanHandoff).toEqual({
       disabled: true,

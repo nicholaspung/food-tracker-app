@@ -19,8 +19,12 @@ import type {
 } from '../features/models';
 import {
   createTastingSessionLifecycleWriteActions,
+  resolvePendingTastingSessionCreateState,
+  resolvePendingTastingSessionJoinState,
+  resolvePendingTastingSessionStatusState,
   TASTING_SESSION_LIFECYCLE_BLOCKED_MESSAGES,
 } from '../features/store/useTastingSessionLifecycleWrites';
+import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 
@@ -369,14 +373,28 @@ describe('createTastingSessionLifecycleWriteActions', () => {
     );
   });
 
-  it('returns queued without running API or cache effects when the outbox owns replay', async () => {
+  it('returns queued for every replay-safe lifecycle write without running API or cache effects', async () => {
     writeReplaySafe.mockResolvedValue({ status: 'queued' });
     const actions = createActions(false);
 
-    const result = await actions.startTasting({ sessionId: 'session_1' });
+    const results = await Promise.all([
+      actions.createSession({
+        invitedUserIds: [],
+        joinDurationMinutes: 60,
+        name: 'Offline tasting',
+      }),
+      actions.joinSession({ inviteCode: 'ABC123' }),
+      actions.lockLobby({ sessionId: 'session_1' }),
+      actions.startTasting({ sessionId: 'session_1' }),
+      actions.completeTasting({ sessionId: 'session_1' }),
+    ]);
 
-    expect(result).toEqual({ status: 'queued' });
+    expect(results).toEqual(Array.from({ length: 5 }, () => ({ status: 'queued' })));
+    expect(mockedCreateTastingSession).not.toHaveBeenCalled();
+    expect(mockedJoinTastingSession).not.toHaveBeenCalled();
+    expect(mockedLockTastingSessionMembership).not.toHaveBeenCalled();
     expect(mockedStartTastingSession).not.toHaveBeenCalled();
+    expect(mockedCompleteTastingSession).not.toHaveBeenCalled();
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 
@@ -481,5 +499,83 @@ describe('createTastingSessionLifecycleWriteActions', () => {
     expect(mockedSuggestTastingRestaurant).not.toHaveBeenCalled();
     expect(mockedSubmitTastingRatings).not.toHaveBeenCalled();
     expect(writeReplaySafe).not.toHaveBeenCalled();
+  });
+});
+
+describe('pending Tasting Session lifecycle write state', () => {
+  const baseWrite = {
+    createdAt: 1,
+    id: 'queued-1',
+    idempotencyKey: 'idem-1',
+    lastError: null,
+    originAccountId: 'user_1',
+    status: 'pending',
+  } as const;
+
+  it('matches create and join writes by equivalent payload without blocking distinct submissions', () => {
+    const writes = [
+      {
+        ...baseWrite,
+        operationName: 'tasting-session.create',
+        payload: {
+          invitedUserIds: ['friend_2', 'friend_1'],
+          joinDurationMinutes: 60,
+          name: 'Ramen night',
+        },
+      },
+      {
+        ...baseWrite,
+        id: 'queued-2',
+        operationName: 'tasting-session.join',
+        payload: { inviteCode: 'ABC123' },
+      },
+    ] as QueuedFeatureWrite[];
+
+    expect(resolvePendingTastingSessionCreateState(writes, {
+      invitedUserIds: ['friend_1', 'friend_2'],
+      joinDurationMinutes: 60,
+      name: 'Ramen night',
+    })).toEqual({ status: 'pending' });
+    expect(resolvePendingTastingSessionCreateState(writes, {
+      invitedUserIds: [],
+      joinDurationMinutes: 60,
+      name: 'Different tasting',
+    })).toEqual({ status: 'idle' });
+    expect(resolvePendingTastingSessionJoinState(writes, { inviteCode: 'abc123' })).toEqual({
+      status: 'pending',
+    });
+    expect(resolvePendingTastingSessionJoinState(writes, { inviteCode: 'XYZ789' })).toEqual({
+      status: 'idle',
+    });
+  });
+
+  it('clears pending state after replay and reports terminal failures separately', () => {
+    const statusWrite = {
+      ...baseWrite,
+      operationName: 'tasting-session.status.update',
+      payload: { sessionId: 'session_1', status: 'completed' },
+    } as QueuedFeatureWrite;
+
+    expect(resolvePendingTastingSessionStatusState([statusWrite], {
+      sessionId: 'session_1',
+      status: 'completed',
+    })).toEqual({ status: 'pending' });
+    expect(resolvePendingTastingSessionStatusState([], {
+      sessionId: 'session_1',
+      status: 'completed',
+    })).toEqual({ status: 'idle' });
+    expect(resolvePendingTastingSessionStatusState([
+      {
+        ...statusWrite,
+        lastError: 'Replay rejected',
+        status: 'failed',
+      },
+    ], {
+      sessionId: 'session_1',
+      status: 'completed',
+    })).toEqual({
+      message: 'Replay rejected',
+      status: 'failed',
+    });
   });
 });

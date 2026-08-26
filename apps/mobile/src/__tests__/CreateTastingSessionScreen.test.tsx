@@ -2,7 +2,10 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useTastingSessionLifecycleWrites } from '../features';
+import {
+  usePendingTastingSessionLifecycleWrites,
+  useTastingSessionLifecycleWrites,
+} from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateTastingSessionScreen } from '../screens/CreateTastingSessionScreen';
@@ -116,6 +119,7 @@ jest.mock('../features', () => ({
   tastingSessionsQueryKeys: {
     root: ['feature', 'tasting-sessions'],
   },
+  usePendingTastingSessionLifecycleWrites: jest.fn(),
   useTastingSessionLifecycleWrites: jest.fn(),
 }));
 
@@ -159,6 +163,10 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
   typeof useTastingSessionLifecycleWrites
 >;
+const mockedUsePendingTastingSessionLifecycleWrites =
+  usePendingTastingSessionLifecycleWrites as jest.MockedFunction<
+    typeof usePendingTastingSessionLifecycleWrites
+  >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 type TestRenderer = ReturnType<typeof create> & { root: any };
@@ -302,6 +310,13 @@ describe('CreateTastingSessionScreen', () => {
       removeParticipant: jest.fn(),
       resendInvite: jest.fn(),
     } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReset();
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites: jest.fn().mockResolvedValue(undefined),
+    });
 
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({
@@ -408,6 +423,9 @@ describe('CreateTastingSessionScreen', () => {
       joinDurationMinutes: 60,
       name: 'Friday ramen tasting',
     });
+    expect(navigation.navigate).toHaveBeenCalledWith('TastingSessionLobby', {
+      sessionId: 'session-1',
+    });
   });
 
   it('shows the empty friend copy', async () => {
@@ -417,15 +435,100 @@ describe('CreateTastingSessionScreen', () => {
     expect(hasExactText(renderer, 'No accepted friends found.')).toBe(true);
   });
 
-  it('disables create and shows offline messaging when offline', async () => {
+  it('queues a valid create offline and replaces the action with durable confirmation', async () => {
     mockedUseConnectivity.mockReturnValue({
       isOnline: false,
     } as ReturnType<typeof useConnectivity>);
+    const createSession = jest.fn().mockResolvedValue({ status: 'queued' });
+    let createPending = false;
+    mockedUseTastingSessionLifecycleWrites.mockReturnValue({
+      createSession,
+    } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: createPending ? 'pending' : 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites: jest.fn(async () => {
+        createPending = true;
+      }),
+    });
 
     const renderer = await renderScreen();
-    const scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    const nameInput = renderer.root.findAllByType('Input').find(
+      (node: any) => node.props.label === 'Session name',
+    );
+    if (!nameInput) {
+      throw new Error('Could not find session name input.');
+    }
+    await act(async () => {
+      nameInput.props.onChangeText('Offline tasting');
+    });
 
-    expect(scaffold.props.primaryAction.disabled).toBe(true);
-    expect(hasExactText(renderer, 'Creating a group tasting requires a connection.')).toBe(true);
+    let scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    expect(scaffold.props.primaryAction.disabled).toBe(false);
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    expect(createSession).toHaveBeenCalledWith({
+      invitedUserIds: [],
+      joinDurationMinutes: 60,
+      name: 'Offline tasting',
+    });
+    expect(scaffold.props.primaryAction).toMatchObject({
+      disabled: true,
+      label: 'Create Queued',
+    });
+    expect(hasExactText(renderer, 'Group tasting queued. It will be created when you reconnect.')).toBe(true);
+
+    createPending = false;
+    await act(async () => {
+      nameInput.props.onChangeText('Offline tasting ');
+    });
+    scaffold = renderer.root.findByType('FeatureFormScreenScaffold');
+    expect(scaffold.props.primaryAction).toMatchObject({
+      disabled: false,
+      label: 'Create Lobby',
+    });
+    expect(hasExactText(renderer, 'Group tasting queued. It will be created when you reconnect.')).toBe(false);
+  });
+
+  it('surfaces a failed equivalent queued create without calling it pending', async () => {
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: false,
+    } as ReturnType<typeof useConnectivity>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn((input) =>
+        input.name
+          ? { message: 'Replay rejected', status: 'failed' }
+          : { status: 'idle' },
+      ),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites: jest.fn().mockResolvedValue(undefined),
+    });
+    const renderer = await renderScreen();
+    const nameInput = renderer.root.findAllByType('Input').find(
+      (node: any) => node.props.label === 'Session name',
+    );
+    if (!nameInput) {
+      throw new Error('Could not find session name input.');
+    }
+
+    await act(async () => {
+      nameInput.props.onChangeText('Failed tasting');
+    });
+
+    expect(renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction).toMatchObject({
+      disabled: false,
+      label: 'Create Lobby',
+    });
+    expect(hasExactText(renderer, 'Group tasting queued. It will be created when you reconnect.')).toBe(false);
+    expect(
+      renderer.root.findAllByType('Text').map(getTextContent),
+    ).toContain('Queued group tasting failed to sync: Replay rejected Retry it from the sync banner.');
   });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,6 +13,7 @@ import {
 import {
   type TastingInviteRecord,
   type TastingParticipantRecord,
+  usePendingTastingSessionLifecycleWrites,
   useTastingSessionLifecycleWrites,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -124,6 +125,7 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const { sessionId } = route.params;
   const { user } = useAuth();
   const tastingSessionWrites = useTastingSessionLifecycleWrites();
+  const pendingTastingSessionWrites = usePendingTastingSessionLifecycleWrites();
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
     screen: 'lobby',
@@ -140,11 +142,21 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [isLeaveSessionModalVisible, setIsLeaveSessionModalVisible] = useState(false);
   const [isLeavingSession, setIsLeavingSession] = useState(false);
+  const [isLockingLobby, setIsLockingLobby] = useState(false);
+  const [didQueuePlanning, setDidQueuePlanning] = useState(false);
   const [participantSearchQuery, setParticipantSearchQuery] = useState('');
 
   const session = sessionQuery.data;
   const isLeader = lifecycle.roles.isLeader;
   const isParticipant = lifecycle.roles.isParticipant;
+  const planningQueueState = pendingTastingSessionWrites.getStatusState(sessionId, 'planning');
+  const isPlanningPending = didQueuePlanning || planningQueueState.status === 'pending';
+
+  useEffect(() => {
+    if (didQueuePlanning && planningQueueState.status !== 'idle') {
+      setDidQueuePlanning(false);
+    }
+  }, [didQueuePlanning, planningQueueState.status]);
   const inviteWindowOpen = session ? isTastingInviteWindowOpen(session.joinExpiresAt) : false;
   const inviteWindowExpired = session ? isTastingInviteWindowExpired(session.joinExpiresAt) : false;
   const lobbyInstruction = isLeader
@@ -183,18 +195,27 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
   };
 
   const handleLock = async () => {
+    if (isPlanningPending || isLockingLobby) {
+      return;
+    }
     try {
+      setErrorMessage(null);
+      setIsLockingLobby(true);
       const lockResult = await tastingSessionWrites.lockLobby({ sessionId });
       if (lockResult.status === 'blocked') {
         setErrorMessage(lockResult.message);
         return;
       }
       if (lockResult.status === 'queued') {
+        setDidQueuePlanning(true);
+        await pendingTastingSessionWrites.refreshPendingWrites();
         return;
       }
       navigation.replace('TastingSessionPlanning', { sessionId: lockResult.result.id });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not lock group.');
+    } finally {
+      setIsLockingLobby(false);
     }
   };
 
@@ -335,8 +356,16 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
           }
           title={availableSession.name}
         >
-          {lifecycle.onlineOnly.warningMessage ? (
-            <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+          {isPlanningPending ? (
+            <Text tone="success">Planning is queued and will start when you reconnect.</Text>
+          ) : planningQueueState.status === 'failed' ? (
+            <Text tone="danger">
+              Queued planning failed to sync: {planningQueueState.message} Retry it from the sync banner.
+            </Text>
+          ) : !isOnline ? (
+            <Text tone="warning">
+              Invite and participant actions require a connection. Starting planning can be queued offline.
+            </Text>
           ) : null}
           <PageErrorToast errorMessage={errorMessage} title="Lobby action failed" />
           <Card>
@@ -368,7 +397,12 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                       variant="secondary"
                     />
                   </View>
-                  <Button disabled={!isOnline} label="Start Planning" onPress={() => void handleLock()} />
+                  <Button
+                    disabled={isPlanningPending || isLockingLobby}
+                    label={isPlanningPending ? 'Planning Queued' : 'Start Planning'}
+                    loading={isLockingLobby}
+                    onPress={() => void handleLock()}
+                  />
                 </View>
               ) : (
                 <View style={styles.actionStack}>
@@ -381,8 +415,9 @@ export function TastingSessionLobbyScreen({ navigation, route }: TastingSessionL
                       variant="secondary"
                     />
                     <Button
-                      disabled={!isOnline}
-                      label="Start Planning"
+                      disabled={isPlanningPending || isLockingLobby}
+                      label={isPlanningPending ? 'Planning Queued' : 'Start Planning'}
+                      loading={isLockingLobby}
                       onPress={() => void handleLock()}
                       style={styles.action}
                     />

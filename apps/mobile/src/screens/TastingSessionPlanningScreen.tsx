@@ -21,6 +21,7 @@ import {
   type MenuItemRecord,
   type RestaurantRecord,
   useMonthlyUsage,
+  usePendingTastingSessionLifecycleWrites,
   useRestaurantSelectedMenuItemsQuery,
   useTastingPlanMenuCatalog,
   useTastingPlanPlanningState,
@@ -130,6 +131,7 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const tastingLifecycleWrites = useTastingSessionLifecycleWrites();
+  const pendingTastingSessionWrites = usePendingTastingSessionLifecycleWrites();
   const previousActiveRestaurantIdRef = useRef<string | null>(null);
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
@@ -151,7 +153,17 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   const [addingRestaurantId, setAddingRestaurantId] = useState<string | null>(null);
   const [isDeleteSessionModalVisible, setIsDeleteSessionModalVisible] = useState(false);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [isStartingTasting, setIsStartingTasting] = useState(false);
+  const [didQueueStart, setDidQueueStart] = useState(false);
   const isLeader = lifecycle.roles.isLeader;
+  const startQueueState = pendingTastingSessionWrites.getStatusState(sessionId, 'tasting');
+  const isStartPending = didQueueStart || startQueueState.status === 'pending';
+
+  useEffect(() => {
+    if (didQueueStart && startQueueState.status !== 'idle') {
+      setDidQueueStart(false);
+    }
+  }, [didQueueStart, startQueueState.status]);
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
   const isDisplaySubscriberUser = user?.isSubscriber === true;
@@ -307,13 +319,30 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
   };
 
   const handleStartTasting = async () => {
-    await runAction(async () => {
+    if (isStartPending || isStartingTasting) {
+      return;
+    }
+    try {
+      setErrorMessage(null);
+      setIsStartingTasting(true);
       const startResult = await tastingLifecycleWrites.startTasting({ sessionId });
+      if (startResult.status === 'blocked') {
+        setErrorMessage(startResult.message);
+        return;
+      }
+      if (startResult.status === 'queued') {
+        setDidQueueStart(true);
+        await pendingTastingSessionWrites.refreshPendingWrites();
+        return;
+      }
       if (startResult.status === 'completed') {
         navigation.replace('TastingSessionTasting', { sessionId: startResult.result.id });
       }
-      return startResult;
-    });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not start tasting.');
+    } finally {
+      setIsStartingTasting(false);
+    }
   };
 
   const handleStartTastingPress = () => {
@@ -709,8 +738,9 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
                     },
                   }
                 : {
-                    disabled: !startReadiness.canStart,
-                    label: 'Start Tasting',
+                    disabled: !startReadiness.canStart || isStartPending || isStartingTasting,
+                    label: isStartPending ? 'Start Queued' : 'Start Tasting',
+                    loading: isStartingTasting,
                     onPress: handleStartTastingPress,
                   }
               : undefined
@@ -731,8 +761,16 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
           title={availableSession.name}
         >
           {isRestaurantSearchFocused ? null : summaryCard}
-          {lifecycle.onlineOnly.warningMessage ? (
-            <Text tone="warning">{lifecycle.onlineOnly.warningMessage}</Text>
+          {isStartPending ? (
+            <Text tone="success">Starting the tasting is queued and will run when you reconnect.</Text>
+          ) : startQueueState.status === 'failed' ? (
+            <Text tone="danger">
+              Queued start failed to sync: {startQueueState.message} Retry it from the sync banner.
+            </Text>
+          ) : !isOnline ? (
+            <Text tone="warning">
+              Tasting Plan actions require a connection. Starting the tasting can be queued offline.
+            </Text>
           ) : onlineActions.message ? (
             <Text tone="warning">{onlineActions.message}</Text>
           ) : null}

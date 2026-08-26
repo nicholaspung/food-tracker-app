@@ -5,6 +5,7 @@ import {
   type TastingSessionRecord,
   useTastingPlanMenuCatalog,
   useRestaurantSelectedMenuItemsQuery,
+  usePendingTastingSessionLifecycleWrites,
   useTastingSessionLifecycleWrites,
 } from '../features';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
@@ -100,6 +101,7 @@ jest.mock('../features', () => {
     useTastingPlanMenuCatalog: jest.fn(),
     useTastingPlanPlanningState: planningState.useTastingPlanPlanningState,
     useRestaurantSelectedMenuItemsQuery: jest.fn(),
+    usePendingTastingSessionLifecycleWrites: jest.fn(),
     useTastingSessionLifecycleWrites: jest.fn(),
   };
 });
@@ -193,6 +195,10 @@ jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () =
 const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
   typeof useTastingSessionLifecycleWrites
 >;
+const mockedUsePendingTastingSessionLifecycleWrites =
+  usePendingTastingSessionLifecycleWrites as jest.MockedFunction<
+    typeof usePendingTastingSessionLifecycleWrites
+  >;
 const mockedUseTastingPlanMenuCatalog = useTastingPlanMenuCatalog as jest.MockedFunction<
   typeof useTastingPlanMenuCatalog
 >;
@@ -412,6 +418,12 @@ describe('TastingSessionPlanningScreen', () => {
       removeRestaurant: mockRemoveRestaurant,
       startTasting: mockStartTasting,
     } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites: jest.fn().mockResolvedValue(undefined),
+    });
     mockedUseAuth.mockReturnValue({
       actualUser: { isAdmin: false },
       user: {
@@ -694,6 +706,50 @@ describe('TastingSessionPlanningScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith('TastingSessionTasting', {
       sessionId: 'session-1',
     });
+  });
+
+  it('queues starting tasting offline while keeping Tasting Plan actions online-only', async () => {
+    mockedUseConnectivity.mockReturnValue({ isOnline: false } as never);
+    mockLifecycleSession(sessionWithRestaurant);
+    mockStartTasting.mockResolvedValue({ status: 'queued' });
+    let startPending = false;
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: startPending ? 'pending' : 'idle' })),
+      refreshPendingWrites: jest.fn(async () => {
+        startPending = true;
+      }),
+    });
+    const renderer = renderScreen();
+
+    act(() => {
+      renderer.root.findByType('FeatureDetailScreenScaffold').props.primaryAction.onPress();
+    });
+    const scaffold = renderer.root.findByType('FeatureDetailScreenScaffold');
+    expect(scaffold.props.primaryAction).toMatchObject({
+      disabled: false,
+      label: 'Start Tasting',
+    });
+    expect(renderer.root.findByType('RestaurantMenuItemPicker').props.addManualDisabled).toBe(true);
+
+    await act(async () => {
+      scaffold.props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockStartTasting).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(renderer.root.findByType('FeatureDetailScreenScaffold').props.primaryAction).toMatchObject({
+      disabled: true,
+      label: 'Start Queued',
+    });
+    expect(
+      renderer.root.findAllByType('Text').some(
+        (node: any) => node.props.children === 'Starting the tasting is queued and will run when you reconnect.',
+      ),
+    ).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('lets the leader delete the session from the planning header', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -21,6 +21,7 @@ import {
   type TastingRatingDraft,
   type TastingRatingDraftPhoto,
   useMonthlyUsage,
+  usePendingTastingSessionLifecycleWrites,
   useTastingSessionLifecycleWrites,
 } from '../features';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -138,6 +139,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const { sessionId } = route.params;
   const { actualUser, user } = useAuth();
   const tastingLifecycleWrites = useTastingSessionLifecycleWrites();
+  const pendingTastingSessionWrites = usePendingTastingSessionLifecycleWrites();
   const lifecycle = useTastingSessionLifecycleReadState({
     currentUserId: user?.id,
     screen: 'tasting',
@@ -146,12 +148,17 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const sessionQuery = lifecycle.query;
   const session = sessionQuery.data;
   const isOnline = lifecycle.onlineOnly.isOnline;
+  const currentParticipant = lifecycle.roles.currentParticipant;
+  const persistedReviewTimestamp = currentParticipant?.submittedAt ?? null;
   const [drafts, setDrafts] = useState<Record<string, TastingRatingDraft>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmittingRatings, setIsSubmittingRatings] = useState(false);
   const [isCompletingTasting, setIsCompletingTasting] = useState(false);
-  const [reviewTimestamp, setReviewTimestamp] = useState<string | null>(null);
-  const [step, setStep] = useState<TastingSessionTastingStep>('rating');
+  const [didQueueCompletion, setDidQueueCompletion] = useState(false);
+  const [reviewTimestamp, setReviewTimestamp] = useState<string | null>(persistedReviewTimestamp);
+  const [step, setStep] = useState<TastingSessionTastingStep>(
+    persistedReviewTimestamp ? 'review' : 'rating',
+  );
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [isUndoModalVisible, setIsUndoModalVisible] = useState(false);
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
@@ -159,7 +166,22 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const isLeader = lifecycle.roles.isLeader;
-  const currentParticipant = lifecycle.roles.currentParticipant;
+  const completionQueueState = pendingTastingSessionWrites.getStatusState(sessionId, 'completed');
+  const isCompletionPending = didQueueCompletion || completionQueueState.status === 'pending';
+
+  useEffect(() => {
+    if (didQueueCompletion && completionQueueState.status !== 'idle') {
+      setDidQueueCompletion(false);
+    }
+  }, [completionQueueState.status, didQueueCompletion]);
+
+  useEffect(() => {
+    if (!persistedReviewTimestamp) {
+      return;
+    }
+    setReviewTimestamp((currentTimestamp) => currentTimestamp ?? persistedReviewTimestamp);
+    setStep((currentStep) => (currentStep === 'rating' ? 'review' : currentStep));
+  }, [persistedReviewTimestamp]);
   const isActualAdmin = actualUser?.isAdmin === true;
   const isDisplayAdminUser = user?.isAdmin === true;
   const isDisplaySubscriberUser = user?.isSubscriber === true;
@@ -485,6 +507,9 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
   };
 
   const handleComplete = async () => {
+    if (isCompletionPending || isCompletingTasting) {
+      return;
+    }
     try {
       setErrorMessage(null);
       setIsCompletingTasting(true);
@@ -494,6 +519,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         return;
       }
       if (completeResult.status === 'queued') {
+        setDidQueueCompletion(true);
+        await pendingTastingSessionWrites.refreshPendingWrites();
         return;
       }
       navigation.replace('TastingSessionResults', { sessionId: completeResult.result.id });
@@ -540,8 +567,8 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         primaryAction={
           isLeader
             ? {
-                disabled: !isOnline || isCompletingTasting,
-                label: 'Complete',
+                disabled: isCompletionPending || isCompletingTasting,
+                label: isCompletionPending ? 'Completion Queued' : 'Complete',
                 loading: isCompletingTasting,
                 onPress: () => setShowCompleteConfirm(true),
                 testID: 'tasting-complete-session-button',
@@ -567,7 +594,17 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         }
         title="Review Your Ratings"
       >
-        {!isOnline ? <Text tone="warning">Completing the tasting requires a connection.</Text> : null}
+        {isCompletionPending ? (
+          <Text tone="success">Completion is queued and will run when you reconnect.</Text>
+        ) : completionQueueState.status === 'failed' ? (
+          <Text tone="danger">
+            Queued completion failed to sync: {completionQueueState.message} Retry it from the sync banner.
+          </Text>
+        ) : !isOnline ? (
+          <Text tone="warning">
+            Rating updates require a connection. Completing this tasting can be queued offline.
+          </Text>
+        ) : null}
         <PageErrorToast errorMessage={errorMessage} title="Tasting action failed" />
         {reviewCards.length === 0 ? (
           <EmptyState

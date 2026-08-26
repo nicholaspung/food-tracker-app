@@ -124,16 +124,14 @@ export function buildTastingPlanPlanningFacts({
     message: !isOnline ? 'Planning actions require a connection.' : null,
   };
   const startReadiness: TastingPlanStartReadiness = {
-    canStart: isLeader && isOnline && hasSelectedRestaurants && hasSelectedItems,
+    canStart: isLeader && hasSelectedRestaurants && hasSelectedItems,
     disabledReason: !isLeader
       ? 'Only the leader can start tasting.'
-      : !isOnline
-        ? 'Planning actions require a connection.'
-        : !hasSelectedRestaurants
-          ? 'Select at least one restaurant before starting.'
-          : !hasSelectedItems
-            ? 'Select at least one menu item before starting.'
-            : null,
+      : !hasSelectedRestaurants
+        ? 'Select at least one restaurant before starting.'
+        : !hasSelectedItems
+          ? 'Select at least one menu item before starting.'
+          : null,
     hasSelectedItems,
     hasSelectedRestaurants,
   };

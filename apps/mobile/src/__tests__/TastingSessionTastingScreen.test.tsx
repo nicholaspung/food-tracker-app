@@ -1,7 +1,10 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { useTastingSessionLifecycleWrites } from '../features';
+import {
+  usePendingTastingSessionLifecycleWrites,
+  useTastingSessionLifecycleWrites,
+} from '../features';
 import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -66,6 +69,7 @@ jest.mock('../features', () => ({
     (remaining: number) =>
       `Free users can upload up to 100 photos per month. Remaining estimate: ${remaining}.`,
   ),
+  usePendingTastingSessionLifecycleWrites: jest.fn(),
   useTastingSessionLifecycleWrites: jest.fn(),
   useMonthlyUsage: jest.fn(() => ({
     snapshot: {
@@ -160,6 +164,10 @@ jest.mock('../screens/tastingSessions/useTastingSessionLifecycleReadState', () =
 const mockedUseTastingSessionLifecycleWrites = useTastingSessionLifecycleWrites as jest.MockedFunction<
   typeof useTastingSessionLifecycleWrites
 >;
+const mockedUsePendingTastingSessionLifecycleWrites =
+  usePendingTastingSessionLifecycleWrites as jest.MockedFunction<
+    typeof usePendingTastingSessionLifecycleWrites
+  >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
@@ -226,6 +234,15 @@ const tastingSession: TastingSessionRecord = {
   updatedAt: '2026-05-19T10:10:00.000Z',
 };
 
+const submittedTastingSession: TastingSessionRecord = {
+  ...tastingSession,
+  participants: tastingSession.participants.map((participant) =>
+    participant.userId === 'user-1'
+      ? { ...participant, submittedAt: '2026-05-19T10:15:00.000Z' }
+      : participant,
+  ),
+};
+
 describe('TastingSessionTastingScreen', () => {
   function mockLifecycleSession(session: TastingSessionRecord | null) {
     mockedUseTastingSessionLifecycleReadState.mockReturnValue({
@@ -287,6 +304,12 @@ describe('TastingSessionTastingScreen', () => {
       completeTasting: mockCompleteTasting,
       submitRatingDraft: mockSubmitRatingDraft,
     } as unknown as ReturnType<typeof useTastingSessionLifecycleWrites>);
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: 'idle' })),
+      refreshPendingWrites: jest.fn().mockResolvedValue(undefined),
+    });
   });
 
   it('submits the visible approved tasting items and advances to review', async () => {
@@ -356,6 +379,94 @@ describe('TastingSessionTastingScreen', () => {
           route={{ params: { sessionId: 'session-1' } } as never}
         />,
       );
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('TastingSessionResults', {
+      sessionId: 'session-1',
+    });
+  });
+
+  it('queues leader completion from a cold offline cached review', async () => {
+    mockedUseConnectivity.mockReturnValue({ isOnline: false } as ReturnType<typeof useConnectivity>);
+    mockLifecycleSession(submittedTastingSession);
+    mockCompleteTasting.mockResolvedValue({ status: 'queued' });
+    let completionPending = false;
+    mockedUsePendingTastingSessionLifecycleWrites.mockReturnValue({
+      getCreateState: jest.fn(() => ({ status: 'idle' })),
+      getJoinState: jest.fn(() => ({ status: 'idle' })),
+      getStatusState: jest.fn(() => ({ status: completionPending ? 'pending' : 'idle' })),
+      refreshPendingWrites: jest.fn(async () => {
+        completionPending = true;
+      }),
+    });
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findAllByType('FeatureFormScreenScaffold').some(
+        (node: any) => node.props.title === 'Review Your Ratings',
+      ),
+    ).toBe(true);
+    const completeButton = renderer.root.findByProps({ testID: 'tasting-complete-session-button' });
+    expect(completeButton.props.disabled).toBe(false);
+    act(() => {
+      completeButton.props.onPress();
+    });
+    const confirmModal = renderer.root.findAllByType('ConfirmDestructiveModal').find(
+      (node: any) => node.props.title === 'Complete Tasting?',
+    );
+    await act(async () => {
+      confirmModal.props.onConfirm();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockCompleteTasting).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(renderer.root.findByProps({ testID: 'tasting-complete-session-button' }).props).toMatchObject({
+      disabled: true,
+      label: 'Completion Queued',
+    });
+    expect(
+      renderer.root.findAllByType('Text').some(
+        (node: any) => node.props.children === 'Completion is queued and will run when you reconnect.',
+      ),
+    ).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalledWith('TastingSessionResults', expect.anything());
+  });
+
+  it('keeps online navigation after leader completion', async () => {
+    mockLifecycleSession(submittedTastingSession);
+    mockCompleteTasting.mockResolvedValue({
+      result: { ...submittedTastingSession, status: 'completed' },
+      status: 'completed',
+    });
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'tasting-complete-session-button' }).props.onPress();
+    });
+    const confirmModal = renderer.root.findAllByType('ConfirmDestructiveModal').find(
+      (node: any) => node.props.title === 'Complete Tasting?',
+    );
+    await act(async () => {
+      confirmModal.props.onConfirm();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(mockReplace).toHaveBeenCalledWith('TastingSessionResults', {
