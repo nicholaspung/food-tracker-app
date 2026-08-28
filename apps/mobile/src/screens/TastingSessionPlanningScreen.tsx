@@ -32,6 +32,7 @@ import {
   isUserAddedRestaurantOption,
 } from '../features/restaurants/restaurantSelection';
 import { useTastingPlanRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { resolveUsageViewContext } from '../lib/usageUiRules';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
@@ -164,15 +165,12 @@ export function TastingSessionPlanningScreen({ navigation, route }: TastingSessi
       setDidQueueStart(false);
     }
   }, [didQueueStart, startQueueState.status]);
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({ viewAsTier: usagePreviewTier });
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;

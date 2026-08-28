@@ -107,9 +107,14 @@ jest.mock('../lib/photoStaging', () => ({
   stageLocalPhotoFile: jest.fn(),
 }));
 
-jest.mock('../lib/usageUiRules', () => ({
-  resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
-}));
+jest.mock('../lib/usageUiRules', () => {
+  const actual = jest.requireActual<typeof import('../lib/usageUiRules')>('../lib/usageUiRules');
+
+  return {
+    ...actual,
+    resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
+  };
+});
 
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),

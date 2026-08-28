@@ -23,6 +23,7 @@ import {
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
 import { useAuth } from '../providers/AuthProvider';
+import { resolveUsageViewContext } from '../lib/usageUiRules';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Modal, Text } from '../ui';
 import type { AddOnboardingCardId } from '../types/auth';
@@ -100,18 +101,16 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const [reminderConfirmation, setReminderConfirmation] = useState<string | null>(null);
   const [schedulingReminderMinutes, setSchedulingReminderMinutes] = useState<VisitReminderMinutes | null>(null);
   const { actualUser, user } = useAuth();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
   const shouldDisableProcessPhotos =
-    !isActualAdmin &&
+    shouldEnforceUsageLimitsClientSide &&
     isDisplayFreeUser &&
     typeof monthlyUsage.snapshot?.remaining.photoUploadsMonthly === 'number' &&
     monthlyUsage.snapshot.remaining.photoUploadsMonthly <= 0;

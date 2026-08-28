@@ -2,8 +2,94 @@ import {
   resolveCreateVisitSearchUi,
   resolveDisplayPhotoUploadsPerRecordLimit,
   resolvePhotoUploadQuotaUi,
+  resolveUsageViewContext,
   shouldShowOfflineUsageWarning,
 } from '../lib/usageUiRules';
+
+describe('usage view context', () => {
+  it.each([
+    {
+      name: 'actual admin',
+      actualUser: { isAdmin: true, isSubscriber: true },
+      user: { isAdmin: true, isSubscriber: true },
+      expected: {
+        isActualAdmin: true,
+        isDisplayAdminUser: true,
+        isDisplaySubscriberUser: true,
+        isDisplayFreeUser: false,
+        usagePreviewTier: null,
+        shouldEnforceUsageLimitsClientSide: false,
+      },
+    },
+    {
+      name: 'admin as subscriber',
+      actualUser: { isAdmin: true, isSubscriber: true },
+      user: { isAdmin: false, isSubscriber: true },
+      expected: {
+        isActualAdmin: true,
+        isDisplayAdminUser: false,
+        isDisplaySubscriberUser: true,
+        isDisplayFreeUser: false,
+        usagePreviewTier: 'subscriber',
+        shouldEnforceUsageLimitsClientSide: false,
+      },
+    },
+    {
+      name: 'admin as free',
+      actualUser: { isAdmin: true, isSubscriber: true },
+      user: { isAdmin: false, isSubscriber: false },
+      expected: {
+        isActualAdmin: true,
+        isDisplayAdminUser: false,
+        isDisplaySubscriberUser: false,
+        isDisplayFreeUser: true,
+        usagePreviewTier: 'free',
+        shouldEnforceUsageLimitsClientSide: false,
+      },
+    },
+    {
+      name: 'subscriber',
+      actualUser: { isAdmin: false, isSubscriber: true },
+      user: { isAdmin: false, isSubscriber: true },
+      expected: {
+        isActualAdmin: false,
+        isDisplayAdminUser: false,
+        isDisplaySubscriberUser: true,
+        isDisplayFreeUser: false,
+        usagePreviewTier: null,
+        shouldEnforceUsageLimitsClientSide: true,
+      },
+    },
+    {
+      name: 'free',
+      actualUser: { isAdmin: false, isSubscriber: false },
+      user: { isAdmin: false, isSubscriber: false },
+      expected: {
+        isActualAdmin: false,
+        isDisplayAdminUser: false,
+        isDisplaySubscriberUser: false,
+        isDisplayFreeUser: true,
+        usagePreviewTier: null,
+        shouldEnforceUsageLimitsClientSide: true,
+      },
+    },
+    {
+      name: 'missing user',
+      actualUser: null,
+      user: null,
+      expected: {
+        isActualAdmin: false,
+        isDisplayAdminUser: false,
+        isDisplaySubscriberUser: false,
+        isDisplayFreeUser: true,
+        usagePreviewTier: null,
+        shouldEnforceUsageLimitsClientSide: true,
+      },
+    },
+  ])('resolves $name policy', ({ actualUser, user, expected }) => {
+    expect(resolveUsageViewContext({ actualUser, user })).toEqual(expected);
+  });
+});
 
 describe('CreateVisitScreen usage UI rules', () => {
   it('shows remaining-label variants only when free user has <= 10 searches left', () => {

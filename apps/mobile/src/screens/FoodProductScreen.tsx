@@ -27,6 +27,7 @@ import {
   buildDefaultFoodProductForm,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
+import { resolveUsageViewContext } from '../lib/usageUiRules';
 import { localPersistence } from '../localPersistence';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -62,19 +63,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const foodProductWrites = useFoodProductWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
   const sourceNoteId = route.params?.sourceNoteId;
-
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
 
   const linkedNoteQuery = useQuery({
     queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),

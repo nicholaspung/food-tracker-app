@@ -207,10 +207,15 @@ jest.mock('../lib/foodProductForm', () => ({
   resolveDefaultFoodProductVisibility: jest.fn(() => 'friends'),
 }));
 
-jest.mock('../lib/usageUiRules', () => ({
-  resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 20),
-  shouldShowOfflineUsageWarning: jest.fn(() => false),
-}));
+jest.mock('../lib/usageUiRules', () => {
+  const actual = jest.requireActual<typeof import('../lib/usageUiRules')>('../lib/usageUiRules');
+
+  return {
+    ...actual,
+    resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 20),
+    shouldShowOfflineUsageWarning: jest.fn(() => false),
+  };
+});
 
 jest.mock('../lib/visitRestaurantSearch', () => ({
   buildVisitRestaurantDescription: jest.fn(() => 'Restaurant description'),

@@ -35,7 +35,10 @@ import {
 } from '../lib/guardedImagePicker';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { stageLocalPhotoFile } from '../lib/photoStaging';
-import { resolveDisplayPhotoUploadsPerRecordLimit } from '../lib/usageUiRules';
+import {
+  resolveDisplayPhotoUploadsPerRecordLimit,
+  resolveUsageViewContext,
+} from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
@@ -182,15 +185,15 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     setReviewTimestamp((currentTimestamp) => currentTimestamp ?? persistedReviewTimestamp);
     setStep((currentStep) => (currentStep === 'rating' ? 'review' : currentStep));
   }, [persistedReviewTimestamp]);
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isActualAdmin,
+    isDisplayAdminUser,
+    isDisplayFreeUser,
+    isDisplaySubscriberUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({ viewAsTier: usagePreviewTier });
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const perRecordPhotoLimit = isActualAdmin ? null : isDisplaySubscriberUser ? 20 : 1;
   const displayMaxPhotosPerItem = resolveDisplayPhotoUploadsPerRecordLimit({
     snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,

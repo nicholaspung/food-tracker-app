@@ -37,6 +37,7 @@ import {
   buildFoodProductFormFromRecord,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
+import { resolveUsageViewContext } from '../lib/usageUiRules';
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -80,18 +81,14 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const foodProductWrites = useFoodProductWrites();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
-
   const foodProductQuery = useQuery({
     queryKey: foodProductsQueryKeys.detail(foodProductId),
     queryFn: ({ signal }) => getFoodProductById(foodProductId, { signal }),

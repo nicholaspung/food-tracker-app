@@ -33,7 +33,7 @@ import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
-import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
+import { resolvePhotoUploadQuotaUi, resolveUsageViewContext } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -151,17 +151,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const cameraRef = useRef<CameraView | null>(null);
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     pickImageAssets,

@@ -52,6 +52,7 @@ import { useRestaurantDiscoverySelectionFlow } from '../hooks/useRestaurantSelec
 import { calculateDistance } from '../lib/googlePlaces';
 import { formatDateToLocalDateString, formatLocalDateLabel } from '../lib/dateFormatting';
 import { cleanupStagedPhotoFiles, stageLocalPhotoFile } from '../lib/photoStaging';
+import { resolveUsageViewContext } from '../lib/usageUiRules';
 import type { VisitRestaurantWithDistance } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { captureObservabilityError, trackObservabilityEvent } from '../observability';
@@ -565,17 +566,14 @@ export function RestaurantDiscoveryScreen({
   const { isOnline } = useConnectivity();
   const restaurantListWrites = useRestaurantListWrites();
   const { actualUser, user } = useAuth();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isDisplayFreeUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;

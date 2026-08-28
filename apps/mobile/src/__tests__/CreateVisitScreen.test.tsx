@@ -266,10 +266,15 @@ jest.mock('../lib/photoMetadata', () => ({
   resolvePhotoCaptureDate: jest.fn(),
 }));
 
-jest.mock('../lib/usageUiRules', () => ({
-  resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
-  shouldShowOfflineUsageWarning: jest.fn(() => false),
-}));
+jest.mock('../lib/usageUiRules', () => {
+  const actual = jest.requireActual<typeof import('../lib/usageUiRules')>('../lib/usageUiRules');
+
+  return {
+    ...actual,
+    resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
+    shouldShowOfflineUsageWarning: jest.fn(() => false),
+  };
+});
 
 jest.mock('../lib/visitRestaurantSearch', () => ({
   buildVisitRestaurantDescription: jest.fn(() => 'Restaurant description'),

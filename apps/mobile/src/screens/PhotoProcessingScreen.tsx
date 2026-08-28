@@ -69,6 +69,7 @@ import {
 } from '../lib/visitRestaurantSearch';
 import {
   resolveDisplayPhotoUploadsPerRecordLimit,
+  resolveUsageViewContext,
   shouldShowOfflineUsageWarning,
 } from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
@@ -398,19 +399,19 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isDisplayAdminUser = user?.isAdmin === true;
-  const isDisplaySubscriberUser = user?.isSubscriber === true;
-  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
-  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
-    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
-    : null;
+  const {
+    isActualAdmin,
+    isDisplayAdminUser,
+    isDisplayFreeUser,
+    isDisplaySubscriberUser,
+    shouldEnforceUsageLimitsClientSide,
+    usagePreviewTier,
+  } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
   const sourceNoteId = route.params?.sourceNoteId;
   const isNoteDrivenFlow = Boolean(sourceNoteId);
-  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const displayMaxPhotosPerRestaurantItem = resolveDisplayPhotoUploadsPerRecordLimit({
     snapshotLimit: monthlyUsage.snapshot?.limits?.photoUploadsPerRecord,
     isDisplayAdminUser,

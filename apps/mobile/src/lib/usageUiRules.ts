@@ -27,11 +27,46 @@ export interface PhotoUploadQuotaUiState {
   hasQuota: boolean;
 }
 
+interface UsageViewUser {
+  isAdmin?: boolean;
+  isSubscriber?: boolean;
+}
+
+export interface UsageViewContext {
+  isActualAdmin: boolean;
+  isDisplayAdminUser: boolean;
+  isDisplaySubscriberUser: boolean;
+  isDisplayFreeUser: boolean;
+  usagePreviewTier: 'subscriber' | 'free' | null;
+  shouldEnforceUsageLimitsClientSide: boolean;
+}
+
 interface DisplayPhotoUploadsPerRecordLimitInput {
   snapshotLimit: number | null | undefined;
   isDisplayAdminUser: boolean;
   isDisplaySubscriberUser: boolean;
   isDisplayFreeUser: boolean;
+}
+
+export function resolveUsageViewContext(input: {
+  actualUser: UsageViewUser | null | undefined;
+  user: UsageViewUser | null | undefined;
+}): UsageViewContext {
+  const isActualAdmin = input.actualUser?.isAdmin === true;
+  const isDisplayAdminUser = input.user?.isAdmin === true;
+  const isDisplaySubscriberUser = input.user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+
+  return {
+    isActualAdmin,
+    isDisplayAdminUser,
+    isDisplaySubscriberUser,
+    isDisplayFreeUser,
+    usagePreviewTier: isActualAdmin && !isDisplayAdminUser
+      ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+      : null,
+    shouldEnforceUsageLimitsClientSide: !isActualAdmin,
+  };
 }
 
 export function resolveCreateVisitSearchUi(input: CreateVisitSearchUiInput): CreateVisitSearchUiState {
