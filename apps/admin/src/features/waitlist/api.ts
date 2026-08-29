@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
 import type { WaitlistEntry, WaitlistStatus } from '@/lib/types';
 
@@ -7,22 +8,6 @@ interface WaitlistResponse {
   pageSize: number;
   totalItems: number;
   totalPages: number;
-}
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === 'object' && error !== null) {
-    const responseData = (error as { response?: { message?: string } }).response;
-    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
-      return responseData.message;
-    }
-
-    const message = (error as { message?: string }).message;
-    if (typeof message === 'string' && message.trim()) {
-      return message;
-    }
-  }
-
-  return fallbackMessage;
 }
 
 export async function listWaitlistEntries(input: {

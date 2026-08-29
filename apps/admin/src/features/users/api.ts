@@ -1,5 +1,6 @@
 import { pb } from '@/lib/pocketbase';
 import type { AdminUser } from '@/features/auth/types';
+import { toErrorMessage } from '@/lib/formatters';
 import type {
   FeedbackThread,
   FoodItemSummary,
@@ -20,21 +21,6 @@ import type {
 
 interface AdminListResponse<T> {
   items: T[];
-}
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === 'object' && error !== null) {
-    const responseData = (error as { response?: { message?: string } }).response;
-    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
-      return responseData.message;
-    }
-
-    if (typeof (error as { message?: string }).message === 'string' && (error as { message?: string }).message?.trim()) {
-      return (error as { message: string }).message;
-    }
-  }
-
-  return fallbackMessage;
 }
 
 export async function searchUsers(searchTerm: string) {

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
 
 interface AdminMonthlyFriendsActivityTestResponse {
@@ -32,22 +33,6 @@ export interface AdminTastingInviteNotificationTestResponse {
   sessionId: string;
   status: string;
   userId: string;
-}
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === 'object' && error !== null) {
-    const responseData = (error as { response?: { message?: string } }).response;
-    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
-      return responseData.message;
-    }
-
-    const errorMessage = (error as { message?: string }).message;
-    if (typeof errorMessage === 'string' && errorMessage.trim()) {
-      return errorMessage;
-    }
-  }
-
-  return fallbackMessage;
 }
 
 export async function sendMonthlyFriendsActivityTestNotification(input: {

@@ -2,6 +2,22 @@ export function escapeFilterValue(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+export function toErrorMessage(error: unknown, fallbackMessage: string) {
+  if (typeof error === 'object' && error !== null) {
+    const responseMessage = (error as { response?: { message?: string } }).response?.message;
+    if (typeof responseMessage === 'string' && responseMessage.trim()) {
+      return responseMessage;
+    }
+
+    const errorMessage = (error as { message?: string }).message;
+    if (typeof errorMessage === 'string' && errorMessage.trim()) {
+      return errorMessage;
+    }
+  }
+
+  return fallbackMessage;
+}
+
 export function formatDateTime(value?: string | null) {
   if (!value) {
     return 'Unknown';

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
 
 export type MenuInventoryType = 'restaurants' | 'restaurant-groups' | 'menu-items' | 'menu-images';
@@ -176,21 +177,6 @@ type MenuInventoryResponseForType<T extends MenuInventoryType> =
       : T extends 'menu-items'
         ? AdminMenuInventoryResponse<MenuItemInventoryRow>
         : AdminMenuInventoryResponse<MenuImageInventoryRow>;
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === 'object' && error !== null) {
-    const responseData = (error as { response?: { message?: string } }).response;
-    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
-      return responseData.message;
-    }
-
-    if (typeof (error as { message?: string }).message === 'string' && (error as { message: string }).message.trim()) {
-      return (error as { message: string }).message;
-    }
-  }
-
-  return fallbackMessage;
-}
 
 export async function getAdminMenuInventory<T extends MenuInventoryType>(input: {
   type: T;

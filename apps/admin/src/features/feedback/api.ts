@@ -1,4 +1,4 @@
-import { escapeFilterValue } from '@/lib/formatters';
+import { escapeFilterValue, toErrorMessage } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
 import type { FeedbackMessage, FeedbackThread } from '@/lib/types';
 
@@ -16,21 +16,6 @@ function requireAuthenticatedAdminId() {
   }
 
   return userId;
-}
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === 'object' && error !== null) {
-    const responseData = (error as { response?: { message?: string } }).response;
-    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
-      return responseData.message;
-    }
-
-    if (typeof (error as { message?: string }).message === 'string' && (error as { message?: string }).message?.trim()) {
-      return (error as { message: string }).message;
-    }
-  }
-
-  return fallbackMessage;
 }
 
 export async function listFeedbackThreads(statusFilter: FeedbackStatusFilter) {
