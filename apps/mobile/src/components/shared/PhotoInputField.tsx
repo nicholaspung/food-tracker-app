@@ -1,5 +1,5 @@
 import { Ionicons } from '../../ui/AppIcon';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, ReactNode, Ref } from 'react';
 import { View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
@@ -31,6 +31,7 @@ interface PhotoInputFieldProps {
   onGalleryPress: () => void;
   attachments?: PhotoInputFieldAttachment[];
   footerAction?: ReactNode;
+  cameraActionRef?: Ref<View>;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -68,6 +69,7 @@ export function PhotoInputField({
   onGalleryPress,
   attachments = [],
   footerAction,
+  cameraActionRef,
 }: PhotoInputFieldProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -112,6 +114,7 @@ export function PhotoInputField({
 
       {!hideSourceActions ? (
         <PhotoSourceActionCards
+          cameraActionRef={cameraActionRef}
           cameraSubtitle={cameraSubtitle}
           cameraTitle={cameraTitle}
           disabled={disabled}

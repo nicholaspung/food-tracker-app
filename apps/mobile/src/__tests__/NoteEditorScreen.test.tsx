@@ -12,6 +12,31 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { NoteEditorScreen } from '../screens/NoteEditorScreen';
 
 const mockReact = React;
+const mockTheme = {
+  colors: {
+    background: {
+      inverse: 'black',
+      overlay: 'rgba(0,0,0,0.4)',
+      surface: 'white',
+    },
+    border: {
+      subtle: 'silver',
+    },
+    text: {
+      primary: 'black',
+    },
+  },
+  radii: {
+    lg: 12,
+    md: 8,
+    pill: 999,
+  },
+  spacing: {
+    lg: 24,
+    md: 16,
+    sm: 12,
+  },
+};
 
 jest.mock('expo-camera', () => ({
   CameraView: (props: Record<string, unknown>) => mockReact.createElement('CameraView', props),
@@ -78,32 +103,11 @@ jest.mock('../providers/ConnectivityProvider', () => ({
 }));
 
 jest.mock('../theme', () => ({
-  createThemedStyles: () => () => ({}),
-  useTheme: () => ({
-    colors: {
-      background: {
-        inverse: 'black',
-        overlay: 'rgba(0,0,0,0.4)',
-        surface: 'white',
-      },
-      border: {
-        subtle: 'silver',
-      },
-      text: {
-        primary: 'black',
-      },
-    },
-    radii: {
-      lg: 12,
-      md: 8,
-      pill: 999,
-    },
-    spacing: {
-      lg: 24,
-      md: 16,
-      sm: 12,
-    },
-  }),
+  createThemedStyles:
+    (factory: (theme: typeof mockTheme) => unknown) =>
+    () =>
+      factory(mockTheme),
+  useTheme: () => mockTheme,
 }));
 
 jest.mock('../ui', () => ({
@@ -443,5 +447,57 @@ describe('NoteEditorScreen photo capture dates', () => {
         photos: [],
       }),
     );
+  });
+
+  it('exposes the camera as a named modal with an accessible full-size close button', async () => {
+    let renderer!: ReturnType<typeof renderNoteEditor>;
+    await act(async () => {
+      renderer = renderNoteEditor();
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onCameraPress();
+    });
+
+    const findCameraModal = (visible: boolean) =>
+      renderer.root.find(
+        (node: any) =>
+          node.props.accessibilityLabel === 'Add Photo' && node.props.visible === visible,
+      );
+    const cameraModal = findCameraModal(true);
+    expect(cameraModal.props.accessibilityViewIsModal).toBe(true);
+    expect(cameraModal.props.onShow).toEqual(expect.any(Function));
+    expect(
+      renderer.root.findByProps({
+        accessibilityViewIsModal: true,
+        accessible: false,
+        importantForAccessibility: 'no',
+      }),
+    ).toBeTruthy();
+
+    const heading = renderer.root.findByProps({ accessibilityRole: 'header' });
+    expect(heading.props.children).toBe('Add Photo');
+
+    const closeButton = renderer.root.findByProps({ accessibilityLabel: 'Close camera' });
+    expect(closeButton.props.accessibilityRole).toBe('button');
+    expect(closeButton.props.style).toEqual(
+      expect.objectContaining({
+        height: 44,
+        width: 44,
+      }),
+    );
+
+    await act(async () => {
+      closeButton.props.onPress();
+    });
+    expect(findCameraModal(false)).toBeTruthy();
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onCameraPress();
+    });
+    await act(async () => {
+      findCameraModal(true).props.onRequestClose();
+    });
+    expect(findCameraModal(false)).toBeTruthy();
   });
 });

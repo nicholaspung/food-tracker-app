@@ -3,7 +3,15 @@ import { CameraView } from 'expo-camera';
 import type * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Modal, Pressable, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  InteractionManager,
+  Linking,
+  Modal,
+  Pressable,
+  View,
+} from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -75,6 +83,7 @@ type NoteDraftPhotoAsset = {
 const CONTENT_MAX_LENGTH = 2000;
 const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
+const NOTE_CAMERA_MODAL_TITLE = 'Add Photo';
 
 function formatPhotoPerNoteLimitMessage(limit: number): string {
   return `You can add up to ${limit} photo${limit === 1 ? '' : 's'} per note.`;
@@ -120,9 +129,9 @@ const useStyles = createThemedStyles((theme) => ({
   modalClose: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
-    height: 28,
+    height: 44,
     justifyContent: 'center',
-    width: 28,
+    width: 44,
   },
   cameraFrame: {
     backgroundColor: theme.colors.background.inverse,
@@ -151,6 +160,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const cameraRef = useRef<CameraView | null>(null);
+  const cameraActionRef = useRef<View>(null);
+  const shouldRestoreCameraFocusRef = useRef(false);
   const {
     isDisplayFreeUser,
     shouldEnforceUsageLimitsClientSide,
@@ -500,6 +511,29 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     resetPhotoPermissionNeedsSettings();
   }, [resetPhotoPermissionNeedsSettings]);
 
+  const closeCamera = useCallback(() => {
+    shouldRestoreCameraFocusRef.current = true;
+    setIsCameraOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (isCameraOpen || !shouldRestoreCameraFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreCameraFocusRef.current = false;
+    const focusTask = InteractionManager.runAfterInteractions(() => {
+      const cameraActionHandle = cameraActionRef.current
+        ? findNodeHandle(cameraActionRef.current)
+        : null;
+      if (cameraActionHandle !== null) {
+        AccessibilityInfo.setAccessibilityFocus(cameraActionHandle);
+      }
+    });
+
+    return () => focusTask.cancel();
+  }, [isCameraOpen]);
+
   const handleOpenCamera = useCallback(async () => {
     trackObservabilityEvent('NOTE_CAMERA_OPEN_STARTED', {
       source: 'NoteEditorScreen',
@@ -602,12 +636,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       }
 
       await addDraftPhotos([{ uri: captured.uri }], { captureDate: new Date() });
-      setIsCameraOpen(false);
+      closeCamera();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not capture photo.';
       setErrorMessage(message);
     }
-  }, [addDraftPhotos]);
+  }, [addDraftPhotos, closeCamera]);
 
   const handleSave = useCallback(async () => {
     const mode = isEditing ? 'edit' : 'create';
@@ -995,6 +1029,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
         <Card style={styles.sectionCard}>
           <PhotoInputField
+            cameraActionRef={cameraActionRef}
             attachments={photoInputAttachments}
             cameraSubtitle="Camera"
             cameraTitle="Take Photo"
@@ -1052,16 +1087,33 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         visible={isPhotoViewerVisible}
       />
 
-      <Modal animationType="fade" onRequestClose={() => setIsCameraOpen(false)} transparent visible={isCameraOpen}>
+      <Modal
+        accessibilityLabel={NOTE_CAMERA_MODAL_TITLE}
+        accessibilityViewIsModal
+        animationType="fade"
+        onRequestClose={closeCamera}
+        onShow={() => {
+          AccessibilityInfo.announceForAccessibility(`Dialog, ${NOTE_CAMERA_MODAL_TITLE}`);
+        }}
+        transparent
+        visible={isCameraOpen}
+      >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View
+            accessibilityViewIsModal
+            accessible={false}
+            importantForAccessibility="no"
+            onAccessibilityEscape={closeCamera}
+            style={styles.modalCard}
+          >
             <View style={styles.modalHeader}>
-              <Text variant="titleMd">Add Photo</Text>
+              <Text accessibilityRole="header" variant="titleMd">
+                {NOTE_CAMERA_MODAL_TITLE}
+              </Text>
               <Pressable
                 accessibilityLabel="Close camera"
-                onPress={() => {
-                  setIsCameraOpen(false);
-                }}
+                accessibilityRole="button"
+                onPress={closeCamera}
                 style={styles.modalClose}
               >
                 <Ionicons color={theme.colors.text.primary} name="close" size={20} />
@@ -1073,7 +1125,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
                 facing="back"
                 onMountError={() => {
                   setErrorMessage('Camera could not be started.');
-                  setIsCameraOpen(false);
+                  closeCamera();
                 }}
                 ref={cameraRef}
                 style={styles.camera}
@@ -1083,9 +1135,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             <View style={styles.modalActions}>
               <Button
                 label="Cancel"
-                onPress={() => {
-                  setIsCameraOpen(false);
-                }}
+                onPress={closeCamera}
                 style={styles.modalAction}
                 variant="secondary"
               />

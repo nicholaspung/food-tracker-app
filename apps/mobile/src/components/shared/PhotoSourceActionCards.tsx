@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { View } from 'react-native';
 
@@ -14,6 +15,7 @@ interface PhotoSourceActionCardsProps {
   galleryTitle?: string;
   gallerySubtitle?: string;
   containerStyle?: StyleProp<ViewStyle>;
+  cameraActionRef?: Ref<View>;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -36,6 +38,7 @@ export function PhotoSourceActionCards({
   galleryTitle = 'Upload',
   gallerySubtitle = 'Photo Library',
   containerStyle,
+  cameraActionRef,
 }: PhotoSourceActionCardsProps) {
   const theme = useTheme();
   const styles = useStyles();
@@ -54,6 +57,7 @@ export function PhotoSourceActionCards({
           iconName="camera-outline"
           layout="vertical"
           onPress={onCameraPress}
+          actionRef={cameraActionRef}
           tone={tone}
           title={cameraTitle}
         />

@@ -1,5 +1,5 @@
 import { Ionicons } from '../../ui/AppIcon';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, ReactNode, Ref } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { createThemedStyles } from '../../theme';
@@ -20,6 +20,7 @@ export interface IconActionCardProps {
   layout?: IconActionCardLayout;
   tone?: IconActionCardTone;
   testID?: string;
+  actionRef?: Ref<View>;
   titleAccessory?: ReactNode;
   trailing?: ReactNode;
 }
@@ -105,6 +106,7 @@ export function IconActionCard({
   layout = 'horizontal',
   tone = 'default',
   testID,
+  actionRef,
   titleAccessory,
   trailing,
 }: IconActionCardProps) {
@@ -121,6 +123,7 @@ export function IconActionCard({
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      ref={actionRef}
       testID={testID}
     >
       {({ pressed }) => (
