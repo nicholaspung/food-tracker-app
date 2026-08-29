@@ -1,6 +1,8 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
+import { FocusedRestaurantSearchHeader } from '../components/shared/FocusedRestaurantSearchHeader';
+import { VisitRestaurantSearchHeaderToggle } from '../components/shared/VisitRestaurantSearchHeaderToggle';
 import { VisitRestaurantSearchSection } from '../components/shared/VisitRestaurantSearchSection';
 
 const mockReact = React;
@@ -43,6 +45,9 @@ const theme = {
 jest.mock('react-native', () => ({
   ActivityIndicator: (props: Record<string, unknown>) =>
     mockReact.createElement('ActivityIndicator', props),
+  Keyboard: {
+    dismiss: jest.fn(),
+  },
   Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Pressable', props, children),
   StyleSheet: {
@@ -91,7 +96,115 @@ jest.mock('../components/shared/UpgradePromptCard', () => ({
   UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
 }));
 
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (result, entry) => ({ ...result, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style && typeof style === 'object' ? (style as Record<string, unknown>) : {};
+}
+
 describe('VisitRestaurantSearchSection', () => {
+  it('exposes expanded state and a growing 44-point disclosure target', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitRestaurantSearchHeaderToggle
+          expanded={false}
+          onPress={jest.fn()}
+          testID="restaurant-search-toggle"
+        />,
+      );
+    });
+
+    let toggle = renderer.root.findByType('Pressable');
+
+    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    expect(flattenStyle(toggle.props.style)).toMatchObject({ minHeight: 44 });
+
+    await act(async () => {
+      renderer.update(
+        <VisitRestaurantSearchHeaderToggle
+          expanded
+          onPress={jest.fn()}
+          testID="restaurant-search-toggle"
+        />,
+      );
+    });
+
+    toggle = renderer.root.findByType('Pressable');
+    expect(toggle.props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  it('gives both standard clear actions 44-point targets', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitRestaurantSearchSection
+          manualLocation="Los Angeles"
+          onClearSearchResults={jest.fn()}
+          onManualLocationChange={jest.fn()}
+          onSearchPress={jest.fn()}
+          onSearchQueryChange={jest.fn()}
+          onUseCurrentLocationPress={jest.fn()}
+          savedOptions={[]}
+          searchButtonLabel="Search"
+          searchQuery="ramen"
+          searchResultsOptions={[]}
+          showSearchResults={false}
+        />,
+      );
+    });
+
+    const inputs = renderer.root.findAllByType('Input');
+
+    for (const input of inputs) {
+      const clearAction = input.props.rightAccessory as React.ReactElement<{
+        style: (state: { pressed: boolean }) => unknown;
+      }>;
+      expect(flattenStyle(clearAction.props.style({ pressed: false }))).toMatchObject({
+        height: 44,
+        width: 44,
+      });
+    }
+  });
+
+  it('gives both focused-header clear actions 44-point targets', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FocusedRestaurantSearchHeader
+          manualLocation="Los Angeles"
+          onBackPress={jest.fn()}
+          onManualLocationChange={jest.fn()}
+          onSearchPress={jest.fn()}
+          onSearchQueryChange={jest.fn()}
+          onUseCurrentLocationPress={jest.fn()}
+          searchButtonLabel="Search"
+          searchQuery="ramen"
+        />,
+      );
+    });
+
+    const inputs = renderer.root.findAllByType('Input');
+
+    for (const input of inputs) {
+      const clearAction = input.props.rightAccessory as React.ReactElement<{
+        style: (state: { pressed: boolean }) => unknown;
+      }>;
+      expect(flattenStyle(clearAction.props.style({ pressed: false }))).toMatchObject({
+        height: 44,
+        width: 44,
+      });
+    }
+  });
+
     it('separates trailing actions from restaurant row press targets', async () => {
     let renderer: any = null;
 

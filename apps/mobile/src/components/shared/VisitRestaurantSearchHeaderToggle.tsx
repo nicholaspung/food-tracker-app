@@ -17,9 +17,11 @@ const useStyles = createThemedStyles((theme) => ({
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     flexDirection: 'row',
+    flexShrink: 0,
     gap: theme.spacing.xxs,
+    justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: theme.spacing.xs,
-    paddingVertical: theme.spacing.xxs,
   },
 }));
 
@@ -34,6 +36,7 @@ export function VisitRestaurantSearchHeaderToggle({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ expanded }}
       onPress={onPress}
       style={styles.button}
       testID={testID}

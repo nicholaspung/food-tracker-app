@@ -163,19 +163,24 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.sm,
     justifyContent: 'space-between',
+    minHeight: 44,
   },
   floatingSearchPanelTitleRow: {
     alignItems: 'center',
     flex: 1,
     flexDirection: 'row',
     gap: theme.spacing.xs,
+    minWidth: 0,
+  },
+  floatingSearchPanelTitle: {
+    flexShrink: 1,
   },
   floatingSearchPanelToggle: {
     alignItems: 'center',
     borderRadius: theme.radii.md,
-    height: 36,
+    height: 44,
     justifyContent: 'center',
-    width: 36,
+    width: 44,
   },
   floatingSearchPanelExpandedContent: {
     gap: theme.spacing.sm,
@@ -242,9 +247,9 @@ const useStyles = createThemedStyles((theme) => ({
   clearButton: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
-    height: 32,
+    height: 44,
     justifyContent: 'center',
-    width: 32,
+    width: 44,
   },
   clearButtonPressed: {
     backgroundColor: theme.colors.background.muted,
@@ -286,7 +291,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
   inlineLink: {
     alignSelf: 'flex-start',
-    paddingVertical: theme.spacing.xxs,
+    justifyContent: 'center',
+    minHeight: 44,
   },
   iconTitle: {
     alignItems: 'center',
@@ -1714,7 +1720,9 @@ export function RestaurantDiscoveryScreen({
       >
         <View style={styles.floatingSearchPanelTitleRow}>
           <Ionicons color={theme.colors.text.info} name="search-outline" size={18} />
-          <Text variant="label">Search for food places</Text>
+          <Text style={styles.floatingSearchPanelTitle} variant="label">
+            Search for food places
+          </Text>
         </View>
         <View style={styles.floatingSearchPanelToggle}>
           <Ionicons

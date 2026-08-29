@@ -84,8 +84,13 @@ const useStyles = createThemedStyles((theme) => ({
   },
   searchHeaderTitle: {
     alignItems: 'center',
+    flex: 1,
     flexDirection: 'row',
     gap: theme.spacing.xs,
+    minWidth: 0,
+  },
+  searchHeaderTitleText: {
+    flexShrink: 1,
   },
   compactSearchRow: {
     alignItems: 'center',
@@ -151,9 +156,9 @@ const useStyles = createThemedStyles((theme) => ({
   clearButton: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
-    height: 32,
+    height: 44,
     justifyContent: 'center',
-    width: 32,
+    width: 44,
   },
   clearButtonPressed: {
     backgroundColor: theme.colors.background.muted,
@@ -343,7 +348,9 @@ export function VisitRestaurantSearchSection({
                 name="search-outline"
                 size={18}
               />
-              <Text variant="label">Search for food places</Text>
+              <Text style={styles.searchHeaderTitleText} variant="label">
+                Search for food places
+              </Text>
             </View>
             {searchInputsMode === 'compact' ? null : headerAccessory}
           </View>

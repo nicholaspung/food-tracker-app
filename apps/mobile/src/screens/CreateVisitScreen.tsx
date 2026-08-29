@@ -438,7 +438,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
   inlineLink: {
     alignSelf: "flex-start",
-    paddingVertical: theme.spacing.xxs,
+    justifyContent: "center",
+    minHeight: 44,
   },
   selectedHint: {
     alignItems: "center",

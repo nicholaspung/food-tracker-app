@@ -110,9 +110,9 @@ const useStyles = createThemedStyles((theme) => ({
   clearButton: {
     alignItems: 'center',
     borderRadius: theme.radii.pill,
-    height: 32,
+    height: 44,
     justifyContent: 'center',
-    width: 32,
+    width: 44,
   },
   clearButtonPressed: {
     backgroundColor: theme.colors.background.muted,
