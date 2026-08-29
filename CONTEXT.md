@@ -140,6 +140,12 @@ _Avoid_: Your Records, Your Activity
 A user-owned food record attached to one restaurant Visit.
 _Avoid_: Menu item, catalog item
 
+**Food Product**:
+A standalone, user-owned food record for grocery, convenience-store, market, or other food tracking that does not require a restaurant Visit. It is represented by `itemType = food-product` and owns its sharing visibility and item date directly.
+_Avoid_: Food Item, quick track
+
+Technical aliases / legacy names: `food_items` is the shared storage collection for **Visit Item** and **Food Product** records, not a canonical domain type. The required `food_items.itemType` discriminator selects the `visit-item` or `food-product` behavior; generic Food Item and identifiers such as `foodItemId`, `food_item`, and `FoodItemCollectionRecord` describe that technical boundary only and must be interpreted in their endpoint or relation context. New domain docs and issue drafts should name **Visit Item** or **Food Product** when one branch is in scope. When both branches are intentionally in scope, say "the `food_items` collection across Visit Items and Food Products" and verify each branch's access, moderation, parent, query, and photo behavior.
+
 **Tasting Plan**:
 The leader-selected set of restaurants and menu items for a group tasting session.
 _Avoid_: Suggestions, readiness
@@ -334,6 +340,11 @@ _Avoid_: notification inbox, user notification history
 - A **Restaurant Group** may contain many **Restaurant** locations.
 - The first implementation models **Restaurant Group** membership as an optional relation from **Restaurant** to **Restaurant Group**.
 - Admin Restaurant Inventory owns **Restaurant Group** creation and membership; menu review consumes existing group membership.
+- A **Visit Item** is stored in `food_items` with `itemType = visit-item`, belongs to a Visit, and follows the parent Visit's sharing visibility in addition to its own ownership and moderation state.
+- A **Food Product** is stored in `food_items` with `itemType = food-product`, has no Visit as its domain parent, and uses its own sharing visibility, item date, location, ownership, and moderation state.
+- The `itemType` discriminator, not the generic collection or identifier name, determines which access, moderation, query, and write behavior applies to a `food_items` record.
+- Restaurant List visited-item candidate and history queries select **Visit Items**. Technical saved-recommendation and list-item references may point to either a **Visit Item** or a **Food Product**, so their access and moderation checks must resolve the referenced record's `itemType` branch.
+- The technical `visit_photos.food_item` relation and related `foodItemId` fields can reference either **Visit Items** or **Food Products**, so photo access must resolve the referenced record's discriminator branch.
 - **Visit Writes** preserve the write lifecycle for restaurant visit creation and editing.
 - **Food Product Writes** preserve the write lifecycle for food product creation, editing, and deletion.
 - A **Bill Draft** becomes a saved Bill only after validation and payload construction succeed.
