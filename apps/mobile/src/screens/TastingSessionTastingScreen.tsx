@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  InteractionManager,
+  Linking,
+  Pressable,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
@@ -163,11 +170,17 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     persistedReviewTimestamp ? 'review' : 'rating',
   );
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [pendingRemoveItem, setPendingRemoveItem] = useState<TastingMenuItemRecord | null>(null);
+  const [removeFocusTarget, setRemoveFocusTarget] = useState<
+    { itemId: string; type: 'item' } | { type: 'undo' } | null
+  >(null);
   const [isUndoModalVisible, setIsUndoModalVisible] = useState(false);
   const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
+  const removeButtonRefs = useRef<Record<string, View | null>>({});
+  const undoButtonRef = useRef<View>(null);
   const isLeader = lifecycle.roles.isLeader;
   const completionQueueState = pendingTastingSessionWrites.getStatusState(sessionId, 'completed');
   const isCompletionPending = didQueueCompletion || completionQueueState.status === 'pending';
@@ -258,6 +271,27 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     );
   }, [currentParticipant, drafts]);
   const removedItems = approvedItems.filter((item) => !resolveDraft(item).included);
+
+  useEffect(() => {
+    if (!removeFocusTarget) {
+      return;
+    }
+
+    const focusTask = InteractionManager.runAfterInteractions(() => {
+      const target =
+        removeFocusTarget.type === 'undo'
+          ? undoButtonRef.current
+          : removeButtonRefs.current[removeFocusTarget.itemId];
+      const targetHandle = target ? findNodeHandle(target) : null;
+      if (targetHandle !== null) {
+        AccessibilityInfo.setAccessibilityFocus(targetHandle);
+      }
+      setRemoveFocusTarget(null);
+    });
+
+    return () => focusTask.cancel();
+  }, [removeFocusTarget]);
+
   const completionSummary = useMemo(() => {
     const participants = session?.participants ?? [];
     const submittedParticipants = participants.filter((participant) =>
@@ -713,6 +747,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
             <Pressable
               accessibilityRole="button"
               onPress={() => setIsUndoModalVisible(true)}
+              ref={undoButtonRef}
               style={styles.undoButton}
             >
               <Text variant="label">Undo</Text>
@@ -770,12 +805,7 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
                     onNotesChange={(note) =>
                       setDrafts((current) => ({ ...current, [item.id]: { ...draft, note } }))
                     }
-                    onRequestRemove={() =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [item.id]: { ...draft, included: false },
-                      }))
-                    }
+                    onRequestRemove={() => setPendingRemoveItem(item)}
                     onRatingChange={(rating) =>
                       setDrafts((current) => ({ ...current, [item.id]: { ...draft, rating } }))
                     }
@@ -825,6 +855,10 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
                     }
                     rating={draft.rating}
                     removeAccessibilityLabel={`Remove ${item.name} from rating list`}
+                    removeButtonRef={(button) => {
+                      removeButtonRefs.current[item.id] = button;
+                    }}
+                    removeTestID={`tasting-remove-item-${item.id}`}
                   />
                 );
               })}
@@ -839,6 +873,37 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
         previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={isPhotoViewerVisible}
+      />
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Item"
+        confirmLabel={pendingRemoveItem ? `Exclude ${pendingRemoveItem.name}` : 'Exclude Item'}
+        description={
+          pendingRemoveItem
+            ? `Exclude "${pendingRemoveItem.name}" from your Tasting Rating Submission? Its rating, notes, and photos will be preserved so you can add it back before submitting.`
+            : ''
+        }
+        onCancel={() => {
+          if (pendingRemoveItem) {
+            setRemoveFocusTarget({ itemId: pendingRemoveItem.id, type: 'item' });
+          }
+          setPendingRemoveItem(null);
+        }}
+        onConfirm={() => {
+          if (!pendingRemoveItem) {
+            return;
+          }
+          const draft = resolveDraft(pendingRemoveItem);
+          setDrafts((current) => ({
+            ...current,
+            [pendingRemoveItem.id]: { ...draft, included: false },
+          }));
+          setRemoveFocusTarget({ type: 'undo' });
+          setPendingRemoveItem(null);
+        }}
+        testID="tasting-remove-item-confirmation"
+        title={pendingRemoveItem ? `Exclude "${pendingRemoveItem.name}"?` : 'Exclude Item?'}
+        visible={pendingRemoveItem !== null}
       />
 
       <Modal

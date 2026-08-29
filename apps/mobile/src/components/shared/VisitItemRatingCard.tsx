@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '../../ui/AppIcon';
 
@@ -21,6 +21,7 @@ interface VisitItemRatingCardProps {
   photoSection?: ReactNode;
   rating: number;
   removeAccessibilityLabel?: string;
+  removeButtonRef?: Ref<View>;
   removeTestID?: string;
   showDescription?: boolean;
   testIDPrefix?: string;
@@ -62,6 +63,7 @@ export function VisitItemRatingCard({
   photoSection,
   rating,
   removeAccessibilityLabel,
+  removeButtonRef,
   removeTestID,
   showDescription = false,
   testIDPrefix,
@@ -81,6 +83,7 @@ export function VisitItemRatingCard({
             accessibilityRole="button"
             hitSlop={12}
             onPress={onRequestRemove}
+            ref={removeButtonRef}
             style={styles.removeButton}
             testID={removeTestID}
           >

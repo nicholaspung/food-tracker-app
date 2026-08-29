@@ -1,4 +1,6 @@
 import React from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { AccessibilityInfo, findNodeHandle } from 'react-native';
 import { act, create } from 'react-test-renderer';
 
 import {
@@ -8,6 +10,8 @@ import {
 } from '../features';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import type { TastingSessionRecord } from '../features';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { stageLocalPhotoFile } from '../lib/photoStaging';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { TastingSessionTastingScreen } from '../screens/TastingSessionTastingScreen';
@@ -18,6 +22,9 @@ const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
 const mockSubmitRatingDraft = jest.fn();
 const mockCompleteTasting = jest.fn();
+const mockRemoveButtonNode = { testID: 'mock-remove-button-node' };
+const mockUndoButtonNode = { testID: 'mock-undo-button-node' };
+const mockInteractionCallbacks: (() => void)[] = [];
 
 jest.mock('expo-image-picker', () => ({
   launchCameraAsync: jest.fn(),
@@ -25,11 +32,46 @@ jest.mock('expo-image-picker', () => ({
 }));
 
 jest.mock('react-native', () => ({
+  AccessibilityInfo: {
+    setAccessibilityFocus: jest.fn(),
+  },
+  findNodeHandle: jest.fn((node: unknown) =>
+    node === mockRemoveButtonNode ? 101 : node === mockUndoButtonNode ? 102 : null,
+  ),
+  InteractionManager: {
+    runAfterInteractions: jest.fn((callback: () => void) => {
+      mockInteractionCallbacks.push(callback);
+      return { cancel: jest.fn() };
+    }),
+  },
   Linking: {
     openSettings: jest.fn(),
   },
-  Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
-    mockReact.createElement('Pressable', props, children),
+  Pressable: ({
+    children,
+    ref,
+    ...props
+  }: Record<string, unknown> & {
+    children?: React.ReactNode;
+    ref?: React.Ref<{ testID: string }>;
+  }) => {
+    mockReact.useEffect(() => {
+      if (typeof ref === 'function') {
+        ref(mockUndoButtonNode);
+        return () => {
+          ref(null);
+        };
+      }
+      if (ref && 'current' in ref) {
+        ref.current = mockUndoButtonNode;
+        return () => {
+          ref.current = null;
+        };
+      }
+      return undefined;
+    }, [ref]);
+    return mockReact.createElement('Pressable', props, children);
+  },
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
 }));
@@ -43,17 +85,20 @@ jest.mock('../components/shared', () => ({
     children,
     primaryAction,
     secondaryAction,
+    subtitle,
     ...props
   }: Record<string, unknown> & {
     children?: React.ReactNode;
     primaryAction: Record<string, unknown>;
     secondaryAction?: Record<string, unknown>;
+    subtitle?: React.ReactNode;
   }) =>
     mockReact.createElement(
       'FeatureFormScreenScaffold',
       props,
       secondaryAction ? mockReact.createElement('Button', secondaryAction) : null,
       mockReact.createElement('Button', primaryAction),
+      subtitle,
       children,
     ),
   HomeFeedVisitEntryCard: (props: Record<string, unknown>) =>
@@ -62,7 +107,23 @@ jest.mock('../components/shared', () => ({
   PhotoInputField: (props: Record<string, unknown>) => mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
   RatingLegend: (props: Record<string, unknown>) => mockReact.createElement('RatingLegend', props),
-  VisitItemRatingCard: (props: Record<string, unknown>) => mockReact.createElement('VisitItemRatingCard', props),
+  VisitItemRatingCard: ({
+    removeButtonRef,
+    ...props
+  }: Record<string, unknown> & {
+    removeButtonRef?: React.Ref<{ testID: string }>;
+  }) => {
+    mockReact.useEffect(() => {
+      if (typeof removeButtonRef === 'function') {
+        removeButtonRef(mockRemoveButtonNode);
+        return () => {
+          removeButtonRef(null);
+        };
+      }
+      return undefined;
+    }, [removeButtonRef]);
+    return mockReact.createElement('VisitItemRatingCard', props);
+  },
 }));
 
 jest.mock('../features', () => ({
@@ -155,6 +216,15 @@ const mockedUsePendingTastingSessionLifecycleWrites =
     typeof usePendingTastingSessionLifecycleWrites
   >;
 const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedLaunchImageLibraryAsync = ImagePicker.launchImageLibraryAsync as jest.MockedFunction<
+  typeof ImagePicker.launchImageLibraryAsync
+>;
+const mockedResolvePhotoCaptureDate = resolvePhotoCaptureDate as jest.MockedFunction<
+  typeof resolvePhotoCaptureDate
+>;
+const mockedStageLocalPhotoFile = stageLocalPhotoFile as jest.MockedFunction<
+  typeof stageLocalPhotoFile
+>;
 const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
   typeof usePhotoPickerPermissions
 >;
@@ -272,6 +342,7 @@ describe('TastingSessionTastingScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockInteractionCallbacks.splice(0);
     mockedUseMonthlyUsage.mockReturnValue({
       snapshot: {
         limits: {
@@ -428,6 +499,139 @@ describe('TastingSessionTastingScreen', () => {
     expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
       'Picker stopped for test.',
     );
+  });
+
+  it('confirms item exclusion before preserving its draft for Add Items Back', async () => {
+    const sessionWithTwoItems: TastingSessionRecord = {
+      ...tastingSession,
+      restaurants: tastingSession.restaurants.map((restaurant) => ({
+        ...restaurant,
+        items: [
+          ...(restaurant.items ?? []),
+          {
+            createdAt: '2026-05-19T10:07:00.000Z',
+            id: 'tasting-item-2',
+            menuItemId: 'menu-item-2',
+            name: 'Gyoza',
+            ratings: [],
+            restaurantSuggestionId: restaurant.id,
+            status: 'approved',
+            suggestedByParticipantId: 'participant-1',
+          },
+        ],
+      })),
+    };
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission: jest.fn().mockResolvedValue({ canAskAgain: true, granted: true }),
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
+    mockedLaunchImageLibraryAsync.mockResolvedValue({
+      assets: [{ fileName: 'sample.jpg', height: 100, uri: 'file:///sample.jpg', width: 100 }],
+      canceled: false,
+    });
+    mockedStageLocalPhotoFile.mockResolvedValue({
+      mimeType: 'image/jpeg',
+      name: 'staged-sample.jpg',
+      uri: 'file:///staged-sample.jpg',
+    });
+    mockedResolvePhotoCaptureDate.mockResolvedValue(new Date('2026-05-19T10:08:00.000Z'));
+    mockLifecycleSession(sessionWithTwoItems);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByProps({ itemName: 'Sample' }).props.onRatingChange(5);
+    });
+    act(() => {
+      renderer.root.findByProps({ itemName: 'Sample' }).props.onNotesChange('Rich broth');
+    });
+    await act(async () => {
+      await renderer.root.findByProps({ itemName: 'Sample' }).props.photoSection.props.onGalleryPress();
+    });
+
+    const populatedCard = renderer.root.findByProps({ itemName: 'Sample' });
+    expect(populatedCard.props).toMatchObject({ notesValue: 'Rich broth', rating: 5 });
+    expect(populatedCard.props.photoSection.props.attachments).toHaveLength(1);
+
+    act(() => {
+      renderer.root.findByProps({ itemName: 'Sample' }).props.onRequestRemove();
+    });
+
+    let confirmation = renderer.root.findByProps({ testID: 'tasting-remove-item-confirmation' });
+    expect(confirmation.props).toMatchObject({
+      cancelLabel: 'Keep Item',
+      confirmLabel: 'Exclude Sample',
+      description:
+        'Exclude "Sample" from your Tasting Rating Submission? Its rating, notes, and photos will be preserved so you can add it back before submitting.',
+      title: 'Exclude "Sample"?',
+      visible: true,
+    });
+    expect(renderer.root.findByProps({ itemName: 'Sample' }).props).toMatchObject({
+      notesValue: 'Rich broth',
+      rating: 5,
+    });
+
+    act(() => {
+      confirmation.props.onCancel();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'tasting-remove-item-confirmation' }).props.visible).toBe(false);
+    expect(renderer.root.findByProps({ itemName: 'Sample' }).props.photoSection.props.attachments).toHaveLength(1);
+    expect(mockInteractionCallbacks).toHaveLength(1);
+    act(() => {
+      mockInteractionCallbacks.shift()?.();
+    });
+    expect(findNodeHandle).toHaveBeenLastCalledWith(mockRemoveButtonNode);
+    expect(AccessibilityInfo.setAccessibilityFocus).toHaveBeenLastCalledWith(101);
+
+    act(() => {
+      renderer.root.findByProps({ itemName: 'Sample' }).props.onRequestRemove();
+    });
+    confirmation = renderer.root.findByProps({ testID: 'tasting-remove-item-confirmation' });
+    act(() => {
+      confirmation.props.onConfirm();
+    });
+
+    expect(
+      renderer.root
+        .findAllByType('VisitItemRatingCard')
+        .filter((card: any) => card.props.itemName === 'Sample'),
+    ).toHaveLength(0);
+    expect(
+      renderer.root
+        .findAllByType('VisitItemRatingCard')
+        .filter((card: any) => card.props.itemName === 'Gyoza'),
+    ).toHaveLength(1);
+    expect(mockInteractionCallbacks).toHaveLength(1);
+    act(() => {
+      mockInteractionCallbacks.shift()?.();
+    });
+    expect(findNodeHandle).toHaveBeenLastCalledWith(mockUndoButtonNode);
+    expect(AccessibilityInfo.setAccessibilityFocus).toHaveBeenLastCalledWith(102);
+
+    act(() => {
+      renderer.root.findByProps({ children: 'Undo' }).parent?.props.onPress();
+    });
+
+    const addItemsBackModal = renderer.root.findByProps({ title: 'Add Items Back' });
+    expect(addItemsBackModal.props.visible).toBe(true);
+    expect(renderer.root.findByProps({ children: 'Sample' })).toBeTruthy();
+    act(() => {
+      renderer.root.findByProps({ label: 'Add Back' }).props.onPress();
+    });
+
+    const restoredCard = renderer.root.findByProps({ itemName: 'Sample' });
+    expect(restoredCard.props).toMatchObject({ notesValue: 'Rich broth', rating: 5 });
+    expect(restoredCard.props.photoSection.props.attachments).toHaveLength(1);
   });
 
   it('submits the visible approved tasting items and advances to review', async () => {
