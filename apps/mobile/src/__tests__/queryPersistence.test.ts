@@ -12,7 +12,13 @@ import { notePhotosQueryKeys, notesQueryKeys } from '../features/store/notesQuer
 import { profileQueryKeys } from '../features/store/profileQuery';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { localPersistence } from '../localPersistence';
-import { clearPersistedQueryCache, queryPersister, shouldPersistQuery } from '../providers/queryPersistence';
+import {
+  clearPersistedQueryCache,
+  createQueryPersister,
+  persistQueryClientWithRestoreMetadata,
+  queryPersister,
+  shouldPersistQuery,
+} from '../providers/queryPersistence';
 
 jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
@@ -203,6 +209,12 @@ describe('React Query persistence', () => {
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
+    sourceClient.setQueryData(['feature', 'restaurantLists'], [
+      {
+        id: 'restaurant_list_1',
+        name: 'Want to Try',
+      },
+    ]);
     sourceClient.setQueryData(tastingSessionsQueryKeys.summaries('active'), {
       pages: [
         {
@@ -350,12 +362,22 @@ describe('React Query persistence', () => {
       },
     });
 
+    const getItemMock = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const deserialize = jest.fn((cachedClient: string) => JSON.parse(cachedClient));
+    const instrumentedPersister = createQueryPersister({ deserialize });
+    getItemMock.mockClear();
     const restoredClient = new QueryClient();
-    await persistQueryClientRestore({
+    const [unsubscribe, restorePromise] = persistQueryClientWithRestoreMetadata({
       queryClient: restoredClient,
-      persister: queryPersister,
       maxAge: 1000 * 60 * 60 * 24,
+      persister: instrumentedPersister,
     });
+    const restoreMetadata = await restorePromise;
+    unsubscribe();
+
+    expect(getItemMock).toHaveBeenCalledTimes(1);
+    expect(deserialize).toHaveBeenCalledTimes(1);
+    expect(restoreMetadata?.trimmed).toBe(false);
 
     expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', ''))).toEqual(
       sourceClient.getQueryData(homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', '')),
@@ -388,6 +410,9 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
+    );
+    expect(restoredClient.getQueryData(['feature', 'restaurantLists'])).toEqual(
+      sourceClient.getQueryData(['feature', 'restaurantLists']),
     );
     expect(restoredClient.getQueryData(tastingSessionsQueryKeys.summaries('active'))).toEqual(
       sourceClient.getQueryData(tastingSessionsQueryKeys.summaries('active')),
@@ -549,11 +574,12 @@ describe('React Query persistence', () => {
     });
 
     const restoredClient = new QueryClient();
-    await persistQueryClientRestore({
+    const [unsubscribe, restorePromise] = persistQueryClientWithRestoreMetadata({
       queryClient: restoredClient,
-      persister: queryPersister,
       maxAge: 1000 * 60 * 60 * 24,
     });
+    const restoreMetadata = await restorePromise;
+    unsubscribe();
 
     expect(restoredClient.getQueryData(homeFeedKey)).toEqual({
       ...homeFeedData,
@@ -577,6 +603,12 @@ describe('React Query persistence', () => {
     });
     expect(await AsyncStorage.getItem(localPersistence.queryCache.activeStorageKey)).toContain(
       '"trimmed":true',
+    );
+    expect(restoreMetadata).toEqual(
+      expect.objectContaining({
+        trimmed: true,
+        trimmedQueryCount: 3,
+      }),
     );
 
     sourceClient.clear();
@@ -681,6 +713,69 @@ describe('React Query persistence', () => {
 
     expect(await AsyncStorage.getItem(activeCacheKeyV5)).toBeNull();
     queryClient.clear();
+  });
+
+  it('discards expired and malformed persisted clients through the single restore pass', async () => {
+    const storageKey = localPersistence.queryCache.activeStorageKey;
+    await AsyncStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        buster: '',
+        clientState: { mutations: [], queries: [] },
+        timestamp: Date.now() - 1000 * 60 * 60 * 25,
+      }),
+    );
+
+    const expiredClient = new QueryClient();
+    const [unsubscribeExpired, expiredRestore] = persistQueryClientWithRestoreMetadata({
+      queryClient: expiredClient,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+    await expiredRestore;
+    unsubscribeExpired();
+    expect(await AsyncStorage.getItem(storageKey)).toBeNull();
+
+    await AsyncStorage.setItem(storageKey, '{malformed');
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const malformedClient = new QueryClient();
+    const [unsubscribeMalformed, malformedRestore] = persistQueryClientWithRestoreMetadata({
+      queryClient: malformedClient,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+    await expect(malformedRestore).rejects.toBeInstanceOf(SyntaxError);
+    unsubscribeMalformed();
+    expect(await AsyncStorage.getItem(storageKey)).toBeNull();
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+
+    expiredClient.clear();
+    malformedClient.clear();
+  });
+
+  it('clears the active key when the persisted-cache read rejects', async () => {
+    const storageKey = localPersistence.queryCache.activeStorageKey;
+    await AsyncStorage.setItem(storageKey, 'unreadable');
+    const readError = new Error('Storage unavailable');
+    const getItemMock = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const removeItemMock = AsyncStorage.removeItem as jest.MockedFunction<typeof AsyncStorage.removeItem>;
+    getItemMock.mockRejectedValueOnce(readError);
+    removeItemMock.mockClear();
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const restoredClient = new QueryClient();
+    const [unsubscribe, restorePromise] = persistQueryClientWithRestoreMetadata({
+      queryClient: restoredClient,
+      maxAge: 1000 * 60 * 60 * 24,
+    });
+
+    await expect(restorePromise).rejects.toBe(readError);
+    unsubscribe();
+    expect(removeItemMock).toHaveBeenCalledWith(storageKey);
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    restoredClient.clear();
   });
 
   it('round-trips current default Notes data and redacts private Feedback fields', async () => {

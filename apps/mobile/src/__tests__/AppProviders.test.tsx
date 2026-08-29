@@ -6,22 +6,18 @@ import type { AuthBootstrapResult } from '../providers/AuthProvider';
 
 const mockAuthBootstrapStarted = jest.fn();
 const mockInitializeObservability = jest.fn();
-const mockPersistQueryClient = jest.fn();
+const mockPersistQueryClientWithRestoreMetadata = jest.fn();
 const mockClearPersistedQueryCache = jest.fn();
 const mockQueryClientClear = jest.fn();
-const mockReadPersistedQueryCacheMetadata = jest.fn();
 const mockSetObservabilityContext = jest.fn();
 const mockTrackObservabilityEvent = jest.fn();
 const mockTrackProductEvent = jest.fn();
 const mockUnsubscribe = jest.fn();
 
 let mockCompleteAuthBootstrap: ((result: AuthBootstrapResult) => void) | undefined;
-let mockQueryRestorePromise: Promise<void>;
-let mockResolveQueryRestore = () => {};
-
-jest.mock('@tanstack/query-persist-client-core', () => ({
-  persistQueryClient: (...args: unknown[]) => mockPersistQueryClient(...args),
-}));
+let mockQueryRestorePromise: Promise<{ trimmed: boolean } | null>;
+let mockRejectQueryRestore = (_error: Error) => {};
+let mockResolveQueryRestore = (_metadata: { trimmed: boolean } | null) => {};
 
 jest.mock('@tanstack/react-query', () => ({
   focusManager: {
@@ -69,8 +65,8 @@ jest.mock('../observability/productAnalytics', () => ({
 
 jest.mock('../providers/queryPersistence', () => ({
   clearPersistedQueryCache: (...args: unknown[]) => mockClearPersistedQueryCache(...args),
-  queryPersister: {},
-  readPersistedQueryCacheMetadata: (...args: unknown[]) => mockReadPersistedQueryCacheMetadata(...args),
+  persistQueryClientWithRestoreMetadata: (...args: unknown[]) =>
+    mockPersistQueryClientWithRestoreMetadata(...args),
   shouldPersistQuery: jest.fn(() => true),
 }));
 
@@ -123,20 +119,19 @@ describe('AppProviders', () => {
   beforeEach(() => {
     mockAuthBootstrapStarted.mockReset();
     mockInitializeObservability.mockReset();
-    mockPersistQueryClient.mockReset();
+    mockPersistQueryClientWithRestoreMetadata.mockReset();
     mockClearPersistedQueryCache.mockReset();
     mockQueryClientClear.mockReset();
-    mockReadPersistedQueryCacheMetadata.mockReset();
     mockSetObservabilityContext.mockReset();
     mockTrackObservabilityEvent.mockReset();
     mockTrackProductEvent.mockReset();
     mockUnsubscribe.mockReset();
     mockCompleteAuthBootstrap = undefined;
-    mockQueryRestorePromise = new Promise<void>((resolve) => {
+    mockQueryRestorePromise = new Promise<{ trimmed: boolean } | null>((resolve, reject) => {
       mockResolveQueryRestore = resolve;
+      mockRejectQueryRestore = reject;
     });
-    mockReadPersistedQueryCacheMetadata.mockResolvedValue(null);
-    mockPersistQueryClient.mockReturnValue([mockUnsubscribe, mockQueryRestorePromise]);
+    mockPersistQueryClientWithRestoreMetadata.mockReturnValue([mockUnsubscribe, mockQueryRestorePromise]);
     mockClearPersistedQueryCache.mockResolvedValue(undefined);
   });
 
@@ -153,7 +148,7 @@ describe('AppProviders', () => {
     });
 
     expect(mockAuthBootstrapStarted).toHaveBeenCalledTimes(1);
-    expect(mockPersistQueryClient).toHaveBeenCalledTimes(1);
+    expect(mockPersistQueryClientWithRestoreMetadata).toHaveBeenCalledTimes(1);
     expect(renderer!.root.findAllByType('SplashScreen')).toHaveLength(1);
 
     await act(async () => {
@@ -171,7 +166,7 @@ describe('AppProviders', () => {
     expect(renderer!.root.findAllByType('AppContent')).toHaveLength(0);
 
     await act(async () => {
-      mockResolveQueryRestore();
+      mockResolveQueryRestore(null);
       await mockQueryRestorePromise;
       await Promise.resolve();
       await Promise.resolve();
@@ -188,6 +183,68 @@ describe('AppProviders', () => {
         queryRestoreDurationMs: expect.any(Number),
         queryRestoreOutcome: 'successful_restore',
       }),
+    );
+  });
+
+  it('reports trimmed restores from metadata returned by the hydration pass', async () => {
+    await act(async () => {
+      create(
+        <AppProviders>
+          <AppContent />
+        </AppProviders>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mockCompleteAuthBootstrap?.({
+        authRestoreDurationMs: 120,
+        hadPersistedToken: true,
+        hasValidSession: true,
+        outcome: 'successful_restore',
+        refreshFailed: false,
+      });
+      mockResolveQueryRestore({ trimmed: true });
+      await mockQueryRestorePromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockTrackObservabilityEvent).toHaveBeenCalledWith(
+      'APP_COLD_START_COMPLETED',
+      expect.objectContaining({ queryRestoreOutcome: 'trimmed_restore' }),
+    );
+  });
+
+  it('reports failed restores when persisted cache hydration rejects', async () => {
+    await act(async () => {
+      create(
+        <AppProviders>
+          <AppContent />
+        </AppProviders>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mockCompleteAuthBootstrap?.({
+        authRestoreDurationMs: 120,
+        hadPersistedToken: true,
+        hasValidSession: true,
+        outcome: 'successful_restore',
+        refreshFailed: false,
+      });
+      mockRejectQueryRestore(new Error('Corrupt cache'));
+      await mockQueryRestorePromise.catch(() => undefined);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockTrackObservabilityEvent).toHaveBeenCalledWith(
+      'APP_COLD_START_COMPLETED',
+      expect.objectContaining({ queryRestoreOutcome: 'failed_restore' }),
     );
   });
 
@@ -224,7 +281,7 @@ describe('AppProviders', () => {
     expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      mockResolveQueryRestore();
+      mockResolveQueryRestore(null);
       await mockQueryRestorePromise;
       await Promise.resolve();
       await Promise.resolve();
@@ -266,7 +323,7 @@ describe('AppProviders', () => {
     expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      mockResolveQueryRestore();
+      mockResolveQueryRestore(null);
       await mockQueryRestorePromise;
       await Promise.resolve();
       await Promise.resolve();

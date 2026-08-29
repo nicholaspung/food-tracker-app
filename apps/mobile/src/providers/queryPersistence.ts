@@ -1,5 +1,10 @@
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import type { PersistedClient } from '@tanstack/query-persist-client-core';
+import {
+  persistQueryClient,
+  type PersistedClient,
+  type PersistQueryClientOptions,
+  type Persister,
+} from '@tanstack/query-persist-client-core';
 import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstack/react-query';
 
 import type { FeedbackMessageRecord, FeedbackRecord } from '../features/models';
@@ -17,7 +22,7 @@ const MAX_PERSISTED_INFINITE_PAGES = 1;
 const MAX_PERSISTED_INFINITE_PAGE_ITEMS = 50;
 const PERSISTED_QUERY_CACHE_METADATA_KEY = '__foodTrackerQueryPersistence';
 
-interface QueryPersistenceMetadata {
+export interface QueryPersistenceMetadata {
   version: 1;
   maxInfinitePages: number;
   maxInfinitePageItems: number;
@@ -262,23 +267,44 @@ export async function clearPersistedQueryCache(): Promise<void> {
   await queryPersister.removeClient();
 }
 
-export async function readPersistedQueryCacheMetadata(): Promise<QueryPersistenceMetadata | null> {
-  const rawClient = await localPersistence.queryCache.storage.getItem(localPersistence.queryCache.activeStorageKey);
-  if (!rawClient) {
-    return null;
-  }
+type AsyncPersisterOptions = Parameters<typeof createAsyncStoragePersister>[0];
 
-  try {
-    const parsedClient = JSON.parse(rawClient) as PersistedClientWithMetadata;
-    return parsedClient[PERSISTED_QUERY_CACHE_METADATA_KEY] ?? null;
-  } catch {
-    return null;
-  }
+export function createQueryPersister(
+  options: Partial<Pick<AsyncPersisterOptions, 'deserialize' | 'key' | 'storage'>> = {},
+): Persister {
+  return createAsyncStoragePersister({
+    storage: options.storage ?? localPersistence.queryCache.storage,
+    key: options.key ?? localPersistence.queryCache.activeStorageKey,
+    throttleTime: 1000,
+    serialize: (persistedClient) => JSON.stringify(redactAndTrimPersistedClient(persistedClient)),
+    deserialize: options.deserialize,
+  });
 }
 
-export const queryPersister = createAsyncStoragePersister({
-  storage: localPersistence.queryCache.storage,
-  key: localPersistence.queryCache.activeStorageKey,
-  throttleTime: 1000,
-  serialize: (persistedClient) => JSON.stringify(redactAndTrimPersistedClient(persistedClient)),
-});
+export const queryPersister = createQueryPersister();
+
+type PersistQueryClientWithRestoreMetadataOptions = Omit<PersistQueryClientOptions, 'persister'> & {
+  persister?: Persister;
+};
+
+export function persistQueryClientWithRestoreMetadata(
+  options: PersistQueryClientWithRestoreMetadataOptions,
+): [() => void, Promise<QueryPersistenceMetadata | null>] {
+  const { persister = queryPersister, ...persistOptions } = options;
+  let restoredMetadata: QueryPersistenceMetadata | null = null;
+  const restoreAwarePersister: Persister = {
+    persistClient: persister.persistClient,
+    removeClient: persister.removeClient,
+    restoreClient: async () => {
+      const persistedClient = (await persister.restoreClient()) as PersistedClientWithMetadata | undefined;
+      restoredMetadata = persistedClient?.[PERSISTED_QUERY_CACHE_METADATA_KEY] ?? null;
+      return persistedClient;
+    },
+  };
+  const [unsubscribe, restorePromise] = persistQueryClient({
+    ...persistOptions,
+    persister: restoreAwarePersister,
+  });
+
+  return [unsubscribe, restorePromise.then(() => restoredMetadata)];
+}

@@ -1,4 +1,3 @@
-import { persistQueryClient } from '@tanstack/query-persist-client-core';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -13,8 +12,7 @@ import {
 import { SplashScreen } from '../screens/SplashScreen';
 import {
   clearPersistedQueryCache,
-  queryPersister,
-  readPersistedQueryCacheMetadata,
+  persistQueryClientWithRestoreMetadata,
   shouldPersistQuery,
 } from './queryPersistence';
 import { AuthProvider, type AuthBootstrapResult } from './AuthProvider';
@@ -99,10 +97,8 @@ export function AppProviders({ children }: AppProvidersProps) {
     let unsubscribe = () => {};
 
     const restorePersistedQueries = async () => {
-      const persistedCacheMetadata = await readPersistedQueryCacheMetadata();
-      const [nextUnsubscribe, restorePromise] = persistQueryClient({
+      const [nextUnsubscribe, restorePromise] = persistQueryClientWithRestoreMetadata({
         queryClient,
-        persister: queryPersister,
         maxAge: 1000 * 60 * 60 * 24,
         dehydrateOptions: {
           shouldDehydrateQuery: shouldPersistQuery,
@@ -111,7 +107,7 @@ export function AppProviders({ children }: AppProvidersProps) {
 
       unsubscribe = nextUnsubscribe;
       try {
-        await withTimeout(
+        const persistedCacheMetadata = await withTimeout(
           restorePromise,
           QUERY_PERSISTENCE_RESTORE_TIMEOUT_MS,
           'Persisted React Query cache restore timed out.',
@@ -119,6 +115,7 @@ export function AppProviders({ children }: AppProvidersProps) {
             didRestoreTimeout = true;
           },
         );
+        queryRestoreOutcome = persistedCacheMetadata?.trimmed ? 'trimmed_restore' : 'successful_restore';
       } catch (error) {
         if (didRestoreTimeout) {
           unsubscribe();
@@ -137,7 +134,6 @@ export function AppProviders({ children }: AppProvidersProps) {
         }
         throw error;
       }
-      queryRestoreOutcome = persistedCacheMetadata?.trimmed ? 'trimmed_restore' : 'successful_restore';
     };
 
     void restorePersistedQueries()
