@@ -2,7 +2,7 @@ import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type { NoteRecord } from '../models';
 import type { NoteCountSummary, NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from './featureStore';
-import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
+import { isPaginatedNotesQueryKey, matchesNoteSearch, notesQueryKeys } from './notesQuery';
 
 interface PromoteCachedNoteToUsedInput {
   noteId: string;
@@ -18,18 +18,6 @@ function parseTimestamp(value: string | undefined): number {
 
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function matchesCachedNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return (
-    note.content.toLowerCase().includes(normalizedQuery) ||
-    note.locationText?.toLowerCase().includes(normalizedQuery) === true
-  );
 }
 
 function adjustSummaryForDeletedNote(
@@ -82,7 +70,7 @@ function shouldAdjustNotesQueryForDeletedNote(queryKey: QueryKey, note: NoteReco
     return false;
   }
 
-  return matchesCachedNoteSearch(note, resolveCachedNoteSearchQuery(queryKey));
+  return matchesNoteSearch(note, resolveCachedNoteSearchQuery(queryKey));
 }
 
 function removeCachedNoteFromInfiniteData(

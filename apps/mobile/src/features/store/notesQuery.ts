@@ -1,5 +1,6 @@
 import type { QueryKey } from '@tanstack/react-query';
 
+import type { NoteRecord } from '../models';
 import type { ListNotesPageInput } from './featureStore';
 
 type NoteBrowseStatus = NonNullable<ListNotesPageInput['status']>;
@@ -26,6 +27,18 @@ export const notesQueryKeys = {
   },
   summary: ['feature', 'notes', 'summary'] as const,
 };
+
+export function matchesNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    note.content.toLowerCase().includes(normalizedQuery) ||
+    note.locationText?.toLowerCase().includes(normalizedQuery) === true
+  );
+}
 
 export function isNoteDetailQueryKey(queryKey: QueryKey): boolean {
   return (
