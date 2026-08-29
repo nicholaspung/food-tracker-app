@@ -21,14 +21,22 @@ type profileResponse struct {
 }
 
 type tastingSessionResponse struct {
-	ID           string                           `json:"id"`
-	Name         string                           `json:"name"`
-	InviteCode   string                           `json:"inviteCode"`
-	LeaderUserID string                           `json:"leaderUserId"`
-	Status       string                           `json:"status"`
-	Participants []tastingSessionParticipantEntry `json:"participants"`
-	Invites      []tastingSessionInviteEntry      `json:"invites"`
-	Restaurants  []tastingSessionRestaurantEntry  `json:"restaurants"`
+	ID                string                           `json:"id"`
+	Name              string                           `json:"name"`
+	InviteCode        string                           `json:"inviteCode"`
+	LeaderUserID      string                           `json:"leaderUserId"`
+	Status            string                           `json:"status"`
+	Participants      []tastingSessionParticipantEntry `json:"participants"`
+	Invites           []tastingSessionInviteEntry      `json:"invites"`
+	Restaurants       []tastingSessionRestaurantEntry  `json:"restaurants"`
+	LifecyclePhase    string                           `json:"lifecyclePhase"`
+	LifecycleRevision string                           `json:"lifecycleRevision"`
+}
+
+type tastingSessionLifecycleResponse struct {
+	Changed  bool                    `json:"changed"`
+	Revision string                  `json:"revision"`
+	Session  *tastingSessionResponse `json:"session"`
 }
 
 type tastingSessionInviteEntry struct {
@@ -215,6 +223,239 @@ func TestTastingSessionCreateAndListEndpointsUseBackendRecords(t *testing.T) {
 	if listedSessions[0].ID != createdSession.ID {
 		t.Fatalf("expected listed session %q, got %#v", createdSession.ID, listedSessions)
 	}
+}
+
+func TestTastingSessionLifecycleChecksHydrateOnlyChangedActivePhases(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterTastingSessionHandlers)
+	leader, leaderToken := createAuthUser(t, server.app, false, false)
+	invitee, inviteeToken := createAuthUser(t, server.app, false, false)
+	createFriendshipRecord(t, server.app, leader.Id, invitee.Id, "accepted")
+
+	createResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions",
+		leaderToken,
+		`{"name":"Revision Flight","joinDurationMinutes":60,"invitedUserIds":["`+invitee.Id+`"]}`,
+	)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("expected create session to succeed, got %d: %s", createResponse.Code, createResponse.Body.String())
+	}
+	createdSession := parseJSONResponse[tastingSessionResponse](t, createResponse.Body.Bytes())
+	lifecyclePath := func(phase string, revision string) string {
+		path := "/api/tasting-sessions/" + createdSession.ID + "/lifecycle?phase=" + phase
+		if revision != "" {
+			path += "&revision=" + revision
+		}
+		return path
+	}
+	readLifecycleAs := func(token string, phase string, revision string) tastingSessionLifecycleResponse {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodGet,
+			lifecyclePath(phase, revision),
+			token,
+			"",
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s lifecycle check to succeed, got %d: %s", phase, response.Code, response.Body.String())
+		}
+		return parseJSONResponse[tastingSessionLifecycleResponse](t, response.Body.Bytes())
+	}
+	readLifecycle := func(phase string, revision string) tastingSessionLifecycleResponse {
+		return readLifecycleAs(leaderToken, phase, revision)
+	}
+	assertUnchanged := func(phase string, revision string) {
+		t.Helper()
+		response := readLifecycle(phase, revision)
+		if response.Changed || response.Revision != revision || response.Session != nil {
+			t.Fatalf("expected compact unchanged %s response, got %#v", phase, response)
+		}
+	}
+
+	lobbyInitial := readLifecycle("lobby", "")
+	if !lobbyInitial.Changed || lobbyInitial.Session == nil || lobbyInitial.Revision == "" ||
+		lobbyInitial.Session.LifecyclePhase != "lobby" ||
+		lobbyInitial.Session.LifecycleRevision != lobbyInitial.Revision {
+		t.Fatalf("expected initial lobby check to hydrate revisioned detail, got %#v", lobbyInitial)
+	}
+	assertUnchanged("lobby", lobbyInitial.Revision)
+
+	acceptResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/accept-invite",
+		inviteeToken,
+		`{}`,
+	)
+	if acceptResponse.Code != http.StatusOK {
+		t.Fatalf("expected invite acceptance to succeed, got %d: %s", acceptResponse.Code, acceptResponse.Body.String())
+	}
+	lobbyChanged := readLifecycle("lobby", lobbyInitial.Revision)
+	if !lobbyChanged.Changed || lobbyChanged.Session == nil || len(lobbyChanged.Session.Participants) != 2 {
+		t.Fatalf("expected participant and invite changes to hydrate lobby detail, got %#v", lobbyChanged)
+	}
+	assertUnchanged("lobby", lobbyChanged.Revision)
+
+	inviteeLobby := readLifecycleAs(inviteeToken, "lobby", "")
+	if !inviteeLobby.Changed || inviteeLobby.Session == nil || len(inviteeLobby.Session.Invites) != 0 {
+		t.Fatalf("expected participant lobby detail to omit leader-only invites, got %#v", inviteeLobby)
+	}
+	inviteRecord, err := server.app.FindFirstRecordByFilter(
+		"tasting_session_invites",
+		"session = {:session} && invited_user = {:user}",
+		map[string]any{"session": createdSession.ID, "user": invitee.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load invite for viewer-scope check: %v", err)
+	}
+	inviteRecord.Set("status", "pending")
+	if err := server.app.Save(inviteRecord); err != nil {
+		t.Fatalf("failed to update invite for viewer-scope check: %v", err)
+	}
+	inviteeUnchanged := readLifecycleAs(inviteeToken, "lobby", inviteeLobby.Revision)
+	if inviteeUnchanged.Changed || inviteeUnchanged.Revision != inviteeLobby.Revision || inviteeUnchanged.Session != nil {
+		t.Fatalf("expected leader-only invite change to stay compact for participant, got %#v", inviteeUnchanged)
+	}
+	inviteRecord.Set("status", "accepted")
+	if err := server.app.Save(inviteRecord); err != nil {
+		t.Fatalf("failed to restore invite after viewer-scope check: %v", err)
+	}
+	lobbyInviteChanged := readLifecycle("lobby", lobbyChanged.Revision)
+	if !lobbyInviteChanged.Changed || lobbyInviteChanged.Session == nil {
+		t.Fatalf("expected leader lobby detail to observe invite changes, got %#v", lobbyInviteChanged)
+	}
+
+	departingParticipant, err := server.app.FindFirstRecordByFilter(
+		"tasting_session_participants",
+		"session = {:session} && user = {:user}",
+		map[string]any{"session": createdSession.ID, "user": invitee.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load participant for replacement check: %v", err)
+	}
+	if err := server.app.Delete(departingParticipant); err != nil {
+		t.Fatalf("failed to remove participant for replacement check: %v", err)
+	}
+	replacement, _ := createAuthUser(t, server.app, false, false)
+	createCollectionRecord(t, server.app, "tasting_session_participants", map[string]any{
+		"role":    "participant",
+		"session": createdSession.ID,
+		"user":    replacement.Id,
+	})
+	lobbyReplacementChanged := readLifecycle("lobby", lobbyInviteChanged.Revision)
+	if !lobbyReplacementChanged.Changed || lobbyReplacementChanged.Session == nil ||
+		len(lobbyReplacementChanged.Session.Participants) != 2 {
+		t.Fatalf("expected net-zero participant replacement to hydrate lobby detail, got %#v", lobbyReplacementChanged)
+	}
+	assertUnchanged("lobby", lobbyReplacementChanged.Revision)
+
+	lockResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/lock-membership",
+		leaderToken,
+		`{}`,
+	)
+	if lockResponse.Code != http.StatusOK {
+		t.Fatalf("expected membership lock to succeed, got %d: %s", lockResponse.Code, lockResponse.Body.String())
+	}
+	planningInitial := readLifecycle("planning", "")
+	if !planningInitial.Changed || planningInitial.Session == nil || planningInitial.Session.Status != "planning" {
+		t.Fatalf("expected planning status transition to hydrate detail, got %#v", planningInitial)
+	}
+	assertUnchanged("planning", planningInitial.Revision)
+
+	addRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants",
+		leaderToken,
+		`{"restaurantName":"Signal Kitchen"}`,
+	)
+	if addRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected Tasting Plan restaurant add to succeed, got %d: %s", addRestaurantResponse.Code, addRestaurantResponse.Body.String())
+	}
+	withRestaurant := parseJSONResponse[tastingSessionResponse](t, addRestaurantResponse.Body.Bytes())
+	menuItem := createCollectionRecord(t, server.app, "menu_items", map[string]any{
+		"restaurant": withRestaurant.Restaurants[0].RestaurantID,
+		"name":       "Signal Bite",
+		"createdBy":  leader.Id,
+		"visibility": "friends",
+	})
+	addItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/restaurants/"+withRestaurant.Restaurants[0].ID+"/items",
+		leaderToken,
+		`{"menuItemId":"`+menuItem.Id+`"}`,
+	)
+	if addItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected Tasting Plan item add to succeed, got %d: %s", addItemResponse.Code, addItemResponse.Body.String())
+	}
+	planningChanged := readLifecycle("planning", planningInitial.Revision)
+	if !planningChanged.Changed || planningChanged.Session == nil ||
+		len(planningChanged.Session.Restaurants) != 1 ||
+		len(planningChanged.Session.Restaurants[0].Items) != 1 {
+		t.Fatalf("expected Tasting Plan changes to hydrate planning detail, got %#v", planningChanged)
+	}
+	assertUnchanged("planning", planningChanged.Revision)
+
+	inviteRecord, err = server.app.FindFirstRecordByFilter(
+		"tasting_session_invites",
+		"session = {:session} && invited_user = {:user}",
+		map[string]any{"session": createdSession.ID, "user": invitee.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load invite for phase relevance check: %v", err)
+	}
+	inviteRecord.Set("status", "pending")
+	if err := server.app.Save(inviteRecord); err != nil {
+		t.Fatalf("failed to update invite for phase relevance check: %v", err)
+	}
+	assertUnchanged("planning", planningChanged.Revision)
+
+	startResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/start",
+		leaderToken,
+		`{}`,
+	)
+	if startResponse.Code != http.StatusOK {
+		t.Fatalf("expected tasting start to succeed, got %d: %s", startResponse.Code, startResponse.Body.String())
+	}
+	tastingInitial := readLifecycle("tasting", "")
+	if !tastingInitial.Changed || tastingInitial.Session == nil || tastingInitial.Session.Status != "tasting" {
+		t.Fatalf("expected tasting status transition to hydrate detail, got %#v", tastingInitial)
+	}
+	assertUnchanged("tasting", tastingInitial.Revision)
+
+	itemID := tastingInitial.Session.Restaurants[0].Items[0].ID
+	rateResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/"+createdSession.ID+"/ratings",
+		leaderToken,
+		`{"restaurants":[{"restaurantSuggestionId":"`+tastingInitial.Session.Restaurants[0].ID+`","items":[{"itemId":"`+itemID+`","rating":4,"note":"Changed"}]}]}`,
+	)
+	if rateResponse.Code != http.StatusOK {
+		t.Fatalf("expected Tasting Rating Submission to succeed, got %d: %s", rateResponse.Code, rateResponse.Body.String())
+	}
+	tastingChanged := readLifecycle("tasting", tastingInitial.Revision)
+	if !tastingChanged.Changed || tastingChanged.Session == nil ||
+		len(tastingChanged.Session.Restaurants[0].Items[0].Ratings) != 1 {
+		t.Fatalf("expected rating submission to hydrate tasting detail, got %#v", tastingChanged)
+	}
+	assertUnchanged("tasting", tastingChanged.Revision)
 }
 
 func TestTastingSessionLifecycleReplaysIdempotencyKeysWithoutDuplicateWrites(t *testing.T) {

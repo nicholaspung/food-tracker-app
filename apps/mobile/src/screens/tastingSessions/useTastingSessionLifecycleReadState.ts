@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 
 import {
   getTastingSessionById,
+  getTastingSessionLifecycleById,
   removeTastingSessionFromSummariesCache,
   tastingSessionsQueryKeys,
   type TastingParticipantRecord,
@@ -225,9 +226,20 @@ export function useTastingSessionLifecycleReadState(input: {
   const isFocused = useIsFocused();
   const queryClient = useQueryClient();
   const shouldPoll = shouldPollTastingSessionLifecycleScreen(input.screen, isOnline, isFocused);
+  const detailQueryKey = tastingSessionsQueryKeys.detail(input.sessionId);
   const sessionQuery = useQuery({
-    queryKey: tastingSessionsQueryKeys.detail(input.sessionId),
-    queryFn: ({ signal }) => getTastingSessionById(input.sessionId, { signal }),
+    queryKey: detailQueryKey,
+    queryFn: ({ signal }) => {
+      if (input.screen === 'results') {
+        return getTastingSessionById(input.sessionId, { signal });
+      }
+      return getTastingSessionLifecycleById(
+        input.sessionId,
+        input.screen,
+        queryClient.getQueryData<TastingSessionRecord | null>(detailQueryKey),
+        { signal },
+      );
+    },
     refetchInterval: (query) =>
       shouldPoll && query.state.data ? TASTING_SESSION_LIFECYCLE_REFETCH_INTERVAL_MS : false,
     refetchOnMount: 'always',

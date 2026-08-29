@@ -192,5 +192,6 @@ export {
 } from './billsStore';
 export {
   getTastingSessionById,
+  getTastingSessionLifecycleById,
   listTastingSessionSummariesPage,
 } from './tastingSessionsApiStore';

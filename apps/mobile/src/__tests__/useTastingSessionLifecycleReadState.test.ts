@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import type { TastingSessionRecord } from '../features';
+import { getTastingSessionLifecycleById } from '../features/store/tastingSessionsApiStore';
+import { sendApiRequest } from '../features/store/pocketbaseGateway';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import {
   applyTastingSessionMissingAccessCachePolicy,
@@ -11,6 +13,12 @@ import {
   getTastingSessionLifecycleStepState,
   shouldPollTastingSessionLifecycleScreen,
 } from '../screens/tastingSessions/useTastingSessionLifecycleReadState';
+
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  sendApiRequest: jest.fn(),
+}));
+
+const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
 
 const baseSession: TastingSessionRecord = {
   createdAt: '2026-05-20T11:00:00.000Z',
@@ -55,6 +63,10 @@ const baseSession: TastingSessionRecord = {
 };
 
 describe('tasting session lifecycle read state', () => {
+  beforeEach(() => {
+    mockedSendApiRequest.mockReset();
+  });
+
   it('maps session status to lifecycle progress steps', () => {
     expect(getTastingSessionLifecycleStepState('lobby')).toMatchObject({
       currentStep: 0,
@@ -95,6 +107,110 @@ describe('tasting session lifecycle read state', () => {
     expect(shouldPollTastingSessionLifecycleScreen('results', true)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('lobby', false)).toBe(false);
     expect(shouldPollTastingSessionLifecycleScreen('lobby', true, false)).toBe(false);
+  });
+
+  it.each(['lobby', 'planning', 'tasting'] as const)(
+    'reuses the cached detail when an unchanged %s lifecycle check returns only its revision',
+    async (phase) => {
+      const cachedSession: TastingSessionRecord = {
+        ...baseSession,
+        lifecyclePhase: phase,
+        lifecycleRevision: `${phase}-revision`,
+      };
+      mockedSendApiRequest.mockResolvedValue({
+        changed: false,
+        revision: cachedSession.lifecycleRevision,
+      });
+
+      const result = await getTastingSessionLifecycleById(
+        baseSession.id,
+        phase,
+        cachedSession,
+      );
+
+      expect(result).toBe(cachedSession);
+      expect(mockedSendApiRequest).toHaveBeenCalledWith(
+        `/api/tasting-sessions/session_1/lifecycle?phase=${phase}&revision=${phase}-revision`,
+        { method: 'GET', signal: undefined },
+      );
+    },
+  );
+
+  it('replaces the cached detail once when a lifecycle check returns changed session data', async () => {
+    const cachedSession: TastingSessionRecord = {
+      ...baseSession,
+      lifecyclePhase: 'planning',
+      lifecycleRevision: 'planning-before',
+      status: 'planning',
+    };
+    const changedSession: TastingSessionRecord = {
+      ...cachedSession,
+      lifecycleRevision: 'planning-after',
+      restaurants: [
+        {
+          createdAt: '2026-05-20T11:10:00.000Z',
+          id: 'restaurant_1',
+          items: [],
+          restaurantId: 'location_1',
+          restaurantName: 'Ramen Lab',
+          status: 'approved',
+          suggestedByParticipantId: 'participant_1',
+        },
+      ],
+    };
+    mockedSendApiRequest.mockResolvedValue({
+      changed: true,
+      revision: changedSession.lifecycleRevision,
+      session: changedSession,
+    });
+
+    await expect(
+      getTastingSessionLifecycleById(baseSession.id, 'planning', cachedSession),
+    ).resolves.toBe(changedSession);
+    expect(mockedSendApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces concurrent lifecycle checks on the shared detail query key', async () => {
+    const queryClient = new QueryClient();
+    const queryKey = tastingSessionsQueryKeys.detail(baseSession.id);
+    const cachedSession: TastingSessionRecord = {
+      ...baseSession,
+      lifecyclePhase: 'tasting',
+      lifecycleRevision: 'tasting-before',
+      status: 'tasting',
+    };
+    const changedSession: TastingSessionRecord = {
+      ...cachedSession,
+      lifecycleRevision: 'tasting-after',
+    };
+    let resolveResponse: (value: unknown) => void = () => undefined;
+    const responsePromise = new Promise<unknown>((resolve) => {
+      resolveResponse = resolve;
+    });
+    mockedSendApiRequest.mockReturnValue(responsePromise as never);
+    queryClient.setQueryData(queryKey, cachedSession);
+    const queryFn = () =>
+      getTastingSessionLifecycleById(
+        baseSession.id,
+        'tasting',
+        queryClient.getQueryData<TastingSessionRecord>(queryKey),
+      );
+
+    const firstCheck = queryClient.fetchQuery({ queryFn, queryKey });
+    const concurrentCheck = queryClient.fetchQuery({ queryFn, queryKey });
+    await Promise.resolve();
+
+    expect(mockedSendApiRequest).toHaveBeenCalledTimes(1);
+    resolveResponse({
+      changed: true,
+      revision: changedSession.lifecycleRevision,
+      session: changedSession,
+    });
+    await expect(Promise.all([firstCheck, concurrentCheck])).resolves.toEqual([
+      changedSession,
+      changedSession,
+    ]);
+    expect(mockedSendApiRequest).toHaveBeenCalledTimes(1);
   });
 
   it('returns redirect destinations without executing navigation', () => {

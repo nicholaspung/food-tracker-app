@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -17,34 +19,37 @@ import (
 )
 
 const (
-	tastingInviteCodeLength           = 6
-	maxTastingInviteCodeSaveAttempts  = 16
-	maxTastingSessionNameLength       = 200
-	maxTastingRestaurantNameLength    = 200
-	maxTastingItemNameLength          = 300
-	maxTastingNoteLength              = 500
-	tastingSessionStatusLobby         = "lobby"
-	tastingSessionStatusPlanning      = "planning"
-	tastingSessionStatusTasting       = "tasting"
-	tastingSessionStatusCompleted     = "completed"
-	tastingSuggestionStatusPending    = "pending"
-	tastingSuggestionStatusApproved   = "approved"
-	tastingSuggestionStatusRejected   = "rejected"
-	tastingInviteStatusPending        = "pending"
-	tastingInviteStatusAccepted       = "accepted"
-	tastingInviteStatusDismissed      = "dismissed"
-	tastingInviteStatusRevoked        = "revoked"
-	tastingRoleLeader                 = "leader"
-	tastingRoleParticipant            = "participant"
-	defaultTastingMaxParticipants     = 12
-	maxTastingDirectInvitees          = defaultTastingMaxParticipants - 1
-	defaultTastingMaxRestaurants      = 5
-	defaultTastingMaxApprovedItems    = 30
-	defaultTastingSessionListPageSize = 20
-	maxTastingSessionListPageSize     = 50
-	maxTastingMenuItemNameCandidates  = 100
-	tastingSessionCreateBudgetMax     = 5
-	tastingInviteResendBudgetMax      = 10
+	tastingInviteCodeLength              = 6
+	maxTastingInviteCodeSaveAttempts     = 16
+	maxTastingSessionNameLength          = 200
+	maxTastingRestaurantNameLength       = 200
+	maxTastingItemNameLength             = 300
+	maxTastingNoteLength                 = 500
+	tastingSessionStatusLobby            = "lobby"
+	tastingSessionStatusPlanning         = "planning"
+	tastingSessionStatusTasting          = "tasting"
+	tastingSessionStatusCompleted        = "completed"
+	tastingSessionLifecyclePhaseLobby    = "lobby"
+	tastingSessionLifecyclePhasePlanning = "planning"
+	tastingSessionLifecyclePhaseTasting  = "tasting"
+	tastingSuggestionStatusPending       = "pending"
+	tastingSuggestionStatusApproved      = "approved"
+	tastingSuggestionStatusRejected      = "rejected"
+	tastingInviteStatusPending           = "pending"
+	tastingInviteStatusAccepted          = "accepted"
+	tastingInviteStatusDismissed         = "dismissed"
+	tastingInviteStatusRevoked           = "revoked"
+	tastingRoleLeader                    = "leader"
+	tastingRoleParticipant               = "participant"
+	defaultTastingMaxParticipants        = 12
+	maxTastingDirectInvitees             = defaultTastingMaxParticipants - 1
+	defaultTastingMaxRestaurants         = 5
+	defaultTastingMaxApprovedItems       = 30
+	defaultTastingSessionListPageSize    = 20
+	maxTastingSessionListPageSize        = 50
+	maxTastingMenuItemNameCandidates     = 100
+	tastingSessionCreateBudgetMax        = 5
+	tastingInviteResendBudgetMax         = 10
 )
 
 const (
@@ -155,21 +160,35 @@ type tastingRestaurantResponse struct {
 }
 
 type tastingSessionResponse struct {
-	ID               string                       `json:"id"`
-	Name             string                       `json:"name"`
-	LeaderUserID     string                       `json:"leaderUserId"`
-	Status           string                       `json:"status"`
-	InviteCode       string                       `json:"inviteCode,omitempty"`
-	JoinExpiresAt    string                       `json:"joinExpiresAt"`
-	JoinedCount      int                          `json:"joinedCount"`
-	MaxParticipants  int                          `json:"maxParticipants"`
-	MaxRestaurants   int                          `json:"maxRestaurants"`
-	MaxApprovedItems int                          `json:"maxApprovedItems"`
-	Participants     []tastingParticipantResponse `json:"participants"`
-	Invites          []tastingInviteResponse      `json:"invites"`
-	Restaurants      []tastingRestaurantResponse  `json:"restaurants"`
-	CreatedAt        string                       `json:"createdAt"`
-	UpdatedAt        string                       `json:"updatedAt"`
+	ID                string                       `json:"id"`
+	Name              string                       `json:"name"`
+	LeaderUserID      string                       `json:"leaderUserId"`
+	Status            string                       `json:"status"`
+	InviteCode        string                       `json:"inviteCode,omitempty"`
+	JoinExpiresAt     string                       `json:"joinExpiresAt"`
+	JoinedCount       int                          `json:"joinedCount"`
+	MaxParticipants   int                          `json:"maxParticipants"`
+	MaxRestaurants    int                          `json:"maxRestaurants"`
+	MaxApprovedItems  int                          `json:"maxApprovedItems"`
+	Participants      []tastingParticipantResponse `json:"participants"`
+	Invites           []tastingInviteResponse      `json:"invites"`
+	Restaurants       []tastingRestaurantResponse  `json:"restaurants"`
+	CreatedAt         string                       `json:"createdAt"`
+	UpdatedAt         string                       `json:"updatedAt"`
+	LifecyclePhase    string                       `json:"lifecyclePhase,omitempty"`
+	LifecycleRevision string                       `json:"lifecycleRevision,omitempty"`
+}
+
+type tastingSessionLifecycleResponse struct {
+	Changed  bool                    `json:"changed"`
+	Revision string                  `json:"revision"`
+	Session  *tastingSessionResponse `json:"session,omitempty"`
+}
+
+type tastingSessionLifecycleVersionRow struct {
+	ID        string `db:"id"`
+	CreatedAt string `db:"createdAt"`
+	UpdatedAt string `db:"updatedAt"`
 }
 
 type tastingSessionListInviteSummaryResponse struct {
@@ -503,6 +522,53 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("sessionId is required", nil)
 		}
 		return writeTastingSessionResponse(e, app, sessionID, authRecord.Id)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/tasting-sessions/{sessionId}/lifecycle", func(e *core.RequestEvent) error {
+		e.Response.Header().Set("Cache-Control", "no-store")
+		authRecord, err := requireTastingAuth(e)
+		if err != nil {
+			return err
+		}
+		sessionID := strings.TrimSpace(e.Request.PathValue("sessionId"))
+		if sessionID == "" {
+			return apis.NewBadRequestError("sessionId is required", nil)
+		}
+		phase, phaseErr := normalizeTastingSessionLifecyclePhase(e.Request.URL.Query().Get("phase"))
+		if phaseErr != nil {
+			return apis.NewBadRequestError(phaseErr.Error(), nil)
+		}
+		sessionRecord, loadErr := loadVisibleTastingSession(app, sessionID, authRecord.Id)
+		if loadErr != nil {
+			return mapTastingLoadError(loadErr)
+		}
+		revision, revisionErr := buildTastingSessionLifecycleRevision(
+			app,
+			sessionRecord,
+			authRecord.Id,
+			phase,
+		)
+		if revisionErr != nil {
+			return apis.NewApiError(500, "failed to build tasting session lifecycle revision", revisionErr)
+		}
+		if strings.TrimSpace(e.Request.URL.Query().Get("revision")) == revision {
+			return e.JSON(200, tastingSessionLifecycleResponse{
+				Changed:  false,
+				Revision: revision,
+			})
+		}
+
+		response, responseErr := buildTastingSessionResponse(app, sessionRecord, authRecord.Id)
+		if responseErr != nil {
+			return apis.NewApiError(500, "failed to build tasting session", responseErr)
+		}
+		response.LifecyclePhase = phase
+		response.LifecycleRevision = revision
+		return e.JSON(200, tastingSessionLifecycleResponse{
+			Changed:  true,
+			Revision: revision,
+			Session:  &response,
+		})
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/tasting-sessions/{sessionId}/accept-invite", func(e *core.RequestEvent) error {
@@ -1114,6 +1180,87 @@ func normalizeTastingSessionListFilter(filterRaw string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid tasting session filter")
 	}
+}
+
+func normalizeTastingSessionLifecyclePhase(phaseRaw string) (string, error) {
+	switch strings.TrimSpace(phaseRaw) {
+	case tastingSessionLifecyclePhaseLobby:
+		return tastingSessionLifecyclePhaseLobby, nil
+	case tastingSessionLifecyclePhasePlanning:
+		return tastingSessionLifecyclePhasePlanning, nil
+	case tastingSessionLifecyclePhaseTasting:
+		return tastingSessionLifecyclePhaseTasting, nil
+	default:
+		return "", errors.New("phase must be lobby, planning, or tasting")
+	}
+}
+
+func buildTastingSessionLifecycleRevision(
+	app core.App,
+	sessionRecord *core.Record,
+	viewerUserID string,
+	phase string,
+) (string, error) {
+	parts := []string{
+		phase,
+		strings.TrimSpace(viewerUserID),
+		sessionRecord.GetString("updated"),
+	}
+	collections := []string{"tasting_session_participants"}
+	switch phase {
+	case tastingSessionLifecyclePhaseLobby:
+		if strings.TrimSpace(sessionRecord.GetString("leader")) == strings.TrimSpace(viewerUserID) {
+			collections = append(collections, "tasting_session_invites")
+		}
+	case tastingSessionLifecyclePhasePlanning, tastingSessionLifecyclePhaseTasting:
+		collections = append(collections,
+			"tasting_session_restaurants",
+			"tasting_session_items",
+		)
+	}
+	if phase == tastingSessionLifecyclePhaseTasting {
+		collections = append(collections, "tasting_session_ratings")
+	}
+
+	for _, collectionName := range collections {
+		filter := "session = {:session}"
+		params := dbx.Params{"session": sessionRecord.Id}
+		if collectionName == "tasting_session_ratings" {
+			filter += " AND user = {:user}"
+			params["user"] = strings.TrimSpace(viewerUserID)
+		}
+		versionRows, err := getTastingSessionLifecycleVersionRows(
+			app,
+			collectionName,
+			filter,
+			params,
+		)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, collectionName, strconv.Itoa(len(versionRows)))
+		for _, row := range versionRows {
+			parts = append(parts, row.ID, row.CreatedAt, row.UpdatedAt)
+		}
+	}
+
+	digest := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func getTastingSessionLifecycleVersionRows(
+	app core.App,
+	collectionName string,
+	filter string,
+	params dbx.Params,
+) ([]tastingSessionLifecycleVersionRow, error) {
+	rows := []tastingSessionLifecycleVersionRow{}
+	query := "SELECT id, created AS [[createdAt]], updated AS [[updatedAt]] FROM " +
+		collectionName + " WHERE " + filter + " ORDER BY id"
+	if err := app.DB().NewQuery(query).Bind(params).All(&rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func parseTastingSessionListPagination(pageRaw string, pageSizeRaw string) (int, int, error) {

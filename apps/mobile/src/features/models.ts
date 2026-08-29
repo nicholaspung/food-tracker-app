@@ -372,6 +372,8 @@ export interface TastingSessionRecord {
   items?: unknown[];
   createdAt: string;
   updatedAt: string;
+  lifecyclePhase?: 'lobby' | 'planning' | 'tasting';
+  lifecycleRevision?: string;
 }
 
 export interface BillItemRecord {

@@ -55,6 +55,14 @@ interface ReadRequestOptions {
   signal?: AbortSignal;
 }
 
+export type TastingSessionLifecyclePhase = 'lobby' | 'planning' | 'tasting';
+
+interface TastingSessionLifecycleApiResponse {
+  changed: boolean;
+  revision: string;
+  session?: TastingSessionRecord;
+}
+
 interface TastingSessionListSummaryApiResponseItem {
   id: string;
   name: string;
@@ -155,6 +163,44 @@ export async function getTastingSessionById(
       method: 'GET',
       signal: options?.signal,
     });
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getTastingSessionLifecycleById(
+  sessionId: string,
+  phase: TastingSessionLifecyclePhase,
+  cachedSession: TastingSessionRecord | null | undefined,
+  options?: ReadRequestOptions,
+): Promise<TastingSessionRecord | null> {
+  const query = new URLSearchParams({ phase });
+  if (cachedSession?.lifecyclePhase === phase && cachedSession.lifecycleRevision) {
+    query.set('revision', cachedSession.lifecycleRevision);
+  }
+
+  try {
+    const response = await sendApiRequest<TastingSessionLifecycleApiResponse>(
+      `/api/tasting-sessions/${encodePathSegment(sessionId)}/lifecycle?${query.toString()}`,
+      {
+        method: 'GET',
+        signal: options?.signal,
+      },
+    );
+    if (
+      !response.changed &&
+      cachedSession?.lifecyclePhase === phase &&
+      cachedSession.lifecycleRevision === response.revision
+    ) {
+      return cachedSession;
+    }
+    if (response.session) {
+      return response.session;
+    }
+    throw new Error('Tasting Session lifecycle response omitted changed session data');
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
