@@ -24,13 +24,18 @@ interface ListDetailWantToTryMenuItemRowProps {
 
 const useStyles = createThemedStyles((theme) => ({
   item: {
+    alignItems: 'flex-start',
     backgroundColor: 'transparent',
     borderColor: 'transparent',
     borderRadius: 0,
     paddingHorizontal: 0,
   },
+  itemContent: {
+    minWidth: 0,
+  },
   actions: {
     alignItems: 'center',
+    flexShrink: 0,
     flexDirection: 'row',
     gap: theme.spacing.xs,
   },
@@ -39,7 +44,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderRadius: theme.radii.sm,
     flexDirection: 'row',
     gap: 2,
-    minHeight: 28,
+    justifyContent: 'center',
+    minHeight: MIN_TOUCH_TARGET_SIZE,
+    minWidth: MIN_TOUCH_TARGET_SIZE,
     paddingHorizontal: theme.spacing.xs,
   },
   iWentButtonPressed: {
@@ -80,6 +87,7 @@ export function ListDetailWantToTryMenuItemRow({
 
   return (
     <ListItem
+      contentStyle={styles.itemContent}
       style={styles.item}
       testID={`want-to-try-menu-item-${itemIndex}`}
       title={item.name}

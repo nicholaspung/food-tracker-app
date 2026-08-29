@@ -264,8 +264,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   reorderControls: {
     alignItems: 'center',
+    flexShrink: 0,
     flexDirection: 'row',
-    gap: 2,
+    gap: theme.spacing.xs,
   },
   reorderButton: {
     alignItems: 'center',
@@ -273,9 +274,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.sm,
     borderWidth: 1,
-    height: 24,
+    height: 44,
     justifyContent: 'center',
-    width: 24,
+    width: 44,
   },
   reorderButtonPressed: {
     backgroundColor: theme.colors.background.muted,
@@ -1846,6 +1847,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                 <Pressable
                                   accessibilityLabel={`Move ${group.restaurantName} up`}
                                   accessibilityRole="button"
+                                  accessibilityState={{ disabled: Boolean(movingRestaurantId) }}
                                   disabled={Boolean(movingRestaurantId)}
                                   onPress={() => {
                                     void handleMoveRestaurant(group.restaurantId, 'up');
@@ -1860,6 +1862,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                 <Pressable
                                   accessibilityLabel={`Move ${group.restaurantName} down`}
                                   accessibilityRole="button"
+                                  accessibilityState={{ disabled: Boolean(movingRestaurantId) }}
                                   disabled={Boolean(movingRestaurantId)}
                                   onPress={() => {
                                     void handleMoveRestaurant(group.restaurantId, 'down');

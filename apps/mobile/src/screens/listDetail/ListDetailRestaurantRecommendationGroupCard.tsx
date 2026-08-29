@@ -43,6 +43,7 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
+    minWidth: 0,
   },
   restaurantIndex: {
     color: theme.colors.text.muted,
@@ -50,6 +51,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   restaurantTitle: {
     color: theme.colors.text.primary,
+    flexShrink: 1,
     ...theme.typography.bodyLgBold,
   },
   metaRow: {

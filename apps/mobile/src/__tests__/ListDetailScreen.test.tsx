@@ -463,6 +463,10 @@ function flattenStyle(style: any): Record<string, unknown> {
   return style;
 }
 
+function flattenPressableStyle(style: any): Record<string, unknown> {
+  return flattenStyle(typeof style === 'function' ? style({ pressed: false }) : style);
+}
+
 function findRightAccessoryElementByTestID(root: any, testID: string): any {
   const scaffold = root.findByType('FeatureDetailScreenScaffold');
 
@@ -738,6 +742,194 @@ describe('ListDetailScreen', () => {
     });
 
     expect(navigation.navigate).toHaveBeenCalledWith('RestaurantDiscovery');
+  });
+
+  it('keeps adjacent Want to Try actions distinct with 44-point targets', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          list: buildList({
+            isDefault: true,
+            name: 'Want to Try',
+          }),
+          items: [
+            buildListItem({
+              id: 'restaurant_bookmark_1',
+              restaurantName: 'A Restaurant Name Long Enough to Wrap Without Hiding Actions',
+              bookmarkedItems: [],
+            }),
+            buildListItem({
+              id: 'menu_item_bookmark_1',
+              restaurantName: 'A Restaurant Name Long Enough to Wrap Without Hiding Actions',
+              bookmarkedItems: [
+                {
+                  id: 'food_1',
+                  listItemId: 'menu_item_bookmark_1',
+                  menuItemId: 'menu_item_1',
+                  name: 'A Menu Item Name Long Enough to Wrap Without Hiding Actions',
+                  rating: 4,
+                },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const restaurantIWent = renderer.root.findByProps({ testID: 'i-went-restaurant-bookmark-0' });
+    const restaurantRemove = renderer.root.findByProps({ testID: 'delete-restaurant-bookmark-0' });
+    const menuItemIWent = renderer.root.findByProps({
+      testID: 'i-went-list-item-menu_item_bookmark_1',
+    });
+    const menuItemRemove = renderer.root.findByProps({
+      testID: 'remove-want-to-try-menu-item-menu_item_bookmark_1',
+    });
+
+    for (const button of [restaurantIWent, restaurantRemove, menuItemIWent, menuItemRemove]) {
+      const buttonStyle = flattenPressableStyle(button.props.style);
+      expect(buttonStyle.minHeight ?? buttonStyle.height).toBe(44);
+      expect(buttonStyle.minWidth ?? buttonStyle.width).toBe(44);
+    }
+
+    expect(restaurantIWent.props.accessibilityLabel).toContain('I went to');
+    expect(restaurantRemove.props.accessibilityLabel).toContain('Remove');
+    expect(menuItemIWent.props.accessibilityLabel).toContain('I went for');
+    expect(menuItemRemove.props.accessibilityLabel).toContain('Remove');
+
+    act(() => {
+      restaurantIWent.props.onPress();
+    });
+    expect(navigation.navigate).toHaveBeenLastCalledWith(
+      'CreateVisit',
+      expect.objectContaining({
+        sourceListItemId: 'restaurant_bookmark_1',
+      }),
+    );
+
+    act(() => {
+      restaurantRemove.props.onPress();
+    });
+    expect(restaurantListWrites.removeBookmarkFromDefaultList).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.title).toBe(
+      'Remove Restaurant?',
+    );
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.onCancel();
+      menuItemIWent.props.onPress();
+    });
+    expect(navigation.navigate).toHaveBeenLastCalledWith(
+      'CreateVisit',
+      expect.objectContaining({
+        sourceListItemId: 'menu_item_bookmark_1',
+      }),
+    );
+
+    act(() => {
+      menuItemRemove.props.onPress();
+    });
+    expect(restaurantListWrites.removeBookmarkFromDefaultList).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ testID: 'delete-list-item-confirmation-modal' }).props.title).toBe(
+      'Remove Menu Item?',
+    );
+  });
+
+  it('keeps first, middle, and last reorder actions separate and disabled while moving', async () => {
+    const reorderDeferred = createDeferred<{ result: never[]; status: 'completed' }>();
+    restaurantListWrites.reorderRestaurant.mockReturnValue(reorderDeferred.promise);
+    mockedUseAuth.mockReturnValue({
+      user: {
+        id: 'owner_1',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult(
+        buildDetail({
+          items: [
+            buildListItem({
+              id: 'item_1',
+              restaurantId: 'restaurant_1',
+              restaurantName: 'First Restaurant',
+            }),
+            buildListItem({
+              id: 'item_2',
+              position: 1,
+              restaurantId: 'restaurant_2',
+              restaurantName: 'Middle Restaurant With a Long Name That Wraps',
+            }),
+            buildListItem({
+              id: 'item_3',
+              position: 2,
+              restaurantId: 'restaurant_3',
+              restaurantName: 'Last Restaurant',
+            }),
+          ],
+        }),
+      ),
+    );
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'move-restaurant-up-restaurant_1' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'move-restaurant-down-restaurant_3' })).toHaveLength(0);
+
+    const middleUp = renderer.root.findByProps({ testID: 'move-restaurant-up-restaurant_2' });
+    const middleDown = renderer.root.findByProps({ testID: 'move-restaurant-down-restaurant_2' });
+
+    for (const button of [middleUp, middleDown]) {
+      expect(flattenPressableStyle(button.props.style)).toEqual(
+        expect.objectContaining({
+          height: 44,
+          width: 44,
+        }),
+      );
+      expect(button.props.disabled).toBe(false);
+      expect(button.props.accessibilityState).toEqual({ disabled: false });
+    }
+
+    act(() => {
+      middleUp.props.onPress();
+    });
+
+    const pendingButtons = [
+      renderer.root.findByProps({ testID: 'move-restaurant-down-restaurant_1' }),
+      renderer.root.findByProps({ testID: 'move-restaurant-up-restaurant_2' }),
+      renderer.root.findByProps({ testID: 'move-restaurant-down-restaurant_2' }),
+      renderer.root.findByProps({ testID: 'move-restaurant-up-restaurant_3' }),
+    ];
+    for (const button of pendingButtons) {
+      expect(button.props.disabled).toBe(true);
+      expect(button.props.accessibilityState).toEqual({ disabled: true });
+    }
+    expect(restaurantListWrites.reorderRestaurant).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'move-restaurant-down-restaurant_2' }).props.onPress();
+    });
+    expect(restaurantListWrites.reorderRestaurant).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      reorderDeferred.resolve({ result: [], status: 'completed' });
+      await reorderDeferred.promise;
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByProps({ testID: 'move-restaurant-up-restaurant_2' }).props.disabled).toBe(
+      false,
+    );
   });
 
   it('does not depend on onTextLayout to render the combined metadata label', async () => {
@@ -2295,6 +2487,22 @@ describe('ListDetailScreen', () => {
     });
 
     const iWentButton = renderer.root.findByProps({ testID: 'i-went-list-item-list_item_1' });
+    const removeButton = renderer.root.findByProps({
+      testID: 'remove-source-rating-list_item_1-bookmark_1',
+    });
+
+    expect(flattenPressableStyle(iWentButton.props.style)).toEqual(
+      expect.objectContaining({
+        minHeight: 44,
+        minWidth: 44,
+      }),
+    );
+    expect(flattenPressableStyle(removeButton.props.style)).toEqual(
+      expect.objectContaining({
+        height: 44,
+        width: 44,
+      }),
+    );
 
     await act(async () => {
       iWentButton.props.onPress();

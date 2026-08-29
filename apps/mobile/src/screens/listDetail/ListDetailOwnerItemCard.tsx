@@ -44,7 +44,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderRadius: theme.radii.sm,
     flexDirection: 'row',
     gap: 2,
-    minHeight: 22,
+    justifyContent: 'center',
+    minHeight: MIN_TOUCH_TARGET_SIZE,
+    minWidth: MIN_TOUCH_TARGET_SIZE,
     paddingHorizontal: theme.spacing.xs,
   },
   iWentButtonPressed: {

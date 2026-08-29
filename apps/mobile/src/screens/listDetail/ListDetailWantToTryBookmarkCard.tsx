@@ -7,6 +7,8 @@ import type { RestaurantListFriendMatchRecord } from '../../features';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Text } from '../../ui';
 
+const MIN_TOUCH_TARGET_SIZE = 44;
+
 interface ListDetailWantToTryBookmarkCardProps<Item> {
   friendMatches?: readonly RestaurantListFriendMatchRecord[];
   groupIndex: number;
@@ -39,6 +41,7 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
+    minWidth: 0,
   },
   restaurantIndex: {
     color: theme.colors.text.muted,
@@ -46,6 +49,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   restaurantTitle: {
     color: theme.colors.text.primary,
+    flexShrink: 1,
     ...theme.typography.bodyLgBold,
   },
   metaRow: {
@@ -66,6 +70,7 @@ const useStyles = createThemedStyles((theme) => ({
   actionsRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.spacing.xs,
     justifyContent: 'flex-end',
   },
@@ -74,7 +79,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderRadius: theme.radii.sm,
     flexDirection: 'row',
     gap: 2,
-    minHeight: 22,
+    justifyContent: 'center',
+    minHeight: MIN_TOUCH_TARGET_SIZE,
+    minWidth: MIN_TOUCH_TARGET_SIZE,
     paddingHorizontal: theme.spacing.xs,
   },
   iWentButtonPressed: {
@@ -89,7 +96,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderRadius: theme.radii.sm,
     flexDirection: 'row',
     gap: 2,
-    minHeight: 22,
+    justifyContent: 'center',
+    minHeight: MIN_TOUCH_TARGET_SIZE,
+    minWidth: MIN_TOUCH_TARGET_SIZE,
     paddingHorizontal: theme.spacing.xs,
   },
   deleteButtonPressed: {
