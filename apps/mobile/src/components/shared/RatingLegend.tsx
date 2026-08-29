@@ -12,6 +12,7 @@ interface RatingLegendProps {
   persistenceKey?: string | null;
 }
 
+const MINIMUM_TOUCH_TARGET_HEIGHT = 44;
 const DEFAULT_PERSISTENCE_KEY = localPersistence.uiPreferences.keys.ratingGuideExpanded;
 
 const useStyles = createThemedStyles((theme) => ({
@@ -23,6 +24,7 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: MINIMUM_TOUCH_TARGET_HEIGHT,
   },
   options: {
     gap: theme.spacing.xs,

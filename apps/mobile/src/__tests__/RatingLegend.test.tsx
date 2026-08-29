@@ -94,6 +94,7 @@ describe('RatingLegend', () => {
     expect(toggle.props.accessibilityLabel).toBe('Rating Guide');
     expect(toggle.props.accessibilityRole).toBe('button');
     expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    expect(toggle.props.style).toEqual(expect.objectContaining({ minHeight: 44 }));
 
     await act(async () => {
       toggle.props.onPress();

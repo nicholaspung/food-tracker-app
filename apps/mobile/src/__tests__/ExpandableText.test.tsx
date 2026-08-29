@@ -100,7 +100,11 @@ describe('ExpandableText', () => {
 
     expect(wrapper.props.style).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ alignSelf: 'flex-start' }),
+        expect.objectContaining({
+          alignSelf: 'flex-start',
+          justifyContent: 'center',
+          minHeight: 44,
+        }),
         expect.objectContaining({ alignSelf: 'stretch' }),
       ]),
     );
@@ -163,8 +167,12 @@ describe('ExpandableText', () => {
       });
     });
 
+    const collapsedToggle = findToggleButton(renderer, false);
+
+    expect(collapsedToggle.props.style).toEqual(expect.objectContaining({ minHeight: 44 }));
+
     await act(async () => {
-      findToggleButton(renderer, false).props.onPress();
+      collapsedToggle.props.onPress();
     });
 
     expect(findTextNode(renderer, 'Show less')).toBeDefined();

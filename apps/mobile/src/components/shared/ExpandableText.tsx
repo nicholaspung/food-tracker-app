@@ -13,6 +13,8 @@ import { Text, type TextProps } from '../../ui';
 
 type ExpandableTextInteractionMode = 'tap-text' | 'inline-toggle';
 
+const MINIMUM_TOUCH_TARGET_HEIGHT = 44;
+
 export interface ExpandableTextProps
   extends Pick<TextProps, 'style' | 'testID' | 'tone' | 'variant'> {
   children: string;
@@ -28,6 +30,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
   toggleButton: {
     alignSelf: 'flex-start',
+    justifyContent: 'center',
+    minHeight: MINIMUM_TOUCH_TARGET_HEIGHT,
   },
 }));
 
