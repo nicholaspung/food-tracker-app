@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 import { env } from '../config/env';
 import { localPersistence } from '../localPersistence';
 import type { AuthUser } from '../types/auth';
@@ -9,6 +7,7 @@ import {
   trackObservabilityEvent,
   type EventProperties,
 } from './index';
+import { runtimeMetadata } from './runtimeMetadata';
 
 export type AnalyticsEventName =
   | 'activation.signup_started'
@@ -80,7 +79,6 @@ export type TrackingEntryProperties = {
 export type ProductAnalyticsProperties = EventProperties;
 
 type UserTier = AnalyticsContext['userTier'];
-type ExpoConstants = typeof import('expo-constants')['default'];
 
 const DEFAULT_ANONYMOUS_ID = 'anonymous_pending';
 
@@ -90,35 +88,6 @@ let currentAuthStatus = 'unknown';
 let currentUserTier: UserTier = null;
 let lastIdentifiedUserKey: string | null = null;
 const trackedFirstFoodLoggedKeys = new Set<string>();
-const expoConstants = readExpoConstants();
-const platformOS = readPlatformOS();
-
-const appVersion = expoConstants?.expoConfig?.version ?? expoConstants?.nativeAppVersion ?? null;
-const buildVersion =
-  expoConstants?.nativeBuildVersion ??
-  (platformOS === 'ios'
-    ? (expoConstants?.expoConfig?.ios?.buildNumber ?? null)
-    : (typeof expoConstants?.expoConfig?.android?.versionCode === 'number'
-        ? String(expoConstants.expoConfig.android.versionCode)
-        : null));
-
-function readPlatformOS(): string {
-  return Platform?.OS ?? 'unknown';
-}
-
-function readExpoConstants(): ExpoConstants | null {
-  if (process.env.NODE_ENV === 'test' && Platform?.OS === undefined) {
-    return null;
-  }
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const constantsModule = require('expo-constants') as { default?: ExpoConstants };
-    return constantsModule.default ?? (constantsModule as ExpoConstants);
-  } catch {
-    return null;
-  }
-}
 
 export function setProductAnalyticsAnonymousId(anonymousId: string): void {
   const normalizedAnonymousId = anonymousId.trim();
@@ -215,9 +184,9 @@ function buildAnalyticsContext(): AnalyticsContext {
   return {
     anonymousId: currentAnonymousId,
     ...(currentUserKey ? { userKey: currentUserKey } : {}),
-    appVersion,
-    buildVersion,
-    platform: readPlatformOS(),
+    appVersion: runtimeMetadata.appVersion,
+    buildVersion: runtimeMetadata.buildVersion,
+    platform: runtimeMetadata.platform,
     environment: env.environment,
     authStatus: currentAuthStatus,
     userTier: currentUserTier,

@@ -1,8 +1,8 @@
 import { PostHog } from 'posthog-react-native';
-import { Platform } from 'react-native';
 
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
+import { readPlatformOS, runtimeMetadata } from './runtimeMetadata';
 
 export type JsonValue =
   | string
@@ -14,7 +14,6 @@ export type JsonValue =
 
 export type EventProperties = Record<string, JsonValue>;
 type ContextPropertiesInput = Record<string, JsonValue | undefined>;
-type ExpoConstants = typeof import('expo-constants')['default'];
 export type WebPageAnalyticsProperties = {
   durationMs?: number;
   nextScreenName?: string | null;
@@ -33,21 +32,9 @@ const allowedIdentifierAnalyticsKeys = new Set([
   'tutorialid',
   'updateid',
 ]);
-const expoConstants = readExpoConstants();
-const platformOS = readPlatformOS();
-
 const staticEventProperties: EventProperties = {
   appEnvironment: __DEV__ ? 'development' : 'production',
-  appVersion: expoConstants?.expoConfig?.version ?? expoConstants?.nativeAppVersion ?? null,
-  buildVersion:
-    expoConstants?.nativeBuildVersion ??
-    (platformOS === 'ios'
-      ? (expoConstants?.expoConfig?.ios?.buildNumber ?? null)
-      : (typeof expoConstants?.expoConfig?.android?.versionCode === 'number'
-          ? String(expoConstants.expoConfig.android.versionCode)
-          : null)),
-  executionEnvironment: expoConstants?.executionEnvironment ?? null,
-  platform: platformOS,
+  ...runtimeMetadata,
 };
 
 export function initializeObservability(): void {
@@ -177,24 +164,6 @@ export function captureObservabilityError(error: unknown, properties?: EventProp
 
 function canCaptureWebPageAnalytics(): boolean {
   return initialized && posthogClient !== null && readPlatformOS() === 'web' && typeof window !== 'undefined';
-}
-
-function readPlatformOS(): string {
-  return Platform?.OS ?? 'unknown';
-}
-
-function readExpoConstants(): ExpoConstants | null {
-  if (process.env.NODE_ENV === 'test' && Platform?.OS === undefined) {
-    return null;
-  }
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const constantsModule = require('expo-constants') as { default?: ExpoConstants };
-    return constantsModule.default ?? (constantsModule as ExpoConstants);
-  } catch {
-    return null;
-  }
 }
 
 function buildWebPageAnalyticsProperties(properties: WebPageAnalyticsProperties): EventProperties {

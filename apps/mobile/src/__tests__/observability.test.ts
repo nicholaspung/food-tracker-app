@@ -409,8 +409,8 @@ describe('observability', () => {
             },
             version: '1.0.0',
           },
-          nativeAppVersion: '1.0.0',
-          nativeBuildVersion: '1',
+          nativeAppVersion: '9.9.9',
+          nativeBuildVersion: '7',
         },
       }));
       jest.doMock('posthog-react-native', () => ({
@@ -480,6 +480,10 @@ describe('observability', () => {
           $host: 'app.yummyrecs.com',
           $pathname: '/reset-password',
           $referrer: 'https://example.com/landing',
+          appVersion: '1.0.0',
+          buildVersion: '7',
+          executionEnvironment: 'storeClient',
+          platform: 'web',
           previousScreenName: null,
           screenName: 'ResetPassword',
         }),

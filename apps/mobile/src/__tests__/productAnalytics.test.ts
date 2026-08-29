@@ -23,6 +23,22 @@ describe('productAnalytics', () => {
           environment: 'test',
         },
       }));
+      jest.doMock('react-native', () => ({
+        Platform: {
+          OS: 'android',
+        },
+      }));
+      jest.doMock('expo-constants', () => ({
+        __esModule: true,
+        default: {
+          expoConfig: {
+            android: {
+              versionCode: 42,
+            },
+          },
+          nativeAppVersion: '2.3.4',
+        },
+      }));
 
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const analytics = require('../observability/productAnalytics') as typeof import('../observability/productAnalytics');
@@ -45,11 +61,13 @@ describe('productAnalytics', () => {
         'tracking.entry_completed',
         expect.objectContaining({
           anonymousId: 'anon-test',
+          appVersion: '2.3.4',
           authStatus: 'unknown',
+          buildVersion: '42',
           completed: true,
           entryType: 'food_product',
           environment: 'test',
-          platform: expect.any(String),
+          platform: 'android',
           userTier: null,
           visibility: 'friends',
         }),
