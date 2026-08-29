@@ -76,6 +76,36 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
     });
   });
 
+  it('leaves malformed pages under exact paginated query keys unchanged', () => {
+    const queryClient = new QueryClient();
+    const notesKey = notesQueryKeys.paginated('draft');
+    const homeFeedKey = homeFeedQueryKeys.paginated('user-1', 'mine', 'all', 'created', '');
+    const malformedNotesData = { pages: [{ page: 1 }], pageParams: [1] };
+    const malformedHomeFeedData = { pages: [{ hasNextPage: false }], pageParams: [undefined] };
+    queryClient.setQueryData(notesKey, malformedNotesData);
+    queryClient.setQueryData(homeFeedKey, malformedHomeFeedData);
+
+    expect(() =>
+      applyQueuedFeatureWriteBrowseProjection(
+        queryClient,
+        [
+          buildQueuedWrite({
+            operationName: 'note.create',
+            payload: { title: 'Queued note', content: 'Try the noodles' },
+          }),
+          buildQueuedWrite({
+            operationName: 'visit.create',
+            payload: { restaurantName: 'Ramen Shop', items: [] },
+          }),
+        ],
+        ['notes', 'home-feed'],
+      ),
+    ).not.toThrow();
+
+    expect(queryClient.getQueryData(notesKey)).toEqual(malformedNotesData);
+    expect(queryClient.getQueryData(homeFeedKey)).toEqual(malformedHomeFeedData);
+  });
+
   it('inserts queued notes and removes stale queued notes from paginated caches', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(notesQueryKeys.paginated('draft'), {
@@ -132,6 +162,49 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
       'note-1',
     ]);
     expect(data?.pages[0]?.totalItems).toBe(2);
+  });
+
+  it('excludes queued notes and Restaurant Lists that do not match cache searches', () => {
+    const queryClient = new QueryClient();
+    const notesKey = notesQueryKeys.paginated('draft', 'ramen');
+    const listsKey = restaurantListQueryKeys.paginatedInfinite('my', 'ramen');
+    const emptyPage = {
+      items: [],
+      page: 1,
+      pageSize: 20,
+      totalItems: 0,
+      totalPages: 0,
+      hasNextPage: false,
+    };
+    queryClient.setQueryData(notesKey, { pages: [emptyPage], pageParams: [1] });
+    queryClient.setQueryData(listsKey, { pages: [emptyPage], pageParams: [1] });
+
+    applyQueuedFeatureWriteBrowseProjection(
+      queryClient,
+      [
+        buildQueuedWrite({
+          operationName: 'note.create',
+          payload: {
+            title: 'Bakery ideas',
+            content: 'Try the croissants',
+          },
+        }),
+        buildQueuedWrite({
+          operationName: 'list.create',
+          payload: {
+            name: 'Date night',
+            description: 'Quiet pasta restaurants',
+            visibility: 'private',
+          },
+        }),
+      ],
+      ['notes', 'restaurant-lists'],
+    );
+
+    expect(queryClient.getQueryData<{ pages: { items: unknown[] }[] }>(notesKey)?.pages[0]?.items)
+      .toEqual([]);
+    expect(queryClient.getQueryData<{ pages: { items: unknown[] }[] }>(listsKey)?.pages[0]?.items)
+      .toEqual([]);
   });
 
   it('patches queued list and bill creates into their browse caches', () => {
@@ -335,5 +408,57 @@ describe('applyQueuedFeatureWriteBrowseProjection', () => {
       'queued:visit.create:idem-visit.create',
       'visit-1',
     ]);
+  });
+
+  it('projects only queued Food Products into Food Product Home feed caches', () => {
+    const queryClient = new QueryClient();
+    const homeFeedKey = homeFeedQueryKeys.paginated(
+      'user-1',
+      'mine',
+      'food-products',
+      'created',
+      '',
+    );
+    queryClient.setQueryData(homeFeedKey, {
+      pages: [{ items: [], hasNextPage: false }],
+      pageParams: [undefined],
+    });
+
+    applyQueuedFeatureWriteBrowseProjection(
+      queryClient,
+      [
+        buildQueuedWrite({
+          operationName: 'visit.create',
+          payload: {
+            restaurantName: 'Ramen Shop',
+            items: [{ name: 'Shoyu ramen', rating: 5 }],
+          },
+        }),
+        buildQueuedWrite({
+          operationName: 'food-product.create',
+          payload: {
+            itemName: 'Chili crisp',
+            locationText: 'Market Hall',
+            rating: 4,
+          },
+        }),
+      ],
+      ['home-feed'],
+    );
+
+    const data = queryClient.getQueryData<{
+      pages: {
+        items: (
+          | { source: 'visit'; visit: { id: string } }
+          | { source: 'food-product'; foodProduct: { id: string } }
+        )[];
+      }[];
+    }>(homeFeedKey);
+
+    expect(data?.pages[0]?.items).toHaveLength(1);
+    expect(data?.pages[0]?.items[0]).toMatchObject({
+      source: 'food-product',
+      foodProduct: { id: 'queued:food-product.create:idem-food-product.create' },
+    });
   });
 });

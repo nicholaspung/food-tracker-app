@@ -13,7 +13,12 @@ import type {
 } from './featureStore';
 import type { PaginatedResult } from './sharedTypes';
 import { billsQueryKeys, isPaginatedBillsQueryKey } from './billsQuery';
-import { homeFeedQueryKeys, isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
+import {
+  homeFeedQueryKeys,
+  isPaginatedHomeFeedQueryKey,
+  type HomeFeedInfiniteData,
+} from './homeFeedQuery';
+import type { HomeFeedPageEntry } from './homeFeedPagination';
 import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
 import {
   isPaginatedRestaurantListQueryKey,
@@ -22,8 +27,24 @@ import {
 import type { QueuedFeatureWrite } from './queuedFeatureWrites';
 import type { FoodProductRecord, NoteRecord, RestaurantListRecord, VisitRecord } from '../models';
 
-type AnyRecord = { id: string } & Record<string, unknown>;
-type AnyPaginatedData = InfiniteData<PaginatedResult<AnyRecord>, unknown>;
+type IdentifiedRecord = { id: string };
+type PaginatedData<TItem extends IdentifiedRecord> = InfiniteData<
+  PaginatedResult<TItem>,
+  unknown
+>;
+type QueuedHomeFeedEntry =
+  | {
+      id: string;
+      source: 'visit';
+      eventAt: string;
+      visit: VisitRecord;
+    }
+  | {
+      id: string;
+      source: 'food-product';
+      eventAt: string;
+      foodProduct: FoodProductRecord;
+    };
 
 const QUEUED_RECORD_PREFIX = 'queued:';
 
@@ -45,30 +66,24 @@ function getQueuedIdSet(queuedWrites: readonly QueuedFeatureWrite[]): Set<string
   return new Set(queuedWrites.map((write) => createQueuedId(write)));
 }
 
-function isPaginatedData(value: unknown): value is AnyPaginatedData {
-  return (
-    Boolean(value) &&
-    typeof value === 'object' &&
-    Array.isArray((value as Partial<AnyPaginatedData>).pages)
-  );
+function hasInfinitePages<TPage, TPageParam>(
+  value: InfiniteData<TPage, TPageParam> | undefined,
+): value is InfiniteData<TPage, TPageParam> {
+  return Array.isArray(value?.pages);
 }
 
-function isPageWithItems(page: unknown): page is PaginatedResult<AnyRecord> {
-  return (
-    Boolean(page) &&
-    typeof page === 'object' &&
-    Array.isArray((page as Partial<PaginatedResult<AnyRecord>>).items)
-  );
+function isPageWithItems<TItem>(page: unknown): page is { items: TItem[] } {
+  return page !== null && typeof page === 'object' && 'items' in page && Array.isArray(page.items);
 }
 
-function patchPaginatedData(
-  currentData: AnyPaginatedData | undefined,
+function patchPaginatedData<TItem extends IdentifiedRecord>(
+  currentData: PaginatedData<TItem> | undefined,
   queuedIds: Set<string>,
-  pendingItems: readonly AnyRecord[],
-  shouldIncludeItem: (queryKey: QueryKey, item: AnyRecord) => boolean,
+  pendingItems: readonly TItem[],
+  shouldIncludeItem: (queryKey: QueryKey, item: TItem) => boolean,
   queryKey: QueryKey,
-): AnyPaginatedData | undefined {
-  if (!isPaginatedData(currentData)) {
+): PaginatedData<TItem> | undefined {
+  if (!hasInfinitePages(currentData)) {
     return currentData;
   }
 
@@ -96,7 +111,7 @@ function patchPaginatedData(
   return {
     ...currentData,
     pages: currentData.pages.map((page, pageIndex) => {
-      if (!isPageWithItems(page)) {
+      if (!isPageWithItems<TItem>(page)) {
         return page;
       }
 
@@ -127,15 +142,15 @@ function patchPaginatedData(
   };
 }
 
-function patchPaginatedQueries(
+function patchPaginatedQueries<TItem extends IdentifiedRecord>(
   queryClient: QueryClient,
   queryFilter: readonly unknown[],
   queuedIds: Set<string>,
-  pendingItems: readonly AnyRecord[],
-  shouldIncludeItem: (queryKey: QueryKey, item: AnyRecord) => boolean = () => true,
+  pendingItems: readonly TItem[],
+  shouldIncludeItem: (queryKey: QueryKey, item: TItem) => boolean,
   shouldPatchQueryKey: (queryKey: QueryKey) => boolean,
 ): void {
-  const queries = queryClient.getQueriesData<AnyPaginatedData>({
+  const queries = queryClient.getQueriesData<PaginatedData<TItem>>({
     queryKey: queryFilter,
   });
 
@@ -282,15 +297,15 @@ function projectQueuedNotes(
     queryClient,
     notesQueryKeys.root,
     queuedIds,
-    pendingNotes as unknown as AnyRecord[],
+    pendingNotes,
     (queryKey, item) => {
       if (!Array.isArray(queryKey) || queryKey[3] === 'used') {
         return false;
       }
       return matchesTextSearch(getNotesSearchQueryFromQueryKey(queryKey), [
-        item.title as string,
-        item.content as string,
-        item.locationText as string | undefined,
+        item.title,
+        item.content,
+        item.locationText,
       ]);
     },
     isPaginatedNotesQueryKey,
@@ -311,11 +326,11 @@ function projectQueuedRestaurantLists(
     queryClient,
     restaurantListQueryKeys.scope('my'),
     queuedIds,
-    pendingLists as unknown as AnyRecord[],
+    pendingLists,
     (queryKey, item) =>
       matchesTextSearch(getSearchQueryFromTrailingQueryKeySegment(queryKey), [
-        item.name as string,
-        item.description as string | undefined,
+        item.name,
+        item.description,
       ]),
     isPaginatedRestaurantListQueryKey,
   );
@@ -335,7 +350,7 @@ function projectQueuedBills(
     queryClient,
     billsQueryKeys.root,
     queuedIds,
-    pendingBills as unknown as AnyRecord[],
+    pendingBills,
     () => true,
     isPaginatedBillsQueryKey,
   );
@@ -354,23 +369,23 @@ function projectQueuedHomeFeed(
   );
   const pendingVisits = visitWrites.map(createPendingVisit);
   const pendingFoodProducts = foodProductWrites.map(createPendingFoodProduct);
-  const pendingItems = [
-    ...pendingVisits.map((visit) => ({
+  const pendingItems: QueuedHomeFeedEntry[] = [
+    ...pendingVisits.map<QueuedHomeFeedEntry>((visit) => ({
       id: visit.id,
       source: 'visit',
       eventAt: visit.visitedAt,
       visit,
     })),
-    ...pendingFoodProducts.map((foodProduct) => ({
+    ...pendingFoodProducts.map<QueuedHomeFeedEntry>((foodProduct) => ({
       id: foodProduct.id,
       source: 'food-product',
       eventAt: foodProduct.itemDate ?? foodProduct.createdAt,
       foodProduct,
     })),
-  ] as unknown as AnyRecord[];
+  ];
   const queuedIds = getQueuedIdSet([...visitWrites, ...foodProductWrites]);
 
-  const queries = queryClient.getQueriesData<InfiniteData<{ items: AnyRecord[] }, unknown>>({
+  const queries = queryClient.getQueriesData<HomeFeedInfiniteData>({
     queryKey: homeFeedQueryKeys.root,
   });
 
@@ -381,26 +396,29 @@ function projectQueuedHomeFeed(
 
     const typeFilter = queryKey[6];
     const searchQuery = String(queryKey[8] ?? '');
-    queryClient.setQueryData<InfiniteData<{ items: AnyRecord[] }, unknown> | undefined>(queryKey, (current) => {
-      if (!isPaginatedData(current) || current.pages.length === 0) {
+    queryClient.setQueryData<HomeFeedInfiniteData | undefined>(queryKey, (current) => {
+      if (!hasInfinitePages(current) || current.pages.length === 0) {
         return current;
       }
 
       return {
         ...current,
         pages: current.pages.map((page, pageIndex) => {
-          if (!isPageWithItems(page)) {
+          if (!isPageWithItems<HomeFeedPageEntry>(page)) {
             return page;
           }
 
           const nonStaleItems = page.items.filter(
-            (item) => !isQueuedRecordId(item.id) || queuedIds.has(item.id),
+            (item) => {
+              const itemId = getHomeFeedEntryId(item);
+              return !isQueuedRecordId(itemId) || queuedIds.has(itemId);
+            },
           );
-          const existingIds = new Set(nonStaleItems.map((item) => item.id));
+          const existingIds = new Set(nonStaleItems.map(getHomeFeedEntryId));
           const nextPendingItems =
             pageIndex === 0
               ? pendingItems.filter((item) => {
-                  if (existingIds.has(item.id)) {
+                  if (existingIds.has(getHomeFeedEntryId(item))) {
                     return false;
                   }
                   if (typeFilter === 'visits' && item.source !== 'visit') {
@@ -410,17 +428,15 @@ function projectQueuedHomeFeed(
                     return false;
                   }
                   if (item.source === 'visit') {
-                    const visit = item.visit as VisitRecord;
                     return matchesTextSearch(searchQuery, [
-                      visit.restaurantName,
-                      ...visit.items.map((visitItem) => visitItem.name),
+                      item.visit.restaurantName,
+                      ...item.visit.items.map((visitItem) => visitItem.name),
                     ]);
                   }
-                  const foodProduct = item.foodProduct as FoodProductRecord;
                   return matchesTextSearch(searchQuery, [
-                    foodProduct.itemName,
-                    foodProduct.locationText,
-                    foodProduct.itemCategory,
+                    item.foodProduct.itemName,
+                    item.foodProduct.locationText,
+                    item.foodProduct.itemCategory,
                   ]);
                 })
               : [];
@@ -433,6 +449,10 @@ function projectQueuedHomeFeed(
       };
     });
   }
+}
+
+function getHomeFeedEntryId(item: HomeFeedPageEntry): string {
+  return item.source === 'visit' ? item.visit.id : item.foodProduct.id;
 }
 
 export function applyQueuedFeatureWriteBrowseProjection(
