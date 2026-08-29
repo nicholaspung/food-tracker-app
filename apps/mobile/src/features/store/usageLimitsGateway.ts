@@ -56,6 +56,77 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isLimitValue(value: unknown): value is LimitValue {
+  return value === null || isFiniteNumber(value);
+}
+
+export function parseMonthlyUsageSnapshot(value: unknown): MonthlyUsageSnapshot | null {
+  if (
+    !isRecord(value) ||
+    typeof value.monthKey !== 'string' ||
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(value.monthKey) ||
+    (value.userTier !== 'admin' && value.userTier !== 'subscriber' && value.userTier !== 'free') ||
+    !isRecord(value.limits) ||
+    !isRecord(value.usage) ||
+    !isRecord(value.remaining)
+  ) {
+    return null;
+  }
+
+  const { limits, usage, remaining } = value;
+  if (
+    !isLimitValue(limits.photoUploadsPerRecord) ||
+    !isLimitValue(limits.photoUploadsMonthly) ||
+    !isLimitValue(limits.placesQueriesMonthly) ||
+    !isLimitValue(limits.menuScansMonthly) ||
+    !isLimitValue(limits.receiptScansMonthly) ||
+    !isLimitValue(limits.storefrontReadsMonthly) ||
+    !isFiniteNumber(usage.photoUploads) ||
+    !isFiniteNumber(usage.placesQueries) ||
+    !isFiniteNumber(usage.menuScans) ||
+    !isFiniteNumber(usage.receiptScans) ||
+    !isFiniteNumber(usage.storefrontReads) ||
+    !isLimitValue(remaining.photoUploadsMonthly) ||
+    !isLimitValue(remaining.placesQueriesMonthly) ||
+    !isLimitValue(remaining.menuScansMonthly) ||
+    !isLimitValue(remaining.receiptScansMonthly) ||
+    !isLimitValue(remaining.storefrontReadsMonthly)
+  ) {
+    return null;
+  }
+
+  return {
+    monthKey: value.monthKey,
+    userTier: value.userTier,
+    limits: {
+      photoUploadsPerRecord: limits.photoUploadsPerRecord,
+      photoUploadsMonthly: limits.photoUploadsMonthly,
+      placesQueriesMonthly: limits.placesQueriesMonthly,
+      menuScansMonthly: limits.menuScansMonthly,
+      receiptScansMonthly: limits.receiptScansMonthly,
+      storefrontReadsMonthly: limits.storefrontReadsMonthly,
+    },
+    usage: {
+      photoUploads: usage.photoUploads,
+      placesQueries: usage.placesQueries,
+      menuScans: usage.menuScans,
+      receiptScans: usage.receiptScans,
+      storefrontReads: usage.storefrontReads,
+    },
+    remaining: {
+      photoUploadsMonthly: remaining.photoUploadsMonthly,
+      placesQueriesMonthly: remaining.placesQueriesMonthly,
+      menuScansMonthly: remaining.menuScansMonthly,
+      receiptScansMonthly: remaining.receiptScansMonthly,
+      storefrontReadsMonthly: remaining.storefrontReadsMonthly,
+    },
+  };
+}
+
 function parseLimitPayload(value: unknown): LimitExceededPayload | null {
   if (!isRecord(value)) {
     return null;
@@ -163,8 +234,15 @@ export async function getMonthlyUsage(
     ? `/api/usage/monthly?view_as_tier=${encodeURIComponent(viewAsTier)}`
     : '/api/usage/monthly';
 
-  return sendApiRequest<MonthlyUsageSnapshot>(path, {
+  const response = await sendApiRequest<unknown>(path, {
     method: 'GET',
     signal: options?.signal,
   });
+  const snapshot = parseMonthlyUsageSnapshot(response);
+
+  if (!snapshot) {
+    throw new Error('Invalid monthly usage response.');
+  }
+
+  return snapshot;
 }

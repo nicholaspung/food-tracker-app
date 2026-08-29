@@ -1,4 +1,7 @@
-import type { MonthlyUsageSnapshot } from '../features/store/usageLimitsGateway';
+import {
+  parseMonthlyUsageSnapshot,
+  type MonthlyUsageSnapshot,
+} from '../features/store/usageLimitsGateway';
 import { localPersistence } from '../localPersistence';
 
 export interface CachedUsageSnapshot {
@@ -24,16 +27,21 @@ export async function readUsageSnapshotCache(
   }
 
   try {
-    const parsed = JSON.parse(raw) as CachedUsageSnapshot;
+    const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') {
       return null;
     }
 
-    if (!parsed.snapshot || typeof parsed.snapshot !== 'object' || typeof parsed.cachedAt !== 'string') {
+    const cachedSnapshot = parsed as Record<string, unknown>;
+    const snapshot = parseMonthlyUsageSnapshot(cachedSnapshot.snapshot);
+    if (!snapshot || typeof cachedSnapshot.cachedAt !== 'string') {
       return null;
     }
 
-    return parsed;
+    return {
+      snapshot,
+      cachedAt: cachedSnapshot.cachedAt,
+    };
   } catch {
     return null;
   }
