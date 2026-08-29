@@ -20,6 +20,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { ListDetailScreen } from '../screens/ListDetailScreen';
 import { ListDetailBookmarkedItemRow } from '../screens/listDetail/ListDetailBookmarkedItemRow';
+import { buildRestaurantListDetailMapProjection } from '../features/restaurantLists/restaurantListDetailReadModel';
 
 const mockReact = React;
 
@@ -306,6 +307,16 @@ jest.mock('../components/maps', () => ({
     mockReact.createElement('RestaurantMapView', props),
 }));
 
+jest.mock('../features/restaurantLists/restaurantListDetailReadModel', () => {
+  const actual = jest.requireActual('../features/restaurantLists/restaurantListDetailReadModel');
+  return {
+    ...actual,
+    buildRestaurantListDetailMapProjection: jest.fn(
+      actual.buildRestaurantListDetailMapProjection,
+    ),
+  };
+});
+
 jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: () => null,
 }));
@@ -332,6 +343,10 @@ const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunc
 >;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
+const mockedBuildRestaurantListDetailMapProjection =
+  buildRestaurantListDetailMapProjection as jest.MockedFunction<
+    typeof buildRestaurantListDetailMapProjection
+  >;
 
 function buildList(overrides: Partial<RestaurantListRecord> = {}): RestaurantListRecord {
   return {
@@ -2679,5 +2694,108 @@ describe('ListDetailScreen', () => {
       renderer.root.findByProps({ testID: 'list-detail-rows' }).props.onEndReached();
     });
     expect(fetchNextPage).toHaveBeenCalled();
+  });
+
+  it('defers map projection while list pages load and builds visible map groups on demand', async () => {
+    const firstPage = buildDetail({
+      hasNextPage: true,
+      items: [
+        buildListItem({
+          latitude: 37.7749,
+          longitude: -122.4194,
+          bookmarkedItems: [
+            {
+              id: 'food_1',
+              listItemId: 'item_1',
+              name: 'Spicy Ramen',
+              rating: 5,
+            },
+          ],
+        }),
+      ],
+    });
+    let infiniteQueryResult = buildInfiniteQueryResult(firstPage);
+    mockedUseInfiniteQuery.mockImplementation(() => infiniteQueryResult);
+
+    let renderer: any = null;
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(mockedBuildRestaurantListDetailMapProjection).not.toHaveBeenCalled();
+
+    infiniteQueryResult = {
+      ...infiniteQueryResult,
+      data: {
+        pageParams: [1, 2],
+        pages: [
+          firstPage,
+          buildDetail({
+            items: [
+              buildListItem({
+                id: 'item_2',
+                restaurantId: 'restaurant_2',
+                restaurantName: 'Second Restaurant',
+                latitude: 37.8044,
+                longitude: -122.2712,
+                position: 1,
+              }),
+            ],
+          }),
+        ],
+      },
+    } as ReturnType<typeof useInfiniteQuery>;
+
+    await act(async () => {
+      renderer.update(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    expect(mockedBuildRestaurantListDetailMapProjection).not.toHaveBeenCalled();
+
+    act(() => {
+      renderer.root.findByType('SegmentedControl').props.onChange('map');
+    });
+
+    expect(mockedBuildRestaurantListDetailMapProjection).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByProps({ testID: 'list-detail-map-view' }).props.groups).toMatchObject([
+      {
+        id: 'restaurant_1',
+        items: [{ name: 'Spicy Ramen' }],
+        restaurantName: 'Test Restaurant',
+      },
+      {
+        id: 'restaurant_2',
+        restaurantName: 'Second Restaurant',
+      },
+    ]);
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'list-detail-search-input' }).props.onChangeText('Second');
+    });
+    expect(mockedBuildRestaurantListDetailMapProjection).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByProps({ testID: 'list-detail-map-view' }).props.groups).toMatchObject([
+      {
+        id: 'restaurant_2',
+        restaurantName: 'Second Restaurant',
+        summary: '2. 0 recommended items',
+      },
+    ]);
+
+    act(() => {
+      renderer.root
+        .findByProps({ testID: 'list-detail-map-view' })
+        .props.onSelectedGroupChange('restaurant_2');
+    });
+    expect(mockedBuildRestaurantListDetailMapProjection).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      renderer.root.findByType('SegmentedControl').props.onChange('list');
+    });
+    expect(mockedBuildRestaurantListDetailMapProjection).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      renderer.root.findByType('SegmentedControl').props.onChange('map');
+    });
+    expect(mockedBuildRestaurantListDetailMapProjection).toHaveBeenCalledTimes(2);
   });
 });

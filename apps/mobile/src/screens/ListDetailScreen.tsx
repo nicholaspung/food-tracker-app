@@ -1,6 +1,6 @@
 import { Ionicons } from '../ui/AppIcon';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, Share, Switch, TextInput, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -25,6 +25,7 @@ import {
   useRestaurantListWrites,
 } from '../features';
 import {
+  buildRestaurantListDetailMapProjection,
   buildRestaurantListDetailReadModel,
   type ListDetailReadModel,
 } from '../features/restaurantLists/restaurantListDetailReadModel';
@@ -652,12 +653,37 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         .filter((row) => doesListDetailRestaurantRowMatchSearch(row, listSearchTokens)),
     [isDefaultList, listSearchTokens, locallyRemovedListItemKeys, restaurantRows, showFriendMatches],
   );
+  const mapProjectionCacheRef = useRef<{
+    allRestaurantRows: ListDetailReadModel['restaurantRows'];
+    groups: RestaurantMapGroup[];
+    isDefaultList: boolean;
+    isOwner: boolean;
+    openPhotoViewer: typeof openPhotoViewer;
+    restaurantRows: ListDetailReadModel['restaurantRows'];
+  } | null>(null);
 
   const listDetailMapGroups = useMemo<RestaurantMapGroup[]>(() => {
-    const visibleRestaurantIds = new Set(visibleRestaurantRows.map((row) => row.group.restaurantId));
+    if (viewMode !== 'map') {
+      return [];
+    }
 
-    return readModel.mapGroups
-      .filter((group) => visibleRestaurantIds.has(group.id))
+    const cachedProjection = mapProjectionCacheRef.current;
+    if (
+      cachedProjection?.restaurantRows === visibleRestaurantRows &&
+      cachedProjection.allRestaurantRows === restaurantRows &&
+      cachedProjection.isOwner === isOwner &&
+      cachedProjection.isDefaultList === isDefaultList &&
+      cachedProjection.openPhotoViewer === openPhotoViewer
+    ) {
+      return cachedProjection.groups;
+    }
+
+    const groups = buildRestaurantListDetailMapProjection(
+      visibleRestaurantRows,
+      isOwner,
+      isDefaultList,
+      restaurantRows,
+    )
       .map((group) => ({
         ...group,
         items: group.items.map((item) => ({
@@ -675,8 +701,19 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           photoThumbnailUrl: item.photoThumbnailUrl,
         })),
       }));
-  }, [openPhotoViewer, readModel.mapGroups, visibleRestaurantRows]);
-  const omittedVisibleMapRestaurantCount = visibleRestaurantRows.length - listDetailMapGroups.length;
+
+    mapProjectionCacheRef.current = {
+      allRestaurantRows: restaurantRows,
+      groups,
+      isDefaultList,
+      isOwner,
+      openPhotoViewer,
+      restaurantRows: visibleRestaurantRows,
+    };
+    return groups;
+  }, [isDefaultList, isOwner, openPhotoViewer, restaurantRows, viewMode, visibleRestaurantRows]);
+  const omittedVisibleMapRestaurantCount =
+    viewMode === 'map' ? visibleRestaurantRows.length - listDetailMapGroups.length : 0;
 
   const listDetailActionDependencies = useMemo<ListDetailActionDependencies>(
     () => ({

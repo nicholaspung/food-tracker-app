@@ -80,8 +80,6 @@ export interface ListDetailReadModel {
   isDefaultList: boolean;
   groupedRestaurants: GroupedRestaurant[];
   restaurantRows: ListDetailRestaurantRow[];
-  mapGroups: ListDetailMapGroupRow[];
-  omittedMapRestaurantCount: number;
   savedListIdsByBookmarkLookupId: Map<string, Set<string>>;
   savedBookmarkLookupIds: Set<string>;
   myLists: RestaurantListRecord[];
@@ -246,16 +244,33 @@ function buildSavedListIdsByBookmarkLookupId(
   return mapping;
 }
 
-function buildMapGroups(
-  groupedRestaurants: GroupedRestaurant[],
+export function buildRestaurantListDetailMapProjection(
+  restaurantRows: readonly ListDetailRestaurantRow[],
   isOwner: boolean,
   isDefaultList: boolean,
-  photosByFoodItemId: ReturnType<typeof groupListDetailPhotosByFoodItemId>,
+  allRestaurantRows: readonly ListDetailRestaurantRow[] = restaurantRows,
 ): ListDetailMapGroupRow[] {
-  return groupedRestaurants.filter(hasUsableCoordinates).map((group, groupIndex) => {
+  const mapGroups: ListDetailMapGroupRow[] = [];
+  const visibleRowsByRestaurantId = new Map(
+    restaurantRows.map((row) => [row.group.restaurantId, row]),
+  );
+  let eligibleMapGroupCount = 0;
+
+  for (const candidateRow of allRestaurantRows) {
+    const { group } = candidateRow;
+    if (!hasUsableCoordinates(group)) {
+      continue;
+    }
+    eligibleMapGroupCount += 1;
+
+    const row = visibleRowsByRestaurantId.get(group.restaurantId);
+    if (!row) {
+      continue;
+    }
+
     const items = isOwner
-      ? buildOwnerDisplayItems(group.items).map((item) => {
-          const photoEntries = buildOwnerItemPhotoEntries(item, photosByFoodItemId);
+      ? row.ownerItems.map((item) => {
+          const { photoEntries } = item;
           const sourceDateLabel = formatMonthYearLabel(item.source?.visitedAt);
           const userDateLabel =
             formatFullDateLabel(item.user?.visitedAt) ?? formatMonthYearLabel(item.user?.visitedAt);
@@ -281,8 +296,8 @@ function buildMapGroups(
             photoThumbnailUrl: primaryPhoto?.previewUrl ?? null,
           };
         })
-      : buildViewerDisplayItems(group.items).map((item) => {
-          const photoEntries = buildBookmarkedItemPhotoEntries(item, photosByFoodItemId);
+      : row.bookmarkedItems.map((item) => {
+          const { photoEntries } = item;
           const primaryPhoto = photoEntries[0] ?? null;
           const sourceUserDisplayName = item.sourceUserName?.trim() || (item.sourceUserId ? 'Friend' : undefined);
 
@@ -303,7 +318,7 @@ function buildMapGroups(
           };
         });
 
-    return {
+    mapGroups.push({
       id: group.restaurantId,
       items,
       latitude: group.latitude,
@@ -311,7 +326,7 @@ function buildMapGroups(
       notes: group.notes,
       restaurantLocation: group.restaurantLocation ?? group.restaurantCity,
       restaurantName: group.restaurantName,
-      summary: `${groupIndex + 1}. ${
+      summary: `${eligibleMapGroupCount}. ${
         isDefaultList
           ? 'bookmarked restaurant'
           : pluralize(
@@ -320,8 +335,10 @@ function buildMapGroups(
               isOwner ? 'bookmarked items' : 'recommended items',
             )
       }`,
-    };
-  });
+    });
+  }
+
+  return mapGroups;
 }
 
 function buildAuthenticatedListDetailReadModel({
@@ -387,7 +404,6 @@ function buildAuthenticatedListDetailReadModel({
       })),
     };
   });
-  const mapGroups = buildMapGroups(groupedRestaurants, isOwner, isDefaultList, photosByFoodItemId);
   const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
   const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
   const descriptionLabel = list?.description?.trim();
@@ -408,8 +424,6 @@ function buildAuthenticatedListDetailReadModel({
     isDefaultList,
     groupedRestaurants,
     restaurantRows,
-    mapGroups,
-    omittedMapRestaurantCount: groupedRestaurants.length - mapGroups.length,
     savedListIdsByBookmarkLookupId,
     savedBookmarkLookupIds,
     myLists,

@@ -1,4 +1,5 @@
 import {
+  buildRestaurantListDetailMapProjection,
   buildRestaurantListDetailReadModel,
   type AuthenticatedListDetailReadModelInput,
   type RestaurantListDetailRecord,
@@ -151,9 +152,18 @@ function buildModel(overrides: Partial<AuthenticatedListDetailReadModelInput> = 
   });
 }
 
+function buildMapProjection(model = buildModel()) {
+  return buildRestaurantListDetailMapProjection(
+    model.restaurantRows,
+    model.isOwner,
+    model.isDefaultList,
+  );
+}
+
 describe('buildRestaurantListDetailReadModel', () => {
-  it('builds owner rows with grouped restaurants, owner display rows, map rows, and photo entries', () => {
+  it('builds owner rows with grouped restaurants, owner display rows, and photo entries', () => {
     const model = buildModel();
+    const mapGroups = buildMapProjection(model);
 
     expect(model.isOwner).toBe(true);
     expect(model.groupedRestaurants.map((group) => group.restaurantId)).toEqual(['restaurant_1', 'restaurant_2']);
@@ -177,7 +187,7 @@ describe('buildRestaurantListDetailReadModel', () => {
         kind: 'saved_recommendation',
       },
     ]);
-    expect(model.mapGroups[0]).toMatchObject({
+    expect(mapGroups[0]).toMatchObject({
       id: 'restaurant_1',
       restaurantName: 'Alpha Cafe',
       summary: '1. 1 bookmarked item',
@@ -216,6 +226,7 @@ describe('buildRestaurantListDetailReadModel', () => {
         bookmarkLookupIds: ['food_1', 'user_food_1'],
       },
     });
+    const mapGroups = buildMapProjection(model);
 
     expect(model.isOwner).toBe(false);
     expect(model.subtitle).toBe("Nina's list · 2 restaurants\nPlaces to try");
@@ -232,8 +243,8 @@ describe('buildRestaurantListDetailReadModel', () => {
         ],
       },
     ]);
-    expect(model.mapGroups[0]?.summary).toBe('1. 1 recommended item');
-    expect(model.mapGroups[0]?.items[0]).toMatchObject({
+    expect(mapGroups[0]?.summary).toBe('1. 1 recommended item');
+    expect(mapGroups[0]?.items[0]).toMatchObject({
       name: 'Pancakes',
       notes: 'Great patio',
       photoCount: 2,
@@ -269,6 +280,7 @@ describe('buildRestaurantListDetailReadModel', () => {
       detail,
       userId: 'viewer_1',
     });
+    const mapGroups = buildMapProjection(model);
 
     expect(model.restaurantRows[0]?.bookmarkedItems).toHaveLength(1);
     expect(model.restaurantRows[0]?.bookmarkedItems[0]).toMatchObject({
@@ -281,7 +293,7 @@ describe('buildRestaurantListDetailReadModel', () => {
       'user_food_1',
       'user_food_1_repeat',
     ]);
-    expect(model.mapGroups[0]?.summary).toBe('1. 1 recommended item');
+    expect(mapGroups[0]?.summary).toBe('1. 1 recommended item');
   });
 
   it('surfaces empty-list facts', () => {
@@ -295,7 +307,7 @@ describe('buildRestaurantListDetailReadModel', () => {
 
     expect(model.groupedRestaurants).toEqual([]);
     expect(model.restaurantRows).toEqual([]);
-    expect(model.mapGroups).toEqual([]);
+    expect(buildMapProjection(model)).toEqual([]);
     expect(model.emptyRestaurantsDescription).toBe('Use Add Visit Ratings to List to save your first restaurant.');
     expect(model.subtitle).toBe('0 restaurants\nPlaces to try');
   });
@@ -328,12 +340,13 @@ describe('buildRestaurantListDetailReadModel', () => {
         ],
       }),
     });
+    const mapGroups = buildMapProjection(model);
 
     expect(model.isDefaultList).toBe(true);
     expect(model.groupedRestaurants[0]?.restaurantBookmarkListItemId).toBe('restaurant_bookmark_1');
     expect(model.groupedRestaurants[0]?.friendOverlapCount).toBe(2);
     expect(model.restaurantRows[0]?.ownerItems).toEqual([]);
-    expect(model.mapGroups[0]?.summary).toBe('1. bookmarked restaurant');
+    expect(mapGroups[0]?.summary).toBe('1. bookmarked restaurant');
     expect(
       buildModel({
         detail: buildDetail({
