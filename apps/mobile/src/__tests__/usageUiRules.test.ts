@@ -206,13 +206,13 @@ describe('display photo uploads per record limit', () => {
     })).toBe(1);
   });
 
-  it('returns snapshot limit when present for subscriber preview', () => {
+  it('returns a non-default snapshot limit when present for subscriber preview', () => {
     expect(resolveDisplayPhotoUploadsPerRecordLimit({
-      snapshotLimit: 20,
+      snapshotLimit: 7,
       isDisplayAdminUser: false,
       isDisplaySubscriberUser: true,
       isDisplayFreeUser: false,
-    })).toBe(20);
+    })).toBe(7);
   });
 
   it('falls back to 1 for free display tier when snapshot is unavailable', () => {

@@ -503,13 +503,14 @@ export function CreateVisitScreen({
     viewAsTier: usagePreviewTier,
   });
 
-  const perRecordPhotoLimit = isActualAdmin ? null : isDisplaySubscriberUser ? 20 : 1;
-  const displayMaxPhotosPerItem = resolveDisplayPhotoUploadsPerRecordLimit({
-    snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,
-    isDisplayAdminUser,
-    isDisplaySubscriberUser,
-    isDisplayFreeUser,
-  });
+  const perRecordPhotoLimit = isActualAdmin
+    ? null
+    : resolveDisplayPhotoUploadsPerRecordLimit({
+        snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,
+        isDisplayAdminUser,
+        isDisplaySubscriberUser,
+        isDisplayFreeUser,
+      });
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
@@ -2610,7 +2611,7 @@ export function CreateVisitScreen({
           allowItemRemoval={isEditMode}
           detectedVisitDateValue={detectedVisitDateValue}
           draftItems={draftItems}
-          displayMaxPhotosPerItem={displayMaxPhotosPerItem}
+          displayMaxPhotosPerItem={perRecordPhotoLimit}
           onAttachPhoto={(itemId, source) => {
             void attachPhotoToDraftItem(itemId, source);
           }}

@@ -2,9 +2,11 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import {
+  useMonthlyUsage,
   usePendingTastingSessionLifecycleWrites,
   useTastingSessionLifecycleWrites,
 } from '../features';
+import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import type { TastingSessionRecord } from '../features';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -71,19 +73,7 @@ jest.mock('../features', () => ({
   ),
   usePendingTastingSessionLifecycleWrites: jest.fn(),
   useTastingSessionLifecycleWrites: jest.fn(),
-  useMonthlyUsage: jest.fn(() => ({
-    snapshot: {
-      limits: {
-        photoUploadsPerRecord: 1,
-      },
-      remaining: {
-        photoUploadsMonthly: 99,
-      },
-      usage: {
-        photoUploads: 0,
-      },
-    },
-  })),
+  useMonthlyUsage: jest.fn(),
 }));
 
 jest.mock('../hooks/usePhotoPickerPermissions', () => ({
@@ -106,15 +96,6 @@ jest.mock('../lib/photoMetadata', () => ({
 jest.mock('../lib/photoStaging', () => ({
   stageLocalPhotoFile: jest.fn(),
 }));
-
-jest.mock('../lib/usageUiRules', () => {
-  const actual = jest.requireActual<typeof import('../lib/usageUiRules')>('../lib/usageUiRules');
-
-  return {
-    ...actual,
-    resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
-  };
-});
 
 jest.mock('../providers/AuthProvider', () => ({
   useAuth: jest.fn(),
@@ -173,6 +154,10 @@ const mockedUsePendingTastingSessionLifecycleWrites =
   usePendingTastingSessionLifecycleWrites as jest.MockedFunction<
     typeof usePendingTastingSessionLifecycleWrites
   >;
+const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
+  typeof usePhotoPickerPermissions
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseTastingSessionLifecycleReadState = useTastingSessionLifecycleReadState as jest.MockedFunction<
@@ -287,6 +272,24 @@ describe('TastingSessionTastingScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: {
+          photoUploadsPerRecord: 1,
+        },
+        remaining: {
+          photoUploadsMonthly: 99,
+        },
+        usage: {
+          photoUploads: 0,
+        },
+      },
+    } as ReturnType<typeof useMonthlyUsage>);
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission: jest.fn(),
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
     mockedUseAuth.mockReturnValue({
       actualUser: { id: 'user-1', isAdmin: true },
       user: {
@@ -315,6 +318,116 @@ describe('TastingSessionTastingScreen', () => {
       getStatusState: jest.fn(() => ({ status: 'idle' })),
       refreshPendingWrites: jest.fn().mockResolvedValue(undefined),
     });
+  });
+
+  it('uses a server-provided per-item photo limit for display and enforcement', async () => {
+    const requestPermission = jest.fn();
+    mockedUseAuth.mockReturnValue({
+      actualUser: { id: 'user-1', isAdmin: false },
+      user: { id: 'user-1', isAdmin: false, isSubscriber: true },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: { photoUploadsPerRecord: 0 },
+      },
+    } as never);
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission,
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
+    mockLifecycleSession(tastingSession);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    const photoInput = renderer.root.findByType('VisitItemRatingCard').props.photoSection;
+    expect(photoInput.props.countLabel).toBe('0/0');
+
+    await act(async () => {
+      await photoInput.props.onGalleryPress();
+    });
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'You can upload up to 0 photos per item.',
+    );
+  });
+
+  it('retains the subscriber per-item photo fallback without a usage snapshot', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: { id: 'user-1', isAdmin: false },
+      user: { id: 'user-1', isAdmin: false, isSubscriber: true },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({ snapshot: null } as ReturnType<typeof useMonthlyUsage>);
+    mockLifecycleSession(tastingSession);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    expect(
+      renderer.root.findByType('VisitItemRatingCard').props.photoSection.props.countLabel,
+    ).toBe('0/20');
+  });
+
+  it('keeps actual administrators unlimited while previewing the free tier', async () => {
+    const requestPermission = jest.fn().mockResolvedValue({
+      canAskAgain: true,
+      granted: false,
+      message: 'Picker stopped for test.',
+    });
+    mockedUseAuth.mockReturnValue({
+      actualUser: { id: 'user-1', isAdmin: true },
+      user: { id: 'user-1', isAdmin: false, isSubscriber: false },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: { photoUploadsPerRecord: 0 },
+      },
+    } as never);
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission,
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
+    mockLifecycleSession(tastingSession);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <TastingSessionTastingScreen
+          navigation={{ navigate: mockNavigate, replace: mockReplace } as never}
+          route={{ params: { sessionId: 'session-1' } } as never}
+        />,
+      );
+    });
+
+    const photoInput = renderer.root.findByType('VisitItemRatingCard').props.photoSection;
+    expect(photoInput.props.countLabel).toBeNull();
+
+    await act(async () => {
+      await photoInput.props.onGalleryPress();
+    });
+
+    expect(mockedUseMonthlyUsage).toHaveBeenCalledWith({ viewAsTier: 'free' });
+    expect(requestPermission).toHaveBeenCalledWith('gallery');
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Picker stopped for test.',
+    );
   });
 
   it('submits the visible approved tasting items and advances to review', async () => {

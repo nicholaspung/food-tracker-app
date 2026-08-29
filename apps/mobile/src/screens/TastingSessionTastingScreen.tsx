@@ -194,13 +194,14 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
     usagePreviewTier,
   } = resolveUsageViewContext({ actualUser, user });
   const monthlyUsage = useMonthlyUsage({ viewAsTier: usagePreviewTier });
-  const perRecordPhotoLimit = isActualAdmin ? null : isDisplaySubscriberUser ? 20 : 1;
-  const displayMaxPhotosPerItem = resolveDisplayPhotoUploadsPerRecordLimit({
-    snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,
-    isDisplayAdminUser,
-    isDisplaySubscriberUser,
-    isDisplayFreeUser,
-  });
+  const perRecordPhotoLimit = isActualAdmin
+    ? null
+    : resolveDisplayPhotoUploadsPerRecordLimit({
+        snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,
+        isDisplayAdminUser,
+        isDisplaySubscriberUser,
+        isDisplayFreeUser,
+      });
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -796,10 +797,10 @@ export function TastingSessionTastingScreen({ navigation, route }: TastingSessio
                         cameraSubtitle="Camera"
                         cameraTitle="Capture"
                         countLabel={
-                          displayMaxPhotosPerItem === null ||
+                          perRecordPhotoLimit === null ||
                           (shouldHidePhotoSourceActions && draft.photos.length === 0)
                             ? null
-                            : `${draft.photos.length}/${displayMaxPhotosPerItem}`
+                            : `${draft.photos.length}/${perRecordPhotoLimit}`
                         }
                         disabled={!isOnline}
                         footerAction={

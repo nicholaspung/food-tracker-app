@@ -21,6 +21,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { CreateVisitScreen } from '../screens/CreateVisitScreen';
 import { useCreateVisitDraftItems } from '../screens/createVisit/useCreateVisitDraftItems';
 import { useCreateVisitSubmission } from '../screens/createVisit/useCreateVisitSubmission';
+import { trackObservabilityEvent } from '../observability';
 
 const mockReact = React;
 const mockUsePreventRemove = jest.fn();
@@ -271,7 +272,6 @@ jest.mock('../lib/usageUiRules', () => {
 
   return {
     ...actual,
-    resolveDisplayPhotoUploadsPerRecordLimit: jest.fn(() => 1),
     shouldShowOfflineUsageWarning: jest.fn(() => false),
   };
 });
@@ -365,6 +365,9 @@ const mockedUseCreateVisitDraftItems = useCreateVisitDraftItems as jest.MockedFu
 >;
 const mockedUseCreateVisitSubmission = useCreateVisitSubmission as jest.MockedFunction<
   typeof useCreateVisitSubmission
+>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
 >;
 
 function buildQueryResult<T>(data: T) {
@@ -617,6 +620,199 @@ describe('CreateVisitScreen', () => {
       isSubmitting: false,
       submitVisit: jest.fn(),
     } as ReturnType<typeof useCreateVisitSubmission>);
+  });
+
+  it('uses a server-provided per-item photo limit for display and enforcement', async () => {
+    const requestPermission = jest.fn();
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: { photoUploadsPerRecord: 3 },
+      },
+    } as never);
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission,
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-1',
+          name: 'Sample',
+          notes: '',
+          photos: [0, 1, 2].map((index) => ({
+            id: `photo-${index}`,
+            kind: 'new' as const,
+            labelDate: 'Today',
+            thumbnailUri: `file:///photo-${index}.jpg`,
+            upload: {
+              mimeType: 'image/jpeg',
+              name: `photo-${index}.jpg`,
+              uri: `file:///photo-${index}.jpg`,
+            },
+            viewerUri: `file:///photo-${index}.jpg`,
+          })),
+          rating: 3,
+        },
+      ],
+      draftPhotoCount: 3,
+      isMenuItemSelected: jest.fn(() => true),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: { returnToStep: 2 } } as never}
+        />,
+      );
+    });
+
+    const reviewStep = renderer.root.findByType('CreateVisitReviewStep');
+    expect(reviewStep.props.displayMaxPhotosPerItem).toBe(3);
+
+    await act(async () => {
+      await reviewStep.props.onAttachPhoto('item-1', 'gallery');
+    });
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'You can upload up to 3 photos per item.',
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'USAGE_LIMIT_REACHED',
+      expect.objectContaining({
+        limit: 3,
+        metric: 'photo_uploads_per_record',
+        remaining: 0,
+        used: 3,
+      }),
+    );
+  });
+
+  it('retains the subscriber per-item photo fallback without a usage snapshot', async () => {
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-1',
+          name: 'Sample',
+          notes: '',
+          photos: [],
+          rating: 3,
+        },
+      ],
+      draftPhotoCount: 0,
+      isMenuItemSelected: jest.fn(() => true),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: { returnToStep: 2 } } as never}
+        />,
+      );
+    });
+
+    expect(renderer.root.findByType('CreateVisitReviewStep').props.displayMaxPhotosPerItem).toBe(20);
+  });
+
+  it('keeps actual administrators unlimited while previewing the free tier', async () => {
+    const requestPermission = jest.fn().mockResolvedValue({
+      canAskAgain: true,
+      granted: false,
+      message: 'Picker stopped for test.',
+    });
+    mockedUseAuth.mockReturnValue({
+      actualUser: { isAdmin: true },
+      user: { isAdmin: false, isSubscriber: false },
+    } as ReturnType<typeof useAuth>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: {
+        limits: { photoUploadsPerRecord: 1 },
+        remaining: { placesQueriesMonthly: null },
+      },
+    } as never);
+    mockedUsePhotoPickerPermissions.mockReturnValue({
+      permissionNeedsSettings: false,
+      requestPermission,
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof usePhotoPickerPermissions>);
+    mockedUseCreateVisitDraftItems.mockReturnValue({
+      draftItems: [
+        {
+          deletedPhotoIds: [],
+          description: '',
+          id: 'item-1',
+          name: 'Sample',
+          notes: '',
+          photos: [
+            {
+              id: 'photo-1',
+              kind: 'new',
+              labelDate: 'Today',
+              thumbnailUri: 'file:///photo-1.jpg',
+              upload: {
+                mimeType: 'image/jpeg',
+                name: 'photo-1.jpg',
+                uri: 'file:///photo-1.jpg',
+              },
+              viewerUri: 'file:///photo-1.jpg',
+            },
+          ],
+          rating: 3,
+        },
+      ],
+      draftPhotoCount: 1,
+      isMenuItemSelected: jest.fn(() => true),
+      removeDraftItem: jest.fn(),
+      removeDraftItemPhoto: jest.fn(),
+      selectedMenuItemCount: 1,
+      setDraftItems,
+      toggleMenuItemSelection,
+      updateDraftItem: jest.fn(),
+    } as ReturnType<typeof useCreateVisitDraftItems>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <CreateVisitScreen
+          navigation={navigation as never}
+          route={{ params: { returnToStep: 2 } } as never}
+        />,
+      );
+    });
+
+    const reviewStep = renderer.root.findByType('CreateVisitReviewStep');
+    expect(reviewStep.props.displayMaxPhotosPerItem).toBeNull();
+
+    await act(async () => {
+      await reviewStep.props.onAttachPhoto('item-1', 'gallery');
+    });
+
+    expect(mockedUseMonthlyUsage).toHaveBeenCalledWith({ viewAsTier: 'free' });
+    expect(requestPermission).toHaveBeenCalledWith('gallery');
+    expect(renderer.root.findByType('PageErrorToast').props.errorMessage).toBe(
+      'Picker stopped for test.',
+    );
   });
 
   it('shows only user-created saved restaurants before search while preserving API search results', async () => {
