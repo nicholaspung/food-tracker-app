@@ -12,6 +12,11 @@ import { useSync } from '../providers/SyncProvider';
 import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 
 const mockReact = React;
+let mockIsFocused = true;
+
+jest.mock('@react-navigation/native', () => ({
+  useIsFocused: () => mockIsFocused,
+}));
 
 jest.mock('../features', () => ({
   confirmUserEmailVerification: jest.fn(),
@@ -111,6 +116,7 @@ describe('VerifyEmailScreen', () => {
     mockedUseAuth.mockReset();
     mockedUseConnectivity.mockReset();
     mockedUseSync.mockReset();
+    mockIsFocused = true;
     mockedUseConnectivity.mockReturnValue({
       isOnline: true,
     } as unknown as ReturnType<typeof useConnectivity>);
@@ -387,6 +393,7 @@ describe('VerifyEmailScreen', () => {
 
     expect(mockedConfirmUserEmailVerification).toHaveBeenCalledWith(token);
     expect(refreshAuthSession).toHaveBeenCalledTimes(1);
+    expect(refreshAuthSession).toHaveBeenCalledWith({ afterCurrent: true });
     expect(renderer.root.findByType('FormResultBanner').props.message).toBe(
       'Your email has been verified. The app will refresh your account status automatically.',
     );

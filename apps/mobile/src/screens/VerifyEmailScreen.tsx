@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -29,6 +30,7 @@ import { trackObservabilityEvent } from '../observability';
 import { buildSafeTelemetryErrorProperties } from '../observability/telemetryError';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
+import { useFocusedVerificationMonitor } from '../providers/auth/verificationMonitor';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -91,6 +93,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const verificationToken = route.params?.token?.trim() ?? '';
   const tokenPayload = useMemo(() => decodeAuthActionTokenPayload(verificationToken), [verificationToken]);
   const { isOnline } = useConnectivity();
+  const isFocused = useIsFocused();
   const [isResending, setIsResending] = useState(false);
   const [tokenConfirmationStatus, setTokenConfirmationStatus] = useState<
     'idle' | 'confirming' | 'succeeded' | 'failed'
@@ -115,6 +118,12 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const styles = useStyles();
   const hasTriggeredInitialSendRef = useRef(false);
   const hasTriggeredTokenConfirmationRef = useRef(false);
+  useFocusedVerificationMonitor({
+    enabled: hasRetainedSession && !isTokenVerification && verificationStatus !== 'verified',
+    isFocused,
+    isOnline,
+    refreshAuthSession,
+  });
   const canResendVerificationEmail =
     isOnline && Boolean(pendingEmail) && resendRateLimitDecision.allowed && !isResending;
   const resendButtonLabel =
@@ -304,7 +313,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     }
 
     try {
-      await refreshAuthSession();
+      await refreshAuthSession({ afterCurrent: true });
     } catch (error) {
       setSuccessMessage('Your email has been verified. If the app does not update automatically, close and reopen it.');
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_REFRESH_FAILED', {

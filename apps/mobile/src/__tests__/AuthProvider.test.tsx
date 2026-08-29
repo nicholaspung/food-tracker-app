@@ -3,6 +3,7 @@ import { act, create } from 'react-test-renderer';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 
 const mockAuthRefresh = jest.fn();
@@ -20,6 +21,7 @@ const mockLoadRolePreviewSettings = jest.fn();
 const mockDeactivateNotificationDeviceForSignOut = jest.fn();
 
 let authChangeListener: (() => void) | null = null;
+let mockAppStateListener: ((state: 'active' | 'background') => void) | null = null;
 const mockAuthStoreState = {
   token: 'token_1',
   record: {
@@ -44,9 +46,12 @@ jest.mock('@tanstack/react-query', () => ({
 jest.mock('react-native', () => ({
   AppState: {
     currentState: 'active',
-    addEventListener: jest.fn(() => ({
-      remove: jest.fn(),
-    })),
+    addEventListener: jest.fn(
+      (_event: string, listener: (state: 'active' | 'background') => void) => {
+        mockAppStateListener = listener;
+        return { remove: jest.fn() };
+      },
+    ),
   },
 }));
 
@@ -89,6 +94,10 @@ jest.mock('../providers/SyncProvider', () => ({
   useSync: jest.fn(),
 }));
 
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
+}));
+
 jest.mock('../providers/auth/notificationDeviceLifecycle', () => ({
   notificationDeviceLifecycle: {
     deactivateForSignOut: (...args: unknown[]) => mockDeactivateNotificationDeviceForSignOut(...args),
@@ -126,9 +135,10 @@ jest.mock('../providers/authErrorMessages', () => ({
 }));
 
 function AuthConsumer() {
-  const { signInWithPassword, signOut, status, verificationStatus } = useAuth();
+  const { refreshAuthSession, signInWithPassword, signOut, status, verificationStatus } = useAuth();
 
   return React.createElement('AuthState', {
+    refreshAuthSession,
     signInWithPassword,
     signOut,
     status,
@@ -137,6 +147,7 @@ function AuthConsumer() {
 }
 
 const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedUseSync = useSync as jest.MockedFunction<typeof useSync>;
 
 describe('AuthProvider', () => {
@@ -154,6 +165,7 @@ describe('AuthProvider', () => {
     mockAuthStoreState.isValid = true;
 
     authChangeListener = null;
+    mockAppStateListener = null;
     mockAuthRefresh.mockReset();
     mockRefreshPocketBaseFileAccessToken.mockReset();
     mockClearPocketBaseFileAccessToken.mockReset();
@@ -174,6 +186,9 @@ describe('AuthProvider', () => {
     mockedUseSync.mockReturnValue({
       discardQueuedMutations: mockDiscardQueuedMutations,
     } as unknown as ReturnType<typeof useSync>);
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
+    } as unknown as ReturnType<typeof useConnectivity>);
     mockAuthRefresh.mockResolvedValue(undefined);
     mockRefreshPocketBaseFileAccessToken.mockResolvedValue('file-token');
     mockOnChange.mockImplementation((listener: () => void) => {
@@ -249,7 +264,7 @@ describe('AuthProvider', () => {
     expect(expiredState.verificationStatus).toBe('grace_expired');
   });
 
-  it('polls auth refresh while verification is still pending', async () => {
+  it('does not poll auth refresh during normal authenticated navigation', async () => {
     mockAuthStoreState.record = {
       id: 'user_1',
       email: 'user@example.com',
@@ -273,12 +288,161 @@ describe('AuthProvider', () => {
     mockAuthRefresh.mockClear();
 
     await act(async () => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(60_000);
       await Promise.resolve();
     });
 
     expect(renderer.root.findByType('AuthState').props.verificationStatus).toBe('grace_period');
+    expect(mockAuthRefresh).not.toHaveBeenCalled();
+  });
+
+  it('coalesces concurrent auth-session refresh requests', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+    });
+    mockAuthRefresh.mockClear();
+
+    let resolveRefresh = () => {};
+    const pendingRefresh = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    mockAuthRefresh.mockReturnValueOnce(pendingRefresh);
+    const refreshAuthSession = renderer.root.findByType('AuthState').props.refreshAuthSession;
+    const firstRefresh = refreshAuthSession();
+    const secondRefresh = refreshAuthSession();
+
     expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRefresh();
+      await Promise.all([firstRefresh, secondRefresh]);
+    });
+
+    await act(async () => {
+      await refreshAuthSession();
+    });
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('queues a new auth refresh after an in-flight pre-verification refresh', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+    });
+    mockAuthRefresh.mockClear();
+
+    let resolveRefresh = () => {};
+    const pendingRefresh = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    mockAuthRefresh.mockReturnValueOnce(pendingRefresh);
+    const refreshAuthSession = renderer.root.findByType('AuthState').props.refreshAuthSession;
+    const staleRefresh = refreshAuthSession();
+    const postVerificationRefresh = refreshAuthSession({ afterCurrent: true });
+
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRefresh();
+      await Promise.all([staleRefresh, postVerificationRefresh]);
+    });
+
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces a foreground refresh with bootstrap auth refresh', async () => {
+    let resolveBootstrapRefresh = () => {};
+    const bootstrapRefresh = new Promise<void>((resolve) => {
+      resolveBootstrapRefresh = resolve;
+    });
+    mockAuthRefresh.mockReturnValueOnce(bootstrapRefresh);
+
+    await act(async () => {
+      create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      mockAppStateListener?.('background');
+      mockAppStateListener?.('active');
+    });
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveBootstrapRefresh();
+      await bootstrapRefresh;
+      await Promise.resolve();
+    });
+  });
+
+  it('cancels pending refresh work before switching accounts', async () => {
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+      await Promise.resolve();
+    });
+    mockAuthRefresh.mockClear();
+
+    let resolveStaleNetworkResponse = () => {};
+    const staleRequest: { signal: AbortSignal | null } = { signal: null };
+    mockAuthRefresh.mockImplementationOnce(({ signal }: { signal: AbortSignal }) =>
+      new Promise<void>((resolve, reject) => {
+        staleRequest.signal = signal;
+        signal.addEventListener('abort', () => reject(new Error('Request aborted.')), { once: true });
+        resolveStaleNetworkResponse = () => {
+          if (signal.aborted) {
+            return;
+          }
+          mockSave('stale_token', {
+            id: 'user_1',
+            email: 'user@example.com',
+            verified: false,
+            created: '2026-04-18T12:00:01.000Z',
+          });
+          resolve();
+        };
+      }),
+    );
+    const authState = renderer.root.findByType('AuthState').props;
+    const staleRefresh = authState.refreshAuthSession();
+    const staleRefreshOutcome = staleRefresh.catch(() => undefined);
+
+    await act(async () => {
+      await authState.signOut();
+      await authState.signInWithPassword('next@example.com', 'password');
+      await authState.refreshAuthSession();
+    });
+
+    expect(staleRequest.signal?.aborted).toBe(true);
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(2);
+    expect(mockAuthStoreState.record?.id).toBe('user_2');
+
+    await act(async () => {
+      resolveStaleNetworkResponse();
+      await staleRefreshOutcome;
+    });
+    expect(mockAuthStoreState.record?.id).toBe('user_2');
   });
 
   it('reports auth bootstrap completion for startup coordination', async () => {

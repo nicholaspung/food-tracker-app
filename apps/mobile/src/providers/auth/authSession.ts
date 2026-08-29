@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ClientResponseError } from 'pocketbase';
 
 import { env } from '../../config/env';
@@ -25,6 +25,9 @@ import {
 
 export type AuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 export type AuthBootstrapOutcome = 'successful_restore' | 'failed_restore';
+export interface AuthRefreshOptions {
+  afterCurrent?: boolean;
+}
 
 export interface AuthBootstrapResult {
   authRestoreDurationMs: number;
@@ -45,7 +48,7 @@ interface AuthSessionState {
   authError: string | null;
   hasActiveSession: () => boolean;
   isSubmitting: boolean;
-  refreshAuthSession: () => Promise<void>;
+  refreshAuthSession: (options?: AuthRefreshOptions) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signOutSession: () => void;
   status: AuthStatus;
@@ -57,6 +60,13 @@ interface AuthSessionState {
 export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
 const PRIVATE_FILE_TOKEN_REFRESH_INTERVAL_MS = 120_000;
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 6_000;
+
+class StaleAuthRefreshError extends Error {
+  constructor() {
+    super('Session changed during refresh.');
+    this.name = 'StaleAuthRefreshError';
+  }
+}
 
 function resolveClientResponseMessage(error: ClientResponseError): string {
   if (typeof error.response?.message === 'string' && error.response.message.trim().length > 0) {
@@ -91,6 +101,10 @@ function shouldClearCachedSessionAfterRefreshFailure(error: unknown): boolean {
   }
 
   return /auth|token|unauthorized|forbidden|expired|invalid/i.test(error.message);
+}
+
+function isCanceledAuthRefreshError(error: unknown): boolean {
+  return error instanceof StaleAuthRefreshError || (error instanceof ClientResponseError && error.isAbort);
 }
 
 function getCurrentAuthUser(): AuthUser | null {
@@ -136,6 +150,13 @@ export function useAuthSession({
   const [verificationGraceEndsAt, setVerificationGraceEndsAt] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const authSessionAccountIdRef = useRef(getCurrentAuthUser()?.id ?? null);
+  const authRefreshGenerationRef = useRef(0);
+  const authRefreshAbortControllerRef = useRef<AbortController | null>(null);
+  const authRefreshRequestPromiseRef = useRef<Promise<void> | null>(null);
+  const trailingAuthRefreshRequestPromiseRef = useRef<Promise<void> | null>(null);
+  const refreshAuthSessionPromiseRef = useRef<Promise<void> | null>(null);
+  const trailingRefreshAuthSessionPromiseRef = useRef<Promise<void> | null>(null);
 
   const applyAuthenticationState = useCallback((nextUser: AuthUser | null) => {
     const nextState = resolveAuthenticationState(nextUser);
@@ -151,31 +172,165 @@ export function useAuthSession({
 
   const hasActiveSession = useCallback(() => Boolean(pb.authStore.token), []);
 
-  const refreshAuthSession = useCallback(async () => {
-    if (!pb.authStore.token || !pb.authStore.isValid) {
-      syncAuthSnapshot();
-      throw new Error('No active session available for auth refresh.');
+  const cancelAuthRefreshForBoundary = useCallback(() => {
+    authRefreshGenerationRef.current += 1;
+    authRefreshAbortControllerRef.current?.abort();
+    authRefreshAbortControllerRef.current = null;
+    authRefreshRequestPromiseRef.current = null;
+    trailingAuthRefreshRequestPromiseRef.current = null;
+    refreshAuthSessionPromiseRef.current = null;
+    trailingRefreshAuthSessionPromiseRef.current = null;
+  }, []);
+
+  const runAuthRefreshRequest = useCallback((options?: AuthRefreshOptions): Promise<void> => {
+    const startRefreshRequest = () => {
+      const requestGeneration = authRefreshGenerationRef.current;
+      const abortController = new AbortController();
+      authRefreshAbortControllerRef.current = abortController;
+      const requestPromise = pb.collection('users').authRefresh({ signal: abortController.signal }).then(() => {
+        if (authRefreshGenerationRef.current !== requestGeneration) {
+          throw new StaleAuthRefreshError();
+        }
+      });
+      authRefreshRequestPromiseRef.current = requestPromise;
+      void requestPromise.then(
+        () => {
+          if (authRefreshRequestPromiseRef.current === requestPromise) {
+            authRefreshRequestPromiseRef.current = null;
+          }
+          if (authRefreshAbortControllerRef.current === abortController) {
+            authRefreshAbortControllerRef.current = null;
+          }
+        },
+        () => {
+          if (authRefreshRequestPromiseRef.current === requestPromise) {
+            authRefreshRequestPromiseRef.current = null;
+          }
+          if (authRefreshAbortControllerRef.current === abortController) {
+            authRefreshAbortControllerRef.current = null;
+          }
+        },
+      );
+      return requestPromise;
+    };
+
+    const currentRequest = authRefreshRequestPromiseRef.current;
+    if (!currentRequest) {
+      return startRefreshRequest();
+    }
+    if (!options?.afterCurrent) {
+      return currentRequest;
+    }
+    if (trailingAuthRefreshRequestPromiseRef.current) {
+      return trailingAuthRefreshRequestPromiseRef.current;
     }
 
-    try {
-      await pb.collection('users').authRefresh();
-      setAuthError(null);
-    } catch (refreshError) {
-      if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
-        pb.authStore.clear();
+    const queuedGeneration = authRefreshGenerationRef.current;
+    const startTrailingRequest = () => {
+      if (authRefreshGenerationRef.current !== queuedGeneration) {
+        throw new StaleAuthRefreshError();
       }
-      if (!isVerificationRequiredError(refreshError)) {
-        logger.warn('[AuthSession] authRefresh failed:', refreshError);
+      return startRefreshRequest();
+    };
+    const trailingRequest = currentRequest.then(startTrailingRequest, startTrailingRequest);
+    trailingAuthRefreshRequestPromiseRef.current = trailingRequest;
+    void trailingRequest.then(
+      () => {
+        if (trailingAuthRefreshRequestPromiseRef.current === trailingRequest) {
+          trailingAuthRefreshRequestPromiseRef.current = null;
+        }
+      },
+      () => {
+        if (trailingAuthRefreshRequestPromiseRef.current === trailingRequest) {
+          trailingAuthRefreshRequestPromiseRef.current = null;
+        }
+      },
+    );
+    return trailingRequest;
+  }, []);
+
+  const performAuthSessionRefresh = useCallback(
+    async (options?: AuthRefreshOptions) => {
+      if (!pb.authStore.token || !pb.authStore.isValid) {
+        syncAuthSnapshot();
+        throw new Error('No active session available for auth refresh.');
       }
+
+      try {
+        await runAuthRefreshRequest(options);
+        setAuthError(null);
+      } catch (refreshError) {
+        if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
+          pb.authStore.clear();
+        }
+        if (!isVerificationRequiredError(refreshError) && !isCanceledAuthRefreshError(refreshError)) {
+          logger.warn('[AuthSession] authRefresh failed:', refreshError);
+        }
+        syncAuthSnapshot();
+        throw refreshError;
+      }
+
+      await refreshPocketBaseFileAccessToken().catch((error) => {
+        logger.warn('[AuthSession] private file token refresh failed:', error);
+      });
       syncAuthSnapshot();
-      throw refreshError;
+    },
+    [runAuthRefreshRequest, syncAuthSnapshot],
+  );
+
+  const refreshAuthSession = useCallback((options?: AuthRefreshOptions) => {
+    const startSessionRefresh = (startOptions?: AuthRefreshOptions) => {
+      const refreshPromise = performAuthSessionRefresh(startOptions);
+      refreshAuthSessionPromiseRef.current = refreshPromise;
+      void refreshPromise.then(
+        () => {
+          if (refreshAuthSessionPromiseRef.current === refreshPromise) {
+            refreshAuthSessionPromiseRef.current = null;
+          }
+        },
+        () => {
+          if (refreshAuthSessionPromiseRef.current === refreshPromise) {
+            refreshAuthSessionPromiseRef.current = null;
+          }
+        },
+      );
+      return refreshPromise;
+    };
+
+    const currentRefresh = refreshAuthSessionPromiseRef.current;
+    if (!currentRefresh) {
+      return startSessionRefresh(options);
+    }
+    if (!options?.afterCurrent) {
+      return currentRefresh;
+    }
+    if (trailingRefreshAuthSessionPromiseRef.current) {
+      return trailingRefreshAuthSessionPromiseRef.current;
     }
 
-    await refreshPocketBaseFileAccessToken().catch((error) => {
-      logger.warn('[AuthSession] private file token refresh failed:', error);
-    });
-    syncAuthSnapshot();
-  }, [syncAuthSnapshot]);
+    const queuedGeneration = authRefreshGenerationRef.current;
+    const startTrailingRefresh = () => {
+      if (authRefreshGenerationRef.current !== queuedGeneration) {
+        throw new StaleAuthRefreshError();
+      }
+      return startSessionRefresh({ afterCurrent: true });
+    };
+    const trailingRefresh = currentRefresh.then(startTrailingRefresh, startTrailingRefresh);
+    trailingRefreshAuthSessionPromiseRef.current = trailingRefresh;
+    void trailingRefresh.then(
+      () => {
+        if (trailingRefreshAuthSessionPromiseRef.current === trailingRefresh) {
+          trailingRefreshAuthSessionPromiseRef.current = null;
+        }
+      },
+      () => {
+        if (trailingRefreshAuthSessionPromiseRef.current === trailingRefresh) {
+          trailingRefreshAuthSessionPromiseRef.current = null;
+        }
+      },
+    );
+    return trailingRefresh;
+  }, [performAuthSessionRefresh]);
 
   useEffect(() => {
     let isMounted = true;
@@ -196,6 +351,7 @@ export function useAuthSession({
           AUTH_BOOTSTRAP_TIMEOUT_MS,
           'Auth storage restore timed out.',
         );
+        authSessionAccountIdRef.current = getCurrentAuthUser()?.id ?? null;
         hadRestoredSession = Boolean(pb.authStore.token);
         await withTimeout(
           prepareForRestore(),
@@ -210,7 +366,7 @@ export function useAuthSession({
         if (pb.authStore.isValid) {
           try {
             await withTimeout(
-              pb.collection('users').authRefresh(),
+              runAuthRefreshRequest(),
               AUTH_BOOTSTRAP_TIMEOUT_MS,
               'Auth session refresh timed out.',
             );
@@ -285,6 +441,11 @@ export function useAuthSession({
     };
 
     const unsubscribe = pb.authStore.onChange(() => {
+      const nextAccountId = getCurrentAuthUser()?.id ?? null;
+      if (nextAccountId !== authSessionAccountIdRef.current) {
+        authSessionAccountIdRef.current = nextAccountId;
+        cancelAuthRefreshForBoundary();
+      }
       if (isMounted) {
         syncAuthSnapshot();
       }
@@ -293,9 +454,10 @@ export function useAuthSession({
     void bootstrap();
     return () => {
       isMounted = false;
+      cancelAuthRefreshForBoundary();
       unsubscribe();
     };
-  }, [onBootstrapComplete, onInvalidRestoredSession, prepareForRestore, syncAuthSnapshot]);
+  }, [cancelAuthRefreshForBoundary, onBootstrapComplete, onInvalidRestoredSession, prepareForRestore, runAuthRefreshRequest, syncAuthSnapshot]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !actualUser) {
@@ -353,11 +515,12 @@ export function useAuthSession({
   );
 
   const signOutSession = useCallback(() => {
+    cancelAuthRefreshForBoundary();
     pb.authStore.clear();
     clearPocketBaseFileAccessToken();
     applyAuthenticationState(null);
     setAuthError(null);
-  }, [applyAuthenticationState]);
+  }, [applyAuthenticationState, cancelAuthRefreshForBoundary]);
 
   return {
     actualUser,

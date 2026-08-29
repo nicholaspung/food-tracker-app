@@ -33,6 +33,7 @@ import {
 import {
   AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE,
   useAuthSession,
+  type AuthRefreshOptions,
   type AuthBootstrapResult,
   type AuthStatus,
 } from './auth/authSession';
@@ -43,6 +44,7 @@ import {
   type RolePreviewSettingKey,
 } from './auth/rolePreviewState';
 import { useVerificationMonitor } from './auth/verificationMonitor';
+import { useConnectivity } from './ConnectivityProvider';
 import { clearPersistedQueryCache } from './queryPersistence';
 import { useSync } from './SyncProvider';
 
@@ -63,7 +65,7 @@ interface AuthContextValue {
   authError: string | null;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshAuthSession: () => Promise<void>;
+  refreshAuthSession: (options?: AuthRefreshOptions) => Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -99,6 +101,7 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const queryClient = useQueryClient();
   const { discardQueuedMutations } = useSync();
+  const { isOnline } = useConnectivity();
   const isProviderMountedRef = useRef(true);
   const previousAuthenticatedUserIdRef = useRef<string | null | undefined>(undefined);
   const suppressNextAuthBoundaryResetRef = useRef(false);
@@ -149,6 +152,7 @@ export function AuthProvider({
   });
   useVerificationMonitor({
     hasActiveSession: authSession.hasActiveSession,
+    isOnline,
     refreshAuthSession: authSession.refreshAuthSession,
     status: authSession.status,
     syncAuthSnapshot: authSession.syncAuthSnapshot,
