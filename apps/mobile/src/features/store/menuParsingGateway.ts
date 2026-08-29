@@ -4,6 +4,7 @@ import { ClientResponseError } from 'pocketbase';
 import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
 import type { MenuItemRecord } from './featureStore';
+import { parseNativeUploadErrorResponse } from './nativeUploadResponse';
 import { sendApiRequest } from './pocketbaseGateway';
 
 interface ParseMenuImageInput {
@@ -275,7 +276,7 @@ function assertNativeImageUploadSucceeded(
   }
 
   throw new ClientResponseError({
-    response: parsePocketBaseUploadErrorResponse(uploadResult.body, fallbackMessage),
+    response: parseNativeUploadErrorResponse(uploadResult.body, fallbackMessage),
     status: uploadResult.status,
     url,
   });
@@ -387,13 +388,6 @@ function isString(value: unknown): value is string {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
-}
-
-function parsePocketBaseUploadErrorResponse(body: string, fallbackMessage: string): Record<string, unknown> {
-  return parseJsonObject(body) ?? {
-    data: {},
-    message: body.trim() || fallbackMessage,
-  };
 }
 
 function parseJsonObject(body: string): Record<string, unknown> | null {

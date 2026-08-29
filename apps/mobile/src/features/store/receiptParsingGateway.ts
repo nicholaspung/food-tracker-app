@@ -3,6 +3,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import { env } from '../../config/env';
 import { pb } from '../../lib/pocketbase';
+import { parseNativeUploadErrorResponse } from './nativeUploadResponse';
 
 export type ReceiptScanConfidence = 'high' | 'medium' | 'low' | 'unknown';
 
@@ -114,7 +115,7 @@ function assertReceiptUploadSucceeded(uploadResult: UploadResult): void {
   }
 
   throw new ClientResponseError({
-    response: parsePocketBaseUploadErrorResponse(uploadResult.body),
+    response: parseNativeUploadErrorResponse(uploadResult.body, 'Receipt scan failed.'),
     status: uploadResult.status,
     url: buildParseReceiptUrl(),
   });
@@ -182,13 +183,6 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isOptionalFiniteNumber(value: unknown): value is number | undefined {
   return value === undefined || isFiniteNumber(value);
-}
-
-function parsePocketBaseUploadErrorResponse(body: string): Record<string, unknown> {
-  return parseJsonObject(body) ?? {
-    data: {},
-    message: body.trim() || 'Receipt scan failed.',
-  };
 }
 
 function parseJsonObject(body: string): Record<string, unknown> | null {

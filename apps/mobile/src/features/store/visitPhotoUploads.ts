@@ -11,6 +11,7 @@ import {
   isRetryableFeatureStoreError,
   resolveFeatureWriteHeaders,
 } from './featureStoreShared';
+import { parseNativeUploadErrorResponse } from './nativeUploadResponse';
 import { getCollectionRecord } from './pocketbaseGateway';
 
 interface VisitPhotoCollectionRecord {
@@ -176,7 +177,7 @@ function assertVisitPhotoUploadSucceeded(uploadResult: UploadResult): void {
   }
 
   throw new ClientResponseError({
-    response: parsePocketBaseUploadErrorResponse(uploadResult.body),
+    response: parseNativeUploadErrorResponse(uploadResult.body, 'Failed to create record.'),
     status: uploadResult.status,
     url: buildVisitPhotosCollectionUrl(),
   });
@@ -184,22 +185,6 @@ function assertVisitPhotoUploadSucceeded(uploadResult: UploadResult): void {
 
 function buildVisitPhotosCollectionUrl(): string {
   return `${env.pocketbaseUrl.replace(/\/+$/, '')}/api/collections/visit_photos/records`;
-}
-
-function parsePocketBaseUploadErrorResponse(body: string): Record<string, unknown> {
-  try {
-    const parsedBody = JSON.parse(body) as unknown;
-    if (parsedBody && typeof parsedBody === 'object') {
-      return parsedBody as Record<string, unknown>;
-    }
-  } catch {
-    // PocketBase normally returns JSON errors, but native uploads can surface plain text.
-  }
-
-  return {
-    data: {},
-    message: body.trim() || 'Failed to create record.',
-  };
 }
 
 function normalizeVisitPhotoUploadError(
